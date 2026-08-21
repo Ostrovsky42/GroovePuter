@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# Trigger commit: workflow exists in the branch parent.
 ROOT = Path(__file__).resolve().parents[1]
 path = ROOT / "src/generation/migration/live_song_arrangement_activation.h"
 text = path.read_text(encoding="utf-8")
@@ -85,8 +86,6 @@ replace_once(
 }""",
 )
 
-# In ACTIVATE and STOP, Reading is already exclusively claimed. If publication
-# CAS unexpectedly fails, retire the payload before exposing Empty as well.
 old_failure = """    QuantizedGenerationDetail::g_slotState[slot].store(
         static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
     clearSongActivationMetadata(slot);
