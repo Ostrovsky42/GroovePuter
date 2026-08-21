@@ -1,0 +1,30 @@
+name: 0.9.9 E3 temporal carrier audit
+
+on:
+  push:
+    branches:
+      - agent/20260821-05-0.9.9-e3-temporal-carrier-audit
+  pull_request:
+    paths:
+      - 'docs/architecture/E3_TEMPORAL_MATERIAL_CARRIER_AUDIT.md'
+      - 'tests/e3_temporal_carrier_sizes.cpp'
+      - 'tests/e3_temporal_carrier_source_audit.py'
+      - 'tests/run_0_9_9_e3_temporal_carrier_audit.sh'
+      - 'platform_sdl/e3_prepare_benchmark.cpp'
+      - '.github/workflows/generation-0-9-9-e3-temporal-carrier-audit.yml'
+      - 'src/**'
+      - 'scenes.h'
+      - 'scenes.cpp'
+      - 'platform_sdl/Makefile'
+
+jobs:
+  host-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev
+      - name: Run E3 audit and PREPARE benchmark
+        run: bash tests/run_0_9_9_e3_temporal_carrier_audit.sh
