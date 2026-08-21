@@ -1,0 +1,31 @@
+name: D3 safe terminal cancellation patch
+
+on:
+  push:
+    branches:
+      - agent/20260821-03-0.9.9-d3-song-live-arrangement
+    paths:
+      - 'tools/d3_safe_terminal_cancel.py'
+      - '.github/workflows/d3-safe-terminal-cancel.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260821-03-0.9.9-d3-song-live-arrangement
+          fetch-depth: 0
+      - name: Apply exact race-safe cancellation patch
+        run: python3 tools/d3_safe_terminal_cancel.py
+      - name: Commit production fix and remove bootstrap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/generation/migration/live_song_arrangement_activation.h
+          git rm -- tools/d3_safe_terminal_cancel.py .github/workflows/d3-safe-terminal-cancel.yml
+          git commit -m "fix(d3): claim Song activation before terminal cleanup"
+          git push origin HEAD:agent/20260821-03-0.9.9-d3-song-live-arrangement
