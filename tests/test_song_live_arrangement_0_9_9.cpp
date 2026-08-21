@@ -42,32 +42,61 @@ int main() {
     clearSongActivationMetadata(slot);
   }
 
-  const WriteLease lease = acquireWriteLease();
-  assert(lease.slot >= 0 && lease.slot < 2);
-  g_slots[lease.slot].bpm = kSongActivationBpmSentinel;
-  g_songActivation[lease.slot].active = true;
-  g_songActivation[lease.slot].sourcePlaybackSlot = 0;
-  g_songActivation[lease.slot].sourceRow = 7;
-  g_songActivation[lease.slot].targetPlaybackSlot = 1;
-  g_songActivation[lease.slot].kind = SongActivationKind::PlaybackSlotSwitch;
-  assert(isSongActivationSlot(lease.slot));
-
-  // One pending owner means a second intent cannot acquire a slot.
-  armActivationSlot(lease.slot);
+  // Mutation A: publish one old-audible snapshot and prove the one-pending
+  // admission policy rejects a second intent while A is authoritative.
+  const WriteLease first = acquireWriteLease();
+  assert(first.slot >= 0 && first.slot < 2);
+  g_slots[first.slot].bpm = kSongActivationBpmSentinel;
+  g_slots[first.slot].synth[0].steps[0].note = 12;
+  g_songActivation[first.slot].active = true;
+  g_songActivation[first.slot].sourcePlaybackSlot = 0;
+  g_songActivation[first.slot].sourceRow = 7;
+  g_songActivation[first.slot].targetPlaybackSlot = 0;
+  g_songActivation[first.slot].kind = SongActivationKind::PersistentMutation;
+  assert(isSongActivationSlot(first.slot));
+  armActivationSlot(first.slot);
   const WriteLease busy = acquireWriteLease();
   assert(busy.slot < 0);
 
-  abortArmedActivation(lease.slot,
+  // Terminal A (same cleanup helper used by real ACTIVATE / cancel / STOP):
+  // publication is retired, payload bytes are zeroed, metadata is dead.
+  abortArmedActivation(first.slot,
                        QuantizedGenerationStatus::CancelledExplicit);
-  clearSongActivationMetadata(lease.slot);
-  assert(!isSongActivationSlot(lease.slot));
+  clearSongActivationPayload(first.slot);
+  assert(g_publishedSlot.load(std::memory_order_acquire) < 0);
+  assert(!isSongActivationSlot(first.slot));
+  assert(!g_songActivation[first.slot].active);
+  assert(g_slots[first.slot].owner == nullptr);
+  assert(g_slots[first.slot].synth[0].steps[0].note == -1);
+
+  // Mutation B must start from clean state, not from A's row/material. This is
+  // the host analogue of A -> boundary -> B -> boundary lifecycle ownership.
+  const WriteLease second = acquireWriteLease();
+  assert(second.slot >= 0 && second.slot < 2);
+  g_slots[second.slot].bpm = kSongActivationBpmSentinel;
+  g_slots[second.slot].synth[0].steps[0].note = 27;
+  g_songActivation[second.slot].active = true;
+  g_songActivation[second.slot].sourcePlaybackSlot = 0;
+  g_songActivation[second.slot].sourceRow = 8;
+  g_songActivation[second.slot].targetPlaybackSlot = 1;
+  g_songActivation[second.slot].kind = SongActivationKind::PlaybackSlotSwitch;
+  assert(isSongActivationSlot(second.slot));
+  assert(g_songActivation[second.slot].sourceRow == 8);
+  assert(g_slots[second.slot].synth[0].steps[0].note == 27);
+  armActivationSlot(second.slot);
+
+  abortArmedActivation(second.slot,
+                       QuantizedGenerationStatus::CancelledExplicit);
+  clearSongActivationPayload(second.slot);
+  assert(!isSongActivationSlot(second.slot));
+  assert(!g_songActivation[second.slot].active);
 
   const WriteLease reusable = acquireWriteLease();
   assert(reusable.slot >= 0);
   releaseWriteSlot(reusable.slot);
 
   std::printf(
-      "0.9.9-D3 song-meta=%zu C-slot=%zu C-slots=2\n",
+      "0.9.9-D3 song-meta=%zu C-slot=%zu C-slots=2 lifecycle=A-dead-B-clean\n",
       pendingSongActivationMetadataBytes(), sizeof(PendingGeneration));
   return 0;
 }
