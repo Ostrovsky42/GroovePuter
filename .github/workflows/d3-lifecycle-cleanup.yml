@@ -1,0 +1,31 @@
+name: D3 lifecycle cleanup patch
+
+on:
+  push:
+    branches:
+      - agent/20260821-03-0.9.9-d3-song-live-arrangement
+    paths:
+      - 'tools/d3_lifecycle_cleanup.py'
+      - '.github/workflows/d3-lifecycle-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260821-03-0.9.9-d3-song-live-arrangement
+          fetch-depth: 0
+      - name: Apply exact lifecycle cleanup patch
+        run: python3 tools/d3_lifecycle_cleanup.py
+      - name: Commit production cleanup and remove bootstrap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/generation/migration/live_song_arrangement_activation.h
+          git rm -- tools/d3_lifecycle_cleanup.py .github/workflows/d3-lifecycle-cleanup.yml
+          git commit -m "fix(d3): retire Song snapshot payload at terminal states"
+          git push origin HEAD:agent/20260821-03-0.9.9-d3-song-live-arrangement
