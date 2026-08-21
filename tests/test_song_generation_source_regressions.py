@@ -121,19 +121,35 @@ def main() -> None:
             "Phrase G no longer starts at the visible TO destination")
     require("currentSongPosition()" not in generated_action,
             "Phrase G must not use a hidden Song playhead as its destination")
-    require("static_cast<int>(songStart) + result.bars" in generated_action,
+    require("static_cast<int>(songStart) + phraseResult.bars" in generated_action,
             "successful Phrase G no longer advances the visible TO destination")
-    require("mini_acid_.isPlaying()" in generated_action and
-            "STOP PLAYBACK FOR PHRASE" in generated_action,
-            "multi-row generation must reject PLAY instead of mutating moving Song ownership")
+
+    # 0.9.9-D2 intentionally removes the old STOP-only Phrase guard. The UI now
+    # consumes an explicit lifecycle result and reports pending next-bar activation.
+    require("GeneratedPhraseSong::Result" in generated_action and
+            "LifecycleStatus::PendingNextBar" in generated_action,
+            "Phrase G no longer exposes the D2 live lifecycle")
+    require("STOP PLAYBACK FOR PHRASE" not in generated_action,
+            "D2 Phrase G regressed to the old STOP-only rejection")
     require("mini_acid_.stop()" not in generated_action and
             "mini_acid_.start()" not in generated_action,
             "Phrase generation must never hide a stop/generate/restart cycle")
     require("G:GEN C+LR:TO C+UD:8 ENT/D/W" in phrase_page,
             "Phrase footer does not expose G together with the TO destination controls")
 
-    require("PhraseGenerator::generateBarsToSong" in generated_phrase,
-            "current adapter bypasses the transactional PhraseGenerator core")
+    # D2 moved the multi-object Phrase mutation out of PhraseGenerator's direct
+    # Scene-writing helper. All bars are staged first, then one canonical UndoOwner
+    # COMMIT publishes Pattern bytes + Song refs, and PLAY arms the existing C owner.
+    require("PreparedPhraseArrangement" in generated_phrase and
+            "applyPreparedPersistent" in generated_phrase,
+            "D2 generated Phrase lost bounded PREPARE/persistent apply separation")
+    require("GroovePuterUndo::undoOwner().commitPrepared" in generated_phrase,
+            "D2 generated Phrase bypasses the canonical one-level Undo owner")
+    require("acquireWriteLease()" in generated_phrase and
+            "completePhraseActivation" in generated_phrase,
+            "D2 generated Phrase bypasses the existing bounded C pending owner")
+    require("markSceneMutated()" not in generated_phrase,
+            "D2 generated Phrase reintroduced a second dirty/revision path")
     require("AtlasRuntime::applyRecipe" in generated_phrase and
             "atlasVariationForRole" in generated_phrase,
             "Atlas Phrase generation lost P1/P2/P1/P3 role mapping")
@@ -144,8 +160,6 @@ def main() -> None:
             "procedural phrase bars are independently regenerated instead of related")
     require(re.search(r"\b(?:s?rand)\s*\(", generated_phrase) is None,
             "generated Phrase path must use deterministic seed state, not rand()/srand()")
-    require("markSceneMutated()" in generated_phrase,
-            "successful generated Phrase transaction does not dirty Scene")
 
     require("songRowsAreAvailable" in phrase_generator,
             "fresh Phrase G must preflight an empty destination range")

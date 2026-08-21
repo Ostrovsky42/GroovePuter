@@ -495,7 +495,15 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
-  if (GroovePuterRhythm::QuantizedGenerationDetail::
+  // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
+  // settle that exact pending destination immediately instead of discarding the
+  // activation and leaving the next START on the old runtime row. Ordinary C
+  // generation keeps its existing cancel+runtime-settlement behavior.
+  const bool phraseSettled =
+      GroovePuterRhythm::PhraseLiveArrangementDetail::
+          settlePendingPhraseArrangementOnStop(*this);
+  if (!phraseSettled &&
+      GroovePuterRhythm::QuantizedGenerationDetail::
           cancelPendingGenerationActivation(*this)) {
     GroovePuterRhythm::QuantizedGenerationDetail::
         synchronizeCommittedGenerationRuntime(*this);
@@ -2020,11 +2028,19 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
-    advanceSongBar_();
-    // Also regenerate if needed at bar start
+    // 0.9.9-D2: ACTIVATE the already-committed pending mutation before Song
+    // row advancement. Phrase live arrangement changes persistent Song refs and
+    // feel.patternBars during COMMIT, while the current bar keeps the old C
+    // audible overlay. Activating first makes the normal advanceSongBar_() turn
+    // the new destination's pre-first-bar phase into bar zero without exposing
+    // a transient next-row Voice/Pattern selection or stretching bar one.
+    // The hook remains the single 0.9.9-C pending owner and returns false; no
+    // generation, Scene write, allocation, filesystem work or second Undo is
+    // allowed on this audio-thread boundary.
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
     }
+    advanceSongBar_();
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   } else if (barTick % 24 == 0) {
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
