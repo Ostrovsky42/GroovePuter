@@ -103,6 +103,15 @@ inline void clearSongActivationMetadata(int slot) {
   g_songActivation[slot] = SongActivationMetadata{};
 }
 
+// Terminal lifecycle cleanup. Once publication has been cancelled or claimed,
+// neither the old audible bytes nor their D3 metadata may survive as a source
+// for a later Song activation.
+inline void clearSongActivationPayload(int slot) {
+  if (slot < 0 || slot > 1) return;
+  QuantizedGenerationDetail::g_slots[slot] = PendingGeneration{};
+  clearSongActivationMetadata(slot);
+}
+
 inline const SongActivationMetadata* pendingSongMetadata(
     const MiniAcid& engine,
     int* slotOut = nullptr) {
@@ -289,7 +298,7 @@ inline void abortSongMutationActivation(
         QuantizedGenerationStatus::CancelledExplicit) {
   if (!lease.boundaryRequired || lease.slot < 0) return;
   QuantizedGenerationDetail::abortArmedActivation(lease.slot, status);
-  clearSongActivationMetadata(lease.slot);
+  clearSongActivationPayload(lease.slot);
 }
 
 inline SongLiveStatus requestSongPlaybackSwitch(MiniAcid& engine,
@@ -365,7 +374,7 @@ inline bool cancelPendingSongActivationForRevision(MiniAcid& engine,
   if (pending.committedRevision != revision) return false;
   QuantizedGenerationDetail::abortArmedActivation(
       slot, QuantizedGenerationStatus::CancelledExplicit);
-  clearSongActivationMetadata(slot);
+  clearSongActivationPayload(slot);
   return true;
 }
 
@@ -445,8 +454,7 @@ inline bool activatePendingSongArrangementAtBarStart(SceneManager& scenes) {
     finalStatus = QuantizedGenerationStatus::CancelledRevisionChanged;
   }
 
-  pending = PendingGeneration{};
-  clearSongActivationMetadata(slot);
+  clearSongActivationPayload(slot);
   QuantizedGenerationDetail::g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
   QuantizedGenerationDetail::g_status.store(
@@ -499,8 +507,7 @@ inline bool settlePendingSongArrangementOnStop(MiniAcid& engine) {
     }
   }
 
-  pending = PendingGeneration{};
-  clearSongActivationMetadata(slot);
+  clearSongActivationPayload(slot);
   QuantizedGenerationDetail::g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
   QuantizedGenerationDetail::g_status.store(
