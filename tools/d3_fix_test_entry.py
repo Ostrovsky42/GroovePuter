@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
+# Retrigger after the workflow already exists in the branch parent.
 
 def replace_once(path, old, new):
     p = ROOT / path
