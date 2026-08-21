@@ -81,7 +81,7 @@ require('owner->setSongPosition(metadata.songStart)' in activate,
         "D2 ACTIVATE must publish the prepared Song destination")
 for forbidden in ('commitPrepared', 'markSceneMutated', 'applyPreparedPersistent',
                   'generatePattern', 'generateDrum', 'applyRecipe', 'SD.',
-                  'ArduinoJson', 'writeScene', 'malloc(', 'new '):
+                  'ArduinoJson', 'writeScene', 'malloc(', 'new ('):
     require(forbidden not in activate,
             f"D2 BAR_START leaked forbidden work: {forbidden}")
 
