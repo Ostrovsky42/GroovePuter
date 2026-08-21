@@ -93,7 +93,7 @@ for forbidden in ('commitPrepared', 'markSceneMutated', 'applyPreparedPersistent
 sequencer = between(
     ENGINE,
     'void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {',
-    'void MiniAcid::processStep(')
+    'void MiniAcid::generateAudioBuffer(')
 bar = between(sequencer, 'if (barTick == 0) {', '} else if (barTick % 24 == 0)')
 hook_pos = bar.find('genreManager_.commitPendingRecipe()')
 advance_pos = bar.find('advanceSongBar_()')
