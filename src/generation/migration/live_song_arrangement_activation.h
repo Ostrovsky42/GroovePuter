@@ -112,6 +112,42 @@ inline void clearSongActivationPayload(int slot) {
   clearSongActivationMetadata(slot);
 }
 
+// Race-safe terminal cancellation for D3-owned C slots. Claim the pending
+// state before unpublishing and do not expose Empty until both captured bytes
+// and metadata are dead, so a new writer can never be cleared by an old cancel.
+inline bool cancelSongActivationSlot(
+    int slot,
+    QuantizedGenerationStatus status =
+        QuantizedGenerationStatus::CancelledExplicit) {
+  if (slot < 0 || slot > 1 || !isSongActivationSlot(slot)) return false;
+
+  uint8_t state = QuantizedGenerationDetail::g_slotState[slot].load(
+      std::memory_order_acquire);
+  if (state != static_cast<uint8_t>(SlotState::Armed) &&
+      state != static_cast<uint8_t>(SlotState::Ready)) {
+    return false;
+  }
+  if (!QuantizedGenerationDetail::g_slotState[slot].compare_exchange_strong(
+          state,
+          static_cast<uint8_t>(SlotState::Reading),
+          std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+    return false;
+  }
+
+  int8_t published = static_cast<int8_t>(slot);
+  QuantizedGenerationDetail::g_publishedSlot.compare_exchange_strong(
+      published, -1,
+      std::memory_order_acq_rel,
+      std::memory_order_acquire);
+  clearSongActivationPayload(slot);
+  QuantizedGenerationDetail::g_slotState[slot].store(
+      static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+  QuantizedGenerationDetail::g_status.store(
+      static_cast<uint8_t>(status), std::memory_order_release);
+  return true;
+}
+
 inline const SongActivationMetadata* pendingSongMetadata(
     const MiniAcid& engine,
     int* slotOut = nullptr) {
@@ -297,8 +333,7 @@ inline void abortSongMutationActivation(
     QuantizedGenerationStatus status =
         QuantizedGenerationStatus::CancelledExplicit) {
   if (!lease.boundaryRequired || lease.slot < 0) return;
-  QuantizedGenerationDetail::abortArmedActivation(lease.slot, status);
-  clearSongActivationPayload(lease.slot);
+  cancelSongActivationSlot(lease.slot, status);
 }
 
 inline SongLiveStatus requestSongPlaybackSwitch(MiniAcid& engine,
@@ -372,10 +407,8 @@ inline bool cancelPendingSongActivationForRevision(MiniAcid& engine,
   if (pendingSongMetadata(engine, &slot) == nullptr) return false;
   PendingGeneration& pending = QuantizedGenerationDetail::g_slots[slot];
   if (pending.committedRevision != revision) return false;
-  QuantizedGenerationDetail::abortArmedActivation(
+  return cancelSongActivationSlot(
       slot, QuantizedGenerationStatus::CancelledExplicit);
-  clearSongActivationPayload(slot);
-  return true;
 }
 
 inline bool songUndoWouldAffectAudibleTruth(
@@ -426,9 +459,9 @@ inline bool activatePendingSongArrangementAtBarStart(SceneManager& scenes) {
           published, -1,
           std::memory_order_acq_rel,
           std::memory_order_acquire)) {
+    clearSongActivationPayload(slot);
     QuantizedGenerationDetail::g_slotState[slot].store(
         static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
-    clearSongActivationMetadata(slot);
     return false;
   }
 
@@ -485,9 +518,9 @@ inline bool settlePendingSongArrangementOnStop(MiniAcid& engine) {
           published, -1,
           std::memory_order_acq_rel,
           std::memory_order_acquire)) {
+    clearSongActivationPayload(slot);
     QuantizedGenerationDetail::g_slotState[slot].store(
         static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
-    clearSongActivationMetadata(slot);
     return true;
   }
 
