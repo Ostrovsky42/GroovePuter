@@ -87,8 +87,17 @@ for forbidden in ('commitPrepared', 'markSceneMutated', 'applyPreparedPersistent
 
 # Boundary ordering matters: ACTIVATE must run before Song row advancement so a
 # generated one-bar row neither leaks the natural next row nor lasts two bars.
-bar = between(ENGINE, 'if (barTick == 0) {', '} else if (barTick % 24 == 0)')
-require(bar.find('genreManager_.commitPendingRecipe()') < bar.find('advanceSongBar_()'),
+# Scope the lexical check to processSequencerEvents(): miniacid_engine.cpp has
+# other unrelated `if (barTick == 0)` blocks, so anchoring against the whole file
+# can report a false failure even when the sequencer boundary is correct.
+sequencer = between(
+    ENGINE,
+    'void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {',
+    'void MiniAcid::processStep(')
+bar = between(sequencer, 'if (barTick == 0) {', '} else if (barTick % 24 == 0)')
+hook_pos = bar.find('genreManager_.commitPendingRecipe()')
+advance_pos = bar.find('advanceSongBar_()')
+require(hook_pos >= 0 and advance_pos >= 0 and hook_pos < advance_pos,
         "D2 pending ACTIVATE must precede Song row advancement at BAR_START")
 
 # STOP settles committed Phrase truth immediately; ordinary C generation keeps
