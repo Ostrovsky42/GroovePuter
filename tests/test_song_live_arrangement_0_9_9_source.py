@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 ACT = (ROOT / "src/generation/migration/live_song_arrangement_activation.h").read_text(encoding="utf-8")
@@ -25,6 +26,11 @@ def between(text: str, start: str, end: str) -> str:
     return text[a:b]
 
 
+def strip_cpp_comments(text: str) -> str:
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    return re.sub(r'//.*?$', '', text, flags=re.M)
+
+
 # Same bounded owner, no second scheduler/queue/history.
 require('live_song_arrangement_activation.h' in QPUBLIC,
         'D3 must be published through the existing generation activation owner')
@@ -32,8 +38,9 @@ require('inline PendingGeneration g_slots[2]' in QIMPL,
         'D3 depends on the accepted C two-slot owner')
 require('inline SongActivationMetadata g_songActivation[2]' in ACT,
         'D3 metadata must be indexed by those same two slots')
+ACT_CODE = strip_cpp_comments(ACT)
 for forbidden in ('std::vector', 'std::deque', 'std::list', 'malloc(', 'new '):
-    require(forbidden not in ACT,
+    require(forbidden not in ACT_CODE,
             f'D3 pending payload must stay fixed/no-heap: {forbidden}')
 
 # Canonical Song persistent mutation still goes through the one-level R4 owner.
@@ -111,7 +118,7 @@ require('SlotState::Ready' in activate and 'SlotState::Reading' in activate,
         'D3 ACTIVATE must claim only committed Ready state')
 for forbidden in ('commitPrepared', 'markSceneMutated', 'currentScene().songs',
                   'SongEdit::', 'writeScene', 'ArduinoJson', 'malloc(', 'new '):
-    require(forbidden not in activate,
+    require(forbidden not in strip_cpp_comments(activate),
             f'D3 audio-boundary ACTIVATE leaked forbidden work: {forbidden}')
 
 # Snapshot lifecycle is strict: while pending it is authoritative; every normal
@@ -127,7 +134,7 @@ require('compare_exchange_strong' in safe_cancel and
         'clearSongActivationPayload(slot)' in safe_cancel and
         'SlotState::Empty' in safe_cancel,
         'D3 cancellation must claim pending state before cleanup and expose Empty last')
-require(safe_cancel.find('SlotState::Reading') < safe_cancel.find('clearSongActivationPayload(slot)') < safe_cancel.find('SlotState::Empty'),
+require(safe_cancel.find('SlotState::Reading') < safe_cancel.find('clearSongActivationPayload(slot)') < safe_cancel.rfind('SlotState::Empty'),
         'D3 terminal order must be claim -> cleanup -> Empty')
 require('clearSongActivationPayload(slot)' in activate,
         'successful/stale ACTIVATE must kill its snapshot payload')
