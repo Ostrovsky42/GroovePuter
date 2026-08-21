@@ -29,6 +29,8 @@ static_assert(std::is_trivially_copyable<PhraseActivationMetadata>::value,
 // own and is indexed by the already-owned C slot.
 inline PhraseActivationMetadata g_phraseActivation[2]{};
 
+inline bool activatePendingPhraseArrangementAtBarStart(SceneManager& scenes);
+
 inline bool isPhraseActivationSlot(int slot) {
   if (slot < 0 || slot > 1) return false;
   const PendingGeneration& pending = QuantizedGenerationDetail::g_slots[slot];
@@ -156,13 +158,17 @@ inline bool armPhraseActivation(
 
 inline void completePhraseActivation(int slot, uint32_t committedRevision) {
   if (!isPhraseActivationSlot(slot)) return;
-  QuantizedGenerationDetail::g_slots[slot].committedRevision =
-      committedRevision;
+  PendingGeneration& pending = QuantizedGenerationDetail::g_slots[slot];
+  pending.committedRevision = committedRevision;
   QuantizedGenerationDetail::g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Ready), std::memory_order_release);
   QuantizedGenerationDetail::g_status.store(
       static_cast<uint8_t>(QuantizedGenerationStatus::PendingNextBar),
       std::memory_order_release);
+  if (pending.owner != nullptr) {
+    pending.owner->genreManager().setPendingCommitHook(
+        &activatePendingPhraseArrangementAtBarStart);
+  }
 }
 
 inline void abortPhraseActivation(
@@ -239,12 +245,15 @@ inline bool activatePendingPhraseArrangementAtBarStart(
   if (owner != nullptr && &owner->sceneManager() == &scenes &&
       pending.committedRevision != 0) {
     const uint32_t currentRevision =
-        GroovePuterUndo::undoOwner().committedRevision();
+        GroovePuterState::sceneRevisionSnapshot().currentRevision;
     if (currentRevision != pending.committedRevision) {
       finalStatus = QuantizedGenerationStatus::CancelledRevisionChanged;
     } else if (exactAudibleTargetStillActive(*owner, metadata)) {
-      // Same 96-PPQN BAR_START used by 0.9.9-C. This is runtime-only: the
-      // persistent Song/Patterns were already committed on the control path.
+      // The engine calls the shared pending hook before Song row advancement at
+      // this 96-PPQN BAR_START. setSongPosition() resets the local bar phase to
+      // pre-first-bar; the immediately following normal advanceSongBar_() then
+      // establishes bar zero without skipping or stretching the generated row.
+      // Persistent Song/Pattern truth was already committed on the control path.
       owner->setSongPosition(metadata.songStart);
       finalStatus = QuantizedGenerationStatus::Activated;
       activated = true;
@@ -293,7 +302,7 @@ inline bool settlePendingPhraseArrangementOnStop(MiniAcid& engine) {
   PendingGeneration& pending = QuantizedGenerationDetail::g_slots[slot];
   const PhraseActivationMetadata metadata = g_phraseActivation[slot];
   const uint32_t currentRevision =
-      GroovePuterUndo::undoOwner().committedRevision();
+      GroovePuterState::sceneRevisionSnapshot().currentRevision;
   const bool settle = state == SlotState::Ready &&
       pending.owner == &engine && pending.committedRevision != 0 &&
       currentRevision == pending.committedRevision &&
