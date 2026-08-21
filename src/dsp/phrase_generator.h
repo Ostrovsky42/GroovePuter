@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../scenes.h"
+#include "src/dsp/song_pattern_materializer.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -155,12 +156,14 @@ inline int findContiguousEmptySlots(const Scene& scene, int bars) {
 
 inline bool globalPatternIsReferenced(const Scene& scene, int globalPattern) {
   if (globalPattern < 0) return true;
-  for (int songSlot = 0; songSlot < 2; ++songSlot) {
-    const Song& song = scene.songs[songSlot];
-    for (int row = 0; row < Song::kMaxPositions; ++row) {
-      for (int track = 0; track < 3; ++track) {
-        if (song.positions[row].patterns[track] == globalPattern) return true;
-      }
+  for (int trackIndex = 0;
+       trackIndex < SongPatternMaterializer::kEditableTrackCount;
+       ++trackIndex) {
+    const SongTrack track = SongPatternMaterializer::editableTrackForIndex(
+        trackIndex);
+    if (SongPatternMaterializer::globalPatternIsReferenced(
+            scene, track, globalPattern)) {
+      return true;
     }
   }
   return false;
