@@ -95,8 +95,8 @@ sequencer = between(
     'void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {',
     'void MiniAcid::generateAudioBuffer(')
 bar = between(sequencer, 'if (barTick == 0) {', '} else if (barTick % 24 == 0)')
-hook_pos = bar.find('genreManager_.commitPendingRecipe()')
-advance_pos = bar.find('advanceSongBar_()')
+hook_pos = bar.find('if (genreManager_.commitPendingRecipe()) {')
+advance_pos = bar.find('\n    advanceSongBar_();')
 require(hook_pos >= 0 and advance_pos >= 0 and hook_pos < advance_pos,
         "D2 pending ACTIVATE must precede Song row advancement at BAR_START")
 
