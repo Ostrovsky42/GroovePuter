@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   patch:
+    # Self-cleaning branch patch; this workflow is removed by its own commit.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
