@@ -17,6 +17,9 @@ int main() {
                 "D3 resident pending metadata exceeded the accepted small budget");
   static_assert(sizeof(g_slots) == sizeof(PendingGeneration) * 2,
                 "D3 must reuse exactly the accepted C two-slot owner");
+  static_assert(SongActivationKind::PersistentMutation !=
+                    SongActivationKind::PlaybackSlotSwitch,
+                "persistent Song COMMIT and runtime PLAY switch must remain distinguishable");
 
   SongPosition a{};
   SongPosition b{};
