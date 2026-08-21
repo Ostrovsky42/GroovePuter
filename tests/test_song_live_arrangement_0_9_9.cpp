@@ -58,16 +58,18 @@ int main() {
   const WriteLease busy = acquireWriteLease();
   assert(busy.slot < 0);
 
-  // Terminal A (same cleanup helper used by real ACTIVATE / cancel / STOP):
-  // publication is retired, payload bytes are zeroed, metadata is dead.
-  abortArmedActivation(first.slot,
-                       QuantizedGenerationStatus::CancelledExplicit);
-  clearSongActivationPayload(first.slot);
+  // Terminal A uses the D3 race-safe claim: Armed/Ready -> Reading ->
+  // unpublish -> clear bytes+metadata -> Empty. A is fully dead before a new
+  // writer can acquire the slot.
+  assert(cancelSongActivationSlot(
+      first.slot, QuantizedGenerationStatus::CancelledExplicit));
   assert(g_publishedSlot.load(std::memory_order_acquire) < 0);
   assert(!isSongActivationSlot(first.slot));
   assert(!g_songActivation[first.slot].active);
   assert(g_slots[first.slot].owner == nullptr);
   assert(g_slots[first.slot].synth[0].steps[0].note == -1);
+  assert(static_cast<SlotState>(g_slotState[first.slot].load(
+             std::memory_order_acquire)) == SlotState::Empty);
 
   // Mutation B must start from clean state, not from A's row/material. This is
   // the host analogue of A -> boundary -> B -> boundary lifecycle ownership.
@@ -85,9 +87,8 @@ int main() {
   assert(g_slots[second.slot].synth[0].steps[0].note == 27);
   armActivationSlot(second.slot);
 
-  abortArmedActivation(second.slot,
-                       QuantizedGenerationStatus::CancelledExplicit);
-  clearSongActivationPayload(second.slot);
+  assert(cancelSongActivationSlot(
+      second.slot, QuantizedGenerationStatus::CancelledExplicit));
   assert(!isSongActivationSlot(second.slot));
   assert(!g_songActivation[second.slot].active);
 
