@@ -15,6 +15,10 @@
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 
+namespace UI {
+void showToast(const char* msg, int durationMs);
+}
+
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
   enum class LaneFocusMode {
@@ -58,7 +62,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
     if (!lease.ok()) {
       if (lease.status ==
           GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus::Busy) {
-        showToast("SONG BUSY", 900);
+        UI::showToast("SONG BUSY", 900);
       }
       return false;
     }
