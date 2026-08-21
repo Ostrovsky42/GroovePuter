@@ -1,7 +1,11 @@
+#include "../platform_sdl/arduino_compat.h"
 #include "../src/dsp/generated_phrase_song.h"
 #include "../src/phrase/phrase_types.h"
 
 #include <cstdio>
+
+SerialMock Serial;
+SDMock SD;
 
 int main() {
   using namespace GeneratedPhraseSong;
