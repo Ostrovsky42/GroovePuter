@@ -115,23 +115,31 @@ for forbidden in ('commitPrepared', 'markSceneMutated', 'currentScene().songs',
             f'D3 audio-boundary ACTIVATE leaked forbidden work: {forbidden}')
 
 # Snapshot lifecycle is strict: while pending it is authoritative; every normal
-# terminal path kills both the D3 metadata and the captured C payload, so a
-# subsequent mutation cannot inherit the previous row/material.
-cleanup = between(ACT, 'inline void clearSongActivationPayload(', 'inline const SongActivationMetadata* pendingSongMetadata(')
+# terminal path kills both D3 metadata and captured C bytes before Empty is
+# exposed, so mutation B cannot inherit mutation A's snapshot.
+cleanup = between(ACT, 'inline void clearSongActivationPayload(', 'inline bool cancelSongActivationSlot(')
 require('g_slots[slot] = PendingGeneration{}' in cleanup and
         'clearSongActivationMetadata(slot)' in cleanup,
         'D3 terminal cleanup must retire both captured material and metadata')
+safe_cancel = between(ACT, 'inline bool cancelSongActivationSlot(', 'inline const SongActivationMetadata* pendingSongMetadata(')
+require('compare_exchange_strong' in safe_cancel and
+        'SlotState::Reading' in safe_cancel and
+        'clearSongActivationPayload(slot)' in safe_cancel and
+        'SlotState::Empty' in safe_cancel,
+        'D3 cancellation must claim pending state before cleanup and expose Empty last')
+require(safe_cancel.find('SlotState::Reading') < safe_cancel.find('clearSongActivationPayload(slot)') < safe_cancel.find('SlotState::Empty'),
+        'D3 terminal order must be claim -> cleanup -> Empty')
 require('clearSongActivationPayload(slot)' in activate,
         'successful/stale ACTIVATE must kill its snapshot payload')
 settle = between(ACT, 'inline bool settlePendingSongArrangementOnStop(', 'inline std::size_t pendingSongActivationMetadataBytes()')
 require('clearSongActivationPayload(slot)' in settle,
         'STOP settlement must kill its snapshot payload')
 cancel = between(ACT, 'inline bool cancelPendingSongActivationForRevision(', 'inline bool songUndoWouldAffectAudibleTruth(')
-require('clearSongActivationPayload(slot)' in cancel,
-        'Undo-before-boundary cancellation must kill its snapshot payload')
+require('cancelSongActivationSlot' in cancel,
+        'Undo-before-boundary cancellation must use race-safe terminal claim')
 abort = between(ACT, 'inline void abortSongMutationActivation(', 'inline SongLiveStatus requestSongPlaybackSwitch(')
-require('clearSongActivationPayload(lease.slot)' in abort,
-        'failed/stale COMMIT preparation must kill its snapshot payload')
+require('cancelSongActivationSlot' in abort,
+        'failed/stale COMMIT preparation must use race-safe terminal claim')
 pending_lookup = between(ACT, 'inline const SongActivationMetadata* pendingSongMetadata(', 'inline const SynthPattern* pendingAudibleSongSynthPattern(')
 require('g_publishedSlot.load' in pending_lookup and
         'state != SlotState::Armed && state != SlotState::Ready' in pending_lookup,
