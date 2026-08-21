@@ -423,7 +423,6 @@ inline bool activatePendingSongArrangementAtBarStart(SceneManager& scenes) {
 
   QuantizedGenerationStatus finalStatus =
       QuantizedGenerationStatus::CancelledTargetChanged;
-  bool activated = false;
   const uint32_t currentRevision =
       GroovePuterState::sceneRevisionSnapshot().currentRevision;
 
@@ -440,7 +439,6 @@ inline bool activatePendingSongArrangementAtBarStart(SceneManager& scenes) {
     // row advance is the ACTIVATE operation; committed reverse is then observed
     // by that same boundary.
     finalStatus = QuantizedGenerationStatus::Activated;
-    activated = true;
   } else if (currentRevision != pending.committedRevision) {
     finalStatus = QuantizedGenerationStatus::CancelledRevisionChanged;
   }

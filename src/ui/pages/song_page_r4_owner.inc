@@ -25,13 +25,23 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
+  const uint32_t receiptRevision = owner.committedRevision();
+  const bool pending =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          hasPendingSongActivationForRevision(mini_acid_, receiptRevision);
   const UndoResult result = owner.undoPrepared<SongUndoPayload>(
       UndoKind::Song,
       [&](const SongUndoPayload& receipt) {
         return GroovePuterUndo::songUndoTargetAvailable(
-            mini_acid_.sceneManager(), receipt);
+                   mini_acid_.sceneManager(), receipt) &&
+               (!GroovePuterRhythm::LiveSongArrangementDetail::
+                    songUndoWouldAffectAudibleTruth(mini_acid_, receipt) ||
+                pending);
       },
       [&](const SongUndoPayload& receipt) {
+        GroovePuterRhythm::LiveSongArrangementDetail::
+            cancelPendingSongActivationForRevision(
+                mini_acid_, receiptRevision);
         const auto restore = [&]() {
           GroovePuterUndo::restoreSongUndo(mini_acid_.sceneManager(), receipt);
         };
@@ -196,15 +206,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return handleEventLegacyUnowned(ui_event);
   }
   if (songR4QueuedReverseGesture(ui_event)) {
-    const bool pendingBefore = mini_acid_.hasPendingSongReverseToggle();
-    const bool reverseBefore = mini_acid_.isSongReverse();
-    const bool handled = handleEventLegacyUnowned(ui_event);
-    if (handled &&
-        (pendingBefore != mini_acid_.hasPendingSongReverseToggle() ||
-         reverseBefore != mini_acid_.isSongReverse())) {
-      GroovePuterState::markSceneMutated();
-    }
-    return handled;
+    // Legacy gesture timing/long-press UX is preserved, but the actual reverse
+    // mutation now routes through commitSongMutation inside the legacy handler.
+    return handleEventLegacyUnowned(ui_event);
   }
 
   const int nav = UIInput::navCode(ui_event);

@@ -449,7 +449,6 @@ private:
   int songPlaybackSlot_ = 0;
   bool liveMixMode_ = false;
   int songBarIndex_ = -1;
-  bool songReverseTogglePending_ = false;
   std::atomic<int8_t> currentPage_{0};
   std::atomic<int8_t> targetPage_{-1};
   std::atomic<bool> pageLoading_{false};

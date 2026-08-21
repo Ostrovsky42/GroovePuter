@@ -1362,9 +1362,21 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     if (!mini_acid_.liveMixModeEnabled()) {
       withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
     }
-    int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
-    withRuntimeAudioGuard([&]() { mini_acid_.setSongPlaybackSlot(nextPlaySlot); });
-    showToast(nextPlaySlot == 0 ? "Play: A" : "Play: B", 900);
+    const int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
+    const auto status =
+        GroovePuterRhythm::LiveSongArrangementDetail::
+            requestSongPlaybackSwitch(mini_acid_, nextPlaySlot);
+    using GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus;
+    if (status == SongLiveStatus::Busy) {
+      showToast("SONG BUSY", 900);
+    } else if (status == SongLiveStatus::TargetChanged) {
+      showToast("PLAY TARGET CHANGED", 1100);
+    } else if (status == SongLiveStatus::PendingNextRow) {
+      showToast(nextPlaySlot == 0 ? "Play A -> NEXT ROW"
+                                  : "Play B -> NEXT ROW", 1100);
+    } else {
+      showToast(nextPlaySlot == 0 ? "Play: A" : "Play: B", 900);
+    }
     return true;
   }
 
@@ -1411,19 +1423,20 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     LOG_INFO_UI("Song reverse: %s (songMode=%d len=%d pos=%d)",
                 newReverse ? "ON" : "OFF",
                 (int)wasSongMode, len, mini_acid_.currentSongPosition());
-    withAudioGuard([&]() {
-      if (!mini_acid_.songModeEnabled()) {
-        // Keep reverse toggle anchored to the row user is editing.
+    if (!mini_acid_.songModeEnabled()) {
+      withRuntimeAudioGuard([&]() {
         mini_acid_.setSongPosition(cursorRow());
         mini_acid_.setSongMode(true);
-      }
-      mini_acid_.queueSongReverseToggle();
-    });
+      });
+    }
+    const bool reverseCommitted = commitSongMutation(
+        [&](Song& song) { song.reverse = newReverse; });
+    if (!reverseCommitted) return true;
     bool songModeNow = mini_acid_.songModeEnabled();
     if (len <= 1 && !mini_acid_.isPlaying()) {
       showToast(newReverse ? "Reverse ON (len=1)" : "Reverse OFF (len=1)", 1200);
     } else if (mini_acid_.isPlaying() && mini_acid_.songModeEnabled()) {
-      showToast(newReverse ? "Reverse queued (bar)" : "Forward queued (bar)", 1300);
+      showToast(newReverse ? "Reverse -> NEXT ROW" : "Forward -> NEXT ROW", 1300);
     } else if (!wasSongMode && songModeNow) {
       showToast(newReverse ? "SongMode ON + Reverse ON" : "SongMode ON + Reverse OFF", 1400);
     } else {
