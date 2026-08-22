@@ -357,6 +357,51 @@ inline void restoreGenerationUndo(
   bank.patterns[before.target.synthSlot[voice]] = before.synth[voice];
 }
 
+inline void exchangeGenerationUndo(MiniAcid& engine,
+                                   GenerationUndoPayload& retained) {
+  SceneManager& scenes = engine.sceneManager();
+  Scene& scene = scenes.currentScene();
+  if (retained.scope == QuantizedGenerationScope::Full) {
+    GroovePuterUndo::exchangeFixedValue(
+        scene.synthABanks[retained.target.synthBank[0]]
+            .patterns[retained.target.synthSlot[0]],
+        retained.synth[0]);
+    GroovePuterUndo::exchangeFixedValue(
+        scene.synthBBanks[retained.target.synthBank[1]]
+            .patterns[retained.target.synthSlot[1]],
+        retained.synth[1]);
+    GroovePuterUndo::exchangeFixedValue(
+        scene.drumBanks[retained.target.drumBank]
+            .patterns[retained.target.drumSlot],
+        retained.drums);
+    GroovePuterUndo::exchangeFixedValue(scene.genre, retained.genre);
+    GroovePuterUndo::exchangeFixedValue(scene.feel.swingPct, retained.swingPct);
+
+    const GrooveboxMode committedMode = scenes.getMode();
+    scenes.setMode(retained.mode);
+    retained.mode = committedMode;
+    const float committedBpm = scenes.getBpm();
+    scenes.setBpm(retained.bpm);
+    retained.bpm = committedBpm;
+
+    // During PLAY the old runtime truth is already the correct side while an
+    // Undo-before-boundary cancels pending ACTIVATE. Never republish runtime
+    // controls mid-bar. STOP can converge runtime immediately.
+    if (!engine.isPlaying()) {
+      engine.activateCommittedGrooveboxModeRuntime(scenes.getMode());
+      engine.setBpm(scenes.getBpm());
+    }
+    return;
+  }
+
+  const int voice = retained.scope == QuantizedGenerationScope::SynthA ? 0 : 1;
+  Bank<SynthPattern>& bank = voice == 0
+      ? scene.synthABanks[retained.target.synthBank[0]]
+      : scene.synthBBanks[retained.target.synthBank[1]];
+  GroovePuterUndo::exchangeFixedValue(
+      bank.patterns[retained.target.synthSlot[voice]], retained.synth[voice]);
+}
+
 }  // namespace QuantizedGenerationDetail
 
 inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
@@ -636,6 +681,43 @@ inline GroovePuterUndo::UndoResult undoLastQuantizedGeneration(MiniAcid& engine)
             restoreGenerationUndo(engine, before);
           });
   if (result == GroovePuterUndo::UndoResult::Restored) {
+    cancelPendingGenerationActivationForRevision(engine, committedRevision);
+  }
+  return result;
+}
+
+inline GroovePuterUndo::UndoResult toggleLastQuantizedGeneration(MiniAcid& engine) {
+  using namespace QuantizedGenerationDetail;
+  auto& owner = GroovePuterUndo::undoOwner();
+  if (!owner.hasUndo() || owner.kind() != GroovePuterUndo::UndoKind::Generation) {
+    return GroovePuterUndo::UndoResult::NothingToUndo;
+  }
+
+  const bool redo = owner.nextIsRedo();
+  const uint32_t committedRevision = owner.committedRevision();
+  if (engine.isPlaying()) {
+    // Undo is safe only while the matching old audible snapshot is still
+    // authoritative. Redo during PLAY would require a fresh ACTIVATE snapshot;
+    // keep the retained pair and require STOP instead of leaking mid-bar truth.
+    const PendingGeneration* pending = pendingAudibleActivation(engine);
+    const bool matchingPending = pending != nullptr &&
+        pending->committedRevision == committedRevision;
+    if (redo || !matchingPending) {
+      return GroovePuterUndo::UndoResult::ContextUnavailable;
+    }
+  }
+
+  const GroovePuterUndo::UndoResult result =
+      owner.togglePrepared<GenerationUndoPayload>(
+          GroovePuterUndo::UndoKind::Generation,
+          [&engine](const GenerationUndoPayload& retained) {
+            return validateGenerationUndo(engine, retained);
+          },
+          [&engine](GenerationUndoPayload& retained) {
+            exchangeGenerationUndo(engine, retained);
+          });
+  if (result == GroovePuterUndo::UndoResult::Restored &&
+      engine.isPlaying() && !redo) {
     cancelPendingGenerationActivationForRevision(engine, committedRevision);
   }
   return result;

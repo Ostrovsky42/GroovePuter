@@ -91,6 +91,26 @@ class DrumSequencerMainPage : public Container {
       GroovePuterState::markSceneMutated();
   }
 
+  template <typename PrepareFn>
+  bool commitDrumPatternMutation(PrepareFn&& prepare) {
+    GroovePuterUndo::DrumPatternUndoPayload before{};
+    SceneManager& manager = mini_acid_.sceneManager();
+    if (!GroovePuterUndo::captureCurrentDrumPatternUndo(manager, before)) return false;
+    DrumPatternSet after = before.before;
+    std::forward<PrepareFn>(prepare)(after);
+    if (GroovePuterUndo::sameDrumPattern(before.before, after)) return false;
+    if (!GroovePuterUndo::drumPatternUndoTargetAvailable(manager, before)) return false;
+    return GroovePuterUndo::undoOwner().commitPrepared(
+        GroovePuterUndo::UndoKind::Pattern, before, [&]() {
+          const auto apply = [&]() {
+            manager.currentScene().drumBanks[before.bankIndex]
+                .patterns[before.patternIndex] = after;
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+        });
+  }
+
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int drum_step_cursor_;
@@ -171,12 +191,23 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
     focusGrid();
     drum_step_cursor_ = step;
     drum_voice_cursor_ = voice;
-    withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
+    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      pattern.voices[voice].steps[step].hit =
+          !pattern.voices[voice].steps[step].hit;
+    });
   };
   callbacks.onToggleAccent = [this](int step) {
     focusGrid();
     drum_step_cursor_ = step;
-    withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
+    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      bool anyAccent = false;
+      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
+      }
+      const bool next = !anyAccent;
+      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
+        pattern.voices[v].steps[step].accent = next;
+    });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
   callbacks.cursorVoice = [this]() { return activeDrumVoice(); };
@@ -671,7 +702,10 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     } else {
       int step = activeDrumStep();
       int voice = activeDrumVoice();
-      withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
+      commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      pattern.voices[voice].steps[step].hit =
+          !pattern.voices[voice].steps[step].hit;
+    });
     }
     return true;
   }
@@ -715,7 +749,15 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (key_a) {
     focusGrid();
     int step = activeDrumStep();
-    withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
+    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      bool anyAccent = false;
+      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
+      }
+      const bool next = !anyAccent;
+      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
+        pattern.voices[v].steps[step].accent = next;
+    });
     return true;
   }
   if (key_b && !ui_event.alt && !ui_event.ctrl) {

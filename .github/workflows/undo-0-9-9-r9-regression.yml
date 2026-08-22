@@ -1,0 +1,41 @@
+name: 0.9.9 R8/R9 Undo regression
+
+on:
+  pull_request:
+    branches:
+      - agent/20260821-03-0.9.9-d3-song-live-arrangement
+    paths:
+      - 'src/state/bounded_undo_slot.h'
+      - 'src/state/undo_owner.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/drum_sequencer_page.cpp'
+      - 'src/ui/pages/drum_sequencer_page_legacy.h'
+      - 'src/ui/pages/pattern_edit_page.cpp'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'src/ui/pages/genre_page.cpp'
+      - 'src/ui/pages/tb303_params_page.cpp'
+      - 'src/generation/migration/quantized_generation_commit_impl.h'
+      - 'src/generation/migration/quantized_generation_undo_owner_impl.h'
+      - 'scripts/build.sh'
+      - 'src/dsp/atlas_runtime.h'
+      - 'tests/test_undo_0_9_8_r8_global_ctrl_z_source.py'
+      - 'tests/test_undo_0_9_8_r9_toggle.cpp'
+      - 'tests/test_undo_0_9_9_r9_regression_source.py'
+      - 'tests/run_0_9_9_undo_regression_tests.sh'
+      - '.github/workflows/undo-0-9-9-r9-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  undo-r9-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run restored one-slot Undo/Redo contracts
+        run: bash tests/run_0_9_9_undo_regression_tests.sh

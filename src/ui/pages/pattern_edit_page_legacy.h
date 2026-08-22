@@ -449,15 +449,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         using GroovePuterUndo::SynthPatternUndoPayload;
         using GroovePuterUndo::UndoKind;
         using GroovePuterUndo::UndoResult;
-        UndoResult result = GroovePuterUndo::undoOwner().undoPrepared<SynthPatternUndoPayload>(
+        UndoResult result = GroovePuterUndo::undoOwner().togglePrepared<SynthPatternUndoPayload>(
             UndoKind::Pattern,
             [&](const SynthPatternUndoPayload& receipt) {
               return GroovePuterUndo::synthPatternUndoTargetAvailable(
                   mini_acid_.sceneManager(), receipt);
             },
-            [&](const SynthPatternUndoPayload& receipt) {
+            [&](SynthPatternUndoPayload& receipt) {
               const auto restore = [&]() {
-                GroovePuterUndo::restoreSynthPatternUndo(
+                GroovePuterUndo::exchangeSynthPatternUndo(
                     mini_acid_.sceneManager(), receipt);
               };
               if (audio_guard_) audio_guard_(restore);
