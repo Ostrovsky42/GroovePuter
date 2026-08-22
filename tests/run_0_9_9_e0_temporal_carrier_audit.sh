@@ -48,8 +48,12 @@ mapfile -t SDL_SOURCES < <(
   ' Makefile
 )
 
+# The benchmark deliberately compiles the exact production SDL source set.
+# Existing production warnings are not E0 failures, so keep diagnostics visible
+# but do not promote inherited warnings to errors here. The ABI probe above
+# remains strict because it compiles only E0 research code.
 "$CXX" \
-  -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions \
+  -std=c++17 -O2 -Wall -Wextra -Wno-c++20-extensions \
   -I.. -I. -include arduino_compat.h \
   $SDL_CFLAGS $SDL_GFX_CFLAGS \
   "${SDL_SOURCES[@]}" e0_prepare_benchmark.cpp \
