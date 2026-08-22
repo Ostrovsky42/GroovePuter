@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdint>
-#include <cstring>
 
 #include "src/generation/roles/chord_rhythm.h"
 #include "src/generation/roles/harmonic_rhythm.h"
@@ -16,6 +15,20 @@ uint8_t countBits(StepMask mask) {
     mask = static_cast<StepMask>(mask >> 1u);
   }
   return count;
+}
+
+bool samePlan(const HarmonicRhythmPlan& first,
+              const HarmonicRhythmPlan& second) {
+  return first.progression == second.progression &&
+         first.onsets == second.onsets &&
+         first.eventCount == second.eventCount &&
+         first.phraseBarOrdinal == second.phraseBarOrdinal &&
+         first.phraseHarmonicPosition == second.phraseHarmonicPosition;
+}
+
+bool sameResult(const HarmonicRhythmResult& first,
+                const HarmonicRhythmResult& second) {
+  return first.status == second.status && samePlan(first.plan, second.plan);
 }
 
 HarmonicRhythmResult planFor(ProgressionId progression,
@@ -68,7 +81,7 @@ void testChordRhythmCannotChangeHarmonicTopology() {
   const HarmonicRhythmResult second = planFor(ProgressionId::PopCycle);
 
   assert(held.onsets != stabs.onsets);
-  assert(std::memcmp(&first.plan, &second.plan, sizeof(first.plan)) == 0);
+  assert(samePlan(first.plan, second.plan));
   assert(first.plan.onsets == static_cast<StepMask>(stepBit(0) | stepBit(8)));
 }
 
@@ -115,7 +128,7 @@ void testExplicitCountsAndDeterminism() {
     request.phraseHarmonicPosition = static_cast<uint8_t>(31 - i);
     const HarmonicRhythmResult first = realizeHarmonicRhythm(request);
     const HarmonicRhythmResult second = realizeHarmonicRhythm(request);
-    assert(std::memcmp(&first, &second, sizeof(first)) == 0);
+    assert(sameResult(first, second));
     assert(first.plan.onsets == static_cast<StepMask>(stepBit(0) | stepBit(8)));
     assert(first.plan.phraseBarOrdinal == i);
     assert(first.plan.phraseHarmonicPosition == static_cast<uint8_t>(31 - i));
