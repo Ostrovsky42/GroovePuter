@@ -1,0 +1,41 @@
+name: 0.9.9 E0 temporal carrier audit
+
+on:
+  push:
+    branches:
+      - agent/20260822-01-0.9.9-e0-temporal-material-carrier-research
+  pull_request:
+    paths:
+      - 'docs/architecture/E0_TEMPORAL_MATERIAL_CARRIER_AUDIT.md'
+      - 'tests/e0_temporal_carrier_sizes.cpp'
+      - 'tests/e0_temporal_carrier_source_audit.py'
+      - 'tests/run_0_9_9_e0_temporal_carrier_audit.sh'
+      - 'platform_sdl/e0_prepare_benchmark.cpp'
+      - '.github/workflows/generation-0-9-9-e0-temporal-carrier-audit.yml'
+      - 'src/**'
+      - 'scenes.h'
+      - 'scenes.cpp'
+      - 'platform_sdl/Makefile'
+
+jobs:
+  host-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev
+      - name: Run E0 audit and PREPARE benchmark
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/host-tests/e0-temporal-carrier
+          bash tests/run_0_9_9_e0_temporal_carrier_audit.sh \
+            | tee build/host-tests/e0-temporal-carrier/e0-audit.log
+      - name: Upload E0 measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e0-temporal-carrier-measurements
+          path: build/host-tests/e0-temporal-carrier/
