@@ -1,0 +1,16 @@
+name: 0.9.9 F08 harmonic rhythm
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harmonic-rhythm-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run F08 host contract
+        run: bash tests/run_0_9_9_f08_tests.sh
