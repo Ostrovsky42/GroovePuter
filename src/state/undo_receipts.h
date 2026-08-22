@@ -1,11 +1,15 @@
 #pragma once
 
+#ifndef GROOVEPUTER_STATE_UNDO_RECEIPTS_H
+#define GROOVEPUTER_STATE_UNDO_RECEIPTS_H
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
 
 #include "../../scenes.h"
+#include "undo_owner.h"
 
 namespace GroovePuterUndo {
 
@@ -21,6 +25,8 @@ static_assert(sizeof(SynthPatternUndoPayload) == 116,
               "R2 Synth Pattern Undo receipt size changed");
 static_assert(std::is_trivially_copyable<SynthPatternUndoPayload>::value,
               "Synth Pattern Undo receipt must remain a fixed value");
+static_assert(sizeof(SynthPatternUndoPayload) <= kUndoPayloadBytes,
+              "Synth Pattern Undo receipt exceeds canonical owner capacity");
 
 inline bool validSynthPatternAddress(const SynthPatternUndoPayload& receipt) {
   return receipt.pageIndex < kMaxPages &&
@@ -81,9 +87,9 @@ inline bool isCanonicalClearedSynthPattern(const SynthPattern& pattern) {
   return true;
 }
 
-// R4 owns committed Song arrangement state only. Transport position/mode/loop
-// and the active edit slot are runtime/TIME; songSlot is an address so browsing
-// A/B cannot replace or invalidate a retained arrangement receipt.
+// R4 owns committed Song arrangement edits only. Transport position/mode/loop
+// and playback-slot switching are runtime/TIME. This receipt does not describe
+// Phrase->Song generation; that domain has its own Generation receipt.
 struct SongUndoPayload {
   uint8_t pageIndex{0};
   uint8_t songSlot{0};
@@ -94,6 +100,8 @@ static_assert(std::is_trivially_copyable<SongUndoPayload>::value,
               "Song Undo receipt must remain a fixed value");
 static_assert(sizeof(SongUndoPayload) <= 1040,
               "R4 Song Undo receipt exceeded the measured ~1 KiB budget");
+static_assert(sizeof(SongUndoPayload) <= kUndoPayloadBytes,
+              "Song Undo receipt exceeds canonical owner capacity");
 
 inline bool sameSong(const Song& lhs, const Song& rhs) {
   if (lhs.length != rhs.length || lhs.reverse != rhs.reverse) return false;
@@ -142,6 +150,8 @@ static_assert(std::is_trivially_copyable<PhraseUndoPayload>::value,
               "Phrase Undo receipt must remain a fixed value");
 static_assert(sizeof(PhraseUndoPayload) <= 248,
               "R4 Phrase Undo receipt exceeded the fixed PhraseBank budget");
+static_assert(sizeof(PhraseUndoPayload) <= kUndoPayloadBytes,
+              "Phrase Undo receipt exceeds canonical owner capacity");
 
 inline bool samePhraseBank(const PhraseCore::PhraseBank& lhs,
                            const PhraseCore::PhraseBank& rhs) {
@@ -159,4 +169,78 @@ inline void restorePhraseUndo(SceneManager& manager,
   manager.currentScene().phraseBank = receipt.before;
 }
 
+struct DrumPatternUndoPayload {
+  int16_t pageIndex{-1};
+  int16_t bankIndex{-1};
+  int16_t patternIndex{-1};
+  DrumPatternSet before{};
+};
+
+static_assert(std::is_trivially_copyable<DrumPatternUndoPayload>::value,
+              "Drum Pattern Undo receipt must remain fixed and trivially copyable");
+static_assert(sizeof(DrumPatternUndoPayload) <= kUndoPayloadBytes,
+              "Drum Pattern Undo receipt exceeds canonical owner capacity");
+
+inline bool captureCurrentDrumPatternUndo(SceneManager& manager,
+                                          DrumPatternUndoPayload& out) {
+  const int page = manager.currentPageIndex();
+  const int bank = manager.getCurrentBankIndex(0);
+  const int pattern = manager.getCurrentDrumPatternIndex();
+  if (page < 0 || page >= kMaxPages || bank < 0 || bank >= kBankCount ||
+      pattern < 0 || pattern >= Bank<DrumPatternSet>::kPatterns) return false;
+  out.pageIndex = static_cast<int16_t>(page);
+  out.bankIndex = static_cast<int16_t>(bank);
+  out.patternIndex = static_cast<int16_t>(pattern);
+  out.before = manager.currentScene().drumBanks[bank].patterns[pattern];
+  return true;
+}
+
+inline bool drumPatternUndoTargetAvailable(
+    const SceneManager& manager,
+    const DrumPatternUndoPayload& receipt) {
+  return receipt.pageIndex >= 0 && receipt.pageIndex < kMaxPages &&
+         receipt.pageIndex == manager.currentPageIndex() &&
+         receipt.bankIndex >= 0 && receipt.bankIndex < kBankCount &&
+         receipt.patternIndex >= 0 &&
+         receipt.patternIndex < Bank<DrumPatternSet>::kPatterns;
+}
+
+inline bool sameDrumPattern(const DrumPatternSet& lhs,
+                            const DrumPatternSet& rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(DrumPatternSet)) == 0;
+}
+
+inline void restoreDrumPatternUndo(SceneManager& manager,
+                                   const DrumPatternUndoPayload& receipt) {
+  manager.currentScene().drumBanks[receipt.bankIndex]
+      .patterns[receipt.patternIndex] = receipt.before;
+}
+
+inline void exchangeSynthPatternUndo(SceneManager& manager,
+                                     SynthPatternUndoPayload& receipt) {
+  Scene& scene = manager.currentScene();
+  Bank<SynthPattern>& bank = receipt.synthIndex == 0
+      ? scene.synthABanks[receipt.bankIndex]
+      : scene.synthBBanks[receipt.bankIndex];
+  exchangeFixedValue(bank.patterns[receipt.patternIndex], receipt.before);
+}
+
+inline void exchangeSongUndo(SceneManager& manager, SongUndoPayload& receipt) {
+  exchangeFixedValue(manager.currentScene().songs[receipt.songSlot], receipt.before);
+}
+
+inline void exchangePhraseUndo(SceneManager& manager, PhraseUndoPayload& receipt) {
+  exchangeFixedValue(manager.currentScene().phraseBank, receipt.before);
+}
+
+inline void exchangeDrumPatternUndo(SceneManager& manager,
+                                    DrumPatternUndoPayload& receipt) {
+  exchangeFixedValue(
+      manager.currentScene().drumBanks[receipt.bankIndex]
+          .patterns[receipt.patternIndex],
+      receipt.before);
+}
+
 }  // namespace GroovePuterUndo
+
+#endif  // GROOVEPUTER_STATE_UNDO_RECEIPTS_H

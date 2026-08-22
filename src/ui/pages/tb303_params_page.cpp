@@ -857,10 +857,16 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  const char key = ui_event.key;
-  if (!key) return Container::handleEvent(ui_event);
+  char key = ui_event.key;
+  if (ui_event.ctrl) {
+    const unsigned char value = static_cast<unsigned char>(key);
+    if (value >= 1 && value <= 26)
+      key = static_cast<char>('a' + value - 1);
+  }
   knobAccelerator.reset();
-  const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+  const char lowerKey = key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
+      : 0;
 
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     if (key == '[' || key == '{') {
@@ -874,11 +880,13 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (isTb303Engine() && ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    if (lowerKey == 'z') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_); }); return true; }
-    if (lowerKey == 'x') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Resonance, 0.0f, voice_index_); }); return true; }
-    if (lowerKey == 'c') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvAmount, 400.0f, voice_index_); }); return true; }
-    if (lowerKey == 'v') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }
+    if (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_); }); return true; }
+    if (lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Resonance, 0.0f, voice_index_); }); return true; }
+    if (lowerKey == 'c' || ui_event.scancode == GROOVEPUTER_C) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvAmount, 400.0f, voice_index_); }); return true; }
+    if (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }
   }
+
+  if (!key) return Container::handleEvent(ui_event);
 
   if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
     const int bankIndex = key - '1';

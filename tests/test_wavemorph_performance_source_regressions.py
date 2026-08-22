@@ -210,7 +210,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
 
     navigation = block(page,
                        "  const int nav = UIInput::navCode(ui_event);",
-                       "  const char key = ui_event.key;")
+                       "  char key = ui_event.key;")
     more_navigation = block(navigation,
                             "  if (more_tab_) {",
                             "  } else {")

@@ -394,6 +394,33 @@ void GenrePage::draw(IGfx& gfx) {
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
+  if (event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (!owner.hasUndo() ||
+        owner.kind() != GroovePuterUndo::UndoKind::Generation) {
+      return false;
+    }
+    const bool redo = owner.nextIsRedo();
+    GroovePuterUndo::UndoResult result = GroovePuterUndo::UndoResult::KindMismatch;
+    withAudioGuard([&]() {
+      result = GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+    });
+    if (result == GroovePuterUndo::UndoResult::Restored) {
+      updateFromEngine();
+      UI::showToast(redo ? "REDO: GEN" : "UNDO: GEN", 1000);
+      return true;
+    }
+    if (result == GroovePuterUndo::UndoResult::ContextUnavailable) {
+      UI::showToast(redo ? "REDO: STOP OR WAIT" : "UNDO: STOP OR WAIT", 1100);
+      return true;
+    }
+    if (result == GroovePuterUndo::UndoResult::Expired) {
+      UI::showToast("UNDO: EXPIRED", 900);
+      return true;
+    }
+    return false;
+  }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   if (UIInput::isTab(event)) {

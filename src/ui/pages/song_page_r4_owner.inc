@@ -25,36 +25,54 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
+
+  SongUndoPayload retained{};
+  if (!owner.read(UndoKind::Song, retained)) return false;
+  if (!GroovePuterUndo::songUndoTargetAvailable(
+          mini_acid_.sceneManager(), retained)) {
+    return false;  // global direction-aware NOT HERE fallback retains receipt
+  }
+
+  const bool redo = owner.nextIsRedo();
   const uint32_t receiptRevision = owner.committedRevision();
   const bool pending =
       GroovePuterRhythm::LiveSongArrangementDetail::
           hasPendingSongActivationForRevision(mini_acid_, receiptRevision);
-  const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+  const bool affectsAudible =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          songUndoWouldAffectAudibleTruth(mini_acid_, retained);
+
+  if (mini_acid_.isPlaying() && affectsAudible && (redo || !pending)) {
+    showToast(redo ? "REDO: STOP OR WAIT" : "UNDO: STOP OR WAIT", 1100);
+    return true;
+  }
+
+  const UndoResult result = owner.togglePrepared<SongUndoPayload>(
       UndoKind::Song,
       [&](const SongUndoPayload& receipt) {
         return GroovePuterUndo::songUndoTargetAvailable(
-                   mini_acid_.sceneManager(), receipt) &&
-               (!GroovePuterRhythm::LiveSongArrangementDetail::
-                    songUndoWouldAffectAudibleTruth(mini_acid_, receipt) ||
-                pending);
+            mini_acid_.sceneManager(), receipt);
       },
-      [&](const SongUndoPayload& receipt) {
-        GroovePuterRhythm::LiveSongArrangementDetail::
-            cancelPendingSongActivationForRevision(
-                mini_acid_, receiptRevision);
-        const auto restore = [&]() {
-          GroovePuterUndo::restoreSongUndo(mini_acid_.sceneManager(), receipt);
+      [&](SongUndoPayload& receipt) {
+        if (!redo && pending) {
+          GroovePuterRhythm::LiveSongArrangementDetail::
+              cancelPendingSongActivationForRevision(
+                  mini_acid_, receiptRevision);
+        }
+        const auto exchange = [&]() {
+          GroovePuterUndo::exchangeSongUndo(
+              mini_acid_.sceneManager(), receipt);
         };
-        if (audio_guard_) audio_guard_(restore);
-        else restore();
+        if (audio_guard_) audio_guard_(exchange);
+        else exchange();
       });
   if (result == UndoResult::Restored) {
-    showToast("UNDO: SONG", 900);
+    showToast(redo ? "REDO: SONG" : "UNDO: SONG", 900);
     return true;
   }
-  if (result == UndoResult::TargetUnavailable) {
-    showToast("UNDO: RETURN PAGE", 1100);
-    return true;
+  if (result == UndoResult::ContextUnavailable ||
+      result == UndoResult::TargetUnavailable) {
+    return false;
   }
   return result == UndoResult::Expired;
 }

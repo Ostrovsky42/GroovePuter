@@ -57,14 +57,14 @@ def main() -> None:
             "Pattern Undo must capture stable persistent address identity")
     require("manager.currentPageIndex() == receipt.pageIndex" in RECEIPTS,
             "paged Pattern Undo must fail target validation instead of loading files")
-    require("restoreSynthPatternUndo" in RECEIPTS,
-            "Pattern receipt must expose bounded in-memory restoration")
+    require("restoreSynthPatternUndo" in RECEIPTS and
+            "exchangeSynthPatternUndo" in RECEIPTS,
+            "Pattern receipt must expose bounded in-memory restore/toggle primitives")
     require("isCanonicalClearedSynthPattern" in RECEIPTS and
             "value.velocity != 100" in RECEIPTS and
             "value.probability != 100" in RECEIPTS,
             "Pattern no-op detection must check canonical full step state")
 
-    # R2 first vertical slice: one existing destructive Pattern edit only.
     require('#include "../../state/undo_owner.h"' in PATTERN_CPP and
             '#include "../../state/undo_receipts.h"' in PATTERN_CPP,
             "Pattern editor must consume the canonical owner/receipt boundary")
@@ -89,19 +89,17 @@ def main() -> None:
         PATTERN,
         "case GROOVEPUTER_APP_EVENT_UNDO:",
         "default:\n        return false;")
-    require("undoOwner().undoPrepared<SynthPatternUndoPayload>" in undo_case,
-            "Pattern application Undo must route through the authoritative owner")
+    require("undoOwner().togglePrepared<SynthPatternUndoPayload>" in undo_case,
+            "Pattern application Undo/redo toggle must route through the authoritative owner")
     require("synthPatternUndoTargetAvailable" in undo_case and
-            "restoreSynthPatternUndo" in undo_case,
-            "Pattern Undo must validate resident target before bounded restore")
+            "exchangeSynthPatternUndo" in undo_case,
+            "Pattern toggle must validate resident target before bounded exchange")
     require("audio_guard_(restore)" in undo_case,
-            "Pattern restore must remain audio-guarded")
-    require('UI::showToast("UNDO: RETURN PAGE"' in undo_case and
+            "Pattern exchange must remain audio-guarded")
+    require("UndoResult::TargetUnavailable" in undo_case and
             'UI::showToast("UNDO: EXPIRED"' in undo_case,
-            "Pattern Undo must expose fail-closed unavailable/expired states")
+            "Pattern Undo must remain fail-closed for unavailable/expired state")
 
-    # R2 does not own shortcut rollout. It only makes the existing application
-    # event semantically correct; global/local Ctrl+Z is deferred to the UI stage.
     require("app_evt.app_event_type = GROOVEPUTER_APP_EVENT_UNDO" not in PATTERN,
             "R2 must not add a local Ctrl+Z fallback before UI ownership migration")
 
