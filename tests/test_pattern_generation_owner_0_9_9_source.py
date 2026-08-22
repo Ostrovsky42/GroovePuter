@@ -94,30 +94,39 @@ require("GroovePuterState::markSceneMutated();" not in plain_g,
 require("commitPatternMutation" not in plain_g,
         "plain quantized G must not be rewritten as a manual Pattern edit")
 
-# Pattern-page Undo must route both Generation receipt shapes without decoding
-# one as the other. C additionally requires compact Undo to invalidate a pending
-# activation that belongs to the exact committed revision being undone.
+# Pattern-page history must route both Generation receipt shapes without
+# cross-decoding. R9 upgrades each retained receipt to one-slot exchange, while
+# PLAY remains phase-safe: Redo is refused and Undo can cancel only an exact
+# matching pending activation revision.
 handler_start = page.index("bool PatternEditPage::handleEventLegacy(UIEvent& ui_event)")
 handler_prefix_end = page.index("using GroovePuterUndo::PatternEdit::adjustFxParam", handler_start)
 handler_prefix = page[handler_start:handler_prefix_end]
 require("GROOVEPUTER_APP_EVENT_UNDO" in handler_prefix,
-        "Pattern page must route Generation Undo")
+        "Pattern page must route Generation history")
 require("owner.kind() == UndoKind::Generation" in handler_prefix,
         "Pattern page must distinguish Generation receipts")
 require("quantizedGenerationUndoPayloadSize()" in handler_prefix and
-        "undoLastQuantizedGeneration(mini_acid_)" in handler_prefix,
-        "Pattern page must route the B1 quantized Generation receipt")
+        "toggleLastQuantizedGeneration(mini_acid_)" in handler_prefix,
+        "Pattern page must route the B1 quantized Generation receipt through R9 toggle")
 require("owner.payloadSize() == sizeof(SynthPatternUndoPayload)" in handler_prefix,
         "Pattern page must size-discriminate the compact B2 receipt")
-require("undoPrepared<SynthPatternUndoPayload>" in handler_prefix,
-        "Pattern page must restore the compact B2 receipt")
+require("togglePrepared<SynthPatternUndoPayload>" in handler_prefix and
+        "exchangeSynthPatternUndo" in handler_prefix,
+        "Pattern page must exchange the compact B2 receipt through R9 one-slot history")
+require("const bool matchingPending" in handler_prefix and
+        "if (mini_acid_.isPlaying() && (redo || !matchingPending))" in handler_prefix,
+        "compact Generation history must refuse PLAY Redo/late Undo before exchange")
 require("committedRevision" in handler_prefix and
         "cancelPendingGenerationActivationForRevision" in handler_prefix,
-        "compact generation Undo must cancel only its matching C pending activation")
+        "compact Generation Undo must cancel only its matching C pending activation")
 require(handler_prefix.index("quantizedGenerationUndoPayloadSize()") <
         handler_prefix.index("sizeof(SynthPatternUndoPayload)"),
         "larger B1 Generation receipt must be dispatched before compact fallback")
-require('UI::showToast("UNDO: GENERATION"' in handler_prefix,
-        "Pattern page must surface successful generation Undo")
+require('"REDO: STOP OR WAIT"' in handler_prefix and
+        '"UNDO: STOP OR WAIT"' in handler_prefix,
+        "Pattern page must surface phase-dependent PLAY refusal")
+require('"REDO: GENERATION"' in handler_prefix and
+        '"UNDO: GENERATION"' in handler_prefix,
+        "Pattern page must surface successful one-slot generation history")
 
-print("0.9.9-B2 Pattern Editor generation ownership source regressions: OK")
+print("0.9.9-B2 Pattern Editor generation ownership + R9 toggle source regressions: OK")

@@ -17,8 +17,12 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
+#include "../undo_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
+#include "src/state/synth_pattern_edit.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 
 namespace {
 // The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
@@ -48,6 +52,14 @@ bool isOutputCycleKey(const UIEvent& event) {
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
   return key == 'o' || event.scancode == GROOVEPUTER_O;
+}
+
+bool isSynthGenerateKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'g' || event.scancode == GROOVEPUTER_G;
 }
 }  // namespace
 
@@ -126,6 +138,81 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Ctrl+Z is local to the visible owner context. The SYNTH parent never moves
+  // tabs and never forwards Pattern history from KNOBS/MORE into hidden NOTES.
+  // Esc/back navigation remains the explicit way to return to an owner page.
+  if (GroovePuterUndoUx::isUndoEvent(ui_event) &&
+      synth_tab_ == SynthTab::Notes) {
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
+      // The visible Pattern child owns receipt-target validation (including
+      // Synth A/B). The parent only enforces the navigation boundary: NOTES.
+      const bool redo = owner.nextIsRedo();
+      const bool handled = MultiPage::handleEvent(ui_event);
+      // A successful one-slot exchange keeps the receipt and flips its next
+      // direction. Expired history clears the owner and must keep its own toast.
+      if (handled && owner.hasUndo() &&
+          owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
+          owner.nextIsRedo() != redo) {
+        UI::showToast(redo ? "REDO: PATTERN" : "UNDO: PATTERN", 900);
+      }
+      return handled;
+    }
+  }
+
+  // STOP-state Synth G is prepared against a local pattern and only the final
+  // fixed assignment enters canonical COMMIT. This preserves the exact previous
+  // pattern in the existing 116-byte Pattern receipt without running generation
+  // inside UndoOwner::commitPrepared(). PLAY remains the legacy 0.9.9/TIME path.
+  if (synth_tab_ == SynthTab::Notes && isSynthGenerateKey(ui_event) &&
+      !mini_acid_.isPlaying()) {
+    SceneManager& manager = mini_acid_.sceneManager();
+    GroovePuterUndo::SynthPatternUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
+            manager, voice_index_, before)) {
+      return true;
+    }
+
+    SynthPattern generated = before.before;
+    const GenerativeParams& genreParams =
+        mini_acid_.genreManager().getCompiledGenerativeParams();
+    auto behavior = mini_acid_.genreManager().getBehavior();
+    if (mini_acid_.genreManager().generativeMode() == GenerativeMode::Reggae) {
+      // Mirror MiniAcid::randomize303Pattern() exactly so adding Undo cannot
+      // change the musical generator's established A/B split.
+      if (voice_index_ == 0) {
+        behavior.stepMask = 0x1111;
+        behavior.motifLength = 2;
+        behavior.avoidClusters = true;
+        behavior.forceOctaveJump = false;
+      } else {
+        behavior.stepMask = 0xAAAA;
+        behavior.motifLength = 4;
+        behavior.avoidClusters = false;
+        behavior.forceOctaveJump = false;
+      }
+    }
+    mini_acid_.modeManager().generatePattern(
+        generated, mini_acid_.bpm(), genreParams, behavior, voice_index_);
+
+    if (GroovePuterUndo::PatternEdit::samePattern(before.before, generated) ||
+        !GroovePuterUndo::synthPatternUndoTargetAvailable(manager, before)) {
+      return true;
+    }
+
+    GroovePuterUndo::SynthPatternUndoPayload prepared = before;
+    prepared.before = generated;
+    (void)GroovePuterUndo::undoOwner().commitPrepared(
+        GroovePuterUndo::UndoKind::Pattern, before, [&]() {
+          const auto apply = [&]() {
+            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+        });
+    return true;
+  }
+
   if (isOutputCycleKey(ui_event)) {
     const GroovePuterOutput::Track track = voice_index_ == 0
         ? GroovePuterOutput::Track::SynthA

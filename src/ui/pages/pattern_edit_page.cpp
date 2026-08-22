@@ -108,18 +108,21 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     // SynthPattern receipt. Size discrimination prevents cross-decoding.
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
+      const bool redo = owner.nextIsRedo();
       const UndoResult result =
-          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);
+          GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
       switch (result) {
         case UndoResult::Restored:
-          UI::showToast("UNDO: GENERATION", 900);
+          UI::showToast(redo ? "REDO: GENERATION" : "UNDO: GENERATION", 900);
           return true;
         case UndoResult::NothingToUndo:
           UI::showToast("NOTHING TO UNDO", 800);
           return true;
-        case UndoResult::TargetUnavailable:
-          UI::showToast("UNDO: RETURN PAGE", 1000);
+        case UndoResult::ContextUnavailable:
+          UI::showToast(redo ? "REDO: STOP OR WAIT" : "UNDO: STOP OR WAIT", 1000);
           return true;
+        case UndoResult::TargetUnavailable:
+          return false;
         case UndoResult::Expired:
           UI::showToast("UNDO EXPIRED", 900);
           return true;
@@ -130,37 +133,47 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     }
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+      const bool redo = owner.nextIsRedo();
       const uint32_t committedRevision = owner.committedRevision();
+      const auto* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::
+              pendingAudibleActivation(mini_acid_);
+      const bool matchingPending = pending != nullptr &&
+          pending->committedRevision == committedRevision;
+      if (mini_acid_.isPlaying() && (redo || !matchingPending)) {
+        UI::showToast(redo ? "REDO: STOP OR WAIT" : "UNDO: STOP OR WAIT", 1000);
+        return true;
+      }
       const UndoResult result =
-          owner.undoPrepared<SynthPatternUndoPayload>(
+          owner.togglePrepared<SynthPatternUndoPayload>(
               UndoKind::Generation,
               [&](const SynthPatternUndoPayload& receipt) {
                 return GroovePuterUndo::synthPatternUndoTargetAvailable(
                     mini_acid_.sceneManager(), receipt);
               },
-              [&](const SynthPatternUndoPayload& receipt) {
-                const auto restore = [&]() {
-                  GroovePuterUndo::restoreSynthPatternUndo(
+              [&](SynthPatternUndoPayload& receipt) {
+                const auto exchange = [&]() {
+                  GroovePuterUndo::exchangeSynthPatternUndo(
                       mini_acid_.sceneManager(), receipt);
                 };
-                if (audio_guard_) audio_guard_(restore);
-                else restore();
+                if (audio_guard_) audio_guard_(exchange);
+                else exchange();
               });
-      if (result == UndoResult::Restored) {
+      if (result == UndoResult::Restored && mini_acid_.isPlaying() && !redo) {
         GroovePuterRhythm::QuantizedGenerationDetail::
             cancelPendingGenerationActivationForRevision(
                 mini_acid_, committedRevision);
       }
       switch (result) {
         case UndoResult::Restored:
-          UI::showToast("UNDO: GENERATION", 900);
+          UI::showToast(redo ? "REDO: GENERATION" : "UNDO: GENERATION", 900);
           return true;
         case UndoResult::NothingToUndo:
           UI::showToast("NOTHING TO UNDO", 800);
           return true;
+        case UndoResult::ContextUnavailable:
         case UndoResult::TargetUnavailable:
-          UI::showToast("UNDO: RETURN PAGE", 1000);
-          return true;
+          return false;
         case UndoResult::Expired:
           UI::showToast("UNDO EXPIRED", 900);
           return true;

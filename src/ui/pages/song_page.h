@@ -13,6 +13,11 @@
 #include "src/state/song_edit.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
+#include "src/generation/migration/quantized_generation_commit.h"
+
+namespace UI {
+void showToast(const char* msg, int durationMs);
+}
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -49,7 +54,28 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
     std::forward<PrepareFn>(prepare)(after);
     if (GroovePuterUndo::sameSong(before.before, after)) return false;
     if (!GroovePuterUndo::songUndoTargetAvailable(manager, before)) return false;
-    return GroovePuterUndo::undoOwner().commitPrepared(
+
+    auto lease =
+        GroovePuterRhythm::LiveSongArrangementDetail::
+            prepareSongMutationActivation(
+                mini_acid_, before.songSlot, before.before, after);
+    if (!lease.ok()) {
+      if (lease.status ==
+          GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus::Busy) {
+        UI::showToast("SONG BUSY", 900);
+      }
+      return false;
+    }
+    if (!GroovePuterRhythm::LiveSongArrangementDetail::
+            songMutationTargetStillCommitSafe(mini_acid_, lease)) {
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          abortSongMutationActivation(
+              lease, GroovePuterRhythm::QuantizedGenerationStatus::
+                         CancelledTargetChanged);
+      return false;
+    }
+
+    const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
         UndoKind::Song, before, [&]() {
           const auto apply = [&]() {
             manager.currentScene().songs[before.songSlot] = after;
@@ -57,6 +83,17 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
           if (audio_guard_) audio_guard_(apply);
           else apply();
         });
+    if (!committed) {
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          abortSongMutationActivation(lease);
+      return false;
+    }
+    if (lease.boundaryRequired) {
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          completeSongMutationActivation(
+              lease.slot, GroovePuterUndo::undoOwner().committedRevision());
+    }
+    return true;
   }
 
   void drawMinimalStyle(IGfx& gfx);

@@ -117,8 +117,14 @@ def main() -> None:
             "Song runtime controls need a non-persistent audio guard")
     require("withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode" in song_source,
             "LiveMix must remain runtime-only")
-    require("withRuntimeAudioGuard([&]() { mini_acid_.setSongPlaybackSlot" in song_source,
-            "Song playback slot must remain runtime-only")
+    ctrl_b_start = song_source.index("if (ui_event.ctrl && key_b)")
+    ctrl_b_end = song_source.index("if (ui_event.alt && !ui_event.ctrl && key_b)", ctrl_b_start)
+    ctrl_b = song_source[ctrl_b_start:ctrl_b_end]
+    require("requestSongPlaybackSwitch" in ctrl_b and
+            "setSongPlaybackSlot" not in ctrl_b and
+            "commitSongMutation" not in ctrl_b and
+            "markSceneMutated" not in ctrl_b,
+            "Song playback slot must remain runtime-only through the D3 boundary owner")
     require("withAudioGuard([&]() { mini_acid_.toggleSongMode();" in song_source,
             "Song mode must retain its audio-safe runtime route")
     require("withAudioGuard([&]() { mini_acid_.setSongPosition(next);" in song_source,

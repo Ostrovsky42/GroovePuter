@@ -22,7 +22,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | Key | Action |
 |---|---|
 | `Alt+H` | Toggle page-aware help |
-| `Ctrl+U` | Undo last retained Pattern / Song / Phrase edit |
+| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |
 | `Fn+M` | Workspace launcher |
 | `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
 | `[` / `]` | Previous / next page inside workflow |
@@ -132,6 +132,7 @@ Inside NOTE ENTRY, `G` remains note input.
 | `T/G` | Oscillator +/- |
 | `Y/H` | Filter type +/- |
 | `N/M` | Distortion / Delay |
+| `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |
 
 ## DRUMS
 
@@ -257,26 +258,3 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `Enter` | Open/activate |
 | `G` | Jump to GENRE |
 | `Esc` / `Backspace` | Close dialog/go up directory |
-
-## MIDI PLAYER
-
-| Key | Action |
-|---|---|
-| `Enter` | Open selected MIDI file |
-| `Space` | MIDI transport |
-| `H` | Open HUB MIDI / return to Player |
-| `1..9` | Physical-track mute |
-| `U` | Physical-track mute mixer |
-| `I` | Channel inspector |
-| `S` | Structural inspector |
-| `D` | Performance/throughput panel |
-| `B` / `Backspace` | Files/previous panel |
-| `Arrows` | Select/seek/scroll/adjust according to panel |
-| `C` | Clock source |
-| `T` | Tempo mode |
-| `M` | RAW / SEQTRAK routing |
-| `G` | Groove transport/follow |
-| `R` | Restart file |
-| `V` | Velocity boost |
-
-`Alt+H` always opens help; unmodified `H` remains Player <-> HUB MIDI navigation.

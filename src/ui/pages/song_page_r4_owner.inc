@@ -25,26 +25,54 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
-  const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+
+  SongUndoPayload retained{};
+  if (!owner.read(UndoKind::Song, retained)) return false;
+  if (!GroovePuterUndo::songUndoTargetAvailable(
+          mini_acid_.sceneManager(), retained)) {
+    return false;  // global direction-aware NOT HERE fallback retains receipt
+  }
+
+  const bool redo = owner.nextIsRedo();
+  const uint32_t receiptRevision = owner.committedRevision();
+  const bool pending =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          hasPendingSongActivationForRevision(mini_acid_, receiptRevision);
+  const bool affectsAudible =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          songUndoWouldAffectAudibleTruth(mini_acid_, retained);
+
+  if (mini_acid_.isPlaying() && affectsAudible && (redo || !pending)) {
+    showToast(redo ? "REDO: STOP OR WAIT" : "UNDO: STOP OR WAIT", 1100);
+    return true;
+  }
+
+  const UndoResult result = owner.togglePrepared<SongUndoPayload>(
       UndoKind::Song,
       [&](const SongUndoPayload& receipt) {
         return GroovePuterUndo::songUndoTargetAvailable(
             mini_acid_.sceneManager(), receipt);
       },
-      [&](const SongUndoPayload& receipt) {
-        const auto restore = [&]() {
-          GroovePuterUndo::restoreSongUndo(mini_acid_.sceneManager(), receipt);
+      [&](SongUndoPayload& receipt) {
+        if (!redo && pending) {
+          GroovePuterRhythm::LiveSongArrangementDetail::
+              cancelPendingSongActivationForRevision(
+                  mini_acid_, receiptRevision);
+        }
+        const auto exchange = [&]() {
+          GroovePuterUndo::exchangeSongUndo(
+              mini_acid_.sceneManager(), receipt);
         };
-        if (audio_guard_) audio_guard_(restore);
-        else restore();
+        if (audio_guard_) audio_guard_(exchange);
+        else exchange();
       });
   if (result == UndoResult::Restored) {
-    showToast("UNDO: SONG", 900);
+    showToast(redo ? "REDO: SONG" : "UNDO: SONG", 900);
     return true;
   }
-  if (result == UndoResult::TargetUnavailable) {
-    showToast("UNDO: RETURN PAGE", 1100);
-    return true;
+  if (result == UndoResult::ContextUnavailable ||
+      result == UndoResult::TargetUnavailable) {
+    return false;
   }
   return result == UndoResult::Expired;
 }
@@ -196,15 +224,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return handleEventLegacyUnowned(ui_event);
   }
   if (songR4QueuedReverseGesture(ui_event)) {
-    const bool pendingBefore = mini_acid_.hasPendingSongReverseToggle();
-    const bool reverseBefore = mini_acid_.isSongReverse();
-    const bool handled = handleEventLegacyUnowned(ui_event);
-    if (handled &&
-        (pendingBefore != mini_acid_.hasPendingSongReverseToggle() ||
-         reverseBefore != mini_acid_.isSongReverse())) {
-      GroovePuterState::markSceneMutated();
-    }
-    return handled;
+    // Legacy gesture timing/long-press UX is preserved, but the actual reverse
+    // mutation now routes through commitSongMutation inside the legacy handler.
+    return handleEventLegacyUnowned(ui_event);
   }
 
   const int nav = UIInput::navCode(ui_event);

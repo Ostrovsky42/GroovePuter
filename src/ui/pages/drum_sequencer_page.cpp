@@ -171,6 +171,45 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (!main) return false;
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (!owner.hasUndo()) return false;
+
+    if (owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
+      GroovePuterUndo::DrumPatternUndoPayload retained{};
+      if (!owner.read(GroovePuterUndo::UndoKind::Pattern, retained)) return false;
+      const bool redo = owner.nextIsRedo();
+      const GroovePuterUndo::UndoResult result =
+owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
+    GroovePuterUndo::UndoKind::Pattern,
+    [&](const GroovePuterUndo::DrumPatternUndoPayload& receipt) {
+      return GroovePuterUndo::drumPatternUndoTargetAvailable(
+          page->mini_acid_.sceneManager(), receipt);
+    },
+    [&](GroovePuterUndo::DrumPatternUndoPayload& receipt) {
+      const auto exchange = [&]() {
+        GroovePuterUndo::exchangeDrumPatternUndo(
+            page->mini_acid_.sceneManager(), receipt);
+      };
+      if (page->audio_guard_) page->audio_guard_(exchange); else exchange();
+    });
+      if (result == GroovePuterUndo::UndoResult::Restored) {
+        UI::showToast(redo ? "REDO: DRUMS" : "UNDO: DRUMS", 900);
+        return true;
+      }
+      if (result == GroovePuterUndo::UndoResult::TargetUnavailable) {
+        UI::showToast("UNDO: RETURN PAGE", 1100);
+        return true;
+      }
+      return result == GroovePuterUndo::UndoResult::Expired;
+    }
+    return false;
+  }
+
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
   if (activePageIndex() != 0 ||
@@ -182,6 +221,22 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   std::shared_ptr<Container> active = getPagePtr(0);
   if (!active) return handleEventLegacy(ui_event);
   auto* page = static_cast<DrumSequencerMainPage*>(active.get());
+
+  // Single-cell Backspace is a manual persistent Drum edit. Intercept it before
+  // the retained legacy handler so deletion uses the same bounded before-state
+  // receipt as tap/Enter toggles. Selection delete and Alt+Backspace keep their
+  // existing paths; this hardware follow-up is intentionally one-cell only.
+  const bool singleCellBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
+  if (singleCellBackspace && !ui_event.alt && !page->has_selection_ &&
+      !page->patternRowFocused() && !page->bankRowFocused()) {
+    const int voice = page->activeDrumVoice();
+    const int step = page->activeDrumStep();
+    page->commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      pattern.voices[voice].steps[step].hit = false;
+      pattern.voices[voice].steps[step].accent = false;
+    });
+    return true;
+  }
 
   const int nav = UIInput::navCode(ui_event);
   const bool gridArrow =
@@ -290,10 +345,53 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   // the legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL
   // to drums only. Cardputer may report G by scancode with key == 0.
   if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    page->withAudioGuard([&]() {
+    SceneManager& manager = page->mini_acid_.sceneManager();
+    GroovePuterUndo::DrumPatternUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentDrumPatternUndo(manager, before)) {
+      return true;
+    }
+
+    // Preserve the exact Stage12/strong-rhythm generator. PREPARE may touch the
+    // live fixed pattern, so run it under the raw AudioGuard, capture the result,
+    // then restore the before-state. Do NOT use DrumSequencerMainPage::
+    // withAudioGuard() here: that legacy wrapper also calls markSceneMutated()
+    // and would immediately expire the canonical receipt published below.
+    DrumPatternSet after{};
+    bool prepared = false;
+    const auto prepareGeneration = [&]() {
+      if (!GroovePuterUndo::drumPatternUndoTargetAvailable(manager, before)) {
+        return;
+      }
+
       GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
           page->mini_acid_);
-    });
+
+      after = manager.currentScene().drumBanks[before.bankIndex]
+                  .patterns[before.patternIndex];
+      manager.currentScene().drumBanks[before.bankIndex]
+          .patterns[before.patternIndex] = before.before;
+
+      if (GroovePuterUndo::sameDrumPattern(before.before, after)) {
+        return;
+      }
+      if (!GroovePuterUndo::drumPatternUndoTargetAvailable(manager, before)) {
+        return;
+      }
+      prepared = true;
+    };
+    if (page->audio_guard_) page->audio_guard_(prepareGeneration);
+    else prepareGeneration();
+    if (!prepared) return true;
+
+    GroovePuterUndo::undoOwner().commitPrepared(
+        GroovePuterUndo::UndoKind::Pattern, before, [&]() {
+          const auto apply = [&]() {
+            manager.currentScene().drumBanks[before.bankIndex]
+                .patterns[before.patternIndex] = after;
+          };
+          if (page->audio_guard_) page->audio_guard_(apply);
+          else apply();
+        });
     return true;
   }
 

@@ -499,10 +499,13 @@ void MiniAcid::stop() {
   // settle that exact pending destination immediately instead of discarding the
   // activation and leaving the next START on the old runtime row. Ordinary C
   // generation keeps its existing cancel+runtime-settlement behavior.
-  const bool phraseSettled =
+  const bool songSettled =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          settlePendingSongArrangementOnStop(*this);
+  const bool phraseSettled = !songSettled &&
       GroovePuterRhythm::PhraseLiveArrangementDetail::
           settlePendingPhraseArrangementOnStop(*this);
-  if (!phraseSettled &&
+  if (!songSettled && !phraseSettled &&
       GroovePuterRhythm::QuantizedGenerationDetail::
           cancelPendingGenerationActivation(*this)) {
     GroovePuterRhythm::QuantizedGenerationDetail::
@@ -966,12 +969,16 @@ const Song& MiniAcid::song() const { return sceneManager_.song(); }
 int MiniAcid::activeSongSlot() const { return sceneManager_.activeSongSlot(); }
 void MiniAcid::setActiveSongSlot(int slot) {
   sceneManager_.setActiveSongSlot(slot);
-  songBarIndex_ = -1;
-  if (!liveMixMode_) {
-    songPlaybackSlot_ = sceneManager_.activeSongSlot();
-  }
-  if (songMode_ && songPlaybackSlot_ == sceneManager_.activeSongSlot()) {
-    applySongPositionSelection();
+  // D3 separates persistent EDIT selection from runtime PLAY selection. During
+  // transport, changing EDIT:A/B must never redirect the audible Song.
+  if (!playing) {
+    songBarIndex_ = -1;
+    if (!liveMixMode_) {
+      songPlaybackSlot_ = sceneManager_.activeSongSlot();
+    }
+    if (songMode_ && songPlaybackSlot_ == sceneManager_.activeSongSlot()) {
+      applySongPositionSelection();
+    }
   }
 }
 int MiniAcid::songPlaybackSlot() const { return songPlaybackSlot_; }
@@ -988,7 +995,7 @@ void MiniAcid::setLiveMixMode(bool enabled) {
   if (liveMixMode_ == enabled) return;
   liveMixMode_ = enabled;
   songBarIndex_ = -1;
-  if (!liveMixMode_) {
+  if (!liveMixMode_ && !playing) {
     songPlaybackSlot_ = sceneManager_.activeSongSlot();
     if (songMode_) applySongPositionSelection();
   }
@@ -1001,13 +1008,10 @@ void MiniAcid::deleteSongRow(int position) { sceneManager_.deleteSongRow(positio
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
 bool MiniAcid::isSongReverse() const { return sceneManager_.isSongReverse(); }
 void MiniAcid::queueSongReverseToggle() {
-  if (playing && songMode_) {
-    songReverseTogglePending_ = true;
-    return;
-  }
+  if (playing && songMode_) return;
   sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
 }
-bool MiniAcid::hasPendingSongReverseToggle() const { return songReverseTogglePending_; }
+bool MiniAcid::hasPendingSongReverseToggle() const { return false; }
 
 int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
@@ -1641,14 +1645,14 @@ int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
 
 const SynthPattern& MiniAcid::activeSynthPattern(int synthIndex) const {
   int idx = clamp303Voice(synthIndex);
-  SongTrack track = idx == 0 ? SongTrack::SynthA : SongTrack::SynthB;
-  int pat = songPatternIndexForTrack(track);
-  if (pat < 0) return kEmptySynthPattern;
   if (const SynthPattern* pending =
           GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
               *this, idx)) {
     return *pending;
   }
+  SongTrack track = idx == 0 ? SongTrack::SynthA : SongTrack::SynthB;
+  int pat = songPatternIndexForTrack(track);
+  if (pat < 0) return kEmptySynthPattern;
   return sceneManager_.getSynthPattern(idx, pat);
 }
 
@@ -3628,10 +3632,6 @@ void MiniAcid::advanceSongBar_() {
   if (boundary.advanceRow) {
     cyclePulseCounter_++;
     if (songMode_) {
-      if (songReverseTogglePending_) {
-        sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
-        songReverseTogglePending_ = false;
-      }
       advanceSongPlayhead();
     }
   }

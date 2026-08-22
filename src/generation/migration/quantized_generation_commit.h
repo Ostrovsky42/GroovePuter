@@ -15,7 +15,9 @@
 #undef regenerateWithQuantizedCommit
 #undef commitQuantizedGenerationAtBarStart
 
+#include "../../state/undo_receipts.h"
 #include "quantized_generation_undo_owner_impl.h"
 #include "phrase_live_arrangement_activation.h"
+#include "live_song_arrangement_activation.h"
 
 #endif  // GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_COMMIT_H

@@ -58,9 +58,19 @@ def main() -> None:
     require("UndoActionType::Paste" not in song_page and
             "UndoActionType::Delete" not in song_page,
             "legacy Song page-local Undo ownership returned")
-    require("setActiveSongSlot(nextSlot)" in song_page and
-            "setSongPlaybackSlot(nextPlaySlot)" in song_page,
-            "Song A/B edit or playback switching disappeared")
+
+    # 0.9.9-D3 separates edit selection from audible playback ownership. EDIT
+    # A/B still uses setActiveSongSlot(), while Ctrl+B must request a bounded
+    # row-boundary PLAY switch instead of mutating songPlaybackSlot immediately.
+    require("setActiveSongSlot(nextSlot)" in song_page,
+            "Song EDIT A/B switching disappeared")
+    ctrl_b_start = song_page.index("if (ui_event.ctrl && key_b)")
+    ctrl_b_end = song_page.index(
+        "if (ui_event.alt && !ui_event.ctrl && key_b)", ctrl_b_start)
+    ctrl_b = song_page[ctrl_b_start:ctrl_b_end]
+    require("requestSongPlaybackSwitch" in ctrl_b and
+            "setSongPlaybackSlot(nextPlaySlot)" not in ctrl_b,
+            "D3 PLAY A/B switching must use bounded row-boundary activation")
 
     require("materializeSongTracks(row, trackMask)" in cell,
             "single G no longer materializes the selected track")

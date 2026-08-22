@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef GROOVEPUTER_STATE_UNDO_OWNER_H
+#define GROOVEPUTER_STATE_UNDO_OWNER_H
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -18,9 +21,23 @@ enum class UndoResult : uint8_t {
   NothingToUndo = 0,
   KindMismatch,
   TargetUnavailable,
+  ContextUnavailable,
   Expired,
   Restored,
 };
+
+template <typename T>
+inline void exchangeFixedValue(T& live, T& retained) {
+  static_assert(std::is_trivially_copyable<T>::value,
+                "history exchange requires fixed trivially-copyable values");
+  auto* lhs = reinterpret_cast<uint8_t*>(&live);
+  auto* rhs = reinterpret_cast<uint8_t*>(&retained);
+  for (std::size_t i = 0; i < sizeof(T); ++i) {
+    const uint8_t value = lhs[i];
+    lhs[i] = rhs[i];
+    rhs[i] = value;
+  }
+}
 
 class UndoOwner {
  public:
@@ -30,6 +47,7 @@ class UndoOwner {
   UndoKind kind() const { return slot_.kind(); }
   uint16_t payloadSize() const { return slot_.payloadSize(); }
   uint32_t committedRevision() const { return committed_revision_; }
+  bool nextIsRedo() const { return slot_.nextIsRedo(); }
 
   void clear() {
     slot_.clear();
@@ -69,6 +87,9 @@ class UndoOwner {
     return true;
   }
 
+  // Receipt inspection stays typed and owned by the child that understands the
+  // payload. Do not add scalar-returning peek helpers: values such as synth 0
+  // are valid identities, not validity flags.
   template <typename Payload>
   bool read(UndoKind expected_kind, Payload& before) const {
     return slot_.read(expected_kind, before);
@@ -113,6 +134,57 @@ class UndoOwner {
     return UndoResult::Restored;
   }
 
+  // One-step history toggle. The retained target payload is exchanged with the
+  // live state in-place, then the same fixed slot stores the reverse transition.
+  // No second resident payload and no second full-size stack object are created.
+  template <typename Payload, typename ValidateFn, typename ExchangeFn>
+  UndoResult togglePrepared(UndoKind expected_kind,
+                            ValidateFn&& validate,
+                            ExchangeFn&& exchange) {
+    static_assert(std::is_trivially_copyable<Payload>::value,
+                  "Undo payloads must remain trivially copyable fixed values");
+    if (!slot_.hasUndo()) return UndoResult::NothingToUndo;
+    if (slot_.kind() != expected_kind) return UndoResult::KindMismatch;
+
+    const GroovePuterState::SceneRevisionState current =
+        GroovePuterState::sceneRevisionSnapshot();
+    if (committed_revision_ == 0 || current.currentRevision != committed_revision_) {
+      clear();
+      return UndoResult::Expired;
+    }
+
+    Payload retained{};
+    if (!slot_.read(expected_kind, retained)) return UndoResult::KindMismatch;
+    if (!std::forward<ValidateFn>(validate)(retained)) {
+      // Wrong owner context is not an Undo operation and must not consume the
+      // retained pair. Let the application-level Ctrl+Z fallback report
+      // UNDO/REDO: NOT HERE; navigation remains an explicit Esc action.
+      return UndoResult::ContextUnavailable;
+    }
+
+    const bool was_redo = slot_.nextIsRedo();
+    const GroovePuterState::SceneRevisionState target_revision =
+        slot_.revisionBefore();
+    std::forward<ExchangeFn>(exchange)(retained);
+
+    GroovePuterState::SceneRevisionState restored_revision = target_revision;
+    if (current.persistedRevision == committed_revision_) {
+      restored_revision.persistedRevision = current.persistedRevision;
+    }
+    GroovePuterState::restoreSceneRevision(restored_revision);
+
+    // Same admitted payload size/kind, so publication cannot fail here. The
+    // retained value now contains the state we just left and current is the
+    // revision to restore on the inverse keypress.
+    if (!slot_.publish(expected_kind, retained, current)) {
+      clear();
+      return UndoResult::Expired;
+    }
+    slot_.setNextIsRedo(!was_redo);
+    committed_revision_ = restored_revision.currentRevision;
+    return UndoResult::Restored;
+  }
+
  private:
   BoundedUndoSlot<kUndoPayloadBytes> slot_{};
   uint32_t committed_revision_{0};
@@ -127,3 +199,5 @@ static_assert(sizeof(UndoOwner) <= 1552,
               "authoritative one-level Undo owner exceeded the measured R2 DRAM budget");
 
 }  // namespace GroovePuterUndo
+
+#endif  // GROOVEPUTER_STATE_UNDO_OWNER_H

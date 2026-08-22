@@ -566,55 +566,57 @@ bool PhrasePage::undoPreparedOwnedState() {
   }
 
   if (owner.kind() == UndoKind::Phrase) {
-    const UndoResult result = owner.undoPrepared<PhraseUndoPayload>(
+    const bool redo = owner.nextIsRedo();
+    const UndoResult result = owner.togglePrepared<PhraseUndoPayload>(
         UndoKind::Phrase,
         [&](const PhraseUndoPayload& receipt) {
           return GroovePuterUndo::phraseUndoTargetAvailable(
               mini_acid_.sceneManager(), receipt);
         },
-        [&](const PhraseUndoPayload& receipt) {
-          const auto restore = [&]() {
-            GroovePuterUndo::restorePhraseUndo(
+        [&](PhraseUndoPayload& receipt) {
+          const auto exchange = [&]() {
+            GroovePuterUndo::exchangePhraseUndo(
                 mini_acid_.sceneManager(), receipt);
           };
-          if (audio_guard_) audio_guard_(restore);
-          else restore();
+          if (audio_guard_) audio_guard_(exchange);
+          else exchange();
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("UNDO: PHRASE", 900);
+      UI::showToast(redo ? "REDO: PHRASE" : "UNDO: PHRASE", 900);
       return true;
     }
-    if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("UNDO: RETURN PAGE", 1100);
-      return true;
+    if (result == UndoResult::ContextUnavailable ||
+        result == UndoResult::TargetUnavailable) {
+      return false;
     }
     return result == UndoResult::Expired;
   }
 
   if (owner.kind() == UndoKind::Song) {
-    const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+    const bool redo = owner.nextIsRedo();
+    const UndoResult result = owner.togglePrepared<SongUndoPayload>(
         UndoKind::Song,
         [&](const SongUndoPayload& receipt) {
           return GroovePuterUndo::songUndoTargetAvailable(
               mini_acid_.sceneManager(), receipt);
         },
-        [&](const SongUndoPayload& receipt) {
-          const auto restore = [&]() {
-            GroovePuterUndo::restoreSongUndo(
+        [&](SongUndoPayload& receipt) {
+          const auto exchange = [&]() {
+            GroovePuterUndo::exchangeSongUndo(
                 mini_acid_.sceneManager(), receipt);
           };
-          if (audio_guard_) audio_guard_(restore);
-          else restore();
+          if (audio_guard_) audio_guard_(exchange);
+          else exchange();
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("UNDO: SONG", 900);
+      UI::showToast(redo ? "REDO: SONG" : "UNDO: SONG", 900);
       return true;
     }
-    if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("UNDO: RETURN PAGE", 1100);
-      return true;
+    if (result == UndoResult::ContextUnavailable ||
+        result == UndoResult::TargetUnavailable) {
+      return false;
     }
     return result == UndoResult::Expired;
   }
