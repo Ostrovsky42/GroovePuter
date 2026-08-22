@@ -14,3 +14,29 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run F08 host contract
         run: bash tests/run_0_9_9_f08_tests.sh
+
+  stage15-semantic-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture exact frozen tonal corpus diff
+        run: |
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal \
+            > build/host-tests/stage15_tonal_enabled_f08_actual.tsv
+          base64 -d tests/data/stage15_tonal_enabled_f13_baseline.tsv.gz.b64 \
+            | gzip -dc \
+            > build/host-tests/stage15_tonal_enabled_f13_expected.tsv
+          diff -u \
+            build/host-tests/stage15_tonal_enabled_f13_expected.tsv \
+            build/host-tests/stage15_tonal_enabled_f08_actual.tsv \
+            > build/host-tests/stage15_f08_exact.diff || true
+          cat build/host-tests/stage15_f08_exact.diff
+      - name: Upload F08 Stage15 diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: f08-stage15-semantic-diff
+          path: |
+            build/host-tests/stage15_tonal_enabled_f08_actual.tsv
+            build/host-tests/stage15_f08_exact.diff
+          if-no-files-found: error
