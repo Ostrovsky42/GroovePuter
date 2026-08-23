@@ -1,4 +1,5 @@
 #include "pattern_paging.h"
+#include "src/phrase/pattern_lease_owner.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -35,6 +36,10 @@ struct PageFileHeader {
 
 constexpr size_t kSynthBanksSize = sizeof(Bank<SynthPattern>) * kBankCount;
 constexpr size_t kDrumBanksSize = sizeof(Bank<DrumPatternSet>) * kBankCount;
+
+bool pageStoragePinnedByLease() {
+    return PhrasePatternLease::patternLeaseOwner().activeLeaseCount() != 0;
+}
 
 std::string& activeProjectNameStorage() {
     static std::string projectName = kDefaultProjectName;
@@ -393,6 +398,7 @@ std::string PatternPagingService::backupPath(int pageIndex) {
 }
 
 bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
+    if (pageStoragePinnedByLease()) return false;
     if (!validPageIndex(pageIndex) || !ensureDirectory()) return false;
 
     const std::string mainPath = pagePath(pageIndex);
@@ -426,6 +432,7 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
 }
 
 bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
+    if (pageStoragePinnedByLease()) return false;
     if (!validPageIndex(pageIndex)) return false;
 
     const std::string mainPath = pagePath(pageIndex);
@@ -447,6 +454,7 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
 }
 
 bool PatternPagingService::restoreBackup(int pageIndex) {
+    if (pageStoragePinnedByLease()) return false;
     if (!validPageIndex(pageIndex)) return false;
     const std::string mainPath = pagePath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);

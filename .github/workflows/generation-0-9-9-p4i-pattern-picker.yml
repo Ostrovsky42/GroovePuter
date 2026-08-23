@@ -1,0 +1,19 @@
+name: 0.9.9-P4I Song Pattern Picker
+
+on:
+  push:
+    branches:
+      - agent/20260823-09-0.9.9-p4i-song-pattern-picker
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  p4i-pattern-picker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run P4I focused and cumulative lease contracts
+        run: bash tests/run_0_9_9_p4i_tests.sh
