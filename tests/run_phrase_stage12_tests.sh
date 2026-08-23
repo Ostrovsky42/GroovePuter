@@ -49,5 +49,9 @@ run_matrix() {
 run_matrix test_phrase_stage12 tests/test_phrase_stage12.cpp
 run_matrix test_phrase_stage12_reference_catalog \
   tests/test_phrase_stage12_reference_catalog.cpp
+run_matrix test_e1_runtime_characterization tests/test_e1_runtime_characterization.cpp
+"${BUILD_DIR}/test_e1_runtime_characterization_gcc" | grep -E '^(DIFF|SECONDARY-SEARCH|AUDITION-DIRECT|LEGACY)' > "${BUILD_DIR}/e1_runtime_characterization.golden"
+cmp "${BUILD_DIR}/e1_runtime_characterization.golden" \
+  "${ROOT_DIR}/tests/goldens/e1_runtime_characterization.golden"
 
 printf 'Generation Stage 12 host matrix: OK\n'

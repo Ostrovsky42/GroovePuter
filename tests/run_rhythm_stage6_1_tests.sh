@@ -6,6 +6,7 @@ BUILD_DIR="${ROOT_DIR}/build/host-tests/stage6-1"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_rhythm_stage6_1_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_e1_characterization_source_audit.py"
 
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
@@ -48,5 +49,22 @@ build_and_run "${CXX:-g++}" sanitize \
   -o "${BUILD_DIR}/bar_evolution_stack.o"
 python3 "${ROOT_DIR}/tests/test_rhythm_stage6_1_stack_usage.py" \
   "${BUILD_DIR}/bar_evolution_stack.su"
+
+STACK_SOURCES=(
+  "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"
+  "${ROOT_DIR}/src/generation/rhythm/bar_evolution.cpp"
+  "${ROOT_DIR}/src/generation/phrase/phrase_evolution.cpp"
+  "${ROOT_DIR}/src/generation/migration/strong_rhythm_live_bridge.cpp"
+)
+STACK_FILES=()
+for source in "${STACK_SOURCES[@]}"; do
+  name="$(basename "${source}" .cpp)"
+  "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+    -Wno-c++20-extensions -Wno-unused-but-set-variable \
+    -I"${ROOT_DIR}" -fstack-usage -c "${source}" \
+    -o "${BUILD_DIR}/${name}_stack.o"
+  STACK_FILES+=("${BUILD_DIR}/${name}_stack.su")
+done
+python3 "${ROOT_DIR}/tests/test_e1_stack_report.py" "${STACK_FILES[@]}"
 
 printf 'Groove Vocabulary Stage 6.1 hardening host matrix: OK\n'
