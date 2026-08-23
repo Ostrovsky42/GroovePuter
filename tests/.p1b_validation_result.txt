@@ -1,3 +1,112 @@
-HEAD=ac89f6852412afe7cf743aba426f794bce406652
-STEP7=STARTED
-RUN_ID=32655425402
+HEAD=07581f13d7592b9ca46f8a487d390065a8045126
+STEP7=tests/run_host_tests.sh
+chip tuning and live-note identity: OK
+source regressions: OK
+Pre-flash build source regressions: PASS
+Generation RNG source regressions passed
+Song generation source regressions passed
+Axis hardware feedback source regressions: PASS
+global help source regressions passed
+Synth A bass profile source regressions: OK
+deterministic Cardputer input source regressions: OK
+Sampler DRUMS workflow UX source contract: PASS
+performance + SMF source regressions: OK
+wavemorph/performance source regressions: PASS
+theme + workflow navigation source regressions: OK
+USB MIDI source regressions: OK
+Pattern MIDI source regressions: OK
+MIDI static-init source regressions: OK
+MIDI transport source regressions: OK
+Song playhead source regressions: OK
+SMF panel completion source regressions: OK
+MIDI companion foundation source regressions: OK
+seqtrak master source regressions: OK
+SMF MIDI wave source regressions: OK
+smf structural inspector source regressions: OK
+HUB MIDI live-route navigation/source regressions: OK
+Drum grid labels source regressions: OK
+SMF session generation host tests: OK
+SMF route persistence source regressions: OK
+Atlas sound profile and Scene ownership regression: OK
+synth persistence/load ownership source regressions: OK
+MIDI probe regressions: OK
+global help content tests passed
+In file included from /home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/atlas_runtime.h:4,
+                 from /home/runner/work/GroovePuter/GroovePuter/tests/test_atlas_runtime.cpp:1:
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:67:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   67 |   uint8_t hit : 1 {0};
+      |                   ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:68:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t accent : 1 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t unused : 6 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:120:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  120 |   uint8_t slide : 1 {0};
+      |                     ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:121:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t accent : 1 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:122:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t ghost : 1 {0};
+      |                     ^
+/home/runner/work/GroovePuter/GroovePuter/tests/../src/dsp/../../scenes.h:123:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from /home/runner/work/GroovePuter/GroovePuter/src/dsp/atlas_runtime.h:4,
+                 from /home/runner/work/GroovePuter/GroovePuter/src/dsp/atlas_runtime.cpp:1:
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:67:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   67 |   uint8_t hit : 1 {0};
+      |                   ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:68:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t accent : 1 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t unused : 6 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:120:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  120 |   uint8_t slide : 1 {0};
+      |                     ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:121:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t accent : 1 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:122:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t ghost : 1 {0};
+      |                     ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/../../scenes.h:123:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t unused : 5 {0};
+      |                      ^
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/atlas_runtime.cpp: In function ‘bool {anonymous}::validatePattern(const AtlasGenerated::Pattern&)’:
+/home/runner/work/GroovePuter/GroovePuter/src/dsp/atlas_runtime.cpp:24:60: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   24 |     if (event.target >= 8 && (event.note < 0 || event.note > 127)) return false;
+      |                                                 ~~~~~~~~~~~^~~~~
+TR-606 drum voice tests: PASS
+Song materializer tests passed
+TextureMode runtime removal regressions: PASS
+Generation Stage 7C source ownership: OK
+Generation Stage 7C rhythm selection: OK
+Generation Stage 7C rhythm selection: OK
+Generation Stage 7C rhythm selection: OK
+Generation Stage 7C host matrix: OK
+Generation Stage 8 source regressions: OK
+Generation Stage 8 host matrix: OK
+Generation Stage 9 host matrix: OK
+Generation Stage 10 host matrix: OK
+Generation Stage 11 host matrix: OK
+Generation Stage 12 reference catalog source regressions: OK
+Generation Stage 12 audition/probe source regressions: OK
+Generation Stage 12 host matrix: OK
+Generation Stage 14 source regressions: OK
+Stage 14 DRUMS G / production FEEL route source regressions: OK
+Stage 14.1 P-level source regressions: OK
+Release generation routing source regressions: OK
+P-level + bounded reroll + lock-free quantized generation regressions: OK
+Combined F-02/F-07 seed surface source regressions: OK
+Genre reroll consistency source regressions: OK
+Generation Stage 15 chord-progression source regressions: OK
+Generation Stage 15 stack usage: 112 B <= 192 B
+Generation Stage 15 chord-progression host matrix: OK
+Generation Stage 13/14/15 host matrix: OK
+HOST_EXIT=0
+RESULT=PASS
