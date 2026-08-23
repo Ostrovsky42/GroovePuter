@@ -28,18 +28,19 @@ def git_blob_sha(path: Path) -> str:
 
 def consumers(needle: str):
     hits = set()
-    skip_parts = {".git", "build", ".pio"}
-    for path in ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in skip_parts for part in path.parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
-        if needle in text:
-            hits.add(path.relative_to(ROOT).as_posix())
+    skip_parts = {"build", ".pio"}
+    for consumer_root in (ROOT / ".github", ROOT / "tests"):
+        for path in consumer_root.rglob("*"):
+            if not path.is_file():
+                continue
+            if any(part in skip_parts for part in path.parts):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if needle in text:
+                hits.add(path.relative_to(ROOT).as_posix())
     return hits
 
 
