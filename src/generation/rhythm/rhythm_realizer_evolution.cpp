@@ -17,14 +17,6 @@ bool validBarFunction(BarFunction function) {
          static_cast<uint8_t>(BarFunction::Count);
 }
 
-const LaneGrammar* laneFor(const RhythmArchetype& archetype,
-                           RhythmRole role) {
-  for (uint8_t i = 0; i < archetype.laneCount; ++i) {
-    if (archetype.lanes[i].role == role) return &archetype.lanes[i];
-  }
-  return nullptr;
-}
-
 StepMask anchorMask(const LaneGrammar& lane) {
   return static_cast<StepMask>(lane.immutableAnchors |
                                lane.canonicalAnchors);

@@ -3,8 +3,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "src/generation/rhythm/bar_evolution.h").read_text()
-SOURCE = (ROOT / "src/generation/rhythm/bar_evolution.cpp").read_text()
-COMBINED = HEADER + "\n" + SOURCE
+PLANNER = (ROOT / "src/generation/rhythm/bar_evolution.cpp").read_text()
+MUTATION = (ROOT / "src/generation/rhythm/rhythm_realizer_evolution.cpp").read_text()
+COMBINED = HEADER + "\n" + PLANNER + "\n" + MUTATION
 
 
 def require(condition: bool, message: str) -> None:
@@ -30,8 +31,9 @@ for token in (
 ):
     require(token in COMBINED, f"missing Stage 6 contract token: {token}")
 
-# Stage 6 is a transient grammar core. It may manipulate fixed-capacity rhythm
-# value objects only; storage/runtime ownership stays with later callers.
+# Stage 6 is a transient grammar core. Planning and the canonical realizer
+# mutation implementation may manipulate fixed-capacity rhythm value objects
+# only; storage/runtime ownership stays with later callers.
 for forbidden_include in (
     '#include "../../../scenes.h"',
     '#include "../../dsp/miniacid_engine.h"',
@@ -57,6 +59,13 @@ require("std::vector" not in COMBINED and
         "malloc(" not in COMBINED and
         "new " not in COMBINED,
         "Stage 6 introduced heap-owning runtime structures")
+
+require(
+    "dropOneStructuralEvent" not in PLANNER and
+    "addGhostCue" not in PLANNER and
+    "applyRhythmBarFunctionMutation(" in PLANNER,
+    "Stage 6 planner retained a competing mutation executor",
+)
 
 # The production Stage 5 bridge remains one-bar. Stage 6 must not silently turn
 # normal GENRE MATERIALIZE into multi-bar storage writes.
