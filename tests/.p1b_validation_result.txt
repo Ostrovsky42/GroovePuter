@@ -1,4 +1,4 @@
-HEAD=8c4bd27b06d84f7ca6567dcf4db854eec5e881af
+HEAD=bcea4b250ed6e59b090353c4564006fbc2c16969
 STEP1=focused
 FOCUSED_BUILD_EXIT=0
 0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
@@ -6,4 +6,9 @@ FOCUSED_TEST_EXIT=0
 STEP2=source-contract
 0.9.9-P1b Phrase KEEP / Undo ownership source contracts: PASS
 SOURCE_EXIT=0
+STEP3=cumulative-p1a
+0.9.9-P1a pattern lease owner: PASS
+0.9.9-P1a cumulative source contracts: PASS
+0.9.9-P1a focused suite: PASS
+P1A_EXIT=0
 RESULT=PASS
