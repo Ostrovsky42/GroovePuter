@@ -6,6 +6,7 @@ on:
       - agent/20260823-08-0.9.9-p1b-phrase-keep-undo
     paths-ignore:
       - tests/.p1b_focused_result.txt
+      - tests/.p1b_validation_result.txt
   pull_request:
   workflow_dispatch:
 
@@ -13,114 +14,61 @@ permissions:
   contents: write
 
 jobs:
-  focused-p1b:
+  p1b-pre-pr-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Apply audited Scene JSON persistence fix
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          scenes_h = Path("scenes.h")
-          text = scenes_h.read_text(encoding="utf-8")
-          include_old = '#include "src/phrase/phrase_persistence.h"\n#include "json_evented.h"'
-          include_new = '#include "src/phrase/phrase_persistence.h"\n#include "src/state/undo_owner.h"\n#include "json_evented.h"'
-          if include_new not in text:
-              assert include_old in text
-              text = text.replace(include_old, include_new, 1)
-
-          anchor = (
-              "bool SceneManager::writeSceneJson(TWriter&& writer) const {\n"
-              "  using WriterType = typename std::remove_reference<TWriter>::type;\n"
-              "  WriterType& out = writer;\n"
-          )
-          injected = anchor + (
-              "\n"
-              "  const Scene* persistentScene = scene_;\n"
-              "  Scene& persistenceView = sceneTransactionScratch();\n"
-              "  if (GroovePuterUndo::undoOwner().hasLifecycle()) {\n"
-              "    persistenceView = *scene_;\n"
-              "    GroovePuterUndo::undoOwner().sanitizeForPersistence(&persistenceView);\n"
-              "    persistentScene = &persistenceView;\n"
-              "  }\n"
-          )
-          if "const Scene* persistentScene = scene_;" not in text:
-              assert anchor in text
-              text = text.replace(anchor, injected, 1)
-
-          replacements = {
-              "writeDrumBanks(scene_->drumBanks)": "writeDrumBanks(persistentScene->drumBanks)",
-              "writeSynthBanks(scene_->synthABanks)": "writeSynthBanks(persistentScene->synthABanks)",
-              "writeSynthBanks(scene_->synthBBanks)": "writeSynthBanks(persistentScene->synthBBanks)",
-          }
-          for old, new in replacements.items():
-              if new not in text:
-                  assert text.count(old) == 1, (old, text.count(old))
-                  text = text.replace(old, new, 1)
-          scenes_h.write_text(text, encoding="utf-8")
-
-          scenes_cpp = Path("scenes.cpp")
-          cpp = scenes_cpp.read_text(encoding="utf-8")
-          include_old = '#include "src/phrase/phrase_core.h"\n'
-          include_new = '#include "src/phrase/phrase_core.h"\n#include "src/state/undo_owner.h"\n'
-          if include_new not in cpp:
-              assert include_old in cpp
-              cpp = cpp.replace(include_old, include_new, 1)
-
-          guarded = "  GroovePuterUndo::undoOwner().clear();\n  *scene_ = *loaded;"
-          if cpp.count(guarded) != 2:
-              assert cpp.count("  *scene_ = *loaded;") == 2
-              cpp = cpp.replace("  *scene_ = *loaded;", guarded)
-          scenes_cpp.write_text(cpp, encoding="utf-8")
-          PY
-
-      - name: Build and run focused P1b ownership test
-        id: focused
+      - name: Focused P1b ownership test then source contract
         shell: bash
         run: |
           set +e
           mkdir -p build/host-tests
+          : > tests/.p1b_validation_result.txt
           {
             echo "HEAD=$(git rev-parse HEAD)"
-            echo "COMMAND=g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. tests/test_0_9_9_p1b_phrase_keep_undo.cpp"
+            echo "STEP1=focused"
             g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
               tests/test_0_9_9_p1b_phrase_keep_undo.cpp \
               -o build/host-tests/test_0_9_9_p1b_phrase_keep_undo
             build_status=$?
-            echo "BUILD_EXIT=${build_status}"
+            echo "FOCUSED_BUILD_EXIT=${build_status}"
             if [ "${build_status}" -eq 0 ]; then
               build/host-tests/test_0_9_9_p1b_phrase_keep_undo
-              test_status=$?
+              focused_status=$?
             else
-              test_status=125
+              focused_status=125
             fi
-            echo "TEST_EXIT=${test_status}"
-            if [ "${build_status}" -eq 0 ] && [ "${test_status}" -eq 0 ]; then
+            echo "FOCUSED_TEST_EXIT=${focused_status}"
+
+            echo "STEP2=source-contract"
+            python3 tests/test_0_9_9_p1b_phrase_keep_undo_source.py
+            source_status=$?
+            echo "SOURCE_EXIT=${source_status}"
+
+            if [ "${build_status}" -eq 0 ] && \
+               [ "${focused_status}" -eq 0 ] && \
+               [ "${source_status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
             fi
-          } > tests/.p1b_focused_result.txt 2>&1
-          cat tests/.p1b_focused_result.txt
+          } >> tests/.p1b_validation_result.txt 2>&1
+          cat tests/.p1b_validation_result.txt
 
-      - name: Publish audited patch and focused result
+      - name: Publish pre-PR validation result
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scenes.h scenes.cpp tests/.p1b_focused_result.txt
-          if git diff --cached --quiet; then
-            exit 0
+          git add tests/.p1b_validation_result.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "test(0.9.9-p1b): record pre-PR validation [skip ci]"
+            git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
           fi
-          git commit -m "fix(0.9.9-p1b): sanitize project persistence [skip ci]"
-          git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Enforce focused result
+      - name: Enforce pre-PR validation
         shell: bash
-        run: |
-          grep -q '^RESULT=PASS$' tests/.p1b_focused_result.txt
+        run: grep -q '^RESULT=PASS$' tests/.p1b_validation_result.txt
