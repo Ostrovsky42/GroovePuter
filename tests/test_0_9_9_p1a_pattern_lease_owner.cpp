@@ -45,6 +45,7 @@ using PhrasePatternLease::AcquireResult;
 using PhrasePatternLease::LeaseStatus;
 using PhrasePatternLease::PatternLease;
 using PhrasePatternLease::PatternLeaseOwner;
+using PhrasePatternLease::PreparedPersistentTransfer;
 
 constexpr int kPage = 0;
 
@@ -69,11 +70,15 @@ void writeCandidateMaterial(Scene& scene, int globalPattern) {
 }
 
 bool candidateMaterialPresent(const Scene& scene, int globalPattern) {
-  const PatternAddress address = patternAddressFromGlobal(globalPattern);
-  assert(address.valid());
-  return !PhraseGenerator::localSlotIsEmpty(
-      scene,
-      address.bank * Bank<SynthPattern>::kPatterns + address.slot);
+  const int localSlot =
+      SongPatternMaterializer::localSlotFromGlobalPattern(globalPattern);
+  assert(localSlot >= 0);
+  return !SongPatternMaterializer::slotContentIsEmpty(
+             scene, SongTrack::SynthA, localSlot) ||
+         !SongPatternMaterializer::slotContentIsEmpty(
+             scene, SongTrack::SynthB, localSlot) ||
+         !SongPatternMaterializer::slotContentIsEmpty(
+             scene, SongTrack::Drums, localSlot);
 }
 
 void fillLocalSlot(Scene& scene, int localSlot) {
@@ -125,6 +130,7 @@ void testAcquireSupportedLengths() {
     assert(!acquired.reusedExistingLease());
     assert(lease.isActive());
     assert(lease.count == bars);
+    assert(lease.trackMask == SongPatternMaterializer::kEditableTrackMask);
     assert(owner.activeLeaseCount() == 1);
     assert(owner.discard(scene, kPage, lease) == LeaseStatus::Ok);
   }
@@ -258,10 +264,15 @@ void testTransferMakesBackingPermanent() {
   assert(owner.acquire(scene, kPage, 1, lease, 0));
   const int committedPattern = lease.globalPattern[0];
   writeCandidateMaterial(scene, committedPattern);
+
+  PreparedPersistentTransfer prepared{};
+  assert(owner.preparePersistentTransfer(scene, kPage, lease, prepared) ==
+         LeaseStatus::Ok);
+
+  // Canonical persistent mutation occurs between prepare and complete.
   referenceInPhrase(scene, committedPattern, PhraseCore::kAllTracks);
 
-  assert(owner.transferCommittedOwnership(scene, kPage, lease) ==
-         LeaseStatus::Ok);
+  assert(owner.completePersistentTransfer(lease, prepared) == LeaseStatus::Ok);
   assert(!lease.isActive());
   assert(owner.activeLeaseCount() == 0);
   assert(candidateMaterialPresent(scene, committedPattern));
@@ -279,12 +290,16 @@ void testTransferRejectsIncompleteOwnership() {
   assert(owner.acquire(scene, kPage, 1, lease, 0));
   const int candidate = lease.globalPattern[0];
   writeCandidateMaterial(scene, candidate);
+
+  // prepare must happen before any canonical persistent mutation.
   referenceInPhrase(scene, candidate, PhraseCore::kTrackSynthA);
 
-  assert(owner.transferCommittedOwnership(scene, kPage, lease) ==
-         LeaseStatus::IncompletePersistentOwnership);
+  PreparedPersistentTransfer prepared{};
+  assert(owner.preparePersistentTransfer(scene, kPage, lease, prepared) ==
+         LeaseStatus::PersistentReference);
   assert(lease.isActive());
   assert(owner.activeLeaseCount() == 1);
+  assert(!prepared.isPrepared());
 }
 
 void testDiscardRejectsReferencedBacking() {
