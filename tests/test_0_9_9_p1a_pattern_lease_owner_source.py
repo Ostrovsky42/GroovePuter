@@ -47,17 +47,19 @@ for forbidden in (
 ):
     assert forbidden not in header, f"forbidden P1a owner dependency: {forbidden}"
 
-# Storage lifecycle only: no current Phrase UI wiring and no persistent schema.
+# P1a lease remains runtime-only: P1b composes it behind a production service,
+# but the Phrase page itself still does not own or serialize the lease.
 assert "pattern_lease_owner" not in phrase_page
 assert "PatternLease" not in scenes
 assert "PatternLease" not in phrase_persistence
 
-# Raw page persistence means discard remains responsible for clearing owned
-# physical bytes before temporary ownership is released.
+# Raw page persistence still writes all three physical banks. P1b legitimately
+# routes those writes through a detached persistence view so redo-only runtime
+# backing is not serialized; this does not weaken P1a discard ownership.
 for token in (
-    "writeAll(file, scene.synthABanks, sizeof(scene.synthABanks))",
-    "writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks))",
-    "writeAll(file, scene.drumBanks, sizeof(scene.drumBanks))",
+    "writeAll(file, persistentScene->synthABanks",
+    "writeAll(file, persistentScene->synthBBanks",
+    "writeAll(file, persistentScene->drumBanks",
 ):
     assert token in paging, f"paging persistence audit changed: {token}"
 
