@@ -1,0 +1,85 @@
+name: F08 one-shot baseline finalizer
+
+on:
+  push:
+    branches:
+      - agent/20260823-02-f08-finalization-helper
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact F08 branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/20260822-04-0.9.9-f08-harmonic-rhythm
+          fetch-depth: 0
+
+      - name: Fail closed on ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "fdad42cd3411134d9c9f1ebe9673f7cbc1aac9d8"
+          test "$(git merge-base HEAD 78bc8394ede5e6d81464cff5878c29bbf754c555)" = "78bc8394ede5e6d81464cff5878c29bbf754c555"
+          test -z "$(git status --short)"
+
+      - name: Regenerate and reclassify accepted Stage15 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/host-tests /tmp/f08-finalize
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal \
+            > /tmp/f08-finalize/stage15_tonal_enabled_f08_actual.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal-review \
+            > /tmp/f08-finalize/stage15_tonal_enabled_f08_review.tsv
+          test "$(wc -l < /tmp/f08-finalize/stage15_tonal_enabled_f08_actual.tsv)" -eq 257
+          echo "bbc1544bf289c7ef7f062997bde3f0b8dae3a317ace54b0998cef6649872ac3f  /tmp/f08-finalize/stage15_tonal_enabled_f08_actual.tsv" | sha256sum -c -
+          base64 -d tests/data/stage15_tonal_enabled_f13_baseline.tsv.gz.b64 \
+            | gzip -dc \
+            > /tmp/f08-finalize/stage15_tonal_enabled_f13_expected.tsv
+          python3 tests/classify_0_9_9_f08_stage15_drift.py \
+            /tmp/f08-finalize/stage15_tonal_enabled_f13_expected.tsv \
+            /tmp/f08-finalize/stage15_tonal_enabled_f08_review.tsv \
+            --expect-changed 93 \
+            --report /tmp/f08-finalize/stage15_f08_classification.md
+
+      - name: Install accepted golden and hardware decision record
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/f08-finalize/stage15_tonal_enabled_f08_actual.tsv \
+            tests/data/stage15_tonal_enabled_baseline.tsv
+          mkdir -p docs/audits
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Ostrovsky42/GroovePuter/git/blobs/623ae7073e754a72c4479467036e7aa1cb84eb40 \
+            | jq -r .content \
+            | base64 -d \
+            > docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md
+          echo "4b2a1addd384d94ae7e2709611fe0822f6d9a4bf9da28c6797baee231f9442c4  docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md" | sha256sum -c -
+          echo "bbc1544bf289c7ef7f062997bde3f0b8dae3a317ace54b0998cef6649872ac3f  tests/data/stage15_tonal_enabled_baseline.tsv" | sha256sum -c -
+
+      - name: Verify finalization diff and commit once
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md \
+            tests/data/stage15_tonal_enabled_baseline.tsv | sort)"
+          printf 'Finalization diff:\n%s\n' "$actual"
+          test "$actual" = "$expected"
+          test -z "$(git diff --name-only -- src)"
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md \
+            tests/data/stage15_tonal_enabled_baseline.tsv
+          git commit -m "test(0.9.9-f08): accept hardware-reviewed harmonic rhythm baseline"
+          git push origin HEAD:agent/20260822-04-0.9.9-f08-harmonic-rhythm
