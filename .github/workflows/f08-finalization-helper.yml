@@ -69,6 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git add -N docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md
           actual="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
             docs/audits/F08_HARDWARE_ACCEPTANCE_2026-08-23.md \
