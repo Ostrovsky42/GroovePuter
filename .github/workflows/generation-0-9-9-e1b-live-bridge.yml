@@ -1,0 +1,33 @@
+name: Generation 0.9.9 E1b live bridge characterization
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e1-live-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run existing E1 Stage 6.1 characterization
+        run: bash tests/run_rhythm_stage6_1_tests.sh
+
+      - name: Run existing E1 phrase characterization
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_phrase_stage12_tests.sh
+
+      - name: Install SDL integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run real MiniAcid live-bridge characterization
+        run: make -C platform_sdl e1-live-bridge-characterization CXX=g++

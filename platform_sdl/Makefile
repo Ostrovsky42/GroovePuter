@@ -130,6 +130,9 @@ SOURCES := \
 	sdl_display.cpp \
 	scene_storage_sdl.cpp
 
+E1_LIVE_BRIDGE_TARGET := e1_live_bridge_characterization
+E1_LIVE_BRIDGE_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_e1_live_bridge_runtime.cpp
+
 ROOT := $(abspath ..)
 DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
@@ -143,6 +146,12 @@ all: $(TARGET)
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+$(E1_LIVE_BRIDGE_TARGET): $(E1_LIVE_BRIDGE_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+e1-live-bridge-characterization: $(E1_LIVE_BRIDGE_TARGET)
+	./$(E1_LIVE_BRIDGE_TARGET)
 
 wasm: $(SOURCES)
 	mkdir -p $(ROOT)/web
@@ -177,7 +186,7 @@ bundle: $(TARGET)
 	@echo "You can now run: open $(APP_BUNDLE)"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(E1_LIVE_BRIDGE_TARGET)
 	rm -rf $(APP_BUNDLE)
 
-.PHONY: all clean wasm bundle
+.PHONY: all clean wasm bundle e1-live-bridge-characterization
