@@ -1,0 +1,19 @@
+name: 0.9.9-P1a2 pattern lease generalization
+
+on:
+  push:
+    branches:
+      - agent/20260823-06-0.9.9-p1a2-pattern-lease-generalization
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  p1a2-pattern-lease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run P1a2 focused and cumulative lease contracts
+        run: bash tests/run_0_9_9_p1a2_tests.sh

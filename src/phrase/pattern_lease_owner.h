@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "src/dsp/phrase_generator.h"
+#include "src/dsp/song_pattern_materializer.h"
 #include "src/pattern/pattern_address.h"
 
 namespace PhrasePatternLease {
@@ -13,28 +13,46 @@ constexpr uint8_t kLeaseOwnerCapacity = 2;
 constexpr uint8_t kInvalidOwnerSlot = 0xFFu;
 constexpr uint8_t kInvalidPage = 0xFFu;
 
+static_assert(SongPatternMaterializer::kSynthAMask == PhraseCore::kTrackSynthA,
+              "Pattern lease track-mask contract drifted for Synth A");
+static_assert(SongPatternMaterializer::kSynthBMask == PhraseCore::kTrackSynthB,
+              "Pattern lease track-mask contract drifted for Synth B");
+static_assert(SongPatternMaterializer::kDrumsMask == PhraseCore::kTrackDrums,
+              "Pattern lease track-mask contract drifted for Drums");
+static_assert(SongPatternMaterializer::kEditableTrackMask ==
+                  PhraseCore::kAllTracks,
+              "Pattern lease all-track mask contract drifted");
+
 enum class LeaseStatus : uint8_t {
   Ok = 0,
   UnsupportedLength,
   InvalidPage,
+  InvalidTrackMask,
   OwnerFull,
   Exhausted,
   InvalidLease,
   ShapeMismatch,
   PageMismatch,
   PersistentReference,
-  IncompletePersistentOwnership,
+  InvalidTransfer,
 };
 
 struct PatternLease {
   int16_t globalPattern[kMaxLeasePatterns] = {-1, -1, -1, -1};
   uint8_t count = 0;
   uint8_t pageIndex = kInvalidPage;
+  uint8_t trackMask = 0;
   uint8_t ownerSlot = kInvalidOwnerSlot;
   uint8_t generation = 0;
   uint8_t active = 0;
 
   bool isActive() const { return active != 0; }
+};
+
+struct PreparedPersistentTransfer {
+  PatternLease lease{};
+
+  bool isPrepared() const { return lease.isActive(); }
 };
 
 struct AcquireResult {
@@ -47,9 +65,24 @@ struct AcquireResult {
 
 class PatternLeaseOwner {
  public:
+  // P1a compatibility: Phrase audition owns all aligned editable tracks.
   AcquireResult acquire(const Scene& scene,
                         int pageIndex,
                         uint8_t count,
+                        PatternLease& lease,
+                        int preferredLocalSlot = 0) {
+    return acquire(scene,
+                   pageIndex,
+                   count,
+                   SongPatternMaterializer::kEditableTrackMask,
+                   lease,
+                   preferredLocalSlot);
+  }
+
+  AcquireResult acquire(const Scene& scene,
+                        int pageIndex,
+                        uint8_t count,
+                        uint8_t trackMask,
                         PatternLease& lease,
                         int preferredLocalSlot = 0) {
     if (!isSupportedLeaseCount(count)) {
@@ -58,17 +91,21 @@ class PatternLeaseOwner {
     if (pageIndex < 0 || pageIndex >= kMaxPages) {
       return {LeaseStatus::InvalidPage, 0};
     }
+    if (!isValidTrackMask(trackMask)) {
+      return {LeaseStatus::InvalidTrackMask, 0};
+    }
 
     if (lease.isActive()) {
       const int ownerSlot = validateActiveLease(lease);
       if (ownerSlot < 0) return {LeaseStatus::InvalidLease, 0};
       const PatternLease& current = records_[ownerSlot];
-      if (current.pageIndex != pageIndex || current.count != count) {
+      if (current.pageIndex != pageIndex || current.count != count ||
+          current.trackMask != trackMask) {
         return {LeaseStatus::ShapeMismatch, 0};
       }
       for (int i = 0; i < current.count; ++i) {
-        if (PhraseGenerator::globalPatternIsReferenced(
-                scene, current.globalPattern[i])) {
+        if (requestedTracksAreReferenced(
+                scene, current.globalPattern[i], current.trackMask)) {
           return {LeaseStatus::PersistentReference, 0};
         }
       }
@@ -82,6 +119,7 @@ class PatternLeaseOwner {
     PatternLease candidate{};
     candidate.count = count;
     candidate.pageIndex = static_cast<uint8_t>(pageIndex);
+    candidate.trackMask = trackMask;
 
     int start = preferredLocalSlot;
     if (start < 0 || start >= kPatternsPerPage) start = 0;
@@ -92,9 +130,9 @@ class PatternLeaseOwner {
       const int index = localSlot % Bank<SynthPattern>::kPatterns;
       const int globalPattern = songPatternFromPageBankIndex(
           pageIndex, bank, index);
-      if (isLeased(globalPattern)) continue;
-      if (!PhraseGenerator::localSlotIsSafeForPhrase(
-              scene, pageIndex, localSlot)) {
+      if (isLeased(globalPattern, trackMask)) continue;
+      if (!localSlotIsSafeForTrackMask(
+              scene, pageIndex, localSlot, trackMask)) {
         continue;
       }
       candidate.globalPattern[found++] =
@@ -127,17 +165,14 @@ class PatternLeaseOwner {
       if (!addresses[i].valid() || addresses[i].page != current.pageIndex) {
         return LeaseStatus::InvalidLease;
       }
-      if (PhraseGenerator::globalPatternIsReferenced(
-              scene, current.globalPattern[i])) {
+      if (requestedTracksAreReferenced(
+              scene, current.globalPattern[i], current.trackMask)) {
         return LeaseStatus::PersistentReference;
       }
     }
 
     for (int i = 0; i < current.count; ++i) {
-      const PatternAddress& address = addresses[i];
-      scene.synthABanks[address.bank].patterns[address.slot] = SynthPattern{};
-      scene.synthBBanks[address.bank].patterns[address.slot] = SynthPattern{};
-      scene.drumBanks[address.bank].patterns[address.slot] = DrumPatternSet{};
+      clearOwnedTracks(scene, addresses[i], current.trackMask);
     }
 
     deactivate(ownerSlot);
@@ -145,9 +180,11 @@ class PatternLeaseOwner {
     return LeaseStatus::Ok;
   }
 
-  LeaseStatus transferCommittedOwnership(const Scene& scene,
-                                         int currentPageIndex,
-                                         PatternLease& lease) {
+  LeaseStatus preparePersistentTransfer(
+      const Scene& scene,
+      int currentPageIndex,
+      const PatternLease& lease,
+      PreparedPersistentTransfer& prepared) const {
     const int ownerSlot = validateActiveLease(lease);
     if (ownerSlot < 0) return LeaseStatus::InvalidLease;
     const PatternLease& current = records_[ownerSlot];
@@ -161,12 +198,34 @@ class PatternLeaseOwner {
       if (!address.valid() || address.page != current.pageIndex) {
         return LeaseStatus::InvalidLease;
       }
-      if (!hasCompletePersistentOwnership(
-              scene, current.globalPattern[i])) {
-        return LeaseStatus::IncompletePersistentOwnership;
+      // prepare must precede the canonical persistent mutation. A requested
+      // track that is already referenced means the transaction is out of order.
+      if (requestedTracksAreReferenced(
+              scene, current.globalPattern[i], current.trackMask)) {
+        return LeaseStatus::PersistentReference;
       }
     }
 
+    PreparedPersistentTransfer candidate{};
+    candidate.lease = current;
+    prepared = candidate;
+    return LeaseStatus::Ok;
+  }
+
+  LeaseStatus completePersistentTransfer(
+      PatternLease& lease,
+      const PreparedPersistentTransfer& prepared) {
+    if (!prepared.isPrepared()) return LeaseStatus::InvalidTransfer;
+
+    const int ownerSlot = validateActiveLease(lease);
+    if (ownerSlot < 0) return LeaseStatus::InvalidLease;
+    if (!sameLease(records_[ownerSlot], prepared.lease)) {
+      return LeaseStatus::InvalidTransfer;
+    }
+
+    // Deliberately no Scene/persistence validation here. Once prepare has
+    // succeeded and the canonical owner reports commit success, completion is
+    // bookkeeping-only and cannot fail because of post-commit Scene state.
     deactivate(ownerSlot);
     lease = PatternLease{};
     return LeaseStatus::Ok;
@@ -177,6 +236,21 @@ class PatternLeaseOwner {
     for (int ownerSlot = 0; ownerSlot < kLeaseOwnerCapacity; ++ownerSlot) {
       const PatternLease& lease = records_[ownerSlot];
       if (!lease.isActive()) continue;
+      for (int i = 0; i < lease.count; ++i) {
+        if (lease.globalPattern[i] == globalPattern) return true;
+      }
+    }
+    return false;
+  }
+
+  bool isLeased(int globalPattern, uint8_t trackMask) const {
+    if (globalPattern < 0 || globalPattern >= kMaxGlobalPatterns ||
+        !isValidTrackMask(trackMask)) {
+      return false;
+    }
+    for (int ownerSlot = 0; ownerSlot < kLeaseOwnerCapacity; ++ownerSlot) {
+      const PatternLease& lease = records_[ownerSlot];
+      if (!lease.isActive() || (lease.trackMask & trackMask) == 0) continue;
       for (int i = 0; i < lease.count; ++i) {
         if (lease.globalPattern[i] == globalPattern) return true;
       }
@@ -197,22 +271,89 @@ class PatternLeaseOwner {
     return count == 1 || count == 2 || count == 4;
   }
 
+  static bool isValidTrackMask(uint8_t trackMask) {
+    return PhraseCore::isValidTrackMask(trackMask) &&
+           (trackMask & ~SongPatternMaterializer::kEditableTrackMask) == 0;
+  }
+
   static uint8_t nextGeneration(uint8_t current) {
     ++current;
     return current == 0 ? 1 : current;
   }
 
-  static bool hasCompletePersistentOwnership(const Scene& scene,
-                                             int globalPattern) {
+  static bool requestedTracksAreReferenced(const Scene& scene,
+                                           int globalPattern,
+                                           uint8_t trackMask) {
     for (int trackIndex = 0;
          trackIndex < SongPatternMaterializer::kEditableTrackCount;
          ++trackIndex) {
+      const uint8_t trackBit = static_cast<uint8_t>(1u << trackIndex);
+      if ((trackMask & trackBit) == 0) continue;
       const SongTrack track =
           SongPatternMaterializer::editableTrackForIndex(trackIndex);
-      if (SongPatternMaterializer::globalPatternReferenceCount(
-              scene, track, globalPattern) <= 0) {
+      if (SongPatternMaterializer::globalPatternIsReferenced(
+              scene, track, globalPattern)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool localSlotIsSafeForTrackMask(const Scene& scene,
+                                          int pageIndex,
+                                          int localSlot,
+                                          uint8_t trackMask) {
+    if (pageIndex < 0 || pageIndex >= kMaxPages ||
+        localSlot < 0 || localSlot >= kPatternsPerPage ||
+        !isValidTrackMask(trackMask)) {
+      return false;
+    }
+
+    const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+    const int index = localSlot % Bank<SynthPattern>::kPatterns;
+    const int globalPattern = songPatternFromPageBankIndex(
+        pageIndex, bank, index);
+
+    for (int trackIndex = 0;
+         trackIndex < SongPatternMaterializer::kEditableTrackCount;
+         ++trackIndex) {
+      const uint8_t trackBit = static_cast<uint8_t>(1u << trackIndex);
+      if ((trackMask & trackBit) == 0) continue;
+      const SongTrack track =
+          SongPatternMaterializer::editableTrackForIndex(trackIndex);
+      if (!SongPatternMaterializer::slotContentIsEmpty(
+              scene, track, localSlot) ||
+          SongPatternMaterializer::globalPatternIsReferenced(
+              scene, track, globalPattern)) {
         return false;
       }
+    }
+    return true;
+  }
+
+  static void clearOwnedTracks(Scene& scene,
+                               const PatternAddress& address,
+                               uint8_t trackMask) {
+    if ((trackMask & SongPatternMaterializer::kSynthAMask) != 0) {
+      scene.synthABanks[address.bank].patterns[address.slot] = SynthPattern{};
+    }
+    if ((trackMask & SongPatternMaterializer::kSynthBMask) != 0) {
+      scene.synthBBanks[address.bank].patterns[address.slot] = SynthPattern{};
+    }
+    if ((trackMask & SongPatternMaterializer::kDrumsMask) != 0) {
+      scene.drumBanks[address.bank].patterns[address.slot] = DrumPatternSet{};
+    }
+  }
+
+  static bool sameLease(const PatternLease& left,
+                        const PatternLease& right) {
+    if (left.count != right.count || left.pageIndex != right.pageIndex ||
+        left.trackMask != right.trackMask || left.ownerSlot != right.ownerSlot ||
+        left.generation != right.generation || left.active != right.active) {
+      return false;
+    }
+    for (int i = 0; i < kMaxLeasePatterns; ++i) {
+      if (left.globalPattern[i] != right.globalPattern[i]) return false;
     }
     return true;
   }
@@ -226,19 +367,12 @@ class PatternLeaseOwner {
 
   int validateActiveLease(const PatternLease& lease) const {
     if (!lease.isActive() || lease.ownerSlot >= kLeaseOwnerCapacity ||
-        !isSupportedLeaseCount(lease.count) || lease.pageIndex >= kMaxPages) {
+        !isSupportedLeaseCount(lease.count) || lease.pageIndex >= kMaxPages ||
+        !isValidTrackMask(lease.trackMask)) {
       return -1;
     }
     const PatternLease& current = records_[lease.ownerSlot];
-    if (!current.isActive() || current.count != lease.count ||
-        current.pageIndex != lease.pageIndex ||
-        current.generation != lease.generation) {
-      return -1;
-    }
-    for (int i = 0; i < current.count; ++i) {
-      if (current.globalPattern[i] != lease.globalPattern[i]) return -1;
-    }
-    return lease.ownerSlot;
+    return sameLease(current, lease) ? lease.ownerSlot : -1;
   }
 
   void deactivate(int ownerSlot) {
@@ -260,25 +394,29 @@ inline const char* statusText(LeaseStatus status) {
     case LeaseStatus::Ok: return "OK";
     case LeaseStatus::UnsupportedLength: return "Use 1/2/4 bars";
     case LeaseStatus::InvalidPage: return "Pattern page unavailable";
+    case LeaseStatus::InvalidTrackMask: return "Pattern track mask unavailable";
     case LeaseStatus::OwnerFull: return "Lease owner busy";
     case LeaseStatus::Exhausted: return "No safe pattern addresses";
     case LeaseStatus::InvalidLease: return "Invalid pattern lease";
     case LeaseStatus::ShapeMismatch: return "Active lease shape changed";
     case LeaseStatus::PageMismatch: return "Return to leased pattern page";
     case LeaseStatus::PersistentReference: return "Lease became referenced";
-    case LeaseStatus::IncompletePersistentOwnership:
-      return "Committed backing lacks aligned references";
+    case LeaseStatus::InvalidTransfer: return "Invalid prepared transfer";
   }
   return "Pattern lease error";
 }
 
 static_assert(sizeof(PatternLease) == 14,
-              "P1a PatternLease fixed budget changed");
+              "P1a2 PatternLease fixed budget changed");
+static_assert(sizeof(PreparedPersistentTransfer) == 14,
+              "P1a2 transfer token fixed budget changed");
 static_assert(sizeof(PatternLeaseOwner) == 28,
-              "P1a PatternLeaseOwner fixed budget changed");
+              "P1a2 PatternLeaseOwner fixed budget changed");
 static_assert(std::is_trivially_copyable<PatternLease>::value,
-              "P1a PatternLease must remain a fixed value");
+              "P1a2 PatternLease must remain a fixed value");
+static_assert(std::is_trivially_copyable<PreparedPersistentTransfer>::value,
+              "P1a2 transfer token must remain a fixed value");
 static_assert(std::is_trivially_copyable<PatternLeaseOwner>::value,
-              "P1a PatternLeaseOwner must remain fixed-capacity state");
+              "P1a2 PatternLeaseOwner must remain fixed-capacity state");
 
 }  // namespace PhrasePatternLease

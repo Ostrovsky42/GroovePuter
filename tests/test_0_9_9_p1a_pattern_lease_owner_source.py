@@ -21,17 +21,17 @@ required_header_tokens = [
     "constexpr uint8_t kMaxLeasePatterns = 4;",
     "constexpr uint8_t kLeaseOwnerCapacity = 2;",
     "return count == 1 || count == 2 || count == 4;",
-    "PhraseGenerator::localSlotIsSafeForPhrase",
-    "PhraseGenerator::globalPatternIsReferenced",
-    "SongPatternMaterializer::globalPatternReferenceCount",
-    "transferCommittedOwnership",
-    "SynthPattern{}",
-    "DrumPatternSet{}",
+    "SongPatternMaterializer::kEditableTrackMask",
+    "SongPatternMaterializer::slotContentIsEmpty",
+    "SongPatternMaterializer::globalPatternIsReferenced",
+    "preparePersistentTransfer",
+    "completePersistentTransfer",
+    "clearOwnedTracks",
     "static_assert(sizeof(PatternLease) == 14",
     "static_assert(sizeof(PatternLeaseOwner) == 28",
 ]
 for token in required_header_tokens:
-    assert token in header, f"missing P1a contract token: {token}"
+    assert token in header, f"missing cumulative P1a contract token: {token}"
 
 for forbidden in (
     "std::vector",
@@ -43,17 +43,17 @@ for forbidden in (
     "new (",
     "evolveMultiBarPhrase",
     "deriveReferenceView",
+    "transferCommittedOwnership",
 ):
     assert forbidden not in header, f"forbidden P1a owner dependency: {forbidden}"
 
-# P1a is storage lifecycle only. It must not wire the owner into the current
-# Phrase screen or alter the persistent Scene/Phrase schemas.
+# Storage lifecycle only: no current Phrase UI wiring and no persistent schema.
 assert "pattern_lease_owner" not in phrase_page
 assert "PatternLease" not in scenes
 assert "PatternLease" not in phrase_persistence
 
-# Current project page persistence writes the entire physical bank payload.
-# This is why discard must clear physical material before releasing ownership.
+# Raw page persistence means discard remains responsible for clearing owned
+# physical bytes before temporary ownership is released.
 for token in (
     "writeAll(file, scene.synthABanks, sizeof(scene.synthABanks))",
     "writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks))",
@@ -71,10 +71,11 @@ required_test_tokens = [
     "testDiscardClearsAndReturnsAddress",
     "testActiveLeaseReuseDoesNotGrowPool",
     "testTransferMakesBackingPermanent",
+    "testTransferRejectsIncompleteOwnership",
     "testInvalidAndDoubleReleaseSafety",
     "testLeaseOwnerDoesNotAllocateHeap",
 ]
 for token in required_test_tokens:
-    assert token in test, f"missing permanent P1a test: {token}"
+    assert token in test, f"missing permanent cumulative P1a test: {token}"
 
-print("0.9.9-P1a source contracts: PASS")
+print("0.9.9-P1a cumulative source contracts: PASS")
