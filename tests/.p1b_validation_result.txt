@@ -1,4 +1,4 @@
-HEAD=b83a310c83b49b3a4a878b53effe22bbccf1bd9d
+HEAD=0009ad170e37d9c0564457afcf4e62f5b522a4d5
 STEP1=focused
 FOCUSED_BUILD_EXIT=0
 0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
@@ -19,4 +19,43 @@ STEP4=cumulative-p1a2
 0.9.9-P1a2 source contracts: PASS
 0.9.9-P1a2 focused + cumulative lease suite: PASS
 P1A2_EXIT=0
+STEP5=phrase-core-source
+Phrase Scene source regressions passed
+Phrase UI source regressions: PASS
+PHRASE_SCENE_SOURCE_EXIT=0
+PHRASE_UI_SOURCE_EXIT=0
+STEP5=phrase-core-host
+Phrase Core tests passed
+Phrase persistence/preview tests passed
+Phrase workspace PREPARE tests passed
+PHRASE_CORE_BUILD_EXIT=0
+PHRASE_CORE_RUN_EXIT=0
+PHRASE_PERSIST_BUILD_EXIT=0
+PHRASE_PERSIST_RUN_EXIT=0
+PHRASE_WORKSPACE_BUILD_EXIT=0
+PHRASE_WORKSPACE_RUN_EXIT=0
+PHRASE_PAGE_COMPILE_EXIT=0
+STEP5=undo-regressions
+0.9.8 R8 global Ctrl+Z contract: PASS
+0.9.9 R8/R9 Undo regression contracts: PASS
+0.9.9 phase-dependent Undo/Redo contract: PASS
+0.9.9 Drum G -> Ctrl+Z/Ctrl+Z single-revision history contract: PASS
+R9 one-slot toggle + fork invalidation owner=1552 bytes PASS
+0.9.9-D1 Pattern/Phrase liveness: PASS
+Phrase liveness tests passed
+0.9.9-D1 source ownership: PASS
+0.9.9 generation compatibility source regressions passed
+0.9.9-D1 focused suite: PASS
+0.9.9-D2 staging=11412 undo=1048 pending-meta=72 canonical-pending-slots=2
+0.9.9-C PendingGeneration=1480 bytes, fixed slots=2
+0.9.9-D2 live Phrase source contracts: OK
+0.9.9-C bounded activation source contracts: OK
+0.9.9-D2 focused suite: PASS
+0.9.9-D3 song-meta=80 C-slot=1480 C-slots=2 lifecycle=A-dead-B-clean
+0.9.9-D3 live Song source contracts: OK
+0.9.9-D2 live Phrase source contracts: OK
+0.9.9-C bounded activation source contracts: OK
+0.9.9-D3 focused suite: PASS
+0.9.9 R8/R9 Undo regression suite: PASS
+UNDO_REGRESSION_EXIT=0
 RESULT=PASS
