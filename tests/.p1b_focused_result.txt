@@ -1,13 +1,6 @@
-HEAD=dcefc2896ac162f7865d7c31d97c7f5177e3b6d9
+HEAD=c17cc7c9ac7130296d293727cff599b39d3c0894
 COMMAND=g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. tests/test_0_9_9_p1b_phrase_keep_undo.cpp
-In file included from ./src/state/undo_owner.h:11,
-                 from ./src/dsp/song_pattern_materializer.h:6,
-                 from ./src/phrase/pattern_lease_owner.h:6,
-                 from ./src/phrase/phrase_keep.h:5,
-                 from tests/test_0_9_9_p1b_phrase_keep_undo.cpp:1:
-./src/state/bounded_undo_slot.h:65:32: error: ‘kLifecycleFlag’ was not declared in this scope
-   65 |   static_assert(PayloadBytes < kLifecycleFlag,
-      |                                ^~~~~~~~~~~~~~
-BUILD_EXIT=1
-TEST_EXIT=125
-RESULT=FAIL
+BUILD_EXIT=0
+0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
+TEST_EXIT=0
+RESULT=PASS
