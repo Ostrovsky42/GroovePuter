@@ -41,15 +41,15 @@ struct BarEvolutionResult {
   RhythmPhrasePlan plan{};
 };
 
-// Stage 6 transient core. Selects a legal trajectory, realizes a fresh bounded
-// rhythm phrase and applies deterministic bar-function semantics in scratch
-// value objects only. It never chooses or mutates Scene/page/bank/pattern/Song/
-// PhraseCore storage destinations.
+// Compatibility/planning surface. It selects the existing legal trajectory and
+// derives deterministic per-bar coordinates, but actual RhythmPhrasePlan
+// mutation is delegated to the canonical rhythm_realizer owner. It never
+// chooses or mutates Scene/page/bank/pattern/Song/PhraseCore storage.
 BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request);
 
-// Final invariant check for evolved plans. This accepts BarFunction/trajectory
-// metadata while reusing the Stage 2 lane/protected-space/hard-relationship
-// contracts for the actual event topology.
+// Compatibility validation entry point retained for Stage 6 callers. There is
+// no second validator/mutation implementation here: this delegates directly to
+// rhythmMutationPlanValid() in the canonical rhythm_realizer owner.
 bool evolvedPlanValid(const RhythmArchetype& archetype,
                       const RhythmPhrasePlan& plan);
 

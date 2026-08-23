@@ -12,6 +12,7 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/rhythm/rhythm_catalog.cpp"
   "${ROOT_DIR}/src/generation/rhythm/relationship_resolver.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"
+  "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer_evolution.cpp"
   "${ROOT_DIR}/src/generation/rhythm/bar_evolution.cpp"
 )
 
