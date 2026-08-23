@@ -384,6 +384,7 @@ private:
   void refreshDrumCache(int drumVoiceIndex) const;
   const SynthPattern& activeSynthPattern(int synthIndex) const;
   const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
+  int effectivePatternRef(int position, SongTrack track) const;
   int songPatternIndexForTrack(SongTrack track) const;
   void applySongPositionSelection();
   void syncModeToVoices();

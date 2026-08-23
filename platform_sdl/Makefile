@@ -130,6 +130,9 @@ SOURCES := \
 	sdl_display.cpp \
 	scene_storage_sdl.cpp
 
+P1C_EFFECTIVE_PATTERN_REF_TARGET := p1c_effective_pattern_ref_test
+P1C_EFFECTIVE_PATTERN_REF_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_0_9_9_p1c_effective_pattern_ref.cpp
+
 ROOT := $(abspath ..)
 DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
@@ -143,6 +146,12 @@ all: $(TARGET)
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+$(P1C_EFFECTIVE_PATTERN_REF_TARGET): $(P1C_EFFECTIVE_PATTERN_REF_SOURCES)
+	$(CXX) $(CXXFLAGS) -DGROOVEPUTER_P1C_TEST_SEAM $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+p1c-effective-pattern-ref-test: $(P1C_EFFECTIVE_PATTERN_REF_TARGET)
+	./$(P1C_EFFECTIVE_PATTERN_REF_TARGET)
 
 wasm: $(SOURCES)
 	mkdir -p $(ROOT)/web
@@ -177,7 +186,7 @@ bundle: $(TARGET)
 	@echo "You can now run: open $(APP_BUNDLE)"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(P1C_EFFECTIVE_PATTERN_REF_TARGET)
 	rm -rf $(APP_BUNDLE)
 
-.PHONY: all clean wasm bundle
+.PHONY: all clean wasm bundle p1c-effective-pattern-ref-test
