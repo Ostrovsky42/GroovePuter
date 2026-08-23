@@ -1,0 +1,22 @@
+name: 0.9.9-P1b Phrase KEEP ownership
+
+on:
+  push:
+    branches:
+      - agent/20260823-08-0.9.9-p1b-phrase-keep-undo
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  focused-p1b:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build focused P1b ownership test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_0_9_9_p1b_phrase_keep_undo.cpp \
+            -o build/host-tests/test_0_9_9_p1b_phrase_keep_undo
+      - name: Run focused P1b ownership test
+        run: build/host-tests/test_0_9_9_p1b_phrase_keep_undo
