@@ -562,11 +562,23 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  HarmonicRhythmRequest harmonicRequest{};
+  harmonicRequest.progression = result.progressionId;
+  const HarmonicRhythmResult harmonic =
+      realizeHarmonicRhythm(harmonicRequest);
+  result.harmonicRhythmStatus = harmonic.status;
+  result.harmonicEventOnsets = harmonic.plan.onsets;
+  result.harmonicEventCount = harmonic.plan.eventCount;
+  if (harmonic.status != HarmonicRhythmStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+
   ChordProgressionRequest progressionRequest{};
   progressionRequest.requestedId = result.progressionId;
   progressionRequest.family = definition->family;
   progressionRequest.generation = chordRequest.generation;
-  progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);
+  progressionRequest.harmonicEventCount = harmonic.plan.eventCount;
   progressionRequest.phraseBars = 1;
   const ChordProgressionResult progression =
       realizeChordProgression(progressionRequest);
@@ -574,6 +586,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   result.progressionId = progression.plan.id;
   if (progression.status != ChordProgressionStatus::Ok &&
       progression.status != ChordProgressionStatus::ValidButStatic) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  if (progression.plan.eventCount != harmonic.plan.eventCount) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -729,7 +745,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   } else {
     const TonalMaterializationResult bassTonal = materializeRole(
         context, tonalProfile.bassRegister, progression.plan,
-        chord.plan.onsets, bassPitch.plan.onsets,
+        harmonic.plan.onsets, bassPitch.plan.onsets,
         bassPitch.plan.continuations, bassPitch.plan.tonalOffsets,
         bassPitch.plan.semitoneOffsetOrdinals);
     result.bassTonalStatus = bassTonal.status;
@@ -756,7 +772,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     if (result.synthBRole == SemanticSynthBRole::Chord) {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -781,7 +797,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, melodicPitch.plan.onsets,
+          harmonic.plan.onsets, melodicPitch.plan.onsets,
           melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;
@@ -808,7 +824,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -849,7 +865,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, admittedOnsets, admittedContinuations,
+          harmonic.plan.onsets, admittedOnsets, admittedContinuations,
           admittedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;

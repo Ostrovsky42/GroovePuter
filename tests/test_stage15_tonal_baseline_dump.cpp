@@ -118,13 +118,28 @@ const char* modeName(GenerativeMode mode) {
   }
 }
 
+uint8_t countBits(StepMask mask) {
+  uint8_t result = 0;
+  while (mask != 0) {
+    result = static_cast<uint8_t>(result + (mask & 1u));
+    mask = static_cast<StepMask>(mask >> 1u);
+  }
+  return result;
+}
+
 void printHash(uint64_t value) {
   std::cout << std::hex << std::setw(16) << std::setfill('0') << value << std::dec;
 }
 
+void printMask(StepMask value) {
+  std::cout << std::hex << std::setw(4) << std::setfill('0')
+            << static_cast<uint16_t>(value) << std::dec;
+}
+
 void printVoice(const char* mode, int ordinal, const char* voice,
                 const PatternHashes& hashes,
-                const StrongRhythmMigrationResult& result) {
+                const StrongRhythmMigrationResult& result,
+                bool reviewMetadata) {
   std::cout << mode << '\t' << ordinal << '\t' << voice << '\t'
             << static_cast<int>(result.status) << '\t'
             << static_cast<int>(result.synthBRole) << '\t';
@@ -135,6 +150,25 @@ void printVoice(const char* mode, int ordinal, const char* voice,
   printHash(hashes.articulation);
   std::cout << '\t';
   printHash(hashes.full);
+
+  if (reviewMetadata) {
+    const bool isStatic =
+        result.progressionId == ProgressionId::StaticModal ||
+        result.progressionId == ProgressionId::PedalDrone;
+    const uint8_t oldChordEventCount = countBits(result.chordOnsets);
+    std::cout << '\t' << static_cast<int>(result.progressionId)
+              << '\t' << chordProgressionName(result.progressionId)
+              << '\t' << (isStatic ? "static" : "moving") << '\t';
+    printMask(result.chordOnsets);
+    std::cout << '\t';
+    printMask(result.harmonicEventOnsets);
+    std::cout << '\t' << static_cast<int>(oldChordEventCount)
+              << '\t' << static_cast<int>(result.harmonicEventCount)
+              << '\t'
+              << (result.chordOnsets == result.harmonicEventOnsets
+                      ? "same"
+                      : "different");
+  }
   std::cout << '\n';
 }
 
@@ -142,10 +176,14 @@ void printVoice(const char* mode, int ordinal, const char* voice,
 
 int main(int argc, char** argv) {
   bool tonalMaterializationEnabled = false;
+  bool reviewMetadata = false;
   if (argc == 2 && std::strcmp(argv[1], "--tonal") == 0) {
     tonalMaterializationEnabled = true;
+  } else if (argc == 2 && std::strcmp(argv[1], "--tonal-review") == 0) {
+    tonalMaterializationEnabled = true;
+    reviewMetadata = true;
   } else if (argc != 1) {
-    std::cerr << "usage: stage15_tonal_baseline_dump [--tonal]\n";
+    std::cerr << "usage: stage15_tonal_baseline_dump [--tonal|--tonal-review]\n";
     return 2;
   }
 
@@ -168,7 +206,14 @@ int main(int argc, char** argv) {
       GenerativeMode::LoFi,
   };
 
-  std::cout << "mode\tordinal\tvoice\tstatus\tsecondary_role\ttopology\tpitch\tarticulation\tfull\n";
+  std::cout << "mode\tordinal\tvoice\tstatus\tsecondary_role\ttopology\tpitch\tarticulation\tfull";
+  if (reviewMetadata) {
+    std::cout << "\tprogression_id\tprogression\tharmonic_class"
+                 "\told_chord_onsets\tharmonic_onsets"
+                 "\told_chord_event_count\tharmonic_event_count\tclock_relation";
+  }
+  std::cout << '\n';
+
   for (GenerativeMode mode : modes) {
     for (int16_t ordinal = 0; ordinal < 8; ++ordinal) {
       DrumPatternSet drums{};
@@ -178,8 +223,10 @@ int main(int argc, char** argv) {
           settingsFor(mode),
           contextFor(ordinal, tonalMaterializationEnabled),
           drums, synthA, synthB);
-      printVoice(modeName(mode), ordinal, "A", fingerprint(synthA), result);
-      printVoice(modeName(mode), ordinal, "B", fingerprint(synthB), result);
+      printVoice(modeName(mode), ordinal, "A", fingerprint(synthA), result,
+                 reviewMetadata);
+      printVoice(modeName(mode), ordinal, "B", fingerprint(synthB), result,
+                 reviewMetadata);
     }
   }
   return 0;
