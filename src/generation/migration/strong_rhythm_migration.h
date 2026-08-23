@@ -22,6 +22,25 @@
 
 namespace GroovePuterRhythm {
 
+constexpr uint8_t kGrooveVocabularyPhraseBars = 4;
+constexpr uint8_t kUnspecifiedPhraseBarOrdinal = 0xFFu;
+
+struct PhraseTemporalCoordinates {
+  uint8_t phraseBarOrdinal = 0;
+  uint8_t evolutionOrdinal = 0;
+};
+
+constexpr PhraseTemporalCoordinates phraseTemporalCoordinatesForBar(
+    uint8_t phraseBarOrdinal) {
+  return PhraseTemporalCoordinates{
+      phraseBarOrdinal,
+      static_cast<uint8_t>(phraseBarOrdinal / kGrooveVocabularyPhraseBars)};
+}
+
+constexpr uint8_t phraseVocabularyBarOrdinal(uint8_t phraseBarOrdinal) {
+  return static_cast<uint8_t>(phraseBarOrdinal % kGrooveVocabularyPhraseBars);
+}
+
 enum class StrongRhythmRoute : uint8_t {
   Legacy = 0,
   AcidBase,
@@ -65,6 +84,13 @@ struct StrongRhythmMigrationContext {
   // compatibility path; non-zero ordinals may vary realization while the
   // selected rhythm archetype remains attempt-invariant.
   uint32_t generationAttemptOrdinal = 0;
+
+  // E0a: PREPARE-owned semantic coordinates for one physical Phrase bar.
+  // Unspecified keeps non-Phrase callers on the exact compatibility path.
+  // evolutionOrdinal is explicit context for the existing 4+4 structure; E0a
+  // does not force it into generation that does not already consume it.
+  uint8_t phraseBarOrdinal = kUnspecifiedPhraseBarOrdinal;
+  uint8_t evolutionOrdinal = 0;
 
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;

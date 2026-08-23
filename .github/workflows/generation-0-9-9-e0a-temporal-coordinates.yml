@@ -1,0 +1,92 @@
+name: 0.9.9-E0a phrase temporal coordinates
+
+on:
+  push:
+    branches:
+      - agent/20260823-03-0.9.9-e0a-temporal-coordinates
+  pull_request:
+    paths:
+      - 'src/dsp/generated_phrase_song.h'
+      - 'src/generation/migration/strong_rhythm_migration.h'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'tests/test_0_9_9_e0a_temporal_coordinates.cpp'
+      - 'tests/test_0_9_9_e0a_source_regressions.py'
+      - 'tests/run_0_9_9_e0a_tests.sh'
+      - 'platform_sdl/e0a_prepare_benchmark.cpp'
+      - 'docs/audits/E0A_TEMPORAL_COORDINATES.md'
+      - '.github/workflows/generation-0-9-9-e0a-temporal-coordinates.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  e0a-host-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run focused E0a contracts and measurements
+        run: bash tests/run_0_9_9_e0a_tests.sh
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  e0a-sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  e0a-cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  e0a-cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

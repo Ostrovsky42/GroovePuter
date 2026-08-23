@@ -181,13 +181,20 @@ bool sparseSemanticBarsAllowed(const GenreSettings& settings,
          settings.generativeMode == static_cast<uint8_t>(GenerativeMode::FunkSoul);
 }
 
-uint8_t semanticBarOrdinal(const GenreSettings& settings,
-                           int16_t patternAddress) {
+uint8_t semanticBarOrdinal(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context) {
+  if (context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal) {
+    return phraseVocabularyBarOrdinal(context.phraseBarOrdinal);
+  }
+
   const bool useAddress =
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::LoFi) ||
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::HipHop) ||
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::FunkSoul);
-  return useAddress ? static_cast<uint8_t>(patternAddress & 0xFF) : 0;
+  return useAddress
+      ? static_cast<uint8_t>(context.patternAddress & 0xFF)
+      : 0;
 }
 
 SemanticSynthBRole semanticSynthBRole(CompositionSecondaryRole role) {
@@ -491,8 +498,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
   const bool allowSparse =
       sparseSemanticBarsAllowed(settings, definition->family);
-  const uint8_t barOrdinal =
-      semanticBarOrdinal(settings, context.patternAddress);
+  const uint8_t barOrdinal = semanticBarOrdinal(settings, context);
   const TonalGenerationProfile tonalProfile =
       tonalGenerationProfileFor(settings);
   const uint32_t selectionSeed = projectSeedFor(settings, result.route);

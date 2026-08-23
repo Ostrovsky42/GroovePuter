@@ -115,10 +115,15 @@ inline uint32_t phraseSeed(MiniAcid& engine,
 
 inline GroovePuterRhythm::StrongRhythmMigrationContext migrationContextFor(
     const Scene& scene,
-    int variationCoordinate) {
+    int variationCoordinate,
+    uint8_t phraseBarOrdinal) {
   GroovePuterRhythm::StrongRhythmMigrationContext context{};
   context.patternAddress = static_cast<int16_t>(variationCoordinate);
   context.level = GroovePuterState::currentGenerationLevel();
+  const auto coordinates =
+      GroovePuterRhythm::phraseTemporalCoordinatesForBar(phraseBarOrdinal);
+  context.phraseBarOrdinal = coordinates.phraseBarOrdinal;
+  context.evolutionOrdinal = coordinates.evolutionOrdinal;
   context.feelProfile = static_cast<GroovePuterRhythm::FeelProfileId>(
       scene.feel.timingProfile);
 
@@ -140,8 +145,10 @@ inline void applyCurrentMigration(
     const Scene& scene,
     const GenreSettings& genre,
     int variationCoordinate,
+    uint8_t phraseBarOrdinal,
     PhraseGenerator::PhraseBar& bar) {
-  const auto context = migrationContextFor(scene, variationCoordinate);
+  const auto context = migrationContextFor(
+      scene, variationCoordinate, phraseBarOrdinal);
   (void)GroovePuterRhythm::migrateStrongRhythmMaterial(
       genre, context, bar.drums, bar.synthA, bar.synthB);
 }
@@ -420,6 +427,7 @@ inline bool prepare(
   for (int barIndex = 0; barIndex < bars; ++barIndex) {
     const auto role = PhraseGenerator::roleForBar(bars, barIndex);
     PhraseGenerator::PhraseBar& bar = prepared.material[barIndex];
+    const uint8_t phraseBarOrdinal = static_cast<uint8_t>(barIndex);
     if (atlasPhrase) {
       const uint8_t variation = atlasVariationForRole(role);
       if (!AtlasRuntime::applyRecipe(
@@ -428,7 +436,8 @@ inline bool prepare(
         prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
         return false;
       }
-      applyCurrentMigration(scene, genre, variation, bar);
+      applyCurrentMigration(
+          scene, genre, variation, phraseBarOrdinal, bar);
       continue;
     }
 
@@ -439,11 +448,14 @@ inline bool prepare(
           proceduralBase.synthB, engine.bpm(), params, behavior, 1);
       scratchMode.generateDrumPattern(
           proceduralBase.drums, params, behavior);
-      applyCurrentMigration(scene, genre, 0, proceduralBase);
       proceduralBaseReady = true;
     }
+
+    PhraseGenerator::PhraseBar migratedBase = proceduralBase;
+    applyCurrentMigration(
+        scene, genre, 0, phraseBarOrdinal, migratedBase);
     PhraseGenerator::deriveBar(
-        proceduralBase, role, prepared.request.seed, barIndex, bar);
+        migratedBase, role, prepared.request.seed, barIndex, bar);
   }
 
   prepared.result.error = PhraseGenerator::PhraseError::None;
