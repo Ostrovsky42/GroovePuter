@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/20260823-02-f08-finalization-helper
+  pull_request:
+    branches:
+      - agent/20260822-04-0.9.9-f08-harmonic-rhythm
 
 permissions:
   contents: write
