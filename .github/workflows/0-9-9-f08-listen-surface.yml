@@ -1,0 +1,54 @@
+name: 0.9.9 F08 LISTEN hardware review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate test-only source ownership
+        run: python3 tests/test_0_9_9_f08_listen_surface_source_regressions.py
+
+      - name: Generate and validate frozen OLD/NEW fixtures
+        run: |
+          python3 tests/generate_0_9_9_f08_listen_fixture.py \
+            --output build/f08-listen-generated/f08_listen_fixture_generated.h
+          test -s build/f08-listen-generated/f08_listen_fixture_generated.h
+
+  cardputer-review-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build disposable F08 LISTEN firmware
+        run: bash scripts/build_f08_listen.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: |
+          bash scripts/check_cardputer_dram_budget.sh \
+            build/cardputer-adv-f08-listen/GroovePuter.ino.elf
+
+      - name: Upload review firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: f08-listen-cardputer-adv
+          path: |
+            build/cardputer-adv-f08-listen/GroovePuter.ino.bin
+            build/cardputer-adv-f08-listen/GroovePuter.ino.bootloader.bin
+            build/cardputer-adv-f08-listen/GroovePuter.ino.partitions.bin
+          if-no-files-found: error
