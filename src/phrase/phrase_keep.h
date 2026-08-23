@@ -81,11 +81,10 @@ inline bool buildPreparedPhraseBank(
   return true;
 }
 
-// Production P1b KEEP entry point. It owns no UI, generation, audition, or
-// playback switching. Candidate bytes must already live in an active P1a2
-// lease. One successful call publishes exactly one canonical Phrase Undo
-// revision and transfers the lease without copying Pattern material.
-inline Result keep(SceneManager& manager,
+// Scene-level production core used by permanent host tests and future callers
+// that already own the active page identity. No UI or playback state is touched.
+inline Result keep(Scene& scene,
+                   int pageIndex,
                    PhrasePatternLease::PatternLease& lease,
                    const Request& request) {
   Result output{};
@@ -106,8 +105,7 @@ inline Result keep(SceneManager& manager,
   auto& leaseOwner = PhrasePatternLease::patternLeaseOwner();
   PhrasePatternLease::PreparedPersistentTransfer preparedTransfer{};
   output.leaseStatus = leaseOwner.preparePersistentTransfer(
-      manager.currentScene(), manager.currentPageIndex(), lease,
-      preparedTransfer);
+      scene, pageIndex, lease, preparedTransfer);
   if (output.leaseStatus != PhrasePatternLease::LeaseStatus::Ok) {
     output.status = Status::TransferPrepareFailed;
     return output;
@@ -115,8 +113,8 @@ inline Result keep(SceneManager& manager,
 
   GroovePuterUndo::PhraseUndoPayload before{};
   GroovePuterUndo::UndoLifecycleMetadata lifecycle{};
-  if (!PhraseUndoBacking::captureCurrentPhraseUndo(
-          manager, before, lifecycle)) {
+  if (!PhraseUndoBacking::capturePhraseUndo(
+          scene, pageIndex, before, lifecycle)) {
     output.status = Status::UndoBackingCapacity;
     return output;
   }
@@ -143,7 +141,7 @@ inline Result keep(SceneManager& manager,
       PhrasePatternLease::LeaseStatus::InvalidTransfer;
   const bool committed = PhraseUndoBacking::commitPhrasePrepared(
       before, lifecycle, [&]() {
-        manager.currentScene().phraseBank = after;
+        scene.phraseBank = after;
         completion = leaseOwner.completePersistentTransfer(
             lease, preparedTransfer);
       });
@@ -153,9 +151,6 @@ inline Result keep(SceneManager& manager,
     return output;
   }
   if (completion != PhrasePatternLease::LeaseStatus::Ok) {
-    // P1a2 guarantees this cannot happen after successful prepare while the
-    // canonical commit owns the lease handle. Keep the status visible as a
-    // contract alarm rather than adding rollback/history outside UndoOwner.
     output.status = Status::TransferCompletionDefect;
     output.leaseStatus = completion;
     return output;
@@ -164,6 +159,13 @@ inline Result keep(SceneManager& manager,
   output.status = Status::Ok;
   output.leaseStatus = PhrasePatternLease::LeaseStatus::Ok;
   return output;
+}
+
+inline Result keep(SceneManager& manager,
+                   PhrasePatternLease::PatternLease& lease,
+                   const Request& request) {
+  return keep(
+      manager.currentScene(), manager.currentPageIndex(), lease, request);
 }
 
 inline const char* statusText(Status status) {
