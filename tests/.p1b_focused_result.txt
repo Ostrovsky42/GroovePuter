@@ -1,4 +1,4 @@
-HEAD=03ce6d44b898893e5e58fa6402a7bcb3aad95815
+HEAD=5795f96604620bdf88aeff7e991e76acd2ec81da
 COMMAND=g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. tests/test_0_9_9_p1b_phrase_keep_undo.cpp
 BUILD_EXIT=0
 0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
