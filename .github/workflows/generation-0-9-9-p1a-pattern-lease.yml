@@ -1,0 +1,19 @@
+name: 0.9.9-P1a pattern lease owner
+
+on:
+  push:
+    branches:
+      - agent/20260823-02-0.9.9-p1a-phrase-audition-leases
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  p1a-pattern-lease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run P1a focused host contracts
+        run: bash tests/run_0_9_9_p1a_tests.sh

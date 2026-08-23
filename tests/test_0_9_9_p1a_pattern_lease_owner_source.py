@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+HEADER = ROOT / "src/phrase/pattern_lease_owner.h"
+TEST = ROOT / "tests/test_0_9_9_p1a_pattern_lease_owner.cpp"
+PHRASE_PAGE = ROOT / "src/ui/pages/phrase_page.cpp"
+SCENES = ROOT / "scenes.h"
+PHRASE_PERSISTENCE = ROOT / "src/phrase/phrase_persistence.h"
+PAGING = ROOT / "src/audio/pattern_paging.cpp"
+
+header = HEADER.read_text(encoding="utf-8")
+test = TEST.read_text(encoding="utf-8")
+phrase_page = PHRASE_PAGE.read_text(encoding="utf-8")
+scenes = SCENES.read_text(encoding="utf-8")
+phrase_persistence = PHRASE_PERSISTENCE.read_text(encoding="utf-8")
+paging = PAGING.read_text(encoding="utf-8")
+
+required_header_tokens = [
+    "constexpr uint8_t kMaxLeasePatterns = 4;",
+    "constexpr uint8_t kLeaseOwnerCapacity = 2;",
+    "return count == 1 || count == 2 || count == 4;",
+    "PhraseGenerator::localSlotIsSafeForPhrase",
+    "PhraseGenerator::globalPatternIsReferenced",
+    "SongPatternMaterializer::globalPatternReferenceCount",
+    "transferCommittedOwnership",
+    "SynthPattern{}",
+    "DrumPatternSet{}",
+    "static_assert(sizeof(PatternLease) == 14",
+    "static_assert(sizeof(PatternLeaseOwner) == 28",
+]
+for token in required_header_tokens:
+    assert token in header, f"missing P1a contract token: {token}"
+
+for forbidden in (
+    "std::vector",
+    "std::unique_ptr",
+    "std::shared_ptr",
+    "malloc(",
+    "calloc(",
+    "realloc(",
+    "new (",
+    "evolveMultiBarPhrase",
+    "deriveReferenceView",
+):
+    assert forbidden not in header, f"forbidden P1a owner dependency: {forbidden}"
+
+# P1a is storage lifecycle only. It must not wire the owner into the current
+# Phrase screen or alter the persistent Scene/Phrase schemas.
+assert "pattern_lease_owner" not in phrase_page
+assert "PatternLease" not in scenes
+assert "PatternLease" not in phrase_persistence
+
+# Current project page persistence writes the entire physical bank payload.
+# This is why discard must clear physical material before releasing ownership.
+for token in (
+    "writeAll(file, scene.synthABanks, sizeof(scene.synthABanks))",
+    "writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks))",
+    "writeAll(file, scene.drumBanks, sizeof(scene.drumBanks))",
+):
+    assert token in paging, f"paging persistence audit changed: {token}"
+
+required_test_tokens = [
+    "testAcquireSupportedLengths",
+    "testUniqueAddresses",
+    "testSongReferenceNeverLeased",
+    "testPhraseReferenceNeverLeased",
+    "testSimultaneousLeaseCollisionPrevented",
+    "testExhaustionFailsWithoutMutation",
+    "testDiscardClearsAndReturnsAddress",
+    "testActiveLeaseReuseDoesNotGrowPool",
+    "testTransferMakesBackingPermanent",
+    "testInvalidAndDoubleReleaseSafety",
+    "testLeaseOwnerDoesNotAllocateHeap",
+]
+for token in required_test_tokens:
+    assert token in test, f"missing permanent P1a test: {token}"
+
+print("0.9.9-P1a source contracts: PASS")
