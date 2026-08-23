@@ -21,9 +21,6 @@ enum class UndoKind : uint8_t {
   Generation,
 };
 
-// P1b keeps physical redo backing inside the existing canonical one-slot owner.
-// The resource list is metadata only: physical Pattern bytes remain in Pattern
-// storage and are never duplicated into Undo RAM.
 enum class UndoRetainedResourceKind : uint8_t {
   None = 0,
   PatternBacking = 1,
@@ -49,7 +46,8 @@ struct UndoLifecycleMetadata {
   UndoLifecycleSanitizeFn sanitizeForPersistence{nullptr};
   UndoRetainedResource resources[kUndoRetainedResourceCapacity]{};
   uint8_t count{0};
-  uint8_t reserved[3]{0, 0, 0};
+  uint8_t pageIndex{0xFFu};
+  uint8_t reserved[2]{0, 0};
 };
 
 static_assert(sizeof(UndoRetainedResource) == 4,
@@ -59,9 +57,6 @@ static_assert(sizeof(UndoLifecycleMetadata) <= kUndoLifecycleTailBytes,
 static_assert(std::is_trivially_copyable<UndoLifecycleMetadata>::value,
               "P1b Undo lifecycle metadata must remain fixed value state");
 
-// Fixed-capacity one-level storage primitive for canonical Undo receipts.
-// Lifecycle metadata, when present, occupies a reserved tail inside the same
-// payload array; BoundedUndoSlot and UndoOwner gain no resident bytes.
 template <std::size_t PayloadBytes>
 class BoundedUndoSlot {
  public:
@@ -94,7 +89,6 @@ class BoundedUndoSlot {
                const GroovePuterState::SceneRevisionState& revision_before) {
     static_assert(std::is_trivially_copyable<Payload>::value,
                   "Undo payloads must be trivially copyable fixed values");
-
     if (kind == UndoKind::None || sizeof(Payload) > PayloadBytes) return false;
 
     std::memcpy(payload_.data(), &before, sizeof(Payload));
@@ -113,7 +107,6 @@ class BoundedUndoSlot {
       const UndoLifecycleMetadata& lifecycle) {
     static_assert(std::is_trivially_copyable<Payload>::value,
                   "Undo payloads must be trivially copyable fixed values");
-
     if (kind == UndoKind::None ||
         sizeof(Payload) > lifecyclePayloadCapacity() ||
         lifecycle.count > kUndoRetainedResourceCapacity) {
@@ -133,7 +126,6 @@ class BoundedUndoSlot {
   bool read(UndoKind expected_kind, Payload& before) const {
     static_assert(std::is_trivially_copyable<Payload>::value,
                   "Undo payloads must be trivially copyable fixed values");
-
     if (kind_ != expected_kind || payloadSize() != sizeof(Payload)) return false;
     std::memcpy(&before, payload_.data(), sizeof(Payload));
     return true;
@@ -159,7 +151,6 @@ class BoundedUndoSlot {
   uint8_t* lifecycleStorage() {
     return payload_.data() + PayloadBytes - kUndoLifecycleTailBytes;
   }
-
   const uint8_t* lifecycleStorage() const {
     return payload_.data() + PayloadBytes - kUndoLifecycleTailBytes;
   }
