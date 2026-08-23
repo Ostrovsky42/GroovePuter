@@ -21,7 +21,7 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Validate through cumulative P1a
+      - name: Validate through cumulative P1a2
         shell: bash
         run: |
           set +e
@@ -53,10 +53,16 @@ jobs:
             p1a_status=$?
             echo "P1A_EXIT=${p1a_status}"
 
+            echo "STEP4=cumulative-p1a2"
+            bash tests/run_0_9_9_p1a2_tests.sh
+            p1a2_status=$?
+            echo "P1A2_EXIT=${p1a2_status}"
+
             if [ "${build_status}" -eq 0 ] && \
                [ "${focused_status}" -eq 0 ] && \
                [ "${source_status}" -eq 0 ] && \
-               [ "${p1a_status}" -eq 0 ]; then
+               [ "${p1a_status}" -eq 0 ] && \
+               [ "${p1a2_status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
