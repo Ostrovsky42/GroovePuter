@@ -50,8 +50,6 @@ inline bool addGeneratedPhraseBacking(
       continue;
     }
 
-    // P1b owns only the 1/2/4-bar audition KEEP contract. Refuse to silently
-    // widen retained ownership if a future producer gives Generated a new shape.
     if (slot.metadata.lengthBars != 1 && slot.metadata.lengthBars != 2 &&
         slot.metadata.lengthBars != 4) {
       return false;
@@ -88,10 +86,8 @@ inline void clearBackingTrack(Scene& scene,
 inline void cleanupLifecycle(
     void* context,
     const GroovePuterUndo::UndoLifecycleMetadata& lifecycle) {
-  auto* manager = static_cast<SceneManager*>(context);
-  if (manager == nullptr) return;
-  Scene& scene = manager->currentScene();
-  const int currentPage = manager->currentPageIndex();
+  auto* scene = static_cast<Scene*>(context);
+  if (scene == nullptr || lifecycle.pageIndex >= kMaxPages) return;
 
   for (int i = 0; i < lifecycle.count; ++i) {
     const auto& resource = lifecycle.resources[i];
@@ -101,7 +97,7 @@ inline void cleanupLifecycle(
     }
     const PatternAddress address =
         patternAddressFromGlobal(resource.resourceId);
-    if (!address.valid() || address.page != currentPage) continue;
+    if (!address.valid() || address.page != lifecycle.pageIndex) continue;
 
     for (int trackIndex = 0;
          trackIndex < SongPatternMaterializer::kEditableTrackCount;
@@ -111,17 +107,15 @@ inline void cleanupLifecycle(
       const SongTrack track =
           SongPatternMaterializer::editableTrackForIndex(trackIndex);
 
-      // Persistent Song/Phrase refs win. The newly-published canonical receipt
-      // and an active temporary lease are also authoritative owners.
       if (SongPatternMaterializer::persistentGlobalPatternReferenceCount(
-              scene, track, resource.resourceId) > 0 ||
+              *scene, track, resource.resourceId) > 0 ||
           GroovePuterUndo::undoOwner().retainsPatternBacking(
               resource.resourceId, bit) ||
           PhrasePatternLease::patternLeaseOwner().isLeased(
               resource.resourceId, bit)) {
         continue;
       }
-      clearBackingTrack(scene, address, bit);
+      clearBackingTrack(*scene, address, bit);
     }
   }
 }
@@ -130,11 +124,11 @@ inline void sanitizeLifecycleForPersistence(
     void* context,
     const GroovePuterUndo::UndoLifecycleMetadata& lifecycle,
     void* persistenceView) {
-  auto* manager = static_cast<SceneManager*>(context);
+  auto* live = static_cast<Scene*>(context);
   auto* target = static_cast<Scene*>(persistenceView);
-  if (manager == nullptr || target == nullptr) return;
-  const Scene& live = manager->currentScene();
-  const int currentPage = manager->currentPageIndex();
+  if (live == nullptr || target == nullptr || lifecycle.pageIndex >= kMaxPages) {
+    return;
+  }
 
   for (int i = 0; i < lifecycle.count; ++i) {
     const auto& resource = lifecycle.resources[i];
@@ -144,7 +138,7 @@ inline void sanitizeLifecycleForPersistence(
     }
     const PatternAddress address =
         patternAddressFromGlobal(resource.resourceId);
-    if (!address.valid() || address.page != currentPage) continue;
+    if (!address.valid() || address.page != lifecycle.pageIndex) continue;
 
     for (int trackIndex = 0;
          trackIndex < SongPatternMaterializer::kEditableTrackCount;
@@ -154,9 +148,7 @@ inline void sanitizeLifecycleForPersistence(
       const SongTrack track =
           SongPatternMaterializer::editableTrackForIndex(trackIndex);
       if (SongPatternMaterializer::persistentGlobalPatternReferenceCount(
-              live, track, resource.resourceId) == 0) {
-        // Redo-only backing is runtime state. It remains live for Ctrl+Z
-        // exchange, but must not enter a raw Pattern-page persistence image.
+              *live, track, resource.resourceId) == 0) {
         clearBackingTrack(*target, address, bit);
       }
     }
@@ -164,26 +156,36 @@ inline void sanitizeLifecycleForPersistence(
 }
 
 inline GroovePuterUndo::UndoLifecycleMetadata emptyLifecycle(
-    SceneManager& manager) {
+    Scene& scene, int pageIndex) {
   GroovePuterUndo::UndoLifecycleMetadata lifecycle{};
-  lifecycle.context = &manager;
+  lifecycle.context = &scene;
   lifecycle.cleanup = cleanupLifecycle;
   lifecycle.sanitizeForPersistence = sanitizeLifecycleForPersistence;
+  lifecycle.pageIndex = pageIndex >= 0 && pageIndex < kMaxPages
+      ? static_cast<uint8_t>(pageIndex)
+      : 0xFFu;
   return lifecycle;
+}
+
+inline bool capturePhraseUndo(
+    Scene& scene,
+    int pageIndex,
+    GroovePuterUndo::PhraseUndoPayload& before,
+    GroovePuterUndo::UndoLifecycleMetadata& lifecycle) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages) return false;
+  before = GroovePuterUndo::PhraseUndoPayload{};
+  before.pageIndex = static_cast<uint8_t>(pageIndex);
+  before.before = scene.phraseBank;
+  lifecycle = emptyLifecycle(scene, pageIndex);
+  return addGeneratedPhraseBacking(lifecycle, before.before);
 }
 
 inline bool captureCurrentPhraseUndo(
     SceneManager& manager,
     GroovePuterUndo::PhraseUndoPayload& before,
     GroovePuterUndo::UndoLifecycleMetadata& lifecycle) {
-  const int page = manager.currentPageIndex();
-  if (page < 0 || page >= kMaxPages) return false;
-
-  before = GroovePuterUndo::PhraseUndoPayload{};
-  before.pageIndex = static_cast<uint8_t>(page);
-  before.before = manager.currentScene().phraseBank;
-  lifecycle = emptyLifecycle(manager);
-  return addGeneratedPhraseBacking(lifecycle, before.before);
+  return capturePhraseUndo(
+      manager.currentScene(), manager.currentPageIndex(), before, lifecycle);
 }
 
 template <typename ApplyFn>
