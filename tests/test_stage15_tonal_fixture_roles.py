@@ -130,8 +130,8 @@ assert CURRENT_NAME not in boundary
 
 assert "if articulation_changes == 0:" in f13_test
 assert "if full_changes == 0:" in f13_test
-assert "expected removal of inherited destination dynamics to be observable" in f13_test
-assert "expected self-contained tonal steps to replace inherited destination state" in f13_test
+assert "F-13 produced no articulation fingerprint changes" in f13_test
+assert "F-13 produced no full fingerprint changes" in f13_test
 
 print(
     "Stage15 tonal fixture roles: OK "
