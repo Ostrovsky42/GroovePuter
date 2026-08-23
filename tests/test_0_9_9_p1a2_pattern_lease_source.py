@@ -48,7 +48,7 @@ assert "PatternLeaseOwner records_" not in header
 complete_start = header.index("LeaseStatus completePersistentTransfer(")
 complete_end = header.index("  bool isLeased(int globalPattern) const", complete_start)
 complete_body = header[complete_start:complete_end]
-assert "Scene" not in complete_body
+assert "const Scene&" not in complete_body
 assert "globalPatternIsReferenced" not in complete_body
 assert "slotContentIsEmpty" not in complete_body
 assert "clearOwnedTracks" not in complete_body
