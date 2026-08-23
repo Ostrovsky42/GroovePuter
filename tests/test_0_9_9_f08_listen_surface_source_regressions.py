@@ -12,6 +12,7 @@ PREPARE = ROOT / "tests/prepare_0_9_9_f08_listen_sketch.py"
 BUILD = ROOT / "scripts/build_f08_listen.sh"
 PAGE = ROOT / "tests/f08_listen_overlay/f08_listen_page.cpp"
 PLAYER = ROOT / "tests/f08_listen_overlay/f08_listen_fixture_player.cpp"
+CARDPUTER_SKETCH = ROOT / "GroovePuter.ino"
 
 migration = MIGRATION.read_text(encoding="utf-8")
 generator = GENERATOR.read_text(encoding="utf-8")
@@ -20,6 +21,7 @@ prepare = PREPARE.read_text(encoding="utf-8")
 build = BUILD.read_text(encoding="utf-8")
 page = PAGE.read_text(encoding="utf-8")
 player = PLAYER.read_text(encoding="utf-8")
+cardputer_sketch = CARDPUTER_SKETCH.read_text(encoding="utf-8")
 
 # The committed production F08 owner stays independent. OLD exists only as an
 # exact temporary reverse patch in the fixture generator.
@@ -71,6 +73,7 @@ for needle in (
     '"TEST ONLY',
     '"A progression   B movement natural"',
     '"C no-step8      D roles coherent"',
+    '"G:REPLAY CTRL+F:EXIT"',
 ):
     assert needle in page
 for forbidden in (
@@ -98,6 +101,16 @@ for needle in (
     "build/cardputer-adv-f08-listen",
 ):
     assert needle in build
+
+# Ctrl+F is intentionally chosen because the real Cardputer input layer has an
+# explicit Ctrl+letter HID route. The discarded Ctrl+Alt+F chord had no hardware
+# acceptance coverage and proved unreliable on-device.
+for needle in (
+    "auto applyCtrlLetter = []",
+    "if (!ks.ctrl || hid < HID_KEY_A || hid > HID_KEY_Z) return false;",
+    "} else if (applyCtrlLetter(ks, hid, evt)) {",
+):
+    assert needle in cardputer_sketch
 
 # Exercise the staging patch itself without changing the checked-out src tree.
 with tempfile.TemporaryDirectory(prefix="f08-listen-source-test-") as temp_name:
@@ -139,7 +152,9 @@ with tempfile.TemporaryDirectory(prefix="f08-listen-source-test-") as temp_name:
     assert "std::make_unique<F08ListenPage>" in staged_display
     assert "page_index_ == WorkflowPages::kF08Listen) return;" in staged_display
     assert "index != WorkflowPages::kF08Listen" in staged_display
-    assert "event.ctrl && event.alt && !event.meta" in staged_display
+    assert "event.ctrl && !event.meta" in staged_display
+    assert "event.ctrl && event.alt && !event.meta" not in staged_display
+    assert "display Ctrl+F shortcut" not in staged_display
     assert (staged / "src/ui/pages/f08_listen_page.cpp").is_file()
     assert (staged / "src/generation/migration/f08_listen_fixture_player.cpp").is_file()
     assert (staged / "src/generation/migration/f08_listen_fixture_generated.h").is_file()

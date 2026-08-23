@@ -134,9 +134,11 @@ def main() -> int:
         if (event.meta && (event.key == 'm' || event.key == 'M')) {
 """
     shortcut = """    if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        // Test-only F08 LISTEN toggle. It is injected only into the disposable
-        // hardware-review build and does not exist in normal firmware.
-        if (event.ctrl && event.alt && !event.meta &&
+        // Test-only F08 LISTEN toggle. Cardputer's hardware input path has a
+        // proven Ctrl+letter route; requiring Ctrl+Alt together is not a
+        // reliable physical chord on the device. Accept Ctrl+F regardless of
+        // Alt state so an accidental Alt hold cannot block the review page.
+        if (event.ctrl && !event.meta &&
             (event.key == 'f' || event.key == 'F')) {
             if (page_index_ == WorkflowPages::kF08Listen) togglePreviousPage();
             else goToPage(WorkflowPages::kF08Listen);
@@ -145,7 +147,7 @@ def main() -> int:
 
         if (event.meta && (event.key == 'm' || event.key == 'M')) {
 """
-    replace_once(display, shortcut_anchor, shortcut, "display Ctrl+Alt+F shortcut")
+    replace_once(display, shortcut_anchor, shortcut, "display Ctrl+F shortcut")
 
     copies = {
         OVERLAY / "f08_listen_page.h": sketch / "src/ui/pages/f08_listen_page.h",

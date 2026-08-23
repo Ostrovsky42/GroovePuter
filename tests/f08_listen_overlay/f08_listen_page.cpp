@@ -221,7 +221,7 @@ void F08ListenPage::draw(IGfx& gfx) {
   UI::drawStandardFooter(
       gfx,
       "L/R:CASE A:OLD B:NEW",
-      "G:REPLAY C+A+F:EXIT");
+      "G:REPLAY CTRL+F:EXIT");
 }
 
 bool F08ListenPage::handleEvent(UIEvent& event) {

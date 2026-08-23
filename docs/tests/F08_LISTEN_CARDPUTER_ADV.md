@@ -18,10 +18,14 @@ Left / Right   previous / next case
 A              play OLD
 B              play NEW
 G              replay current side
-Ctrl+Alt+F     enter / exit F08 LISTEN
+Ctrl+F         enter / exit F08 LISTEN
 ```
 
 Changing case always starts that case on `OLD`.
+
+`Ctrl+F` is intentional: the Cardputer input layer has an explicit tested
+Ctrl+letter HID path. The earlier `Ctrl+Alt+F` review chord was removed after it
+proved unreliable on the physical keyboard.
 
 ## Hardware list
 
@@ -100,7 +104,7 @@ controls 9, 10 and 11, `SAME` is intentional.
 ## Listening procedure
 
 1. Boot the review firmware.
-2. Press `Ctrl+Alt+F`.
+2. Press `Ctrl+F`.
 3. Case `01/11` starts automatically on `OLD`.
 4. Listen for at least two loops.
 5. Press `B`; listen to `NEW`.
@@ -108,7 +112,7 @@ controls 9, 10 and 11, `SAME` is intentional.
 7. Judge only by ear; do not treat the hexadecimal clock as the expected answer.
 8. Press `Right` for the next case. It starts on `OLD`.
 9. Use `G` whenever you want the same side restarted from step 1.
-10. Press `Ctrl+Alt+F` to leave the review surface.
+10. Press `Ctrl+F` to leave the review surface.
 
 For each case report:
 
@@ -162,6 +166,14 @@ There must be no ordinary Genre regeneration involved while A/B switching.
 
 ## Troubleshooting
 
+### `Ctrl+F` does not enter F08 LISTEN
+
+Confirm you flashed the dedicated review binary from
+`build/cardputer-adv-f08-listen`, not the normal GroovePuter build. With Serial
+open, pressing `Ctrl+F` should produce a `[KEY]` line with `ctrl=1` and `key=0x66`.
+If that line is missing, the issue is below the review UI in the physical keyboard
+input path.
+
 ### `F08 FIXTURE FAILED`
 
 Rebuild the review binary. The generated fixture header may be missing or the
@@ -181,7 +193,7 @@ approximating OLD behavior.
 
 ### I hear silence
 
-Exit with `Ctrl+Alt+F`, verify the normal firmware audio path works, then enter
+Exit with `Ctrl+F`, verify the normal firmware audio path works, then enter
 again. The page explicitly unmutes all ten GroovePuter tracks during review and
 restores their previous mute state on exit.
 
@@ -198,7 +210,7 @@ sandbox.
 - [ ] Generator proves non-pitch SynthStep fields are identical OLD vs NEW.
 - [ ] Cases 1–8 change the selected frozen corpus voice.
 - [ ] Cases 9, 10 and 11 keep the selected frozen corpus output unchanged.
-- [ ] `Ctrl+Alt+F` enters and exits the surface.
+- [ ] `Ctrl+F` enters and exits the surface.
 - [ ] `Left/Right` walks all 11 cases and resets to OLD.
 - [ ] `A` plays OLD.
 - [ ] `B` plays NEW.
