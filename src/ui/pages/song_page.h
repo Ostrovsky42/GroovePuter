@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <utility>
 
 #include "../../../scenes.h"
@@ -9,6 +10,9 @@
 #include "../ui_utils.h"
 #include "../../dsp/pattern_generator.h"
 #include "../../dsp/song_pattern_materializer.h"
+#include "../../dsp/song_pattern_candidate.h"
+#include "../../pattern/pattern_address.h"
+#include "../../phrase/pattern_lease_owner.h"
 #include "src/state/scene_revision.h"
 #include "src/state/song_edit.h"
 #include "src/state/undo_owner.h"
@@ -30,6 +34,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  void onExit() override;
   const std::string & getTitle() const override;
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
@@ -156,6 +161,49 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool toggleLoopMode();
   bool insertRowAtCursor();
   bool deleteRowAtCursor();
+
+  enum class PatternPickerMode : uint8_t {
+    Existing = 0,
+    Generate = 1,
+  };
+
+  struct PatternPickerState {
+    bool active = false;
+    PatternPickerMode mode = PatternPickerMode::Existing;
+    int row = 0;
+    int songSlot = 0;
+    SongTrack track = SongTrack::SynthA;
+    uint8_t trackMask = 0;
+    int page = 0;
+    int originalReference = -1;
+    int candidateGlobal = -1;
+    int browseBank = 0;
+    int browseSlot = 0;
+    uint16_t take = 0;
+    bool savedSongMode = false;
+    int savedSongPosition = 0;
+    int savedSynthPattern[2] = {0, 0};
+    int savedSynthBank[2] = {0, 0};
+    int savedDrumPattern = 0;
+    int savedDrumBank = 0;
+    PhrasePatternLease::PatternLease lease{};
+  } pattern_picker_;
+
+  bool openPatternPicker();
+  bool handlePatternPickerEvent(UIEvent& ui_event);
+  bool pickerTrackHasMaterial(int globalPattern) const;
+  int findExistingPickerPattern(int startLocalSlot, int direction,
+                                int bankConstraint = -1) const;
+  bool selectExistingPickerPattern(int globalPattern);
+  bool enterPatternPickerGenerateMode();
+  bool generatePatternPickerCandidate();
+  bool applyPatternPickerPreview(int globalPattern);
+  void enterPatternPickerAuditionRuntime();
+  void restorePatternPickerRuntime();
+  bool acceptPatternPicker();
+  bool discardPatternPicker();
+  void closePatternPickerState();
+  void showPatternPickerStatus();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

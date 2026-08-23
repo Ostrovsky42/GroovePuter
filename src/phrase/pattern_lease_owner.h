@@ -37,6 +37,11 @@ enum class LeaseStatus : uint8_t {
   InvalidTransfer,
 };
 
+enum class PersistentClass : uint8_t {
+  ReferenceOnly = 0,
+  SongGenerated = 1,
+};
+
 struct PatternLease {
   int16_t globalPattern[kMaxLeasePatterns] = {-1, -1, -1, -1};
   uint8_t count = 0;
@@ -180,35 +185,33 @@ class PatternLeaseOwner {
     return LeaseStatus::Ok;
   }
 
+  // P1a2 compatibility: reference-only transfer keeps the original API and
+  // remains a read-only prepare operation.
   LeaseStatus preparePersistentTransfer(
       const Scene& scene,
       int currentPageIndex,
       const PatternLease& lease,
       PreparedPersistentTransfer& prepared) const {
-    const int ownerSlot = validateActiveLease(lease);
-    if (ownerSlot < 0) return LeaseStatus::InvalidLease;
-    const PatternLease& current = records_[ownerSlot];
-    if (currentPageIndex != current.pageIndex) {
-      return LeaseStatus::PageMismatch;
-    }
+    return preparePersistentTransferImpl(
+        scene, currentPageIndex, lease, prepared);
+  }
 
-    for (int i = 0; i < current.count; ++i) {
-      const PatternAddress address =
-          patternAddressFromGlobal(current.globalPattern[i]);
-      if (!address.valid() || address.page != current.pageIndex) {
-        return LeaseStatus::InvalidLease;
-      }
-      // prepare must precede the canonical persistent mutation. A requested
-      // track that is already referenced means the transaction is out of order.
-      if (requestedTracksAreReferenced(
-              scene, current.globalPattern[i], current.trackMask)) {
-        return LeaseStatus::PersistentReference;
-      }
+  // P4I promotion path. Song-generated classification is owned here rather
+  // than by SongPage. It happens only after every lease-side precondition has
+  // succeeded and remains rollback-safe because a failed Song commit leaves
+  // the lease active; normal discard then clears the owned candidate bytes.
+  LeaseStatus preparePersistentTransfer(
+      Scene& scene,
+      int currentPageIndex,
+      const PatternLease& lease,
+      PersistentClass persistentClass,
+      PreparedPersistentTransfer& prepared) {
+    const LeaseStatus status = preparePersistentTransferImpl(
+        scene, currentPageIndex, lease, prepared);
+    if (status != LeaseStatus::Ok) return status;
+    if (persistentClass == PersistentClass::SongGenerated) {
+      markOwnedTracksSongGenerated(scene, prepared.lease);
     }
-
-    PreparedPersistentTransfer candidate{};
-    candidate.lease = current;
-    prepared = candidate;
     return LeaseStatus::Ok;
   }
 
@@ -299,6 +302,38 @@ class PatternLeaseOwner {
     return false;
   }
 
+  LeaseStatus preparePersistentTransferImpl(
+      const Scene& scene,
+      int currentPageIndex,
+      const PatternLease& lease,
+      PreparedPersistentTransfer& prepared) const {
+    const int ownerSlot = validateActiveLease(lease);
+    if (ownerSlot < 0) return LeaseStatus::InvalidLease;
+    const PatternLease& current = records_[ownerSlot];
+    if (currentPageIndex != current.pageIndex) {
+      return LeaseStatus::PageMismatch;
+    }
+
+    for (int i = 0; i < current.count; ++i) {
+      const PatternAddress address =
+          patternAddressFromGlobal(current.globalPattern[i]);
+      if (!address.valid() || address.page != current.pageIndex) {
+        return LeaseStatus::InvalidLease;
+      }
+      // prepare must precede the canonical persistent mutation. A requested
+      // track that is already referenced means the transaction is out of order.
+      if (requestedTracksAreReferenced(
+              scene, current.globalPattern[i], current.trackMask)) {
+        return LeaseStatus::PersistentReference;
+      }
+    }
+
+    PreparedPersistentTransfer candidate{};
+    candidate.lease = current;
+    prepared = candidate;
+    return LeaseStatus::Ok;
+  }
+
   static bool localSlotIsSafeForTrackMask(const Scene& scene,
                                           int pageIndex,
                                           int localSlot,
@@ -342,6 +377,26 @@ class PatternLeaseOwner {
     }
     if ((trackMask & SongPatternMaterializer::kDrumsMask) != 0) {
       scene.drumBanks[address.bank].patterns[address.slot] = DrumPatternSet{};
+    }
+  }
+
+  static void markOwnedTracksSongGenerated(Scene& scene,
+                                           const PatternLease& lease) {
+    for (int i = 0; i < lease.count; ++i) {
+      const PatternAddress address = patternAddressFromGlobal(lease.globalPattern[i]);
+      if (!address.valid()) continue;
+      const int localSlot =
+          address.bank * Bank<SynthPattern>::kPatterns + address.slot;
+      for (int trackIndex = 0;
+           trackIndex < SongPatternMaterializer::kEditableTrackCount;
+           ++trackIndex) {
+        const uint8_t trackBit = static_cast<uint8_t>(1u << trackIndex);
+        if ((lease.trackMask & trackBit) == 0) continue;
+        SongPatternMaterializer::markSlotSongGenerated(
+            scene,
+            SongPatternMaterializer::editableTrackForIndex(trackIndex),
+            localSlot);
+      }
     }
   }
 
