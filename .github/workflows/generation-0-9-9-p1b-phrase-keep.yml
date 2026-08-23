@@ -21,36 +21,47 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      # Pre-PR gate 7: full host suite after focused/cumulative ownership gates.
+      - name: Publish host gate start marker
+        shell: bash
+        run: |
+          cat > tests/.p1b_validation_result.txt <<EOF
+          HEAD=$(git rev-parse HEAD)
+          STEP7=STARTED
+          RUN_ID=${GITHUB_RUN_ID}
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/.p1b_validation_result.txt
+          git commit -m "test(0.9.9-p1b): mark host gate started [skip ci]"
+          git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
+
       - name: Run full host regressions
         shell: bash
         run: |
           set +e
+          bash tests/run_host_tests.sh > /tmp/p1b-host.log 2>&1
+          status=$?
           {
             echo "HEAD=$(git rev-parse HEAD)"
             echo "STEP7=tests/run_host_tests.sh"
-            bash tests/run_host_tests.sh
-            status=$?
+            cat /tmp/p1b-host.log
             echo "HOST_EXIT=${status}"
             if [ "${status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
             fi
-          } > tests/.p1b_validation_result.txt 2>&1
+          } > tests/.p1b_validation_result.txt
           cat tests/.p1b_validation_result.txt
+          exit 0
 
-      - name: Publish pre-PR validation result
+      - name: Publish host gate result
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/.p1b_validation_result.txt
-          if ! git diff --cached --quiet; then
-            git commit -m "test(0.9.9-p1b): record pre-PR validation [skip ci]"
-            git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
-          fi
+          git commit -m "test(0.9.9-p1b): record host gate result [skip ci]"
+          git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Enforce pre-PR validation
+      - name: Enforce host gate result
         shell: bash
         run: grep -q '^RESULT=PASS$' tests/.p1b_validation_result.txt
