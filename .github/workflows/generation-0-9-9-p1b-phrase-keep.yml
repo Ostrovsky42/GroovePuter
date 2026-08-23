@@ -4,64 +4,17 @@ on:
   push:
     branches:
       - agent/20260823-08-0.9.9-p1b-phrase-keep-undo
-    paths-ignore:
-      - tests/.p1b_focused_result.txt
-      - tests/.p1b_validation_result.txt
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  p1b-pre-pr-validation:
+  focused-p1b:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Publish host gate start marker
-        shell: bash
-        run: |
-          cat > tests/.p1b_validation_result.txt <<EOF
-          HEAD=$(git rev-parse HEAD)
-          STEP7=STARTED
-          RUN_ID=${GITHUB_RUN_ID}
-          EOF
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/.p1b_validation_result.txt
-          git commit -m "test(0.9.9-p1b): mark host gate started [skip ci]"
-          git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
-
-      - name: Run full host regressions
-        shell: bash
-        run: |
-          set +e
-          bash tests/run_host_tests.sh > /tmp/p1b-host.log 2>&1
-          status=$?
-          {
-            echo "HEAD=$(git rev-parse HEAD)"
-            echo "STEP7=tests/run_host_tests.sh"
-            cat /tmp/p1b-host.log
-            echo "HOST_EXIT=${status}"
-            if [ "${status}" -eq 0 ]; then
-              echo "RESULT=PASS"
-            else
-              echo "RESULT=FAIL"
-            fi
-          } > tests/.p1b_validation_result.txt
-          cat tests/.p1b_validation_result.txt
-          exit 0
-
-      - name: Publish host gate result
-        shell: bash
-        run: |
-          git add tests/.p1b_validation_result.txt
-          git commit -m "test(0.9.9-p1b): record host gate result [skip ci]"
-          git push origin HEAD:agent/20260823-08-0.9.9-p1b-phrase-keep-undo
-
-      - name: Enforce host gate result
-        shell: bash
-        run: grep -q '^RESULT=PASS$' tests/.p1b_validation_result.txt
+      - name: Run P1b focused suite
+        run: bash tests/run_0_9_9_p1b_tests.sh
