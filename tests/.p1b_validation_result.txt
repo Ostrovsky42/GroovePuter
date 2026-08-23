@@ -1,0 +1,9 @@
+HEAD=8c4bd27b06d84f7ca6567dcf4db854eec5e881af
+STEP1=focused
+FOCUSED_BUILD_EXIT=0
+0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
+FOCUSED_TEST_EXIT=0
+STEP2=source-contract
+0.9.9-P1b Phrase KEEP / Undo ownership source contracts: PASS
+SOURCE_EXIT=0
+RESULT=PASS
