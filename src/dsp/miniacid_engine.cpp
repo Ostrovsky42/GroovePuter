@@ -72,7 +72,36 @@ std::string toLowerCopy(std::string value) {
   }
   return value;
 }
+
+#if defined(GROOVEPUTER_P1C_TEST_SEAM)
+struct P1cEffectivePatternRefOverride {
+  int songSlot = -1;
+  int position = -1;
+  SongTrack track = SongTrack::SynthA;
+  int16_t globalPattern = -1;
+  bool active = false;
+};
+
+P1cEffectivePatternRefOverride gP1cEffectivePatternRefOverride;
+#endif
 }
+
+#if defined(GROOVEPUTER_P1C_TEST_SEAM)
+void setP1cEffectivePatternRefOverrideForTest(int songSlot,
+                                              int position,
+                                              SongTrack track,
+                                              int16_t globalPattern) {
+  gP1cEffectivePatternRefOverride.songSlot = songSlot;
+  gP1cEffectivePatternRefOverride.position = position;
+  gP1cEffectivePatternRefOverride.track = track;
+  gP1cEffectivePatternRefOverride.globalPattern = globalPattern;
+  gP1cEffectivePatternRefOverride.active = true;
+}
+
+void clearP1cEffectivePatternRefOverrideForTest() {
+  gP1cEffectivePatternRefOverride = {};
+}
+#endif
 
 TempoDelay::TempoDelay(float sampleRate)
   : buffer(),
@@ -1017,9 +1046,8 @@ int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   if (songMode_) {
     int pos = clampSongPosition(sceneManager_.getSongPosition());
-    int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos,
-                                                   idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
-    return combined; // Return global ID
+    return effectivePatternRef(
+        pos, idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
   }
   // Return global ID for pattern mode too
   return songPatternFromPageBankIndex(currentPageIndex(), sceneManager_.getCurrentBankIndex(idx + 1), sceneManager_.getCurrentSynthPatternIndex(idx));
@@ -1028,8 +1056,7 @@ int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
 int16_t MiniAcid::displayDrumPatternIndex() const {
   if (songMode_) {
     int pos = clampSongPosition(sceneManager_.getSongPosition());
-    int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
-    return combined; // Return global ID
+    return effectivePatternRef(pos, SongTrack::Drums);
   }
   // Return global ID for pattern mode too
   return songPatternFromPageBankIndex(currentPageIndex(), sceneManager_.getCurrentBankIndex(0), sceneManager_.getCurrentDrumPatternIndex());
@@ -1624,6 +1651,21 @@ DrumPattern& MiniAcid::editDrumPattern(int drumVoiceIndex) {
   return patternSet.voices[idx];
 }
 
+int MiniAcid::effectivePatternRef(int position, SongTrack track) const {
+  const int pos = clampSongPosition(position);
+  const int persistent =
+      sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, track);
+#if defined(GROOVEPUTER_P1C_TEST_SEAM)
+  const P1cEffectivePatternRefOverride& overrideRef =
+      gP1cEffectivePatternRefOverride;
+  if (overrideRef.active && overrideRef.songSlot == songPlaybackSlot_ &&
+      overrideRef.position == pos && overrideRef.track == track) {
+    return overrideRef.globalPattern;
+  }
+#endif
+  return persistent;
+}
+
 int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
   if (!songMode_) {
     switch (track) {
@@ -1638,7 +1680,7 @@ int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
     }
   }
   int pos = clampSongPosition(sceneManager_.getSongPosition());
-  int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, track);
+  int combined = effectivePatternRef(pos, track);
   if (combined < 0) return -1;
   return songPatternIndexInBank(combined);
 }
@@ -1684,9 +1726,9 @@ void MiniAcid::applySongPositionSelection() {
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   songPlayheadPosition_ = pos;
-  int patA = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::SynthA);
-  int patB = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::SynthB);
-  int patD = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
+  int patA = effectivePatternRef(pos, SongTrack::SynthA);
+  int patB = effectivePatternRef(pos, SongTrack::SynthB);
+  int patD = effectivePatternRef(pos, SongTrack::Drums);
   int patV = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Voice);
 
   // Check for auto-paging
