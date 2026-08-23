@@ -18,6 +18,7 @@ scenes_h = (ROOT / "scenes.h").read_text(encoding="utf-8")
 scenes_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
 paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
 test = (ROOT / "tests/test_0_9_9_p1b_phrase_keep_undo.cpp").read_text(encoding="utf-8")
+workflow = (ROOT / ".github/workflows/generation-0-9-9-p1b-phrase-keep.yml").read_text(encoding="utf-8")
 
 # Canonical one-slot owner remains the only history owner. Lifecycle metadata
 # lives inside the already-resident payload storage rather than beside it.
@@ -167,5 +168,28 @@ for token in (
     "lifecyclePayloadCapacity() == 1424",
 ):
     assert token in test, f"missing P1b focused case: {token}"
+
+# The permanent CI contract is read-only and direct-fail. It never commits
+# diagnostic output back to the source branch and covers every final target gate.
+for token in (
+    "contents: read",
+    "bash tests/run_0_9_9_p1b_tests.sh",
+    "bash tests/run_host_tests.sh",
+    "make clean all CXX=g++",
+    "bash scripts/build.sh --warnings all",
+    "bash scripts/check_cardputer_dram_budget.sh",
+    "bash scripts/build_seqtrak_midi_only.sh --warnings all",
+):
+    assert token in workflow, f"missing final P1b workflow contract: {token}"
+for forbidden in (
+    "contents: write",
+    "git commit",
+    "git push",
+    ".p1b_focused_result.txt",
+    ".p1b_validation_result.txt",
+):
+    assert forbidden not in workflow, f"self-mutating P1b CI regression: {forbidden}"
+assert not (ROOT / "tests/.p1b_focused_result.txt").exists()
+assert not (ROOT / "tests/.p1b_validation_result.txt").exists()
 
 print("0.9.9-P1b Phrase KEEP / Undo ownership source contracts: PASS")
