@@ -21,6 +21,7 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
+      # Pre-PR gate 7: full host suite after focused/cumulative ownership gates.
       - name: Run full host regressions
         shell: bash
         run: |
