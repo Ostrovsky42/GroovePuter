@@ -3,6 +3,7 @@
 #include "../../scenes.h"
 #include "src/dsp/deterministic_rng.h"
 #include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -224,7 +225,10 @@ inline int phrasePatternReferenceCount(
     return references;
 }
 
-inline int globalPatternReferenceCount(
+// Persistent references are Scene-owned Song/Phrase refs only. P1b keeps this
+// separate from canonical Undo retention so cleanup/persistence can distinguish
+// live persistent ownership from runtime-only redo ownership.
+inline int persistentGlobalPatternReferenceCount(
         const Scene& scene, SongTrack track, int globalPattern) {
     const int trackIndex = editableTrackIndex(track);
     if (trackIndex < 0 || globalPattern < 0) return 0;
@@ -238,6 +242,16 @@ inline int globalPatternReferenceCount(
         }
     }
     return references + phrasePatternReferenceCount(scene, track, globalPattern);
+}
+
+inline int globalPatternReferenceCount(
+        const Scene& scene, SongTrack track, int globalPattern) {
+    const int persistent =
+        persistentGlobalPatternReferenceCount(scene, track, globalPattern);
+    const uint8_t trackMask = maskForTrack(track);
+    return persistent +
+        (GroovePuterUndo::undoOwner().retainsPatternBacking(
+             globalPattern, trackMask) ? 1 : 0);
 }
 
 inline bool globalPatternIsReferenced(
@@ -269,8 +283,6 @@ inline int findReusableLocalSlot(
         return -1;
     }
 
-    // First choice: reroll a uniquely-owned generated pattern in place. Repeated
-    // G on one Song cell therefore consumes no additional pattern slots.
     const int activeSongSlot = std::clamp(scene.activeSongSlot, 0, 1);
     const int trackIndex = editableTrackIndex(track);
     const int currentGlobal =
@@ -284,9 +296,6 @@ inline int findReusableLocalSlot(
         }
     }
 
-    // Otherwise allocate an empty slot, or reclaim an orphan that is known to
-    // have been created by Song generation. Non-empty manual/imported material
-    // is intentionally never reclaimed even when it has no Song references.
     int start = preferredLocalSlot;
     if (start < 0 || start >= kPatternsPerPage) start = 0;
     for (int offset = 0; offset < kPatternsPerPage; ++offset) {
@@ -309,8 +318,6 @@ inline int findReusableLocalSlot(
     return -1;
 }
 
-// Compatibility helper retained for existing host/source tests. It intentionally
-// has no row context, so it only reports physically empty, unreferenced slots.
 inline int findSafeFreeLocalSlot(
         const Scene& scene,
         int pageIndex,
@@ -398,14 +405,6 @@ inline void writePreparedTrack(
         static_cast<int16_t>(prepared.globalPattern[trackIndex]);
 }
 
-// Generator signature:
-//   bool(SongTrack, uint32_t seed, SynthPattern&, DrumPatternSet&)
-// Commit signature:
-//   void(callable) and must execute the callable synchronously.
-//
-// Preparation is allocation-free and read-only. Scene data and Song references
-// are written only after every requested track has a safe destination and valid
-// generated material, so generator failure needs no rollback write.
 template <typename Generator, typename Commit>
 Result generate(
         Scene& scene,
