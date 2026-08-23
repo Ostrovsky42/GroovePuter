@@ -21,118 +21,22 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Validate through Phrase Core and Undo regressions
+      - name: Run P1b cumulative ownership suite
         shell: bash
         run: |
           set +e
-          mkdir -p build/host-tests
-          : > tests/.p1b_validation_result.txt
           {
             echo "HEAD=$(git rev-parse HEAD)"
-            echo "STEP1=focused"
-            g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
-              tests/test_0_9_9_p1b_phrase_keep_undo.cpp \
-              -o build/host-tests/test_0_9_9_p1b_phrase_keep_undo
-            build_status=$?
-            echo "FOCUSED_BUILD_EXIT=${build_status}"
-            if [ "${build_status}" -eq 0 ]; then
-              build/host-tests/test_0_9_9_p1b_phrase_keep_undo
-              focused_status=$?
-            else
-              focused_status=125
-            fi
-            echo "FOCUSED_TEST_EXIT=${focused_status}"
-
-            echo "STEP2=source-contract"
-            python3 tests/test_0_9_9_p1b_phrase_keep_undo_source.py
-            source_status=$?
-            echo "SOURCE_EXIT=${source_status}"
-
-            echo "STEP3=cumulative-p1a"
-            bash tests/run_0_9_9_p1a_tests.sh
-            p1a_status=$?
-            echo "P1A_EXIT=${p1a_status}"
-
-            echo "STEP4=cumulative-p1a2"
-            bash tests/run_0_9_9_p1a2_tests.sh
-            p1a2_status=$?
-            echo "P1A2_EXIT=${p1a2_status}"
-
-            echo "STEP5=phrase-core-source"
-            python3 tests/test_phrase_scene_source_regressions.py
-            phrase_scene_status=$?
-            python3 tests/test_phrase_ui_source_regressions.py
-            phrase_ui_status=$?
-            echo "PHRASE_SCENE_SOURCE_EXIT=${phrase_scene_status}"
-            echo "PHRASE_UI_SOURCE_EXIT=${phrase_ui_status}"
-
-            echo "STEP5=phrase-core-host"
-            COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
-            g++ ${COMMON_FLAGS} tests/test_phrase_core.cpp \
-              -o build/host-tests/test_phrase_core
-            phrase_core_build=$?
-            if [ "${phrase_core_build}" -eq 0 ]; then
-              build/host-tests/test_phrase_core
-              phrase_core_run=$?
-            else
-              phrase_core_run=125
-            fi
-            g++ ${COMMON_FLAGS} tests/test_phrase_persistence_preview.cpp \
-              -o build/host-tests/test_phrase_persistence_preview
-            phrase_persist_build=$?
-            if [ "${phrase_persist_build}" -eq 0 ]; then
-              build/host-tests/test_phrase_persistence_preview
-              phrase_persist_run=$?
-            else
-              phrase_persist_run=125
-            fi
-            g++ ${COMMON_FLAGS} tests/test_phrase_workspace.cpp \
-              -o build/host-tests/test_phrase_workspace
-            phrase_workspace_build=$?
-            if [ "${phrase_workspace_build}" -eq 0 ]; then
-              build/host-tests/test_phrase_workspace
-              phrase_workspace_run=$?
-            else
-              phrase_workspace_run=125
-            fi
-            g++ ${COMMON_FLAGS} -Iplatform_sdl \
-              -include platform_sdl/arduino_compat.h \
-              -c src/ui/pages/phrase_page.cpp \
-              -o build/host-tests/phrase_page.o
-            phrase_page_build=$?
-            echo "PHRASE_CORE_BUILD_EXIT=${phrase_core_build}"
-            echo "PHRASE_CORE_RUN_EXIT=${phrase_core_run}"
-            echo "PHRASE_PERSIST_BUILD_EXIT=${phrase_persist_build}"
-            echo "PHRASE_PERSIST_RUN_EXIT=${phrase_persist_run}"
-            echo "PHRASE_WORKSPACE_BUILD_EXIT=${phrase_workspace_build}"
-            echo "PHRASE_WORKSPACE_RUN_EXIT=${phrase_workspace_run}"
-            echo "PHRASE_PAGE_COMPILE_EXIT=${phrase_page_build}"
-
-            echo "STEP5=undo-regressions"
-            bash tests/run_0_9_9_undo_regression_tests.sh
-            undo_status=$?
-            echo "UNDO_REGRESSION_EXIT=${undo_status}"
-
-            if [ "${build_status}" -eq 0 ] && \
-               [ "${focused_status}" -eq 0 ] && \
-               [ "${source_status}" -eq 0 ] && \
-               [ "${p1a_status}" -eq 0 ] && \
-               [ "${p1a2_status}" -eq 0 ] && \
-               [ "${phrase_scene_status}" -eq 0 ] && \
-               [ "${phrase_ui_status}" -eq 0 ] && \
-               [ "${phrase_core_build}" -eq 0 ] && \
-               [ "${phrase_core_run}" -eq 0 ] && \
-               [ "${phrase_persist_build}" -eq 0 ] && \
-               [ "${phrase_persist_run}" -eq 0 ] && \
-               [ "${phrase_workspace_build}" -eq 0 ] && \
-               [ "${phrase_workspace_run}" -eq 0 ] && \
-               [ "${phrase_page_build}" -eq 0 ] && \
-               [ "${undo_status}" -eq 0 ]; then
+            echo "STEP1_TO_6=tests/run_0_9_9_p1b_tests.sh"
+            bash tests/run_0_9_9_p1b_tests.sh
+            status=$?
+            echo "P1B_SUITE_EXIT=${status}"
+            if [ "${status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
             fi
-          } >> tests/.p1b_validation_result.txt 2>&1
+          } > tests/.p1b_validation_result.txt 2>&1
           cat tests/.p1b_validation_result.txt
 
       - name: Publish pre-PR validation result
