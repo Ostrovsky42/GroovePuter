@@ -21,7 +21,7 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Validate through cumulative P1a2
+      - name: Validate through Phrase Core and Undo regressions
         shell: bash
         run: |
           set +e
@@ -58,11 +58,76 @@ jobs:
             p1a2_status=$?
             echo "P1A2_EXIT=${p1a2_status}"
 
+            echo "STEP5=phrase-core-source"
+            python3 tests/test_phrase_scene_source_regressions.py
+            phrase_scene_status=$?
+            python3 tests/test_phrase_ui_source_regressions.py
+            phrase_ui_status=$?
+            echo "PHRASE_SCENE_SOURCE_EXIT=${phrase_scene_status}"
+            echo "PHRASE_UI_SOURCE_EXIT=${phrase_ui_status}"
+
+            echo "STEP5=phrase-core-host"
+            COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
+            g++ ${COMMON_FLAGS} tests/test_phrase_core.cpp \
+              -o build/host-tests/test_phrase_core
+            phrase_core_build=$?
+            if [ "${phrase_core_build}" -eq 0 ]; then
+              build/host-tests/test_phrase_core
+              phrase_core_run=$?
+            else
+              phrase_core_run=125
+            fi
+            g++ ${COMMON_FLAGS} tests/test_phrase_persistence_preview.cpp \
+              -o build/host-tests/test_phrase_persistence_preview
+            phrase_persist_build=$?
+            if [ "${phrase_persist_build}" -eq 0 ]; then
+              build/host-tests/test_phrase_persistence_preview
+              phrase_persist_run=$?
+            else
+              phrase_persist_run=125
+            fi
+            g++ ${COMMON_FLAGS} tests/test_phrase_workspace.cpp \
+              -o build/host-tests/test_phrase_workspace
+            phrase_workspace_build=$?
+            if [ "${phrase_workspace_build}" -eq 0 ]; then
+              build/host-tests/test_phrase_workspace
+              phrase_workspace_run=$?
+            else
+              phrase_workspace_run=125
+            fi
+            g++ ${COMMON_FLAGS} -Iplatform_sdl \
+              -include platform_sdl/arduino_compat.h \
+              -c src/ui/pages/phrase_page.cpp \
+              -o build/host-tests/phrase_page.o
+            phrase_page_build=$?
+            echo "PHRASE_CORE_BUILD_EXIT=${phrase_core_build}"
+            echo "PHRASE_CORE_RUN_EXIT=${phrase_core_run}"
+            echo "PHRASE_PERSIST_BUILD_EXIT=${phrase_persist_build}"
+            echo "PHRASE_PERSIST_RUN_EXIT=${phrase_persist_run}"
+            echo "PHRASE_WORKSPACE_BUILD_EXIT=${phrase_workspace_build}"
+            echo "PHRASE_WORKSPACE_RUN_EXIT=${phrase_workspace_run}"
+            echo "PHRASE_PAGE_COMPILE_EXIT=${phrase_page_build}"
+
+            echo "STEP5=undo-regressions"
+            bash tests/run_0_9_9_undo_regression_tests.sh
+            undo_status=$?
+            echo "UNDO_REGRESSION_EXIT=${undo_status}"
+
             if [ "${build_status}" -eq 0 ] && \
                [ "${focused_status}" -eq 0 ] && \
                [ "${source_status}" -eq 0 ] && \
                [ "${p1a_status}" -eq 0 ] && \
-               [ "${p1a2_status}" -eq 0 ]; then
+               [ "${p1a2_status}" -eq 0 ] && \
+               [ "${phrase_scene_status}" -eq 0 ] && \
+               [ "${phrase_ui_status}" -eq 0 ] && \
+               [ "${phrase_core_build}" -eq 0 ] && \
+               [ "${phrase_core_run}" -eq 0 ] && \
+               [ "${phrase_persist_build}" -eq 0 ] && \
+               [ "${phrase_persist_run}" -eq 0 ] && \
+               [ "${phrase_workspace_build}" -eq 0 ] && \
+               [ "${phrase_workspace_run}" -eq 0 ] && \
+               [ "${phrase_page_build}" -eq 0 ] && \
+               [ "${undo_status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
