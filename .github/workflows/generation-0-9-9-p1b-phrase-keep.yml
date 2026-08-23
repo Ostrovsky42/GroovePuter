@@ -21,16 +21,16 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Run P1b cumulative ownership suite
+      - name: Run full host regressions
         shell: bash
         run: |
           set +e
           {
             echo "HEAD=$(git rev-parse HEAD)"
-            echo "STEP1_TO_6=tests/run_0_9_9_p1b_tests.sh"
-            bash tests/run_0_9_9_p1b_tests.sh
+            echo "STEP7=tests/run_host_tests.sh"
+            bash tests/run_host_tests.sh
             status=$?
-            echo "P1B_SUITE_EXIT=${status}"
+            echo "HOST_EXIT=${status}"
             if [ "${status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
