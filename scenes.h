@@ -15,6 +15,7 @@
 #include "src/generation/feel/feel_types.h"
 #include "src/phrase/phrase_types.h"
 #include "src/phrase/phrase_persistence.h"
+#include "src/state/undo_owner.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -731,6 +732,14 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   using WriterType = typename std::remove_reference<TWriter>::type;
   WriterType& out = writer;
 
+  const Scene* persistentScene = scene_;
+  Scene& persistenceView = sceneTransactionScratch();
+  if (GroovePuterUndo::undoOwner().hasLifecycle()) {
+    persistenceView = *scene_;
+    GroovePuterUndo::undoOwner().sanitizeForPersistence(&persistenceView);
+    persistentScene = &persistenceView;
+  }
+
   auto writeChunk = [&](const char* data, size_t len) -> bool {
     return scene_json_detail::writeChunk(out, data, len);
   };
@@ -950,13 +959,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
 
   if (!writeChar('{')) return false;
   if (!writeLiteral("\"drumBanks\":")) return false;
-  if (!writeDrumBanks(scene_->drumBanks)) return false;
+  if (!writeDrumBanks(persistentScene->drumBanks)) return false;
 
   if (!writeLiteral(",\"synthABanks\":")) return false;
-  if (!writeSynthBanks(scene_->synthABanks)) return false;
+  if (!writeSynthBanks(persistentScene->synthABanks)) return false;
 
   if (!writeLiteral(",\"synthBBanks\":")) return false;
-  if (!writeSynthBanks(scene_->synthBBanks)) return false;
+  if (!writeSynthBanks(persistentScene->synthBBanks)) return false;
 
   auto writeSong = [&](const Song& s) -> bool {
     if (!writeChar('{')) return false;

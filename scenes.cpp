@@ -3,6 +3,7 @@
 #include "src/debug_log.h"
 #include "src/audio/pattern_paging.h"
 #include "src/phrase/phrase_core.h"
+#include "src/state/undo_owner.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -2984,6 +2985,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   if (loadedFlavor > 4) loadedFlavor = 4;
   loaded->grooveFlavor = static_cast<uint8_t>(loadedFlavor);
 
+  GroovePuterUndo::undoOwner().clear();
   *scene_ = *loaded;
   // loadedSong is struct Song, scene_->songs is array.
   // We loaded into loadedSongs[2] array above. 
@@ -3080,6 +3082,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 #endif
   if (!parsed || observer.hadError()) return false;
 
+  GroovePuterUndo::undoOwner().clear();
   *scene_ = *loaded;
   // Songs are already in *loaded (target_.songs populated by observer)
   // scene_->songs[0] = observer.songs(0); // Not needed, observer writes to loaded->songs
