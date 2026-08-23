@@ -17,7 +17,540 @@ bool songR4QueuedReverseGesture(const UIEvent& event) {
   return event.event_type == GROOVEPUTER_KEY_DOWN && event.ctrl &&
          (normalizedSongR4Key(event) == 'r' || event.scancode == GROOVEPUTER_R);
 }
+
+bool songPatternPickerOpenGesture(const UIEvent& event) {
+  return event.event_type == GROOVEPUTER_KEY_DOWN && event.alt && !event.ctrl &&
+         (event.key == '\n' || event.key == '\r');
+}
+
+int pickerLocalSlot(int globalPattern) {
+  const PatternAddress address = patternAddressFromGlobal(globalPattern);
+  if (!address.valid()) return -1;
+  return address.bank * Bank<SynthPattern>::kPatterns + address.slot;
+}
+
+const char* pickerTrackName(SongTrack track) {
+  switch (track) {
+    case SongTrack::SynthA: return "A";
+    case SongTrack::SynthB: return "B";
+    case SongTrack::Drums: return "DR";
+    case SongTrack::Voice: return "VO";
+  }
+  return "?";
+}
 }  // namespace
+
+bool SongPage::pickerTrackHasMaterial(int globalPattern) const {
+  const PatternAddress address = patternAddressFromGlobal(globalPattern);
+  if (!address.valid() || address.page != mini_acid_.currentPageIndex()) {
+    return false;
+  }
+  const int localSlot =
+      address.bank * Bank<SynthPattern>::kPatterns + address.slot;
+  return !SongPatternMaterializer::slotContentIsEmpty(
+      mini_acid_.sceneManager().currentScene(), pattern_picker_.track, localSlot);
+}
+
+int SongPage::findExistingPickerPattern(int startLocalSlot,
+                                        int direction,
+                                        int bankConstraint) const {
+  if (direction == 0) direction = 1;
+  int start = startLocalSlot;
+  if (start < 0 || start >= kPatternsPerPage) start = 0;
+  const int page = mini_acid_.currentPageIndex();
+  for (int offset = 0; offset < kPatternsPerPage; ++offset) {
+    int local = start + direction * offset;
+    while (local < 0) local += kPatternsPerPage;
+    while (local >= kPatternsPerPage) local -= kPatternsPerPage;
+    const int bank = local / Bank<SynthPattern>::kPatterns;
+    if (bankConstraint >= 0 && bank != bankConstraint) continue;
+    const int slot = local % Bank<SynthPattern>::kPatterns;
+    const int global = songPatternFromPageBankIndex(page, bank, slot);
+    if (pickerTrackHasMaterial(global)) return global;
+  }
+  return -1;
+}
+
+bool SongPage::applyPatternPickerPreview(int globalPattern) {
+  const PatternAddress address = patternAddressFromGlobal(globalPattern);
+  if (!address.valid() || address.page != mini_acid_.currentPageIndex()) {
+    return false;
+  }
+
+  withRuntimeAudioGuard([&]() {
+    switch (pattern_picker_.track) {
+      case SongTrack::SynthA:
+        mini_acid_.set303BankIndex(0, address.bank);
+        mini_acid_.set303PatternIndex(0, address.slot);
+        break;
+      case SongTrack::SynthB:
+        mini_acid_.set303BankIndex(1, address.bank);
+        mini_acid_.set303PatternIndex(1, address.slot);
+        break;
+      case SongTrack::Drums:
+        mini_acid_.setDrumBankIndex(address.bank);
+        mini_acid_.setDrumPatternIndex(address.slot);
+        break;
+      case SongTrack::Voice:
+        break;
+    }
+  });
+  return pattern_picker_.track != SongTrack::Voice;
+}
+
+void SongPage::enterPatternPickerAuditionRuntime() {
+  // Song arrangement truth remains untouched during audition. Song mode is a
+  // runtime selector, so temporarily fall back to the already-existing pattern
+  // player and restore it exactly when the modal closes.
+  if (mini_acid_.songModeEnabled()) {
+    withRuntimeAudioGuard([&]() { mini_acid_.setSongMode(false); });
+  }
+}
+
+void SongPage::restorePatternPickerRuntime() {
+  if (!pattern_picker_.active) return;
+  withRuntimeAudioGuard([&]() {
+    if (mini_acid_.songModeEnabled()) mini_acid_.setSongMode(false);
+    mini_acid_.set303BankIndex(0, pattern_picker_.savedSynthBank[0]);
+    mini_acid_.set303PatternIndex(0, pattern_picker_.savedSynthPattern[0]);
+    mini_acid_.set303BankIndex(1, pattern_picker_.savedSynthBank[1]);
+    mini_acid_.set303PatternIndex(1, pattern_picker_.savedSynthPattern[1]);
+    mini_acid_.setDrumBankIndex(pattern_picker_.savedDrumBank);
+    mini_acid_.setDrumPatternIndex(pattern_picker_.savedDrumPattern);
+    mini_acid_.setSongPosition(pattern_picker_.savedSongPosition);
+    if (pattern_picker_.savedSongMode) mini_acid_.setSongMode(true);
+  });
+}
+
+void SongPage::showPatternPickerStatus() {
+  if (!pattern_picker_.active) return;
+  char address[12];
+  formatGlobalPatternAddress(
+      address, sizeof(address), pattern_picker_.candidateGlobal);
+  char status[64];
+  if (pattern_picker_.mode == PatternPickerMode::Generate) {
+    std::snprintf(status, sizeof(status),
+                  "PICK GEN %s %s T%02u G:REROLL TAB ENTER ESC",
+                  pickerTrackName(pattern_picker_.track), address,
+                  static_cast<unsigned>(pattern_picker_.take % 100u));
+  } else {
+    std::snprintf(status, sizeof(status),
+                  "PICK EXIST %s %s Q-I/B/<> TAB ENTER ESC",
+                  pickerTrackName(pattern_picker_.track), address);
+  }
+  showToast(status, 60000);
+}
+
+void SongPage::closePatternPickerState() {
+  pattern_picker_ = PatternPickerState{};
+}
+
+bool SongPage::selectExistingPickerPattern(int globalPattern) {
+  const PatternAddress address = patternAddressFromGlobal(globalPattern);
+  if (!address.valid() || address.page != mini_acid_.currentPageIndex() ||
+      !pickerTrackHasMaterial(globalPattern)) {
+    showToast("EMPTY PATTERN", 700);
+    return false;
+  }
+  pattern_picker_.page = address.page;
+  pattern_picker_.browseBank = address.bank;
+  pattern_picker_.browseSlot = address.slot;
+  pattern_picker_.candidateGlobal = globalPattern;
+  if (!applyPatternPickerPreview(globalPattern)) return false;
+  showPatternPickerStatus();
+  return true;
+}
+
+bool SongPage::openPatternPicker() {
+  if (pattern_picker_.active) return true;
+  if (has_selection_) {
+    showToast("PICKER: SINGLE CELL", 1000);
+    return true;
+  }
+  if (mini_acid_.isPageLoading() || mini_acid_.targetPageIndex() >= 0) {
+    showToast("PICKER: PAGE BUSY", 1000);
+    return true;
+  }
+
+  bool valid = false;
+  const SongTrack track = trackForColumn(cursorTrack(), valid);
+  const uint8_t trackMask = valid
+      ? SongPatternMaterializer::maskForTrack(track)
+      : 0;
+  if (!valid || trackMask == 0) {
+    showToast("PICKER: TRACK UNAVAILABLE", 1000);
+    return true;
+  }
+
+  pattern_picker_ = PatternPickerState{};
+  pattern_picker_.active = true;
+  pattern_picker_.row = cursorRow();
+  pattern_picker_.songSlot = mini_acid_.activeSongSlot();
+  pattern_picker_.track = track;
+  pattern_picker_.trackMask = trackMask;
+  pattern_picker_.page = mini_acid_.currentPageIndex();
+  pattern_picker_.originalReference =
+      mini_acid_.songPatternAt(pattern_picker_.row, track);
+  pattern_picker_.savedSongMode = mini_acid_.songModeEnabled();
+  pattern_picker_.savedSongPosition = mini_acid_.currentSongPosition();
+
+  if (pattern_picker_.savedSongMode) {
+    withRuntimeAudioGuard([&]() { mini_acid_.setSongMode(false); });
+  }
+  pattern_picker_.savedSynthPattern[0] = mini_acid_.current303PatternIndex(0);
+  pattern_picker_.savedSynthPattern[1] = mini_acid_.current303PatternIndex(1);
+  pattern_picker_.savedSynthBank[0] = mini_acid_.current303BankIndex(0);
+  pattern_picker_.savedSynthBank[1] = mini_acid_.current303BankIndex(1);
+  pattern_picker_.savedDrumPattern = mini_acid_.currentDrumPatternIndex();
+  pattern_picker_.savedDrumBank = mini_acid_.currentDrumBankIndex();
+
+  const PatternAddress original =
+      patternAddressFromGlobal(pattern_picker_.originalReference);
+  if (original.valid() && original.page == pattern_picker_.page &&
+      pickerTrackHasMaterial(pattern_picker_.originalReference)) {
+    selectExistingPickerPattern(pattern_picker_.originalReference);
+    return true;
+  }
+
+  int preferredLocal = assignment_bank_index_ * Bank<SynthPattern>::kPatterns;
+  if (track == SongTrack::SynthA) {
+    preferredLocal = mini_acid_.current303BankIndex(0) *
+        Bank<SynthPattern>::kPatterns + mini_acid_.current303PatternIndex(0);
+  } else if (track == SongTrack::SynthB) {
+    preferredLocal = mini_acid_.current303BankIndex(1) *
+        Bank<SynthPattern>::kPatterns + mini_acid_.current303PatternIndex(1);
+  } else if (track == SongTrack::Drums) {
+    preferredLocal = mini_acid_.currentDrumBankIndex() *
+        Bank<SynthPattern>::kPatterns + mini_acid_.currentDrumPatternIndex();
+  }
+  const int first = findExistingPickerPattern(preferredLocal, 1);
+  if (first >= 0) selectExistingPickerPattern(first);
+  else showPatternPickerStatus();
+  return true;
+}
+
+bool SongPage::generatePatternPickerCandidate() {
+  if (!pattern_picker_.active ||
+      pattern_picker_.mode != PatternPickerMode::Generate) {
+    return false;
+  }
+  if (mini_acid_.isPageLoading() || mini_acid_.targetPageIndex() >= 0) {
+    showToast("PICKER: PAGE BUSY", 900);
+    return false;
+  }
+  if (pattern_picker_.lease.isActive() &&
+      pattern_picker_.page != mini_acid_.currentPageIndex()) {
+    showToast("PICKER: LEASE PAGE PIN", 1200);
+    return false;
+  }
+  pattern_picker_.page = mini_acid_.currentPageIndex();
+
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  int preferredLocal = pattern_picker_.browseBank * Bank<SynthPattern>::kPatterns +
+      pattern_picker_.browseSlot;
+  auto& owner = PhrasePatternLease::patternLeaseOwner();
+  const PhrasePatternLease::AcquireResult acquired = owner.acquire(
+      scene,
+      pattern_picker_.page,
+      1,
+      pattern_picker_.trackMask,
+      pattern_picker_.lease,
+      preferredLocal);
+  if (!acquired) {
+    showToast(PhrasePatternLease::statusText(acquired.status), 1200);
+    return false;
+  }
+
+  const int globalPattern = pattern_picker_.lease.globalPattern[0];
+  const int localSlot = pickerLocalSlot(globalPattern);
+  if (localSlot < 0) {
+    showToast("PICKER: INVALID LEASE", 1100);
+    return false;
+  }
+
+  SongPatternCandidate::Candidate candidate{};
+  if (!SongPatternCandidate::produce(
+          mini_acid_, pattern_picker_.track, pattern_picker_.row,
+          pattern_picker_.page, localSlot, gen_mode_, candidate)) {
+    showToast("GENERATION FAILED", 1100);
+    return false;
+  }
+
+  bool wrote = false;
+  withRuntimeAudioGuard([&]() {
+    wrote = SongPatternCandidate::writeToLeasedAddress(
+        scene, pattern_picker_.track, globalPattern, candidate);
+  });
+  if (!wrote) {
+    showToast("PICKER: WRITE FAILED", 1100);
+    return false;
+  }
+
+  const PatternAddress address = patternAddressFromGlobal(globalPattern);
+  pattern_picker_.candidateGlobal = globalPattern;
+  pattern_picker_.browseBank = address.bank;
+  pattern_picker_.browseSlot = address.slot;
+  ++pattern_picker_.take;
+  applyPatternPickerPreview(globalPattern);
+  showPatternPickerStatus();
+  return true;
+}
+
+bool SongPage::enterPatternPickerGenerateMode() {
+  if (!pattern_picker_.active) return false;
+  pattern_picker_.mode = PatternPickerMode::Generate;
+  pattern_picker_.candidateGlobal = -1;
+  pattern_picker_.take = 0;
+  return generatePatternPickerCandidate();
+}
+
+bool SongPage::acceptPatternPicker() {
+  if (!pattern_picker_.active || pattern_picker_.candidateGlobal < 0) {
+    showToast("PICKER: NO CANDIDATE", 900);
+    return false;
+  }
+  if (mini_acid_.activeSongSlot() != pattern_picker_.songSlot) {
+    showToast("PICKER: SONG TARGET CHANGED", 1200);
+    return false;
+  }
+  const PatternAddress address =
+      patternAddressFromGlobal(pattern_picker_.candidateGlobal);
+  if (!address.valid() || address.page != mini_acid_.currentPageIndex()) {
+    showToast("PICKER: PAGE CHANGED", 1000);
+    return false;
+  }
+
+  const int candidate = pattern_picker_.candidateGlobal;
+  const int row = pattern_picker_.row;
+  const SongTrack track = pattern_picker_.track;
+  const PatternPickerMode mode = pattern_picker_.mode;
+  restorePatternPickerRuntime();
+
+  if (mode == PatternPickerMode::Existing) {
+    if (candidate == pattern_picker_.originalReference) {
+      closePatternPickerState();
+      showToast("PICKER: NO CHANGE", 700);
+      return true;
+    }
+    const bool committed = commitSongMutation([&](Song& song) {
+      GroovePuterUndo::SongEdit::setPattern(song, row, track, candidate);
+    });
+    if (!committed) {
+      enterPatternPickerAuditionRuntime();
+      applyPatternPickerPreview(candidate);
+      showToast("PICKER: ACCEPT FAILED", 1000);
+      return false;
+    }
+    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+      withRuntimeAudioGuard([&]() { mini_acid_.setSongPosition(row); });
+    }
+    char label[12];
+    formatGlobalPatternAddress(label, sizeof(label), candidate);
+    closePatternPickerState();
+    char message[32];
+    std::snprintf(message, sizeof(message), "PICK ACCEPT %s", label);
+    showToast(message, 900);
+    return true;
+  }
+
+  auto& owner = PhrasePatternLease::patternLeaseOwner();
+  PhrasePatternLease::PreparedPersistentTransfer prepared{};
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhrasePatternLease::LeaseStatus preparedStatus =
+      owner.preparePersistentTransfer(
+          scene,
+          mini_acid_.currentPageIndex(),
+          pattern_picker_.lease,
+          PhrasePatternLease::PersistentClass::SongGenerated,
+          prepared);
+  if (preparedStatus != PhrasePatternLease::LeaseStatus::Ok) {
+    enterPatternPickerAuditionRuntime();
+    applyPatternPickerPreview(candidate);
+    showToast(PhrasePatternLease::statusText(preparedStatus), 1200);
+    return false;
+  }
+
+  const bool committed = commitSongMutation([&](Song& song) {
+    GroovePuterUndo::SongEdit::setPattern(song, row, track, candidate);
+  });
+  if (!committed) {
+    // prepare classified only lease-owned backing. The active lease remains the
+    // rollback owner; Esc can still discard the candidate exactly.
+    enterPatternPickerAuditionRuntime();
+    applyPatternPickerPreview(candidate);
+    showPatternPickerStatus();
+    return false;
+  }
+
+  const PhrasePatternLease::LeaseStatus completedStatus =
+      owner.completePersistentTransfer(pattern_picker_.lease, prepared);
+  if (completedStatus != PhrasePatternLease::LeaseStatus::Ok) {
+    // A valid synchronous prepare -> Song commit -> complete sequence is
+    // bookkeeping-only and must not reach this branch.
+    showToast("LEASE TRANSFER FAULT", 1800);
+    return false;
+  }
+
+  if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+    withRuntimeAudioGuard([&]() { mini_acid_.setSongPosition(row); });
+  }
+  char label[12];
+  formatGlobalPatternAddress(label, sizeof(label), candidate);
+  closePatternPickerState();
+  char message[32];
+  std::snprintf(message, sizeof(message), "PICK GEN ACCEPT %s", label);
+  showToast(message, 1000);
+  return true;
+}
+
+bool SongPage::discardPatternPicker() {
+  if (!pattern_picker_.active) return true;
+  restorePatternPickerRuntime();
+  if (pattern_picker_.lease.isActive()) {
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const PhrasePatternLease::LeaseStatus status =
+        PhrasePatternLease::patternLeaseOwner().discard(
+            scene, mini_acid_.currentPageIndex(), pattern_picker_.lease);
+    if (status != PhrasePatternLease::LeaseStatus::Ok) {
+      showToast(PhrasePatternLease::statusText(status), 1200);
+      enterPatternPickerAuditionRuntime();
+      if (pattern_picker_.candidateGlobal >= 0) {
+        applyPatternPickerPreview(pattern_picker_.candidateGlobal);
+      }
+      return false;
+    }
+  }
+  closePatternPickerState();
+  showToast("PICKER DISCARDED", 700);
+  return true;
+}
+
+void SongPage::onExit() {
+  if (pattern_picker_.active) {
+    (void)discardPatternPicker();
+  }
+}
+
+bool SongPage::handlePatternPickerEvent(UIEvent& ui_event) {
+  if (!pattern_picker_.active) return false;
+
+  // The picker is modal. Application events such as Undo/Copy/Paste are
+  // consumed here so no Song mutation can occur behind the audition overlay.
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return true;
+
+  if (!pattern_picker_.lease.isActive() && !mini_acid_.isPageLoading() &&
+      mini_acid_.currentPageIndex() != pattern_picker_.page) {
+    pattern_picker_.page = mini_acid_.currentPageIndex();
+    pattern_picker_.candidateGlobal = -1;
+    if (pattern_picker_.mode == PatternPickerMode::Existing) {
+      const int first = findExistingPickerPattern(
+          pattern_picker_.browseBank * Bank<SynthPattern>::kPatterns +
+              pattern_picker_.browseSlot,
+          1);
+      if (first >= 0) selectExistingPickerPattern(first);
+    }
+  }
+
+  const char key = normalizedSongR4Key(ui_event);
+  const int nav = UIInput::navCode(ui_event);
+  const bool escape = ui_event.scancode == GROOVEPUTER_ESCAPE ||
+      ui_event.key == 0x1B || ui_event.key == '`' || ui_event.key == '~';
+  if (escape) {
+    (void)discardPatternPicker();
+    return true;
+  }
+  if (ui_event.key == '\n' || ui_event.key == '\r') {
+    (void)acceptPatternPicker();
+    return true;
+  }
+
+  if (ui_event.key == '\t' || ui_event.scancode == GROOVEPUTER_TAB) {
+    if (pattern_picker_.mode == PatternPickerMode::Existing) {
+      (void)enterPatternPickerGenerateMode();
+    } else {
+      if (pattern_picker_.lease.isActive()) {
+        Scene& scene = mini_acid_.sceneManager().currentScene();
+        const PhrasePatternLease::LeaseStatus status =
+            PhrasePatternLease::patternLeaseOwner().discard(
+                scene, mini_acid_.currentPageIndex(), pattern_picker_.lease);
+        if (status != PhrasePatternLease::LeaseStatus::Ok) {
+          showToast(PhrasePatternLease::statusText(status), 1200);
+          return true;
+        }
+      }
+      pattern_picker_.mode = PatternPickerMode::Existing;
+      pattern_picker_.take = 0;
+      const int first = findExistingPickerPattern(
+          pattern_picker_.browseBank * Bank<SynthPattern>::kPatterns +
+              pattern_picker_.browseSlot,
+          1);
+      pattern_picker_.candidateGlobal = -1;
+      if (first >= 0) selectExistingPickerPattern(first);
+      else showPatternPickerStatus();
+    }
+    return true;
+  }
+
+  if (pattern_picker_.mode == PatternPickerMode::Generate) {
+    if (key == 'g' || ui_event.scancode == GROOVEPUTER_G) {
+      (void)generatePatternPickerCandidate();
+      return true;
+    }
+    if (key == 'b' || ui_event.scancode == GROOVEPUTER_B) {
+      showToast("PICKER: LEASE ADDRESS PINNED", 900);
+      return true;
+    }
+    // All remaining keys are consumed; legacy Song G/Q/B/Undo cannot fall
+    // through while a generated candidate owns temporary storage.
+    return true;
+  }
+
+  int directSlot = patternIndexFromKey(key);
+  if (directSlot < 0) directSlot = scancodeToPatternIndex(ui_event.scancode);
+  if (directSlot >= 0 && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    const int global = songPatternFromPageBankIndex(
+        mini_acid_.currentPageIndex(), pattern_picker_.browseBank, directSlot);
+    (void)selectExistingPickerPattern(global);
+    return true;
+  }
+
+  if (!ui_event.ctrl && !ui_event.alt &&
+      (key == 'b' || ui_event.scancode == GROOVEPUTER_B)) {
+    pattern_picker_.browseBank = pattern_picker_.browseBank == 0 ? 1 : 0;
+    const int sameSlot = songPatternFromPageBankIndex(
+        mini_acid_.currentPageIndex(), pattern_picker_.browseBank,
+        pattern_picker_.browseSlot);
+    if (!selectExistingPickerPattern(sameSlot)) {
+      const int first = findExistingPickerPattern(
+          pattern_picker_.browseBank * Bank<SynthPattern>::kPatterns,
+          1,
+          pattern_picker_.browseBank);
+      if (first >= 0) selectExistingPickerPattern(first);
+      else showPatternPickerStatus();
+    }
+    return true;
+  }
+
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
+      nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    const int direction =
+        (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_UP) ? -1 : 1;
+    int local = pickerLocalSlot(pattern_picker_.candidateGlobal);
+    if (local < 0) {
+      local = pattern_picker_.browseBank * Bank<SynthPattern>::kPatterns +
+          pattern_picker_.browseSlot;
+    }
+    local += direction;
+    while (local < 0) local += kPatternsPerPage;
+    while (local >= kPatternsPerPage) local -= kPatternsPerPage;
+    const int next = findExistingPickerPattern(local, direction);
+    if (next >= 0) selectExistingPickerPattern(next);
+    else showToast("NO EXISTING PATTERNS", 900);
+    return true;
+  }
+
+  return true;
+}
 
 bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::SongUndoPayload;
@@ -79,6 +612,14 @@ bool SongPage::undoPreparedSongState() {
 
 bool SongPage::handleEvent(UIEvent& ui_event) {
   using namespace GroovePuterUndo;
+
+  if (pattern_picker_.active) {
+    return handlePatternPickerEvent(ui_event);
+  }
+
+  if (songPatternPickerOpenGesture(ui_event)) {
+    return openPatternPicker();
+  }
 
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
