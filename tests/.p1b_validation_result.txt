@@ -1,4 +1,4 @@
-HEAD=bcea4b250ed6e59b090353c4564006fbc2c16969
+HEAD=b83a310c83b49b3a4a878b53effe22bbccf1bd9d
 STEP1=focused
 FOCUSED_BUILD_EXIT=0
 0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
@@ -11,4 +11,12 @@ STEP3=cumulative-p1a
 0.9.9-P1a cumulative source contracts: PASS
 0.9.9-P1a focused suite: PASS
 P1A_EXIT=0
+STEP4=cumulative-p1a2
+0.9.9-P1a pattern lease owner: PASS
+0.9.9-P1a cumulative source contracts: PASS
+0.9.9-P1a focused suite: PASS
+0.9.9-P1a2 pattern lease generalization: PASS
+0.9.9-P1a2 source contracts: PASS
+0.9.9-P1a2 focused + cumulative lease suite: PASS
+P1A2_EXIT=0
 RESULT=PASS
