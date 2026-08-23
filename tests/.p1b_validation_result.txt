@@ -1,41 +1,26 @@
-HEAD=0009ad170e37d9c0564457afcf4e62f5b522a4d5
-STEP1=focused
-FOCUSED_BUILD_EXIT=0
+HEAD=8ec692f24073a98cc5ddfd366316fdca55dc538e
+STEP1_TO_6=tests/run_0_9_9_p1b_tests.sh
+[P1b 1/6] focused KEEP / Undo ownership
 0.9.9-P1b Phrase KEEP / Undo backing ownership: PASS
-FOCUSED_TEST_EXIT=0
-STEP2=source-contract
+[P1b 2/6] source contracts
 0.9.9-P1b Phrase KEEP / Undo ownership source contracts: PASS
-SOURCE_EXIT=0
-STEP3=cumulative-p1a
+[P1b 3/6] cumulative P1a
 0.9.9-P1a pattern lease owner: PASS
 0.9.9-P1a cumulative source contracts: PASS
 0.9.9-P1a focused suite: PASS
-P1A_EXIT=0
-STEP4=cumulative-p1a2
+[P1b 4/6] cumulative P1a2
 0.9.9-P1a pattern lease owner: PASS
 0.9.9-P1a cumulative source contracts: PASS
 0.9.9-P1a focused suite: PASS
 0.9.9-P1a2 pattern lease generalization: PASS
 0.9.9-P1a2 source contracts: PASS
 0.9.9-P1a2 focused + cumulative lease suite: PASS
-P1A2_EXIT=0
-STEP5=phrase-core-source
+[P1b 5/6] Phrase Core + canonical Undo regressions
 Phrase Scene source regressions passed
 Phrase UI source regressions: PASS
-PHRASE_SCENE_SOURCE_EXIT=0
-PHRASE_UI_SOURCE_EXIT=0
-STEP5=phrase-core-host
 Phrase Core tests passed
 Phrase persistence/preview tests passed
 Phrase workspace PREPARE tests passed
-PHRASE_CORE_BUILD_EXIT=0
-PHRASE_CORE_RUN_EXIT=0
-PHRASE_PERSIST_BUILD_EXIT=0
-PHRASE_PERSIST_RUN_EXIT=0
-PHRASE_WORKSPACE_BUILD_EXIT=0
-PHRASE_WORKSPACE_RUN_EXIT=0
-PHRASE_PAGE_COMPILE_EXIT=0
-STEP5=undo-regressions
 0.9.8 R8 global Ctrl+Z contract: PASS
 0.9.9 R8/R9 Undo regression contracts: PASS
 0.9.9 phase-dependent Undo/Redo contract: PASS
@@ -57,5 +42,18 @@ Phrase liveness tests passed
 0.9.9-C bounded activation source contracts: OK
 0.9.9-D3 focused suite: PASS
 0.9.9 R8/R9 Undo regression suite: PASS
-UNDO_REGRESSION_EXIT=0
+[P1b 6/6] persistence + memory
+JsonVisitor::parseObject: Expected '"' (key start), got 'n' (110)
+0.9.9-P1b Scene JSON persistence: PASS
+BoundedUndoSlot=1548
+UndoOwner=1552
+UndoPayloadCapacity=1536
+LifecyclePayloadCapacity=1424
+LifecycleTailReserved=112
+UndoLifecycleMetadata=112
+PhraseUndoPayload=246
+PatternLease=14
+PatternLeaseOwner=28
+0.9.9-P1b focused + cumulative ownership suite: PASS
+P1B_SUITE_EXIT=0
 RESULT=PASS
