@@ -60,6 +60,9 @@ static_assert(std::is_trivially_copyable<UndoLifecycleMetadata>::value,
 template <std::size_t PayloadBytes>
 class BoundedUndoSlot {
  public:
+  static constexpr uint16_t kLifecycleFlag = 0x8000u;
+  static constexpr uint16_t kPayloadSizeMask = 0x7FFFu;
+
   static_assert(PayloadBytes > kUndoLifecycleTailBytes,
                 "Undo payload must leave room for lifecycle metadata");
   static_assert(PayloadBytes < kLifecycleFlag,
@@ -106,7 +109,7 @@ class BoundedUndoSlot {
       const GroovePuterState::SceneRevisionState& revision_before,
       const UndoLifecycleMetadata& lifecycle) {
     static_assert(std::is_trivially_copyable<Payload>::value,
-                  "Undo payloads must be trivially copyable fixed values");
+                  "Undo payloads must remain trivially copyable fixed values");
     if (kind == UndoKind::None ||
         sizeof(Payload) > lifecyclePayloadCapacity() ||
         lifecycle.count > kUndoRetainedResourceCapacity) {
@@ -145,9 +148,6 @@ class BoundedUndoSlot {
   }
 
  private:
-  static constexpr uint16_t kLifecycleFlag = 0x8000u;
-  static constexpr uint16_t kPayloadSizeMask = 0x7FFFu;
-
   uint8_t* lifecycleStorage() {
     return payload_.data() + PayloadBytes - kUndoLifecycleTailBytes;
   }
