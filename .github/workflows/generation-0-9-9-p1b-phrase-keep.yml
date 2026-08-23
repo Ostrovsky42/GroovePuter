@@ -21,7 +21,7 @@ jobs:
         with:
           ref: agent/20260823-08-0.9.9-p1b-phrase-keep-undo
 
-      - name: Focused P1b ownership test then source contract
+      - name: Validate through cumulative P1a
         shell: bash
         run: |
           set +e
@@ -48,9 +48,15 @@ jobs:
             source_status=$?
             echo "SOURCE_EXIT=${source_status}"
 
+            echo "STEP3=cumulative-p1a"
+            bash tests/run_0_9_9_p1a_tests.sh
+            p1a_status=$?
+            echo "P1A_EXIT=${p1a_status}"
+
             if [ "${build_status}" -eq 0 ] && \
                [ "${focused_status}" -eq 0 ] && \
-               [ "${source_status}" -eq 0 ]; then
+               [ "${source_status}" -eq 0 ] && \
+               [ "${p1a_status}" -eq 0 ]; then
               echo "RESULT=PASS"
             else
               echo "RESULT=FAIL"
