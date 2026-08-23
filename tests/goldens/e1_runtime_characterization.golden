@@ -1,0 +1,9 @@
+DIFF id=404 secondary_added=3 secondary_removed=0 ghost=1 accent=0 structural_unchanged=false DROP=0 DISPLACE=0 RERUN_EQUAL=true
+DIFF id=413 secondary_added=3 secondary_removed=0 ghost=1 accent=0 structural_unchanged=false DROP=0 DISPLACE=0 RERUN_EQUAL=true
+DIFF id=714 secondary_added=2 secondary_removed=0 ghost=1 accent=0 structural_unchanged=false DROP=0 DISPLACE=0 RERUN_EQUAL=true
+SECONDARY-SEARCH id=404 ordinal=0 added=2
+AUDITION-DIRECT bars=2 segments=1 traj=2/0 identity_bars=2 phraseOrdinal_transition=none RERUN_EQUAL=true
+AUDITION-DIRECT bars=4 segments=1 traj=5/0 identity_bars=4 phraseOrdinal_transition=none RERUN_EQUAL=true
+AUDITION-DIRECT bars=8 segments=2 traj=5/5 identity_bars=4 phraseOrdinal_transition=N->N+1 RERUN_EQUAL=true
+LEGACY trajectory=6 primitive_structural_after=8220 policy=trajectory RERUN_EQUAL=true
+LEGACY trajectory=7 primitive_structural_after=8220 policy=trajectory RERUN_EQUAL=true

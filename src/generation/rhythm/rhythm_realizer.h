@@ -25,16 +25,17 @@ struct RoleRhythmPlan {
 };
 
 struct RhythmBarPlan {
-  // Stage 2 does not own BarEvolution. Every realized bar remains a Statement;
-  // Stage 6 may later apply a caller-selected trajectory transactionally.
+  // Stage 2 establishes the independently realized bar. The same realizer
+  // owner also applies any later caller-planned BarFunction mutation through
+  // applyRhythmBarFunctionMutation().
   BarFunction function = BarFunction::Statement;
   RoleRhythmPlan roles[kRhythmRoleCount]{};
 };
 
 struct RhythmPhrasePlan {
   uint8_t barCount = 0;
-  // Stage 2 never selects/pins trajectories or TransformationIntent. Keep the
-  // fields explicit so the later Stage 6 extension has a stable plan surface.
+  // Stage 2 does not select/pin trajectories or TransformationIntent. Keep the
+  // fields explicit so Phrase/BarEvolution planning has a stable plan surface.
   TrajectoryId trajectoryId = kNoTrajectoryId;
   RealizationLevel level = RealizationLevel::P1Canonical;
   TransformationIntent intent = TransformationIntent::Auto;
@@ -69,6 +70,22 @@ bool planRespectsProtectedSpace(const RhythmArchetype& archetype,
 
 bool planRespectsLaneBounds(const RhythmArchetype& archetype,
                             const RhythmPhrasePlan& plan);
+
+// Canonical rhythm mutation owner for a caller-planned BarFunction. This is
+// the only production executor for trajectory/reduction/build/break mutation.
+// It preserves the existing deterministic BarEvolution semantics while keeping
+// planning (trajectory and BarFunction choice) outside the mutation owner.
+bool applyRhythmBarFunctionMutation(const RhythmArchetype& archetype,
+                                    RhythmPhrasePlan& plan,
+                                    uint8_t bar,
+                                    BarFunction function,
+                                    uint32_t seed);
+
+// Validation surface for plans after canonical BarFunction mutation. The
+// compatibility BarEvolution API delegates its historical evolvedPlanValid()
+// entry point to this realizer-owned implementation.
+bool rhythmMutationPlanValid(const RhythmArchetype& archetype,
+                             const RhythmPhrasePlan& plan);
 
 static_assert(std::is_trivially_copyable<RoleRhythmPlan>::value,
               "RoleRhythmPlan must remain fixed-capacity");
