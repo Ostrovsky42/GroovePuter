@@ -20,14 +20,14 @@ build_and_run() {
   "${output}"
 }
 
-build_quarantine_and_run() {
+build_corpus_and_run() {
   local compiler="$1"
   local output="$2"
   "${compiler}" -std=c++17 -Wall -Wextra -Werror \
     -Wno-c++20-extensions -I"${ROOT_DIR}" \
     "${ROOT_DIR}/src/generation/generation_context.cpp" \
     "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
-    "${ROOT_DIR}/tests/test_0_9_9_f08_bootstrap_quarantine.cpp" \
+    "${ROOT_DIR}/tests/test_0_9_9_f08_1_vocabulary_corpus.cpp" \
     -o "${output}"
   "${output}"
 }
@@ -39,7 +39,7 @@ fi
 build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_0_9_9_f08_sanitize" \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
-build_quarantine_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_0_9_9_f08_bootstrap_quarantine"
+build_corpus_and_run "${CXX:-g++}" \
+  "${BUILD_DIR}/test_0_9_9_f08_1_vocabulary_corpus"
 
-printf '0.9.9-F08 harmonic-rhythm host matrix: OK\n'
+printf '0.9.9-F08.1 harmonic-rhythm host matrix: OK\n'

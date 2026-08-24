@@ -1,0 +1,71 @@
+name: 0.9.9 F08.1 harmonic rhythm vocabulary
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harmonic-rhythm-vocabulary-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run F08.1 host contract
+        run: bash tests/run_0_9_9_f08_tests.sh
+
+  stage15-causal-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Materialize exact accepted F08 base
+        run: |
+          mkdir -p build/host-tests
+          BASE_WORKTREE="${RUNNER_TEMP}/grooveputer-f08-accepted"
+          git worktree add --detach "${BASE_WORKTREE}" cfb1f9a8e214cfcb823a5e75445f26356b55bed6
+          bash "${BASE_WORKTREE}/tests/run_stage15_tonal_baseline_dump.sh" --tonal \
+            > build/host-tests/stage15_tonal_enabled_f08_accepted.tsv
+
+      - name: Capture deterministic F08.1 tonal corpus twice
+        run: |
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal \
+            > build/host-tests/stage15_tonal_enabled_f08_1_actual.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal-review \
+            > build/host-tests/stage15_tonal_enabled_f08_1_review_a.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal-review \
+            > build/host-tests/stage15_tonal_enabled_f08_1_review_b.tsv
+          diff -u \
+            build/host-tests/stage15_tonal_enabled_f08_1_review_a.tsv \
+            build/host-tests/stage15_tonal_enabled_f08_1_review_b.tsv
+
+      - name: Capture exact accepted-F08 to F08.1 diff
+        run: |
+          diff -u \
+            build/host-tests/stage15_tonal_enabled_f08_accepted.tsv \
+            build/host-tests/stage15_tonal_enabled_f08_1_actual.tsv \
+            > build/host-tests/stage15_f08_1_exact.diff || true
+          cat build/host-tests/stage15_f08_1_exact.diff
+
+      - name: Classify F08.1 causal drift
+        run: |
+          python3 tests/classify_0_9_9_f08_1_stage15_drift.py \
+            build/host-tests/stage15_tonal_enabled_f08_accepted.tsv \
+            build/host-tests/stage15_tonal_enabled_f08_1_review_a.tsv \
+            --report build/host-tests/stage15_f08_1_classification.md
+
+      - name: Upload F08.1 Stage15 diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: f08-1-stage15-semantic-diff
+          path: |
+            build/host-tests/stage15_tonal_enabled_f08_accepted.tsv
+            build/host-tests/stage15_tonal_enabled_f08_1_actual.tsv
+            build/host-tests/stage15_tonal_enabled_f08_1_review_a.tsv
+            build/host-tests/stage15_tonal_enabled_f08_1_review_b.tsv
+            build/host-tests/stage15_f08_1_exact.diff
+            build/host-tests/stage15_f08_1_classification.md
+          if-no-files-found: error
