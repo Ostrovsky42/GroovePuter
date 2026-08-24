@@ -84,11 +84,24 @@ require(
     "E2c introduced a competing budget/flag hierarchy",
 )
 
-for implementation in (realizer, mutation):
+# E2c itself was contract-only. E2a is the first permitted production consumer
+# and must remain inside the already-authoritative rhythm_realizer owner.
+require(
+    "RhythmMutationDelta" not in realizer and
+    "RhythmMutationOp" not in realizer,
+    "base realization path became a competing E2c delta consumer",
+)
+if "produceRhythmMutationCandidates(" in mutation:
     require(
-        "RhythmMutationDelta" not in implementation and
-        "RhythmMutationOp" not in implementation,
-        "E2c must not wire the delta contract into production execution",
+        "RhythmMutationDelta" in mutation and
+        "RhythmMutationOp" in mutation,
+        "E2a producer marker exists without consuming the frozen E2c contract",
+    )
+else:
+    require(
+        "RhythmMutationDelta" not in mutation and
+        "RhythmMutationOp" not in mutation,
+        "E2c contract-only checkpoint wired deltas into production execution",
     )
 
 require(
