@@ -97,6 +97,35 @@ struct RhythmMutationDelta {
   uint8_t targetStep = kNoMutationStep;
 };
 
+// E2a producer surface. The producer enumerates one-hop, bar-local candidate
+// deltas under rhythm_realizer ownership. It does not decide whether evolution
+// should run, rank/select a candidate, or account canonical-relative mutation
+// cost. E2b owns canonical diff/budget legality.
+enum class RhythmMutationProducerStatus : uint8_t {
+  Ok = 0,
+  InvalidRequest,
+  Count,
+};
+
+struct RhythmMutationProducerRequest {
+  const RhythmArchetype* archetype = nullptr;
+  const RhythmPhrasePlan* canonical = nullptr;
+  const RhythmPhrasePlan* current = nullptr;
+  uint8_t bar = 0;
+  RhythmRoleMask roles = kAllRhythmRoles;
+  BarFunction function = BarFunction::Statement;
+  TransformationIntent intent = TransformationIntent::Auto;
+  RealizationLevel level = RealizationLevel::P1Canonical;
+  GenerationContext generation{};
+};
+
+struct RhythmMutationProducerResult {
+  RhythmMutationProducerStatus status =
+      RhythmMutationProducerStatus::InvalidRequest;
+  uint16_t count = 0;
+  bool truncated = false;
+};
+
 constexpr bool rhythmMutationStepValid(uint8_t step) {
   return step < kStepsPerBar;
 }
@@ -261,6 +290,17 @@ inline bool rhythmMutationDisplacementGrammarLegal(
   return (sourceBit & (lane->preferred | lane->optional)) != 0;
 }
 
+// Bounded, allocation-free E2a candidate producer. Output is a canonical-order
+// prefix capped by both caller capacity and kMaxRhythmMutationDeltasPerBar.
+// `truncated` reports that additional structurally possible proposals existed.
+// GenerationContext is part of the stable input contract; E2a performs no
+// stochastic pruning/ranking, so it does not use generation coordinates to
+// reorder or select candidates.
+RhythmMutationProducerResult produceRhythmMutationCandidates(
+    const RhythmMutationProducerRequest& request,
+    RhythmMutationDelta* output,
+    uint16_t capacity);
+
 RhythmRealizationResult realizeRhythmPhrase(
     const RhythmRealizationRequest& request);
 
@@ -300,6 +340,8 @@ static_assert(static_cast<uint8_t>(RhythmMutationOp::ACCENT) == 4,
               "RhythmMutationOp ACCENT ordinal changed");
 static_assert(static_cast<uint8_t>(RhythmMutationOp::GHOST) == 5,
               "RhythmMutationOp GHOST ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationProducerStatus::Ok) == 0,
+              "RhythmMutationProducerStatus Ok ordinal changed");
 static_assert(static_cast<uint8_t>(GenerationDomain::BarEvolution) == 12,
               "GenerationDomain ABI changed: BarEvolution must remain 12");
 static_assert(kDisplaceRadius == 2,
@@ -312,6 +354,10 @@ static_assert(std::is_trivially_copyable<RhythmMutationDelta>::value,
               "RhythmMutationDelta must remain fixed-capacity");
 static_assert(sizeof(RhythmMutationDelta) == 4,
               "RhythmMutationDelta representation changed");
+static_assert(std::is_trivially_copyable<RhythmMutationProducerRequest>::value,
+              "RhythmMutationProducerRequest must remain allocation-free");
+static_assert(std::is_trivially_copyable<RhythmMutationProducerResult>::value,
+              "RhythmMutationProducerResult must remain allocation-free");
 static_assert(std::is_trivially_copyable<RoleRhythmPlan>::value,
               "RoleRhythmPlan must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<RhythmPhrasePlan>::value,
