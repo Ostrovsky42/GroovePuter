@@ -1,4 +1,5 @@
 #include "pattern_paging.h"
+#include "src/state/undo_owner.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -56,8 +57,6 @@ std::string encodeProjectName(const std::string& projectName) {
     encoded.reserve(normalized.size());
     static constexpr char kHex[] = "0123456789ABCDEF";
     for (unsigned char ch : normalized) {
-        // '_' is the escape prefix and must itself be encoded. This keeps
-        // "a b" (_20) distinct from a literal "a_20b" project name.
         if (std::isalnum(ch) || ch == '-') {
             encoded.push_back(static_cast<char>(ch));
         } else {
@@ -400,19 +399,34 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     const std::string oldBackupPath = backupPath(pageIndex);
     SD.remove(temporaryPath.c_str());
 
-    const PageFileHeader header = makeHeader(scene);
+    const Scene* persistentScene = &scene;
+    Scene& staging = sceneTransactionScratch();
+    if (GroovePuterUndo::undoOwner().hasLifecycle()) {
+        std::memcpy(staging.synthABanks, scene.synthABanks,
+                    sizeof(scene.synthABanks));
+        std::memcpy(staging.synthBBanks, scene.synthBBanks,
+                    sizeof(scene.synthBBanks));
+        std::memcpy(staging.drumBanks, scene.drumBanks,
+                    sizeof(scene.drumBanks));
+        GroovePuterUndo::undoOwner().sanitizeForPersistence(&staging);
+        persistentScene = &staging;
+    }
+
+    const PageFileHeader header = makeHeader(*persistentScene);
     File file = SD.open(temporaryPath.c_str(), FILE_WRITE);
     if (!file) return false;
 
     const bool wrote =
         writeAll(file, &header, sizeof(header)) &&
-        writeAll(file, scene.synthABanks, sizeof(scene.synthABanks)) &&
-        writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks)) &&
-        writeAll(file, scene.drumBanks, sizeof(scene.drumBanks));
+        writeAll(file, persistentScene->synthABanks,
+                 sizeof(persistentScene->synthABanks)) &&
+        writeAll(file, persistentScene->synthBBanks,
+                 sizeof(persistentScene->synthBBanks)) &&
+        writeAll(file, persistentScene->drumBanks,
+                 sizeof(persistentScene->drumBanks));
     file.flush();
     file.close();
 
-    Scene& staging = sceneTransactionScratch();
     if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
         SD.remove(temporaryPath.c_str());
         return false;
@@ -436,6 +450,9 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
     if (!loaded) loaded = readAndValidatePage(oldBackupPath, staging);
     if (!loaded) return false;
 
+    // Loading replaces physical Pattern storage. Any retained redo backing is
+    // page-local runtime ownership and must expire only after load validation.
+    GroovePuterUndo::undoOwner().clear();
     std::memcpy(scene.synthABanks, staging.synthABanks,
                 sizeof(scene.synthABanks));
     std::memcpy(scene.synthBBanks, staging.synthBBanks,
@@ -457,6 +474,7 @@ bool PatternPagingService::restoreBackup(int pageIndex) {
 }
 
 void PatternPagingService::initializeEmptyPage(Scene& scene) {
+    GroovePuterUndo::undoOwner().clear();
     for (int bank = 0; bank < kBankCount; ++bank) {
         scene.synthABanks[bank] = Bank<SynthPattern>{};
         scene.synthBBanks[bank] = Bank<SynthPattern>{};

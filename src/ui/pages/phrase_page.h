@@ -7,6 +7,7 @@
 
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/phrase/phrase_undo_backing.h"
 #include "src/phrase/phrase_workspace.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
@@ -23,20 +24,23 @@ class PhrasePage : public IPage {
   template <typename PrepareFn>
   PhraseCore::Result commitPhraseMutation(PrepareFn&& prepare) {
     using GroovePuterUndo::PhraseUndoPayload;
-    using GroovePuterUndo::UndoKind;
     SceneManager& manager = mini_acid_.sceneManager();
-    const int page = manager.currentPageIndex();
     PhraseUndoPayload before{};
-    before.pageIndex = page >= 0 && page < kMaxPages
-        ? static_cast<uint8_t>(page)
-        : static_cast<uint8_t>(kMaxPages);
-    before.before = manager.currentScene().phraseBank;
+    GroovePuterUndo::UndoLifecycleMetadata lifecycle{};
+    if (!PhraseUndoBacking::captureCurrentPhraseUndo(
+            manager, before, lifecycle)) {
+      PhraseCore::Result failed{};
+      failed.error = PhraseCore::Error::InvalidPhrase;
+      return failed;
+    }
+
     PhraseCore::PhraseBank after = before.before;
     PhraseCore::Result result = std::forward<PrepareFn>(prepare)(after);
     if (!result || GroovePuterUndo::samePhraseBank(before.before, after)) return result;
     if (!GroovePuterUndo::phraseUndoTargetAvailable(manager, before)) return result;
-    GroovePuterUndo::undoOwner().commitPrepared(
-        UndoKind::Phrase, before, [&]() {
+
+    PhraseUndoBacking::commitPhrasePrepared(
+        before, lifecycle, [&]() {
           const auto apply = [&]() { manager.currentScene().phraseBank = after; };
           if (audio_guard_) audio_guard_(apply);
           else apply();

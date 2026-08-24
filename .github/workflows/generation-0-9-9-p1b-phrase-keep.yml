@@ -1,0 +1,83 @@
+name: 0.9.9-P1b Phrase KEEP ownership
+
+on:
+  push:
+    branches:
+      - agent/20260823-08-0.9.9-p1b-phrase-keep-undo
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p1b-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record tested revision
+        run: git rev-parse HEAD
+      - name: Run P1b focused and cumulative contracts
+        run: bash tests/run_0_9_9_p1b_tests.sh
+
+  full-host:
+    needs: p1b-contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record tested revision
+        run: git rev-parse HEAD
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  sdl:
+    needs: full-host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record tested revision
+        run: git rev-parse HEAD
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv:
+    needs: sdl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record tested revision
+        run: git rev-parse HEAD
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  seqtrak-midi-only:
+    needs: cardputer-adv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record tested revision
+        run: git rev-parse HEAD
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

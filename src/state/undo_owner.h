@@ -42,27 +42,60 @@ inline void exchangeFixedValue(T& live, T& retained) {
 class UndoOwner {
  public:
   static constexpr std::size_t payloadCapacity() { return kUndoPayloadBytes; }
+  static constexpr std::size_t lifecyclePayloadCapacity() {
+    return BoundedUndoSlot<kUndoPayloadBytes>::lifecyclePayloadCapacity();
+  }
 
   bool hasUndo() const { return slot_.hasUndo(); }
   UndoKind kind() const { return slot_.kind(); }
   uint16_t payloadSize() const { return slot_.payloadSize(); }
   uint32_t committedRevision() const { return committed_revision_; }
   bool nextIsRedo() const { return slot_.nextIsRedo(); }
+  bool hasLifecycle() const { return slot_.hasLifecycle(); }
+
+  bool readLifecycle(UndoLifecycleMetadata& lifecycle) const {
+    return slot_.readLifecycle(lifecycle);
+  }
+
+  bool retainsPatternBacking(int globalPattern, uint8_t trackMask) const {
+    if (globalPattern < 0 || trackMask == 0) return false;
+    UndoLifecycleMetadata lifecycle{};
+    if (!slot_.readLifecycle(lifecycle)) return false;
+    for (int i = 0; i < lifecycle.count; ++i) {
+      const UndoRetainedResource& resource = lifecycle.resources[i];
+      if (resource.kind == UndoRetainedResourceKind::PatternBacking &&
+          resource.resourceId == globalPattern &&
+          (resource.mask & trackMask) != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Persistence can ask the current receipt to remove runtime-only retained
+  // bytes from a detached persistence view without consuming Undo/Redo state.
+  void sanitizeForPersistence(void* persistenceView) const {
+    UndoLifecycleMetadata lifecycle{};
+    if (!slot_.readLifecycle(lifecycle) ||
+        lifecycle.sanitizeForPersistence == nullptr) {
+      return;
+    }
+    lifecycle.sanitizeForPersistence(
+        lifecycle.context, lifecycle, persistenceView);
+  }
 
   void clear() {
+    UndoLifecycleMetadata retired{};
+    const bool hadLifecycle = slot_.readLifecycle(retired);
     slot_.clear();
     committed_revision_ = 0;
+    if (hadLifecycle) releaseLifecycle(retired);
   }
 
   // COMMIT entry point for already-prepared persistent edits.
-  //
-  // PREPARE must have completed all failure/no-op checks before this call. The
-  // apply callback is therefore the bounded, synchronous, infallible commit
-  // phase: it must not perform generation, filesystem/JSON work, waiting, or
-  // unbounded allocation. One call represents one logical Scene mutation.
-  //
-  // Admission occurs before apply, so an oversized/invalid receipt leaves the
-  // previous valid Undo and Scene revision untouched.
+  // Admission happens before apply. If this supersedes a backing-aware receipt,
+  // its now-unowned resources are reclaimed only after the new persistent state
+  // has been installed, so shared/new owners can protect overlapping backing.
   template <typename Payload, typename ApplyFn>
   bool commitPrepared(UndoKind kind, const Payload& before, ApplyFn&& apply) {
     static_assert(std::is_trivially_copyable<Payload>::value,
@@ -74,30 +107,59 @@ class UndoOwner {
 
     const GroovePuterState::SceneRevisionState revision_before =
         GroovePuterState::sceneRevisionSnapshot();
+    UndoLifecycleMetadata retired{};
+    const bool hadLifecycle = slot_.readLifecycle(retired);
 
-    // Publishing cannot fail after the identical admission check above. It is
-    // done before the infallible commit callback so a successful persistent
-    // write can never exist without its retained before-state receipt.
     if (!slot_.publish(kind, before, revision_before)) return false;
 
     std::forward<ApplyFn>(apply)();
+    if (hadLifecycle) releaseLifecycle(retired);
     GroovePuterState::markSceneMutated();
     committed_revision_ =
         GroovePuterState::sceneRevisionSnapshot().currentRevision;
     return true;
   }
 
-  // Receipt inspection stays typed and owned by the child that understands the
-  // payload. Do not add scalar-returning peek helpers: values such as synth 0
-  // are valid identities, not validity flags.
+  // Same canonical owner and same one-slot capacity, but with bounded resource
+  // retention metadata stored in the reserved tail of the existing slot.
+  template <typename Payload, typename ApplyFn>
+  bool commitPreparedWithLifecycle(
+      UndoKind kind,
+      const Payload& before,
+      const UndoLifecycleMetadata& lifecycle,
+      ApplyFn&& apply) {
+    static_assert(std::is_trivially_copyable<Payload>::value,
+                  "Undo payloads must remain trivially copyable fixed values");
+
+    if (kind == UndoKind::None ||
+        sizeof(Payload) > lifecyclePayloadCapacity() ||
+        lifecycle.count > kUndoRetainedResourceCapacity) {
+      return false;
+    }
+
+    const GroovePuterState::SceneRevisionState revision_before =
+        GroovePuterState::sceneRevisionSnapshot();
+    UndoLifecycleMetadata retired{};
+    const bool hadLifecycle = slot_.readLifecycle(retired);
+
+    if (!slot_.publishWithLifecycle(
+            kind, before, revision_before, lifecycle)) {
+      return false;
+    }
+
+    std::forward<ApplyFn>(apply)();
+    if (hadLifecycle) releaseLifecycle(retired);
+    GroovePuterState::markSceneMutated();
+    committed_revision_ =
+        GroovePuterState::sceneRevisionSnapshot().currentRevision;
+    return true;
+  }
+
   template <typename Payload>
   bool read(UndoKind expected_kind, Payload& before) const {
     return slot_.read(expected_kind, before);
   }
 
-  // User Undo restores the last committed persistent edit, not runtime
-  // activation state. Validation must be read-only. restore() is the bounded,
-  // synchronous, infallible restore phase after validation succeeds.
   template <typename Payload, typename ValidateFn, typename RestoreFn>
   UndoResult undoPrepared(UndoKind expected_kind,
                           ValidateFn&& validate,
@@ -123,9 +185,6 @@ class UndoOwner {
     std::forward<RestoreFn>(restore)(before);
 
     GroovePuterState::SceneRevisionState restored_revision = revision_before;
-    // Save does not change currentRevision. If the committed edit itself became
-    // the persisted baseline after this receipt was published, Undo restores
-    // the older data but must remain dirty relative to that newer saved state.
     if (current.persistedRevision == committed_revision_) {
       restored_revision.persistedRevision = current.persistedRevision;
     }
@@ -134,9 +193,9 @@ class UndoOwner {
     return UndoResult::Restored;
   }
 
-  // One-step history toggle. The retained target payload is exchanged with the
-  // live state in-place, then the same fixed slot stores the reverse transition.
-  // No second resident payload and no second full-size stack object are created.
+  // One-step exchange preserves the exact lifecycle metadata together with the
+  // reverse transition. Redo therefore keeps physical backing reserved without
+  // a second resident material snapshot.
   template <typename Payload, typename ValidateFn, typename ExchangeFn>
   UndoResult togglePrepared(UndoKind expected_kind,
                             ValidateFn&& validate,
@@ -156,12 +215,11 @@ class UndoOwner {
     Payload retained{};
     if (!slot_.read(expected_kind, retained)) return UndoResult::KindMismatch;
     if (!std::forward<ValidateFn>(validate)(retained)) {
-      // Wrong owner context is not an Undo operation and must not consume the
-      // retained pair. Let the application-level Ctrl+Z fallback report
-      // UNDO/REDO: NOT HERE; navigation remains an explicit Esc action.
       return UndoResult::ContextUnavailable;
     }
 
+    UndoLifecycleMetadata lifecycle{};
+    const bool hasLifecycle = slot_.readLifecycle(lifecycle);
     const bool was_redo = slot_.nextIsRedo();
     const GroovePuterState::SceneRevisionState target_revision =
         slot_.revisionBefore();
@@ -173,10 +231,11 @@ class UndoOwner {
     }
     GroovePuterState::restoreSceneRevision(restored_revision);
 
-    // Same admitted payload size/kind, so publication cannot fail here. The
-    // retained value now contains the state we just left and current is the
-    // revision to restore on the inverse keypress.
-    if (!slot_.publish(expected_kind, retained, current)) {
+    const bool published = hasLifecycle
+        ? slot_.publishWithLifecycle(
+              expected_kind, retained, current, lifecycle)
+        : slot_.publish(expected_kind, retained, current);
+    if (!published) {
       clear();
       return UndoResult::Expired;
     }
@@ -186,6 +245,12 @@ class UndoOwner {
   }
 
  private:
+  static void releaseLifecycle(const UndoLifecycleMetadata& lifecycle) {
+    if (lifecycle.cleanup != nullptr) {
+      lifecycle.cleanup(lifecycle.context, lifecycle);
+    }
+  }
+
   BoundedUndoSlot<kUndoPayloadBytes> slot_{};
   uint32_t committed_revision_{0};
 };
