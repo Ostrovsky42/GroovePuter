@@ -17,7 +17,8 @@ assert "M5Cardputer.update();" in ino
 assert "M5Cardputer.Keyboard.keysState()" in ino
 assert "handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;" in ino
 assert "SongPage" not in edges
-assert "M5Cardputer" not in edges
+for forbidden_scanner in (".Keyboard", "keysState()", ".update()"):
+    assert forbidden_scanner not in edges
 
 # The existing raw word filter is intentionally unchanged. The closure happens
 # before it by tunnelling only word-only Alt-letter/Enter representations.
