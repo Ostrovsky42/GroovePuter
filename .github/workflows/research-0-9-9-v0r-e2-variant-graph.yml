@@ -1,0 +1,42 @@
+name: Research 0.9.9 V0R E2 authoritative variant graph
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v0r-authority:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run V0R authoritative E2 graph and cumulative contracts
+        run: bash tests/run_0_9_9_v0r_variant_graph.sh
+
+      - name: Upload detailed V0R graph artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0r-e2-authoritative-variant-graph
+          if-no-files-found: warn
+          path: |
+            build/host-tests/v0r-e2-variant-graph/gcc-run1.raw
+            build/host-tests/v0r-e2-variant-graph/gcc-run1-report/
+
+  full-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: V0R source guard
+        run: python3 tests/test_0_9_9_v0r_source_guard.py
+
+      - name: Full host regressions
+        run: bash tests/run_host_tests.sh
