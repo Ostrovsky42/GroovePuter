@@ -60,6 +60,207 @@ struct RhythmRealizationResult {
   RhythmPhrasePlan plan{};
 };
 
+// E2c canonical, bar-local mutation vocabulary. This is a value contract only:
+// it does not allocate mutation lifecycle state and it does not execute a
+// mutation. The single RhythmRole field is both source and target lane
+// identity, so DISPLACE cannot express a cross-lane move.
+enum class RhythmMutationOp : uint8_t {
+  KEEP = 0,
+  ADD = 1,
+  DROP = 2,
+  DISPLACE = 3,
+  ACCENT = 4,
+  GHOST = 5,
+  Count = 6,
+};
+
+constexpr uint8_t kNoMutationStep = 0xFFu;
+
+// E2c intentionally freezes a bar-local, non-wrapping displacement radius.
+// Logical step 15 -> 0 is therefore not a radius-1 displacement.
+constexpr uint8_t kDisplaceRadius = 2u;
+
+// A lane/step may contribute one onset/topology classification plus one
+// independent ACCENT change. These are absolute contract ceilings, not a
+// producer quota and not a replacement for MutationBudget.
+constexpr uint16_t kMaxRhythmMutationDeltasPerBar =
+    static_cast<uint16_t>(kRhythmRoleCount) *
+    static_cast<uint16_t>(kStepsPerBar) * 2u;
+constexpr uint16_t kMaxRhythmMutationDeltasPerPhrase =
+    static_cast<uint16_t>(kMaxRhythmMutationDeltasPerBar) *
+    static_cast<uint16_t>(kMaxPhraseBars);
+
+struct RhythmMutationDelta {
+  RhythmMutationOp operation = RhythmMutationOp::KEEP;
+  RhythmRole role = RhythmRole::Kick;
+  uint8_t sourceStep = kNoMutationStep;
+  uint8_t targetStep = kNoMutationStep;
+};
+
+constexpr bool rhythmMutationStepValid(uint8_t step) {
+  return step < kStepsPerBar;
+}
+
+constexpr bool rhythmMutationRoleValid(RhythmRole role) {
+  return static_cast<uint8_t>(role) < kRhythmRoleCount;
+}
+
+constexpr uint8_t rhythmMutationDisplacementDistance(
+    uint8_t sourceStep,
+    uint8_t targetStep) {
+  return sourceStep >= targetStep
+             ? static_cast<uint8_t>(sourceStep - targetStep)
+             : static_cast<uint8_t>(targetStep - sourceStep);
+}
+
+// Frozen source/target shape:
+// KEEP     source == target: an onset remains at the same logical coordinate.
+// ADD      no source -> target: a non-ghost onset is added.
+// DROP     source -> no target: an onset is removed; ghost removal is DROP.
+// DISPLACE source -> target: same role/lane, distinct bar-local coordinates.
+// ACCENT   source == target: accent state changes, onset topology does not.
+// GHOST    no source -> target: a new ghost onset is added on an empty site.
+//
+// E2c does not encode the direction of ACCENT state in this topology record;
+// producer/diff code derives it from the source/result plan. Current production
+// addVariation() already treats ghosts as separate added onsets, not as an
+// attribute conversion of an existing onset.
+constexpr bool rhythmMutationDeltaShapeValid(const RhythmMutationDelta& delta) {
+  if (!rhythmMutationRoleValid(delta.role)) return false;
+
+  const bool hasSource = rhythmMutationStepValid(delta.sourceStep);
+  const bool hasTarget = rhythmMutationStepValid(delta.targetStep);
+  switch (delta.operation) {
+    case RhythmMutationOp::KEEP:
+      return hasSource && hasTarget &&
+             delta.sourceStep == delta.targetStep;
+    case RhythmMutationOp::ADD:
+      return delta.sourceStep == kNoMutationStep && hasTarget;
+    case RhythmMutationOp::DROP:
+      return hasSource && delta.targetStep == kNoMutationStep;
+    case RhythmMutationOp::DISPLACE:
+      return hasSource && hasTarget &&
+             delta.sourceStep != delta.targetStep &&
+             rhythmMutationDisplacementDistance(
+                 delta.sourceStep, delta.targetStep) <= kDisplaceRadius;
+    case RhythmMutationOp::ACCENT:
+      return hasSource && hasTarget &&
+             delta.sourceStep == delta.targetStep;
+    case RhythmMutationOp::GHOST:
+      return delta.sourceStep == kNoMutationStep && hasTarget;
+    case RhythmMutationOp::Count:
+      return false;
+  }
+  return false;
+}
+
+// Canonical deterministic ordering is lane, logical coordinate, operation,
+// source, target. For source-less ADD/GHOST the target is the coordinate.
+// Logical step order is 0..15 and intentionally does not follow mask bit order.
+constexpr uint8_t rhythmMutationCanonicalStep(
+    const RhythmMutationDelta& delta) {
+  return rhythmMutationStepValid(delta.sourceStep)
+             ? delta.sourceStep
+             : delta.targetStep;
+}
+
+constexpr bool rhythmMutationDeltaLess(const RhythmMutationDelta& lhs,
+                                       const RhythmMutationDelta& rhs) {
+  const uint8_t lhsRole = static_cast<uint8_t>(lhs.role);
+  const uint8_t rhsRole = static_cast<uint8_t>(rhs.role);
+  if (lhsRole != rhsRole) return lhsRole < rhsRole;
+
+  const uint8_t lhsStep = rhythmMutationCanonicalStep(lhs);
+  const uint8_t rhsStep = rhythmMutationCanonicalStep(rhs);
+  if (lhsStep != rhsStep) return lhsStep < rhsStep;
+
+  const uint8_t lhsOp = static_cast<uint8_t>(lhs.operation);
+  const uint8_t rhsOp = static_cast<uint8_t>(rhs.operation);
+  if (lhsOp != rhsOp) return lhsOp < rhsOp;
+
+  if (lhs.sourceStep != rhs.sourceStep) {
+    return lhs.sourceStep < rhs.sourceStep;
+  }
+  return lhs.targetStep < rhs.targetStep;
+}
+
+// Mutation budgeting remains external to the delta value. E2c deliberately
+// adds no cost field, budget enum, or permission flags: E2a/E2b must consume
+// the existing MutationBudget/MutationFlags and source/result plan context.
+
+// Grammar-level DISPLACE legality. Budget/flag eligibility remains separate:
+// this function answers only whether the lane grammar permits the source and
+// target coordinates for the supplied planning context.
+//
+// Immutable anchors are never movable. Canonical anchors are movable only when
+// a matching existing AnchorTransformRule explicitly names the source in
+// displaceableCanonical. Non-anchor source and every target must live in the
+// lane's preferred/optional onset space. Protected/forbidden coordinates and
+// anchor targets are never legal displacement destinations.
+inline bool rhythmMutationDisplacementGrammarLegal(
+    const RhythmArchetype& archetype,
+    const RhythmMutationDelta& delta,
+    BarFunction function,
+    TransformationIntent intent) {
+  if (delta.operation != RhythmMutationOp::DISPLACE ||
+      !rhythmMutationDeltaShapeValid(delta) ||
+      archetype.laneCount > kMaxLanes ||
+      archetype.protectedSpaceCount > kMaxProtectedSpaces ||
+      archetype.anchorTransformRuleCount > kMaxAnchorTransformRules ||
+      (archetype.laneCount != 0 && !archetype.lanes) ||
+      (archetype.protectedSpaceCount != 0 && !archetype.protectedSpaces) ||
+      (archetype.anchorTransformRuleCount != 0 &&
+       !archetype.anchorTransformRules)) {
+    return false;
+  }
+
+  const LaneGrammar* lane = nullptr;
+  for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    if (archetype.lanes[laneIndex].role == delta.role) {
+      lane = &archetype.lanes[laneIndex];
+      break;
+    }
+  }
+  if (!lane) return false;
+
+  const StepMask sourceBit = stepBit(delta.sourceStep);
+  const StepMask targetBit = stepBit(delta.targetStep);
+  StepMask protectedSteps = 0;
+  const RhythmRoleMask roleMask = rhythmRoleBit(delta.role);
+  for (uint8_t index = 0; index < archetype.protectedSpaceCount; ++index) {
+    if (archetype.protectedSpaces[index].affectedRoles & roleMask) {
+      protectedSteps = static_cast<StepMask>(
+          protectedSteps | archetype.protectedSpaces[index].steps);
+    }
+  }
+
+  if (((sourceBit | targetBit) & protectedSteps) ||
+      ((sourceBit | targetBit) & lane->forbidden) ||
+      (sourceBit & lane->immutableAnchors) ||
+      (targetBit & (lane->immutableAnchors | lane->canonicalAnchors)) ||
+      !(targetBit & (lane->preferred | lane->optional))) {
+    return false;
+  }
+
+  if (sourceBit & lane->canonicalAnchors) {
+    for (uint8_t index = 0;
+         index < archetype.anchorTransformRuleCount;
+         ++index) {
+      const AnchorTransformRule& rule =
+          archetype.anchorTransformRules[index];
+      if (rule.role == delta.role &&
+          rule.barFunction == function &&
+          rule.intent == intent &&
+          (rule.displaceableCanonical & sourceBit)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return (sourceBit & (lane->preferred | lane->optional)) != 0;
+}
+
 RhythmRealizationResult realizeRhythmPhrase(
     const RhythmRealizationRequest& request);
 
@@ -87,6 +288,30 @@ bool applyRhythmBarFunctionMutation(const RhythmArchetype& archetype,
 bool rhythmMutationPlanValid(const RhythmArchetype& archetype,
                              const RhythmPhrasePlan& plan);
 
+static_assert(static_cast<uint8_t>(RhythmMutationOp::KEEP) == 0,
+              "RhythmMutationOp KEEP ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationOp::ADD) == 1,
+              "RhythmMutationOp ADD ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationOp::DROP) == 2,
+              "RhythmMutationOp DROP ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationOp::DISPLACE) == 3,
+              "RhythmMutationOp DISPLACE ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationOp::ACCENT) == 4,
+              "RhythmMutationOp ACCENT ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationOp::GHOST) == 5,
+              "RhythmMutationOp GHOST ordinal changed");
+static_assert(static_cast<uint8_t>(GenerationDomain::BarEvolution) == 12,
+              "GenerationDomain ABI changed: BarEvolution must remain 12");
+static_assert(kDisplaceRadius == 2,
+              "E2c canonical displacement radius changed");
+static_assert(kMaxRhythmMutationDeltasPerBar == 256,
+              "E2c per-bar mutation-delta bound changed");
+static_assert(kMaxRhythmMutationDeltasPerPhrase == 1024,
+              "E2c per-phrase mutation-delta bound changed");
+static_assert(std::is_trivially_copyable<RhythmMutationDelta>::value,
+              "RhythmMutationDelta must remain fixed-capacity");
+static_assert(sizeof(RhythmMutationDelta) == 4,
+              "RhythmMutationDelta representation changed");
 static_assert(std::is_trivially_copyable<RoleRhythmPlan>::value,
               "RoleRhythmPlan must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<RhythmPhrasePlan>::value,
