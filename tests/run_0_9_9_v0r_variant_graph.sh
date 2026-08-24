@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/host-tests/v0r-e2-variant-graph"
-mkdir -p "${BUILD_DIR}"
+SNAPSHOT_DIR="${BUILD_DIR}/snapshot"
+mkdir -p "${BUILD_DIR}" "${SNAPSHOT_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_0_9_9_v0r_source_guard.py"
 
@@ -72,11 +73,49 @@ for file in \
       "${BUILD_DIR}/sanitize-report/${file}"
 done
 
+python3 "${ROOT_DIR}/tools/research/v0r_compact_summary.py" \
+  --raw "${BUILD_DIR}/gcc-run1.raw" \
+  --authority-csv \
+    "${BUILD_DIR}/gcc-run1-report/v0r_e2_variant_graph_summary.csv" \
+  --full-json \
+    "${BUILD_DIR}/gcc-run1-report/v0r_e2_variant_graph_summary.json" \
+  --output-csv "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.csv" \
+  --output-json "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.json"
+
+compare_snapshot() {
+  local label="$1"
+  local expected="$2"
+  local actual="$3"
+  if cmp -s "${expected}" "${actual}"; then
+    echo "V0R snapshot ${label}: PASS"
+    return 0
+  fi
+
+  echo "V0R snapshot ${label}: DRIFT" >&2
+  echo "expected committed snapshot: ${expected}" >&2
+  echo "regenerated snapshot:        ${actual}" >&2
+  echo "Refusing to refresh automatically. Classify as incorrect snapshot, " \
+       "nondeterministic compact output, or authority semantic drift." >&2
+  diff -u "${expected}" "${actual}" >&2 || true
+  return 41
+}
+
+compare_snapshot \
+  "CSV" \
+  "${ROOT_DIR}/tests/data/v0r_e2_variant_graph_summary.csv" \
+  "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.csv"
+compare_snapshot \
+  "JSON" \
+  "${ROOT_DIR}/tests/data/v0r_e2_variant_graph_summary.json" \
+  "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.json"
+
 sha256sum \
   "${BUILD_DIR}/gcc-run1.raw" \
   "${BUILD_DIR}/gcc-run2.raw" \
   "${BUILD_DIR}/clang.raw" \
-  "${BUILD_DIR}/sanitize.raw"
+  "${BUILD_DIR}/sanitize.raw" \
+  "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.csv" \
+  "${SNAPSHOT_DIR}/v0r_e2_variant_graph_summary.json"
 cat "${BUILD_DIR}/gcc-run1-report/v0r_e2_variant_graph_digests.txt"
 
 echo "V0R_SUMMARY_CSV_BEGIN"
