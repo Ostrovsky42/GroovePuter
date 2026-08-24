@@ -46,8 +46,14 @@ assert "return '\\t';" in normalize
 
 # Alt+H is a global UI action before page dispatch. Therefore a canonical
 # logical event cannot be consumed by SongPage before help is toggled.
-help_idx = display.index("if (event.alt && (event.key == 'h' || event.key == 'H'))")
-page_idx = display.index("IPage* currentPage = getPage_(page_index_);")
+display_handle_start = display.index("bool MiniAcidDisplay::handleEvent(UIEvent event)")
+help_idx = display.index(
+    "if (event.alt && (event.key == 'h' || event.key == 'H'))",
+    display_handle_start,
+)
+page_idx = display.index(
+    "IPage* currentPage = getPage_(page_index_);", display_handle_start
+)
 assert help_idx < page_idx
 help_body = display[help_idx:page_idx]
 assert "global_help_overlay_.setPageContext(page_index_)" in help_body
@@ -62,8 +68,10 @@ assert "event.key == '\\n' || event.key == '\\r'" in song_picker
 handle_start = song_picker.index("bool SongPage::handleEvent(UIEvent& ui_event)")
 active_idx = song_picker.index("if (pattern_picker_.active)", handle_start)
 open_idx = song_picker.index("if (songPatternPickerOpenGesture(ui_event))", handle_start)
-legacy_idx = song_picker.index("return handleLegacyEvent(ui_event);", handle_start)
-assert active_idx < open_idx < legacy_idx
+app_idx = song_picker.index(
+    "if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT)", handle_start
+)
+assert active_idx < open_idx < app_idx
 open_branch = song_picker[open_idx:open_idx + 160]
 assert "return openPatternPicker();" in open_branch
 assert "bool SongPage::openPatternPicker()" in song_picker
