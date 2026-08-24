@@ -651,6 +651,111 @@ bool rhythmMutationPlanValid(const RhythmArchetype& archetype,
                                     structuralOccupancy(normalized));
 }
 
+RhythmMutationApplyStatus applyRhythmMutationDelta(
+    const RhythmArchetype& archetype,
+    RhythmPhrasePlan& plan,
+    uint8_t bar,
+    BarFunction function,
+    TransformationIntent intent,
+    const RhythmMutationDelta& delta) {
+  if (plan.barCount == 0 ||
+      plan.barCount > kMaxPhraseBars ||
+      bar >= plan.barCount ||
+      !validRealizationLevel(plan.level) ||
+      !validBarFunction(function) ||
+      !validTransformationIntent(intent) ||
+      archetype.laneCount == 0 ||
+      archetype.laneCount > kMaxLanes ||
+      !archetype.lanes ||
+      archetype.protectedSpaceCount > kMaxProtectedSpaces ||
+      (archetype.protectedSpaceCount != 0 && !archetype.protectedSpaces) ||
+      archetype.relationshipCount > kMaxRelationships ||
+      (archetype.relationshipCount != 0 && !archetype.relationships) ||
+      archetype.anchorTransformRuleCount > kMaxAnchorTransformRules ||
+      (archetype.anchorTransformRuleCount != 0 &&
+       !archetype.anchorTransformRules)) {
+    return RhythmMutationApplyStatus::InvalidRequest;
+  }
+
+  if (!rhythmMutationDeltaShapeValid(delta)) {
+    return RhythmMutationApplyStatus::InvalidDelta;
+  }
+  if (delta.operation != RhythmMutationOp::DROP &&
+      delta.operation != RhythmMutationOp::DISPLACE) {
+    return RhythmMutationApplyStatus::UnsupportedOperation;
+  }
+
+  const LaneGrammar* lane = laneForRole(archetype, delta.role);
+  if (!lane || !(archetype.activeRoles & rhythmRoleBit(delta.role)) ||
+      !rhythmMutationPlanValid(archetype, plan)) {
+    return RhythmMutationApplyStatus::InvalidRequest;
+  }
+
+  const uint8_t roleIndex = static_cast<uint8_t>(delta.role);
+  const RoleRhythmPlan& sourceRole = plan.bars[bar].roles[roleIndex];
+  const StepMask sourceBit = stepBit(delta.sourceStep);
+  const bool sourceStructural = (sourceRole.structural & sourceBit) != 0;
+  const bool sourceSecondary = (sourceRole.secondary & sourceBit) != 0;
+  const bool sourceGhost = (sourceRole.ghosts & sourceBit) != 0;
+  const uint8_t sourceKindCount = static_cast<uint8_t>(
+      (sourceStructural ? 1u : 0u) +
+      (sourceSecondary ? 1u : 0u) +
+      (sourceGhost ? 1u : 0u));
+  if (sourceKindCount != 1u) {
+    return RhythmMutationApplyStatus::InvalidSource;
+  }
+
+  RhythmPhrasePlan trial = plan;
+  RoleRhythmPlan& role = trial.bars[bar].roles[roleIndex];
+
+  if (delta.operation == RhythmMutationOp::DROP) {
+    if (sourceStructural) {
+      role.structural = static_cast<StepMask>(role.structural & ~sourceBit);
+    } else if (sourceSecondary) {
+      role.secondary = static_cast<StepMask>(role.secondary & ~sourceBit);
+    } else {
+      role.ghosts = static_cast<StepMask>(role.ghosts & ~sourceBit);
+    }
+    role.accents = static_cast<StepMask>(role.accents & ~sourceBit);
+  } else {
+    if (sourceGhost) {
+      return RhythmMutationApplyStatus::UnsupportedSourceKind;
+    }
+
+    const StepMask targetBit = stepBit(delta.targetStep);
+    if (allOnsets(sourceRole) & targetBit) {
+      return RhythmMutationApplyStatus::OccupiedTarget;
+    }
+    if (!rhythmMutationDisplacementGrammarLegal(
+            archetype, delta, function, intent)) {
+      return RhythmMutationApplyStatus::GrammarRejected;
+    }
+
+    const bool sourceAccented = (sourceRole.accents & sourceBit) != 0;
+    if (sourceStructural) {
+      role.structural = static_cast<StepMask>(
+          (role.structural & ~sourceBit) | targetBit);
+    } else {
+      role.secondary = static_cast<StepMask>(
+          (role.secondary & ~sourceBit) | targetBit);
+    }
+    role.accents = static_cast<StepMask>(role.accents & ~sourceBit);
+    if (sourceAccented) {
+      role.accents = static_cast<StepMask>(role.accents | targetBit);
+    } else {
+      role.accents = static_cast<StepMask>(role.accents & ~targetBit);
+    }
+  }
+
+  recomputeRoleGates(*lane, role);
+  if (!rhythmMutationPlanValid(archetype, trial)) {
+    return RhythmMutationApplyStatus::InvalidResult;
+  }
+
+  plan = trial;
+  return RhythmMutationApplyStatus::Success;
+}
+
 bool applyRhythmBarFunctionMutation(const RhythmArchetype& archetype,
                                     RhythmPhrasePlan& plan,
                                     uint8_t bar,

@@ -126,6 +126,22 @@ struct RhythmMutationProducerResult {
   bool truncated = false;
 };
 
+// E3a exact one-delta materialization result. Only DROP and DISPLACE are
+// executable in this checkpoint. Selection, cadence and canonical-relative
+// budget legality remain outside this surface.
+enum class RhythmMutationApplyStatus : uint8_t {
+  Success = 0,
+  InvalidRequest,
+  InvalidDelta,
+  UnsupportedOperation,
+  InvalidSource,
+  UnsupportedSourceKind,
+  OccupiedTarget,
+  GrammarRejected,
+  InvalidResult,
+  Count,
+};
+
 constexpr bool rhythmMutationStepValid(uint8_t step) {
   return step < kStepsPerBar;
 }
@@ -312,6 +328,17 @@ bool planRespectsProtectedSpace(const RhythmArchetype& archetype,
 bool planRespectsLaneBounds(const RhythmArchetype& archetype,
                             const RhythmPhrasePlan& plan);
 
+// Exact E3a one-delta executor. It materializes only already-approved DROP or
+// DISPLACE deltas. It owns no selection, cadence, lifecycle or canonical
+// budget accounting. Any non-Success result leaves `plan` unchanged.
+RhythmMutationApplyStatus applyRhythmMutationDelta(
+    const RhythmArchetype& archetype,
+    RhythmPhrasePlan& plan,
+    uint8_t bar,
+    BarFunction function,
+    TransformationIntent intent,
+    const RhythmMutationDelta& delta);
+
 // Canonical rhythm mutation owner for a caller-planned BarFunction. This is
 // the only production executor for trajectory/reduction/build/break mutation.
 // It preserves the existing deterministic BarEvolution semantics while keeping
@@ -342,6 +369,8 @@ static_assert(static_cast<uint8_t>(RhythmMutationOp::GHOST) == 5,
               "RhythmMutationOp GHOST ordinal changed");
 static_assert(static_cast<uint8_t>(RhythmMutationProducerStatus::Ok) == 0,
               "RhythmMutationProducerStatus Ok ordinal changed");
+static_assert(static_cast<uint8_t>(RhythmMutationApplyStatus::Success) == 0,
+              "RhythmMutationApplyStatus Success ordinal changed");
 static_assert(static_cast<uint8_t>(GenerationDomain::BarEvolution) == 12,
               "GenerationDomain ABI changed: BarEvolution must remain 12");
 static_assert(kDisplaceRadius == 2,

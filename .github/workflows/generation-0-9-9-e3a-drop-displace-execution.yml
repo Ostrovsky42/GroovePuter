@@ -1,0 +1,24 @@
+name: 0.9.9-E3a DROP DISPLACE execution contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e3a-host-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run E3a focused and cumulative contracts
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_0_9_9_e3a_tests.sh
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
