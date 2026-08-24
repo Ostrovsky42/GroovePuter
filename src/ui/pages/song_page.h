@@ -204,6 +204,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool discardPatternPicker();
   void closePatternPickerState();
   void showPatternPickerStatus();
+  void drawPatternPickerOverlay(IGfx& gfx);
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

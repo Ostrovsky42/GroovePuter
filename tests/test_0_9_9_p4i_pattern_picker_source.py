@@ -115,6 +115,30 @@ assert "showToast(status, 60000)" in picker[status_start:status_end]
 assert "draw(gfx_)" not in picker
 assert "drawMinimalStyle" not in picker
 
+# The active modal has one shared renderer after the visual-style switch. This
+# keeps it visible and topmost in every Song style without four divergent
+# presentation implementations.
+assert "void drawPatternPickerOverlay(IGfx& gfx);" in header
+draw_start = legacy_song.index("void SongPage::draw(IGfx& gfx)")
+draw_end = legacy_song.index("void SongPage::drawMinimalStyle", draw_start)
+draw_body = legacy_song[draw_start:draw_end]
+assert draw_body.count("drawPatternPickerOverlay(gfx);") == 1
+assert draw_body.index("switch (visual_style_)") < draw_body.index(
+    "drawPatternPickerOverlay(gfx);"
+)
+overlay_start = legacy_song.index("void SongPage::drawPatternPickerOverlay")
+overlay_end = legacy_song.index("void SongPage::drawMinimalStyle", overlay_start)
+overlay_body = legacy_song[overlay_start:overlay_end]
+for expected in (
+    "if (!pattern_picker_.active) return;",
+    '"PATTERN PICKER  %s"',
+    "pattern_picker_.row + 1",
+    "pattern_picker_.track",
+    "pattern_picker_.candidateGlobal",
+    '"ENTER ACCEPT     ESC CANCEL"',
+):
+    assert expected in overlay_body
+
 # RELATED remains product-visible in help only and has no producer or state in
 # the implementation. Do not alias it to EVOLVE/DERIVE.
 assert '"RELATED     Not implemented"' in help_content

@@ -1665,6 +1665,63 @@ void SongPage::draw(IGfx& gfx) {
       drawMinimalStyle(gfx);
       break;
   }
+
+  drawPatternPickerOverlay(gfx);
+}
+
+void SongPage::drawPatternPickerOverlay(IGfx& gfx) {
+  if (!pattern_picker_.active) return;
+
+  const Rect& bounds = getBoundaries();
+  if (bounds.w <= 12 || bounds.h <= 12) return;
+
+  const UI::ThemePalette palette = UI::themePalette(visual_style_);
+  const int width = std::min(220, bounds.w - 12);
+  const int height = std::min(76, bounds.h - 12);
+  const int x = bounds.x + (bounds.w - width) / 2;
+  const int y = bounds.y + (bounds.h - height) / 2;
+
+  gfx.fillRect(x, y, width, height, palette.background);
+  gfx.drawRect(x, y, width, height, palette.focus);
+  gfx.fillRect(x + 1, y + 1, width - 2, 14, palette.panel);
+
+  const char* mode = pattern_picker_.mode == PatternPickerMode::Generate
+      ? "GENERATE"
+      : "EXISTING";
+  char title[32];
+  std::snprintf(title, sizeof(title), "PATTERN PICKER  %s", mode);
+  gfx.setTextColor(palette.focus);
+  gfx.drawText(x + 5, y + 4, title);
+
+  const char* track = "?";
+  switch (pattern_picker_.track) {
+    case SongTrack::SynthA: track = "A"; break;
+    case SongTrack::SynthB: track = "B"; break;
+    case SongTrack::Drums: track = "DR"; break;
+    case SongTrack::Voice: track = "VO"; break;
+  }
+
+  char cell[40];
+  std::snprintf(cell, sizeof(cell), "CELL %d  TRACK %s",
+                pattern_picker_.row + 1, track);
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x + 6, y + 21, cell);
+
+  char pattern[16];
+  formatSongPatternLabel(
+      pattern_picker_.candidateGlobal, pattern, sizeof(pattern));
+  char candidate[40];
+  std::snprintf(candidate, sizeof(candidate), "PAT %s  PAGE %d",
+                pattern, pattern_picker_.page + 1);
+  gfx.setTextColor(pattern_picker_.candidateGlobal >= 0
+                       ? palette.secondary
+                       : palette.warning);
+  gfx.drawText(x + 6, y + 34, candidate);
+
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x + 6, y + 48, "TAB MODE   G REROLL   B BANK");
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x + 6, y + 61, "ENTER ACCEPT     ESC CANCEL");
 }
 
 void SongPage::drawMinimalStyle(IGfx &gfx) {
