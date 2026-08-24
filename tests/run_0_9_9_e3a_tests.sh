@@ -21,7 +21,7 @@ build_and_run() {
   local suffix="$2"
   shift 2
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
-    -Wno-c++20-extensions -Wno-unused-but-set-variable \
+    -Wno-c++20-extensions -Wno-unused-but-set-variable -Wno-unused-function \
     -I"${ROOT_DIR}" \
     "$@" \
     "${SOURCES[@]}" \
