@@ -93,14 +93,19 @@ for token in (
     "kTransitionCeiling",
 ):
     require(token in tool, f"V0R implementation missing: {token}")
+
+# The guard cares about argument ownership, not source formatting. Normalize
+# whitespace so harmless indentation/wrapping changes cannot weaken the actual
+# canonical-relative invariant.
+compact_tool = " ".join(tool.split())
 require(
-    "canonicalRhythmCandidateValid(\n          *archetype, canonical, candidate"
-    in tool,
+    "canonicalRhythmCandidateValid( *archetype, canonical, candidate, 0, level,"
+    in compact_tool,
     "V0R canonical-relative legality is not legal(C,W)",
 )
 require(
-    "canonicalRhythmCandidateValid(\n          *archetype, current, candidate"
-    not in tool,
+    "canonicalRhythmCandidateValid( *archetype, current, candidate"
+    not in compact_tool,
     "V0R launders budget via legal(V,W)",
 )
 
