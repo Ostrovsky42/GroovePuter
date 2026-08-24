@@ -12,9 +12,6 @@ constexpr StepMask bits(uint8_t a) { return stepBit(a); }
 constexpr StepMask bits(uint8_t a, uint8_t b) {
   return static_cast<StepMask>(stepBit(a) | stepBit(b));
 }
-constexpr StepMask bits(uint8_t a, uint8_t b, uint8_t c) {
-  return static_cast<StepMask>(stepBit(a) | stepBit(b) | stepBit(c));
-}
 
 LaneGrammar lane(RhythmRole role,
                  StepMask canonical,
@@ -153,7 +150,7 @@ void test_keep_add_drop_accent_ghost() {
       canonical, RealizationLevel::P2Variation);
   auto result = validate(fixture, canonical, same, deltas, 32);
   assert(result.diffStatus == CanonicalRhythmDiffStatus::Ok);
-  assert(result.stats.deltaCount == 0);  // KEEP is the zero-delta material case.
+  assert(result.stats.deltaCount == 0);
   assert(result.legal);
 
   RhythmPhrasePlan added = same;
@@ -227,7 +224,6 @@ void test_displacement_matching_and_ordering() {
   assert(deltas[0].role == RhythmRole::ClosedHat);
   assert(deltas[0].sourceStep == 4 && deltas[0].targetStep == 6);
 
-  // One source can reach both 5 and 7. E2c canonical target ordering chooses 5.
   canonical = canonicalPlan();
   canonical.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural =
       bits(6);
@@ -246,7 +242,6 @@ void test_displacement_matching_and_ordering() {
          deltas[1].targetStep == 7);
   assertCanonicalOrder(deltas, result.stats.deltaCount);
 
-  // Mask storage order is reversed; output still follows logical step/role order.
   canonical = canonicalPlan();
   canonical.bars[0].roles[static_cast<uint8_t>(RhythmRole::Kick)].structural |=
       bits(8);
@@ -320,7 +315,6 @@ void test_budget_laundering_regressions() {
   Fixture fixture;
   RhythmMutationDelta deltas[32]{};
 
-  // ADD: both local hops are legal, but the final candidate is two adds from C.
   RhythmPhrasePlan c = canonicalPlan();
   RhythmPhrasePlan a = candidateFrom(c, RealizationLevel::P2Variation);
   a.bars[0].roles[static_cast<uint8_t>(RhythmRole::Kick)].secondary = bits(4);
@@ -332,7 +326,6 @@ void test_budget_laundering_regressions() {
   assert(ca.legal && ab.legal);
   assert(cb.stats.secondaryAdds == 2 && !cb.budgetValid && !cb.legal);
 
-  // DROP: resetting at A would hide the first canonical removal.
   c = canonicalPlan();
   c.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural =
       bits(4, 8);
@@ -346,28 +339,28 @@ void test_budget_laundering_regressions() {
   assert(ca.legal && ab.legal);
   assert(cb.stats.drops == 2 && !cb.budgetValid && !cb.legal);
 
-  // DISPLACE: 4->6 and 6->8 are each radius-2. Canonical 4->8 is not.
   c = canonicalPlan();
   c.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural = bits(4);
   a = candidateFrom(c, RealizationLevel::P2Variation);
   a.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural = bits(6);
   b = a;
   b.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural = bits(8);
+  const MutationBudget saved = fixture.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P2Variation)];
+  MutationBudget displacementBudget{};
+  displacementBudget.maxDisplacements = 1;
+  displacementBudget.flags = AllowOptionalDisplace;
+  fixture.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P2Variation)] = displacementBudget;
   ca = validate(fixture, c, a, deltas, 32);
   ab = validate(fixture, a, b, deltas, 32);
   cb = validate(fixture, c, b, deltas, 32);
   assert(ca.legal && ab.legal);
   assert(cb.stats.displacements == 0 && cb.stats.adds == 1 && cb.stats.drops == 1);
-  MutationPolicy displacementOnly{};
-  MutationBudget& d = displacementOnly.level[
-      static_cast<uint8_t>(RealizationLevel::P2Variation)];
-  d.maxDisplacements = 1;
-  d.flags = AllowOptionalDisplace;
-  assert(!canonicalRhythmBudgetValid(
-      displacementOnly, RealizationLevel::P2Variation,
-      TransformationIntent::Auto, cb.stats));
+  assert(!cb.budgetValid && !cb.legal);
+  fixture.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P2Variation)] = saved;
 
-  // ACCENT: two canonical-relative accent changes cannot be reset to one at A.
   c = canonicalPlan();
   c.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural = bits(4, 8);
   a = candidateFrom(c, RealizationLevel::P2Variation);
@@ -380,7 +373,6 @@ void test_budget_laundering_regressions() {
   assert(ca.legal && ab.legal);
   assert(cb.stats.accentChanges == 2 && !cb.budgetValid && !cb.legal);
 
-  // GHOST: same canonical-relative rule for ornament additions.
   c = canonicalPlan();
   a = candidateFrom(c, RealizationLevel::P2Variation);
   a.bars[0].roles[static_cast<uint8_t>(RhythmRole::Percussion)].ghosts = bits(5);
@@ -394,7 +386,6 @@ void test_budget_laundering_regressions() {
   assert(ca.legal && ab.legal);
   assert(cb.stats.ghostAdds == 2 && !cb.budgetValid && !cb.legal);
 
-  // Mixed: one accent plus two secondary additions still exposes the second ADD.
   c = canonicalPlan();
   c.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural = bits(4);
   a = candidateFrom(c, RealizationLevel::P2Variation);
@@ -414,8 +405,6 @@ void test_existing_music_validation_is_reused() {
   RhythmMutationDelta deltas[32]{};
   const RhythmPhrasePlan canonical = canonicalPlan();
 
-  // Canonical anchor removal: budget can afford the DROP, realizer identity
-  // constraints reject the candidate.
   RhythmPhrasePlan anchorDrop = candidateFrom(
       canonical, RealizationLevel::P2Variation);
   anchorDrop.bars[0].roles[static_cast<uint8_t>(RhythmRole::Kick)].structural = 0;
@@ -424,7 +413,6 @@ void test_existing_music_validation_is_reused() {
   assert(result.stats.drops == 1 && result.budgetValid);
   assert(!result.candidatePlanValid && !result.legal);
 
-  // Protected destination is rejected by the existing plan validator.
   RhythmPhrasePlan protectedAdd = candidateFrom(
       canonical, RealizationLevel::P2Variation);
   protectedAdd.bars[0].roles[static_cast<uint8_t>(RhythmRole::Kick)].structural |=
@@ -433,7 +421,6 @@ void test_existing_music_validation_is_reused() {
   assert(result.stats.adds == 1 && result.budgetValid);
   assert(!result.candidatePlanValid && !result.legal);
 
-  // Forbidden destination is likewise not reimplemented in E2b.
   RhythmPhrasePlan forbiddenAdd = candidateFrom(
       canonical, RealizationLevel::P2Variation);
   forbiddenAdd.bars[0].roles[static_cast<uint8_t>(RhythmRole::Kick)].structural |=
@@ -442,7 +429,6 @@ void test_existing_music_validation_is_reused() {
   assert(result.stats.adds == 1 && result.budgetValid);
   assert(!result.candidatePlanValid && !result.legal);
 
-  // Material in a role outside the archetype is an identity violation.
   RhythmPhrasePlan wrongRole = candidateFrom(
       canonical, RealizationLevel::P2Variation);
   wrongRole.bars[0].roles[static_cast<uint8_t>(RhythmRole::BassRhythm)].structural =
@@ -450,7 +436,6 @@ void test_existing_music_validation_is_reused() {
   result = validate(fixture, canonical, wrongRole, deltas, 32);
   assert(!result.candidatePlanValid && !result.legal);
 
-  // Hard relationship rejection remains relationship_resolver ownership.
   fixture.relationships[0].source = RhythmRole::ClosedHat;
   fixture.relationships[0].target = RhythmRole::Percussion;
   fixture.relationships[0].op = RelationshipOp::Exclude;
@@ -478,7 +463,6 @@ void test_fail_closed_and_policy_levels() {
   RhythmMutationDelta deltas[32]{};
   RhythmPhrasePlan canonical = canonicalPlan();
 
-  // Same-site importance conversion has no E2c operation and fails closed.
   canonical.bars[0].roles[static_cast<uint8_t>(RhythmRole::ClosedHat)].structural =
       bits(4);
   RhythmPhrasePlan converted = candidateFrom(
@@ -491,7 +475,6 @@ void test_fail_closed_and_policy_levels() {
   assert(result.diffStatus == CanonicalRhythmDiffStatus::UnrepresentableDelta);
   assert(!result.legal);
 
-  // Overlapping onset classes are invalid candidate material.
   converted = candidateFrom(canonical, RealizationLevel::P2Variation);
   converted.bars[0].roles[
       static_cast<uint8_t>(RhythmRole::ClosedHat)].secondary = bits(4);
@@ -499,7 +482,6 @@ void test_fail_closed_and_policy_levels() {
   assert(result.diffStatus == CanonicalRhythmDiffStatus::InvalidCandidateMaterial);
   assert(!result.legal);
 
-  // Stats-only mode is supported; undersized requested output fails closed.
   CanonicalRhythmDiffStats stats{};
   RhythmPhrasePlan radius = candidateFrom(
       canonical, RealizationLevel::P2Variation);
@@ -516,7 +498,6 @@ void test_fail_closed_and_policy_levels() {
       deltas, 1, stats);
   assert(status == CanonicalRhythmDiffStatus::OutputTooSmall);
 
-  // P1/P2/P3 remain bounded under the existing MutationPolicy levels.
   canonical = canonicalPlan();
   RhythmPhrasePlan one = candidateFrom(
       canonical, RealizationLevel::P2Variation);
@@ -561,7 +542,6 @@ void test_fail_closed_and_policy_levels() {
       fixture.archetype.mutation, RealizationLevel::P3Transformation,
       TransformationIntent::Auto, stats));
 
-  // Preserve E1a P3 cumulative P2 ghost allowance when P3 declares none.
   MutationPolicy cumulative{};
   MutationBudget& p2 = cumulative.level[
       static_cast<uint8_t>(RealizationLevel::P2Variation)];
