@@ -48,28 +48,45 @@ def require_bounded(symbol: str, size: int, kind: str, ceiling: int) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: test_rhythm_stage6_1_stack_usage.py <bar_evolution.su>")
+    if len(sys.argv) != 3:
+        raise SystemExit(
+            "usage: test_rhythm_stage6_1_stack_usage.py "
+            "<bar_evolution.su> <rhythm_realizer_evolution.su>"
+        )
 
-    path = pathlib.Path(sys.argv[1])
-    if not path.is_file():
-        fail(f"stack-usage file missing: {path}")
+    planner_path = pathlib.Path(sys.argv[1])
+    mutation_path = pathlib.Path(sys.argv[2])
+    for path in (planner_path, mutation_path):
+        if not path.is_file():
+            fail(f"stack-usage file missing: {path}")
 
-    entries = parse_stack_usage(path)
-    evolve_symbol, evolve_bytes, evolve_kind = find(entries, "evolveRhythmPhrase")
-    drop_symbol, drop_bytes, drop_kind = find(entries, "dropOneStructuralEvent")
+    planner_entries = parse_stack_usage(planner_path)
+    mutation_entries = parse_stack_usage(mutation_path)
+
+    evolve_symbol, evolve_bytes, evolve_kind = find(
+        planner_entries, "evolveRhythmPhrase"
+    )
+    mutate_symbol, mutate_bytes, mutate_kind = find(
+        mutation_entries, "applyRhythmBarFunctionMutation"
+    )
+    drop_symbol, drop_bytes, drop_kind = find(
+        mutation_entries, "dropOneStructuralEvent"
+    )
 
     # Host GCC is not the ESP32-S3 ABI, so these are regression ceilings rather
     # than hardware high-water measurements. They catch accidental frame growth
-    # before the mandatory Cardputer probe at first production wiring.
+    # before/alongside the Cardputer runtime probe.
     require_bounded(evolve_symbol, evolve_bytes, evolve_kind, 4096)
+    require_bounded(mutate_symbol, mutate_bytes, mutate_kind, 2048)
     require_bounded(drop_symbol, drop_bytes, drop_kind, 2048)
 
     print(
         "Groove Vocabulary Stage 6.1 stack usage: "
-        f"evolve={evolve_bytes}B({evolve_kind}) "
+        f"planner={evolve_bytes}B({evolve_kind}) "
+        f"mutation={mutate_bytes}B({mutate_kind}) "
         f"drop={drop_bytes}B({drop_kind})"
     )
+    print("Host GCC .su only; not ESP32-S3 runtime HWM")
 
 
 if __name__ == "__main__":

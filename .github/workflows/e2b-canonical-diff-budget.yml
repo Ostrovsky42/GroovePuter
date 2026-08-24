@@ -1,0 +1,17 @@
+name: Generation 0.9.9 E2b canonical diff budget
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2b-canonical-diff-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run canonical-relative rhythm diff and budget contract
+        run: bash tests/run_0_9_9_e2b_tests.sh
