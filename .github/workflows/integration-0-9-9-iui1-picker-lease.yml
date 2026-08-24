@@ -1,0 +1,53 @@
+name: 0.9.9 IUI1 Picker Lease Integration
+
+on:
+  push:
+    branches:
+      - integration/20260824-03-0.9.9-ui-picker-lease
+  pull_request:
+    paths:
+      - "src/ui/pages/song_page.h"
+      - "src/ui/pages/song_page_r4_owner.inc"
+      - "src/phrase/pattern_lease_owner.h"
+      - "src/audio/pattern_paging.cpp"
+      - "tests/test_0_9_9_iui1_*"
+      - "tests/run_0_9_9_iui1_tests.sh"
+      - ".github/workflows/integration-0-9-9-iui1-picker-lease.yml"
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run IUI1 focused and cumulative lifecycle suite
+        run: bash tests/run_0_9_9_iui1_tests.sh
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install Arduino dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build Cardputer ADV
+        run: bash scripts/build.sh --warnings all
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Build SEQTRAK MIDI-only
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
+
+  sdl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL dependencies
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev
+      - name: Build SDL target
+        run: make -C platform_sdl -j2
