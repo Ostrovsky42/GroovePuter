@@ -6,11 +6,15 @@
 
 namespace GroovePuterInput {
 
+inline constexpr uint8_t kCardputerLetterAHid = 0x04;
+inline constexpr uint8_t kCardputerLetterZHid = 0x1D;
+inline constexpr uint8_t kCardputerEnterHid = 0x28;
 inline constexpr uint8_t kCardputerTabHid = 0x2B;
 inline constexpr uint8_t kCardputerArrowUpHid = 0x33;
 inline constexpr uint8_t kCardputerArrowLeftHid = 0x36;
 inline constexpr uint8_t kCardputerArrowDownHid = 0x37;
 inline constexpr uint8_t kCardputerArrowRightHid = 0x38;
+inline constexpr uint8_t kCardputerKeypadEnterHid = 0x58;
 
 template <typename KeysState>
 inline bool sameModifiers(const KeysState& a, const KeysState& b) {
@@ -54,6 +58,20 @@ inline bool containsWord(const KeysState& state, WordChar value) {
   return false;
 }
 
+inline uint8_t asciiLetterHid(char value) {
+  if (value >= 'A' && value <= 'Z') {
+    value = static_cast<char>(value + ('a' - 'A'));
+  }
+  if (value < 'a' || value > 'z') return 0;
+  return static_cast<uint8_t>(kCardputerLetterAHid + (value - 'a'));
+}
+
+template <typename KeysState>
+inline bool enterHidDown(const KeysState& state) {
+  return containsHid(state, kCardputerEnterHid) ||
+         containsHid(state, kCardputerKeypadEnterHid);
+}
+
 template <typename KeysState>
 inline bool shouldDispatchHid(const KeysState& current,
                               const KeysState& previous,
@@ -71,21 +89,46 @@ inline bool shouldDispatchWord(const KeysState& current,
                                WordChar& value) {
   const WordChar rawValue = value;
 
-  // M5Cardputer library versions differ: dedicated Tab can appear only in
-  // KeysState::word or in both word and HID 0x2B. Preserve a word-only Tab
-  // through the control-character filter and suppress the duplicate word copy
-  // when the canonical HID event is present.
+  // M5Cardputer library versions differ in whether dedicated keys appear in
+  // KeysState::word, hid_keys, or both. Prefer the canonical HID event when it
+  // exists. For the Alt-only combinations that must reach the UI dispatcher,
+  // tunnel a word-only value through GroovePuter.ino's raw control/modifier
+  // filter and restore the original logical key immediately before UIEvent
+  // dispatch. Plain Enter and Ctrl paths intentionally keep prior behavior.
   if (rawValue == static_cast<WordChar>('\t') &&
       containsHid(current, kCardputerTabHid)) {
     return false;
   }
 
-  const bool dispatch =
-      !hadPrevious || !containsWord(previous, rawValue);
-  if (dispatch && rawValue == static_cast<WordChar>('\t')) {
-    value = static_cast<WordChar>(GROOVEPUTER_WORD_TAB_SENTINEL);
+  const char rawChar = static_cast<char>(rawValue);
+  const uint8_t letterHid = asciiLetterHid(rawChar);
+  const bool altOnly = current.alt && !current.ctrl;
+  const bool enterWord = rawValue == static_cast<WordChar>('\n') ||
+                         rawValue == static_cast<WordChar>('\r');
+  const bool altWordFallback = altOnly && (letterHid != 0 || enterWord);
+
+  if (altWordFallback && enterWord && enterHidDown(current)) {
+    return false;
   }
-  return dispatch;
+  if (altWordFallback && letterHid != 0 && containsHid(current, letterHid)) {
+    return false;
+  }
+
+  bool dispatch = !hadPrevious || !containsWord(previous, rawValue);
+  if (!dispatch && altWordFallback && hadPrevious &&
+      current.alt && !previous.alt) {
+    dispatch = true;
+  }
+  if (!dispatch) return false;
+
+  if (rawValue == static_cast<WordChar>('\t')) {
+    value = static_cast<WordChar>(GROOVEPUTER_WORD_TAB_SENTINEL);
+  } else if (altWordFallback && enterWord) {
+    value = static_cast<WordChar>(GROOVEPUTER_WORD_ENTER_SENTINEL);
+  } else if (altWordFallback && letterHid != 0) {
+    value = static_cast<WordChar>(stageWordAltLetterFallback(rawChar));
+  }
+  return true;
 }
 
 inline uint16_t digitDispatchMask(char value) {

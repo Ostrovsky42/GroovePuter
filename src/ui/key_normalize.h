@@ -51,11 +51,31 @@ enum KeyScanCode {
   GROOVEPUTER_Z,
 };
 
-// KeysState::word may contain a dedicated Tab without the matching HID 0x2B
-// entry on Cardputer hardware. The raw input loop suppresses control characters
-// before normalizeKeyChar(), so the edge helper temporarily substitutes this
-// non-printable sentinel and normalizeKeyChar restores Tab.
+// KeysState::word may contain dedicated keys without their matching HID entry
+// on some M5Cardputer library/hardware combinations. The raw input loop filters
+// control/modifier word bytes before normalizeKeyChar(), so the edge adapter
+// temporarily substitutes these values and normalizeKeyChar restores the
+// canonical logical key immediately before UIEvent dispatch.
+inline constexpr char GROOVEPUTER_WORD_ALT_LETTER_SENTINEL = '\x1D';
+inline constexpr char GROOVEPUTER_WORD_ENTER_SENTINEL = '\x1E';
 inline constexpr char GROOVEPUTER_WORD_TAB_SENTINEL = '\x1F';
+
+struct GroovePuterWordAltLetterFallback {
+  char value = 0;
+  bool pending = false;
+};
+
+static inline GroovePuterWordAltLetterFallback& wordAltLetterFallbackState() {
+  static GroovePuterWordAltLetterFallback state{};
+  return state;
+}
+
+static inline char stageWordAltLetterFallback(char value) {
+  auto& state = wordAltLetterFallbackState();
+  state.value = value;
+  state.pending = true;
+  return GROOVEPUTER_WORD_ALT_LETTER_SENTINEL;
+}
 
 // ============================================================================
 // Key Normalization for UI Input
@@ -81,6 +101,8 @@ static inline char asciiLower(char c) {
  * Normalize key character for UI processing
  *
  * Currently performs:
+ * - Cardputer word-only Alt-letter restoration
+ * - Cardputer word-only Enter restoration
  * - Cardputer word-only Tab restoration
  * - Lowercase normalization (A-Z → a-z)
  *
@@ -93,6 +115,15 @@ static inline char asciiLower(char c) {
  * @return Normalized character for event dispatch
  */
 static inline char normalizeKeyChar(char c) {
+  if (c == GROOVEPUTER_WORD_ALT_LETTER_SENTINEL) {
+    auto& state = wordAltLetterFallbackState();
+    if (state.pending) {
+      c = state.value;
+      state.pending = false;
+      state.value = 0;
+    }
+  }
+  if (c == GROOVEPUTER_WORD_ENTER_SENTINEL) return '\n';
   if (c == GROOVEPUTER_WORD_TAB_SENTINEL) return '\t';
   return asciiLower(c);
 }

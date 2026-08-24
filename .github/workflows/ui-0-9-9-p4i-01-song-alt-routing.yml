@@ -1,0 +1,74 @@
+name: 0.9.9-P4I-01 Song Alt Routing Closure
+
+on:
+  push:
+    branches:
+      - agent/20260824-07-0.9.9-p4i-song-alt-routing-closure
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host-routing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run P4I-01 focused and cumulative routing contracts
+        run: bash tests/run_0_9_9_p4i_01_tests.sh
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
