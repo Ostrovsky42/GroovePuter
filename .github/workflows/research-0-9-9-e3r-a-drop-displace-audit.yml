@@ -1,0 +1,28 @@
+name: research-0.9.9-e3r-a-drop-displace-audit
+
+on:
+  pull_request:
+    branches:
+      - research/20260824-02-0.9.9-e2-authoritative-variant-graph
+    paths:
+      - '.github/workflows/research-0-9-9-e3r-a-drop-displace-audit.yml'
+      - 'docs/research/E3R_A_DROP_DISPLACE_EXECUTION_AUDIT.md'
+      - 'tests/run_0_9_9_e3r_a_tests.sh'
+      - 'tests/test_0_9_9_e3r_a_diff_contract.cpp'
+      - 'tests/test_0_9_9_e3r_a_source_guard.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: E3R-A cumulative contract audit
+        run: bash tests/run_0_9_9_e3r_a_tests.sh
+      - name: Full host regression suite
+        run: bash tests/run_host_tests.sh
