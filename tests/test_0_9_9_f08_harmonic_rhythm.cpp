@@ -82,19 +82,25 @@ void testChordRhythmCannotChangeHarmonicTopology() {
 
   assert(held.onsets != stabs.onsets);
   assert(samePlan(first.plan, second.plan));
-  assert(first.plan.onsets == static_cast<StepMask>(stepBit(0) | stepBit(8)));
+  assert(first.plan.onsets == static_cast<StepMask>(
+      stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12)));
 }
 
-void testMovingProgressionCanChangeWithoutChordTopologyChange() {
+void testProgressionClockCanChangeWithoutChordTopologyChange() {
   const StepMask unchangedChordAttacks = static_cast<StepMask>(
       stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14));
-  const HarmonicRhythmResult pop = planFor(ProgressionId::PopCycle);
-  const HarmonicRhythmResult minor = planFor(ProgressionId::MinorFall);
+  const HarmonicRhythmResult parallel = planFor(ProgressionId::ParallelShift);
+  const HarmonicRhythmResult borrowed = planFor(ProgressionId::BorrowedLift);
 
-  assert(pop.status == HarmonicRhythmStatus::Ok);
-  assert(minor.status == HarmonicRhythmStatus::Ok);
-  assert(pop.plan.progression != minor.plan.progression);
-  assert(pop.plan.onsets == minor.plan.onsets);
+  assert(parallel.status == HarmonicRhythmStatus::Ok);
+  assert(borrowed.status == HarmonicRhythmStatus::Ok);
+  assert(parallel.plan.progression != borrowed.plan.progression);
+  assert(parallel.plan.eventCount == borrowed.plan.eventCount);
+  assert(parallel.plan.onsets != borrowed.plan.onsets);
+  assert(parallel.plan.onsets ==
+         static_cast<StepMask>(stepBit(0) | stepBit(8)));
+  assert(borrowed.plan.onsets ==
+         static_cast<StepMask>(stepBit(0) | stepBit(12)));
   assert(countBits(unchangedChordAttacks) == 4);
 }
 
@@ -103,10 +109,56 @@ void testHeldArticulationDoesNotImplyProgressionSemantics() {
   const HarmonicRhythmResult movingHarmony = planFor(ProgressionId::TwoFiveOne);
 
   assert(staticHarmony.plan.eventCount == 1);
-  assert(movingHarmony.plan.eventCount == 2);
+  assert(movingHarmony.plan.eventCount == 3);
   assert(staticHarmony.plan.onsets == stepBit(0));
-  assert(movingHarmony.plan.onsets ==
-         static_cast<StepMask>(stepBit(0) | stepBit(8)));
+  assert(movingHarmony.plan.onsets == static_cast<StepMask>(
+      stepBit(0) | stepBit(6) | stepBit(10)));
+}
+
+void testBoundedProgressionVocabulary() {
+  struct Case {
+    ProgressionId progression;
+    HarmonicClockId clock;
+    StepMask onsets;
+    uint8_t eventCount;
+  };
+
+  const Case cases[] = {
+      {ProgressionId::StaticModal, HarmonicClockId::StaticHold,
+       stepBit(0), 1},
+      {ProgressionId::PedalDrone, HarmonicClockId::StaticHold,
+       stepBit(0), 1},
+      {ProgressionId::PopCycle, HarmonicClockId::QuarterCycle,
+       static_cast<StepMask>(stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12)),
+       4},
+      {ProgressionId::TwoFiveOne, HarmonicClockId::CadentialThree,
+       static_cast<StepMask>(stepBit(0) | stepBit(6) | stepBit(10)), 3},
+      {ProgressionId::ParallelShift, HarmonicClockId::HalfBarPivot,
+       static_cast<StepMask>(stepBit(0) | stepBit(8)), 2},
+      {ProgressionId::MinorFall, HarmonicClockId::QuarterCycle,
+       static_cast<StepMask>(stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12)),
+       4},
+      {ProgressionId::BorrowedLift, HarmonicClockId::LateChange,
+       static_cast<StepMask>(stepBit(0) | stepBit(12)), 2},
+  };
+
+  for (const Case& item : cases) {
+    assert(defaultOneBarHarmonicClock(item.progression) == item.clock);
+    assert(harmonicClockOnsets(item.clock) == item.onsets);
+    assert(harmonicClockEventCount(item.clock) == item.eventCount);
+    assert(defaultOneBarHarmonicEventCount(item.progression) == item.eventCount);
+
+    const HarmonicRhythmResult result = planFor(item.progression);
+    assert(result.status == HarmonicRhythmStatus::Ok);
+    assert(result.plan.onsets == item.onsets);
+    assert(result.plan.eventCount == item.eventCount);
+    assert(countBits(result.plan.onsets) == result.plan.eventCount);
+  }
+
+  // The vocabulary is semantic, not a uniqueness contest. Two four-stage
+  // progression families intentionally share the same quarter-cycle clock.
+  assert(defaultOneBarHarmonicClock(ProgressionId::PopCycle) ==
+         defaultOneBarHarmonicClock(ProgressionId::MinorFall));
 }
 
 void testExplicitCountsAndDeterminism() {
@@ -123,7 +175,6 @@ void testExplicitCountsAndDeterminism() {
   for (uint8_t i = 0; i < 32; ++i) {
     HarmonicRhythmRequest request{};
     request.progression = ProgressionId::ParallelShift;
-    request.harmonicEventCount = 2;
     request.phraseBarOrdinal = i;
     request.phraseHarmonicPosition = static_cast<uint8_t>(31 - i);
     const HarmonicRhythmResult first = realizeHarmonicRhythm(request);
@@ -145,6 +196,11 @@ void testInvalidRequestsAreRejected() {
   tooMany.harmonicEventCount = static_cast<uint8_t>(kMaxHarmonicEvents + 1);
   assert(realizeHarmonicRhythm(tooMany).status ==
          HarmonicRhythmStatus::InvalidRequest);
+
+  assert(defaultOneBarHarmonicClock(ProgressionId::Auto) ==
+         HarmonicClockId::Count);
+  assert(harmonicClockOnsets(HarmonicClockId::Count) == 0);
+  assert(harmonicClockEventCount(HarmonicClockId::Count) == 0);
 }
 
 }  // namespace
@@ -153,8 +209,9 @@ int main() {
   testStaticHarmonyCanHaveRepeatedChordAttacks();
   testTwoHarmonicStatesAllowArbitraryArticulation();
   testChordRhythmCannotChangeHarmonicTopology();
-  testMovingProgressionCanChangeWithoutChordTopologyChange();
+  testProgressionClockCanChangeWithoutChordTopologyChange();
   testHeldArticulationDoesNotImplyProgressionSemantics();
+  testBoundedProgressionVocabulary();
   testExplicitCountsAndDeterminism();
   testInvalidRequestsAreRejected();
   return 0;

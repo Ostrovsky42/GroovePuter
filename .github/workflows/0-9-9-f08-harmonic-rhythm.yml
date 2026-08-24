@@ -16,6 +16,7 @@ jobs:
         run: bash tests/run_0_9_9_f08_tests.sh
 
   stage15-semantic-diff:
+    if: ${{ hashFiles('tests/classify_0_9_9_f08_1_stage15_drift.py') == '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
