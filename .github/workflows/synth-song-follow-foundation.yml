@@ -1,0 +1,23 @@
+name: Synth Song follow foundation
+
+on:
+  pull_request:
+    paths:
+      - "src/ui/pages/pattern_edit_page.h"
+      - "src/ui/pages/synth_sequencer_page.cpp"
+      - "src/dsp/miniacid_engine.cpp"
+      - "scenes.h"
+      - "tests/test_synth_song_follow_source_regressions.py"
+      - "tests/run_0_9_9_synth_song_follow_tests.sh"
+      - ".github/workflows/synth-song-follow-foundation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Synth Song follow source contract
+        run: bash tests/run_0_9_9_synth_song_follow_tests.sh

@@ -280,7 +280,14 @@ void SynthSequencerPage::setVisualStyle(VisualStyle style) {
 }
 
 void SynthSequencerPage::tick() {
-  if (synth_tab_ == SynthTab::Notes && pattern_page_) {
+  if (!pattern_page_) return;
+
+  // Keep the NOTES editor synchronized even while KNOBS/MORE is visible. When
+  // the user returns to NOTES during PLAY or immediately after STOP, the local
+  // bank/slot cursor is already the Song runtime selection rather than the
+  // pre-PLAY editor selection.
+  pattern_page_->syncRuntimePatternSelection();
+  if (synth_tab_ == SynthTab::Notes) {
     pattern_page_->tick();
   }
 }

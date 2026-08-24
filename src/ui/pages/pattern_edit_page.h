@@ -7,6 +7,7 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../../dsp/miniacid_engine.h"
+#include "../../pattern/pattern_address.h"
 #include "../../state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
 #include "../../state/song_edit.h"
@@ -44,6 +45,38 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool isStepSelected(int stepIndex) const;
   bool moveSelectionFrameBy(int deltaRow, int deltaCol);
   int voiceIndex() const { return voice_index_; }
+
+  // Song playback owns audible pattern selection. The NOTES editor follows that
+  // runtime address only after its global pattern page is resident. This keeps
+  // async pattern paging out of the UI and leaves the final page/bank/slot in
+  // place after STOP for direct editing.
+  void syncRuntimePatternSelection() {
+    if (mini_acid_.songModeEnabled()) {
+      const PatternAddress address = patternAddressFromGlobal(
+          mini_acid_.display303PatternIndex(voice_index_));
+      if (!address.valid() ||
+          address.page != mini_acid_.currentPageIndex()) {
+        return;
+      }
+
+      bank_index_ = address.bank;
+      bank_cursor_ = address.bank;
+      pattern_row_cursor_ = address.slot;
+      return;
+    }
+
+    // Pattern mode keeps the existing engine selection authoritative. Mirroring
+    // it here makes the follower idempotent across PLAY/STOP and tab changes.
+    const int bank = mini_acid_.current303BankIndex(voice_index_);
+    const int pattern = mini_acid_.current303PatternIndex(voice_index_);
+    if (bank >= 0 && bank < kBankCount) {
+      bank_index_ = bank;
+      bank_cursor_ = bank;
+    }
+    if (pattern >= 0 && pattern < Bank<SynthPattern>::kPatterns) {
+      pattern_row_cursor_ = pattern;
+    }
+  }
 
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
