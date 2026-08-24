@@ -91,38 +91,41 @@ inline bool shouldDispatchWord(const KeysState& current,
 
   // M5Cardputer library versions differ in whether dedicated keys appear in
   // KeysState::word, hid_keys, or both. Prefer the canonical HID event when it
-  // exists, otherwise tunnel word-only values through GroovePuter.ino's raw
-  // control/modifier filter and restore the original logical key immediately
-  // before UIEvent dispatch.
+  // exists. For the Alt-only combinations that must reach the UI dispatcher,
+  // tunnel a word-only value through GroovePuter.ino's raw control/modifier
+  // filter and restore the original logical key immediately before UIEvent
+  // dispatch. Plain Enter and Ctrl paths intentionally keep prior behavior.
   if (rawValue == static_cast<WordChar>('\t') &&
       containsHid(current, kCardputerTabHid)) {
-    return false;
-  }
-  if ((rawValue == static_cast<WordChar>('\n') ||
-       rawValue == static_cast<WordChar>('\r')) &&
-      enterHidDown(current)) {
     return false;
   }
 
   const char rawChar = static_cast<char>(rawValue);
   const uint8_t letterHid = asciiLetterHid(rawChar);
-  if (current.alt && !current.ctrl && letterHid != 0 &&
-      containsHid(current, letterHid)) {
+  const bool altOnly = current.alt && !current.ctrl;
+  const bool enterWord = rawValue == static_cast<WordChar>('\n') ||
+                         rawValue == static_cast<WordChar>('\r');
+  const bool altWordFallback = altOnly && (letterHid != 0 || enterWord);
+
+  if (altWordFallback && enterWord && enterHidDown(current)) {
+    return false;
+  }
+  if (altWordFallback && letterHid != 0 && containsHid(current, letterHid)) {
     return false;
   }
 
   bool dispatch = !hadPrevious || !containsWord(previous, rawValue);
-  if (!dispatch && hadPrevious && modifierActivated(current, previous)) {
+  if (!dispatch && altWordFallback && hadPrevious &&
+      current.alt && !previous.alt) {
     dispatch = true;
   }
   if (!dispatch) return false;
 
   if (rawValue == static_cast<WordChar>('\t')) {
     value = static_cast<WordChar>(GROOVEPUTER_WORD_TAB_SENTINEL);
-  } else if (rawValue == static_cast<WordChar>('\n') ||
-             rawValue == static_cast<WordChar>('\r')) {
+  } else if (altWordFallback && enterWord) {
     value = static_cast<WordChar>(GROOVEPUTER_WORD_ENTER_SENTINEL);
-  } else if (current.alt && !current.ctrl && letterHid != 0) {
+  } else if (altWordFallback && letterHid != 0) {
     value = static_cast<WordChar>(stageWordAltLetterFallback(rawChar));
   }
   return true;
