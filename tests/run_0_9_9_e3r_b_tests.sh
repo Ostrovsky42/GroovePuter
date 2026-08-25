@@ -87,3 +87,10 @@ for artifact in "${ARTIFACTS[@]}"; do
 done
 
 echo "0.9.9-E3R-B DROP / DISPLACE counterfactual graph cap=1: OK"
+
+# Cap=1 produced useful topology while remaining below authority ceilings.
+# Run the requested secondary research-only cap=2 sensitivity with the exact
+# same graph code, changing only the copied operation-cap declaration.
+bash "${ROOT_DIR}/tests/run_0_9_9_e3r_b_cap2_sensitivity.sh"
+
+echo "0.9.9-E3R-B DROP / DISPLACE graph authority: OK"
