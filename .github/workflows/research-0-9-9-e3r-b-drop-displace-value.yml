@@ -10,20 +10,37 @@ permissions:
   contents: read
 
 jobs:
-  frozen-baseline:
+  graph-authority:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Verify frozen V0R over E3a integration base
-        run: bash tests/run_0_9_9_e3r_b_frozen_baseline.sh
+      - name: Run E3R-B graph, E3a and cumulative contracts
+        run: bash tests/run_0_9_9_e3r_b_tests.sh
 
-      - name: Upload frozen baseline evidence
+      - name: Upload E3R-B graph and review corpus
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e3r-b-frozen-baseline
+          name: e3r-b-drop-displace-value
           if-no-files-found: warn
-          path: build/host-tests/e3r-b-frozen-baseline/
+          path: |
+            build/host-tests/e3r-b-drop-displace-value/gcc-run1.raw
+            build/host-tests/e3r-b-drop-displace-value/gcc-run1-report/
+            build/host-tests/e3r-b-frozen-baseline/gcc-run1.raw
+            build/host-tests/e3r-b-frozen-baseline/gcc-run1-report/
+
+  full-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: E3R-B source guard
+        run: python3 tests/test_0_9_9_e3r_b_source_guard.py
+
+      - name: Full host regressions
+        run: bash tests/run_host_tests.sh
