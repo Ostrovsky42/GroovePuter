@@ -1,0 +1,29 @@
+name: Research 0.9.9 E3R-B DROP DISPLACE value
+
+on:
+  pull_request:
+    branches:
+      - integration/20260825-01-0.9.9-e3a-v0r-research-base
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen V0R over E3a integration base
+        run: bash tests/run_0_9_9_e3r_b_frozen_baseline.sh
+
+      - name: Upload frozen baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e3r-b-frozen-baseline
+          if-no-files-found: warn
+          path: build/host-tests/e3r-b-frozen-baseline/
