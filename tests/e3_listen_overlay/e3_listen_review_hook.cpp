@@ -95,7 +95,8 @@ void e3ListenOverrideComposition(GenerationCompositionResult& composition) {
   composition.progression = ProgressionId::Auto;
   composition.melodicRhythm = MelodicRhythmId::Auto;
   composition.motifShape = MotifShapeId::Auto;
-  composition.secondaryRole = CompositionSecondaryRole::Melodic;
+  // Keep the fixed review profile's production-owned physical Synth B role.
+  // E3L pins only rhythm identity and downstream role IDs to AUTO.
 }
 
 void e3ListenOverrideRhythmPlan(RhythmPhrasePlan& plan) {

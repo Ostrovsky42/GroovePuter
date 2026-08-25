@@ -67,7 +67,7 @@ for needle in (
 
 # The BassRhythm seam is deliberately after the existing rhythm owner and
 # before existing pitch/tonal/Synth A ownership. No note/MIDI renderer exists
-# in the hook.
+# in the hook, and the production profile keeps ownership of secondaryRole.
 for needle in (
     "void e3ListenOverrideBassPlan(BassRhythmPlan& plan)",
     "plan.onsets = allOnsets(source);",
@@ -82,6 +82,7 @@ for forbidden in (
     "note =",
     "adaptTonalPlanToSynthPattern",
     "materializeTonalIntent",
+    "composition.secondaryRole =",
 ):
     assert forbidden not in hook_cpp
 
