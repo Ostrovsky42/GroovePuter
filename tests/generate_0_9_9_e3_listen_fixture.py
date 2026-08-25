@@ -134,11 +134,14 @@ def cpp_string(value: str) -> str:
 
 
 def emit_plan(lines, plan, indent="    "):
-    lines.append(indent + "{")
+    # PlanMasks has one array member (`roles[8]`), so preserve the explicit
+    # aggregate nesting instead of relying on brace elision. This header is
+    # consumed by both host syntax validation and the Arduino staged build.
+    lines.append(indent + "{{")
     for role in plan:
         values = ", ".join(f"0x{value:04x}u" for value in role)
         lines.append(indent + f"  {{{values}}},")
-    lines.append(indent + "},")
+    lines.append(indent + "}},")
 
 
 def generate_header(rows) -> str:
