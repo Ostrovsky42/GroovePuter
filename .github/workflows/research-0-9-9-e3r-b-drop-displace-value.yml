@@ -29,6 +29,8 @@ jobs:
           path: |
             build/host-tests/e3r-b-drop-displace-value/gcc-run1.raw
             build/host-tests/e3r-b-drop-displace-value/gcc-run1-report/
+            build/host-tests/e3r-b-drop-displace-value-cap2/gcc-run1.raw
+            build/host-tests/e3r-b-drop-displace-value-cap2/gcc-run1-report/
             build/host-tests/e3r-b-frozen-baseline/gcc-run1.raw
             build/host-tests/e3r-b-frozen-baseline/gcc-run1-report/
 
