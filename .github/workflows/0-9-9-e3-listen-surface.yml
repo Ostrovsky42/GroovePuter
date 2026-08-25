@@ -1,0 +1,48 @@
+name: 0.9.9 E3 LISTEN hardware review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate frozen E3L review contracts
+        run: bash tests/run_0_9_9_e3_listen_tests.sh
+
+  cardputer-review-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build disposable E3 LISTEN firmware
+        run: bash scripts/build_e3_listen.sh --warnings all
+
+      - name: Report review firmware memory only
+        run: |
+          echo "E3L fixture bytes are review-only and are not a production DRAM budget."
+          ls -lh build/cardputer-adv-e3-listen/GroovePuter.ino.*
+
+      - name: Upload review firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: e3-listen-cardputer-adv
+          path: |
+            build/cardputer-adv-e3-listen/GroovePuter.ino.bin
+            build/cardputer-adv-e3-listen/GroovePuter.ino.bootloader.bin
+            build/cardputer-adv-e3-listen/GroovePuter.ino.partitions.bin
+          if-no-files-found: error
