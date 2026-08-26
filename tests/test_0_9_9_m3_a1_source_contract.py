@@ -20,7 +20,7 @@ assert "chord.plan.onsets, melodicPitch.plan.onsets" in migration
 
 # M1 carries a logical phrase bar coordinate and frozen phrase identity.
 assert "uint8_t phraseBarOrdinal = kUnspecifiedPhraseBarOrdinal;" in migration_header
-assert "uint32_t phraseGenerationIdentity = 0;" in migration_header
+assert "uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;" in migration_header
 assert "context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal" in migration
 assert "phraseVocabularyBarOrdinal(context.phraseBarOrdinal)" in migration
 
