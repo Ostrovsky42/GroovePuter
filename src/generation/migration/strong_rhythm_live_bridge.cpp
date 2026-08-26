@@ -19,6 +19,8 @@ namespace {
 
 constexpr int kPhraseAuditionBank = 1;
 constexpr int kPhraseAuditionSongSlot = 1;
+constexpr uint16_t kPhraseAuditionGenerationIdentity =
+    static_cast<uint16_t>(kPhraseAuditionSongSlot);
 constexpr RhythmRoleMask kDeferredSynthRoles =
     rhythmRoleBit(RhythmRole::BassRhythm) |
     rhythmRoleBit(RhythmRole::ChordRhythm) |
@@ -326,8 +328,13 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   // audition deliberately remains attemptOrdinal=0; the production G reroll
   // surface does not leak into the destructive audition harness.
   DrumPatternSet selectionScratch{};
-  const StrongRhythmMigrationResult selection = migrateStrongRhythmDrums(
-      scene.genre, baseContext, selectionScratch);
+  StrongRhythmFrozenSelection frozenSelection{};
+  const bool requestedFrozenFourBarPath = result.requestedBars == 4;
+  const StrongRhythmMigrationResult selection = requestedFrozenFourBarPath
+      ? resolveStrongRhythmFrozenSelection(
+            scene.genre, baseContext, kPhraseAuditionGenerationIdentity,
+            frozenSelection)
+      : migrateStrongRhythmDrums(scene.genre, baseContext, selectionScratch);
   result.selectionStatus = selection.status;
   result.profileBars = normalizedPhraseBars(selection.phraseBars);
   if (selection.status != StrongRhythmMigrationStatus::Applied) {
@@ -339,6 +346,8 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
 #endif
     return result;
   }
+  const bool useFrozenFourBarPath =
+      requestedFrozenFourBarPath && selection.phraseBars == 4;
 
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionFor(selection.archetype);
@@ -413,6 +422,20 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
     engine.setSongMode(previousSongMode);
   };
 
+  // M1's four-bar path is prepared in the existing Bank B slots but restores
+  // all candidates on failure before the Song B publish step. Storage is fixed
+  // and ephemeral; no phrase cache is retained after this command.
+  DrumPatternSet previousPhraseDrums[kGrooveVocabularyPhraseBars]{};
+  SynthPattern previousPhraseSynthA[kGrooveVocabularyPhraseBars]{};
+  SynthPattern previousPhraseSynthB[kGrooveVocabularyPhraseBars]{};
+  if (useFrozenFourBarPath) {
+    for (uint8_t bar = 0; bar < kGrooveVocabularyPhraseBars; ++bar) {
+      previousPhraseDrums[bar] = manager.editDrumPatternSet(bar);
+      previousPhraseSynthA[bar] = manager.editSynthPattern(0, bar);
+      previousPhraseSynthB[bar] = manager.editSynthPattern(1, bar);
+    }
+  }
+
   engine.setSongMode(false);
   bool materialized = true;
   for (uint8_t bar = 0; bar < result.requestedBars; ++bar) {
@@ -431,6 +454,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
         page, kPhraseAuditionBank, bar);
     StrongRhythmMigrationContext context = baseContext;
     context.patternAddress = patternAddress;
+    context.phraseBarOrdinal = bar;
 
     // Bind audition output explicitly to the reserved local slot. This keeps
     // Stage 5's live current-pattern binding unique to normal production and
@@ -438,12 +462,13 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
     DrumPatternSet& auditionDrums = manager.editDrumPatternSet(bar);
     SynthPattern& auditionSynthA = manager.editSynthPattern(0, bar);
     SynthPattern& auditionSynthB = manager.editSynthPattern(1, bar);
-    const StrongRhythmMigrationResult barResult = migrateStrongRhythmMaterial(
-        lockedSettings,
-        context,
-        auditionDrums,
-        auditionSynthA,
-        auditionSynthB);
+    const StrongRhythmMigrationResult barResult = useFrozenFourBarPath
+        ? migrateStrongRhythmFrozenMaterial(
+              scene.genre, frozenSelection, context, auditionDrums,
+              auditionSynthA, auditionSynthB)
+        : migrateStrongRhythmMaterial(
+              lockedSettings, context, auditionDrums, auditionSynthA,
+              auditionSynthB);
     if (barResult.status != StrongRhythmMigrationStatus::Applied) {
       materialized = false;
       break;
@@ -471,6 +496,13 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   }
 
   if (!materialized) {
+    if (useFrozenFourBarPath) {
+      for (uint8_t bar = 0; bar < kGrooveVocabularyPhraseBars; ++bar) {
+        manager.editDrumPatternSet(bar) = previousPhraseDrums[bar];
+        manager.editSynthPattern(0, bar) = previousPhraseSynthA[bar];
+        manager.editSynthPattern(1, bar) = previousPhraseSynthB[bar];
+      }
+    }
     result.status = PhraseAuditionStatus::MaterializationFailed;
     restoreSelectionState();
 #if defined(ARDUINO_M5STACK_CARDPUTER)
