@@ -74,7 +74,8 @@ void proveChordRhythmIndependence() {
 }
 
 void characterizePhraseBoundaryGap() {
-  for (const uint8_t bars : {uint8_t{1}, uint8_t{2}, uint8_t{4}, uint8_t{8}}) {
+  const uint8_t phraseLengths[] = {1, 2, 4, 8};
+  for (const uint8_t bars : phraseLengths) {
     std::printf("phrase length=%u projection=UNRESOLVED_BY_ACCEPTED_F08\n",
                 static_cast<unsigned>(bars));
   }
@@ -107,6 +108,10 @@ int main() {
   static_assert(sizeof(HarmonicRhythmPlan) <= 8,
                 "W1 plan must remain bounded");
 
+  std::printf("sizeof HarmonicRhythmRequest=%zu B\n",
+              sizeof(HarmonicRhythmRequest));
+  std::printf("sizeof HarmonicRhythmPlan=%zu B\n",
+              sizeof(HarmonicRhythmPlan));
   proveAcceptedBootstrap();
   proveChordRhythmIndependence();
   characterizePhraseBoundaryGap();
