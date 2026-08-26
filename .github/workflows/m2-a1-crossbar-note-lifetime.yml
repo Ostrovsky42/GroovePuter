@@ -1,0 +1,27 @@
+name: M2-A1 cross-bar note lifetime
+
+on:
+  push:
+    branches:
+      - research/20260826-07-0.9.9-m2-a1-crossbar-note-lifetime
+
+permissions:
+  contents: read
+
+jobs:
+  characterize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run M2-A1 execution closure
+        run: bash tests/run_m2_a1_crossbar_note_lifetime.sh
