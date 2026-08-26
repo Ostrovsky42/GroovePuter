@@ -9,7 +9,7 @@ using namespace GroovePuterRhythm;
 namespace {
 
 constexpr StepMask at(uint8_t step) {
-  return static_cast<StepMask>(1u << step);
+  return stepBit(step);
 }
 
 bool sameSemanticResult(const PhraseSemanticResult& a,
@@ -24,7 +24,7 @@ bool sameSemanticResult(const PhraseSemanticResult& a,
           b.harmonicTimeline.totalEventPositions) {
     return false;
   }
-  for (uint8_t bar = 0; bar < kMaxPhraseBars; ++bar) {
+  for (uint8_t bar = 0; bar < kMaxSemanticPhraseBars; ++bar) {
     if (a.harmonicTimeline.eventPositionsByBar[bar] !=
             b.harmonicTimeline.eventPositionsByBar[bar] ||
         a.bars[bar].temporal.phraseBarOrdinal !=
@@ -57,19 +57,19 @@ int main() {
   length.composition.status = GenerationCompositionStatus::Ok;
   length.composition.phraseBars = 4;
 
-  StepMask harmonicBars[kMaxPhraseBars]{};
+  StepMask harmonicBars[kMaxSemanticPhraseBars]{};
   const StepMask quarter = static_cast<StepMask>(at(0) | at(4) | at(8) | at(12));
   for (uint8_t bar = 0; bar < 4; ++bar) harmonicBars[bar] = quarter;
   const PhraseHarmonicTimeline timeline =
       makePhraseHarmonicTimeline(4, harmonicBars);
 
-  MelodicMotifStatus melodicStatus[kMaxPhraseBars]{};
+  MelodicMotifStatus melodicStatus[kMaxSemanticPhraseBars]{};
   melodicStatus[0] = MelodicMotifStatus::Ok;
   melodicStatus[1] = MelodicMotifStatus::ValidButEmpty;
   melodicStatus[2] = MelodicMotifStatus::ValidButEmpty;
   melodicStatus[3] = MelodicMotifStatus::ValidButEmpty;
 
-  MelodicCrossBarLifetime lifetime[kMaxPhraseBars]{};
+  MelodicCrossBarLifetime lifetime[kMaxSemanticPhraseBars]{};
   lifetime[0].continuesIntoNextBar = true;
   lifetime[1].entersFromPreviousBar = true;
 

@@ -9,10 +9,12 @@
 
 namespace GroovePuterRhythm {
 
-constexpr uint8_t kMaxPhraseBars = 8;
+// Separate from rhythm_types.h::kMaxPhraseBars (the existing four-bar rhythm
+// vocabulary capability). This is the converged semantic phrase capacity.
+constexpr uint8_t kMaxSemanticPhraseBars = 8;
 constexpr uint8_t kMaxHarmonicEventPositionsPerBar = 4;
 constexpr uint8_t kMaxPhraseHarmonicEventPositions =
-    kMaxPhraseBars * kMaxHarmonicEventPositionsPerBar;
+    kMaxSemanticPhraseBars * kMaxHarmonicEventPositionsPerBar;
 
 struct PhraseHarmonicEventRange {
   uint8_t firstOrdinal = 0;
@@ -32,28 +34,29 @@ enum class PhraseHarmonicTimelineStatus : uint8_t {
   Count,
 };
 
-// WHEN-only phrase harmonic timeline. Each StepMask stores physical positions
-// 0..15 for one global semantic phrase bar. It deliberately stores no
-// ChordProgression HarmonicEvent values and therefore does not own WHAT.
+// WHEN-only phrase harmonic timeline. Each StepMask stores positions 0..15 for
+// one global semantic phrase bar using the repository's established stepBit()
+// convention. It deliberately stores no ChordProgression HarmonicEvent values
+// and therefore does not own WHAT.
 struct PhraseHarmonicTimeline {
   PhraseHarmonicTimelineStatus status =
       PhraseHarmonicTimelineStatus::InvalidPhraseLength;
   uint8_t phraseBars = 0;
   uint8_t totalEventPositions = 0;
-  StepMask eventPositionsByBar[kMaxPhraseBars]{};
+  StepMask eventPositionsByBar[kMaxSemanticPhraseBars]{};
 };
 
 constexpr uint8_t phraseHarmonicPositionCount(StepMask positions) {
   uint8_t count = 0;
-  for (uint8_t step = 0; step < 16; ++step) {
-    if ((positions & static_cast<StepMask>(1u << step)) != 0) ++count;
+  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+    if ((positions & stepBit(step)) != 0) ++count;
   }
   return count;
 }
 
 inline PhraseHarmonicTimeline makePhraseHarmonicTimeline(
     uint8_t phraseBars,
-    const StepMask (&eventPositionsByBar)[kMaxPhraseBars]) {
+    const StepMask (&eventPositionsByBar)[kMaxSemanticPhraseBars]) {
   PhraseHarmonicTimeline result{};
   if (!isSupportedPhraseLength(phraseBars)) return result;
   result.phraseBars = phraseBars;
@@ -103,8 +106,8 @@ constexpr PhraseHarmonicEventCoordinate phraseHarmonicEventCoordinate(
 
   uint8_t seen = 0;
   const StepMask positions = timeline.eventPositionsByBar[phraseBarOrdinal];
-  for (uint8_t step = 0; step < 16; ++step) {
-    if ((positions & static_cast<StepMask>(1u << step)) == 0) continue;
+  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+    if ((positions & stepBit(step)) == 0) continue;
     if (seen == localHarmonicEventOrdinal) {
       result.valid = true;
       result.localStep = step;

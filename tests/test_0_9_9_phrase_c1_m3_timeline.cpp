@@ -12,11 +12,11 @@ using namespace GroovePuterRhythm;
 namespace {
 
 constexpr StepMask at(uint8_t step) {
-  return static_cast<StepMask>(1u << step);
+  return stepBit(step);
 }
 
 void testQuarterCycle32Positions() {
-  StepMask bars[kMaxPhraseBars]{};
+  StepMask bars[kMaxSemanticPhraseBars]{};
   const StepMask quarter = static_cast<StepMask>(at(0) | at(4) | at(8) | at(12));
   for (uint8_t bar = 0; bar < 8; ++bar) bars[bar] = quarter;
 
@@ -49,7 +49,7 @@ void testQuarterCycle32Positions() {
 }
 
 void testOneEventPerBarHasGlobalPhraseOrdinal() {
-  StepMask bars[kMaxPhraseBars]{};
+  StepMask bars[kMaxSemanticPhraseBars]{};
   for (uint8_t bar = 0; bar < 4; ++bar) bars[bar] = at(0);
   const PhraseHarmonicTimeline timeline = makePhraseHarmonicTimeline(4, bars);
   assert(timeline.totalEventPositions == 4);
@@ -63,7 +63,7 @@ void testOneEventPerBarHasGlobalPhraseOrdinal() {
 }
 
 void testRestHeavyDoesNotCollapseHarmonicTime() {
-  StepMask bars[kMaxPhraseBars]{};
+  StepMask bars[kMaxSemanticPhraseBars]{};
   const StepMask quarter = static_cast<StepMask>(at(0) | at(4) | at(8) | at(12));
   for (uint8_t bar = 0; bar < 4; ++bar) bars[bar] = quarter;
   const PhraseHarmonicTimeline timeline = makePhraseHarmonicTimeline(4, bars);

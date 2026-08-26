@@ -34,15 +34,15 @@ struct PhraseSemanticResult {
   uint8_t requestedPhraseBars = 0;
   uint8_t effectivePhraseBars = 0;
   PhraseHarmonicTimeline harmonicTimeline{};
-  PhraseSemanticBarState bars[kMaxPhraseBars]{};
+  PhraseSemanticBarState bars[kMaxSemanticPhraseBars]{};
 };
 
 inline PhraseSemanticResult makePhraseSemanticResult(
     uint16_t phraseGenerationIdentity,
     const PhraseLengthRequestResult& length,
     const PhraseHarmonicTimeline& harmonicTimeline,
-    const MelodicMotifStatus (&melodicStatus)[kMaxPhraseBars],
-    const MelodicCrossBarLifetime (&melodicLifetime)[kMaxPhraseBars]) {
+    const MelodicMotifStatus (&melodicStatus)[kMaxSemanticPhraseBars],
+    const MelodicCrossBarLifetime (&melodicLifetime)[kMaxSemanticPhraseBars]) {
   PhraseSemanticResult result{};
   result.phraseGenerationIdentity = phraseGenerationIdentity;
   result.requestedPhraseBars = length.requestedPhraseBars;
