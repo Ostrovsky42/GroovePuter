@@ -6,28 +6,32 @@ cd "$ROOT"
 
 CXXFLAGS=(-std=c++17 -Wall -Wextra -Werror -I.)
 SRC=tests/test_0_9_9_phrase_w1_harmonic_when_owner.cpp
+OWNER_SRC=(
+  src/generation/generation_context.cpp
+  src/generation/roles/chord_progression.cpp
+)
 TMP="${TMPDIR:-/tmp}/grooveputer_phrase_w1"
 mkdir -p "$TMP"
 
 python3 tests/test_0_9_9_phrase_w1_source_contract.py
 
-g++ "${CXXFLAGS[@]}" "$SRC" -o "$TMP/w1-gcc"
+g++ "${CXXFLAGS[@]}" "${OWNER_SRC[@]}" "$SRC" -o "$TMP/w1-gcc"
 "$TMP/w1-gcc" | tee "$TMP/w1-gcc.out"
 "$TMP/w1-gcc" > "$TMP/w1-gcc-repeat.out"
 diff -u "$TMP/w1-gcc.out" "$TMP/w1-gcc-repeat.out"
 
 if command -v clang++ >/dev/null 2>&1; then
-  clang++ "${CXXFLAGS[@]}" "$SRC" -o "$TMP/w1-clang"
+  clang++ "${CXXFLAGS[@]}" "${OWNER_SRC[@]}" "$SRC" -o "$TMP/w1-clang"
   "$TMP/w1-clang" > "$TMP/w1-clang.out"
   diff -u "$TMP/w1-gcc.out" "$TMP/w1-clang.out"
 fi
 
 g++ "${CXXFLAGS[@]}" -fsanitize=address -fno-omit-frame-pointer \
-  "$SRC" -o "$TMP/w1-asan"
+  "${OWNER_SRC[@]}" "$SRC" -o "$TMP/w1-asan"
 ASAN_OPTIONS=detect_leaks=1 "$TMP/w1-asan" >/dev/null
 
 g++ "${CXXFLAGS[@]}" -fsanitize=undefined -fno-sanitize-recover=undefined \
-  "$SRC" -o "$TMP/w1-ubsan"
+  "${OWNER_SRC[@]}" "$SRC" -o "$TMP/w1-ubsan"
 "$TMP/w1-ubsan" >/dev/null
 
 printf '%s\n' 'one-bar F08 compatibility fingerprint=static:0001/1;moving:0101/2'
