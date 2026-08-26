@@ -1,169 +1,202 @@
 # 0.9.9-M4-A1 — Phrase Length 1/2/4/8 Ownership Audit
 
-Status: **RESEARCH / CHARACTERIZATION ONLY**
+Status: **RESEARCH / CHARACTERIZATION ONLY**  
+Decision: **B — OWNER / REPRESENTATION BOUNDARY GAP**  
+Frozen M1 base: `5ad44bb9400ea38d349b7f815f84f833fb18ce6a`  
+M4-A1 branch: `research/20260826-09-0.9.9-m4-a1-phrase-length-policy`  
+Production `src/` delta: **ZERO**
 
-Branch:
+## Purpose
 
-`research/20260826-09-0.9.9-m4-a1-phrase-length-policy`
+Freeze who currently owns phrase length, characterize the existing 1/2/4/8 coordinate contract, and prevent a future multi-bar production checkpoint from silently conflating:
 
-Frozen hardware-accepted M1 base:
+- GENRE/profile phrase planning;
+- FEEL/transport `patternBars`;
+- explicit generation-request phrase length;
+- physical Pattern/Song allocation.
 
-`5ad44bb9400ea38d349b7f815f84f833fb18ce6a`
+M4-A1 does not start M4 production and does not reopen frozen M1 behavior.
 
-This audit changes no production musical semantics. `src/` semantic delta is **ZERO**.
+## Exact ancestry
 
-## 1. Exact ancestry and frozen inputs
+The research branch was created directly from the hardware-accepted M1 head:
 
-The research branch was created directly at `5ad44bb9400ea38d349b7f815f84f833fb18ce6a`, which is also the current head of `agent/20260826-06-0.9.9-m1l-multibar-melodic-listening` at audit start.
+`agent/20260826-06-0.9.9-m1l-multibar-melodic-listening @ 5ad44bb9400ea38d349b7f815f84f833fb18ce6a`
 
-No `dev` rebase and no parallel-branch merge are part of M4-A1.
+The original docs-only M4-A1 audit head was:
 
-M1 and E0a are inputs to this audit, not subjects for reinterpretation. In particular, M4-A1 accepts the frozen facts that:
+`6a37ea18c0e64fd9dc739c17fccb579742494cae`
 
-- one logical `phraseGenerationIdentity` may span multiple physical destination bars;
-- physical `patternAddress` is not phrase identity;
-- `phraseBarOrdinal` is the global semantic bar coordinate;
-- `evolutionOrdinal` is existing 4+4 context, derived as `phraseBarOrdinal / 4`;
-- the Groove Vocabulary projection is `phraseBarOrdinal % 4`;
-- the ordinary one-bar generation path remains a compatibility path and must not be changed by M4.
+Executable characterization is added on that same branch. No `dev` rebase and no parallel-branch merge are part of this checkpoint.
 
-## 2. Finding
+## Finding
 
-The repository has enough semantic coordinates and enough physical storage for 1/2/4/8 bars, but it does **not** yet have one unambiguous authoritative phrase-length owner suitable for a generalized generation request.
+The repository already contains:
 
-There are currently two different 1/2/4/8 concepts with different responsibilities:
+- phrase-length policy vocabulary covering 1/2/4/8 collectively;
+- global semantic phrase bar coordinates sufficient for 1/2/4/8;
+- deterministic 8-bar 4+4 projection using the existing E0a coordinate contract;
+- physical Pattern, Song and PhraseCore capacity for eight bars.
 
-1. composition profile data encodes weighted `(PhraseEvolutionLawId, bars)` choices and `resolveGenerationComposition()` selects one from `GenreSettings`;
-2. `Scene::feel.patternBars` is persisted FEEL/transport state and drives the playback cycle length.
+What is missing is one explicit generalized generation-request owner for requested phrase length.
 
-Those are not interchangeable.
+There are currently two distinct 1/2/4/8 concepts:
+
+1. `resolveGenerationComposition()` selects a packed phrase-law/bar-count candidate from the active generation profile;
+2. `Scene::feel.patternBars` is persisted FEEL/transport state and controls the physical playback cycle.
+
+They are not the same contract:
 
 `GENRE != FEEL != GENERATION REQUEST`.
 
-Therefore `scene.feel.patternBars` must not be exposed as composition ownership, and the physical pattern address must not select phrase length.
+Therefore the frozen M4-A1 decision remains:
 
-**Decision: B — OWNER AMBIGUITY.**
+**B — OWNER / REPRESENTATION BOUNDARY GAP.**
 
-This is narrower than C or D:
+This is not an implementation-capacity gap and not a phrase-length vocabulary gap.
 
-- not C: existing Pattern/Song/PhraseCore storage can represent eight bars;
-- not D: the repository already represents all four values 1/2/4/8 in composition/evolution vocabulary, although individual genre profile sets intentionally expose subsets;
-- not A: the current length decision is coupled to genre profile selection while a separate FEEL value controls transport, so an explicit generation-request owner is still missing.
+## Current owner / consumer classification
 
-## 3. Owner / consumer table
+| Surface | Classification | Current contract |
+|---|---|---|
+| `GenerationProfileView::phraseLaws` | **POLICY OWNER** | Stores weighted `(PhraseEvolutionLawId, bars)` candidates. |
+| `resolveGenerationComposition(...)` | **POLICY OWNER** | Selects `PhraseLawSelection` and decodes `GenerationCompositionResult::{phraseLaw, phraseBars}`. |
+| `GenerationCompositionResult::phraseBars` | **METADATA** | Resolved planning metadata; not an independent owner. |
+| `StrongRhythmMigrationResult::phraseBars` | **METADATA** | Copies composition planning metadata. |
+| ordinary `RhythmRealizationRequest::phraseBars = 1` | **COMPATIBILITY CONSUMER** | Frozen ordinary strong-rhythm realization remains one bar. |
+| ordinary `ChordProgressionRequest::phraseBars = 1` | **COMPATIBILITY CONSUMER** | Frozen ordinary harmonic realization remains one bar. |
+| `Scene::feel.patternBars` | **UI / TRANSPORT REQUEST** | Persisted FEEL state consumed by transport cycle logic. |
+| `normalizedSongPatternBars()` | **COMPATIBILITY NORMALIZER** | Sanitizes transport span to 1/2/4/8. |
+| audition-local `normalizedPhraseBars()` | **COMPATIBILITY NORMALIZER** | Sanitizes explicit phrase-audition request/reporting values. |
+| `PhraseEvolutionRequest::phraseBars` | **METADATA / SEMANTIC CONSUMER** | Receives an already requested/resolved length. |
+| `kGrooveVocabularyPhraseBars = 4` | **CAPABILITY LIMIT** | Four-bar vocabulary projection bound, not global phrase policy. |
+| `kMaxPhraseBars = 4` in rhythm Core | **CAPABILITY LIMIT** | Core-v1 phrase arrays/trajectories are four bars. |
+| `PhraseCore::kMaxBars = 8` | **CAPABILITY LIMIT** | Physical/reference storage supports up to eight bars. |
+| `Bank<T>::kPatterns = 8` | **CAPABILITY LIMIT** | One bank can store eight one-bar pattern slots per track. |
+| `Song::kMaxPositions = 128` | **CAPABILITY LIMIT** | Song capacity is not an M4 blocker. |
+| `patternAddress` | **TRANSPORT / ALLOCATION COORDINATE** | Physical destination/compatibility coordinate; not phrase-length policy. |
 
-| Surface | Current behavior | Classification | M4 ownership conclusion |
-|---|---|---|---|
-| `GenerationProfileView::phraseLaws` and `kPhraseDrive` / `kPhraseBroken` / `kPhraseSlow` / `kPhraseCompact` in `src/generation/composition/generation_profile.cpp` | Stores weighted combined phrase-law + bar-count candidates. The sets collectively contain 1, 2, 4 and 8. | **POLICY OWNER** (current profile policy) | This is the current source of composition `phraseBars`, but it is selected through `GenreSettings`; it cannot also stand in for an explicit generalized generation request. |
-| `resolveGenerationComposition(const GenreSettings&, const GenerationContext&)` | Selects one `GenerationDomain::PhraseLawSelection` candidate, decodes upper bits to `phraseLaw` and low nibble to `phraseBars`. | **POLICY OWNER** (current resolver) | Current resolver owns the decision today. M4 should not silently reinterpret FEEL or storage to override it. A future explicit phrase-length request needs a separate input to this boundary. |
-| `GenerationCompositionResult::phraseBars` | Carries the decoded selected bar count. Header explicitly calls it planning metadata. | **METADATA** | Resolved value, not an independent owner. It should remain the downstream composition metadata after future request resolution. |
-| `StrongRhythmMigrationResult::phraseBars` | Copies planning phrase length through migration. | **METADATA** | Consumer/carrier only; must not select length. |
-| `PhraseEvolutionRequest::phraseBars` | Accepts only 1/2/4/8 in `evolveMultiBarPhrase()`. | **METADATA** | An already-resolved request parameter to evolution, not composition ownership. |
-| `PhraseEvolutionResult::barCount` | Reports the requested physical/semantic span after orchestration. | **METADATA** | Result metadata only. |
-| `PhraseRhythmIdentity::phraseBars` | Records Core-v1 phrase identity span for the bounded rhythm realization. | **METADATA** | Identity metadata inside the 4-bar vocabulary core; not a global M4 owner. |
-| `kMaxPhraseBars = 4` in `rhythm_types.h` | Bounds Groove Vocabulary Core v1, `BarTrajectory`, masks and `PhraseRhythmIdentity` arrays to four bars. | **CAPABILITY LIMIT** | Four is a vocabulary implementation bound, not the composition phrase-length policy. |
-| `kGrooveVocabularyPhraseBars = 4` in `strong_rhythm_migration.h` | Defines the existing 4-bar vocabulary projection and E0a 4+4 evolution boundary. | **CAPABILITY LIMIT** | Must stay a projection/capability boundary. It does not mean all compositions are four bars. |
-| `PhraseEvolution::evolveMultiBarPhrase()` | 1/2/4 use one Core call. 8 uses two deterministic 4-bar segments, increments the second segment generation `phraseOrdinal`, and reuses the first `PhraseRhythmIdentity`. | **CAPABILITY LIMIT** | Existing 4+4 adapter proves eight bars do not require a new semantic coordinate or an 8-bar Core-v1 array. |
-| `PhraseCore::kMaxBars = 8`, `PhraseMetadata::lengthBars`, `PhraseSlot::patternRefs[8][3]` | PhraseCore validates exactly 1/2/4/8 and stores up to eight bar references for Synth A, Synth B and Drums. | **CAPABILITY LIMIT** | Storage/metadata capacity, not musical policy. |
-| `Scene::feel.patternBars` (`FeelSettings`) | Persisted FEEL field with documented values 1/2/4/8. `MiniAcid::cycleBarCount()` and `advanceSongBar_()` consume it as the playback-cycle span. | **UI REQUEST** | This is current user/scene FEEL state and transport request. It is explicitly **not** the M4 composition owner. |
-| `normalizedSongPatternBars()` in `src/dsp/song_cycle_boundary.h` | Accepts 1/2/4/8 and falls back to 1 for transport cycle calculation. | **COMPATIBILITY NORMALIZER** | Transport sanitization only. It must not become generation policy. |
-| `normalizedPhraseBars()` in `strong_rhythm_live_bridge.cpp` | Audition-only helper accepts 1/2/4/8 and falls back to 1. It normalizes both `scene.feel.patternBars` for CurrentWired audition and composition metadata reported by selection. | **COMPATIBILITY NORMALIZER** | Audition compatibility helper only; no authority to decide phrase length. |
-| `regeneratePhraseAuditionWithProbe()` `result.requestedBars` | M1 listening cases force the frozen 4-bar test span; CurrentWired uses normalized `scene.feel.patternBars`. | **UI REQUEST** | Test/listening request surface. M1's hard-coded four is frozen test scope, not future production policy. |
-| Bank/pattern selection in `regeneratePhraseAuditionWithProbe()` | Writes each requested bar to Bank B pattern index equal to `bar`, on Drums/A/B. | **TRANSPORT/ALLOCATION CONSUMER** | Allocation consumes a resolved length. `patternAddress` is produced from page/bank/bar; it must never feed back into phrase-length identity. |
-| Song B publication in `regeneratePhraseAuditionWithProbe()` | Publishes rows `0..requestedBars-1`, sets Song length, loop range and Song B playback. | **TRANSPORT/ALLOCATION CONSUMER** | Transport consumes length after semantic/materialization decisions. It does not own length. |
-| `Song::kMaxPositions = 128` | Fixed Song position capacity. | **CAPABILITY LIMIT** | Far above M4's eight-bar maximum. |
-| `Bank<T>::kPatterns = 8` for two banks | Each Drum/Synth A/Synth B bank has eight physical pattern slots. | **CAPABILITY LIMIT** | Exactly enough for an eight-bar one-slot-per-bar phrase in a single bank. No allocator is required merely for 1/2/4/8 capacity. |
+## Current composition ownership
 
-### Note on the requested `normalizedPhraseBars()` audit item
-
-At the frozen M1 base the symbol with that exact name is local to the phrase audition bridge, not composition policy. Normal Song transport has the separately named `normalizedSongPatternBars()`. Both are compatibility normalizers; neither is an authoritative musical owner.
-
-## 4. Current composition flow
-
-The current composition path is:
+The current phrase planning flow is:
 
 `GenreSettings`
 
 → `generationProfileFor(settings)`
 
-→ profile-specific weighted `phraseLaws`
+→ weighted `phraseLaws`
 
-→ `resolveGenerationComposition()` / `GenerationDomain::PhraseLawSelection`
+→ `resolveGenerationComposition()`
 
-→ decode combined phrase candidate
+→ `GenerationDomain::PhraseLawSelection`
 
-→ `GenerationCompositionResult::{phraseLaw, phraseBars}`
+→ packed candidate decode
 
-→ migration/evolution/materialization consumers.
+→ `GenerationCompositionResult::{phraseLaw, phraseBars}`.
 
-The profile vocabulary currently contains these length sets:
+Current profile subsets are:
 
-- `kPhraseDrive`: 2, 4
-- `kPhraseBroken`: 2, 4
-- `kPhraseSlow`: 4, 8
-- `kPhraseCompact`: 1, 2, 4
+- `kPhraseDrive`: 2, 4;
+- `kPhraseBroken`: 2, 4;
+- `kPhraseSlow`: 4, 8;
+- `kPhraseCompact`: 1, 2, 4.
 
-Collectively, the repository has the required 1/2/4/8 vocabulary. However, this is a **genre/profile default policy**, not a representation of a caller saying “generate exactly N bars”.
+Collectively the policy vocabulary covers 1/2/4/8. Individual profiles intentionally expose subsets.
 
-That distinction is the M4-A1 ownership gap.
+The source-contract guard freezes that `resolveGenerationComposition()` remains the current profile phrase-length policy owner. It also freezes that neither `patternBars` nor `patternAddress` is a direct composition-policy input.
 
-## 5. `scene.feel.patternBars` is not composition policy
+## Plain G remains one-bar
 
-`FeelSettings::patternBars` is stored in `Scene` next to grid/timebase/swing/timing-profile controls.
+On the frozen M1 production path, profile `composition.phraseBars` is copied into migration result metadata, but ordinary semantic materialization still explicitly sets:
 
-Playback consumes it directly:
+- `RhythmRealizationRequest::phraseBars = 1`;
+- `ChordProgressionRequest::phraseBars = 1`.
 
-- `MiniAcid::cycleBarCount()` reads `currentScene().feel.patternBars` and accepts 1/2/4/8;
-- `MiniAcid::advanceSongBar_()` passes it to `nextSongCycleBoundary()`;
-- `normalizedSongPatternBars()` falls back to one bar for invalid transport state.
+The normal GENRE G and DRUMS G live-bridge entry points do not read `scene.feel.patternBars` as semantic phrase length.
 
-That makes it a persisted FEEL/UI request feeding transport behavior.
+The explicit phrase audition is intentionally separate and its header states that it never replaces normal G.
 
-It does **not** appear in `resolveGenerationComposition()`, whose phrase choice comes from the active generative-mode/recipe profile.
+This distinction is now guarded in CI so a future refactor cannot silently turn FEEL transport state into normal-G phrase policy without breaking M4-A1 characterization.
 
-M4 must therefore preserve this boundary:
+## Current live disposition: `patternBars != phraseBars`
 
-- FEEL may request/control physical playback span;
-- GENERATION must own an explicit requested semantic composition span when the generalized API is introduced;
-- GENRE may provide weighted musical defaults/admissibility for phrase law;
-- allocation and transport consume the resolved result.
+**A mismatch is possible today in Phrase Audition. It is not classified as a current normal-generation length bug.**
 
-No implicit `scene.feel.patternBars -> GenerationCompositionResult::phraseBars` assignment should be introduced.
+For `PhraseAuditionListeningCase::CurrentWired`:
 
-## 6. Semantic coordinates for 1/2/4/8
+- `result.requestedBars` comes from normalized `scene.feel.patternBars`;
+- `result.profileBars` comes independently from normalized `selection.phraseBars`.
 
-M4 does not need a new bar-coordinate system. Use the frozen E0a contract.
+Those values can differ because they are produced by different owners.
 
-| Phrase length | Global `phraseBarOrdinal` | Vocabulary ordinal (`% 4`) | `evolutionOrdinal` (`/ 4`) |
+That mismatch is observable audition metadata and is useful evidence of the ownership split.
+
+It is not currently two competing length owners inside plain G because plain G remains one-bar and does not consume FEEL `patternBars` as semantic phrase length.
+
+Therefore current disposition is:
+
+**LATENT MULTI-BAR INTEGRATION RISK — NOT A DEMONSTRATED NORMAL-G PRODUCTION LENGTH BUG.**
+
+If a future production checkpoint makes generalized multi-bar semantic realization reachable, it must explicitly publish/commit the resolved semantic span to the downstream physical transport contract instead of inheriting either current field implicitly.
+
+## Physical `patternAddress` does not own phrase length
+
+M4-A1 freezes the ownership direction:
+
+semantic request / profile resolution
+
+→ stable logical phrase identity
+
+→ global `phraseBarOrdinal`
+
+→ semantic materialization
+
+→ physical Bank/pattern slot
+
+→ `patternAddress`
+
+→ Song/transport publication.
+
+The source guard checks that the composition policy sources do not contain `patternAddress` and that phrase length is decoded from `PhraseLawSelection` inside `resolveGenerationComposition()`.
+
+This deliberately does **not** claim that legacy compatibility seeding can never depend on physical address. The narrower frozen statement is the ownership statement required by M4:
+
+**physical `patternAddress` is not the phrase-length policy selector.**
+
+## Deterministic phrase coordinates
+
+M4 does not introduce a new temporal coordinate.
+
+The existing E0a/M1 contract is:
+
+`phraseBarOrdinal = global bar ordinal`
+
+`vocabularyPhraseBarOrdinal = phraseBarOrdinal % 4`
+
+`evolutionOrdinal = phraseBarOrdinal / 4`.
+
+Expected coordinates are:
+
+| Length | Global ordinal | Vocabulary ordinal | Evolution ordinal |
 |---:|---|---|---|
 | 1 | `0` | `0` | `0` |
 | 2 | `0,1` | `0,1` | `0,0` |
 | 4 | `0,1,2,3` | `0,1,2,3` | `0,0,0,0` |
 | 8 | `0,1,2,3,4,5,6,7` | `0,1,2,3,0,1,2,3` | `0,0,0,0,1,1,1,1` |
 
-The authoritative semantic coordinate for eight bars is therefore **global ordinal 0..7**.
+For eight bars, the authoritative semantic coordinate is therefore global:
 
-`vocabulary ordinal 0..3 + evolutionOrdinal 0/1` is a derived projection/context pair for existing 4+4 consumers, not a replacement identity coordinate.
+**`phraseBarOrdinal = 0..7`.**
 
-This matches the existing implementation:
+The `%4` vocabulary ordinal plus `/4` evolution ordinal is derived compatibility context, not a replacement for the global coordinate.
 
-- `phraseTemporalCoordinatesForBar(bar)` preserves the global ordinal and derives `evolutionOrdinal = bar / 4`;
-- `phraseVocabularyBarOrdinal(bar)` derives `bar % 4`;
-- `evolveMultiBarPhrase(8)` runs two four-bar segments while reusing one phrase rhythm identity rather than creating a new eight-bar Core-v1 coordinate space.
+`tests/test_0_9_9_m4_a1_phrase_coordinates.cpp` calls the real `phraseTemporalCoordinatesForBar()` helper for 1/2/4/8 and verifies this mapping deterministically.
 
-## 7. Physical capacity audit
+## Physical capacity
 
-### Pattern storage
+### Pattern banks
 
-`Scene` owns two physical banks for each material family:
-
-- `drumBanks[2]`
-- `synthABanks[2]`
-- `synthBBanks[2]`
-
-Each `Bank<T>` contains `kPatterns = 8` patterns.
-
-Therefore a single bank provides these one-pattern-per-bar capacities:
+Each Drum/Synth A/Synth B bank contains eight pattern slots.
 
 | Track | 1 bar | 2 bars | 4 bars | 8 bars |
 |---|---:|---:|---:|---:|
@@ -171,164 +204,205 @@ Therefore a single bank provides these one-pattern-per-bar capacities:
 | Synth A | YES | YES | YES | YES |
 | Synth B | YES | YES | YES | YES |
 
-An eight-bar phrase consumes all eight local pattern slots for each participating track in that bank. That is a capacity edge, but not a blocker.
+Eight bars consume the full local bank for a participating track, but no new allocator is required merely for M4 length capacity.
 
-### Existing M1 Bank B path
+### Song
 
-M1's audition bridge already demonstrates the required allocation shape for four bars:
+`Song::kMaxPositions = 128`, so 1/2/4/8 publication is within existing physical capacity.
 
-- reserved bank index `1` (Bank B);
-- `bar` becomes physical pattern index only **after** semantic selection;
-- Drums, Synth A and Synth B use the same local Bank B slot for each row;
-- Song A and Bank A remain untouched by the audition publication.
+### PhraseCore
 
-The loop is already structurally bounded by `result.requestedBars`, while the bank itself has eight slots. Extending the generalized production contract to 8 does not require a new storage primitive or a new allocator merely to fit the bars.
+PhraseCore has:
 
-M4-A1 does **not** change the frozen M1 four-bar audition path.
-
-### Song storage / transport
-
-`Song::kMaxPositions = 128`, and `Scene` contains `songs[2]`.
-
-The existing audition path uses Song slot `1` (Song B), clears its rows, publishes `requestedBars` rows, then sets:
-
-- Song length = `requestedBars`;
-- position = 0;
-- loop range = `0..requestedBars-1`;
-- Song B as playback slot.
-
-Thus Song B has ample capacity for 1/2/4/8.
-
-### PhraseCore storage
-
-`PhraseCore` has:
-
-- `kSlotCount = 4`;
 - `kMaxBars = 8`;
 - `kTrackCount = 3`;
 - `patternRefs[kMaxBars][kTrackCount]`;
-- `isValidLength()` accepting exactly 1/2/4/8.
+- valid lengths 1/2/4/8.
 
-Therefore PhraseCore can already represent all four required lengths across Synth A, Synth B and Drums.
+PhraseCore physical/reference capacity is therefore sufficient.
 
-**Capacity conclusion: no Pattern, Song, or PhraseCore storage blocker for 1/2/4/8. No new allocator is justified by M4 length capacity.**
+## M3 cross-check
 
-## 8. Pattern address must remain post-semantic
+M4-A1 strengthens the input contract for the future:
 
-The physical address flow in the accepted M1 audition path is intentionally one-way:
+`0.9.9-M3-T1 — BOUNDED PHRASE HARMONIC TIMELINE CONTRACT`.
 
-resolved logical selection / phrase identity
+M3-T1 must support, from its first representation contract:
 
-→ global `phraseBarOrdinal`
+- requested phrase lengths `{1,2,4,8}`;
+- global `phraseBarOrdinal = 0..phraseBars-1`;
+- therefore global ordinals through `0..7` for an eight-bar phrase.
 
-→ materialize bar
+It must not build a first representation structurally limited to bar ordinals `0..3` and defer 8-bar coordinate support to a later M4 pass.
 
-→ choose Bank B + local pattern index
+Accepted F08.1 gives the capacity question a bounded worst-case coordinate envelope:
 
-→ derive physical `patternAddress`
+`8 bars × up to 4 harmonic events/bar = 32 phrase harmonic event positions`.
 
-→ publish Song B row.
+That is a **phrase harmonic timeline representation capacity requirement**.
 
-M4 must not reverse this relationship.
+It does **not** imply that the existing `ChordProgressionPlan` itself must grow to 32 entries. M3-T1 may use another bounded representation, indexing scheme, source reuse, or equivalent encoding as long as it proves the 32-position semantic envelope without physical-address dependence.
 
-Forbidden ownership forms include:
+Do not infer:
 
-- `patternIndex == 7` implies eight-bar phrase;
-- Bank B implies four/eight bars;
-- Song row count selects a new musical phrase identity;
-- `patternAddress` participates in choosing requested phrase length.
+`32 timeline positions => ChordProgressionPlan::events[32]`.
 
-Physical addresses are allocation/transport coordinates only.
+That design decision belongs to M3-T1, not M4-A1.
 
-## 9. Ordinary one-bar compatibility
+## M2 cross-check
 
-The future generalized M4 API must be opt-in and must not reinterpret plain `G`.
+M4-A1 remains consistent with the M2 ownership direction:
 
-Compatibility contract:
+semantic identity / coordinates
 
-1. Keep the existing ordinary one-bar generation entry path unchanged.
-2. Do not make it read `scene.feel.patternBars` as composition ownership.
-3. Do not make it allocate additional bars because the profile's planning metadata happens to report 2/4/8.
-4. Existing non-Phrase migration callers continue to use the frozen unspecified phrase semantic context.
-5. A generalized one-bar request uses `phraseBarOrdinal = 0`; it does not require a different one-bar identity model.
-6. Physical `patternAddress` remains the destination coordinate after semantic resolution.
+→ materialization
 
-This permits a new 1/2/4/8 API without changing plain one-bar G behavior.
+→ physical pattern lifecycle.
 
-## 10. Exact recommended next production contract
+A physical PatternPlayer/transport owner may decide when already materialized physical state advances, but it must not infer or redefine logical phrase length from `patternAddress`.
 
-M4-A1 recommends one narrow production boundary, not a UI or allocator change.
+No cross-audit ownership conflict was found.
 
-### Authoritative owner
+## Next-policy default direction
 
-**An explicit generation request must own requested phrase length.**
+The next M4 production contract must receive an explicit requested phrase length in `{1,2,4,8}` at the generation/composition boundary.
 
-It must be resolved at the composition boundary before semantic realization and before any physical allocation.
+If the active profile has no admissible phrase-law candidate at exactly that requested length, the default must be:
 
-Do not use `Scene::feel.patternBars` as that field and do not infer it from `patternAddress`, Bank, Song row count, or PhraseCore storage.
+**REJECT.**
 
-### Minimal API shape
+No silent nearest-length substitution is allowed.
 
-Preserve the current two-argument `resolveGenerationComposition(settings, generation)` compatibility path exactly for existing callers.
+Forbidden examples:
 
-Add a separate generalized phrase-resolution entry point that receives a strictly validated requested bar count in `{1,2,4,8}` together with the existing genre/settings and generation context. The resolver then:
+- requested 8 -> silently generate 4;
+- requested 4 -> silently generate 2;
+- choose nearest profile-supported length;
+- use FEEL `patternBars` as an implicit replacement length.
 
-1. treats the requested length as authoritative;
-2. uses the selected genre/profile only to choose an admissible/weighted `PhraseEvolutionLawId` for that requested length;
-3. returns that same resolved length in `GenerationCompositionResult::phraseBars`;
-4. passes the value unchanged to semantic/evolution/materialization consumers;
-5. allocates physical bars only after the logical phrase identity and all per-bar semantic coordinates are known.
+A reviewed fallback law that preserves the exact requested bar count remains a separate future policy decision. M4-A1 does not implement or approve such a fallback.
 
-The implementation may retain the current packed `(law << 4) | bars` catalog representation internally. M4 does not require a new persistent schema or a new semantic coordinate.
+## Executable characterization
 
-### Admission behavior that must be frozen in the next checkpoint
+### Files
 
-Current profile sets do not each contain all four lengths. Therefore the production checkpoint must explicitly choose one behavior when an explicit requested length has no candidate in the active profile:
+- `tests/test_0_9_9_m4_a1_source_contract.py`
+- `tests/test_0_9_9_m4_a1_phrase_coordinates.cpp`
+- `tests/run_generation_stage13_tests.sh` — existing Core-regression entrypoint, minimally extended to execute both tests.
 
-- reject as unsupported for that profile; or
-- define a reviewed genre-independent law fallback for the already-requested length.
+### Source-contract guard proves
 
-It must **not** silently choose a different bar count. Length remains request-owned.
+- `scene.feel.patternBars` is absent from composition ownership;
+- composition sources do not use `patternAddress` as phrase-length policy;
+- `resolveGenerationComposition()` remains the current `phraseBars` policy owner;
+- ordinary strong-rhythm materialization remains one-bar;
+- normal GENRE/DRUMS G does not use `patternBars` as semantic phrase length;
+- CurrentWired `requestedBars` and selected `profileBars` are assigned independently;
+- M4-A1 has no `src/` delta.
 
-This is a follow-on policy/admission decision, not a storage problem and not permission to make FEEL own composition length.
+Expected source-guard output:
 
-## 11. Decision
+```text
+M4-A1 source contract: PASS
+  composition_owner=resolveGenerationComposition
+  plain_G_phraseBars=1
+  patternBars_owner=FEEL_transport_not_composition
+  patternAddress_phrase_length_owner=NO
+  audition_requestedBars_vs_profileBars=INDEPENDENT
+```
 
-**B — OWNER AMBIGUITY**
+### Coordinate test proves
 
-Evidence summary:
+Expected output:
 
-- semantic coordinates: sufficient;
-- 8-bar 4+4 projection: already defined;
-- PhraseCore: supports 1/2/4/8;
-- Bank capacity: 8 slots per bank per Drums/A/B;
-- Song capacity: 128 positions;
-- current composition phrase length: selected from genre/profile weighted phrase choices;
-- current transport length: `scene.feel.patternBars`;
-- explicit generation-request phrase-length owner: absent.
+```text
+M4-A1 coordinates: PASS
+  lengths=1,2,4,8 global=0..N-1
+  length8_global=0,1,2,3,4,5,6,7
+  length8_vocabulary=0,1,2,3,0,1,2,3
+  length8_evolution=0,0,0,0,1,1,1,1
+```
 
-## 12. Next checkpoint
+## Hardware list
 
-Next production checkpoint should freeze only the **generation-request phrase-length resolution contract**:
+None. M4-A1 is host/source characterization only.
 
-`explicit requested 1/2/4/8`
+Frozen M1 Cardputer ADV hardware acceptance remains closed and is not rerun or reinterpreted by this checkpoint.
 
-→ composition admission / phrase-law selection
+## Wiring
 
-→ `GenerationCompositionResult::phraseBars`
+None.
 
-→ existing E0a global bar coordinates
+## Build / run
 
-→ existing semantic realization
+Focused source guard:
 
-→ existing physical allocation / Song transport consumers.
+```bash
+python3 tests/test_0_9_9_m4_a1_source_contract.py
+```
 
-It should include focused tests for:
+Focused coordinate test:
 
-- explicit 1, 2, 4, 8 requests;
-- eight-bar global ordinals `0..7` with vocabulary projection `0..3,0..3` and evolution ordinals `0,0,0,0,1,1,1,1`;
-- unsupported profile/length admission behavior;
-- plain one-bar G byte/behavior compatibility;
-- proof that changing physical `patternAddress` does not change requested length or logical phrase identity.
+```bash
+mkdir -p build/host-tests
+g++ -std=c++17 -Wall -Wextra -Werror -Wvla -Wno-c++20-extensions -I. \
+  tests/test_0_9_9_m4_a1_phrase_coordinates.cpp \
+  -o build/host-tests/test_0_9_9_m4_a1_phrase_coordinates
+build/host-tests/test_0_9_9_m4_a1_phrase_coordinates
+```
 
-No M2, M3, allocator, UI, persistence, or M1 semantic work belongs in that checkpoint.
+Full existing generation matrix including both new M4-A1 checks:
+
+```bash
+bash tests/run_generation_stage13_tests.sh
+```
+
+GitHub `Core regressions` already invokes that runner for pull requests, so no new workflow owner is introduced.
+
+## Expected behavior
+
+Both focused tests print PASS and return zero. Existing Generation Stage 13/14/15 regressions then continue unchanged.
+
+No firmware behavior, UI, transport, persistence, allocator or musical output changes in M4-A1.
+
+## Troubleshooting
+
+If the source guard fails:
+
+- inspect whether a refactor moved `patternBars` or `patternAddress` into composition ownership;
+- inspect whether ordinary G stopped being one-bar;
+- inspect whether CurrentWired audition collapsed `requestedBars` and `profileBars` into one owner;
+- do not weaken the assertion until ownership is re-audited.
+
+If the coordinate test fails:
+
+- inspect `phraseTemporalCoordinatesForBar()` and `kGrooveVocabularyPhraseBars`;
+- do not add a new M4 temporal coordinate as a test fix;
+- any change to the frozen `0..7 / %4 / /4` mapping requires an explicit E0a/M1 contract review.
+
+## Acceptance checklist
+
+- [ ] source-contract guard PASS;
+- [ ] deterministic 1/2/4/8 coordinate test PASS;
+- [ ] Core regressions CI executes both tests and is green;
+- [ ] changed files contain no `src/` path;
+- [ ] CurrentWired mismatch is documented as possible but not a current normal-G length bug;
+- [ ] M3-T1 dependency explicitly includes 1/2/4/8 and global ordinals through 7;
+- [ ] 32 harmonic event positions are documented as representation capacity, not a mandated `ChordProgressionPlan` resize;
+- [ ] unsupported explicit requested length default direction is REJECT;
+- [ ] no silent nearest-length fallback;
+- [ ] Decision B remains the frozen outcome after executable evidence is green.
+
+## Decision
+
+**B — OWNER / REPRESENTATION BOUNDARY GAP.**
+
+The representation/capability pieces are sufficient to state a future explicit 1/2/4/8 request contract, but no single generalized request owner exists today.
+
+M4-A1 stops after executable characterization. It does not implement the owner.
+
+## Hard stop
+
+After the source guard, deterministic coordinate characterization and existing CI are green, freeze Decision B and stop.
+
+Do not start M4 production from this checkpoint.
