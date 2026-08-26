@@ -7,4 +7,4 @@ build(){ local c="$1" o="$2";shift 2;"$c" -std=c++17 -Wall -Wextra -Werror -Wvla
 build "${CXX:-g++}" "$B/gcc";"$B/gcc" --baseline|tee "$B/gcc1";"$B/gcc" --baseline|tee "$B/gcc2";diff -u "$B/gcc1" "$B/gcc2"
 if command -v clang++>/dev/null;then build clang++ "$B/clang";"$B/clang" --baseline|tee "$B/clang.out";diff -u "$B/gcc1" "$B/clang.out";fi
 build "${CXX:-g++}" "$B/san" -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined;ASAN_OPTIONS=detect_leaks=0 "$B/san" --baseline
-set +e;"$B/gcc"|tee "$B/red";x=${PIPESTATUS[0]};set -e;test "$x" -ne 0;rg -q 'M1_T1_ADDRESS_INVARIANCE RED' "$B/red";rg -q 'M1_T1_ONE_SELECTION RED' "$B/red";echo M1_T1_OVERALL RED_EXPECTED;exit "$x"
+"$B/gcc"|tee "$B/green";rg -q 'M1_T1_ADDRESS_INVARIANCE PASS' "$B/green";rg -q 'M1_T1_ONE_SELECTION PASS' "$B/green";echo M1_T1_OVERALL GREEN

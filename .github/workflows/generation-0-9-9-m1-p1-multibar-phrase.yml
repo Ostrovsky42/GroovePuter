@@ -1,0 +1,25 @@
+name: 0.9.9 M1 P1 multibar phrase
+
+on:
+  pull_request:
+    paths:
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.h'
+      - 'src/generation/migration/strong_rhythm_live_bridge.cpp'
+      - 'src/generation/migration/strong_rhythm_live_bridge.h'
+      - 'tests/test_0_9_9_m1_p1_multibar_phrase.cpp'
+      - 'tests/run_0_9_9_m1_p1_tests.sh'
+      - 'tests/test_0_9_9_m1_t1_red_contract.cpp'
+      - 'tests/run_0_9_9_m1_t1_red_contract.sh'
+      - '.github/workflows/generation-0-9-9-m1-p1-multibar-phrase.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  m1-p1-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_0_9_9_m1_t1_red_contract.sh
+      - run: bash tests/run_0_9_9_m1_p1_tests.sh

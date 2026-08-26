@@ -24,6 +24,7 @@ namespace GroovePuterRhythm {
 
 constexpr uint8_t kGrooveVocabularyPhraseBars = 4;
 constexpr uint8_t kUnspecifiedPhraseBarOrdinal = 0xFFu;
+constexpr uint16_t kUnspecifiedPhraseGenerationIdentity = 0xFFFFu;
 
 struct PhraseTemporalCoordinates {
   uint8_t phraseBarOrdinal = 0;
@@ -74,6 +75,8 @@ enum class SemanticSynthBRole : uint8_t {
   Count,
 };
 
+struct StrongRhythmFrozenSelection;
+
 struct StrongRhythmMigrationContext {
   // Existing pattern address remains part of deterministic generation identity.
   int16_t patternAddress = 0;
@@ -92,6 +95,11 @@ struct StrongRhythmMigrationContext {
   uint8_t phraseBarOrdinal = kUnspecifiedPhraseBarOrdinal;
   uint8_t evolutionOrdinal = 0;
 
+  // M1 phrase materialization supplies one logical identity shared by all
+  // physical destination bars. Unspecified preserves ordinary one-bar callers.
+  uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+  const StrongRhythmFrozenSelection* frozenSelection = nullptr;
+
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;
 
@@ -100,6 +108,18 @@ struct StrongRhythmMigrationContext {
   bool tonalMaterializationEnabled = false;
   uint8_t rootPitchClass = 0;
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
+};
+
+// Bounded migration-owned phrase selection. This is deliberately the existing
+// composition result plus the production-owned generation identities, not a
+// second composition model. It is caller-owned and ephemeral.
+struct StrongRhythmFrozenSelection {
+  StrongRhythmRoute route = StrongRhythmRoute::Legacy;
+  GenerationCompositionResult composition{};
+  GenerationContext selectionGeneration{};
+  GenerationContext realizationGeneration{};
+  uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+  bool resolved = false;
 };
 
 struct StrongRhythmMigrationResult {
@@ -207,6 +227,23 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 // atomically publish only the selected physical voice.
 StrongRhythmMigrationResult migrateStrongRhythmSynths(
     const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB);
+
+// M1 four-bar path: resolve composition once under an explicit logical phrase
+// identity, then materialize each explicit phraseBarOrdinal into independent
+// physical storage. The ordinary one-bar APIs above retain compatibility.
+StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    uint16_t phraseGenerationIdentity,
+    StrongRhythmFrozenSelection& destination);
+
+StrongRhythmMigrationResult migrateStrongRhythmFrozenMaterial(
+    const GenreSettings& settings,
+    const StrongRhythmFrozenSelection& selection,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& drums,
     SynthPattern& synthA,
