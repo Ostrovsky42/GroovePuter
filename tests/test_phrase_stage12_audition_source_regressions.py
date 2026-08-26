@@ -34,7 +34,10 @@ for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
-    '"AUD %uB %s %s #%u"',
+    '"%s %s"',
+    '"M1L C SPARSE 1,1,1,1"',
+    '"M1L W SPARSE 1,0,1,0"',
+    '"M1L W CALL 2,2,2,2"',
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
 ):
