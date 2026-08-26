@@ -36,10 +36,18 @@ assert "harmonicEventCount" not in select_grammar
 assert "constexpr uint8_t kMaxHarmonicEvents = 8;" in progression_h
 assert "HarmonicEvent events[kMaxHarmonicEvents]{};" in progression_h
 
-# C1 owns WHEN-only phrase coordinates up to 32 positions and stores no WHAT.
+# C1 owns WHEN-only phrase coordinates up to 32 positions. Names such as
+# PhraseHarmonicEventRange legitimately contain the token HarmonicEvent; what
+# must stay absent is storage of progression WHAT values themselves.
 assert "kMaxPhraseHarmonicEventPositions" in timeline_h
 assert "kMaxSemanticPhraseBars = 8" in timeline_h
-assert "HarmonicEvent" not in timeline_h
+for forbidden_what_storage in (
+    "HarmonicEvent events[",
+    "HarmonicEvent event{",
+    "HarmonicEvent value{",
+    "ChordProgressionPlan",
+):
+    assert forbidden_what_storage not in timeline_h
 
 # Frozen single-bar migration is the old consumer reset, not the WHAT owner.
 assert "progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);" in migration_cpp
