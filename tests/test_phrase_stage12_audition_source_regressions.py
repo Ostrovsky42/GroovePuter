@@ -33,6 +33,8 @@ def require(text: str, needle: str, message: str) -> None:
 for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
+    "lowerKey == 'l' || ui_event.scancode == GROOVEPUTER_L",
+    "if (keyL && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
     '"%s %s"',
     '"M1L C SPARSE 1,1,1,1"',

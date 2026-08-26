@@ -286,13 +286,15 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       : 0;
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
-  const bool keyP =
-      lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
+  const bool keyL =
+      lowerKey == 'l' || ui_event.scancode == GROOVEPUTER_L;
 
   static GroovePuterRhythm::PhraseAuditionListeningCase m1ListeningCase =
       GroovePuterRhythm::PhraseAuditionListeningCase::CurrentWired;
 
-  if (keyP && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+  // Ctrl+Alt+P is a global MIDI Player shortcut, so M1L owns the local L
+  // chord instead. It reaches this Drum Sequencer handler before legacy input.
+  if (keyL && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
     using Case = GroovePuterRhythm::PhraseAuditionListeningCase;
     m1ListeningCase = m1ListeningCase == Case::CurrentWired
         ? Case::M1SparseControl
