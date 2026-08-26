@@ -97,7 +97,7 @@ def main() -> None:
     )
 
     caller_start = bridge.find(
-        "PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine)"
+        "PhraseAuditionResult regeneratePhraseAuditionWithProbe("
     )
     require(caller_start >= 0, "real MiniAcid phrase-audition caller missing")
     caller = bridge[caller_start:]

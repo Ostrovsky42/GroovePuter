@@ -32,9 +32,16 @@ def require(text: str, needle: str, message: str) -> None:
 # Alt+G and Ctrl+Alt+G must remain disjoint.
 for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
+    "const bool phraseAuditionChord =",
+    "(UIInput::isGlobalNav(ui_event) && !phraseAuditionChord)",
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
+    "lowerKey == 'l' || ui_event.scancode == GROOVEPUTER_L",
+    "if (keyL && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
-    '"AUD %uB %s %s #%u"',
+    '"%s %s"',
+    '"M1L C SPARSE 1,1,1,1"',
+    '"M1L W SPARSE 1,0,1,0"',
+    '"M1L W CALL 2,2,2,2"',
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
 ):
