@@ -1,37 +1,84 @@
 # 0.9.9-M3-A1 — Harmonic Crossing Contract Audit
 
-Status: **REASONING COMPLETE / EXECUTION PENDING**  
+Status: **CLOSED**  
 Scope: **RESEARCH / TESTS ONLY**  
 Frozen M1 base: `5ad44bb9400ea38d349b7f815f84f833fb18ce6a`  
+Executable pre-closure head: `9ddc0389a9454945ac66868beb6d50c7f83b7ea0`  
 M1 hardware status: **ACCEPTED / CLOSED**  
-Provisional decision: **B — HARMONIC TIMELINE REPRESENTATION GAP**  
-Evidence level: **code-review hypothesis until executable characterization passes**
+Decision: **B — HARMONIC TIMELINE REPRESENTATION GAP**  
+Evidence level: **EXECUTABLE CHARACTERIZATION COMPLETE**
 
-## Verification rule
+## Closure evidence
 
-M3-A1 is not closed by source inspection alone.
+M3-A1 is closed by executable evidence, not source inspection alone.
 
-The source audit may establish what data is present or absent in the current requests and plans, but behavioral claims A-G become audit-verified only after `tests/run_0_9_9_m3_a1_tests.sh` physically compiles and runs the focused C++ characterization and the frozen M1 regressions.
+Focused workflow:
 
-Until that happens:
+- workflow: `0.9.9 M3-A1 harmonic crossing audit`;
+- run: `32993080660`;
+- exact head: `9ddc0389a9454945ac66868beb6d50c7f83b7ea0`;
+- conclusion: **SUCCESS**;
+- `focused-harmonic-crossing`: **SUCCESS**;
+- `core-host-regression`: **SUCCESS**.
 
-- Decision B is provisional;
-- A-G below are code-review hypotheses, not runtime observations;
-- `0.9.9-M3-T1` must not start as an implementation checkpoint;
-- topology/reasoning must not be reported as executable truth.
+Normal Core regressions:
 
-The focused runner is wired into the pre-existing `Core regressions` pull-request path through `tests/run_generation_stage13_tests.sh`, so the audit no longer relies on a workflow file that exists only on the PR head.
+- workflow: `Core regressions`;
+- run: `32993080867`;
+- exact head: `9ddc0389a9454945ac66868beb6d50c7f83b7ea0`;
+- conclusion: **SUCCESS**.
 
-## Scope
+The focused executable log physically printed:
 
-This audit asks what harmonic source a melodic phrase should see when its logical identity spans multiple physical bars. It does not change harmonic clocks, profile policy, Genre/BPM ownership, melodic phrase policy, progression policy, or note lifetime.
+```text
+A static_4bar=PASS
+B one_event_per_bar=RESET_TO_LOCAL_EVENT_0
+C inside_bar=PASS
+D exact_change_onset=NEW_SOURCE
+E continuation_crossing=ONSET_SOURCE_STABLE
+F empty_melodic_bar=VALID_BUT_NO_CROSSBAR_SOURCE_STATE
+M3-A1 focused harmonic crossing characterization: OK
+G physical_address_invariance=M1_EXECUTED_PASS
+Stage 15 Tonal Materializer gate: OK
+0.9.9-M3-A1 harmonic crossing audit gate: OK
+```
+
+Therefore the former `EXECUTION PENDING` and `PROVISIONAL / CODE-REVIEW ONLY` qualifiers are retired.
+
+## Source-guard correction
+
+The first executable source guard contained a test-only incorrect assumption:
+
+```cpp
+uint32_t phraseGenerationIdentity = 0;
+```
+
+That is not the frozen M1 production contract.
+
+The exact frozen M1 production fact is:
+
+```cpp
+constexpr uint16_t kUnspecifiedPhraseGenerationIdentity = 0xFFFFu;
+...
+uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+```
+
+Therefore `phraseGenerationIdentity` is a **bounded `uint16_t` logical phrase identity with explicit unspecified sentinel semantics**.
+
+The correction was test-only. M3-A1 does not reinterpret this identity, broaden its ownership, or change production semantics.
+
+## Scope and ownership
+
+This audit asks which harmonic source a melodic phrase sees when its logical identity spans multiple physical bars. It does not implement a phrase harmonic timeline, alter harmonic policy, or change note lifetime.
 
 Ownership remains:
 
 - `ChordRhythm` = physical chord articulation;
-- `HarmonicRhythm` = WHEN harmony advances;
+- `HarmonicRhythm` / `HarmonicClock` = WHEN harmony advances;
 - `ChordProgression` = WHAT harmony advances to;
 - melodic phrase identity = logical identity independent of physical pattern addresses.
+
+M3-A1 freezes the representation gap between those owners. It does not create a new musical owner.
 
 ## Exact ancestry
 
@@ -43,22 +90,21 @@ Direct frozen base:
 
 `agent/20260826-06-0.9.9-m1l-multibar-melodic-listening @ 5ad44bb9400ea38d349b7f815f84f833fb18ce6a`
 
-Accepted F08/F08.1 are parallel contract evidence, not ancestors of this M1 line:
+Accepted F08/F08.1 remain parallel contract evidence rather than ancestors of this frozen M1 line:
 
 - accepted F08: `cfb1f9a8e214cfcb823a5e75445f26356b55bed6`;
-- F08.1 vocabulary: `ee0fa06e6db0c78f84e85e6d2736db21268d590d`;
+- F08.1 vocabulary evidence: `ee0fa06e6db0c78f84e85e6d2736db21268d590d`;
 - M1/F08 lineage merge-base: `78bc8394ede5e6d81464cff5878c29bbf754c555`.
 
-Therefore the audit distinguishes exact frozen-M1 executable wiring from accepted F08/F08.1 ownership semantics.
+## Frozen M1 owner graph
 
-## Current owner graph — source evidence
-
-Exact frozen-M1 source flow:
+Exact frozen-M1 source flow remains:
 
 ```text
 StrongRhythmFrozenSelection
         |
         +-- stable realization GenerationContext
+        +-- bounded uint16_t phraseGenerationIdentity
         +-- phraseBarOrdinal
         |
         v
@@ -98,215 +144,231 @@ physical chord attacks
                                   melodic pitch projection
 ```
 
-This is the pre-F08 ownership shape present on the frozen M1 code line. It is source evidence only; M3-A1 does not reopen M1 semantics.
+F08/F08.1 separate harmonic advancement from physical chord articulation, but they do not by themselves provide the phrase-wide active harmonic-source carrier required by a multi-bar melodic phrase.
 
-## Accepted F08 / F08.1 contract evidence
+## Frozen source answers
 
-F08 separates harmonic advancement from physical chord articulation: `HarmonicRhythm` owns WHEN progression advances and does not take `ChordRhythm` as its owner.
-
-F08/F08.1 still do not supply a phrase-wide active harmonic-source carrier. Their phrase coordinates do not by themselves state which progression source is active at the beginning of a later bar.
-
-Therefore accepted policy ownership and missing cross-bar representation are separate questions.
-
-## Exact current source answers
-
-| Question | Frozen M1 source answer |
+| Question | Frozen M1 answer |
 |---|---|
 | phrase-wide harmonic position? | **NO** |
-| one-bar progression? | **YES** — `phraseBars = 1` per current materialization |
-| current bar ordinal? | **YES** — semantic `barOrdinal` reaches chord/melodic owners |
-| current harmonic event ordinal? | **LOCAL ONLY** — derived from the current-bar mask |
-| previous/active harmonic source at bar start? | **NO** |
-| harmonic context rebuilt per bar call? | **SOURCE SAYS YES** |
-| can address independence coexist with a harmonic reset? | **YES, logically** |
+| one-bar progression in current materialization? | **YES** — `phraseBars = 1` |
+| current semantic bar ordinal? | **YES** |
+| harmonic event ordinal? | **LOCAL ONLY** |
+| previous/active harmonic source at later bar start? | **NO** |
+| current harmonic context rebuilt per bar call? | **YES — executable B characterizes the reset** |
+| physical address required for harmonic identity? | **NO — executable G passes** |
 
-`TonalMaterializationRequest` has local `harmonicEventOnsets` plus one bounded `ChordProgressionPlan`; it has no phrase-wide event base, previous source, or phrase harmonic timeline.
+`TonalMaterializationRequest` carries local `harmonicEventOnsets` plus a bounded `ChordProgressionPlan`; it carries no phrase-wide event base, active prior source, or phrase harmonic timeline.
 
-`ChordProgressionPlan` is bounded to 8 events.
-
-## Required executable cases
-
-The labels below remain **hypotheses until the focused runner passes**.
+## Executable characterization A–G
 
 ### A. Static harmony across four bars
 
-Expected runtime result: repeated static source remains stable across four independent materializations.
+**PASS** — `A static_4bar=PASS`.
 
-Purpose: control case. A pass does not prove moving-harmony continuity.
+Repeated static source remains stable across four independent materializations. This is a control case and does not imply moving-harmony continuity.
 
-### B. Harmony changes once per bar
+### B. One harmonic event per bar
 
-Expected runtime result: four independent `phraseBars = 1`, one-event progression realizations restart at local progression event 0 even when the same progression grammar has later events.
+**CHARACTERIZED** — `B one_event_per_bar=RESET_TO_LOCAL_EVENT_0`.
 
-This is the key executable test for the proposed representation gap.
+Four independent one-event progression realizations currently restart at local progression event 0. This is the executable evidence for the cross-bar representation gap.
 
-### C. Harmony changes inside a bar
+### C. Inside-bar harmonic mapping
 
-Expected runtime result: local `tonal_materializer` can select multiple harmonic sources within one 16-step bar.
+**PASS** — `C inside_bar=PASS`.
 
-### D. Melodic onset exactly on harmonic change
+The local tonal materializer can select multiple harmonic sources within one 16-step bar.
 
-Source review indicates the boundary scan includes a same-step harmonic onset. Expected runtime result: melodic onset at the change sees the new harmonic source.
+### D. New melodic onset exactly at harmonic change
 
-### E. Melodic continuation across harmonic change
+**NEW_SOURCE** — `D exact_change_onset=NEW_SOURCE`.
 
-Source review indicates pitch projection is onset-driven and continuation bits preserve topology. Expected runtime result: a continuation is not independently re-pitched when harmony changes underneath it.
+A new onset exactly on the harmonic-change step uses the new local harmonic source.
 
-This does not create a cross-bar note-lifetime contract.
+### E. Continuation crossing harmonic change
+
+**ONSET_SOURCE_STABLE** — `E continuation_crossing=ONSET_SOURCE_STABLE`.
+
+A continuation is not independently re-pitched merely because harmony changes underneath it.
+
+This freezes an ownership boundary rather than a new note-lifetime rule:
+
+- M2 owns whether an already-started note remains alive;
+- M3 owns which harmonic source is active at phrase time;
+- M3 does **not** automatically retrigger, retune, or terminate an already-held note because harmony advanced;
+- a future new onset uses the harmonic source active at that onset.
 
 ### F. Empty melodic bar while harmony advances
 
-Expected runtime result: tonal materialization can be `ValidButEmpty` while harmonic events exist, and no cross-bar source state is produced by the empty melodic result.
+**VALID, NO AUTHORITATIVE CROSS-BAR SOURCE STATE** — `F empty_melodic_bar=VALID_BUT_NO_CROSSBAR_SOURCE_STATE`.
 
-This case freezes an important future requirement:
+The empty melodic materialization is valid, but current representation does not carry authoritative cross-bar harmonic source state through it.
 
-**harmonic advancement must be completely independent of melodic presence or absence.**
+Therefore melodic emptiness must never become the owner of harmonic time.
 
-It is not enough for a future timeline to remain continuous only between non-empty melodic bars.
+Future representation invariant:
 
-The M1 REST HEAVY listening case is the production-proven anchor for this requirement: empty melodic physical slots must not stall, skip, or reset harmonic time. Current pre-F08 wiring also recreates local `ChordRhythm`/`chord.plan.onsets` and a `phraseBars = 1` progression per bar, so melodic emptiness cannot be used as an implicit harmonic clock or state carrier.
+**harmonic timeline advancement must be independent of melodic event presence.**
 
-M3-T1 must contain an explicit REST-HEAVY-style test where harmonic advancement continues across empty melodic bars.
+An empty melodic bar must not pause, collapse, renumber, or suppress phrase harmonic event coordinates.
+
+This is a representation requirement, not a new musical policy.
 
 ### G. Same melodic identity in another physical address range
 
-The frozen M1 executable regression materializes the same frozen phrase selection into physical ranges `40..43` and `120..123` and compares musical material for equal `phraseBarOrdinal` values.
+**M1_EXECUTED_PASS** — `G physical_address_invariance=M1_EXECUTED_PASS`.
 
-Expected M3-A1 runner evidence: that frozen M1 regression physically executes after A-F and passes.
+The frozen M1 regression materializes the same logical phrase into different physical address ranges and preserves musical material for equal phrase coordinates.
 
-Even a G pass does not by itself prove harmonic continuity: two address ranges could reproduce the same local reset. Physical-address invariance and phrase-wide harmonic-source continuity are separate invariants.
+Physical-address invariance and phrase-wide harmonic continuity are separate invariants: address independence does not by itself repair the local harmonic reset characterized by B.
 
-## Provisional crossing contract
+## Frozen decision
 
-If execution confirms A-G, the representation contract to freeze next is:
+**DECISION B — HARMONIC TIMELINE REPRESENTATION GAP.**
 
-```text
-logical phrase identity
-+
-phraseBarOrdinal
-+
-local harmonic/melodic step
-+
-bounded phrase harmonic timeline
-        |
-        v
-phrase-wide harmonic source ordinal
-        |
-        v
-ChordProgression source event
-        |
-        v
-melodic tonal projection
-```
+The current pieces are individually sufficient for their existing jobs:
 
-Required semantic invariants:
-
-1. Harmonic source is keyed by logical phrase coordinates, never `patternAddress`.
-2. Every local harmonic event resolves to a phrase-wide source identity/ordinal or an equivalent explicit representation.
-3. Physical bar boundaries do not implicitly reset progression source to event 0.
-4. Bar start can identify the source left active by prior phrase harmonic events.
-5. A melodic onset exactly on a harmonic change uses the new source if D is execution-confirmed.
-6. A continuation is not re-pitched merely because harmony changes underneath it if E is execution-confirmed; note lifetime remains separate.
-7. Harmonic time advances through empty melodic bars.
-8. Static harmony may map all phrase positions to one source.
-9. Moving harmony advances independently of physical chord retriggers.
-10. Re-materializing one logical phrase at another physical address range produces the same harmonic-source mapping.
-
-M3-A1 deliberately does not freeze a C++ storage type.
-
-## Capacity requirement for M3-T1
-
-Current production rhythm vocabulary is bounded by `kMaxPhraseBars = 4`. M3-A1 must not pretend that current code already supports eight-bar phrase identity.
-
-However, the planned M4 direction is an 8-bar structured phrase (4+4), and accepted F08.1 policy can expose up to four harmonic advances inside one bar. The future representation must therefore be evaluated against this design worst case:
-
-```text
-8 bars * 4 harmonic events per bar = 32 phrase harmonic events
-```
-
-A representation that is inherently capped at the current `ChordProgressionPlan` capacity of 8, or that is sized only for a four-bar happy path, is not an acceptable M3-T1 design unless it can prove an equivalent bounded encoding that covers the 8-bar / 32-event requirement without later structural replacement.
-
-This is a forward-capacity requirement, not permission to change current `kMaxPhraseBars`, F08.1 policy, or M4 semantics in M3-T1.
-
-## Representation sufficiency — provisional
-
-**CODE-REVIEW RESULT: INSUFFICIENT.**
-
-Available pieces are individually useful:
-
-- M1 has stable phrase identity and `phraseBarOrdinal`;
+- M1 provides stable logical phrase identity and phrase-bar coordinates;
 - F08/F08.1 own bounded harmonic timing independently of chord articulation;
-- `ChordProgression` has deterministic harmonic source vocabulary;
-- `tonal_materializer` maps local onset step to a local harmonic event.
+- `ChordProgression` owns harmonic values;
+- `tonal_materializer` maps local melodic onset time to local harmonic events.
 
-Source review finds no carrier that tells a later bar which phrase-wide progression source is active.
+They are not sufficient as a phrase-wide carrier because a later bar has no authoritative phrase-relative harmonic event/source coordinate that tells it which source is active across the physical boundary.
 
-This becomes audit-verified only if executable B/F and the surrounding characterization pass.
+No new harmonic policy gap is required to reach this decision. If later source resolution exceeds the existing `ChordProgression` contract, that remains a separate explicit gap rather than permission for M3 to invent a policy.
 
-## Policy sufficiency — provisional
+## M3-T1 forward contract — representation only
 
-**CODE-REVIEW RESULT: NO NEW POLICY GAP DEMONSTRATED.**
+M3-T1 is **NOT STARTED** by this audit closure.
 
-Nothing in the audit currently requires:
+Its first representation contract must support:
 
-- new harmonic clocks;
-- `kProfiles` changes;
-- raw Genre -> clock mapping;
-- BPM ownership;
-- new progression vocabulary;
-- 1/2/4/8 musical policy;
-- cross-bar note lifetime.
+- `phraseBars ∈ {1,2,4,8}`;
+- global `phraseBarOrdinal ∈ 0..7`;
+- HarmonicClock local capacity up to 4 harmonic event positions per bar;
+- worst-case F08.1 phrase harmonic TIME capacity of `8 × 4 = 32` **phrase harmonic event positions**.
 
-If execution contradicts the assumed behavior, this section must be revisited before Decision B is frozen.
+Use **event positions** deliberately. Thirty-two phrase harmonic event positions do not necessarily mean thirty-two actual harmonic value transitions; adjacent positions may resolve to the same value according to the existing harmonic owners.
 
-## Decision state
+A compact representation may map local bar clock positions into phrase-relative coordinates, but M3-A1 freezes no C++ storage type.
 
-Current status:
+## Three independent capacity domains
 
-**B — HARMONIC TIMELINE REPRESENTATION GAP — PROVISIONAL / CODE-REVIEW ONLY.**
+### 1. Phrase coordinate capacity
 
-Why not A, provisionally: no current request carries the prior/source ordinal needed for bar-start harmonic continuity.
+Forward M3-T1 bound:
 
-Why not C, provisionally: accepted F08/F08.1 ownership/policy is enough to formulate the continuity problem without inventing a new musical choice.
+```text
+phraseBars <= 8
+phraseBarOrdinal <= 7
+phrase harmonic event positions <= 32
+```
 
-Neither statement is checkpoint-closed until executable characterization confirms current behavior.
+This is phrase harmonic TIME capacity.
 
-## Execution gate
+### 2. Chord progression value capacity
 
-Required command:
+Current production contract:
+
+```text
+ChordProgressionPlan::kMaxHarmonicEvents = 8
+```
+
+This is harmonic VALUE/vocabulary-plan capacity.
+
+**Thirty-two phrase harmonic event positions do not imply that `ChordProgressionPlan` must grow to 32 entries.**
+
+M3-T1 must keep time representation and progression-value storage conceptually separate.
+
+### 3. Physical pattern storage
+
+M4/PhraseCore evidence establishes physical phrase placement capacity:
+
+```text
+PhraseCore::kMaxBars = 8
+patternRefs[8][3]
+```
+
+This proves space for eight physical phrase rows across Drums/SynthA/SynthB references. It does **not** prove capacity for thirty-two phrase harmonic event positions.
+
+Frozen distinction:
+
+```text
+PHYSICAL PHRASE STORAGE / PhraseCore / Bank / Song = SUFFICIENT
+PHRASE HARMONIC TIMELINE / SEPARATE REPRESENTATION = MISSING
+```
+
+## No-new-harmonic-policy firewall
+
+M3-A1 and future M3-T1 must not invent progression extension semantics such as:
+
+- `eventOrdinal % progression.eventCount`;
+- implicit cycling;
+- nearest-source selection;
+- repeat-last;
+- clamping;
+- implicit progression regeneration;
+- any other unowned rule for extending progression values through phrase time.
+
+Ownership remains:
+
+```text
+Phrase harmonic timeline = WHEN
+ChordProgression = WHAT
+```
+
+If phrase harmonic event positions beyond the currently resolvable progression-source contract cannot be mapped without a new rule, M3-T1 must report that as a separate source-resolution gap. It must not hide the gap behind modulo, wrap-around, clamping, regeneration, or another new policy.
+
+## M2 × M3 ownership firewall
+
+M2 owns note lifetime: whether an already-started note remains alive across a boundary.
+
+M3 owns harmonic source/time: which harmonic source is active at a phrase-relative instant.
+
+Therefore harmonic advancement alone does not imply automatic note retrigger, retune, or termination. E execution evidence explicitly characterizes the current onset-driven behavior, while D establishes that a future new onset uses the source active at that onset.
+
+No M2 production semantics are changed here.
+
+## Production boundary
+
+Comparison against the frozen M1 base contains only research workflow, docs, runner wiring, and tests. No `src/` path is changed.
+
+Equivalent required check:
 
 ```bash
-bash tests/run_0_9_9_m3_a1_tests.sh
+git diff \
+  5ad44bb9400ea38d349b7f815f84f833fb18ce6a...HEAD \
+  -- src/
 ```
 
-A closing run must physically compile and execute the focused C++ test and show A-G evidence, including at minimum:
+Expected and frozen result:
 
 ```text
-A static_4bar=PASS
-B one_event_per_bar=RESET_TO_LOCAL_EVENT_0
-C inside_bar=PASS
-D exact_change_onset=NEW_SOURCE
-E continuation_crossing=ONSET_SOURCE_STABLE
-F empty_melodic_bar=VALID_BUT_NO_CROSSBAR_SOURCE_STATE
-G physical_address_invariance=M1_EXECUTED_PASS
-0.9.9-M3-A1 harmonic crossing audit gate: OK
+EMPTY
 ```
 
-Compiler/runtime failure, sanitizer failure, or disagreement with these observations reopens the corresponding claim and may change Decision A/B/C.
+Production `src/` semantic delta: **ZERO**.
 
-## Next checkpoint
+No production changes were made to:
 
-Candidate next checkpoint after the execution gate is green:
+- `ChordProgressionPlan`;
+- `HarmonicRhythm` / `HarmonicClock`;
+- `TonalMaterializer`;
+- `MelodicPitchIntent`;
+- StrongRhythm production semantics.
 
-`0.9.9-M3-T1 — BOUNDED PHRASE HARMONIC TIMELINE CONTRACT`
+## Closure
 
-M3-T1 must:
+`0.9.9-M3-A1` is **CLOSED**.
 
-- freeze representation before production wiring;
-- preserve F08/F08.1 policy ownership;
-- cover the future 8-bar / 32-event capacity requirement;
-- explicitly prove harmonic advancement across REST-HEAVY / empty melodic bars;
-- prove physical-address invariance of harmonic-source mapping;
-- keep note lifetime and new harmonic policy out of scope.
+Frozen result:
 
-Until the executable M3-A1 gate is observed green, M3-T1 remains blocked.
+**DECISION B — HARMONIC TIMELINE REPRESENTATION GAP.**
+
+Execution evidence is complete on pre-closure head `9ddc0389a9454945ac66868beb6d50c7f83b7ea0` via focused run `32993080660` and normal Core run `32993080867`.
+
+Next possible checkpoint is `0.9.9-M3-T1 — BOUNDED PHRASE HARMONIC TIMELINE CONTRACT`, but it is not started by this closure.
+
+M3-T1: **NOT STARTED**.  
+M3-P1: **NOT STARTED**.
