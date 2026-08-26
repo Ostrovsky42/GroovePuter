@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - research/20260826-07-0.9.9-m2-a1-crossbar-note-lifetime
+  pull_request:
 
 permissions:
   contents: read
