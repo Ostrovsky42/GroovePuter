@@ -176,6 +176,18 @@ struct StrongRhythmMigrationResult {
   bool tonalMaterializationApplied = false;
 };
 
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+// Focused host-test observation only.  Normal firmware neither declares nor
+// links this type or its storage; migration semantics remain untouched.
+struct StrongRhythmMelodicRequestProbe {
+  bool captured = false;
+  MelodicMotifRequest request{};
+};
+
+void setStrongRhythmMelodicRequestProbe(
+    StrongRhythmMelodicRequestProbe* probe);
+#endif
+
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
 
 StrongRhythmMigrationResult migrateStrongRhythmDrums(
