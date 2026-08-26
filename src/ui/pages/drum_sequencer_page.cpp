@@ -289,6 +289,25 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
   const bool keyP =
       lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
 
+  static GroovePuterRhythm::PhraseAuditionListeningCase m1ListeningCase =
+      GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseControl;
+
+  if (keyP && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+    using Case = GroovePuterRhythm::PhraseAuditionListeningCase;
+    m1ListeningCase = m1ListeningCase == Case::M1SparseControl
+        ? Case::M1SparseWired
+        : m1ListeningCase == Case::M1SparseWired
+            ? Case::M1CallWired
+            : Case::M1SparseControl;
+    const char* label = m1ListeningCase == Case::M1SparseControl
+        ? "M1L C SPARSE 1,1,1,1"
+        : m1ListeningCase == Case::M1SparseWired
+            ? "M1L W SPARSE 1,0,1,0"
+            : "M1L W CALL 2,2,2,2";
+    UI::showToast(label, 1800);
+    return true;
+  }
+
   // Cardputer ADV has no dedicated Shift key in the physical workflow. Use the
   // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
   // Plain G, Ctrl+G, Alt+G and Ctrl+Alt+G stay four separate contracts.
@@ -308,7 +327,7 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
     GroovePuterRhythm::PhraseAuditionResult audition{};
     page->withAudioGuard([&]() {
       audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
-          page->mini_acid_);
+          page->mini_acid_, m1ListeningCase);
 
       // The bridge writes Bank B by temporarily selecting every reserved slot.
       // Rebase MiniAcid's pattern-mode return state to the exact pre-audition
@@ -329,14 +348,22 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       }
     });
     char toast[72];
+    const char* listeningLabel = audition.listeningCase ==
+            GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseControl
+        ? "M1L C SPARSE 1,1,1,1"
+        : audition.listeningCase ==
+                GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseWired
+            ? "M1L W SPARSE 1,0,1,0"
+            : audition.listeningCase ==
+                GroovePuterRhythm::PhraseAuditionListeningCase::M1CallWired
+                ? "M1L W CALL 2,2,2,2"
+                : "AUD";
     std::snprintf(
         toast,
         sizeof(toast),
-        "AUD %uB %s %s #%u",
-        static_cast<unsigned>(audition.requestedBars),
-        GroovePuterState::generationLevelShortName(audition.level),
-        GroovePuterRhythm::phraseAuditionStatusName(audition.status),
-        static_cast<unsigned>(audition.archetypeId));
+        "%s %s",
+        listeningLabel,
+        GroovePuterRhythm::phraseAuditionStatusName(audition.status));
     UI::showToast(toast, 1800);
     return true;
   }

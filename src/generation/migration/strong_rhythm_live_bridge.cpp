@@ -21,6 +21,8 @@ constexpr int kPhraseAuditionBank = 1;
 constexpr int kPhraseAuditionSongSlot = 1;
 constexpr uint16_t kPhraseAuditionGenerationIdentity =
     static_cast<uint16_t>(kPhraseAuditionSongSlot);
+constexpr uint16_t kM1SparsePhraseIdentity = 19;
+constexpr uint16_t kM1CallPhraseIdentity = 7;
 constexpr RhythmRoleMask kDeferredSynthRoles =
     rhythmRoleBit(RhythmRole::BassRhythm) |
     rhythmRoleBit(RhythmRole::ChordRhythm) |
@@ -74,6 +76,17 @@ bool assignGenerationAttempt(const GenreSettings& settings,
 uint8_t normalizedPhraseBars(uint8_t bars) {
   if (bars == 1 || bars == 2 || bars == 4 || bars == 8) return bars;
   return 1;
+}
+
+bool m1ListeningCase(PhraseAuditionListeningCase listeningCase) {
+  return listeningCase != PhraseAuditionListeningCase::CurrentWired;
+}
+
+uint8_t synthNoteCount(const SynthPattern& pattern) {
+  uint8_t count = 0;
+  for (const SynthStep& step : pattern.steps)
+    if (step.note >= 0) ++count;
+  return count;
 }
 
 uint32_t auditionSeed(const GenreSettings& settings,
@@ -305,8 +318,10 @@ const char* phraseAuditionStatusName(PhraseAuditionStatus status) {
   return "INVALID";
 }
 
-PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
+PhraseAuditionResult regeneratePhraseAuditionWithProbe(
+    MiniAcid& engine, PhraseAuditionListeningCase listeningCase) {
   PhraseAuditionResult result{};
+  result.listeningCase = listeningCase;
 #if defined(ARDUINO_M5STACK_CARDPUTER)
   captureProbeBefore(result.probe);
   const uint32_t commandStarted = micros();
@@ -314,7 +329,23 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
 
   SceneManager& manager = engine.sceneManager();
   Scene& scene = manager.currentScene();
-  result.requestedBars = normalizedPhraseBars(scene.feel.patternBars);
+  result.requestedBars = m1ListeningCase(listeningCase)
+      ? kGrooveVocabularyPhraseBars
+      : normalizedPhraseBars(scene.feel.patternBars);
+
+  GenreSettings auditionSettings = scene.genre;
+  uint16_t phraseIdentity = kPhraseAuditionGenerationIdentity;
+  if (m1ListeningCase(listeningCase)) {
+    auditionSettings = GenreSettings{};
+    auditionSettings.generativeMode =
+        static_cast<uint8_t>(GenerativeMode::Electro);
+    auditionSettings.recipe = kBaseRecipeId;
+    auditionSettings.rhythmSelectionMode = static_cast<uint8_t>(
+        RhythmSelectionMode::Auto);
+    auditionSettings.rhythmArchetypeId = kNoArchetypeId;
+    phraseIdentity = listeningCase == PhraseAuditionListeningCase::M1CallWired
+        ? kM1CallPhraseIdentity : kM1SparsePhraseIdentity;
+  }
 
   const int page = engine.currentPageIndex();
   const int basePatternAddress = songPatternFromPageBankIndex(
@@ -332,9 +363,9 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   const bool requestedFrozenFourBarPath = result.requestedBars == 4;
   const StrongRhythmMigrationResult selection = requestedFrozenFourBarPath
       ? resolveStrongRhythmFrozenSelection(
-            scene.genre, baseContext, kPhraseAuditionGenerationIdentity,
+            auditionSettings, baseContext, phraseIdentity,
             frozenSelection)
-      : migrateStrongRhythmDrums(scene.genre, baseContext, selectionScratch);
+      : migrateStrongRhythmDrums(auditionSettings, baseContext, selectionScratch);
   result.selectionStatus = selection.status;
   result.profileBars = normalizedPhraseBars(selection.phraseBars);
   if (selection.status != StrongRhythmMigrationStatus::Applied) {
@@ -362,7 +393,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   }
   result.archetypeId = definition->archetypeId;
 
-  GenreSettings lockedSettings = scene.genre;
+  GenreSettings lockedSettings = auditionSettings;
   lockedSettings.morphTarget = 0;
   lockedSettings.morphAmount = 0;
   lockedSettings.rhythmSelectionMode = static_cast<uint8_t>(
@@ -438,6 +469,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
 
   engine.setSongMode(false);
   bool materialized = true;
+  SynthPattern sparseControl{};
   for (uint8_t bar = 0; bar < result.requestedBars; ++bar) {
     engine.setDrumBankIndex(kPhraseAuditionBank);
     engine.setDrumPatternIndex(bar);
@@ -464,7 +496,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
     SynthPattern& auditionSynthB = manager.editSynthPattern(1, bar);
     const StrongRhythmMigrationResult barResult = useFrozenFourBarPath
         ? migrateStrongRhythmFrozenMaterial(
-              scene.genre, frozenSelection, context, auditionDrums,
+              auditionSettings, frozenSelection, context, auditionDrums,
               auditionSynthA, auditionSynthB)
         : migrateStrongRhythmMaterial(
               lockedSettings, context, auditionDrums, auditionSynthA,
@@ -472,6 +504,11 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
     if (barResult.status != StrongRhythmMigrationStatus::Applied) {
       materialized = false;
       break;
+    }
+
+    if (listeningCase == PhraseAuditionListeningCase::M1SparseControl) {
+      if (bar == 0) sparseControl = auditionSynthB;
+      else auditionSynthB = sparseControl;
     }
 
     if (evolved) {
@@ -535,6 +572,10 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   engine.setLoopMode(true);
   engine.setSongPlaybackSlot(kPhraseAuditionSongSlot);
   engine.setSongMode(true);
+
+  for (uint8_t bar = 0; bar < result.requestedBars && bar < 4; ++bar)
+    result.synthBNoteCounts[bar] = synthNoteCount(
+        manager.editSynthPattern(1, bar));
 
   result.status = evolved
       ? PhraseAuditionStatus::AppliedEvolved
