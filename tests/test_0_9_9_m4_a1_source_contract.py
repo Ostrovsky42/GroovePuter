@@ -2,6 +2,8 @@
 from pathlib import Path
 import subprocess
 
+# M4-A1 executable characterization only. This file intentionally guards a
+# research contract and must not be used to introduce production semantics.
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "5ad44bb9400ea38d349b7f815f84f833fb18ce6a"
 
