@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "src/generation/roles/chord_progression.h").read_text(encoding="utf-8")
 SOURCE = (ROOT / "src/generation/roles/chord_progression.cpp").read_text(encoding="utf-8")
+HARMONIC = (ROOT / "src/generation/roles/harmonic_rhythm.h").read_text(encoding="utf-8")
 PROFILE_H = (ROOT / "src/generation/composition/generation_profile.h").read_text(encoding="utf-8")
 PROFILE_CPP = (ROOT / "src/generation/composition/generation_profile.cpp").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read_text(encoding="utf-8")
@@ -104,6 +105,29 @@ for palette in (
 ):
     require(PROFILE_CPP, palette, f"editorial progression palette disappeared: {palette}")
 
+# Recovered exact accepted F08 ownership: HarmonicRhythm is realized before
+# ChordProgression, owns one-bar WHEN/cardinality, and remains independent of
+# ChordRhythm physical articulation.
+require(
+    MATERIAL_BRIDGE,
+    "const HarmonicRhythmResult harmonic =\n      realizeHarmonicRhythm(harmonicRequest);",
+    "F08 harmonic rhythm is no longer production-reachable before progression realization",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonicRequest.progression = result.progressionId;",
+    "HarmonicRhythm stopped consuming the selected progression identity",
+)
+forbid(
+    MATERIAL_BRIDGE,
+    "progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);",
+    "Stage 15 restored the forbidden ChordRhythm -> progression-count coupling",
+)
+require(
+    MATERIAL_BRIDGE,
+    "progressionRequest.harmonicEventCount = harmonic.plan.eventCount;",
+    "ChordProgression stopped consuming HarmonicRhythm-owned cardinality",
+)
 require(
     MATERIAL_BRIDGE,
     "const ChordProgressionResult progression =\n      realizeChordProgression(progressionRequest);",
@@ -111,8 +135,28 @@ require(
 )
 require(
     MATERIAL_BRIDGE,
-    "progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);",
-    "ChordProgression started owning harmonic event timing/count",
+    "progression.plan.eventCount != harmonic.plan.eventCount",
+    "production bridge stopped validating HarmonicRhythm/ChordProgression cardinality agreement",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonic.plan.onsets, bassPitch.plan.onsets",
+    "bass TonalMaterializer path stopped using HarmonicRhythm as its harmonic clock",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations",
+    "chord TonalMaterializer path stopped separating harmonic clock from chord articulation",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonic.plan.onsets, melodicPitch.plan.onsets",
+    "melodic TonalMaterializer path stopped using HarmonicRhythm as its harmonic clock",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonic.plan.onsets, admittedOnsets, admittedContinuations",
+    "hybrid TonalMaterializer path stopped using HarmonicRhythm as its harmonic clock",
 )
 require(
     MATERIAL_BRIDGE,
@@ -125,11 +169,30 @@ require(
     "Stage 12 one-bar production guard was modified by Stage 15",
 )
 
-# ChordProgression must be realized before pitch-path arbitration. The final
-# Stage 15 bridge has two downstream owners: the frozen legacy projector when
-# tonal materialization is disabled, and TonalMaterializer when it is enabled.
-# Pin semantic ordering without depending on old whitespace or one particular
-# legacy Synth B call shape.
+for forbidden in (
+    "ChordRhythmId",
+    "ChordRhythmPlan",
+    "chordOnsets",
+):
+    forbid(
+        HARMONIC,
+        forbidden,
+        f"HarmonicRhythm acquired forbidden ChordRhythm input: {forbidden}",
+    )
+require(
+    HARMONIC,
+    "StepMask onsets = 0;",
+    "HarmonicRhythm plan lost its explicit harmonic timing mask",
+)
+require(
+    HARMONIC,
+    "uint8_t eventCount = 0;",
+    "HarmonicRhythm plan lost ownership of harmonic event cardinality",
+)
+
+# Preserve the existing Stage15 ordering while recovering F08 before the H1
+# pitch-path split. This is not phrase-wide scheduling.
+harmonic_call = MATERIAL_BRIDGE.index("realizeHarmonicRhythm(harmonicRequest)")
 progression_call = MATERIAL_BRIDGE.index("realizeChordProgression(progressionRequest)")
 pitch_path_branch = MATERIAL_BRIDGE.index("if (!context.tonalMaterializationEnabled)")
 legacy_projection = MATERIAL_BRIDGE.index(
@@ -139,11 +202,13 @@ tonal_projection = MATERIAL_BRIDGE.index(
     "const TonalMaterializationResult bassTonal = materializeRole("
 )
 if not (
-    progression_call < pitch_path_branch
+    harmonic_call < progression_call < pitch_path_branch
     and progression_call < legacy_projection
     and progression_call < tonal_projection
 ):
-    raise AssertionError("ChordProgression moved after production pitch materialization")
+    raise AssertionError(
+        "HarmonicRhythm/ChordProgression moved after production pitch materialization"
+    )
 
 for changed_layer in (PROFILE_H, PROFILE_CPP, BRIDGE):
     forbid(
@@ -156,4 +221,4 @@ require(RUNNER, "-Wvla", "Stage 15 runner lost VLA rejection")
 require(RUNNER, "-fstack-usage", "Stage 15 runner lost stack-usage measurement")
 require(RUNNER, "test_generation_stage15_chord_progression", "Stage 15 executable left its runner")
 
-print("Generation Stage 15 chord-progression source regressions: OK")
+print("Generation Stage 15 chord-progression source regressions: OK (F08 ownership recovered)")
