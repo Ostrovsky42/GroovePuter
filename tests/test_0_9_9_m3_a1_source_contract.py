@@ -9,15 +9,16 @@ changed = subprocess.check_output(
     ["git", "diff", "--name-only", BASE, "HEAD"], cwd=ROOT, text=True
 ).splitlines()
 
-allowed_prefixes = (
+allowed_paths = (
     ".github/workflows/research-0-9-9-m3-a1-harmonic-crossing.yml",
     "docs/audits/M3_A1_HARMONIC_CROSSING.md",
     "tests/run_0_9_9_m3_a1_tests.sh",
+    "tests/run_generation_stage13_tests.sh",
     "tests/test_0_9_9_m3_a1_harmonic_crossing.cpp",
     "tests/test_0_9_9_m3_a1_source_contract.py",
 )
 
-unexpected = [path for path in changed if path not in allowed_prefixes]
+unexpected = [path for path in changed if path not in allowed_paths]
 assert not unexpected, f"M3-A1 unexpected delta: {unexpected}"
 assert not any(path.startswith("src/") for path in changed), changed
 
@@ -25,6 +26,7 @@ migration = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read
 migration_header = (ROOT / "src/generation/migration/strong_rhythm_migration.h").read_text()
 tonal_header = (ROOT / "src/generation/tonal/tonal_materializer.h").read_text()
 progression_header = (ROOT / "src/generation/roles/chord_progression.h").read_text()
+stage13_runner = (ROOT / "tests/run_generation_stage13_tests.sh").read_text()
 
 # Exact frozen-M1 characterization: harmonic timing is still local ChordRhythm
 # timing, and progression is re-realized as one bar.
@@ -64,4 +66,8 @@ for forbidden in (
 # F08/F08.1 are parallel evidence, not silently merged into the M1 base.
 assert not (ROOT / "src/generation/roles/harmonic_rhythm.h").exists()
 
-print("M3-A1 source contract: zero src delta; current one-bar reset gap preserved")
+# The focused executable characterization is reached from the pre-existing
+# Core regressions pull-request workflow via its Stage 13/14 entrypoint.
+assert 'bash "${ROOT_DIR}/tests/run_0_9_9_m3_a1_tests.sh"' in stage13_runner
+
+print("M3-A1 source contract: zero src delta; executable audit gate wired")
