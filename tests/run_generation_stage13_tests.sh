@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/host-tests"
+CXX="${CXX:-g++}"
+
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_generation_stage13_source_regressions.py"
@@ -112,4 +114,10 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
     -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
 bash "${ROOT_DIR}/tests/run_generation_stage15_tests.sh"
+
+# M3-A1 is research/tests-only, but its executable characterization must be
+# reached by a workflow that already exists on the frozen PR base. Core
+# regressions calls this Stage 13/14 entrypoint for pull_request events.
+bash "${ROOT_DIR}/tests/run_0_9_9_m3_a1_tests.sh"
+
 printf 'Generation Stage 13/14/15 host matrix: OK\n'
