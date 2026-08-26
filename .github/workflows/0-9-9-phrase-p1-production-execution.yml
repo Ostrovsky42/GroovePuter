@@ -1,0 +1,32 @@
+name: 0.9.9 PHRASE-P1 production execution
+
+on:
+  push:
+    branches:
+      - agent/20260826-12-0.9.9-phrase-p1-production-execution
+  pull_request:
+    branches:
+      - agent/20260826-11-0.9.9-phrase-h1-progression-source-contract
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-production-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-P1 production execution characterization
+        run: bash tests/run_0_9_9_phrase_p1_tests.sh
+
+  core-host-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run core host regression
+        run: bash tests/run_host_tests.sh
