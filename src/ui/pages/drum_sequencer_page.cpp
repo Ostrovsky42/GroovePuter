@@ -212,9 +212,13 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
 
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
+  const bool phraseAuditionChord =
+      ui_event.ctrl && ui_event.alt && !ui_event.meta &&
+      (ui_event.key == 'g' || ui_event.key == 'G' ||
+       ui_event.scancode == GROOVEPUTER_G);
   if (activePageIndex() != 0 ||
       ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
-      UIInput::isGlobalNav(ui_event)) {
+      (UIInput::isGlobalNav(ui_event) && !phraseAuditionChord)) {
     return handleEventLegacy(ui_event);
   }
 
