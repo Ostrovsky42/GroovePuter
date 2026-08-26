@@ -1,0 +1,48 @@
+name: 0.9.9 M1 O1 observability candidate
+
+on:
+  pull_request:
+    paths:
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.h'
+      - 'tests/run_0_9_9_m1_o1_tests.sh'
+      - 'tests/test_0_9_9_m1_o1_*.cpp'
+      - '.github/workflows/generation-0-9-9-m1-o1-observability.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  o1-focused-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_0_9_9_m1_o1_tests.sh
+
+  o1-normal-cardputer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - run: bash scripts/install_arduino_deps.sh
+      - run: bash scripts/build.sh --warnings all
+      - run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Assert normal firmware omits the probe
+        run: |
+          ! nm -C build/cardputer-adv-current/GroovePuter.ino.elf | grep -E 'StrongRhythmMelodicRequestProbe|setStrongRhythmMelodicRequestProbe'
+
+  o1-normal-sdl-and-seqtrak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - run: make -C platform_sdl clean all CXX=g++
+      - run: bash scripts/install_arduino_deps.sh
+      - run: bash scripts/build_seqtrak_midi_only.sh --warnings all

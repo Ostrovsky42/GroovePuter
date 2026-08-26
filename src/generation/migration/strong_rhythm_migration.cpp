@@ -4,6 +4,16 @@
 #include "../rhythm/rhythm_realizer.h"
 
 namespace GroovePuterRhythm {
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+namespace {
+StrongRhythmMelodicRequestProbe* g_melodicRequestProbe = nullptr;
+}
+
+void setStrongRhythmMelodicRequestProbe(
+    StrongRhythmMelodicRequestProbe* probe) {
+  g_melodicRequestProbe = probe;
+}
+#endif
 namespace {
 
 uint32_t mixByte(uint32_t hash, uint8_t value) {
@@ -598,6 +608,12 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   melodicRequest.generation = bassRequest.generation;
   melodicRequest.barOrdinal = barOrdinal;
   melodicRequest.allowEmptyBar = allowSparse;
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+  if (g_melodicRequestProbe != nullptr) {
+    g_melodicRequestProbe->request = melodicRequest;
+    g_melodicRequestProbe->captured = true;
+  }
+#endif
   const MelodicMotifResult melodic = realizeMelodicMotif(melodicRequest);
   result.melodicMotifStatus = melodic.status;
   result.melodicRhythmId = melodic.plan.rhythmId;
