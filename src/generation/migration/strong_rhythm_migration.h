@@ -14,6 +14,7 @@
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
+#include "../roles/harmonic_rhythm.h"
 #include "../roles/melodic_motif.h"
 #include "../roles/melodic_pitch_intent.h"
 #include "../roles/semantic_pattern_projector.h"
@@ -156,6 +157,9 @@ struct StrongRhythmMigrationResult {
   FeelInterpretStatus bassFeelStatus = FeelInterpretStatus::Ok;
   ChordRhythmStatus chordRhythmStatus = ChordRhythmStatus::InvalidRequest;
   ChordRhythmId chordRhythmId = ChordRhythmId::Auto;
+  HarmonicRhythmStatus harmonicRhythmStatus = HarmonicRhythmStatus::InvalidRequest;
+  StepMask harmonicEventOnsets = 0;
+  uint8_t harmonicEventCount = 0;
   ChordProgressionStatus chordProgressionStatus =
       ChordProgressionStatus::InvalidRequest;
   ProgressionId progressionId = ProgressionId::Auto;
