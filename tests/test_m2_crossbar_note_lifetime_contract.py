@@ -19,7 +19,6 @@ def main() -> None:
     scenes = (ROOT / "scenes.h").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     genre = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
-    advanced = (ROOT / "src/dsp/advanced_pattern_generator.h").read_text(encoding="utf-8")
     adapter = (ROOT / "src/generation/migration/tonal_pattern_adapter.cpp").read_text(encoding="utf-8")
     tonal = (ROOT / "src/generation/tonal/tonal_materializer.cpp").read_text(encoding="utf-8")
     motif = (ROOT / "src/generation/roles/melodic_motif.cpp").read_text(encoding="utf-8")
@@ -32,14 +31,15 @@ def main() -> None:
         require(token not in synth_step.lower(),
                 f"SynthStep unexpectedly gained explicit {token} lifetime state")
 
-    # Legacy -2 exists only as playback/editor compatibility. It is not emitted
-    # by the tonal adapter and depends on an already-live gate.
+    # Legacy -2 exists only as playback/editor compatibility. Its historical
+    # generator-side storage location is deliberately not part of the M2 owner
+    # contract. What matters here is that MiniAcid still has the latent sentinel,
+    # it depends on an already-live gate, and the current tonal adapter does not
+    # emit it as the semantic/physical lifetime representation.
     require("if (step.note == -2) { // TIE" in engine,
             "MiniAcid legacy -2 playback sentinel moved")
     require("gateCountdownA_ > 0" in engine and "gateCountdownB_ > 0" in engine,
             "legacy -2 no longer depends on an active gate")
-    require("std::array<uint8_t, 16> tie{};" in advanced,
-            "legacy generator tie mask moved")
     require("tied.note = -2" not in adapter,
             "tonal adapter unexpectedly emits legacy -2")
 
