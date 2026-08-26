@@ -8,16 +8,18 @@ namespace {
 
 using GroovePuterRhythm::PhraseTemporalCoordinates;
 using GroovePuterRhythm::phraseTemporalCoordinatesForBar;
+using GroovePuterRhythm::phraseVocabularyBarOrdinal;
 
 bool checkLength(uint8_t phraseBars) {
   for (uint8_t bar = 0; bar < phraseBars; ++bar) {
     const PhraseTemporalCoordinates coordinates =
         phraseTemporalCoordinatesForBar(bar);
+    const uint8_t vocabularyOrdinal = phraseVocabularyBarOrdinal(bar);
     const uint8_t expectedVocabulary = static_cast<uint8_t>(bar % 4u);
     const uint8_t expectedEvolution = static_cast<uint8_t>(bar / 4u);
 
     if (coordinates.phraseBarOrdinal != bar ||
-        coordinates.vocabularyPhraseBarOrdinal != expectedVocabulary ||
+        vocabularyOrdinal != expectedVocabulary ||
         coordinates.evolutionOrdinal != expectedEvolution) {
       std::fprintf(
           stderr,
@@ -25,7 +27,7 @@ bool checkLength(uint8_t phraseBars) {
           static_cast<unsigned>(phraseBars),
           static_cast<unsigned>(bar),
           static_cast<unsigned>(coordinates.phraseBarOrdinal),
-          static_cast<unsigned>(coordinates.vocabularyPhraseBarOrdinal),
+          static_cast<unsigned>(vocabularyOrdinal),
           static_cast<unsigned>(coordinates.evolutionOrdinal),
           static_cast<unsigned>(bar),
           static_cast<unsigned>(expectedVocabulary),
@@ -55,7 +57,7 @@ int main() {
     const PhraseTemporalCoordinates coordinates =
         phraseTemporalCoordinatesForBar(bar);
     if (coordinates.phraseBarOrdinal != bar ||
-        coordinates.vocabularyPhraseBarOrdinal != kExpectedVocabulary[bar] ||
+        phraseVocabularyBarOrdinal(bar) != kExpectedVocabulary[bar] ||
         coordinates.evolutionOrdinal != kExpectedEvolution[bar]) {
       return 2;
     }
