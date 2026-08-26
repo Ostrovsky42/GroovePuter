@@ -15,6 +15,12 @@
 #include "src/input/musical_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 
+// sdl_main.cpp normally owns these host compatibility globals. The focused
+// runtime harness replaces sdl_main.cpp, so define the same host-only globals
+// here rather than introducing a production seam just to satisfy linkage.
+SerialMock Serial;
+SDMock SD;
+
 namespace {
 
 enum class WireType : uint8_t { NoteOn, NoteOff };
