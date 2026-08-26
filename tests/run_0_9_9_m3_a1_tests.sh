@@ -34,16 +34,17 @@ if command -v clang++ >/dev/null 2>&1; then
   diff -u "${BUILD}/gcc.out" "${BUILD}/clang.out"
 fi
 
-build_and_capture "${CXX:-g++}" "${BUILD}/sanitize" "${BUILD}/sanitize.out" \
-  -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
-ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" "${BUILD}/sanitize" > "${BUILD}/sanitize-runtime.out"
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+  -I"${ROOT}" -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
+  "${SOURCES[@]}" -o "${BUILD}/sanitize"
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  "${BUILD}/sanitize" > "${BUILD}/sanitize-runtime.out"
 diff -u "${BUILD}/gcc.out" "${BUILD}/sanitize-runtime.out"
 
 cat "${BUILD}/gcc.out"
 
-# Preserve the hardware-accepted M1 phrase/address contract and the existing
-# local tonal materializer behavior while characterizing the missing crossing carrier.
 bash "${ROOT}/tests/run_0_9_9_m1_p1_tests.sh"
+echo "G physical_address_invariance=M1_EXECUTED_PASS"
 bash "${ROOT}/tests/run_tonal_materializer_tests.sh"
 
 echo "0.9.9-M3-A1 harmonic crossing audit gate: OK"
