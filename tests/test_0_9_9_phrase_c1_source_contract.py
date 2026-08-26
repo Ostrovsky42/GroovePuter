@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -13,8 +14,10 @@ ALLOWED_SRC = {
     "src/generation/migration/phrase_semantic_result.h",
 }
 
+
 def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
 
 changed = {
     line for line in git("diff", "--name-only", f"{BASE}..HEAD", "--", "src").splitlines()
@@ -34,7 +37,10 @@ for path in sorted(ALLOWED_SRC):
         stderr=subprocess.DEVNULL,
     ).returncode == 0
     if exists_at_base:
-        print(f"PHRASE-C1 source guard: {path} unexpectedly modified an existing owner", file=sys.stderr)
+        print(
+            f"PHRASE-C1 source guard: {path} unexpectedly modified an existing owner",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
 forbidden_runtime = {
@@ -52,14 +58,35 @@ all_changed = {
 }
 for path in forbidden_runtime:
     if path in all_changed:
-        print(f"PHRASE-C1 source guard: forbidden live/runtime owner changed: {path}", file=sys.stderr)
+        print(
+            f"PHRASE-C1 source guard: forbidden live/runtime owner changed: {path}",
+            file=sys.stderr,
+        )
         raise SystemExit(3)
 
-combined = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in sorted(ALLOWED_SRC))
-for token in ("std::vector", "std::list", "std::deque", "malloc(", "calloc(", "realloc(", "new "):
-    if token in combined:
-        print(f"PHRASE-C1 source guard: heap/unbounded token found: {token}", file=sys.stderr)
+combined = "\n".join(
+    (ROOT / path).read_text(encoding="utf-8") for path in sorted(ALLOWED_SRC)
+)
+code_only = re.sub(r"/\*.*?\*/", "", combined, flags=re.DOTALL)
+code_only = re.sub(r"//.*?$", "", code_only, flags=re.MULTILINE)
+for token in (
+    "std::vector",
+    "std::list",
+    "std::deque",
+    "malloc(",
+    "calloc(",
+    "realloc(",
+    "operator new",
+):
+    if token in code_only:
+        print(
+            f"PHRASE-C1 source guard: heap/unbounded token found: {token}",
+            file=sys.stderr,
+        )
         raise SystemExit(4)
+if re.search(r"\bnew\s+(?:const\s+)?[A-Za-z_:][A-Za-z0-9_:<>]*", code_only):
+    print("PHRASE-C1 source guard: C++ new-expression found", file=sys.stderr)
+    raise SystemExit(4)
 
 semantic_only = "\n".join(
     (ROOT / path).read_text(encoding="utf-8")
@@ -70,17 +97,30 @@ semantic_only = "\n".join(
     )
 )
 if "patternAddress" in semantic_only:
-    print("PHRASE-C1 source guard: physical patternAddress leaked into semantic carrier", file=sys.stderr)
+    print(
+        "PHRASE-C1 source guard: physical patternAddress leaked into semantic carrier",
+        file=sys.stderr,
+    )
     raise SystemExit(5)
 
-progression = (ROOT / "src/generation/roles/chord_progression.h").read_text(encoding="utf-8")
+progression = (ROOT / "src/generation/roles/chord_progression.h").read_text(
+    encoding="utf-8"
+)
 if "constexpr uint8_t kMaxHarmonicEvents = 8;" not in progression:
-    print("PHRASE-C1 source guard: progression WHAT capacity is no longer frozen at 8", file=sys.stderr)
+    print(
+        "PHRASE-C1 source guard: progression WHAT capacity is no longer frozen at 8",
+        file=sys.stderr,
+    )
     raise SystemExit(6)
 
-rhythm_types = (ROOT / "src/generation/rhythm/rhythm_types.h").read_text(encoding="utf-8")
+rhythm_types = (ROOT / "src/generation/rhythm/rhythm_types.h").read_text(
+    encoding="utf-8"
+)
 if "constexpr uint8_t kMaxPhraseBars = 4;" not in rhythm_types:
-    print("PHRASE-C1 source guard: existing rhythm-vocabulary 4-bar capacity changed", file=sys.stderr)
+    print(
+        "PHRASE-C1 source guard: existing rhythm-vocabulary 4-bar capacity changed",
+        file=sys.stderr,
+    )
     raise SystemExit(7)
 
 print("PHRASE-C1 source guard: PASS")
