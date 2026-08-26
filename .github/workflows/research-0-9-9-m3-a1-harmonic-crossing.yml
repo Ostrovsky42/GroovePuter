@@ -1,0 +1,27 @@
+name: 0.9.9 M3-A1 harmonic crossing audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-harmonic-crossing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run M3-A1 characterization
+        run: bash tests/run_0_9_9_m3_a1_tests.sh
+
+  core-host-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run core host regression
+        run: bash tests/run_host_tests.sh
