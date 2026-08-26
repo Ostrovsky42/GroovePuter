@@ -288,6 +288,8 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
   const bool keyL =
       lowerKey == 'l' || ui_event.scancode == GROOVEPUTER_L;
+  const bool keyP =
+      lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
 
   static GroovePuterRhythm::PhraseAuditionListeningCase m1ListeningCase =
       GroovePuterRhythm::PhraseAuditionListeningCase::CurrentWired;
