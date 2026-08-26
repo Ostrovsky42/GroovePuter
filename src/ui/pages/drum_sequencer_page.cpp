@@ -290,11 +290,13 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
 
   static GroovePuterRhythm::PhraseAuditionListeningCase m1ListeningCase =
-      GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseControl;
+      GroovePuterRhythm::PhraseAuditionListeningCase::CurrentWired;
 
   if (keyP && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
     using Case = GroovePuterRhythm::PhraseAuditionListeningCase;
-    m1ListeningCase = m1ListeningCase == Case::M1SparseControl
+    m1ListeningCase = m1ListeningCase == Case::CurrentWired
+        ? Case::M1SparseControl
+        : m1ListeningCase == Case::M1SparseControl
         ? Case::M1SparseWired
         : m1ListeningCase == Case::M1SparseWired
             ? Case::M1CallWired

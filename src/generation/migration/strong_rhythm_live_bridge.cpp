@@ -470,6 +470,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(
   engine.setSongMode(false);
   bool materialized = true;
   SynthPattern sparseControl{};
+  SynthPattern sparseControlA{};
   for (uint8_t bar = 0; bar < result.requestedBars; ++bar) {
     engine.setDrumBankIndex(kPhraseAuditionBank);
     engine.setDrumPatternIndex(bar);
@@ -478,9 +479,14 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(
     engine.set303PatternIndex(0, bar);
     engine.set303PatternIndex(1, bar);
 
-    // Preserve the production rollback contract and pitch/timbre source for
-    // each reserved audition slot before strong semantic materialization.
-    engine.regeneratePatternsWithGenre();
+    const bool copySparseControl =
+        listeningCase == PhraseAuditionListeningCase::M1SparseControl &&
+        bar != 0;
+    // C is deliberately generated once. Later slots retain their normal drum
+    // materialization but receive the exact first physical synth patterns.
+    if (!copySparseControl) {
+      engine.regeneratePatternsWithGenre();
+    }
 
     const int patternAddress = songPatternFromPageBankIndex(
         page, kPhraseAuditionBank, bar);
@@ -494,7 +500,16 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(
     DrumPatternSet& auditionDrums = manager.editDrumPatternSet(bar);
     SynthPattern& auditionSynthA = manager.editSynthPattern(0, bar);
     SynthPattern& auditionSynthB = manager.editSynthPattern(1, bar);
-    const StrongRhythmMigrationResult barResult = useFrozenFourBarPath
+    const StrongRhythmMigrationResult barResult = copySparseControl
+        ? [&]() {
+            StrongRhythmMigrationContext drumContext = context;
+            drumContext.frozenSelection = &frozenSelection;
+            drumContext.phraseGenerationIdentity =
+                frozenSelection.phraseGenerationIdentity;
+            return migrateStrongRhythmDrums(
+                auditionSettings, drumContext, auditionDrums);
+          }()
+        : useFrozenFourBarPath
         ? migrateStrongRhythmFrozenMaterial(
               auditionSettings, frozenSelection, context, auditionDrums,
               auditionSynthA, auditionSynthB)
@@ -507,8 +522,13 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(
     }
 
     if (listeningCase == PhraseAuditionListeningCase::M1SparseControl) {
-      if (bar == 0) sparseControl = auditionSynthB;
-      else auditionSynthB = sparseControl;
+      if (bar == 0) {
+        sparseControlA = auditionSynthA;
+        sparseControl = auditionSynthB;
+      } else {
+        auditionSynthA = sparseControlA;
+        auditionSynthB = sparseControl;
+      }
     }
 
     if (evolved) {
