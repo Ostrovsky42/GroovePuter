@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 
+#include "src/generation/composition/phrase_harmonic_timeline.h"
 #include "src/generation/roles/chord_progression.h"
 
 using namespace GroovePuterRhythm;
@@ -140,6 +141,51 @@ void testPhraseLengthIsPartOfSourceCoordinate() {
   std::cout << "F phrase_bars=SOURCE_SELECTION_COORDINATE\n";
 }
 
+void testSyntheticThirtyTwoPositionCapacityAndOrdinal17() {
+  StepMask positions[kMaxSemanticPhraseBars]{};
+  const StepMask quarterCycle = static_cast<StepMask>(
+      stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12));
+  for (uint8_t bar = 0; bar < kMaxSemanticPhraseBars; ++bar)
+    positions[bar] = quarterCycle;
+
+  const PhraseHarmonicTimeline timeline =
+      makePhraseHarmonicTimeline(8, positions);
+  assert(timeline.status == PhraseHarmonicTimelineStatus::Ok);
+  assert(timeline.phraseBars == 8);
+  assert(timeline.totalEventPositions == 32);
+
+  const ChordProgressionResult source =
+      realizeChordProgression(requestFor(ProgressionId::PopCycle, 8, 8));
+  assert(source.status == ChordProgressionStatus::Ok);
+  const uint8_t period = repeatingPeriod(source.plan);
+  assert(period >= 1 && period <= 4);
+
+  for (uint8_t bar = 0; bar < 8; ++bar) {
+    const PhraseHarmonicEventRange range =
+        phraseHarmonicEventRangeForBar(timeline, bar);
+    assert(range.firstOrdinal == static_cast<uint8_t>(bar * 4u));
+    assert(range.eventCount == 4);
+    for (uint8_t local = 0; local < range.eventCount; ++local) {
+      const PhraseHarmonicEventCoordinate coordinate =
+          phraseHarmonicEventCoordinate(timeline, bar, local);
+      assert(coordinate.valid);
+      const uint8_t ordinal = coordinate.phraseHarmonicEventOrdinal;
+      assert(ordinal < 32);
+      const HarmonicEvent& resolved = source.plan.events[ordinal % period];
+      assert(sameEvent(resolved, source.plan.events[ordinal % period]));
+    }
+  }
+
+  constexpr uint8_t kRequiredOrdinal = 17;
+  const HarmonicEvent& ordinal17 = source.plan.events[kRequiredOrdinal % period];
+  const HarmonicEvent& ordinal17Repeat =
+      source.plan.events[kRequiredOrdinal % period];
+  assert(sameEvent(ordinal17, ordinal17Repeat));
+
+  std::cout << "G reachability=SYNTHETIC_BOUNDED_CAPACITY_ONLY"
+               " positions=32 ordinal17=DETERMINISTIC\n";
+}
+
 }  // namespace
 
 int main() {
@@ -149,6 +195,7 @@ int main() {
   testEventCountDoesNotReselectSource();
   testCarrierCapacityRemainsEight();
   testPhraseLengthIsPartOfSourceCoordinate();
+  testSyntheticThirtyTwoPositionCapacityAndOrdinal17();
   std::cout << "PHRASE-H1 progression WHAT source: DECISION_A\n";
   return 0;
 }
