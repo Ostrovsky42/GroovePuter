@@ -26,7 +26,10 @@ RUNTIME_SOURCES=" ${DEFAULT_SOURCES} "
 RUNTIME_SOURCES="${RUNTIME_SOURCES// sdl_main.cpp / }"
 RUNTIME_SOURCES="${RUNTIME_SOURCES} ../tests/test_m2_crossbar_note_lifetime_runtime.cpp ../src/midi/usb_midi_output.cpp"
 
-BASE_FLAGS="-std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME"
+# bits/stdc++.h is host-test-only here. Preloading the standard library before
+# the test-local `#define private public` prevents that access shim from touching
+# libstdc++/Clang standard-library class declarations.
+BASE_FLAGS="-std=c++17 -I.. -I. -include bits/stdc++.h -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME"
 
 run_runtime() {
   local cxx="$1"
