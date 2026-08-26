@@ -14,6 +14,13 @@ python3 "${ROOT_DIR}/tests/test_release_generation_routing_source_regressions.py
 python3 "${ROOT_DIR}/tests/test_p_level_production_selector_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_attempt_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_genre_reroll_consistency_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_0_9_9_m4_a1_source_contract.py"
+
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+  -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_0_9_9_m4_a1_phrase_coordinates.cpp" \
+  -o "${BUILD_DIR}/test_0_9_9_m4_a1_phrase_coordinates"
+"${BUILD_DIR}/test_0_9_9_m4_a1_phrase_coordinates"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
