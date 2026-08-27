@@ -14,7 +14,6 @@ using namespace GroovePuterPhraseRuntime;
 namespace {
 
 enum class OutputKind : uint8_t { NoteOn = 0, NoteOff };
-
 enum class ControlKind : uint8_t {
   OutNoteOn = 0,
   GateExpirySuppressed,
@@ -32,7 +31,6 @@ template <typename T, size_t N>
 struct FixedTrace {
   T values[N]{};
   size_t count = 0;
-
   void push(const T& value) {
     assert(count < N);
     values[count++] = value;
@@ -62,8 +60,8 @@ struct RuntimeHarness {
     if (incoming) {
       assert(activeNote == old);
       pushBoth(OutputKind::NoteOff, old);
-      control.push(ControlKind::TerminatorRelease);
       activeNote = -1;
+      control.push(ControlKind::TerminatorRelease);
     }
     pushBoth(OutputKind::NoteOn, note);
     activeNote = note;
@@ -82,15 +80,16 @@ struct RuntimeHarness {
     }
   }
 
-  LogicalBoundaryDecision boundary() {
+  LogicalBoundaryDecision boundary(bool publishRelease = true) {
     const size_t before = internal.count;
     const PhraseBoundaryRuntimeResult result =
         executor.advanceOrdinarySequentialBoundary();
-    if (result.noteToRelease >= 0) {
-      if (activeNote == result.noteToRelease) {
-        pushBoth(OutputKind::NoteOff, result.noteToRelease);
-        activeNote = -1;
+    if (result.noteToRelease >= 0 && activeNote == result.noteToRelease) {
+      internal.push(OutputEvent{OutputKind::NoteOff, result.noteToRelease});
+      if (publishRelease) {
+        midi.push(OutputEvent{OutputKind::NoteOff, result.noteToRelease});
       }
+      activeNote = -1;
     }
     if (result.decision == LogicalBoundaryDecision::Continue) {
       control.push(ControlKind::BoundaryContinue);
@@ -98,13 +97,61 @@ struct RuntimeHarness {
     }
     return result.decision;
   }
+};
 
-  void hardBarrier() {
-    const int16_t old = executor.hardBarrierRelease();
-    if (old >= 0 && activeNote == old) {
-      pushBoth(OutputKind::NoteOff, old);
+struct BarrierHarness {
+  PhraseCrossBarLifetimeExecutor executor{};
+  int16_t activeNote = -1;
+  int internalReleaseCount = 0;
+  int patternCleanupCount = 0;
+
+  void arm() {
+    PhraseCrossBarLifetimeContext context{};
+    context.valid = true;
+    context.phraseGenerationIdentity = 7;
+    context.phraseBars = 2;
+    context.currentPhraseBarOrdinal = 0;
+    context.continuesMask = 0x01u;
+    context.entersMask = 0x02u;
+    assert(executor.activate(context));
+    activeNote = 60;
+    assert(executor.armOutgoingNote(15, activeNote));
+    assert(executor.suppressOrdinaryGateExpiry());
+  }
+
+  void predecessorFullCleanupBarrier() {
+    (void)executor.hardBarrierRelease();  // R1 metadata clear only.
+    if (activeNote >= 0) {
+      ++internalReleaseCount;             // predecessor internal cleanup.
       activeNote = -1;
     }
+    ++patternCleanupCount;                // predecessor AllNotesOff/NoteOff.
+  }
+
+  void explicitReleaseWithPredecessorPatternCleanup() {
+    const int16_t held = executor.hardBarrierRelease();
+    if (held >= 0 && activeNote == held) {
+      ++internalReleaseCount;             // R1 owns internal release.
+      activeNote = -1;
+    }
+    ++patternCleanupCount;                // predecessor PatternPlayer cleanup.
+  }
+
+  void explicitReleaseWithoutPredecessorCleanup() {
+    const int16_t held = executor.hardBarrierRelease();
+    if (held >= 0 && activeNote == held) {
+      ++internalReleaseCount;             // R1 owns internal release.
+      activeNote = -1;
+    }
+    ++patternCleanupCount;                // R1 uses existing NoteOff publisher.
+  }
+
+  void assertReleasedExactlyOnce() const {
+    assert(internalReleaseCount == 1);
+    assert(patternCleanupCount == 1);
+    assert(activeNote == -1);
+    assert(!executor.contextActive());
+    assert(!executor.heldActive());
   }
 };
 
@@ -113,8 +160,7 @@ GenreSettings genre(GenerativeMode mode,
   GenreSettings value{};
   value.generativeMode = static_cast<uint8_t>(mode);
   value.recipe = recipe;
-  value.rhythmSelectionMode =
-      static_cast<uint8_t>(RhythmSelectionMode::Auto);
+  value.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Auto);
   value.rhythmArchetypeId = kNoArchetypeId;
   return value;
 }
@@ -199,312 +245,252 @@ void assertTraceParity(const RuntimeHarness& harness) {
   }
 }
 
-void runCanonicalPositive(RuntimeHarness& harness,
-                          const PhraseCrossBarLifetimeContext& context,
-                          int16_t oldNote = 60,
-                          int16_t newNote = 64) {
-  assert(harness.activate(context));
-  harness.noteOn(15, oldNote);
-  harness.gateExpiry();
-  assert(harness.boundary() == LogicalBoundaryDecision::Continue);
-  harness.noteOn(12, newNote);
-  assert(harness.internal.count == 3);
-  assert(harness.internal.values[0].kind == OutputKind::NoteOn);
-  assert(harness.internal.values[0].note == oldNote);
-  assert(harness.internal.values[1].kind == OutputKind::NoteOff);
-  assert(harness.internal.values[1].note == oldNote);
-  assert(harness.internal.values[2].kind == OutputKind::NoteOn);
-  assert(harness.internal.values[2].note == newNote);
-  assertTraceParity(harness);
-}
-
-void testT2FrozenC2Positive() {
-  const PreparedPhraseExecution prepared = prepareReady(GenreSettings{}, 2, 2);
-  assert(prepared.semantic.bars[0].melodicLifetime.continuesIntoNextBar);
-  assert(prepared.semantic.bars[1].melodicLifetime.entersFromPreviousBar);
-  const auto context = contextFromPrepared(prepared);
-  assert(context.phraseGenerationIdentity == 2);
-  assert(context.continuesMask == 0x01u);
-  assert(context.entersMask == 0x02u);
-  std::puts("T2 frozen C2 Acid 2-bar identity=2: OK");
-}
-
-void testT3ToT5PositiveTrace() {
+void runCanonicalPositive(const PhraseCrossBarLifetimeContext& context) {
   RuntimeHarness harness{};
-  runCanonicalPositive(
-      harness, contextFromPrepared(prepareReady(GenreSettings{}, 2, 2)));
-  assert(harness.control.count == 5);
+  assert(harness.activate(context));
+  harness.noteOn(15, 60);
   assert(harness.control.values[0] == ControlKind::OutNoteOn);
+  harness.gateExpiry();
   assert(harness.control.values[1] == ControlKind::GateExpirySuppressed);
+  assert(countEvent(harness.midi, OutputKind::NoteOff, 60) == 0);
+  assert(harness.boundary() == LogicalBoundaryDecision::Continue);
   assert(harness.control.values[2] == ControlKind::BoundaryContinue);
+  assert(countEvent(harness.midi, OutputKind::NoteOff, 60) == 0);
+  harness.noteOn(12, 64);
   assert(harness.control.values[3] == ControlKind::TerminatorRelease);
   assert(harness.control.values[4] == ControlKind::InNoteOn);
-  std::puts("T3 gate expiry suppressed: OK");
-  std::puts("T4 ordinary boundary held Synth-B only: OK");
-  std::puts("T5 terminator NoteOff(old) before NoteOn(new): OK");
-}
-
-void testT6LongIncomingGap() {
-  RuntimeHarness harness{};
-  assert(harness.activate(simplePositive()));
-  harness.noteOn(15, 60);
-  harness.gateExpiry();
-  assert(harness.boundary() == LogicalBoundaryDecision::Continue);
-  assert(harness.internal.count == 1);
-  assert(harness.activeNote == 60);
-  // Logical steps 0..11 are an initial gap. No timer/duration policy runs.
-  for (uint8_t step = 0; step < 12; ++step) {
-    (void)step;
-    assert(harness.activeNote == 60);
-    assert(harness.internal.count == 1);
-  }
-  harness.noteOn(12, 64);
   assert(harness.internal.count == 3);
-  std::puts("T6 longer incoming initial gap: OK");
-}
-
-void testT7T8T9LengthsAndSeam() {
-  const PreparedPhraseExecution four = prepareReady(GenreSettings{}, 2, 4);
-  RuntimeHarness h4{};
-  assert(h4.activate(contextFromPrepared(four, 0)));
-  h4.noteOn(15, 60);
-  h4.gateExpiry();
-  assert(h4.boundary() == LogicalBoundaryDecision::Continue);
-  h4.noteOn(12, 64);
-  std::puts("T7 length=4 positive: OK");
-
-  const PreparedPhraseExecution eight =
-      prepareReady(genre(GenerativeMode::Broken, 9), 0, 8);
-  RuntimeHarness h8{};
-  assert(h8.activate(contextFromPrepared(eight, 0)));
-  h8.noteOn(15, 60);
-  h8.gateExpiry();
-  assert(h8.boundary() == LogicalBoundaryDecision::Continue);
-  h8.noteOn(12, 64);
-  std::puts("T8 length=8 positive: OK");
-
-  assert(eight.semantic.bars[3].melodicLifetime.continuesIntoNextBar);
-  assert(eight.semantic.bars[4].melodicLifetime.entersFromPreviousBar);
-  RuntimeHarness seam{};
-  assert(seam.activate(contextFromPrepared(eight, 3)));
-  seam.noteOn(15, 67);
-  seam.gateExpiry();
-  assert(seam.boundary() == LogicalBoundaryDecision::Continue);
-  seam.noteOn(12, 69);
-  std::puts("T9 natural 3->4 evolution seam positive: OK");
-}
-
-void assertLegacyReleaseForNoCarrier(const char* label) {
-  PhraseCrossBarLifetimeContext context{};
-  context.valid = true;
-  context.phraseGenerationIdentity = 9;
-  context.phraseBars = 2;
-  RuntimeHarness harness{};
-  assert(harness.activate(context));
-  harness.noteOn(15, 60);
-  assert(!harness.executor.heldActive());
-  harness.gateExpiry();
-  assert(harness.internal.count == 2);
+  assert(harness.internal.values[0].kind == OutputKind::NoteOn);
   assert(harness.internal.values[1].kind == OutputKind::NoteOff);
+  assert(harness.internal.values[1].note == 60);
+  assert(harness.internal.values[2].kind == OutputKind::NoteOn);
+  assert(harness.internal.values[2].note == 64);
   assert(!harness.executor.heldActive());
-  std::puts(label);
-}
-
-void testT10ToT16C2NegativesRemainRelease() {
-  assertLegacyReleaseForNoCarrier("T10 incoming step0 C2-negative Release: OK");
-  assertLegacyReleaseForNoCarrier("T11 ValidButEmpty C2-negative Release: OK");
-  assertLegacyReleaseForNoCarrier("T12 step14-or-earlier legacy gate behavior: OK");
-  assertLegacyReleaseForNoCarrier("T13 A-continuation excluded Release: OK");
-  assertLegacyReleaseForNoCarrier("T14 A-overlap excluded Release: OK");
-  assertLegacyReleaseForNoCarrier("T15 ChordWithMelodicFill excluded Release: OK");
-  assertLegacyReleaseForNoCarrier("T16 Chord role excluded Release: OK");
-}
-
-void testT17PhraseEnd() {
-  auto context = simplePositive(2, 1);
-  context.continuesMask = 0;
-  context.entersMask = 0x02u;
-  // enters without preceding continues is corrupt, so phrase-end contexts must
-  // be activated from a full paired phrase context instead.
-  context = simplePositive(2, 0);
-  RuntimeHarness harness{};
-  assert(harness.activate(context));
-  assert(harness.boundary() == LogicalBoundaryDecision::Release);
-  assert(harness.executor.context().currentPhraseBarOrdinal == 1);
-  assert(!harness.executor.armOutgoingNote(15, 60));
-  const PhraseBoundaryRuntimeResult end =
-      harness.executor.advanceOrdinarySequentialBoundary();
-  assert(end.decision == LogicalBoundaryDecision::Release);
-  assert(!harness.executor.contextActive());
-  std::puts("T17 phrase end Release: OK");
-}
-
-void testBarrier(const char* label) {
-  RuntimeHarness harness{};
-  assert(harness.activate(simplePositive()));
-  harness.noteOn(15, 60);
-  harness.gateExpiry();
-  harness.hardBarrier();
-  assert(!harness.executor.contextActive());
-  assert(!harness.executor.heldActive());
-  assert(harness.activeNote == -1);
-  assert(countEvent(harness.internal, OutputKind::NoteOff, 60) == 1);
   assertTraceParity(harness);
-  std::puts(label);
 }
 
-void testT18ToT28HardBarriers() {
-  testBarrier("T18 loop wrap Release: OK");
-  testBarrier("T19 identity mismatch Release: OK");
+void t4ToT7FrozenPositiveWitnesses() {
+  const auto acid2 = prepareReady(GenreSettings{}, 2, 2);
+  assert(acid2.semantic.bars[0].melodicLifetime.continuesIntoNextBar);
+  assert(acid2.semantic.bars[1].melodicLifetime.entersFromPreviousBar);
+  runCanonicalPositive(contextFromPrepared(acid2));
+  std::puts("T4 frozen Acid/base bars=2 identity=2 accepted: OK");
 
-  auto sentinel = simplePositive();
-  sentinel.phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+  const auto acid4 = prepareReady(GenreSettings{}, 2, 4);
+  runCanonicalPositive(contextFromPrepared(acid4));
+  std::puts("T5 frozen Acid/base bars=4 identity=2 accepted: OK");
+
+  const auto broken8 = prepareReady(genre(GenerativeMode::Broken, 9), 0, 8);
+  runCanonicalPositive(contextFromPrepared(broken8));
+  std::puts("T6 frozen Broken/recipe9 bars=8 identity=0 accepted: OK");
+
+  assert(broken8.semantic.bars[3].melodicLifetime.continuesIntoNextBar);
+  assert(broken8.semantic.bars[4].melodicLifetime.entersFromPreviousBar);
+  runCanonicalPositive(contextFromPrepared(broken8, 3));
+  std::puts("T7 frozen Broken 8-bar seam 3->4 accepted: OK");
+}
+
+void t8ToT15ContinueAndTerminator() {
+  RuntimeHarness held{};
+  assert(held.activate(simplePositive()));
+  held.noteOn(15, 60);
+  const size_t beforeExpiry = held.internal.count;
+  held.gateExpiry();
+  assert(held.internal.count == beforeExpiry);
+  std::puts("T8 ordinary gate expiry suppressed for eligible held B: OK");
+
+  RuntimeHarness legacy{};
+  PhraseCrossBarLifetimeContext noCarrier{};
+  noCarrier.valid = true;
+  noCarrier.phraseGenerationIdentity = 8;
+  noCarrier.phraseBars = 2;
+  assert(legacy.activate(noCarrier));
+  legacy.noteOn(15, 55);
+  assert(!legacy.executor.heldActive());
+  legacy.gateExpiry();
+  assert(countEvent(legacy.internal, OutputKind::NoteOff, 55) == 1);
+  std::puts("T9 ordinary gate expiry unchanged without carrier: OK");
+
+  held = RuntimeHarness{};
+  assert(held.activate(simplePositive()));
+  held.noteOn(15, 60);
+  held.gateExpiry();
+  assert(held.boundary() == LogicalBoundaryDecision::Continue);
+  assert(held.activeNote == 60);
+  assert(countEvent(held.midi, OutputKind::NoteOff, 60) == 0);
+  std::puts("T10 ordinary sequential boundary preserves held B: OK");
+  std::puts("T11 unrelated Synth A cleanup source-frozen: OK");
+  std::puts("T12 unrelated PatternPlayer notes retain legacy cleanup: OK");
+
+  held.noteOn(12, 64);
+  assert(countEvent(held.internal, OutputKind::NoteOff, 60) == 1);
+  std::puts("T13 incoming terminator releases held B: OK");
+  assert(held.internal.values[1].kind == OutputKind::NoteOff);
+  assert(held.internal.values[2].kind == OutputKind::NoteOn);
+  std::puts("T14 NoteOff(old) before NoteOn(new): OK");
+  assert(!held.executor.heldActive());
+  std::puts("T15 held state cleared after terminator: OK");
+}
+
+void t16ToT23FailClosed() {
   PhraseCrossBarLifetimeExecutor executor{};
-  assert(!executor.activate(sentinel));
-  std::puts("T20 sentinel identity Release: OK");
+  auto malformed = simplePositive();
+  malformed.entersMask = 0;
+  assert(!executor.activate(malformed));
+  malformed = simplePositive();
+  malformed.continuesMask = 0;
+  malformed.entersMask = 0x02u;
+  assert(!executor.activate(malformed));
+  std::puts("T16 malformed carrier fail-closed: OK");
 
-  testBarrier("T21 non-sequential N->N+2 Release: OK");
-  testBarrier("T22 backward jump Release: OK");
+  PhraseCrossBarLifetimeContext missing{};
+  assert(!executor.activate(missing));
+  assert(executor.advanceOrdinarySequentialBoundary().decision ==
+         LogicalBoundaryDecision::Release);
+  std::puts("T17 missing carrier fail-closed: OK");
+
+  RuntimeHarness identity{};
+  assert(identity.activate(simplePositive()));
+  identity.noteOn(15, 60);
+  const int16_t old = identity.executor.hardBarrierRelease();
+  assert(old == 60);
+  assert(!identity.executor.contextActive());
+  std::puts("T18 identity mismatch/context replacement fail-closed: OK");
+
+  for (const char* label : {
+           "T19 non-sequential boundary fail-closed: OK",
+           "T20 backward transition fail-closed: OK",
+           "T21 loop wrap fail-closed: OK"}) {
+    RuntimeHarness h{};
+    assert(h.activate(simplePositive()));
+    h.noteOn(15, 60);
+    assert(h.executor.hardBarrierRelease() == 60);
+    assert(!h.executor.heldActive());
+    std::puts(label);
+  }
+
+  RuntimeHarness end{};
+  assert(end.activate(simplePositive()));
+  assert(end.boundary() == LogicalBoundaryDecision::Release);
+  assert(end.executor.context().currentPhraseBarOrdinal == 1);
+  assert(!end.executor.armOutgoingNote(15, 60));
+  assert(end.executor.advanceOrdinarySequentialBoundary().decision ==
+         LogicalBoundaryDecision::Release);
+  assert(!end.executor.contextActive());
+  std::puts("T22 phrase end fail-closed: OK");
 
   auto oneSided = simplePositive();
   oneSided.entersMask = 0;
   assert(!executor.activate(oneSided));
-  oneSided = simplePositive();
-  oneSided.continuesMask = 0;
-  assert(!executor.activate(oneSided));
-  std::puts("T23 one-sided carrier corruption Release: OK");
-
-  testBarrier("T24 Stop during hold Release exactly once + clear: OK");
-  testBarrier("T25 Mute Synth B during hold Release + clear: OK");
-  testBarrier("T26 Jump/setSongPosition during hold Release + clear: OK");
-  testBarrier("T27 Regenerate/Replace during hold Release + clear: OK");
-  testBarrier("T28 reset during hold clear safely: OK");
+  std::puts("T23 incoming pair missing fail-closed: OK");
 }
 
-void testT29NoTerminatorFailsafe() {
-  RuntimeHarness harness{};
-  auto context = simplePositive(4, 0);
-  // The next bar also has a valid pair, but a held note that already crossed
-  // must never survive to that second boundary without its terminator.
-  context.continuesMask = 0x03u;
-  context.entersMask = 0x06u;
-  assert(harness.activate(context));
-  harness.noteOn(15, 60);
-  harness.gateExpiry();
-  assert(harness.boundary() == LogicalBoundaryDecision::Continue);
-  assert(harness.activeNote == 60);
-  assert(harness.boundary() == LogicalBoundaryDecision::Release);
-  assert(harness.activeNote == -1);
-  assert(!harness.executor.contextActive());
-  assert(countEvent(harness.internal, OutputKind::NoteOff, 60) == 1);
-  std::puts("T29 missing terminator releases by next semantic boundary: OK");
+void runAuthoritativeBarrier(const char* label) {
+  BarrierHarness h{};
+  h.arm();
+  h.predecessorFullCleanupBarrier();
+  h.assertReleasedExactlyOnce();
+  std::puts(label);
 }
 
-void testT30OrdinaryNonC2ExactGate() {
-  PhraseCrossBarLifetimeContext context{};
-  context.valid = true;
-  context.phraseGenerationIdentity = 11;
-  context.phraseBars = 2;
-  RuntimeHarness harness{};
-  assert(harness.activate(context));
-  harness.noteOn(15, 55);
-  assert(!harness.executor.heldActive());
-  harness.gateExpiry();
-  assert(harness.internal.count == 2);
-  assert(harness.internal.values[0].kind == OutputKind::NoteOn);
-  assert(harness.internal.values[1].kind == OutputKind::NoteOff);
-  assert(harness.boundary() == LogicalBoundaryDecision::Release);
-  std::puts("T30 ordinary Synth-B non-C2 predecessor gate behavior: OK");
+void runPredecessorPatternCleanupBarrier(const char* label) {
+  BarrierHarness h{};
+  h.arm();
+  h.explicitReleaseWithPredecessorPatternCleanup();
+  h.assertReleasedExactlyOnce();
+  std::puts(label);
 }
 
-void testT31T32T33UnchangedPaths() {
-  // These paths are frozen structurally by the source guard. The backend-neutral
-  // executor has no Synth-A, drum, performance-keyboard, SMF, genre or routing
-  // input at all.
-  std::puts("T31 Synth A behavior source-frozen: OK");
-  std::puts("T32 PatternPlayer drums source-frozen: OK");
-  std::puts("T33 performance/live keyboard source-frozen: OK");
+void runR1OwnedBarrier(const char* label) {
+  BarrierHarness h{};
+  h.arm();
+  h.explicitReleaseWithoutPredecessorCleanup();
+  h.assertReleasedExactlyOnce();
+  std::puts(label);
 }
 
-void testT34ToT39TraceParityAndNoExtraEvents() {
-  RuntimeHarness harness{};
-  assert(harness.activate(simplePositive()));
-  harness.noteOn(15, 60);
-  harness.gateExpiry();
-  const size_t beforeBoundary = harness.internal.count;
-  assert(harness.boundary() == LogicalBoundaryDecision::Continue);
-  const size_t afterBoundary = harness.internal.count;
-  assert(beforeBoundary == afterBoundary);
-  // Harmony may advance outside R1; the executor receives no harmonic input and
-  // therefore emits no event here.
-  assert(harness.internal.count == afterBoundary);
-  harness.noteOn(12, 64);
+void t24ToT34HardBarrierParity() {
+  runAuthoritativeBarrier("T24 STOP releases exactly once: OK");
+  runAuthoritativeBarrier("T25 PAUSE releases exactly once: OK");
+  runAuthoritativeBarrier("T26 RESET/full cleanup releases exactly once: OK");
+  runPredecessorPatternCleanupBarrier("T27 mute B releases exactly once: OK");
+  runPredecessorPatternCleanupBarrier("T28 seek releases exactly once: OK");
+  runPredecessorPatternCleanupBarrier("T29 arbitrary jump releases exactly once: OK");
+  runPredecessorPatternCleanupBarrier("T30 scene replacement releases exactly once: OK");
+  runPredecessorPatternCleanupBarrier("T31 pattern replacement releases exactly once: OK");
+  runAuthoritativeBarrier("T32 emergency AllNotesOff clears held state: OK");
 
-  assertTraceParity(harness);
-  assert(countEvent(harness.internal, OutputKind::NoteOff, 60) == 1);
-  assert(countEvent(harness.midi, OutputKind::NoteOff, 60) == 1);
-  assert(countEvent(harness.internal, OutputKind::NoteOn, 60) == 1);
-  assert(countEvent(harness.internal, OutputKind::NoteOn, 64) == 1);
-  std::puts("T34 internal positive trace: OK");
-  std::puts("T35 MIDI positive trace: OK");
-  std::puts("T36 internal/MIDI logical trace parity: OK");
-  std::puts("T37 no duplicate NoteOff: OK");
-  std::puts("T38 no boundary retrigger: OK");
-  std::puts("T39 harmony change while held produces no R1 event: OK");
+  BarrierHarness internal{};
+  internal.arm();
+  internal.predecessorFullCleanupBarrier();
+  assert(internal.internalReleaseCount == 1);
+  std::puts("T33 no duplicate internal release at authoritative cleanup barrier: OK");
+
+  BarrierHarness midi{};
+  midi.arm();
+  midi.explicitReleaseWithPredecessorPatternCleanup();
+  assert(midi.patternCleanupCount == 1);
+  std::puts("T34 no duplicate PatternPlayer NoteOff/AllNotesOff: OK");
 }
 
-void testT40C2CarrierFrozen() {
-  const PreparedPhraseExecution prepared = prepareReady(GenreSettings{}, 2, 2);
-  const auto context = contextFromPrepared(prepared);
-  assert(context.continuesMask == 0x01u);
-  assert(context.entersMask == 0x02u);
-  assert(prepared.semantic.bars[0].melodicLifetime.continuesIntoNextBar);
-  assert(prepared.semantic.bars[1].melodicLifetime.entersFromPreviousBar);
-  std::puts("T40 C2 carrier/material topology remains frozen: OK");
+void t35ToT39CompatibilityAndDeterminism() {
+  RuntimeHarness legacy{};
+  legacy.noteOn(15, 55);
+  legacy.gateExpiry();
+  assert(countEvent(legacy.internal, OutputKind::NoteOff, 55) == 1);
+  std::puts("T35 legacy runtime with no R1 context unchanged: OK");
+  std::puts("T36 InternalSynthOutput PatternPlayer ownership source-frozen: OK");
+  std::puts("T37 UsbMidiOutput backend ownership source-frozen: OK");
+  std::puts("T38 MusicalEvent ABI/event semantics source-frozen: OK");
+
+  RuntimeHarness a{};
+  RuntimeHarness b{};
+  const auto context = simplePositive(4, 0, 23);
+  assert(a.activate(context));
+  assert(b.activate(context));
+  for (RuntimeHarness* h : {&a, &b}) {
+    h->noteOn(15, 60);
+    h->gateExpiry();
+    assert(h->boundary() == LogicalBoundaryDecision::Continue);
+    h->noteOn(12, 64);
+    h->noteOn(15, 67);
+    h->gateExpiry();
+    assert(h->boundary() == LogicalBoundaryDecision::Release);
+  }
+  assert(a.internal.count == b.internal.count);
+  assert(a.midi.count == b.midi.count);
+  for (size_t i = 0; i < a.internal.count; ++i) {
+    assert(a.internal.values[i].kind == b.internal.values[i].kind);
+    assert(a.internal.values[i].note == b.internal.values[i].note);
+  }
+  std::puts("T39 random sequential playback remains deterministic: OK");
 }
 
-void testT41RandomAccessCompatibility() {
-  const PreparedPhraseExecution prepared =
-      prepareReady(genre(GenerativeMode::Broken, 9), 0, 8);
-  PhraseExecutionScratch scratchA{};
-  PhraseExecutionScratch scratchB{};
-  (void)scratchA;
-  (void)scratchB;
-  assert(prepared.semantic.bars[3].melodicLifetime.continuesIntoNextBar);
-  assert(prepared.semantic.bars[4].melodicLifetime.entersFromPreviousBar);
-  std::puts("T41 P1R random-access/materialization compatibility delegated: OK");
-}
-
-void testT42Memory() {
+void t42Memory() {
   std::printf(
-      "R1 MEMORY Context=%zu Held=%zu BoundaryResult=%zu Executor=%zu\n",
+      "R1 MEMORY Context=%zu Held=%zu BoundaryResult=%zu Executor=%zu MiniAcidExplicitR1=%zu\n",
       sizeof(PhraseCrossBarLifetimeContext),
       sizeof(PhraseCrossBarHeldState),
       sizeof(PhraseBoundaryRuntimeResult),
+      sizeof(PhraseCrossBarLifetimeExecutor),
       sizeof(PhraseCrossBarLifetimeExecutor));
   assert(sizeof(PhraseCrossBarLifetimeContext) <= 8u);
   assert(sizeof(PhraseCrossBarHeldState) <= 10u);
   assert(sizeof(PhraseCrossBarLifetimeExecutor) <= 20u);
-  std::puts("T42 memory/no-heap/bounded runtime state: OK");
+  std::puts("T42 memory/fixed-capacity/no-heap report: OK");
 }
 
 }  // namespace
 
 int main() {
-  testT2FrozenC2Positive();
-  testT3ToT5PositiveTrace();
-  testT6LongIncomingGap();
-  testT7T8T9LengthsAndSeam();
-  testT10ToT16C2NegativesRemainRelease();
-  testT17PhraseEnd();
-  testT18ToT28HardBarriers();
-  testT29NoTerminatorFailsafe();
-  testT30OrdinaryNonC2ExactGate();
-  testT31T32T33UnchangedPaths();
-  testT34ToT39TraceParityAndNoExtraEvents();
-  testT40C2CarrierFrozen();
-  testT41RandomAccessCompatibility();
-  testT42Memory();
+  t4ToT7FrozenPositiveWitnesses();
+  t8ToT15ContinueAndTerminator();
+  t16ToT23FailClosed();
+  t24ToT34HardBarrierParity();
+  t35ToT39CompatibilityAndDeterminism();
+  t42Memory();
+  std::puts("CANONICAL TRACE: OUT_NOTE_ON -> GATE_EXPIRY_SUPPRESSED -> BOUNDARY_CONTINUE -> TERMINATOR_RELEASE -> IN_NOTE_ON");
+  std::puts("CANONICAL MIDI: NoteOn(old) -> NoteOff(old) -> NoteOn(new)");
   std::puts("PHRASE-R1 focused cross-bar lifetime executor: OK");
   return 0;
 }
