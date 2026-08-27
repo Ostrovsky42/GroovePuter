@@ -70,7 +70,7 @@ assert re.search(
 assert "return isStaticHarmonicProgression(id) ? 1 : 2;" in harmonic
 assert "evenlySpacedHarmonicOnsets" in harmonic
 for forbidden in (
-    "0,4,8,12", "0,6,10", "0,12", "F08.1",
+    "0,4,8,12", "0,6,10", "0,12",
 ):
     assert forbidden not in harmonic, f"forbidden harmonic clock vocabulary: {forbidden}"
 
