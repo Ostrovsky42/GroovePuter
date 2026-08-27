@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
 
+# Validation only: no artifacts are published and no repository state is mutated.
 jobs:
   phrase-r1:
     runs-on: ubuntu-latest
