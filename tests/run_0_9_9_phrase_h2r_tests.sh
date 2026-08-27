@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-CXXFLAGS=(-std=c++17 -Wall -Wextra -Werror -I.)
+CXXFLAGS=(-std=c++20 -Wall -Wextra -Werror -I.)
 SRC=tests/test_0_9_9_phrase_h2r_harmonic_clock_projection.cpp
 OWNER_SRC=(
   src/generation/generation_context.cpp
