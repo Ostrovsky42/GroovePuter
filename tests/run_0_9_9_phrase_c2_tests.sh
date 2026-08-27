@@ -96,9 +96,7 @@ build "${CXX:-g++}" "$TEST" "$BUILD/ubsan" \
 diff -u "$BUILD/gcc-1.out" "$BUILD/ubsan.out"
 echo "C2 UBSan gate: OK"
 
-# C2-C0 compatibility: re-run the frozen positive topology observer against the
-# current production sources. Its own runner cannot be invoked because its
-# research-only src/ firewall correctly expects zero production delta.
+# C2-C0 compatibility: first replay the frozen minimal production witness.
 C0_TEST="${ROOT}/tests/test_0_9_9_phrase_c2_c0_boundary_topology.cpp"
 build "${CXX:-g++}" "$C0_TEST" "$BUILD/c2-c0-compat" -O2
 "$BUILD/c2-c0-compat" > "$BUILD/c2-c0-compat.out"
@@ -107,7 +105,35 @@ grep -F "C2-C0 TARGET PURE A: mode=0 recipe=0 bars=2 identity=2 boundary=0->1" \
 grep -F "C2-C0 TARGET SUBCLASS: A_ONSET" "$BUILD/c2-c0-compat.out"
 grep -F "C2-C0 TARGET RESULT A: NATURAL PURE-MELODIC CROSSBAR TOPOLOGY REACHABLE" \
   "$BUILD/c2-c0-compat.out"
-echo "T19 C2-C0 positive topology compatibility: OK"
+
+# Then rerun the complete frozen attempt-0 C2-C0 census. This proves that C2
+# only consumes the observed topology; it does not change any classifier input
+# or the authoritative raw/unique corpus totals.
+C0_CORPUS="${ROOT}/tests/test_0_9_9_phrase_c2_c0_corpus.cpp"
+build "${CXX:-g++}" "$C0_CORPUS" "$BUILD/c2-c0-corpus" -O2
+"$BUILD/c2-c0-corpus" > "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CORPUS DOMAIN: modes=16 recipes=18 identities=65535 lengths=4 attempt=0 rhythm_selection=AUTO request_tuples=75496320" \
+  "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CORPUS TOTALS: phrases=41418120 adjacent_boundaries=96729660 unique_boundary_signatures=294725 pure_melodic=52296930 pure_melodic_nonempty_incoming=41306411" \
+  "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS A_ONSET: raw=17530610 unique=30408" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS A_CONTINUATION: raw=0 unique=0" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS A_OVERLAP: raw=0 unique=0" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS B: raw=22115006 unique=33632" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS H: raw=9276932 unique=80113" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS N0: raw=1644348 unique=1408" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS N1: raw=21660687 unique=87948" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS N3: raw=909477 unique=6091" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS OTHER: raw=23592600 unique=55125" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 CLASS N2_TERMINAL: raw=41418120 unique=104104" "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 DEFAULT PATH: GenreSettings{} => mode=0(Acid) recipe=0 rhythm_selection=AUTO; A_ONSET raw=59684 reachable=YES" \
+  "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 A_ONSET LOCATION: intra=17495781 seam_3_to_4=34829" \
+  "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 DECISION A: NATURAL PURE-MELODIC CROSSBAR TOPOLOGY REACHABLE" \
+  "$BUILD/c2-c0-corpus.out"
+grep -F "C2-C0 NEXT PRODUCER SCOPE: A-ONSET ONLY" "$BUILD/c2-c0-corpus.out"
+echo "T19 C2-C0 exhaustive corpus compatibility: OK"
 
 # Full frozen P1R focused suite remains relevant. Its lifetime-inert predecessor
 # fixture is LoFi/hybrid and therefore must remain all-false under A_ONSET-only C2.
