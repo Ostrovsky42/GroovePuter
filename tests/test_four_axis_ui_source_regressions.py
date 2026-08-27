@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Source-level ownership gates for the current workflow model.
+"""Source-level ownership gates for the current GENERATE workflow.
 
 GENERATION and TEXTURE standalone pages were removed. GENERATE now contains
-exactly GENRE and FEEL. Their historical persisted page/workspace IDs remain
-compatibility aliases that normalize to FEEL. Legacy standalone synth parameter
-page IDs similarly normalize to the owning SYNTH A/B track pages.
+exactly GENRE and FEEL. GF2 reinterprets those existing surfaces without adding
+a third page or duplicate musical state: GENRE exposes recipe/rhythm/depth,
+FEEL exposes timing/velocity plus the existing 1/2/4/8-bar feel-cycle field.
+Historical persisted page/workspace IDs remain compatibility aliases that
+normalize to FEEL. Legacy standalone synth parameter page IDs similarly
+normalize to the owning SYNTH A/B track pages.
 """
 
 from pathlib import Path
@@ -54,6 +57,12 @@ for needle in (
     "GenreCatalog::grooveboxModeForRecipe",
     '"PROFILE ONLY"',
     '"MATERIALIZE"',
+    '"RECIPE"',
+    '"DEPTH"',
+    "FocusRow::Depth",
+    "GroovePuterState::currentGenerationLevel()",
+    "GroovePuterState::cycleGenerationLevel(delta)",
+    '"G:GEN P:DEPTH M:MODE"',
 ):
     require(GENRE, needle, f"GENRE contract missing: {needle}")
 
@@ -95,12 +104,14 @@ for needle in (
     "FocusRow::Repeats",
     "scene.feel.patternBars",
     "shiftRepeatBars",
-    '"REPEATS"',
+    '"FEEL CYCLE"',
+    '"FEEL WINDOW: 1/2/4/8 bars"',
+    '"HOLD L/R:ACCEL P:DEPTH"',
     "if (focus_ == FocusRow::Preset)",
     "preset_index_ = wrapIndex",
 ):
     require(FEEL, needle, f"FEEL contract missing: {needle}")
-for repeat_value in ("1, 2, 4, 8", '"CYCLE: repeat 1/2/4/8 bars"'):
+for repeat_value in ("1, 2, 4, 8",):
     require(FEEL, repeat_value, f"FEEL repeat contract missing: {repeat_value}")
 forbid(
     FEEL,
@@ -110,6 +121,22 @@ forbid(
         "applyTexture(", "PhraseGenerator::",
     ),
     "FEEL",
+)
+
+# scene.feel.patternBars is a FEEL cycle/window only. Logical generated phrase
+# length belongs to the Phrase/composition lineage and must not leak onto FEEL.
+forbid(
+    FEEL,
+    ('"PHRASE LENGTH"', '"PHRASE/CYCLE"', "requestedPhraseBars"),
+    "FEEL phrase-length ownership",
+)
+
+# GF2 is a UI reinterpretation only. Do not expose a no-op future axis and do
+# not reintroduce a second variation policy container on either GENERATE page.
+forbid(
+    GENRE + FEEL,
+    ('"ACTIVITY"', "ActivityLevel", "VariationProfile"),
+    "GF2 GENERATE scaffold",
 )
 
 length_owner_tokens = ("capture_length_", "cycleLength(")
@@ -200,4 +227,4 @@ for style in (
 ):
     require(PALETTE, style, f"GENERATE palette missing style: {style}")
 
-print("Two-page GENERATE/UI alias source regressions: PASS")
+print("GF2 two-page GENERATE source regressions: PASS")

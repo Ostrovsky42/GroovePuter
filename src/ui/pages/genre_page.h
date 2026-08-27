@@ -23,6 +23,7 @@ class GenrePage : public IPage {
     Genre = 0,
     Variant,
     Rhythm,
+    Depth,
     Apply,
   };
 

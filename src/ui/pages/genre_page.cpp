@@ -124,7 +124,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 4;
+  constexpr int kCount = 5;
   focus_ = static_cast<FocusRow>(wrapIndex(static_cast<int>(focus_) + delta, kCount));
 }
 
@@ -350,7 +350,7 @@ void GenrePage::draw(IGfx& gfx) {
 
   char value[80];
   std::snprintf(value, sizeof(value), "%s", GenreCatalog::recipeName(selectedRecipe));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "VARIANT", value,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "RECIPE", value,
                        focus_ == FocusRow::Variant, axisColor, palette);
 
   const char* rhythmName = "AUTO";
@@ -361,8 +361,11 @@ void GenrePage::draw(IGfx& gfx) {
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "RHYTHM", rhythmName,
                        focus_ == FocusRow::Rhythm, axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "REROLL", "REPEAT G",
-                       false, axisColor, palette);
+  AxisUI::drawValueRow(
+      gfx, x, LayoutManager::lineY(4), width, "DEPTH",
+      GroovePuterState::generationLevelShortName(
+          GroovePuterState::currentGenerationLevel()),
+      focus_ == FocusRow::Depth, axisColor, palette);
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
 
@@ -390,7 +393,7 @@ void GenrePage::draw(IGfx& gfx) {
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:LEVEL M:MODE");
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:MODE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -438,6 +441,11 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Genre: shiftGenre(delta); return true;
       case FocusRow::Variant: cycleRecipeSelection(delta); return true;
       case FocusRow::Rhythm: cycleRhythmSelection(delta); return true;
+      case FocusRow::Depth: {
+        const auto level = GroovePuterState::cycleGenerationLevel(delta);
+        UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+        return true;
+      }
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }
