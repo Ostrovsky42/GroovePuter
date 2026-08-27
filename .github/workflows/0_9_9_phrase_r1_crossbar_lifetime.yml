@@ -1,0 +1,22 @@
+name: 0.9.9 PHRASE-R1 cross-bar lifetime
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phrase-r1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate cross-bar lifetime executor
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_0_9_9_phrase_r1_tests.sh
