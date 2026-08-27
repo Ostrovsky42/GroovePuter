@@ -74,6 +74,7 @@ f13_consumers = consumers(F13_FROZEN_NAME)
 expected_current_consumers = {
     ".github/workflows/stage15-tonal-baseline.yml",
     "tests/run_0_9_9_phrase_w1_tests.sh",
+    "tests/run_0_9_9_phrase_w1r_tests.sh",
     "tests/test_stage15_tonal_fixture_roles.py",
 }
 expected_pre_f13_consumers = {
