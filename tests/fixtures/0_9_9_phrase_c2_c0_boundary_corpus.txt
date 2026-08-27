@@ -1,0 +1,4 @@
+0.9.9-PHRASE-C2-C0 boundary corpus
+frozen_base=016bcd6ba514b3a57f8803c63c869f1b2a8953a7
+status=generated_by_focused_characterization
+format=human-readable deterministic summary emitted by tests/test_0_9_9_phrase_c2_c0_boundary_topology.cpp
