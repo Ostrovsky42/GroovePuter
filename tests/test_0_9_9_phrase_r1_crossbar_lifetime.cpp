@@ -415,7 +415,7 @@ void t24ToT34HardBarrierParity() {
   runAuthoritativeBarrier("T26 RESET/full cleanup releases exactly once: OK");
   runPredecessorPatternCleanupBarrier("T27 mute B releases exactly once: OK");
   runPredecessorPatternCleanupBarrier("T28 seek releases exactly once: OK");
-  runPredecessorPatternCleanupBarrier("T29 arbitrary jump releases exactly once: OK");
+  runR1OwnedBarrier("T29 arbitrary jump releases exactly once: OK");
   runPredecessorPatternCleanupBarrier("T30 scene replacement releases exactly once: OK");
   runPredecessorPatternCleanupBarrier("T31 pattern replacement releases exactly once: OK");
   runAuthoritativeBarrier("T32 emergency AllNotesOff clears held state: OK");
