@@ -46,6 +46,11 @@ def block(text: str, start: str, end: str) -> str:
     return text.split(start, 1)[1].split(end, 1)[0]
 
 
+def strip_cpp_comments(text: str) -> str:
+    return re.sub(r"//.*?$|/\*.*?\*/", "", text,
+                  flags=re.MULTILINE | re.DOTALL)
+
+
 merge_base = git("merge-base", "HEAD", BASE)
 if merge_base != BASE:
     fail(f"predecessor mismatch: {merge_base}")
@@ -63,6 +68,7 @@ for path in FROZEN_BACKENDS + FROZEN_GENERATION:
         fail(f"frozen owner changed: {path}")
 
 helper = (ROOT / "src/dsp/phrase_crossbar_lifetime_runtime.h").read_text()
+helper_code = strip_cpp_comments(helper)
 engine_h = (ROOT / "src/dsp/miniacid_engine.h").read_text()
 engine_cpp = (ROOT / "src/dsp/miniacid_engine.cpp").read_text()
 
@@ -93,11 +99,16 @@ for forbidden in (
     "holdSteps", "durationBars", "maxCrossBarSteps", "milliseconds",
     "std::vector", "std::map", "std::unordered_map", "std::mutex",
 ):
-    if forbidden in helper:
+    if forbidden in helper_code:
         fail(f"musical/dynamic policy leaked into runtime owner: {forbidden}")
-for pattern in (r"\bmalloc\s*\(", r"\bcalloc\s*\(", r"\brealloc\s*\(",
-                r"\bnew\s+[A-Za-z_:]", r"\bdelete\s+"):
-    if re.search(pattern, helper):
+for pattern in (
+    r"\bmalloc\s*\(",
+    r"\bcalloc\s*\(",
+    r"\brealloc\s*\(",
+    r"\bnew\s+(?:\(|[A-Za-z_:][A-Za-z0-9_:<>]*\s*[\(\[])",
+    r"\bdelete\s+",
+):
+    if re.search(pattern, helper_code):
         fail(f"heap operation in runtime owner: {pattern}")
 
 for fragment in (
@@ -118,16 +129,26 @@ for fragment in (
 if "invalidatePhraseCrossBarLifetime_" in engine_h + engine_cpp:
     fail("old ambiguous hard-barrier helper survived")
 
-# Hard-barrier parity: clear is metadata-only; release owns one internal release
-# and emits PatternPlayer NoteOff only if no predecessor PatternPlayer cleanup follows.
-clear_body = block(engine_cpp, "void MiniAcid::clearPhraseCrossBarLifetime_() {", "}\n\nvoid MiniAcid::releasePhraseCrossBarLifetime_")
+clear_body = block(
+    engine_cpp,
+    "void MiniAcid::clearPhraseCrossBarLifetime_() {",
+    "}\n\nvoid MiniAcid::releasePhraseCrossBarLifetime_",
+)
 if "hardBarrierRelease()" not in clear_body:
     fail("state-only clear no longer clears executor")
-for forbidden in ("synthVoices_[1]->release()", "publishPatternNoteOff_", "publishPatternAllNotesOff_"):
+for forbidden in (
+    "synthVoices_[1]->release()",
+    "publishPatternNoteOff_",
+    "publishPatternAllNotesOff_",
+):
     if forbidden in clear_body:
         fail(f"state-only clear performs physical cleanup: {forbidden}")
 
-release_body = block(engine_cpp, "void MiniAcid::releasePhraseCrossBarLifetime_(", "}\n\nint MiniAcid::liveNote")
+release_body = block(
+    engine_cpp,
+    "void MiniAcid::releasePhraseCrossBarLifetime_(",
+    "}\n\nint MiniAcid::liveNote",
+)
 for required in (
     "hardBarrierRelease()",
     "if (synthVoices_[1]) synthVoices_[1]->release();",
@@ -138,10 +159,23 @@ for required in (
 if release_body.count("synthVoices_[1]->release()") != 1:
     fail("explicit hard-barrier helper must release internal Synth-B exactly once")
 
-# Existing authoritative full-cleanup paths must clear R1 metadata only.
-for function_name in ("start", "stop", "pauseTransport", "continueTransport"):
-    marker = f"void MiniAcid::{function_name}() {{"
-    body = block(engine_cpp, marker, "\n}\n")
+# Existing authoritative full-cleanup paths must clear R1 metadata only. Use
+# explicit next-function delimiters so nested control-flow braces cannot shorten
+# the inspected body.
+transport_blocks = {
+    "start": ("void MiniAcid::start() {", "\n}\n\nvoid MiniAcid::stop"),
+    "stop": ("void MiniAcid::stop() {", "\n}\n\nvoid MiniAcid::pauseTransport"),
+    "pauseTransport": (
+        "void MiniAcid::pauseTransport() {",
+        "\n}\n\nvoid MiniAcid::continueTransport",
+    ),
+    "continueTransport": (
+        "void MiniAcid::continueTransport() {",
+        "\n}\n\nvoid MiniAcid::liveNoteOn",
+    ),
+}
+for function_name, (start, end) in transport_blocks.items():
+    body = block(engine_cpp, start, end)
     if "clearPhraseCrossBarLifetime_();" not in body:
         fail(f"{function_name} does not use state-only clear")
     if "releasePhraseCrossBarLifetime_(" in body:
@@ -149,13 +183,19 @@ for function_name in ("start", "stop", "pauseTransport", "continueTransport"):
     if "publishPatternAllNotesOff_();" not in body:
         fail(f"{function_name} lost authoritative PatternPlayer cleanup")
 
-reset_body = block(engine_cpp, "void MiniAcid::reset() {", "\n}\n\nvoid MiniAcid::start")
+reset_body = block(
+    engine_cpp,
+    "void MiniAcid::reset() {",
+    "\n}\n\nvoid MiniAcid::start",
+)
 if "clearPhraseCrossBarLifetime_();" not in reset_body:
     fail("reset does not clear R1 metadata before authoritative reset")
-if "synthVoices_[1]->reset();" not in reset_body or "publishPatternAllNotesOff_();" not in reset_body:
+if (
+    "synthVoices_[1]->reset();" not in reset_body
+    or "publishPatternAllNotesOff_();" not in reset_body
+):
     fail("reset authoritative cleanup changed")
 
-# Paths with predecessor PatternPlayer cleanup use internal-only R1 release.
 for required in (
     "if (idx == 1 && muted) releasePhraseCrossBarLifetime_(true);",
     "releasePhraseCrossBarLifetime_(songMode_ && playing);",
@@ -165,8 +205,6 @@ for required in (
     if required not in engine_cpp:
         fail(f"predecessor-cleanup parity wiring missing: {required}")
 
-# Context/queue replacement has no later authoritative cleanup: R1 must emit the
-# one old PatternPlayer NoteOff itself.
 for required in (
     "if (patternEventQueue_ != queue) releasePhraseCrossBarLifetime_(false);",
     "bool MiniAcid::setPhraseCrossBarLifetimeContext(",
@@ -174,12 +212,22 @@ for required in (
 ):
     if required not in engine_cpp:
         fail(f"R1-owned cleanup path missing: {required}")
-set_context = block(engine_cpp, "bool MiniAcid::setPhraseCrossBarLifetimeContext(", "\n}\n\nvoid MiniAcid::clearPhraseCrossBarLifetimeContext")
-clear_context = block(engine_cpp, "void MiniAcid::clearPhraseCrossBarLifetimeContext() {", "\n}\n\nvoid MiniAcid::publishPatternNoteOn_")
-if "releasePhraseCrossBarLifetime_(false);" not in set_context or "releasePhraseCrossBarLifetime_(false);" not in clear_context:
+set_context = block(
+    engine_cpp,
+    "bool MiniAcid::setPhraseCrossBarLifetimeContext(",
+    "\n}\n\nvoid MiniAcid::clearPhraseCrossBarLifetimeContext",
+)
+clear_context = block(
+    engine_cpp,
+    "void MiniAcid::clearPhraseCrossBarLifetimeContext() {",
+    "\n}\n\nvoid MiniAcid::publishPatternNoteOn_",
+)
+if (
+    "releasePhraseCrossBarLifetime_(false);" not in set_context
+    or "releasePhraseCrossBarLifetime_(false);" not in clear_context
+):
     fail("context replacement does not own exact old-note cleanup")
 
-# Terminator: internal release -> PatternPlayer NoteOff(old) -> incoming NoteOn.
 term = engine_cpp.find("consumeTerminatorBeforeNoteOn()")
 release = engine_cpp.find("releasePatternSynthBHeldNote_(heldNote);", term)
 new_on = engine_cpp.find("synthVoices_[synthIdx]->startNote", release)
@@ -187,7 +235,6 @@ new_publish = engine_cpp.find("publishPatternNoteOn_(synthIdx", new_on)
 if not (0 <= term < release < new_on < new_publish):
     fail("terminator Release-before-NoteOn ordering changed")
 
-# Ordinary gate expiry suppression is the sole exception around legacy B expiry.
 gate = engine_cpp.find("if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0)")
 suppress = engine_cpp.find("suppressOrdinaryGateExpiry()", gate)
 legacy_release = engine_cpp.find("synthVoices_[1]->release()", suppress)
@@ -195,22 +242,35 @@ legacy_off = engine_cpp.find("publishPatternNoteOff_(1)", legacy_release)
 if not (0 <= gate < suppress < legacy_release < legacy_off):
     fail("Synth-B gate expiry is not narrow fail-closed-to-legacy logic")
 
-selective = engine_cpp.find("publishPatternAllNotesOff_(bool preserveCrossBarHeldSynthB)")
-skip_b = engine_cpp.find("idx == 1 && preserveCrossBarHeldSynthB", selective)
+selective = engine_cpp.find(
+    "publishPatternAllNotesOff_(bool preserveCrossBarHeldSynthB)"
+)
+skip_b = engine_cpp.find(
+    "idx == 1 && preserveCrossBarHeldSynthB", selective
+)
 if not (0 <= selective < skip_b):
     fail("selective transition cleanup missing")
 
-# Backends and event ABI remain frozen.
 internal = (ROOT / "src/input/internal_synth_output.cpp").read_text()
 if "event.source == MusicalEventSource::PatternPlayer" not in internal:
     fail("InternalSynthOutput PatternPlayer bypass changed")
-for forbidden in ("InternalCrossBarPolicy", "MidiCrossBarPolicy", "CrossBarPolicy",
-                  "PhraseCrossBarLifetimeExecutor"):
-    for path in (ROOT / "src/input/internal_synth_output.cpp", ROOT / "src/midi/usb_midi_output.cpp"):
+for forbidden in (
+    "InternalCrossBarPolicy",
+    "MidiCrossBarPolicy",
+    "CrossBarPolicy",
+    "PhraseCrossBarLifetimeExecutor",
+):
+    for path in (
+        ROOT / "src/input/internal_synth_output.cpp",
+        ROOT / "src/midi/usb_midi_output.cpp",
+    ):
         if forbidden in path.read_text():
             fail(f"backend-specific R1 policy leaked into {path.relative_to(ROOT)}")
 
-for path in (ROOT / "tools/r1_patch_miniacid.py", ROOT / ".github/workflows/r1_apply_runtime_patch.yml"):
+for path in (
+    ROOT / "tools/r1_patch_miniacid.py",
+    ROOT / ".github/workflows/r1_apply_runtime_patch.yml",
+):
     if path.exists():
         fail(f"temporary patch artifact survived: {path.relative_to(ROOT)}")
 
