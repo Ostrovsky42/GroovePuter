@@ -1,0 +1,23 @@
+name: 0.9.9 PHRASE-C2-C0 boundary topology
+
+on:
+  push:
+    branches:
+      - research/20260827-05-0.9.9-phrase-c2-c0-boundary-topology
+  pull_request:
+    paths:
+      - 'tests/test_0_9_9_phrase_c2_c0_boundary_topology.cpp'
+      - 'tests/run_0_9_9_phrase_c2_c0_tests.sh'
+      - 'docs/contracts/0_9_9_PHRASE_C2_C0_BOUNDARY_TOPOLOGY.md'
+      - '.github/workflows/0_9_9_phrase_c2_c0_boundary_topology.yml'
+
+jobs:
+  boundary-topology-characterization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Characterize post-admission boundary topology
+        run: bash tests/run_0_9_9_phrase_c2_c0_tests.sh
