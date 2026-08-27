@@ -1,0 +1,26 @@
+name: 0.9.9 PHRASE-H2R H1-F1 replay
+
+on:
+  push:
+    branches:
+      - agent/20260827-03-0.9.9-phrase-h2r-h1-f1-replay
+  pull_request:
+    branches:
+      - agent/20260827-02-0.9.9-phrase-w1r-h1-f1-replay
+
+jobs:
+  focused-h2r-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-H2R focused replay gate
+        run: bash tests/run_0_9_9_phrase_h2r_tests.sh
+
+  core-host-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run core host regression
+        run: bash tests/run_host_tests.sh
