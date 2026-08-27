@@ -50,6 +50,21 @@ PhraseExecutionMaterializationSettings materializationSettings() {
   return value;
 }
 
+StrongRhythmMigrationContext selectionContext() {
+  const PhraseExecutionMaterializationSettings materialization =
+      materializationSettings();
+  StrongRhythmMigrationContext context{};
+  context.patternAddress = 0;
+  context.level = materialization.level;
+  context.generationAttemptOrdinal = materialization.generationAttemptOrdinal;
+  context.feelProfile = materialization.feelProfile;
+  context.feelAmount = materialization.feelAmount;
+  context.tonalMaterializationEnabled = materialization.tonalMaterializationEnabled;
+  context.rootPitchClass = materialization.rootPitchClass;
+  context.scaleTypeValue = materialization.scaleTypeValue;
+  return context;
+}
+
 PhysicalBar seededPhysicalBar() {
   PhysicalBar value{};
   for (int step = 0; step < SynthPattern::kSteps; ++step) {
@@ -72,6 +87,23 @@ CompositionSecondaryRole compositionRoleFor(SemanticSynthBRole role) {
   return role == SemanticSynthBRole::Melodic
              ? CompositionSecondaryRole::Melodic
              : CompositionSecondaryRole::ChordWithMelodicFill;
+}
+
+bool isAdmittedBoundarySelection(const GenreSettings& settings,
+                                 SemanticSynthBRole role,
+                                 uint16_t identity,
+                                 uint8_t phraseBars) {
+  PhraseLengthRequestResult length{};
+  StrongRhythmFrozenSelection selection{};
+  const StrongRhythmMigrationContext context = selectionContext();
+  const StrongRhythmMigrationResult result =
+      resolveStrongRhythmFrozenSelectionForPhraseBars(
+          settings, context, identity, phraseBars, length, selection);
+  return result.status == StrongRhythmMigrationStatus::Applied &&
+         length.status == PhraseLengthRequestStatus::Accepted &&
+         selection.resolved &&
+         selection.composition.secondaryRole == compositionRoleFor(role) &&
+         isNaturalBoundaryRhythm(selection.composition.melodicRhythm);
 }
 
 bool hasBoundaryTopology(const StrongRhythmMigrationResult& current,
@@ -114,18 +146,20 @@ BoundaryWitness characterizeRole(SemanticSynthBRole role) {
     for (const uint8_t phraseBars : lengths) {
       for (uint32_t identityValue = 0; identityValue < kIdentityDomain;
            ++identityValue) {
+        const uint16_t identity = static_cast<uint16_t>(identityValue);
+        if (!isAdmittedBoundarySelection(settings, role, identity, phraseBars)) {
+          continue;
+        }
+
         PhraseExecutionScratch scratch{};
         PreparedPhraseExecution prepared{};
-        const uint16_t identity = static_cast<uint16_t>(identityValue);
         const PhraseExecutionStatus status = preparePhraseExecution(
             settings, materializationSettings(), identity, phraseBars,
             scratch, prepared);
-        if (status != PhraseExecutionStatus::Ready) continue;
-        if (prepared.selection.composition.secondaryRole !=
-            expectedCompositionRole) {
-          continue;
-        }
-        if (!isNaturalBoundaryRhythm(
+        if (status != PhraseExecutionStatus::Ready ||
+            prepared.selection.composition.secondaryRole !=
+                expectedCompositionRole ||
+            !isNaturalBoundaryRhythm(
                 prepared.selection.composition.melodicRhythm)) {
           continue;
         }
