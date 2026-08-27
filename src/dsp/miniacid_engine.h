@@ -366,8 +366,11 @@ private:
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_(bool preserveCrossBarHeldSynthB = false);
-  void releasePatternSynthBHeldNote_(int16_t note);
-  void invalidatePhraseCrossBarLifetime_();
+  void releasePatternSynthBHeldNote_(int16_t note,
+                                       bool publishPatternNoteOff = true);
+  void clearPhraseCrossBarLifetime_();
+  void releasePhraseCrossBarLifetime_(
+      bool predecessorPatternCleanupFollows);
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
 

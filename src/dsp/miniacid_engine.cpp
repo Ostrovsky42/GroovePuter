@@ -370,7 +370,7 @@ void MiniAcid::init() {
 
 void MiniAcid::reset() {
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
-  phraseCrossBarLifetime_.reset();
+  clearPhraseCrossBarLifetime_();
   LOG_PRINTLN("    - MiniAcid::reset: Start");
   if (synthVoices_[0]) synthVoices_[0]->reset();
   if (synthVoices_[1]) synthVoices_[1]->reset();
@@ -477,7 +477,7 @@ void MiniAcid::start() {
   LOG_PRINTLN("[DSP] START command received");
   // PatternPlayer takes exclusive ownership of the monophonic voices.
   allLiveNotesOff();
-  invalidatePhraseCrossBarLifetime_();
+  clearPhraseCrossBarLifetime_();
   publishPatternAllNotesOff_();
   playing = true;
   currentStepIndex = -1;
@@ -514,7 +514,7 @@ void MiniAcid::stop() {
         synchronizeCommittedGenerationRuntime(*this);
   }
   LOG_PRINTLN("[DSP] STOP command received");
-  invalidatePhraseCrossBarLifetime_();
+  clearPhraseCrossBarLifetime_();
   publishPatternAllNotesOff_();
   playing = false;
   currentStepIndex = -1;
@@ -539,7 +539,7 @@ void MiniAcid::stop() {
 void MiniAcid::pauseTransport() {
   if (!playing) return;
   LOG_PRINTLN("[DSP] PAUSE command received");
-  invalidatePhraseCrossBarLifetime_();
+  clearPhraseCrossBarLifetime_();
   publishPatternAllNotesOff_();
   playing = false;
   currentStepIndex = -1;
@@ -562,7 +562,7 @@ void MiniAcid::continueTransport() {
   if (playing) return;
   LOG_PRINTLN("[DSP] CONTINUE command received");
   allLiveNotesOff();
-  invalidatePhraseCrossBarLifetime_();
+  clearPhraseCrossBarLifetime_();
   publishPatternAllNotesOff_();
   // Continue from a never-started engine behaves like MIDI Continue at song
   // position zero: step zero must still fire on the first rendered sample.
@@ -604,7 +604,7 @@ void MiniAcid::allLiveNotesOff() {
 }
 
 void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
-  if (patternEventQueue_ != queue) invalidatePhraseCrossBarLifetime_();
+  if (patternEventQueue_ != queue) releasePhraseCrossBarLifetime_(false);
   patternEventQueue_ = queue;
   patternMidiNotes_[0] = -1;
   patternMidiNotes_[1] = -1;
@@ -612,12 +612,12 @@ void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
 
 bool MiniAcid::setPhraseCrossBarLifetimeContext(
     const GroovePuterPhraseRuntime::PhraseCrossBarLifetimeContext& context) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
   return phraseCrossBarLifetime_.activate(context);
 }
 
 void MiniAcid::clearPhraseCrossBarLifetimeContext() {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
 }
 
 void MiniAcid::publishPatternNoteOn_(int synthIdx,
@@ -684,17 +684,27 @@ void MiniAcid::publishPatternAllNotesOff_(bool preserveCrossBarHeldSynthB) {
   }
 }
 
-void MiniAcid::releasePatternSynthBHeldNote_(int16_t note) {
+void MiniAcid::releasePatternSynthBHeldNote_(
+    int16_t note, bool publishPatternNoteOff) {
   if (note < 0) return;
   gateCountdownB_ = 0;
   retrigB_ = {};
   if (synthVoices_[1]) synthVoices_[1]->release();
-  publishPatternNoteOff_(1);
+  if (publishPatternNoteOff) publishPatternNoteOff_(1);
 }
 
-void MiniAcid::invalidatePhraseCrossBarLifetime_() {
+void MiniAcid::clearPhraseCrossBarLifetime_() {
+  phraseCrossBarLifetime_.hardBarrierRelease();
+}
+
+void MiniAcid::releasePhraseCrossBarLifetime_(
+    bool predecessorPatternCleanupFollows) {
   const int16_t heldNote = phraseCrossBarLifetime_.hardBarrierRelease();
-  releasePatternSynthBHeldNote_(heldNote);
+  if (heldNote < 0) return;
+  gateCountdownB_ = 0;
+  retrigB_ = {};
+  if (synthVoices_[1]) synthVoices_[1]->release();
+  if (!predecessorPatternCleanupFollows) publishPatternNoteOff_(1);
 }
 
 int MiniAcid::liveNote(int synthIndex) const {
@@ -919,7 +929,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(true);
   songBarIndex_ = -1;
   if (playing) publishPatternAllNotesOff_();
   if (enabled) {
@@ -966,7 +976,7 @@ int MiniAcid::currentSongPosition() const { return sceneManager_.getSongPosition
 int MiniAcid::songPlayheadPosition() const { return songPlayheadPosition_; }
 
 void MiniAcid::setSongPosition(int position) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(songMode_ && playing);
   int pos = clampSongPosition(position);
   sceneManager_.setSongPosition(pos);
   songBarIndex_ = -1;
@@ -975,7 +985,10 @@ void MiniAcid::setSongPosition(int position) {
 }
 
 void MiniAcid::setSongPattern(int position, SongTrack track, int16_t patternIndex) {
-  invalidatePhraseCrossBarLifetime_();
+  const bool activeSelectionCleanup =
+      songMode_ && playing && position == currentSongPosition() &&
+      activeSongSlot() == songPlaybackSlot_;
+  releasePhraseCrossBarLifetime_(activeSelectionCleanup);
   sceneManager_.setSongPattern(position, track, patternIndex);
   if (songMode_ && position == currentSongPosition() &&
       activeSongSlot() == songPlaybackSlot_) {
@@ -984,7 +997,10 @@ void MiniAcid::setSongPattern(int position, SongTrack track, int16_t patternInde
 }
 
 void MiniAcid::clearSongPattern(int position, SongTrack track) {
-  invalidatePhraseCrossBarLifetime_();
+  const bool activeSelectionCleanup =
+      songMode_ && playing && position == currentSongPosition() &&
+      activeSongSlot() == songPlaybackSlot_;
+  releasePhraseCrossBarLifetime_(activeSelectionCleanup);
   sceneManager_.clearSongPattern(position, track);
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
@@ -1020,10 +1036,10 @@ void MiniAcid::setActiveSongSlot(int slot) {
 }
 int MiniAcid::songPlaybackSlot() const { return songPlaybackSlot_; }
 void MiniAcid::setSongPlaybackSlot(int slot) {
-  invalidatePhraseCrossBarLifetime_();
   if (slot < 0) slot = 0;
   if (slot > 1) slot = 1;
   if (songPlaybackSlot_ == slot) return;
+  releasePhraseCrossBarLifetime_(songMode_ && playing);
   songPlaybackSlot_ = slot;
   songBarIndex_ = -1;
   if (songMode_) applySongPositionSelection();
@@ -1322,7 +1338,7 @@ void MiniAcid::toggleMuteClap() {
 
 void MiniAcid::setMute303(int voiceIndex, bool muted) {
   int idx = clamp303Voice(voiceIndex);
-  if (idx == 1 && muted) invalidatePhraseCrossBarLifetime_();
+  if (idx == 1 && muted) releasePhraseCrossBarLifetime_(true);
   if (idx == 0) mute303 = muted;
   else mute303_2 = muted;
   if (muted) publishPatternNoteOff_(idx);
@@ -1397,12 +1413,12 @@ void MiniAcid::set303DistortionEnabled(int voiceIndex, bool enabled) {
 }
 
 void MiniAcid::setDrumPatternIndex(int16_t patternIndex) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
   sceneManager_.setCurrentDrumPatternIndex(patternIndex);
 }
 
 void MiniAcid::shiftDrumPatternIndex(int delta) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
   int current = sceneManager_.getCurrentDrumPatternIndex();
   int next = current + delta;
   if (next < 0) next = Bank<DrumPatternSet>::kPatterns - 1;
@@ -1411,7 +1427,7 @@ void MiniAcid::shiftDrumPatternIndex(int delta) {
 }
 
 void MiniAcid::setDrumBankIndex(int bankIndex) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
   sceneManager_.setCurrentBankIndex(0, bankIndex);
 }
 
@@ -1428,13 +1444,13 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
   }
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(true);
   int idx = clamp303Voice(voiceIndex);
   if (playing) publishPatternNoteOff_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(true);
   int idx = clamp303Voice(voiceIndex);
   if (playing) publishPatternNoteOff_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
@@ -1445,7 +1461,7 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 }
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(true);
   int idx = clamp303Voice(voiceIndex);
   if (playing) publishPatternNoteOff_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
@@ -1727,10 +1743,10 @@ void MiniAcid::applySongPositionSelection(
     bool ordinaryPhraseTransition,
     bool preserveCrossBarHeldSynthB) {
   if (!songMode_) {
-    if (!ordinaryPhraseTransition) invalidatePhraseCrossBarLifetime_();
+    if (!ordinaryPhraseTransition) releasePhraseCrossBarLifetime_(false);
     return;
   }
-  if (!ordinaryPhraseTransition) invalidatePhraseCrossBarLifetime_();
+  if (!ordinaryPhraseTransition) releasePhraseCrossBarLifetime_(true);
   if (playing) {
     publishPatternAllNotesOff_(
         ordinaryPhraseTransition && preserveCrossBarHeldSynthB);
@@ -1875,7 +1891,7 @@ void MiniAcid::advanceSongPlayhead() {
       waitingForRehearsal_ = true;
       // A held C2 voice may never survive a boundary that does not reach
       // its expected incoming phrase bar.
-      invalidatePhraseCrossBarLifetime_();
+      releasePhraseCrossBarLifetime_(false);
       // DO NOT advance nextPos - stay on current row
       return;
   }
@@ -1895,7 +1911,7 @@ void MiniAcid::advanceSongPlayhead() {
     if (forwardAdjacent) {
       const GroovePuterPhraseRuntime::PhraseBoundaryRuntimeResult result =
           phraseCrossBarLifetime_.advanceOrdinarySequentialBoundary();
-      releasePatternSynthBHeldNote_(result.noteToRelease);
+      releasePatternSynthBHeldNote_(result.noteToRelease, false);
       ordinaryPhraseTransition = result.ordinarySequentialAccepted;
       preserveCrossBarHeldSynthB =
           result.decision ==
@@ -1905,7 +1921,7 @@ void MiniAcid::advanceSongPlayhead() {
         retrigB_ = {};
       }
     } else {
-      invalidatePhraseCrossBarLifetime_();
+      releasePhraseCrossBarLifetime_(true);
     }
   }
 
@@ -2630,7 +2646,7 @@ void MiniAcid::randomizeDrumPatternChaos() {
 }
 
 void MiniAcid::regeneratePatternsWithGenre() {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(false);
   // NOTE: applyTexture is NOT called here - it's applied separately by UI on texture change
   // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
@@ -2892,7 +2908,7 @@ void MiniAcid::setDeviceMasterVolume(float value) {
 }
 
 void MiniAcid::applySceneStateFromManager() {
-  invalidatePhraseCrossBarLifetime_();
+  releasePhraseCrossBarLifetime_(true);
   if (playing) publishPatternAllNotesOff_();
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   
@@ -3728,7 +3744,7 @@ void MiniAcid::advanceSongBar_() {
       previousSongBarIndex >= 0 && !boundary.advanceRow) {
     // A C2 phrase bar is one materialized 16-step bar. Repeating the same
     // physical Song row cannot be treated as the expected incoming bar.
-    invalidatePhraseCrossBarLifetime_();
+    releasePhraseCrossBarLifetime_(false);
   }
 
   if (boundary.advanceRow) {
@@ -3736,7 +3752,7 @@ void MiniAcid::advanceSongBar_() {
     if (songMode_) {
       advanceSongPlayhead();
     } else {
-      invalidatePhraseCrossBarLifetime_();
+      releasePhraseCrossBarLifetime_(false);
     }
   }
 }
