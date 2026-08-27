@@ -52,6 +52,69 @@ void resetSemanticProbeScratch(PhraseExecutionScratch& scratch) {
   }
 }
 
+PhraseMelodicBoundaryObservation observeMelodicSemanticProbe(
+    uint16_t phraseGenerationIdentity,
+    uint8_t phraseBarOrdinal,
+    const StrongRhythmMigrationResult& realized,
+    const SynthPattern& synthB) {
+  PhraseMelodicBoundaryObservation observed{};
+  observed.phraseGenerationIdentity = phraseGenerationIdentity;
+  observed.phraseBarOrdinal = phraseBarOrdinal;
+  observed.role = realized.synthBRole;
+  observed.melodicStatus = realized.melodicMotifStatus;
+
+  if (observed.role != SemanticSynthBRole::Melodic) return observed;
+  if (!realized.melodicRhythmApplied ||
+      (observed.melodicStatus != MelodicMotifStatus::Ok &&
+       observed.melodicStatus != MelodicMotifStatus::ValidButEmpty)) {
+    observed.melodicStatus = MelodicMotifStatus::InvalidRequest;
+    return observed;
+  }
+
+  // P1R's semantic probe deliberately seeds every source SynthStep with
+  // slide=false. In both existing pure-melodic projectors a realized onset
+  // therefore remains slide=false while a local semantic continuation is
+  // represented by a copied step with slide=true. Decode only this discarded
+  // preparation probe; no retained physical pattern or runtime state is read.
+  bool active = false;
+  for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& event = synthB.steps[step];
+    if (event.note < 0) {
+      active = false;
+      continue;
+    }
+
+    const StepMask bit = stepBit(step);
+    if (event.slide) {
+      if (!active) {
+        observed.admittedOnsets = 0;
+        observed.admittedContinuations = 0;
+        observed.melodicStatus = MelodicMotifStatus::InvalidRequest;
+        return observed;
+      }
+      observed.admittedContinuations = static_cast<StepMask>(
+          observed.admittedContinuations | bit);
+      continue;
+    }
+
+    observed.admittedOnsets = static_cast<StepMask>(
+        observed.admittedOnsets | bit);
+    active = true;
+  }
+
+  const StepMask occupied = static_cast<StepMask>(
+      observed.admittedOnsets | observed.admittedContinuations);
+  if ((observed.melodicStatus == MelodicMotifStatus::ValidButEmpty &&
+       occupied != 0) ||
+      (observed.melodicStatus == MelodicMotifStatus::Ok &&
+       observed.admittedOnsets == 0)) {
+    observed.admittedOnsets = 0;
+    observed.admittedContinuations = 0;
+    observed.melodicStatus = MelodicMotifStatus::InvalidRequest;
+  }
+  return observed;
+}
+
 StrongRhythmMigrationResult invalidMaterializationResult() {
   StrongRhythmMigrationResult result{};
   result.status = StrongRhythmMigrationStatus::InvalidContext;
@@ -135,6 +198,8 @@ PhraseExecutionStatus preparePhraseExecution(
 
   MelodicMotifStatus melodicStatus[kMaxSemanticPhraseBars]{};
   MelodicCrossBarLifetime melodicLifetime[kMaxSemanticPhraseBars]{};
+  PhraseMelodicBoundaryObservation
+      melodicObservation[kMaxSemanticPhraseBars]{};
 
   for (uint8_t bar = 0; bar < destination.length.effectivePhraseBars; ++bar) {
     resetSemanticProbeScratch(scratch);
@@ -159,9 +224,28 @@ PhraseExecutionStatus preparePhraseExecution(
       return destination.status;
     }
     melodicStatus[bar] = realized.melodicMotifStatus;
-    // P1R deliberately has no non-trivial cross-bar lifetime producer yet.
-    // The fixed-capacity carrier remains present and all-false.
     melodicLifetime[bar] = MelodicCrossBarLifetime{};
+    melodicObservation[bar] = observeMelodicSemanticProbe(
+        phraseGenerationIdentity, bar, realized, scratch.synthB);
+  }
+
+  // One frozen phrase selection owns one phrase-global secondary semantic role.
+  // Requiring that owner to be Melodic proves logical voice continuity without
+  // deriving identity from physical Synth-B storage.
+  const bool sameLogicalMelodicVoice =
+      destination.selection.composition.secondaryRole ==
+      CompositionSecondaryRole::Melodic;
+  for (uint8_t bar = 0;
+       static_cast<uint8_t>(bar + 1u) < destination.length.effectivePhraseBars;
+       ++bar) {
+    if (!c2AOnsetBoundaryEligible(
+            melodicObservation[bar], melodicObservation[bar + 1u],
+            destination.length.effectivePhraseBars,
+            sameLogicalMelodicVoice)) {
+      continue;
+    }
+    melodicLifetime[bar].continuesIntoNextBar = true;
+    melodicLifetime[bar + 1u].entersFromPreviousBar = true;
   }
 
   resetSemanticProbeScratch(scratch);
