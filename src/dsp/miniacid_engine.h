@@ -20,6 +20,7 @@
 #include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
+#include "phrase_crossbar_lifetime_runtime.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
 #include "tape_fx.h"
@@ -113,6 +114,9 @@ public:
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
   void setPatternEventQueue(MusicalEventQueue* queue);
+  bool setPhraseCrossBarLifetimeContext(
+      const GroovePuterPhraseRuntime::PhraseCrossBarLifetimeContext& context);
+  void clearPhraseCrossBarLifetimeContext();
   int liveNote(int synthIndex) const;
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
 
@@ -361,7 +365,9 @@ private:
   void triggerSynthStep_(int synthIdx, int stepIdx);
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
-  void publishPatternAllNotesOff_();
+  void publishPatternAllNotesOff_(bool preserveCrossBarHeldSynthB = false);
+  void releasePatternSynthBHeldNote_(int16_t note);
+  void invalidatePhraseCrossBarLifetime_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
 
@@ -385,7 +391,9 @@ private:
   const SynthPattern& activeSynthPattern(int synthIndex) const;
   const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
   int songPatternIndexForTrack(SongTrack track) const;
-  void applySongPositionSelection();
+  void applySongPositionSelection(
+      bool ordinaryPhraseTransition = false,
+      bool preserveCrossBarHeldSynthB = false);
   void syncModeToVoices();
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
@@ -439,6 +447,8 @@ private:
 
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
+  GroovePuterPhraseRuntime::PhraseCrossBarLifetimeExecutor
+      phraseCrossBarLifetime_{};
   ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
