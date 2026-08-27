@@ -1,6 +1,6 @@
 # 0.9.9-PHRASE-P1R — Production Phrase Execution
 
-Status: **DECISION_A_CANDIDATE**
+Status: **DECISION A — PRODUCTION PHRASE EXECUTION READY**
 
 ## Purpose
 
@@ -180,31 +180,33 @@ The P1R focused gate also executes the unchanged M1 P1 production corpus as a co
 
 ## Memory
 
-The focused executable prints actual host-ABI values for:
+Actual focused host-ABI measurements on implementation candidate `d6d7ebd6a633ceb5bf379e78dd8bb2ef17b315da`:
 
-- `sizeof(PreparedPhraseExecution)`
-- `sizeof(PhraseSemanticResult)`
-- `sizeof(StrongRhythmFrozenSelection)`
-- `sizeof(ChordProgressionSource)`
-- `sizeof(SynthPattern)`
-- `sizeof(DrumPatternSet)`
+```text
+sizeof(PreparedPhraseExecution)      = 324
+sizeof(PhraseSemanticResult)         = 82
+sizeof(StrongRhythmFrozenSelection)  = 48
+sizeof(ChordProgressionSource)       = 14
+sizeof(SynthPattern)                 = 112
+sizeof(DrumPatternSet)               = 1192
+```
 
-Final measured values are recorded only after the exact-head focused CI gate executes. P1R production code performs no heap allocation and retains no physical N-bar array.
+P1R production code performs no heap allocation and retains no physical N-bar array.
 
-Cardputer fixed-DRAM linker evidence is separate from runtime-largest-free-block evidence.
+Cardputer fixed-DRAM evidence is **static/linker evidence only**. It is separate from runtime-largest-free-block evidence and must not be interpreted as a runtime heap-fragmentation measurement.
 
 ## I2 informational estimate
 
-The focused test also prints a conservative physical 8-bar old-state/staging estimate:
+The focused test prints a conservative physical 8-bar old-state/staging estimate:
 
 ```text
-oneBar = sizeof(DrumPatternSet) + 2 * sizeof(SynthPattern)
-oldState8 = 8 * oneBar
-staging8 = 8 * oneBar
-combined = oldState8 + staging8
+oneBar     = 1416
+oldState8  = 11328
+staging8   = 11328
+combined   = 22656
 ```
 
-This is **INFORMATIONAL ONLY / NOT I2 POLICY**. P1R does not allocate those arrays.
+These values are **INFORMATIONAL I2 ESTIMATE ONLY / NOT I2 POLICY**. P1R does not allocate those arrays.
 
 ## Validation
 
@@ -224,11 +226,29 @@ The runner requires:
 - UBSan,
 - unchanged M1 P1 legacy compatibility corpus.
 
-Final Decision A additionally requires terminal-green repository jobs for Core host, SDL, Cardputer ADV, fixed DRAM, SEQTRAK MIDI-only and the required Stage15/tonal matrix.
+Implementation candidate `d6d7ebd6a633ceb5bf379e78dd8bb2ef17b315da` completed the required matrix terminal GREEN:
+
+| Gate | Run ID | Result |
+| --- | ---: | --- |
+| Focused P1R | `33092843298` | GREEN |
+| Core host / SDL / Cardputer ADV / fixed DRAM / SEQTRAK MIDI-only | `33092843333` | GREEN |
+| Stage15 baseline | `33092843244` | GREEN |
+| Stage15 tonal register sweep | `33092843217` | GREEN |
+| Tonal Materializer | `33092843228` | GREEN |
+| Stage15 tonal integration | `33092843391` | GREEN |
+| Final tonal acceptance | `33092843723` | GREEN |
+| Tonal Projector | `33092843265` | GREEN |
+| Global scale | `33092843366` | GREEN |
+
+Core run `33092843333` includes terminal-GREEN host regressions, SDL, Cardputer ADV build, fixed-DRAM budget check and SEQTRAK MIDI-only build. The fixed-DRAM result is static/linker-only evidence.
+
+Final tonal acceptance completed the exhaustive address/key-scale path and frozen legacy corpus without tonal golden regeneration.
+
+This documentation commit changes HEAD. Technical freeze therefore remains conditional on rerunning this complete required matrix on the exact documentation SHA and obtaining terminal GREEN again.
 
 ## Troubleshooting
 
-If focused linking reports `resolveGenerationCompositionForPhraseBars(...)` unresolved, confirm `src/generation/composition/phrase_length_request.cpp` is present in the shared Stage15 host source list.
+If focused linking reports `resolveGenerationCompositionForPhraseBars(...)` unresolved, confirm `src/generation/composition/phrase_length_request.cpp` is present in every legacy host source list that directly links `strong_rhythm_migration.cpp`.
 
 If semantic preparation reports `SemanticProbeFailure`, verify the scratch reset still supplies a deterministic valid synth pitch source; do not weaken `projectLegacyPitchPattern*` input validation.
 
@@ -240,39 +260,47 @@ If a TwoFiveOne failure appears after global ordinal 7, inspect the P1R consumer
 
 - Frozen H2R base: `0f694187fa65e51c08468ce8b28ed88bb6bb8699`.
 - Historical P1R-T0 evidence: `d760dfb8623b9cdad00b5a2d9d60c24ef451f738`.
-- P1R changes are bounded to strong-rhythm execution plumbing, new phrase-execution files, tests/guards/workflow and this contract.
+- P1R production implementation: `32e137e857c866b19b3bb2e91549a3767c5528f9`.
+- CI target correction: `15878e9e892d01f8c385176dc776c6fc45baeac2`.
+- Legacy host manifest fixes: `5a8cfbee6f395ae6c47a185fe93e30f65e755dd8`, `d47a335d90427768101087a8de62e228b0d773f3`, `d6d7ebd6a633ceb5bf379e78dd8bb2ef17b315da`.
+- Stage15 source-oracle alignment and literal repair: `aa46e2a0b0167819cb308700c3612079614e5c26`, `4fcb8f0191f0d96f09fd0776abc6743a9c186779`.
+- Implementation candidate validated GREEN: `d6d7ebd6a633ceb5bf379e78dd8bb2ef17b315da`.
+- Commits after `32e137e857c866b19b3bb2e91549a3767c5528f9` in the chain above are CI/build/source-oracle integration only; they do not change the P1R production seam or musical policy.
+- Tonal goldens were not regenerated.
 - Frozen H1/H2/phrase-length/semantic policy owners are protected by an exact-base source guard.
 
 ## Acceptance checklist
 
-- [ ] exact 1/2/4/8 admitted where profile policy permits
-- [ ] typed invalid-domain and inadmissible-length rejects
-- [ ] one composition / one phrase identity
-- [ ] one H1 source
-- [ ] one H2 projection
-- [ ] global WHAT projected from intrinsic source
-- [ ] TwoFiveOne global ordinal 8 -> intrinsic event 2
-- [ ] random access `7 -> 0 -> 4 -> 7`
-- [ ] pattern-address independence
-- [ ] `PhraseSemanticResult` remains authoritative
-- [ ] production-reachable `ValidButEmpty` retained
-- [ ] lifetime carrier present and inert
-- [ ] legacy nullptr-override compatibility
-- [ ] no Song/Bank/storage publication
-- [ ] no frozen-owner drift
-- [ ] no heap / no retained physical N-bar array
-- [ ] focused GCC/repeat/Clang/ASan/UBSan green
-- [ ] Core host green
-- [ ] SDL green
-- [ ] Cardputer ADV green
-- [ ] fixed DRAM green
-- [ ] SEQTRAK MIDI-only green
-- [ ] required Stage15/tonal matrix green
+- [x] exact 1/2/4/8 admitted where profile policy permits
+- [x] typed invalid-domain and inadmissible-length rejects
+- [x] one composition / one phrase identity
+- [x] one H1 source
+- [x] one H2 projection
+- [x] global WHAT projected from intrinsic source
+- [x] TwoFiveOne global ordinal 8 -> intrinsic event 2
+- [x] random access `7 -> 0 -> 4 -> 7`
+- [x] pattern-address independence
+- [x] `PhraseSemanticResult` remains authoritative
+- [x] production-reachable `ValidButEmpty` retained
+- [x] lifetime carrier present and inert
+- [x] legacy nullptr-override compatibility
+- [x] no Song/Bank/storage publication
+- [x] no frozen-owner drift
+- [x] no heap / no retained physical N-bar array
+- [x] focused GCC/repeat/Clang/ASan/UBSan green
+- [x] Core host green
+- [x] SDL green
+- [x] Cardputer ADV green
+- [x] fixed DRAM green — static/linker evidence only
+- [x] SEQTRAK MIDI-only green
+- [x] required Stage15/tonal matrix green
 
 ## Decision
 
-**DECISION_A_CANDIDATE**
+**DECISION A — PRODUCTION PHRASE EXECUTION READY**
 
-Do not declare `DECISION A — PRODUCTION PHRASE EXECUTION READY` until the complete required matrix is terminal green on one exact final HEAD.
+Implementation candidate acceptance is complete. Technical freeze is permitted only after the complete required matrix is terminal GREEN again on the exact documentation SHA created by this freeze update.
 
-HARD STOP after P1R FINAL. C2 is not part of this checkpoint.
+After that exact-SHA validation: PHRASE-P1R FINAL, then HARD STOP.
+
+C2 is not part of this checkpoint and remains NOT STARTED.
