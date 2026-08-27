@@ -1,0 +1,25 @@
+name: 0.9.9 PHRASE-C2 A-onset lifetime producer
+
+on:
+  push:
+    branches:
+      - agent/20260827-06-0.9.9-phrase-c2-a-onset-lifetime-producer
+  pull_request:
+    paths:
+      - 'src/generation/migration/phrase_execution.h'
+      - 'src/generation/migration/phrase_execution.cpp'
+      - 'tests/test_0_9_9_phrase_c2_a_onset_lifetime.cpp'
+      - 'tests/run_0_9_9_phrase_c2_tests.sh'
+      - 'docs/contracts/0_9_9_PHRASE_C2_A_ONSET_LIFETIME_PRODUCER.md'
+      - '.github/workflows/0_9_9_phrase_c2_a_onset_lifetime.yml'
+
+jobs:
+  c2-a-onset-lifetime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate minimal A-onset lifetime producer
+        run: bash tests/run_0_9_9_phrase_c2_tests.sh
