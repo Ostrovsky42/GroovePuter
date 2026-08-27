@@ -68,6 +68,12 @@ bool isNaturalBoundaryRhythm(MelodicRhythmId id) {
          id == MelodicRhythmId::BarEndResponse;
 }
 
+CompositionSecondaryRole compositionRoleFor(SemanticSynthBRole role) {
+  return role == SemanticSynthBRole::Melodic
+             ? CompositionSecondaryRole::Melodic
+             : CompositionSecondaryRole::ChordWithMelodicFill;
+}
+
 bool hasBoundaryTopology(const StrongRhythmMigrationResult& current,
                          const StrongRhythmMigrationResult& next,
                          SemanticSynthBRole requiredRole) {
@@ -91,12 +97,19 @@ bool hasBoundaryTopology(const StrongRhythmMigrationResult& current,
 
 BoundaryWitness characterizeRole(SemanticSynthBRole role) {
   const uint8_t lengths[] = {2, 4, 8};
+  const CompositionSecondaryRole expectedCompositionRole =
+      compositionRoleFor(role);
 
   for (uint8_t modeValue = 0;
        modeValue < static_cast<uint8_t>(kGenerativeModeCount);
        ++modeValue) {
     const GenreSettings settings =
         genre(static_cast<GenerativeMode>(modeValue));
+    const GenerationProfileView profile = generationProfileFor(settings);
+    if (!isValidGenerationProfile(profile) ||
+        profile.secondaryRole != expectedCompositionRole) {
+      continue;
+    }
 
     for (const uint8_t phraseBars : lengths) {
       for (uint32_t identityValue = 0; identityValue < kIdentityDomain;
@@ -108,11 +121,6 @@ BoundaryWitness characterizeRole(SemanticSynthBRole role) {
             settings, materializationSettings(), identity, phraseBars,
             scratch, prepared);
         if (status != PhraseExecutionStatus::Ready) continue;
-
-        const CompositionSecondaryRole expectedCompositionRole =
-            role == SemanticSynthBRole::Melodic
-                ? CompositionSecondaryRole::Melodic
-                : CompositionSecondaryRole::ChordWithMelodicFill;
         if (prepared.selection.composition.secondaryRole !=
             expectedCompositionRole) {
           continue;
