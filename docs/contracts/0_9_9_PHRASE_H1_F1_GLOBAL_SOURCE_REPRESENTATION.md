@@ -1,7 +1,7 @@
 # 0.9.9-PHRASE-H1-F1 — Global Progression Source Representation
 
-Status: **CORRECTIVE PRODUCTION CHECKPOINT**  
-Decision: **DECISION_A_CANDIDATE — pending exact-head CI**
+Status: **CORRECTIVE PRODUCTION CHECKPOINT — FREEZE COMMIT**  
+Decision: **A — GLOBAL PROGRESSION SOURCE REPRESENTATION READY**
 
 ## Purpose
 
@@ -59,13 +59,26 @@ The old finite-plan projection fails for `TwoFiveOne` after ordinal 7 because an
 
 ## Ownership
 
-Ownership is unchanged:
+Ownership is unchanged and now representationally explicit:
 
 ```text
-ChordProgressionSource = selected intrinsic WHAT grammar/source
-ChordProgressionPlan   = finite expanded consumer window
-HarmonicRhythm         = WHEN harmony advances
+HarmonicRhythm
+owns:
+WHEN + number of positions
+
+ChordProgressionSource
+owns:
+WHAT + intrinsic cycle
+
+ChordProgressionPlan
+= finite expanded consumer window
+
+P1R later owns:
+projection of phrase-global ordinal
+through frozen source
 ```
+
+There is **ONE authoritative H1 WHAT source** per logical phrase.
 
 `harmonicEventCount` is deliberately absent from
 `ChordProgressionSourceRequest`. WHAT source identity continues to use only the
@@ -74,7 +87,7 @@ existing H1 selection inputs: requested progression id / Auto, rhythm family,
 
 ## Source vs finite plan distinction
 
-New additive source representation:
+Authoritative source representation:
 
 ```text
 ChordProgressionSource
@@ -83,7 +96,10 @@ ChordProgressionSource
   events[4]
 ```
 
-Existing representation remains:
+It represents the intrinsic selected grammar and supports arbitrary global
+harmonic ordinal lookup through the owner-owned accessor.
+
+Existing finite consumer representation remains unchanged:
 
 ```text
 ChordProgressionPlan
@@ -129,6 +145,9 @@ A malformed/invalid source fails closed. Focused tests cover ordinals `0..31`
 for every current progression source and mandatory `TwoFiveOne` ordinals
 `0,1,2,7,8,9,11,14,15,17,31`.
 
+`32` is the supported arbitrary-ordinal / representation test range. It is not a
+32-element progression expansion and does not enlarge source capacity.
+
 Critical regression:
 
 ```text
@@ -151,24 +170,31 @@ preserved. The focused runner builds a deterministic legacy-plan corpus for:
 It compiles/runs that same corpus against frozen H1 `74456bc...` in a detached
 worktree and requires byte-identical textual semantic output against H1-F1.
 
+No new progression grammar, harmonic policy, F08.1 dependency, 16/32-element
+progression expansion, heap allocation, or unbounded state is introduced.
+
 ## Memory
 
 No heap is introduced. All new carriers are trivially-copyable fixed-capacity
 values. Intrinsic source capacity is four events; legacy plan capacity remains
 eight events.
 
-The focused test prints exact target-compiler sizes for:
+Focused terminal CI measured:
 
-- `HarmonicEvent`;
-- `ChordProgressionSource`;
-- `ChordProgressionSourceRequest`;
-- `ChordProgressionSourceResult`;
-- `ChordProgressionPlan`;
-- `ChordProgressionResult`.
+```text
+sizeof(HarmonicEvent)                 = 3
+sizeof(ChordProgressionSource)        = 14
+sizeof(ChordProgressionSourceRequest) = 16
+sizeof(ChordProgressionSourceResult)  = 15
+sizeof(ChordProgressionPlan)          = 26
+sizeof(ChordProgressionResult)        = 27
+```
 
-Compile-time guards require the source to remain <= 20 bytes and source request
-<= 32 bytes. Final exact sizes are recorded from terminal CI rather than guessed
-in this contract.
+Compile-time guards keep `ChordProgressionSource <= 20` bytes and
+`ChordProgressionSourceRequest <= 32` bytes. The legacy plan remains 26 bytes.
+
+Cardputer fixed-DRAM validation is a static/linker memory gate only. It is not a
+runtime largest-free-block measurement.
 
 ## Build / validation
 
@@ -192,8 +218,9 @@ The gate runs:
 - P1R-T0 blocker supersession;
 - direct frozen-H1 finite-plan compatibility corpus.
 
-Required normal validation before Decision A:
+Required exact-final-head validation after this doc-only freeze commit:
 
+- focused H1-F1;
 - Core host;
 - SDL;
 - Cardputer ADV;
@@ -206,7 +233,8 @@ Required normal validation before Decision A:
 - Tonal Projector;
 - global scale.
 
-Queued/running jobs are not PASS.
+Queued/running jobs are not PASS. A changed freeze SHA must be validated as an
+exact head even though production `src/` is unchanged.
 
 ## Expected behavior
 
@@ -237,12 +265,12 @@ If fixed embedded memory requires heap/unbounded state, classify Decision C.
 
 ## Provenance / supersession
 
-- H1 #387 semantic WHAT ownership: **STILL VALID**.
-- H1 public source representation: **SUPERSEDED by H1-F1 only if Decision A**.
-- P1R-T0 `d760dfb...`: immutable blocker evidence; resolved only by H1-F1 Decision A.
+- H1 #387 semantic WHAT ownership: **VALID / UNCHANGED**.
+- H1-F1 source representation: **SUPERSEDES the old representation limitation**.
+- P1R-T0 `d760dfb...`: **IMMUTABLE BLOCKER EVIDENCE; RESOLVED BY H1-F1**.
 - #390 / H2: downstream only; **NOT REPLAYED YET**.
 - W1: **NOT REPLAYED YET**.
-- P1R: **BLOCKED / NOT RESUMED**.
+- fresh P1R: **NOT STARTED**.
 - #388: untouched.
 
 ## Acceptance checklist
@@ -258,29 +286,49 @@ If fixed embedded memory requires heap/unbounded state, classify Decision C.
 - [x] focused tests cover all current source periods and ordinals 0..31;
 - [x] `TwoFiveOne` mandatory boundary cases are covered;
 - [x] deterministic repeat / count-independence are covered;
-- [x] frozen-H1 legacy-plan corpus comparison is wired;
-- [ ] exact-head focused CI terminal green;
-- [ ] Core host terminal green;
-- [ ] SDL terminal green;
-- [ ] Cardputer ADV terminal green;
-- [ ] fixed DRAM terminal green;
-- [ ] SEQTRAK MIDI-only terminal green;
-- [ ] required Stage15 tonal matrix terminal green;
-- [ ] exact final H1-F1 SHA frozen.
+- [x] frozen-H1 legacy-plan corpus comparison is wired and green on implementation candidate;
+- [x] bounded memory sizes are measured and recorded;
+- [ ] exact-final-head focused H1-F1 terminal green;
+- [ ] exact-final-head Core host terminal green;
+- [ ] exact-final-head SDL terminal green;
+- [ ] exact-final-head Cardputer ADV terminal green;
+- [ ] exact-final-head fixed DRAM terminal green;
+- [ ] exact-final-head SEQTRAK MIDI-only terminal green;
+- [ ] exact-final-head required Stage15 tonal matrix terminal green;
+- [ ] exact final H1-F1 SHA frozen after terminal validation.
 
 ## Decision
 
-Current state: **DECISION_A_CANDIDATE**.
+**Decision A — GLOBAL PROGRESSION SOURCE REPRESENTATION READY.**
 
-Decision A — **GLOBAL PROGRESSION SOURCE REPRESENTATION READY** is allowed only
-after every acceptance gate above is terminal green. On Decision A, freeze the
-exact final H1-F1 SHA and hard stop. The next legitimate work is W1 replay on the
-new H1-F1 ancestry; that replay is outside this checkpoint.
+The H1-F1 contract is frozen by this documentation-only commit. The exact freeze
+SHA is accepted only after every exact-head gate above is terminal green. No
+production or test-semantic changes are permitted during that validation pass.
 
-Decision B — **H1 SOURCE CANNOT BE EXPOSED ADDITIVELY** if preserving arbitrary
-ordinal source semantics requires policy/grammar/legacy-plan/downstream-owner
-changes or duplication.
+After exact-head terminal green:
 
-Decision C — **BOUNDED REPRESENTATION / MEMORY BLOCKER** if faithful source
-representation cannot fit safely in fixed embedded memory without heap or
-unbounded state.
+```text
+H1
+semantic WHAT ownership
+VALID / unchanged
+
+H1-F1
+source representation
+SUPERSEDES old representation limitation
+
+P1R-T0
+d760dfb...
+immutable blocker evidence
+RESOLVED BY H1-F1
+
+W1 replay
+NOT STARTED
+
+H2 replay
+NOT STARTED
+
+fresh P1R
+NOT STARTED
+```
+
+Then hard stop. Do not create or replay W1/H2/P1R in this checkpoint.
