@@ -9,8 +9,7 @@ PROFILE_H = (ROOT / "src/generation/composition/generation_profile.h").read_text
 PROFILE_CPP = (ROOT / "src/generation/composition/generation_profile.cpp").read_text(encoding="utf-8")
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read_text(encoding="utf-8")
 RUNNER = (ROOT / "tests/run_generation_stage15_tests.sh").read_text(encoding="utf-8")
-MODULE = HEADER + "\
-" + SOURCE
+MODULE = HEADER + "\n" + SOURCE
 MATERIAL_BRIDGE = BRIDGE[
     BRIDGE.index("StrongRhythmMigrationResult migrateStrongRhythmMaterial(") :
 ]
@@ -64,8 +63,8 @@ require(
 )
 require(
     SOURCE,
-    "id == ProgressionId::ParallelShift ||\
-         id == ProgressionId::BorrowedLift",
+    "id == ProgressionId::ParallelShift ||\n"
+    "         id == ProgressionId::BorrowedLift",
     "chromatic root-offset allowlist changed",
 )
 require(
