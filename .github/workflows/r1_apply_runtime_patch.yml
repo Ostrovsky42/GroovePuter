@@ -1,0 +1,32 @@
+name: R1 one-shot runtime patch
+
+on:
+  push:
+    branches:
+      - agent/20260827-07-0.9.9-phrase-r1-crossbar-lifetime-executor
+    paths:
+      - '.github/workflows/r1_apply_runtime_patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260827-07-0.9.9-phrase-r1-crossbar-lifetime-executor
+          fetch-depth: 0
+      - name: Apply exact R1 MiniAcid patch
+        run: python3 tools/r1_patch_miniacid.py
+      - name: Commit production patch and remove one-shot helper
+        run: |
+          git rm tools/r1_patch_miniacid.py .github/workflows/r1_apply_runtime_patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp
+          git diff --cached --check
+          git commit -m "feat(0.9.9-phrase): execute C2 lifetime across runtime boundary"
+          git push origin HEAD:agent/20260827-07-0.9.9-phrase-r1-crossbar-lifetime-executor
