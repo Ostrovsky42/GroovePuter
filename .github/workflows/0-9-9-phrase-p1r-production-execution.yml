@@ -1,0 +1,19 @@
+name: 0.9.9 PHRASE-P1R production execution
+
+on:
+  push:
+    branches:
+      - agent/20260827-04-0.9.9-phrase-p1r-production-execution
+  pull_request:
+    branches:
+      - agent/20260826-14-0.9.9-phrase-h2-harmonic-clock-projection
+
+jobs:
+  focused-production-phrase-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run P1R focused production execution gate
+        run: bash tests/run_0_9_9_phrase_p1r_tests.sh

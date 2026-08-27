@@ -5,6 +5,7 @@
 
 #include "../../../scenes.h"
 #include "../composition/generation_profile.h"
+#include "../composition/phrase_length_request.h"
 #include "../composition/rhythm_selection.h"
 #include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
@@ -78,6 +79,15 @@ enum class SemanticSynthBRole : uint8_t {
 
 struct StrongRhythmFrozenSelection;
 
+// P1R transient execution seam. It carries already-frozen H2 WHEN and one
+// H1-F1 WHAT source into the existing one-bar materializer. It owns neither
+// policy nor storage and is valid only for the duration of one call.
+struct StrongRhythmPhraseExecutionOverride {
+  const HarmonicRhythmPlan* harmonicRhythm = nullptr;
+  const ChordProgressionSource* progressionSource = nullptr;
+  uint16_t firstGlobalHarmonicOrdinal = 0;
+};
+
 struct StrongRhythmMigrationContext {
   // Existing pattern address remains part of deterministic generation identity.
   int16_t patternAddress = 0;
@@ -109,6 +119,10 @@ struct StrongRhythmMigrationContext {
   bool tonalMaterializationEnabled = false;
   uint8_t rootPitchClass = 0;
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
+
+  // P1R appends this optional seam so all ordinary aggregate/default callers
+  // retain the legacy path when no prepared phrase execution is supplied.
+  const StrongRhythmPhraseExecutionOverride* phraseExecutionOverride = nullptr;
 };
 
 // Bounded migration-owned phrase selection. This is deliberately the existing
@@ -243,6 +257,17 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     uint16_t phraseGenerationIdentity,
+    StrongRhythmFrozenSelection& destination);
+
+// P1R exact-length sibling. It performs the same strong-rhythm selection setup
+// but calls the frozen M4 exact phrase-length resolver exactly once. Legacy
+// callers remain on resolveStrongRhythmFrozenSelection().
+StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    uint16_t phraseGenerationIdentity,
+    uint8_t requestedPhraseBars,
+    PhraseLengthRequestResult& lengthResult,
     StrongRhythmFrozenSelection& destination);
 
 StrongRhythmMigrationResult migrateStrongRhythmFrozenMaterial(
