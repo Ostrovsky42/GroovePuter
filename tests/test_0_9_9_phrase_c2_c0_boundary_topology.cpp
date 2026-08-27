@@ -433,13 +433,10 @@ void printWitness(const BoundaryWitness& witness) {
     std::puts("C2-C0 TARGET PURE A: none in bounded default search");
     return;
   }
-  const GenerativeMode mode =
-      static_cast<GenerativeMode>(witness.settings.generativeMode);
   std::printf(
-      "C2-C0 TARGET PURE A: mode=%s(%u) recipe=%u bars=%u identity=%u "
+      "C2-C0 TARGET PURE A: mode=%u recipe=%u bars=%u identity=%u "
       "boundary=%u->%u archetype=%u progression=%u rhythm=%s motif=%s "
       "out_on=0x%04x out_cont=0x%04x in_on=0x%04x in_cont=0x%04x\n",
-      GenreCatalog::generativeModeName(mode),
       static_cast<unsigned>(witness.settings.generativeMode),
       static_cast<unsigned>(witness.settings.recipe),
       static_cast<unsigned>(witness.phraseBars),
