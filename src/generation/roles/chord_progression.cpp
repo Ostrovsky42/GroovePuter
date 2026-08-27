@@ -4,7 +4,7 @@ namespace GroovePuterRhythm {
 namespace {
 
 struct Grammar {
-  HarmonicEvent events[4]{};
+  HarmonicEvent events[kMaxChordProgressionSourceEvents]{};
   uint8_t count = 0;
 };
 
@@ -152,32 +152,36 @@ ProgressionCandidates candidatesFor(RhythmFamily family) {
   return {};
 }
 
-ProgressionId selectId(const ChordProgressionRequest& request) {
-  if (request.requestedId != ProgressionId::Auto) return request.requestedId;
-  const ProgressionCandidates candidates = candidatesFor(request.family);
+ProgressionId selectId(ProgressionId requestedId,
+                       RhythmFamily family,
+                       const GenerationContext& generation,
+                       uint8_t phraseBars) {
+  if (requestedId != ProgressionId::Auto) return requestedId;
+  const ProgressionCandidates candidates = candidatesFor(family);
   if (candidates.count == 0) return ProgressionId::Auto;
   // ProgressionId is append-only: this numeric value is the stable ChordPitch
   // salt, so renumbering an existing id would change the deterministic corpus.
   const uint32_t seed = deriveGenerationSeed(
-      request.generation, kNoArchetypeId, GenerationDomain::ChordPitch,
+      generation, kNoArchetypeId, GenerationDomain::ChordPitch,
       static_cast<uint8_t>(ProgressionId::Auto));
   const uint32_t coordinate =
-      static_cast<uint32_t>(static_cast<uint8_t>(request.family)) |
-      (static_cast<uint32_t>(request.phraseBars) << 8u);
+      static_cast<uint32_t>(static_cast<uint8_t>(family)) |
+      (static_cast<uint32_t>(phraseBars) << 8u);
   return candidates.values[deterministicValue(seed, coordinate) %
                            candidates.count];
 }
 
-const Grammar* selectGrammar(const ChordProgressionRequest& request,
+const Grammar* selectGrammar(const GenerationContext& generation,
+                             uint8_t phraseBars,
                              ProgressionId id) {
   const GrammarSet* set = grammarSetFor(id);
   if (set == nullptr || set->count == 0) return nullptr;
   // The concrete progression id is the salt inside the existing ChordPitch
   // domain. Keep existing enum values stable; append additional values before Count.
   const uint32_t seed = deriveGenerationSeed(
-      request.generation, kNoArchetypeId, GenerationDomain::ChordPitch,
+      generation, kNoArchetypeId, GenerationDomain::ChordPitch,
       static_cast<uint8_t>(id));
-  const uint32_t coordinate = static_cast<uint32_t>(request.phraseBars);
+  const uint32_t coordinate = static_cast<uint32_t>(phraseBars);
   return &set->variants[deterministicValue(seed, coordinate) % set->count];
 }
 
@@ -190,12 +194,69 @@ bool validEvent(const HarmonicEvent& value, ProgressionId id) {
   return value.rootOffsetSemitones == 0 || allowsChromaticRootOffset(id);
 }
 
+bool validSource(const ChordProgressionSource& source) {
+  if (!isValidProgressionId(source.id, false) || source.period == 0 ||
+      source.period > kMaxChordProgressionSourceEvents) {
+    return false;
+  }
+  for (uint8_t index = 0; index < source.period; ++index) {
+    if (!validEvent(source.events[index], source.id)) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool isValidProgressionId(ProgressionId id, bool allowAuto) {
   const uint8_t value = static_cast<uint8_t>(id);
   if (value >= static_cast<uint8_t>(ProgressionId::Count)) return false;
   return allowAuto || id != ProgressionId::Auto;
+}
+
+ChordProgressionSourceResult realizeChordProgressionSource(
+    const ChordProgressionSourceRequest& request) {
+  ChordProgressionSourceResult result{};
+  if (!isValidProgressionId(request.requestedId) ||
+      static_cast<uint8_t>(request.family) >=
+          static_cast<uint8_t>(RhythmFamily::Count) ||
+      !validPhraseBars(request.phraseBars)) {
+    return result;
+  }
+
+  const ProgressionId id = selectId(request.requestedId,
+                                    request.family,
+                                    request.generation,
+                                    request.phraseBars);
+  if (!isValidProgressionId(id, false)) return result;
+
+  const Grammar* selected =
+      selectGrammar(request.generation, request.phraseBars, id);
+  if (selected == nullptr || selected->count == 0 ||
+      selected->count > kMaxChordProgressionSourceEvents) {
+    return result;
+  }
+
+  result.source.id = id;
+  result.source.period = selected->count;
+  for (uint8_t index = 0; index < selected->count; ++index) {
+    const HarmonicEvent value = selected->events[index];
+    if (!validEvent(value, id)) return ChordProgressionSourceResult{};
+    result.source.events[index] = value;
+  }
+
+  const bool isStatic =
+      id == ProgressionId::StaticModal || id == ProgressionId::PedalDrone;
+  result.status = isStatic ? ChordProgressionStatus::ValidButStatic
+                           : ChordProgressionStatus::Ok;
+  return result;
+}
+
+bool chordProgressionSourceEventAt(const ChordProgressionSource& source,
+                                   uint16_t phraseGlobalHarmonicOrdinal,
+                                   HarmonicEvent& outEvent) {
+  if (!validSource(source)) return false;
+  outEvent = source.events[phraseGlobalHarmonicOrdinal % source.period];
+  return true;
 }
 
 ChordProgressionResult realizeChordProgression(
@@ -209,7 +270,10 @@ ChordProgressionResult realizeChordProgression(
     return result;
   }
 
-  const ProgressionId id = selectId(request);
+  const ProgressionId id = selectId(request.requestedId,
+                                    request.family,
+                                    request.generation,
+                                    request.phraseBars);
   if (!isValidProgressionId(id, false)) return result;
   result.plan.id = id;
 
@@ -218,7 +282,8 @@ ChordProgressionResult realizeChordProgression(
     return result;
   }
 
-  const Grammar* selected = selectGrammar(request, id);
+  const Grammar* selected =
+      selectGrammar(request.generation, request.phraseBars, id);
   if (selected == nullptr || selected->count == 0) return result;
 
   const bool isStatic =
