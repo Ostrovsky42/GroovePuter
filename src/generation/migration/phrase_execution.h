@@ -33,6 +33,62 @@ struct PhraseExecutionMaterializationSettings {
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
 };
 
+// C2 bootstrap observation for one already-realized semantic bar. This is
+// transient preparation state only: it is not persisted in PreparedPhraseExecution
+// and it never becomes a runtime playback token.
+struct PhraseMelodicBoundaryObservation {
+  uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+  uint8_t phraseBarOrdinal = kUnspecifiedPhraseBarOrdinal;
+  SemanticSynthBRole role = SemanticSynthBRole::Chord;
+  MelodicMotifStatus melodicStatus = MelodicMotifStatus::InvalidRequest;
+  StepMask admittedOnsets = 0;
+  StepMask admittedContinuations = 0;
+};
+
+// PHRASE-C2 bootstrap law. It recognizes only the frozen C2-C0 A_ONSET class.
+// It never creates/moves/extends notes and deliberately rejects continuation,
+// overlap, hybrid, empty, step-0 replacement, non-sequential and terminal cases.
+constexpr bool c2AOnsetBoundaryEligible(
+    const PhraseMelodicBoundaryObservation& outgoing,
+    const PhraseMelodicBoundaryObservation& incoming,
+    uint8_t effectivePhraseBars,
+    bool sameLogicalMelodicVoice) {
+  if (!sameLogicalMelodicVoice ||
+      !isSupportedPhraseLength(effectivePhraseBars) ||
+      effectivePhraseBars < 2 ||
+      outgoing.phraseGenerationIdentity ==
+          kUnspecifiedPhraseGenerationIdentity ||
+      outgoing.phraseGenerationIdentity != incoming.phraseGenerationIdentity ||
+      outgoing.phraseBarOrdinal >= effectivePhraseBars ||
+      incoming.phraseBarOrdinal >= effectivePhraseBars ||
+      static_cast<uint8_t>(outgoing.phraseBarOrdinal + 1u) !=
+          incoming.phraseBarOrdinal ||
+      outgoing.role != SemanticSynthBRole::Melodic ||
+      incoming.role != SemanticSynthBRole::Melodic ||
+      outgoing.melodicStatus != MelodicMotifStatus::Ok ||
+      incoming.melodicStatus != MelodicMotifStatus::Ok ||
+      (outgoing.admittedOnsets & outgoing.admittedContinuations) != 0 ||
+      (incoming.admittedOnsets & incoming.admittedContinuations) != 0) {
+    return false;
+  }
+
+  const StepMask step0 = stepBit(0);
+  const StepMask step15 = stepBit(15);
+  const StepMask laterThanStep0 =
+      static_cast<StepMask>(kAllSteps & static_cast<StepMask>(~step0));
+
+  const bool outgoingOnset15 =
+      (outgoing.admittedOnsets & step15) != 0;
+  const bool outgoingContinuation15 =
+      (outgoing.admittedContinuations & step15) != 0;
+  const bool incomingOnset0 = (incoming.admittedOnsets & step0) != 0;
+  const bool incomingLaterOnset =
+      (incoming.admittedOnsets & laterThanStep0) != 0;
+
+  return outgoingOnset15 && !outgoingContinuation15 &&
+         !incomingOnset0 && incomingLaterOnset;
+}
+
 // One reusable caller-owned physical bar used only while semantic preparation
 // probes the actual strong production materializer. No physical bar is retained
 // in PreparedPhraseExecution.
@@ -75,6 +131,8 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
 
 static_assert(std::is_trivially_copyable<PhraseExecutionMaterializationSettings>::value,
               "phrase execution settings must remain fixed-capacity");
+static_assert(std::is_trivially_copyable<PhraseMelodicBoundaryObservation>::value,
+              "C2 boundary observation must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<PhraseExecutionScratch>::value,
               "phrase execution scratch must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<PreparedPhraseExecution>::value,
