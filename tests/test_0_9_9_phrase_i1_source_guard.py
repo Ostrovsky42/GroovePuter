@@ -49,11 +49,11 @@ combined = "\n".join((helper, song, pattern_h, synth_cpp))
 
 assert "kLogicalPhraseAttemptChannel = 0xFFFF" in helper
 assert "kMaxGlobalPatterns < kLogicalPhraseAttemptChannel" in helper
-assert re.search(
-    r"allocateGenerationAttempt\s*\([^;]*kLogicalPhraseAttemptChannel\s*\)",
-    helper,
-    re.S,
-), "P1R phrase attempt must use the logical channel"
+assert "allocateGenerationAttempt(" not in helper, (
+    "repeatable P1R PREPARE must not consume session attempt state"
+)
+assert "generationAttemptOrdinal" in helper
+assert "attemptAvailable" in helper
 assert "phraseSeed(" not in helper
 assert "songStart" not in helper
 assert "PreparedPhraseExecution" in helper
@@ -63,6 +63,15 @@ assert "execution.selection.realizationGeneration.projectSeed" in helper
 assert "return PreparationDisposition::LegacyRoute;" in helper
 
 assert "GeneratedPhraseP1R::prepare(" in song
+assert "prepareWithGenerationAttempt(" in song
+assert "engine, bars, songStart, 0u, false, prepared" in song, (
+    "direct PREPARE must use deterministic non-consuming preview attempt 0"
+)
+assert re.search(
+    r"allocateGenerationAttempt\s*\([^;]*GeneratedPhraseP1R::kLogicalPhraseAttemptChannel\s*\)",
+    song,
+    re.S,
+), "real G request must allocate through the reserved logical channel"
 assert (
     "p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed"
     in song
@@ -78,6 +87,25 @@ assert "armPhraseActivation(" in song
 assert "completePhraseActivation(" in song
 assert "UndoKind::Generation" in song
 assert "applyPreparedPersistent(" in song
+
+allocation_start = song.index(
+    "const auto attempt = GroovePuterState::allocateGenerationAttempt("
+)
+allocation_end = song.index("if (!attempt.ok())", allocation_start)
+allocation_slice = song[allocation_start:allocation_end]
+generate_start = song.index("Result generate(")
+prepare_preview_start = song.index("inline bool prepare(\n")
+assert allocation_start > generate_start, (
+    "session attempt allocation must live inside the real generate request"
+)
+assert allocation_start > prepare_preview_start, (
+    "repeatable PREPARE must precede and remain outside attempt allocation"
+)
+for token in ("pageIndex", "firstLocalSlot", "songStart"):
+    assert token not in allocation_slice, f"physical destination leaked into identity: {token}"
+assert "GeneratedPhraseP1R::kLogicalPhraseAttemptChannel" in allocation_slice
+assert "generationAttemptOrdinal = attempt.ordinal;" in song
+assert "attemptAvailable = true;" in song
 
 assert "syncSongPatternContext" in pattern_h
 assert "current303PatternIndex(voice_index_)" in pattern_h
@@ -107,16 +135,11 @@ for forbidden in (
 ):
     assert forbidden not in combined, f"second runtime owner introduced: {forbidden}"
 
-allocation_start = helper.index("const auto attempt = GroovePuterState::allocateGenerationAttempt(")
-allocation_end = helper.index("if (!attempt.ok())", allocation_start)
-allocation_slice = helper[allocation_start:allocation_end]
-for token in ("pageIndex", "firstLocalSlot", "songStart"):
-    assert token not in allocation_slice, f"physical destination leaked into identity: {token}"
-assert "kLogicalPhraseAttemptChannel" in allocation_slice
-
 print("I1 source guard: production owner set=EXACT")
 print("I1 source guard: P1R/H1/W1R/H2R owners=UNCHANGED")
 print("I1 source guard: D2 transport/activation owner=REUSED")
+print("I1 source guard: PREPARE attempt state mutation=NO")
+print("I1 source guard: real G attempt owner=EXISTING_SESSION_OWNER")
 print("I1 source guard: logical phrase identity independent of destination=YES")
 print("I1 source guard: P1R typed reject legacy fallback=NO")
 print("I1 source guard: C2/R1 lifetime policy imported=NO")
