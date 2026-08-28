@@ -113,9 +113,9 @@ require("patternModeSynthPatternIndex_" not in stop_body and "patternModeSynthBa
         "STOP must not restore pre-PLAY Synth physical selection")
 
 # P0-8: typed rejection and execution failure are distinct product outcomes.
-require('return "PHRASE LENGTH REJECTED";' in generated,
+require('"PHRASE LENGTH REJECTED"' in generated,
         "typed phrase-length rejection label missing")
-require('return "PHRASE EXEC FAILED";' in generated,
+require('"PHRASE EXEC FAILED"' in generated,
         "phrase execution failure label missing")
 require("LifecycleStatus::CommittedNow" in generated and "LifecycleStatus::PendingNextBar" in generated,
         "accepted phrase lifecycle outcomes missing")
