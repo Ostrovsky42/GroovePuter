@@ -1,0 +1,19 @@
+name: 0.9.9 PHRASE-C2-C0-R corrected I1 replay
+
+on:
+  push:
+    branches:
+      - research/20260828-07-0.9.9-phrase-c2-c0-r-corrected-i1-replay
+  pull_request:
+    branches:
+      - agent/20260828-05-0.9.9-phrase-i1-end-to-end-synth-phrase
+
+jobs:
+  focused-c2-c0-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run corrected I1 C2-C0 characterization replay
+        run: bash tests/run_0_9_9_phrase_c2_c0_tests.sh
