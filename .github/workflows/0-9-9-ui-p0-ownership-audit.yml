@@ -1,0 +1,37 @@
+name: 0.9.9 UI-P0 ownership audit
+
+on:
+  push:
+    branches:
+      - 'research/20260828-08-0.9.9-ui-p0-ownership-audit'
+  pull_request:
+    branches:
+      - 'agent/20260828-05-0.9.9-phrase-i1-end-to-end-synth-phrase'
+
+jobs:
+  ui-p0-source-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce exact I1 ancestry and zero production delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='fb30bbb93f739d8b3e4514ae931cbc73fc8eeb09'
+          git cat-file -e "${BASE}^{commit}"
+          git merge-base --is-ancestor "$BASE" HEAD
+          MERGE_BASE="$(git merge-base "$BASE" HEAD)"
+          test "$MERGE_BASE" = "$BASE"
+
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
+          printf '%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -E '^src/|^scenes\.h$|^GroovePuter\.ino$'; then
+            echo 'UI-P0 is research/docs/tests only; production source delta is forbidden.' >&2
+            exit 1
+          fi
+
+      - name: Run UI-P0 ownership/source characterization
+        run: python3 tests/test_0_9_9_ui_p0_source_regressions.py
