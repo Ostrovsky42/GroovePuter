@@ -104,7 +104,7 @@ require(
     "PREPARE migration context must carry evolutionOrdinal",
 )
 
-prepare_body = between(generated, "inline bool prepare(", "template <typename Guard>")
+prepare_body = between(generated, "inline bool prepareWithGenerationAttempt(", "template <typename Guard>")
 raw_base_index = prepare_body.index("PhraseGenerator::PhraseBar proceduralBase{};")
 bar_loop_index = prepare_body.index("for (int barIndex = 0; barIndex < bars; ++barIndex)")
 copy_index = prepare_body.index("PhraseGenerator::PhraseBar migratedBase = proceduralBase;")

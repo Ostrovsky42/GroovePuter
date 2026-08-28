@@ -41,7 +41,7 @@ require('constexpr int kMaxPreparedBars = 8;' in GENERATED,
         "D2 PREPARE must remain bounded to at most eight bars")
 require('std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material' in GENERATED,
         "D2 must stage generated bars before publication")
-prepare = between(GENERATED, 'inline bool prepare(', 'template <typename Guard>\nResult generate(')
+prepare = between(GENERATED, 'inline bool prepareWithGenerationAttempt(', 'template <typename Guard>\nResult generate(')
 require('applyRecipe' in prepare or 'deriveBar' in prepare,
         "D2 musical generation belongs to PREPARE")
 require('commitPrepared' not in prepare and 'markSceneMutated' not in prepare,
@@ -50,7 +50,8 @@ require('commitPrepared' not in prepare and 'markSceneMutated' not in prepare,
 # One logical mutation: Pattern allocation/data + Song refs + row timing through
 # the authoritative Undo owner. No direct markSceneMutated is allowed.
 generate = between(GENERATED, 'template <typename Guard>\nResult generate(', 'inline std::size_t preparedPhraseArrangementSize()')
-require(generate.find('acquireWriteLease()') < generate.find('prepare(engine'),
+require(0 <= generate.find('acquireWriteLease()') <
+        generate.find('prepareWithGenerationAttempt('),
         "PLAY D2 must acquire the common Busy owner before PREPARE")
 require(generate.count('GroovePuterUndo::undoOwner().commitPrepared') == 1,
         "D2 must publish exactly one canonical persistent COMMIT")

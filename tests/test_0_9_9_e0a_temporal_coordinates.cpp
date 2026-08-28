@@ -130,10 +130,14 @@ void verifyPrepareDeterminism(MiniAcid& engine, uint8_t bars) {
 
   GeneratedPhraseSong::PreparedPhraseArrangement first{};
   GeneratedPhraseSong::PreparedPhraseArrangement second{};
-  expect(GeneratedPhraseSong::prepare(engine, bars, 0, first),
-         "first deterministic PREPARE failed");
-  expect(GeneratedPhraseSong::prepare(engine, bars, 0, second),
-         "second deterministic PREPARE failed");
+  const bool firstOk = GeneratedPhraseSong::prepare(engine, bars, 0, first);
+  const bool secondOk = GeneratedPhraseSong::prepare(engine, bars, 0, second);
+  // A P1R-capable route may typed-reject a request (e.g. an inadmissible
+  // phrase length for the resolved composition/archetype). That is frozen
+  // P1R length policy, not an E0a concern: same-request PREPARE must still
+  // be deterministic, whether it accepts or rejects.
+  expect(firstOk == secondOk,
+         "identical PREPARE request changed accept/reject outcome");
   expect(first.request.bars == second.request.bars &&
              first.request.songStart == second.request.songStart &&
              first.request.pageIndex == second.request.pageIndex &&

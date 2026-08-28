@@ -82,7 +82,28 @@ void benchmarkCase(MiniAcid& engine,
   configureFamily(engine, family);
   GeneratedPhraseSong::PreparedPhraseArrangement prepared{};
 
-  for (int i = 0; i < kWarmupIterations; ++i) {
+  // A P1R-capable route legitimately typed-rejects some phrase lengths for
+  // a given archetype under Auto selection (frozen P1R length policy). That
+  // is not a benchmark failure: skip the (family, bars) combination instead
+  // of demanding universal admissibility.
+  if (!runPrepare(engine, bars, prepared)) {
+    if (prepared.p1r.usedP1r &&
+        prepared.p1r.executionStatus ==
+            GroovePuterRhythm::PhraseExecutionStatus::Rejected) {
+      std::printf(
+          "E0A_BENCH SKIP family=%s bars=%u reason=length_rejected\n",
+          family.label, static_cast<unsigned>(bars));
+      return;
+    }
+    std::fprintf(stderr,
+                 "E0A_BENCH ERROR family=%s bars=%u warmup_error=%d\n",
+                 family.label,
+                 static_cast<unsigned>(bars),
+                 static_cast<int>(prepared.result.error));
+    std::exit(2);
+  }
+
+  for (int i = 1; i < kWarmupIterations; ++i) {
     if (!runPrepare(engine, bars, prepared)) {
       std::fprintf(stderr,
                    "E0A_BENCH ERROR family=%s bars=%u warmup_error=%d\n",
