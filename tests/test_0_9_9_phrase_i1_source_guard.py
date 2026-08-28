@@ -60,10 +60,18 @@ assert "PreparedPhraseExecution" in helper
 assert "preparePhraseExecution(" in helper
 assert "materializePreparedPhraseBar(" in helper
 assert "execution.selection.realizationGeneration.projectSeed" in helper
+assert "return PreparationDisposition::LegacyRoute;" in helper
 
 assert "GeneratedPhraseP1R::prepare(" in song
-assert "PreparationDisposition::LegacyRoute" in song
-assert "PreparationDisposition::Failed" in song
+assert (
+    "p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed"
+    in song
+)
+assert (
+    "p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Ready"
+    in song
+)
+assert "Legacy strong-rhythm routes retain the frozen D2 physical preparer exactly." in song
 assert "PHRASE LENGTH REJECTED" in song
 assert "forceSingleBarRows = true" in song
 assert "armPhraseActivation(" in song
