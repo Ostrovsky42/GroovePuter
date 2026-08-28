@@ -168,6 +168,8 @@ inline PreparationDisposition prepare(
     uint8_t bars,
     int pageIndex,
     int firstLocalSlot,
+    uint32_t generationAttemptOrdinal,
+    bool attemptAvailable,
     std::array<PhraseGenerator::PhraseBar, 8>& destination,
     PreparationEvidence& evidence) {
   evidence = PreparationEvidence{};
@@ -177,26 +179,17 @@ inline PreparationDisposition prepare(
   }
 
   evidence.usedP1r = true;
+  evidence.attemptAvailable = attemptAvailable;
+  evidence.generationAttemptOrdinal = generationAttemptOrdinal;
+  evidence.phraseGenerationIdentity =
+      phraseIdentityForAttempt(generationAttemptOrdinal);
   const auto level = GroovePuterState::currentGenerationLevel();
-  const auto attempt = GroovePuterState::allocateGenerationAttempt(
-      genre.generativeMode,
-      genre.recipe,
-      level,
-      kLogicalPhraseAttemptChannel);
-  if (!attempt.ok()) {
-    evidence.executionStatus =
-        GroovePuterRhythm::PhraseExecutionStatus::InvalidContext;
-    return PreparationDisposition::Failed;
-  }
-  evidence.attemptAvailable = true;
-  evidence.generationAttemptOrdinal = attempt.ordinal;
-  evidence.phraseGenerationIdentity = phraseIdentityForAttempt(attempt.ordinal);
 
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
   GroovePuterRhythm::PreparedPhraseExecution execution{};
   evidence.executionStatus = GroovePuterRhythm::preparePhraseExecution(
       genre,
-      materializationSettingsFor(scene, level, attempt.ordinal),
+      materializationSettingsFor(scene, level, generationAttemptOrdinal),
       evidence.phraseGenerationIdentity,
       bars,
       scratch,
