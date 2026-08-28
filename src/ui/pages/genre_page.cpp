@@ -124,7 +124,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 4;
+  constexpr int kCount = 5;
   focus_ = static_cast<FocusRow>(wrapIndex(static_cast<int>(focus_) + delta, kCount));
 }
 
@@ -155,8 +155,6 @@ GenreSettings GenrePage::pendingSettings() const {
   settings.recipe = static_cast<uint8_t>(normalizeRecipeForGenre(
       static_cast<GenerativeMode>(settings.generativeMode),
       static_cast<GenreRecipeId>(recipeIndex_)));
-  // F-02 migration: persisted fields remain decode-compatible, but future Genre
-  // generation no longer treats historical MORPH state as a generative input.
   settings.morphTarget = 0;
   settings.morphAmount = 0;
   settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
@@ -261,8 +259,6 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
         mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
   } else {
-    // STOP generation and PROFILE ONLY intentionally mutate live state and keep
-    // the existing structural audio-mutation guard.
     withAudioGuard([&]() {
       if (doRegenerate) {
         generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
@@ -274,12 +270,7 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     });
   }
 
-  // 0.9.9-B: successful generation commits own their single revision transition
-  // through the canonical 0.9.8 UndoOwner. PROFILE ONLY remains a direct Genre
-  // mutation and therefore retains the page-level revision mark.
-  if (changed && !doRegenerate) {
-    GroovePuterState::markSceneMutated();
-  }
+  if (changed && !doRegenerate) GroovePuterState::markSceneMutated();
 
   const char* resultLabel = applyModeName();
   if (doRegenerate) {
@@ -350,7 +341,7 @@ void GenrePage::draw(IGfx& gfx) {
 
   char value[80];
   std::snprintf(value, sizeof(value), "%s", GenreCatalog::recipeName(selectedRecipe));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "VARIANT", value,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "RECIPE", value,
                        focus_ == FocusRow::Variant, axisColor, palette);
 
   const char* rhythmName = "AUTO";
@@ -361,8 +352,12 @@ void GenrePage::draw(IGfx& gfx) {
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "RHYTHM", rhythmName,
                        focus_ == FocusRow::Rhythm, axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "REROLL", "REPEAT G",
-                       false, axisColor, palette);
+  AxisUI::drawValueRow(
+      gfx, x, LayoutManager::lineY(4), width, "DEPTH",
+      GroovePuterState::generationLevelShortName(
+          GroovePuterState::currentGenerationLevel()),
+      focus_ == FocusRow::Depth, axisColor, palette);
+
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
 
@@ -390,7 +385,7 @@ void GenrePage::draw(IGfx& gfx) {
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:LEVEL M:MODE");
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -438,6 +433,9 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Genre: shiftGenre(delta); return true;
       case FocusRow::Variant: cycleRecipeSelection(delta); return true;
       case FocusRow::Rhythm: cycleRhythmSelection(delta); return true;
+      case FocusRow::Depth:
+        (void)GroovePuterState::cycleGenerationLevel(delta);
+        return true;
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }
@@ -464,8 +462,6 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return true;
   }
 
-  // Retire the old global I/O generator shortcuts on the GENRE screen. P is
-  // owned above by the single P1/P2/P3 generation-request selector.
   if (!event.ctrl && !event.alt && !event.meta &&
       (key == 'i' || key == 'o')) {
     UI::showToast("LEGACY SYNTH GEN OFF", 1200);

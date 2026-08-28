@@ -11,6 +11,9 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "src/dsp/generated_phrase_song.h"
+#include "src/state/generated_phrase_product_state.h"
+#include "src/state/generation_request_state.h"
+#include "src/state/phrase_generation_request_state.h"
 #include "src/state/scene_revision.h"
 
 namespace {
@@ -136,6 +139,74 @@ void formatPatternRef(int16_t reference, char* output, size_t outputSize) {
                 static_cast<char>('A' + bank), slot);
 }
 
+int generatedPatternForBar(
+    const GroovePuterState::GeneratedPhraseAcceptedSnapshot& accepted,
+    uint8_t bar) {
+  if (!accepted.valid || bar >= accepted.bars ||
+      accepted.pageIndex < 0 || accepted.pageIndex >= kMaxPages ||
+      accepted.firstLocalSlot < 0) {
+    return -1;
+  }
+  const int localSlot = static_cast<int>(accepted.firstLocalSlot) + bar;
+  if (localSlot < 0 || localSlot >= kPatternsPerPage) return -1;
+  const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+  const int index = localSlot % Bank<SynthPattern>::kPatterns;
+  return songPatternFromPageBankIndex(accepted.pageIndex, bank, index);
+}
+
+int currentGeneratedBar(
+    const MiniAcid& engine,
+    const GroovePuterState::GeneratedPhraseAcceptedSnapshot& accepted) {
+  if (!accepted.valid || !engine.songModeEnabled() ||
+      engine.songPlaybackSlot() != accepted.songSlot) {
+    return -1;
+  }
+  const int row = engine.currentSongPosition();
+  if (row < accepted.songStart || row >= accepted.songStart + accepted.bars) {
+    return -1;
+  }
+  return row - accepted.songStart;
+}
+
+void drawGeneratedBarStrip(
+    IGfx& gfx,
+    int x,
+    int y,
+    int width,
+    uint8_t bars,
+    uint8_t selectedBar,
+    int currentBar,
+    const PhrasePalette& palette) {
+  bars = std::max<uint8_t>(1, std::min<uint8_t>(8, bars));
+  constexpr int kGap = 3;
+  const int available = width - 34 - kGap * 7;
+  const int cellW = std::max(12, available / 8);
+  const int cellH = 10;
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, y + 1, "BARS");
+  const int startX = x + 34;
+  for (int bar = 0; bar < 8; ++bar) {
+    const int bx = startX + bar * (cellW + kGap);
+    const bool active = bar < bars;
+    const bool current = bar == currentBar;
+    const bool selected = bar == selectedBar && active;
+    if (current) {
+      gfx.fillRect(bx, y, cellW, cellH, palette.accent);
+      gfx.setTextColor(palette.background);
+    } else {
+      gfx.setTextColor(active ? palette.text : palette.dim);
+    }
+    gfx.drawRect(bx, y, cellW, cellH,
+                 selected ? palette.text :
+                 (active ? palette.border : palette.gridOff));
+    if (active) {
+      char label[4];
+      std::snprintf(label, sizeof(label), "%d", bar + 1);
+      gfx.drawText(bx + (cellW - gfx.textWidth(label)) / 2, y + 1, label);
+    }
+  }
+}
+
 void drawMask(IGfx& gfx,
               int x,
               int y,
@@ -255,6 +326,229 @@ PhraseCore::SlotId PhrasePage::slotFromIndex(int index) {
 
 int PhrasePage::indexFromSlot(PhraseCore::SlotId slot) {
   return PhraseCore::slotIndex(slot);
+}
+
+void PhrasePage::cycleRequestedLength(int delta) {
+  (void)GroovePuterState::cycleRequestedPhraseBars(delta);
+  const auto& product = GroovePuterState::generatedPhraseProductState();
+  if (!product.accepted.valid &&
+      product_bar_cursor_ >= GroovePuterState::requestedPhraseBars()) {
+    product_bar_cursor_ = 0;
+  }
+}
+
+void PhrasePage::cycleProductBar(int delta) {
+  const auto& product = GroovePuterState::generatedPhraseProductState();
+  const int bars = std::max(
+      1, static_cast<int>(product.accepted.valid
+          ? product.accepted.bars
+          : GroovePuterState::requestedPhraseBars()));
+  int bar = static_cast<int>(product_bar_cursor_) + delta;
+  while (bar < 0) bar += bars;
+  while (bar >= bars) bar -= bars;
+  product_bar_cursor_ = static_cast<uint8_t>(bar);
+}
+
+bool PhrasePage::focusProductBar() {
+  const auto& accepted =
+      GroovePuterState::generatedPhraseProductState().accepted;
+  if (!accepted.valid || product_bar_cursor_ >= accepted.bars) {
+    UI::showToast("NO GENERATED PHRASE", 1000);
+    return true;
+  }
+  if (mini_acid_.isPlaying()) {
+    UI::showToast("STOP TO FOCUS BAR", 1000);
+    return true;
+  }
+
+  const int row = accepted.songStart + product_bar_cursor_;
+  const int pattern = generatedPatternForBar(accepted, product_bar_cursor_);
+  if (accepted.songSlot < 0 || accepted.songSlot > 1 ||
+      row < 0 || row >= Song::kMaxPositions || pattern < 0) {
+    UI::showToast("PHRASE TARGET UNAVAILABLE", 1200);
+    return true;
+  }
+
+  mini_acid_.setActiveSongSlot(accepted.songSlot);
+  mini_acid_.setSongMode(true);
+  mini_acid_.setSongPlaybackSlot(accepted.songSlot);
+  mini_acid_.setSongPosition(row);
+
+  char ref[12];
+  formatPatternRef(static_cast<int16_t>(pattern), ref, sizeof(ref));
+  char toast[48];
+  std::snprintf(toast, sizeof(toast), "BAR %u/%u -> %s",
+                static_cast<unsigned>(product_bar_cursor_ + 1),
+                static_cast<unsigned>(accepted.bars), ref);
+  UI::showToast(toast, 1000);
+  return true;
+}
+
+void PhrasePage::drawProductView(IGfx& gfx) {
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  const auto& product = GroovePuterState::generatedPhraseProductState();
+  const auto& accepted = product.accepted;
+  const uint8_t requestedBars = GroovePuterState::requestedPhraseBars();
+  const auto depth = GroovePuterState::currentGenerationLevel();
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+
+  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE");
+
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  char line[96];
+
+  std::snprintf(line, sizeof(line), "LENGTH %uB   DEPTH %s   FEEL %uB",
+                static_cast<unsigned>(requestedBars),
+                GroovePuterState::generationLevelCode(depth),
+                static_cast<unsigned>(scene.feel.patternBars));
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(0), line);
+
+  const uint8_t displayBars = accepted.valid ? accepted.bars : requestedBars;
+  if (product_bar_cursor_ >= displayBars) product_bar_cursor_ = 0;
+  const int playingBar = currentGeneratedBar(mini_acid_, accepted);
+  drawGeneratedBarStrip(
+      gfx, x, LayoutManager::lineY(1), width, displayBars,
+      product_bar_cursor_, playingBar, palette);
+
+  const char* outcome = GroovePuterState::generatedPhraseOutcomeName(
+      product.lastOutcome);
+  const IGfxColor outcomeColor =
+      product.lastOutcome == GroovePuterState::GeneratedPhraseOutcome::Accepted
+          ? palette.accent
+          : (product.lastOutcome == GroovePuterState::GeneratedPhraseOutcome::TypedRejection
+                 ? palette.drums
+                 : palette.dim);
+  std::snprintf(line, sizeof(line), "LAST %-12s  REQ:%uB",
+                outcome,
+                static_cast<unsigned>(product.lastRequestedBars == 0
+                    ? requestedBars : product.lastRequestedBars));
+  gfx.setTextColor(outcomeColor);
+  gfx.drawText(x, LayoutManager::lineY(2), line);
+
+  if (accepted.valid) {
+    if (accepted.usedP1r) {
+      std::snprintf(line, sizeof(line), "ID:%u  PROG:%u  HARM:%u EVENTS",
+                    static_cast<unsigned>(accepted.phraseGenerationIdentity),
+                    static_cast<unsigned>(accepted.progression),
+                    static_cast<unsigned>(accepted.harmonicEventPositions));
+    } else {
+      std::snprintf(line, sizeof(line), "ID:LEGACY  PROG:--  HARM:--");
+    }
+  } else {
+    std::snprintf(line, sizeof(line), "ID:--  PROG:--  HARM:--");
+  }
+  gfx.setTextColor(accepted.valid ? palette.text : palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(3), line);
+
+  char ref[12] = "---";
+  int selectedPattern = -1;
+  if (accepted.valid && product_bar_cursor_ < accepted.bars) {
+    selectedPattern = generatedPatternForBar(accepted, product_bar_cursor_);
+    formatPatternRef(static_cast<int16_t>(selectedPattern), ref, sizeof(ref));
+  }
+  if (accepted.valid) {
+    std::snprintf(line, sizeof(line), "BAR %u/%u -> %s   SONG %c%d",
+                  static_cast<unsigned>(product_bar_cursor_ + 1),
+                  static_cast<unsigned>(accepted.bars), ref,
+                  static_cast<char>('A' + accepted.songSlot),
+                  static_cast<int>(accepted.songStart) +
+                      static_cast<int>(product_bar_cursor_) + 1);
+  } else {
+    std::snprintf(line, sizeof(line), "BAR --  -> ---   SONG TO:%c%d",
+                  static_cast<char>('A' + std::clamp(scene.activeSongSlot, 0, 1)),
+                  static_cast<int>(destination_row_) + 1);
+  }
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(4), line);
+
+  if (playingBar >= 0) {
+    std::snprintf(line, sizeof(line), "PLAYING BAR %d/%u  FOLLOW=PHYSICAL",
+                  playingBar + 1, static_cast<unsigned>(accepted.bars));
+    gfx.setTextColor(palette.accent);
+  } else if (accepted.valid) {
+    std::snprintf(line, sizeof(line), "STOP: BAR %u READY TO FOCUS/EDIT",
+                  static_cast<unsigned>(product_bar_cursor_ + 1));
+    gfx.setTextColor(palette.text);
+  } else {
+    std::snprintf(line, sizeof(line), "G GENERATES INTO EXISTING SONG/PATTERNS");
+    gfx.setTextColor(palette.dim);
+  }
+  gfx.drawText(x, LayoutManager::lineY(5), line);
+
+  std::snprintf(line, sizeof(line), "FEEL CYCLE %uB != PHRASE LENGTH %uB",
+                static_cast<unsigned>(scene.feel.patternBars),
+                static_cast<unsigned>(requestedBars));
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(6), line);
+
+  std::snprintf(line, sizeof(line), "TO:%c%d  CORE CAP:%uB   V:CORE",
+                static_cast<char>('A' + std::clamp(scene.activeSongSlot, 0, 1)),
+                static_cast<int>(destination_row_) + 1,
+                static_cast<unsigned>(capture_length_));
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(7), line);
+
+  UI::drawStandardFooter(gfx,
+                         "U/D:LENGTH L/R:BAR P:DEPTH",
+                         "G:GENERATE ENT:FOCUS C+ARROW:TO");
+}
+
+bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  const int nav = UIInput::navCode(ui_event);
+
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (nav == GROOVEPUTER_LEFT) {
+      cycleDestinationRow(-1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_RIGHT) {
+      cycleDestinationRow(1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_UP) {
+      cycleDestinationRow(-8);
+      return true;
+    }
+    if (nav == GROOVEPUTER_DOWN) {
+      cycleDestinationRow(8);
+      return true;
+    }
+  }
+
+  if (nav == GROOVEPUTER_UP) {
+    cycleRequestedLength(1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_DOWN) {
+    cycleRequestedLength(-1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_LEFT) {
+    cycleProductBar(-1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_RIGHT) {
+    cycleProductBar(1);
+    return true;
+  }
+
+  char key = ui_event.key;
+  if (!key) return false;
+  const char lower = static_cast<char>(
+      std::tolower(static_cast<unsigned char>(key)));
+  if (key == '\n' || key == '\r') return focusProductBar();
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g') {
+    return generatePhraseToSong();
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1100);
+    return true;
+  }
+  return false;
 }
 
 void PhrasePage::selectSlot(int index) {
@@ -423,8 +717,9 @@ bool PhrasePage::captureCurrentRegion() {
 
 bool PhrasePage::generatePhraseToSong() {
   const int songStart = static_cast<int>(destination_row_);
+  const uint8_t requestedBars = GroovePuterState::requestedPhraseBars();
   const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(
-      mini_acid_, capture_length_, songStart,
+      mini_acid_, requestedBars, songStart,
       [&](auto&& operation) {
         if (audio_guard_) {
           audio_guard_(std::forward<decltype(operation)>(operation));
@@ -434,6 +729,16 @@ bool PhrasePage::generatePhraseToSong() {
       });
 
   if (!result) {
+    const bool typedRejection =
+        result.status == GeneratedPhraseSong::LifecycleStatus::Failed &&
+        result.p1r.usedP1r &&
+        result.p1r.executionStatus ==
+            GroovePuterRhythm::PhraseExecutionStatus::Rejected;
+    if (typedRejection) {
+      GroovePuterState::publishGeneratedPhraseTypedRejection(requestedBars);
+    } else {
+      GroovePuterState::publishGeneratedPhraseExecutionFailure(requestedBars);
+    }
     LOG_WARN_UI("Generated Phrase -> Song failed at TO=%d: %s",
                 songStart + 1, GeneratedPhraseSong::statusText(result));
     UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
@@ -441,6 +746,28 @@ bool PhrasePage::generatePhraseToSong() {
   }
 
   const PhraseGenerator::PhraseResult& phraseResult = result.phrase;
+  const int firstGlobal = phraseResult.firstGlobalPattern;
+  const int pageIndex = firstGlobal >= 0 ? songPatternPage(firstGlobal) : -1;
+  const int firstLocalSlot = firstGlobal >= 0
+      ? songPatternBank(firstGlobal) * Bank<SynthPattern>::kPatterns +
+            songPatternIndexInBank(firstGlobal)
+      : -1;
+  const int songSlot = std::clamp(
+      mini_acid_.sceneManager().currentScene().activeSongSlot, 0, 1);
+  GroovePuterState::publishGeneratedPhraseAccepted(
+      requestedBars,
+      static_cast<uint8_t>(phraseResult.bars),
+      songSlot,
+      pageIndex,
+      firstLocalSlot,
+      phraseResult.songStart,
+      result.p1r.usedP1r,
+      result.status == GeneratedPhraseSong::LifecycleStatus::PendingNextBar,
+      result.p1r.phraseGenerationIdentity,
+      static_cast<uint8_t>(result.p1r.progression),
+      result.p1r.harmonicEventPositions);
+
+  product_bar_cursor_ = 0;
   preview_bar_ = 0;
   const int nextRow = std::min(
       Song::kMaxPositions - 1,
@@ -625,6 +952,11 @@ bool PhrasePage::undoPreparedOwnedState() {
 }
 
 void PhrasePage::draw(IGfx& gfx) {
+  if (product_view_) {
+    drawProductView(gfx);
+    return;
+  }
+
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::SlotSummary current =
       PhraseWorkspace::summary(scene, selected_slot_);
@@ -744,9 +1076,10 @@ void PhrasePage::draw(IGfx& gfx) {
       refD, palette.drums, palette);
 
   const int actionY = LayoutManager::lineY(7);
-  std::snprintf(line, sizeof(line), "NEXT %uB %s  P:%s",
+  std::snprintf(line, sizeof(line), "CAP %uB %s  GEN %uB  P:%s",
                 static_cast<unsigned>(capture_length_),
                 roleShort(capture_role_),
+                static_cast<unsigned>(GroovePuterState::requestedPhraseBars()),
                 PhraseCore::slotName(parent_slot_));
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, actionY, line);
@@ -758,8 +1091,8 @@ void PhrasePage::draw(IGfx& gfx) {
   gfx.drawText(x + width - gfx.textWidth(ownership), actionY, ownership);
 
   UI::drawStandardFooter(gfx,
-                         "1-4:SLOT  L/R:BAR  U/D:LEN",
-                         "G:GEN C+LR:TO C+UD:8 ENT/D/W");
+                         "1-4:SLOT L/R:BAR U/D:CAPLEN",
+                         "G:GEN V:PRODUCT ENT/D/W");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
@@ -769,13 +1102,20 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
+  char toggleKey = ui_event.key;
+  const char toggleLower = toggleKey
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(toggleKey)))
+      : 0;
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && toggleLower == 'v') {
+    product_view_ = !product_view_;
+    UI::showToast(product_view_ ? "PHRASE PRODUCT" : "PHRASE CORE", 700);
+    return true;
+  }
+
+  if (product_view_) return handleProductEvent(ui_event);
+
   const int nav = UIInput::navCode(ui_event);
 
-  // Cardputer's physical punctuation/arrow keys are canonical HID arrows:
-  // 0x36/0x37/0x38 are normalized before KeysState::word reaches pages.
-  // Therefore comma/period are not a reliable independent control surface.
-  // Modifier + canonical arrows gives PHRASE a deterministic destination
-  // contract on both Cardputer and SDL without changing plain navigation.
   if (ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     if (nav == GROOVEPUTER_LEFT) {
       cycleDestinationRow(-1);

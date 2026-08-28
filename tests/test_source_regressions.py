@@ -342,11 +342,12 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
             "Variant LEFT/RIGHT must navigate visible recipes")
     require("event.alt" not in variant_block and "adjustMorph" not in variant_block,
             "Variant navigation must not retain the retired MORPH shortcut")
-    for retired in ("adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph"):
+    for retired in (
+        "adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph",
+        '"REROLL"', '"REPEAT G"',
+    ):
         require(retired not in page + header,
                 f"retired Genre MORPH owner returned: {retired}")
-    require('"REROLL", "REPEAT G"' in page,
-            "Genre page must expose repeated G as the reroll surface")
     require("moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);" in page,
             "UP/DOWN must navigate Genre page fields")
 
@@ -368,8 +369,8 @@ def test_enter_applies_selected_recipe() -> None:
     footer_start = page.index("UI::drawStandardFooter(gfx")
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
-    require('"G:GEN P:LEVEL M:MODE"' in footer_block,
-            "Genre footer must document generation, P-level and ApplyMode controls")
+    require('"G:GEN P:DEPTH M:APPLY"' in footer_block,
+            "Genre footer must document generation, DEPTH and ApplyMode controls")
 
 
 def test_performance_workflow_boundaries() -> None:

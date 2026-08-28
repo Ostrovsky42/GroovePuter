@@ -44,8 +44,9 @@ require(CPP, '"DR"', "Drums preview label is missing")
 # Honest reference semantics and separate next-capture controls.
 require(CPP, '"REF MUT"', "Mutable reference storage badge is missing")
 require(CPP, '"REF LINKED"', "Linked reference warning is missing")
-require(CPP, '"NEXT %uB %s  P:%s"',
-        "Next capture settings must be visibly separate from saved metadata")
+require(CPP, '"CAP %uB %s  GEN %uB  P:%s"',
+        "Next capture settings must be visibly separate from saved metadata, "
+        "and distinct from the Generated Phrase request-bars owner")
 if any(term in CPP for term in ('"COPIED"', '"RECORDED"', '"EXTRACTED"')):
     raise AssertionError("Phrase UI must not claim independent event ownership")
 
@@ -71,10 +72,15 @@ for needle in (
     "case 'd': return deriveFromParent();",
     "case 'w': return writeToCurrentRow(ui_event.alt);",
     "return clearCurrentSlot();",
-    '"1-4:SLOT  L/R:BAR  U/D:LEN"',
-    '"G:GEN C+LR:TO C+UD:8 ENT/D/W"',
+    '"1-4:SLOT L/R:BAR U/D:CAPLEN"',
+    '"G:GEN V:PRODUCT ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
+# Ctrl+arrow TO/8-bar destination shortcuts still exist in CORE handleEvent;
+# UI-P3B tightened the footer hint to make room for the new V:PRODUCT toggle
+# instead of dropping the shortcuts themselves.
+require(CPP, "ui_event.ctrl && !ui_event.alt && !ui_event.meta",
+        "Phrase UI Ctrl+arrow destination handling is missing")
 
 # Generated Phrase recovery uses plain G, current 1/2/4/8B length and the same
 # explicit TO destination that W/Alt+W already expose. 0.9.9-D2 deliberately

@@ -76,6 +76,16 @@ class PhrasePage : public IPage {
   static PhraseCore::SlotId slotFromIndex(int index);
   static int indexFromSlot(PhraseCore::SlotId slot);
 
+  // Product Generated Phrase view. These functions manipulate only the
+  // session request/read-model owners; musical policy remains in P1R/I1.
+  void drawProductView(IGfx& gfx);
+  bool handleProductEvent(UIEvent& ui_event);
+  void cycleRequestedLength(int delta);
+  void cycleProductBar(int delta);
+  bool focusProductBar();
+
+  // Retained PhraseCore workspace. Its capture length remains independent of
+  // the Generated Phrase request length exposed by the product view.
   void selectSlot(int index);
   void cycleLength(int delta);
   void cycleRole(int delta);
@@ -93,6 +103,10 @@ class PhrasePage : public IPage {
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
+
+  bool product_view_ = true;
+  uint8_t product_bar_cursor_ = 0;
+
   PhraseCore::SlotId selected_slot_ = PhraseCore::SlotId::A;
   PhraseCore::SlotId parent_slot_ = PhraseCore::SlotId::B;
   PhraseCore::Role capture_role_ = PhraseCore::Role::Main;

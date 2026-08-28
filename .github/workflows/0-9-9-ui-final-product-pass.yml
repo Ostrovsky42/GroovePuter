@@ -1,0 +1,47 @@
+name: 0.9.9 UI final product pass
+
+on:
+  push:
+    branches:
+      - 'agent/20260828-09-0.9.9-ui-final-product-pass'
+  pull_request:
+    branches:
+      - 'research/20260828-08-0.9.9-ui-p0-ownership-audit'
+
+jobs:
+  focused-ui-final-product:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify UI-P0 ancestry and production owner firewall
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='b64a26278d225d9842d6f19c130fcc9015216a1e'
+          git cat-file -e "${BASE}^{commit}"
+          git merge-base --is-ancestor "$BASE" HEAD
+          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+
+          ALLOWED_PRODUCTION='^(src/state/generated_phrase_product_state\.h|src/state/phrase_generation_request_state\.h|src/ui/pages/phrase_page\.(h|cpp)|src/ui/pages/genre_page\.(h|cpp)|src/ui/pages/feel_page\.cpp|src/ui/pages/pattern_edit_page\.h|src/ui/pages/synth_sequencer_page\.cpp)$'
+          CHANGED_PRODUCTION="$(git diff --name-only "$BASE"...HEAD | grep -E '^(src/|scenes\.h$|GroovePuter\.ino$)' || true)"
+          printf '%s\n' "$CHANGED_PRODUCTION"
+          if [ -n "$CHANGED_PRODUCTION" ]; then
+            UNEXPECTED="$(printf '%s\n' "$CHANGED_PRODUCTION" | grep -Ev "$ALLOWED_PRODUCTION" || true)"
+            if [ -n "$UNEXPECTED" ]; then
+              echo 'Unexpected production owner in final UI pass:' >&2
+              printf '%s\n' "$UNEXPECTED" >&2
+              exit 1
+            fi
+          fi
+
+          # Frozen I1/P1R command/materialization owners must remain exact.
+          test "$(git hash-object src/dsp/generated_phrase_song.h)" = \
+            '5c08db4f6ab6c1877d1536c626dc718c16b49ae6'
+          test "$(git hash-object src/dsp/generated_phrase_p1r_materializer.h)" = \
+            '2195d3280a4819cc50c306c79b4745dd7e9a2621'
+
+      - name: Run final UI product focused gate
+        run: bash tests/run_0_9_9_ui_final_tests.sh

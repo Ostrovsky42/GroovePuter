@@ -252,7 +252,7 @@ void FeelPage::draw(IGfx& gfx) {
                 static_cast<unsigned>(normalizedRepeatBars(scene.feel.patternBars)),
                 normalizedRepeatBars(scene.feel.patternBars) == 1 ? "" : "S");
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
-                       "REPEATS", value,
+                       "FEEL CYCLE", value,
                        focus_ == FocusRow::Repeats,
                        axisColor, palette);
 
@@ -275,7 +275,7 @@ void FeelPage::draw(IGfx& gfx) {
       explanation = "NEXT GEN: note velocity spread";
       break;
     case FocusRow::Repeats:
-      explanation = "CYCLE: repeat 1/2/4/8 bars";
+      explanation = "LOCAL CYCLE: repeat 1/2/4/8 bars";
       break;
     case FocusRow::Preset:
       explanation = "ENTER: load all FEEL values";

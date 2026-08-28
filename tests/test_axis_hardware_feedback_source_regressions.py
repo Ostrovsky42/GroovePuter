@@ -74,9 +74,10 @@ for token in (
 # Repeated G is now the only explicit variation/reroll surface. Persisted MORPH
 # fields stay in the Scene codec for backwards decode, but this page normalizes
 # them to zero on explicit apply/generation and must not own an accelerator.
+# UI-P5 deliberately retires the standalone "REROLL"/"REPEAT G" affordance in
+# favor of the canonical G generation boundary; see
+# docs/architecture/GENERATION_REROLL_UI_UX_CONTRACT.md.
 for token in (
-    '"REROLL"',
-    '"REPEAT G"',
     "settings.morphTarget = 0;",
     "settings.morphAmount = 0;",
     "requestedSettings.morphTarget = 0;",
@@ -88,6 +89,8 @@ for retired in (
     "morphAccelerator",
     "morph_amount_",
     "FocusRow::Morph",
+    '"REROLL"',
+    '"REPEAT G"',
 ):
     assert retired not in genre + genre_header, (
         f"Retired Genre MORPH owner returned: {retired}"

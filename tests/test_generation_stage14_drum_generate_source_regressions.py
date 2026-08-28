@@ -104,7 +104,7 @@ for needle in (
     '"SWING OFFBEAT"',
     '"FEEL AMOUNT"',
     '"VELOCITY VAR"',
-    '"REPEATS"',
+    '"FEEL CYCLE"',
     '"PRESET"',
     "scene.feel.timingProfile = next;",
     "scene.feel.patternBars = next;",

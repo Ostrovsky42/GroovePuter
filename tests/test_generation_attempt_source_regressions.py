@@ -146,16 +146,21 @@ for forbidden in (
     if forbidden in QUANTIZED:
         raise AssertionError(f"quantized reroll identity collapsed back to local slot: {forbidden}")
 
-# UI migration is explicit: future Genre apply/G zeroes saved MORPH fields and
-# exposes repeated G as reroll. Scene codec fields themselves are intentionally
-# retained elsewhere for backwards decode.
+# UI migration is explicit: future Genre apply/G zeroes saved MORPH fields.
+# Scene codec fields themselves are intentionally retained elsewhere for
+# backwards decode. UI-P5 deliberately retires the standalone REROLL/REPEAT G
+# affordance: repeated G reroll semantics stay internal to the canonical
+# generation boundary rather than exposing a second UI command.
 for needle in (
     "settings.morphTarget = 0;",
     "settings.morphAmount = 0;",
     "requestedSettings.morphTarget = 0;",
     "requestedSettings.morphAmount = 0;",
-    '"REROLL", "REPEAT G"',
 ):
     require(GENRE, needle, f"Genre MORPH migration changed: {needle}")
+for retired_affordance in ('"REROLL"', '"REPEAT G"'):
+    if retired_affordance in GENRE:
+        raise AssertionError(
+            f"standalone reroll UI affordance must stay retired: {retired_affordance}")
 
 print("Combined F-02/F-07 seed surface source regressions: OK")

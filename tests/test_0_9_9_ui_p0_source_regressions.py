@@ -72,11 +72,14 @@ require("enum class PhraseLengthRequestStatus" in length and "Rejected" in lengt
 require("resolveGenerationCompositionForPhraseBars" in length,
         "authoritative phrase-length resolver missing")
 
-# P0-4: current product-request ownership gap remains explicit at I1.
+# P0-4: the product-request ownership gap this audit characterized is now
+# closed by UI-P2's dedicated GroovePuterState::requestedPhraseBars() owner.
+# capture_length_ remains PhrasePage-local (legacy PhraseCore capture only,
+# checked below) and no longer doubles as the generated-Phrase G request.
 require("uint8_t capture_length_ = 4;" in phrase_h,
-        "P0 characterization expects PhrasePage-local capture_length_ ambiguity")
-require("GeneratedPhraseSong::generate(\n      mini_acid_, capture_length_, songStart" in phrase_cpp,
-        "current generated phrase request must still be sourced from capture_length_ at I1")
+        "PhrasePage-local legacy PhraseCore capture length is missing")
+require("GeneratedPhraseSong::generate(\n      mini_acid_, requestedBars, songStart" in phrase_cpp,
+        "generated phrase request must use the dedicated UI-P2 request-bars owner")
 require("request.lengthBars = capture_length_;" in phrase_cpp,
         "the same local value must still also serve legacy PhraseCore capture at I1")
 
