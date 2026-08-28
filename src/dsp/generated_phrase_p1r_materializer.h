@@ -1,6 +1,7 @@
 #pragma once
 
 #include "atlas_runtime.h"
+#include "miniacid_engine.h"
 #include "mode_manager.h"
 #include "phrase_generator.h"
 #include "src/generation/migration/phrase_execution.h"
