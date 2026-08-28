@@ -21,7 +21,7 @@ SDL_GFX_LIBS="$(pkg-config --libs SDL2_gfx)"
 mapfile -t SDL_SOURCES < <(
   awk '
     /^SOURCES :=/ { capture = 1; next }
-    capture && /^ROOT :=/ { capture = 0 }
+    capture && /^[^[:space:]]/ { capture = 0 }
     capture {
       line = $0
       sub(/^[[:space:]]+/, "", line)
