@@ -17,7 +17,20 @@ def git_show(path: str) -> str:
 
 
 def struct_body(text: str, name: str) -> str:
-    return text.split(f"struct {name}", 1)[1].split("};", 1)[0]
+    marker = f"struct {name}"
+    marker_index = text.index(marker)
+    open_index = text.index("{", marker_index + len(marker))
+    depth = 0
+    for index in range(open_index, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                assert text[index + 1] == ";", f"unterminated struct: {name}"
+                return text[open_index + 1 : index]
+    raise AssertionError(f"unterminated struct: {name}")
 
 
 production_delta = subprocess.check_output(
