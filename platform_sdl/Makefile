@@ -75,6 +75,7 @@ SOURCES := \
 	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
+	../src/generation/migration/phrase_execution.cpp \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
