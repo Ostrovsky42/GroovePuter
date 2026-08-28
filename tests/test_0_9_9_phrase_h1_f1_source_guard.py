@@ -17,9 +17,9 @@ def git_show(path: str) -> str:
 
 
 def struct_body(text: str, name: str) -> str:
-    marker = f"struct {name}"
+    marker = f"struct {name} {{"
     marker_index = text.index(marker)
-    open_index = text.index("{", marker_index + len(marker))
+    open_index = marker_index + len(marker) - 1
     depth = 0
     for index in range(open_index, len(text)):
         char = text[index]
