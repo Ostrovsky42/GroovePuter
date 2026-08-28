@@ -50,6 +50,7 @@ SOURCES := \
 	../src/generation/generation_context.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \
+	../src/generation/composition/phrase_length_request.cpp \
 	../src/generation/composition/tonal_profile.cpp \
 	../src/generation/feel/feel_interpreter.cpp \
 	../src/generation/feel/feel_pattern_adapter.cpp \

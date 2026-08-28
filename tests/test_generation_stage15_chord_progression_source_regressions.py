@@ -63,7 +63,8 @@ require(
 )
 require(
     SOURCE,
-    "id == ProgressionId::ParallelShift ||\n         id == ProgressionId::BorrowedLift",
+    "id == ProgressionId::ParallelShift ||\n"
+    "         id == ProgressionId::BorrowedLift",
     "chromatic root-offset allowlist changed",
 )
 require(
@@ -105,13 +106,19 @@ for palette in (
 ):
     require(PROFILE_CPP, palette, f"editorial progression palette disappeared: {palette}")
 
-# Recovered exact accepted F08 ownership: HarmonicRhythm is realized before
-# ChordProgression, owns one-bar WHEN/cardinality, and remains independent of
-# ChordRhythm physical articulation.
+# Recovered exact accepted F08 ownership. P1R wraps the frozen one-bar path in
+# the explicit nullptr override branch so prepared phrase execution can supply
+# H2 WHEN/WHAT. The legacy branch must still realize HarmonicRhythm before
+# ChordProgression and remain independent of ChordRhythm physical articulation.
 require(
     MATERIAL_BRIDGE,
-    "const HarmonicRhythmResult harmonic =\n      realizeHarmonicRhythm(harmonicRequest);",
-    "F08 harmonic rhythm is no longer production-reachable before progression realization",
+    "if (context.phraseExecutionOverride == nullptr) {",
+    "P1R legacy nullptr override branch disappeared from the strong migration bridge",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonic = realizeHarmonicRhythm(harmonicRequest);",
+    "F08 harmonic rhythm is no longer production-reachable in the legacy nullptr branch",
 )
 require(
     MATERIAL_BRIDGE,
@@ -130,8 +137,8 @@ require(
 )
 require(
     MATERIAL_BRIDGE,
-    "const ChordProgressionResult progression =\n      realizeChordProgression(progressionRequest);",
-    "Stage 15 is no longer production-reachable from the strong migration bridge",
+    "progression = realizeChordProgression(progressionRequest);",
+    "Stage 15 is no longer production-reachable from the legacy nullptr branch",
 )
 require(
     MATERIAL_BRIDGE,
@@ -190,10 +197,14 @@ require(
     "HarmonicRhythm plan lost ownership of harmonic event cardinality",
 )
 
-# Preserve the existing Stage15 ordering while recovering F08 before the H1
-# pitch-path split. This is not phrase-wide scheduling.
-harmonic_call = MATERIAL_BRIDGE.index("realizeHarmonicRhythm(harmonicRequest)")
-progression_call = MATERIAL_BRIDGE.index("realizeChordProgression(progressionRequest)")
+# Preserve the existing Stage15 ordering while allowing the P1R override path
+# after the frozen legacy F08/H1 realization. This is not phrase-wide policy.
+legacy_branch = MATERIAL_BRIDGE.index("if (context.phraseExecutionOverride == nullptr) {")
+harmonic_call = MATERIAL_BRIDGE.index("harmonic = realizeHarmonicRhythm(harmonicRequest)")
+progression_call = MATERIAL_BRIDGE.index("progression = realizeChordProgression(progressionRequest)")
+override_branch = MATERIAL_BRIDGE.index(
+    "const StrongRhythmPhraseExecutionOverride& execution ="
+)
 pitch_path_branch = MATERIAL_BRIDGE.index("if (!context.tonalMaterializationEnabled)")
 legacy_projection = MATERIAL_BRIDGE.index(
     "result.bassProjectionStatus = projectLegacyPitchPattern("
@@ -202,12 +213,12 @@ tonal_projection = MATERIAL_BRIDGE.index(
     "const TonalMaterializationResult bassTonal = materializeRole("
 )
 if not (
-    harmonic_call < progression_call < pitch_path_branch
+    legacy_branch < harmonic_call < progression_call < override_branch < pitch_path_branch
     and progression_call < legacy_projection
     and progression_call < tonal_projection
 ):
     raise AssertionError(
-        "HarmonicRhythm/ChordProgression moved after production pitch materialization"
+        "legacy HarmonicRhythm/ChordProgression ordering moved outside the P1R nullptr branch or after production pitch materialization"
     )
 
 for changed_layer in (PROFILE_H, PROFILE_CPP, BRIDGE):

@@ -396,6 +396,57 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
   return result;
 }
 
+StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    uint16_t phraseGenerationIdentity,
+    uint8_t requestedPhraseBars,
+    PhraseLengthRequestResult& lengthResult,
+    StrongRhythmFrozenSelection& destination) {
+  StrongRhythmMigrationResult result{};
+  destination = StrongRhythmFrozenSelection{};
+  lengthResult = PhraseLengthRequestResult{};
+  result.route = selectStrongRhythmRoute(settings);
+  if (result.route == StrongRhythmRoute::Legacy) {
+    result.status = StrongRhythmMigrationStatus::Legacy;
+    return result;
+  }
+  if (!validMigrationContext(context) ||
+      phraseGenerationIdentity == kUnspecifiedPhraseGenerationIdentity) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+
+  const uint32_t selectionSeed = projectSeedFor(settings, result.route);
+  destination.route = result.route;
+  destination.selectionGeneration.projectSeed = selectionSeed;
+  destination.selectionGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.realizationGeneration.projectSeed = realizationSeedFor(
+      selectionSeed, context.generationAttemptOrdinal);
+  destination.realizationGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.phraseGenerationIdentity = phraseGenerationIdentity;
+  lengthResult = resolveGenerationCompositionForPhraseBars(
+      settings, destination.selectionGeneration, requestedPhraseBars);
+  destination.composition = lengthResult.composition;
+  copyCompositionToResult(destination.composition, result);
+  if (lengthResult.status != PhraseLengthRequestStatus::Accepted ||
+      destination.composition.status != GenerationCompositionStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          destination.composition.rhythmArchetypeId);
+  if (definition == nullptr) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  result.archetype = definition->key;
+  destination.resolved = true;
+  result.status = StrongRhythmMigrationStatus::Applied;
+  return result;
+}
+
 StrongRhythmMigrationResult migrateStrongRhythmDrums(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
@@ -629,30 +680,63 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
-  HarmonicRhythmRequest harmonicRequest{};
-  harmonicRequest.progression = result.progressionId;
-  harmonicRequest.phraseBarOrdinal =
-      context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
-          ? 0
-          : context.phraseBarOrdinal;
-  const HarmonicRhythmResult harmonic =
-      realizeHarmonicRhythm(harmonicRequest);
+  HarmonicRhythmResult harmonic{};
+  ChordProgressionResult progression{};
+  if (context.phraseExecutionOverride == nullptr) {
+    HarmonicRhythmRequest harmonicRequest{};
+    harmonicRequest.progression = result.progressionId;
+    harmonicRequest.phraseBarOrdinal =
+        context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
+            ? 0
+            : context.phraseBarOrdinal;
+    harmonic = realizeHarmonicRhythm(harmonicRequest);
+    result.harmonicRhythmStatus = harmonic.status;
+    result.harmonicEventOnsets = harmonic.plan.onsets;
+    result.harmonicEventCount = harmonic.plan.eventCount;
+    if (harmonic.status != HarmonicRhythmStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+
+    ChordProgressionRequest progressionRequest{};
+    progressionRequest.requestedId = result.progressionId;
+    progressionRequest.family = definition->family;
+    progressionRequest.generation = chordRequest.generation;
+    progressionRequest.harmonicEventCount = harmonic.plan.eventCount;
+    progressionRequest.phraseBars = 1;
+    progression = realizeChordProgression(progressionRequest);
+  } else {
+    const StrongRhythmPhraseExecutionOverride& execution =
+        *context.phraseExecutionOverride;
+    if (execution.harmonicRhythm == nullptr ||
+        execution.progressionSource == nullptr ||
+        execution.progressionSource->period == 0 ||
+        execution.harmonicRhythm->eventCount == 0 ||
+        execution.harmonicRhythm->eventCount > kMaxHarmonicEvents) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+    harmonic.status = HarmonicRhythmStatus::Ok;
+    harmonic.plan = *execution.harmonicRhythm;
+    progression.plan.id = execution.progressionSource->id;
+    progression.plan.eventCount = harmonic.plan.eventCount;
+    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
+      if (!chordProgressionSourceEventAt(
+              *execution.progressionSource,
+              static_cast<uint16_t>(execution.firstGlobalHarmonicOrdinal + ordinal),
+              progression.plan.events[ordinal])) {
+        result.status = StrongRhythmMigrationStatus::InvalidContext;
+        return result;
+      }
+    }
+    progression.status = execution.progressionSource->period == 1
+        ? ChordProgressionStatus::ValidButStatic
+        : ChordProgressionStatus::Ok;
+  }
+
   result.harmonicRhythmStatus = harmonic.status;
   result.harmonicEventOnsets = harmonic.plan.onsets;
   result.harmonicEventCount = harmonic.plan.eventCount;
-  if (harmonic.status != HarmonicRhythmStatus::Ok) {
-    result.status = StrongRhythmMigrationStatus::InvalidContext;
-    return result;
-  }
-
-  ChordProgressionRequest progressionRequest{};
-  progressionRequest.requestedId = result.progressionId;
-  progressionRequest.family = definition->family;
-  progressionRequest.generation = chordRequest.generation;
-  progressionRequest.harmonicEventCount = harmonic.plan.eventCount;
-  progressionRequest.phraseBars = 1;
-  const ChordProgressionResult progression =
-      realizeChordProgression(progressionRequest);
   result.chordProgressionStatus = progression.status;
   result.progressionId = progression.plan.id;
   if (progression.status != ChordProgressionStatus::Ok &&
