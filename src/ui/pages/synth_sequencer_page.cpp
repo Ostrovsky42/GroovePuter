@@ -25,9 +25,6 @@
 #include "src/state/undo_receipts.h"
 
 namespace {
-// The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
-// NOTES places it after the eight fixed pattern numbers. Params pages keep it
-// immediately left of their mode label at the right edge.
 constexpr int kNotesTabStripX = 190;
 constexpr int kParamsTabStripX = 172;
 constexpr int kTabStripW = 32;
@@ -115,9 +112,6 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
   }
 
   const bool notesTab = synth_tab_ == SynthTab::Notes;
-  // MINIMAL has no free inline label slot: its pattern-number cells span the
-  // row below status chrome. Suppress the parent strip there rather than hide
-  // another pattern address. Full tab names remain in toast/help.
   if (notesTab &&
       UI::currentStyle != VisualStyle::RETRO_CLASSIC &&
       UI::currentStyle != VisualStyle::AMBER) {
@@ -138,19 +132,12 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
-  // Ctrl+Z is local to the visible owner context. The SYNTH parent never moves
-  // tabs and never forwards Pattern history from KNOBS/MORE into hidden NOTES.
-  // Esc/back navigation remains the explicit way to return to an owner page.
   if (GroovePuterUndoUx::isUndoEvent(ui_event) &&
       synth_tab_ == SynthTab::Notes) {
     auto& owner = GroovePuterUndo::undoOwner();
     if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
-      // The visible Pattern child owns receipt-target validation (including
-      // Synth A/B). The parent only enforces the navigation boundary: NOTES.
       const bool redo = owner.nextIsRedo();
       const bool handled = MultiPage::handleEvent(ui_event);
-      // A successful one-slot exchange keeps the receipt and flips its next
-      // direction. Expired history clears the owner and must keep its own toast.
       if (handled && owner.hasUndo() &&
           owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
           owner.nextIsRedo() != redo) {
@@ -160,10 +147,6 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  // STOP-state Synth G is prepared against a local pattern and only the final
-  // fixed assignment enters canonical COMMIT. This preserves the exact previous
-  // pattern in the existing 116-byte Pattern receipt without running generation
-  // inside UndoOwner::commitPrepared(). PLAY remains the legacy 0.9.9/TIME path.
   if (synth_tab_ == SynthTab::Notes && isSynthGenerateKey(ui_event) &&
       !mini_acid_.isPlaying()) {
     SceneManager& manager = mini_acid_.sceneManager();
@@ -178,8 +161,6 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
         mini_acid_.genreManager().getCompiledGenerativeParams();
     auto behavior = mini_acid_.genreManager().getBehavior();
     if (mini_acid_.genreManager().generativeMode() == GenerativeMode::Reggae) {
-      // Mirror MiniAcid::randomize303Pattern() exactly so adding Undo cannot
-      // change the musical generator's established A/B split.
       if (voice_index_ == 0) {
         behavior.stepMask = 0x1111;
         behavior.motifLength = 2;
@@ -281,6 +262,7 @@ void SynthSequencerPage::setVisualStyle(VisualStyle style) {
 
 void SynthSequencerPage::tick() {
   if (synth_tab_ == SynthTab::Notes && pattern_page_) {
+    pattern_page_->syncSongPatternContext();
     pattern_page_->tick();
   }
 }

@@ -2,6 +2,7 @@
 
 #include "../../scenes.h"
 #include "atlas_runtime.h"
+#include "generated_phrase_p1r_materializer.h"
 #include "mode_manager.h"
 #include "phrase_generator.h"
 #include "src/generation/migration/quantized_generation_commit.h"
@@ -35,6 +36,7 @@ enum class LifecycleStatus : uint8_t {
 struct Result {
   PhraseGenerator::PhraseResult phrase{};
   LifecycleStatus status = LifecycleStatus::Failed;
+  GeneratedPhraseP1R::PreparationEvidence p1r{};
 
   explicit operator bool() const {
     return status == LifecycleStatus::CommittedNow ||
@@ -50,6 +52,12 @@ inline const char* statusText(const Result& result) {
     case LifecycleStatus::TargetChanged: return "PHRASE TARGET CHANGED";
     case LifecycleStatus::OutOfMemory: return "PHRASE PREPARE OOM";
     case LifecycleStatus::Failed:
+      if (result.p1r.usedP1r) {
+        return result.p1r.executionStatus ==
+                       GroovePuterRhythm::PhraseExecutionStatus::Rejected
+            ? "PHRASE LENGTH REJECTED"
+            : "PHRASE EXEC FAILED";
+      }
       return PhraseGenerator::errorText(result.phrase.error);
   }
   return "PHRASE ERROR";
@@ -64,6 +72,7 @@ struct PreparedPhraseArrangement {
   int audibleSongRow = -1;
   int firstLocalSlot = -1;
   std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material{};
+  GeneratedPhraseP1R::PreparationEvidence p1r{};
 };
 
 struct GeneratedPhraseUndoPayload {
@@ -328,9 +337,6 @@ GroovePuterUndo::UndoResult undoLastGeneratedPhrase(
       engine.currentSongPosition() >= current.songStart &&
       engine.currentSongPosition() < current.songStart + current.bars;
   if (generatedTargetAudible && !pending) {
-    // D2 guarantees boundary-safe Undo-before-activation. Once the generated
-    // material is already audible, retain the receipt rather than mutating the
-    // playing row mid-bar; STOP makes the same receipt safely restorable.
     return GroovePuterUndo::UndoResult::TargetUnavailable;
   }
 
@@ -407,6 +413,32 @@ inline bool prepare(
   }
 
   const GenreSettings genre = scene.genre;
+  const auto p1rDisposition = GeneratedPhraseP1R::prepare(
+      engine,
+      scene,
+      genre,
+      bars,
+      prepared.request.pageIndex,
+      prepared.firstLocalSlot,
+      prepared.material,
+      prepared.p1r);
+  if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed) {
+    prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
+    return false;
+  }
+  if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Ready) {
+    prepared.result.error = PhraseGenerator::PhraseError::None;
+    prepared.result.firstLocalSlot = prepared.firstLocalSlot;
+    prepared.result.firstGlobalPattern = songPatternFromPageBankIndex(
+        prepared.request.pageIndex,
+        prepared.firstLocalSlot / Bank<SynthPattern>::kPatterns,
+        prepared.firstLocalSlot % Bank<SynthPattern>::kPatterns);
+    return true;
+  }
+
+  // Legacy strong-rhythm routes retain the frozen D2 physical preparer exactly.
+  // P1R-capable routes never silently fall back here after a typed execution
+  // rejection/failure.
   auto& genreManager = engine.genreManager();
   const GenreRecipeId recipe = genreManager.recipe();
   const GenerativeMode activeGenre = genreManager.generativeMode();
@@ -504,10 +536,12 @@ Result generate(
   if (!prepare(engine, bars, songStart, *prepared)) {
     releaseWriteSlot(lease.slot);
     output.phrase = prepared->result;
+    output.p1r = prepared->p1r;
     output.status = LifecycleStatus::Failed;
     return output;
   }
   output.phrase = prepared->result;
+  output.p1r = prepared->p1r;
 
   if (!preparedTargetStillCommitSafe(engine, *prepared)) {
     releaseWriteSlot(lease.slot);

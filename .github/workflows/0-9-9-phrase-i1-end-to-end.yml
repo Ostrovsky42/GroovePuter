@@ -1,0 +1,19 @@
+name: 0.9.9 PHRASE-I1 end-to-end synth phrase
+
+on:
+  push:
+    branches:
+      - agent/20260828-05-0.9.9-phrase-i1-end-to-end-synth-phrase
+  pull_request:
+    branches:
+      - agent/20260828-04-0.9.9-phrase-p1r-production-execution
+
+jobs:
+  focused-i1-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-I1 focused integration gate
+        run: bash tests/run_0_9_9_phrase_i1_tests.sh
