@@ -360,10 +360,12 @@ GroovePuterUndo::UndoResult undoLastGeneratedPhrase(
   return result;
 }
 
-inline bool prepare(
+inline bool prepareWithGenerationAttempt(
     MiniAcid& engine,
     uint8_t bars,
     int songStart,
+    uint32_t generationAttemptOrdinal,
+    bool attemptAvailable,
     PreparedPhraseArrangement& prepared) {
   SceneManager& scenes = engine.sceneManager();
   const Scene& scene = scenes.currentScene();
@@ -420,6 +422,8 @@ inline bool prepare(
       bars,
       prepared.request.pageIndex,
       prepared.firstLocalSlot,
+      generationAttemptOrdinal,
+      attemptAvailable,
       prepared.material,
       prepared.p1r);
   if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed) {
@@ -499,6 +503,15 @@ inline bool prepare(
   return true;
 }
 
+inline bool prepare(
+    MiniAcid& engine,
+    uint8_t bars,
+    int songStart,
+    PreparedPhraseArrangement& prepared) {
+  return prepareWithGenerationAttempt(
+      engine, bars, songStart, 0u, false, prepared);
+}
+
 template <typename Guard>
 Result generate(
     MiniAcid& engine,
@@ -533,7 +546,35 @@ Result generate(
     return output;
   }
 
-  if (!prepare(engine, bars, songStart, *prepared)) {
+  uint32_t generationAttemptOrdinal = 0;
+  bool attemptAvailable = false;
+  const GenreSettings genre = engine.sceneManager().currentScene().genre;
+  if (GroovePuterRhythm::selectStrongRhythmRoute(genre) !=
+      GroovePuterRhythm::StrongRhythmRoute::Legacy) {
+    const auto attempt = GroovePuterState::allocateGenerationAttempt(
+        genre.generativeMode,
+        genre.recipe,
+        GroovePuterState::currentGenerationLevel(),
+        GeneratedPhraseP1R::kLogicalPhraseAttemptChannel);
+    if (!attempt.ok()) {
+      releaseWriteSlot(lease.slot);
+      output.p1r.usedP1r = true;
+      output.p1r.executionStatus =
+          GroovePuterRhythm::PhraseExecutionStatus::InvalidContext;
+      output.status = LifecycleStatus::Failed;
+      return output;
+    }
+    generationAttemptOrdinal = attempt.ordinal;
+    attemptAvailable = true;
+  }
+
+  if (!prepareWithGenerationAttempt(
+          engine,
+          bars,
+          songStart,
+          generationAttemptOrdinal,
+          attemptAvailable,
+          *prepared)) {
     releaseWriteSlot(lease.slot);
     output.phrase = prepared->result;
     output.p1r = prepared->p1r;
