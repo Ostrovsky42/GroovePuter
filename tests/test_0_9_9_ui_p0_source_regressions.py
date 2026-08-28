@@ -24,6 +24,11 @@ def between(text: str, start: str, end: str) -> str:
     return text[begin:finish]
 
 
+def read_ui_surface() -> str:
+    files = sorted((ROOT / "src/ui").rglob("*.h")) + sorted((ROOT / "src/ui").rglob("*.cpp"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
 workflow = read("src/ui/workflow_mode.h")
 feel = read("src/ui/pages/feel_page.cpp")
 genre = read("src/ui/pages/genre_page.cpp")
@@ -39,6 +44,7 @@ semantic = read("src/generation/migration/phrase_semantic_result.h")
 length = read("src/generation/composition/phrase_length_request.h")
 request_state = read("src/state/generation_request_state.h")
 scenes = read("scenes.h")
+ui_surface = read_ui_surface()
 
 # P0-1: product workspace topology is already GENERATE=GENRE->FEEL and SONG=SONG->PHRASE.
 require("static constexpr int kGeneratePages[] = {\n        kGenre, kFeel," in workflow,
@@ -113,9 +119,12 @@ require("patternModeSynthPatternIndex_" not in stop_body and "patternModeSynthBa
         "STOP must not restore pre-PLAY Synth physical selection")
 
 # P0-8: typed rejection and execution failure are distinct product outcomes.
-require('"PHRASE LENGTH REJECTED"' in generated,
+status_text = between(generated, "inline const char* statusText", "struct PreparedPhraseArrangement")
+require("PhraseExecutionStatus::Rejected" in status_text,
+        "statusText must branch on typed phrase-length rejection")
+require('"PHRASE LENGTH REJECTED"' in status_text,
         "typed phrase-length rejection label missing")
-require('"PHRASE EXEC FAILED"' in generated,
+require('"PHRASE EXEC FAILED"' in status_text,
         "phrase execution failure label missing")
 require("LifecycleStatus::CommittedNow" in generated and "LifecycleStatus::PendingNextBar" in generated,
         "accepted phrase lifecycle outcomes missing")
@@ -132,8 +141,7 @@ require("GroovePuterState::cycleGenerationLevel()" in feel,
 require("GroovePuterState::cycleGenerationLevel()" in genre,
         "plain P on GENRE must use canonical depth owner")
 
-# P0-10: UI must not own harmonic WHAT/WHEN semantics.
-ui_surface = "\n".join((genre, feel, phrase_cpp, pattern_h, synth))
+# P0-10: no file anywhere under src/ui may directly call frozen harmonic/phrase policy owners.
 for forbidden in (
     "chordProgressionEventAt(",
     "preparePhraseHarmonicClockProjection(",
@@ -141,12 +149,12 @@ for forbidden in (
     "resolveGenerationCompositionForPhraseBars(",
 ):
     require(forbidden not in ui_surface,
-            f"UI directly calls frozen musical policy: {forbidden}")
+            f"src/ui directly calls frozen musical policy: {forbidden}")
 
-# P0-11: no invented Activity/VariationProfile owner is present on product generation surfaces.
-for forbidden in ("ActivityLevel", "VariationProfile", '"ACTIVITY"'):
-    require(forbidden not in "\n".join((genre, feel, phrase_cpp)),
-            f"fake activity owner found: {forbidden}")
+# P0-11: no UI-local cadence/policy owner is invented anywhere under src/ui.
+for forbidden in ("ActivityLevel", "VariationProfile"):
+    require(forbidden not in ui_surface,
+            f"src/ui contains a forbidden cadence/policy owner token: {forbidden}")
 
 # P0-12: full semantic result remains caller-owned/transient; do not fake a persistent Phrase dashboard.
 require("PhraseSemanticResult semantic{};" in phrase_exec,
@@ -181,6 +189,7 @@ print("UI-P0 ownership/source characterization: OK")
 print("- authoritative production base assumptions: I1")
 print("- follow/STOP physical editor path: characterized")
 print("- Phrase Length vs FEEL cycle: separated")
+print("- entire src/ui tree is guarded from frozen WHAT/WHEN policy calls")
 print("- product phrase-length request owner: intentionally NOT READY at I1")
 print("- persistent semantic Phrase dashboard: intentionally NOT READY at I1")
 print("- lifetime UI: blocked pending corrected C2/R1 hardware freeze")

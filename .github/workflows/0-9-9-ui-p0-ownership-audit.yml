@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce exact I1 ancestry and zero production delta
+      - name: Enforce exact I1 ancestry and immutable UI-P0 file allowlist
         shell: bash
         run: |
           set -euo pipefail
@@ -26,10 +26,29 @@ jobs:
           MERGE_BASE="$(git merge-base "$BASE" HEAD)"
           test "$MERGE_BASE" = "$BASE"
 
-          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
-          printf '%s\n' "$CHANGED"
-          if printf '%s\n' "$CHANGED" | grep -E '^src/|^scenes\.h$|^GroovePuter\.ino$'; then
-            echo 'UI-P0 is research/docs/tests only; production source delta is forbidden.' >&2
+          REQUIRED=(
+            '.github/workflows/0-9-9-ui-p0-ownership-audit.yml'
+            'docs/contracts/0_9_9_UI_P0_PRODUCT_UI_OWNERSHIP_AUDIT.md'
+            'tests/test_0_9_9_ui_p0_source_regressions.py'
+          )
+          for path in "${REQUIRED[@]}"; do
+            test -f "$path" || {
+              echo "UI-P0 required checkpoint file missing: $path" >&2
+              exit 1
+            }
+          done
+
+          mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort)
+          printf '%s\n' "${CHANGED[@]}"
+
+          UNEXPECTED="$({
+            printf '%s\n' "${CHANGED[@]}"
+          } | comm -23 - <(printf '%s\n' "${REQUIRED[@]}" | sort))"
+
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'UI-P0 permits only its workflow, audit document, and source-characterization test.' >&2
+            echo 'Unexpected changed paths:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
             exit 1
           fi
 
