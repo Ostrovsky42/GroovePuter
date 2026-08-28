@@ -1,0 +1,23 @@
+name: 0.9.9 PHRASE-H1-F1 global progression source
+
+on:
+  push:
+    branches:
+      - agent/20260828-01-0.9.9-phrase-h1-f1-source-period
+  pull_request:
+    branches:
+      - research/20260826-11-0.9.9-phrase-h1-progression-what-source
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-global-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-H1-F1 global progression source gate
+        run: bash tests/run_0_9_9_phrase_h1_f1_tests.sh

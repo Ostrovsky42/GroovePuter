@@ -101,6 +101,10 @@ bool validQuality(ChordQuality quality) {
          static_cast<uint8_t>(ChordQuality::Count);
 }
 
+bool isStaticProgression(ProgressionId id) {
+  return id == ProgressionId::StaticModal || id == ProgressionId::PedalDrone;
+}
+
 bool allowsChromaticRootOffset(ProgressionId id) {
   return id == ProgressionId::ParallelShift ||
          id == ProgressionId::BorrowedLift;
@@ -190,12 +194,92 @@ bool validEvent(const HarmonicEvent& value, ProgressionId id) {
   return value.rootOffsetSemitones == 0 || allowsChromaticRootOffset(id);
 }
 
+bool validSourcePeriod(const ChordProgressionSource& source) {
+  if (source.period == 0 ||
+      source.period > kMaxChordProgressionSourceEvents) {
+    return false;
+  }
+  const GrammarSet* set = grammarSetFor(source.id);
+  if (set == nullptr || set->count == 0) return false;
+  for (uint8_t index = 0; index < set->count; ++index) {
+    if (set->variants[index].count == source.period) return true;
+  }
+  return false;
+}
+
+ChordProgressionRequest selectionRequestFor(
+    const ChordProgressionSourceRequest& request) {
+  ChordProgressionRequest selection{};
+  selection.requestedId = request.requestedId;
+  selection.family = request.family;
+  selection.generation = request.generation;
+  selection.harmonicEventCount = 0;
+  selection.phraseBars = request.phraseBars;
+  return selection;
+}
+
 }  // namespace
 
 bool isValidProgressionId(ProgressionId id, bool allowAuto) {
   const uint8_t value = static_cast<uint8_t>(id);
   if (value >= static_cast<uint8_t>(ProgressionId::Count)) return false;
   return allowAuto || id != ProgressionId::Auto;
+}
+
+ChordProgressionSourceResult realizeChordProgressionSource(
+    const ChordProgressionSourceRequest& request) {
+  ChordProgressionSourceResult result{};
+  if (!isValidProgressionId(request.requestedId) ||
+      static_cast<uint8_t>(request.family) >=
+          static_cast<uint8_t>(RhythmFamily::Count) ||
+      !validPhraseBars(request.phraseBars)) {
+    return result;
+  }
+
+  const ChordProgressionRequest selection = selectionRequestFor(request);
+  const ProgressionId id = selectId(selection);
+  if (!isValidProgressionId(id, false)) return result;
+
+  const Grammar* selected = selectGrammar(selection, id);
+  if (selected == nullptr || selected->count == 0 ||
+      selected->count > kMaxChordProgressionSourceEvents) {
+    return result;
+  }
+
+  ChordProgressionSource source{};
+  source.id = id;
+  source.period = selected->count;
+  for (uint8_t index = 0; index < source.period; ++index) {
+    const HarmonicEvent value = selected->events[index];
+    if (!validEvent(value, id)) return ChordProgressionSourceResult{};
+    source.events[index] = value;
+  }
+  if (!validSourcePeriod(source)) return result;
+
+  result.source = source;
+  result.status = isStaticProgression(id)
+                      ? ChordProgressionStatus::ValidButStatic
+                      : ChordProgressionStatus::Ok;
+  return result;
+}
+
+ChordProgressionEventResult chordProgressionEventAt(
+    const ChordProgressionSource& source,
+    uint32_t globalHarmonicOrdinal) {
+  ChordProgressionEventResult result{};
+  if (!isValidProgressionId(source.id, false) ||
+      !validSourcePeriod(source)) {
+    return result;
+  }
+  for (uint8_t index = 0; index < source.period; ++index) {
+    if (!validEvent(source.events[index], source.id)) return result;
+  }
+
+  result.event = source.events[globalHarmonicOrdinal % source.period];
+  result.status = isStaticProgression(source.id)
+                      ? ChordProgressionStatus::ValidButStatic
+                      : ChordProgressionStatus::Ok;
+  return result;
 }
 
 ChordProgressionResult realizeChordProgression(
@@ -221,8 +305,7 @@ ChordProgressionResult realizeChordProgression(
   const Grammar* selected = selectGrammar(request, id);
   if (selected == nullptr || selected->count == 0) return result;
 
-  const bool isStatic =
-      id == ProgressionId::StaticModal || id == ProgressionId::PedalDrone;
+  const bool isStatic = isStaticProgression(id);
   result.plan.eventCount =
       isStatic ? 1 : request.harmonicEventCount;
   for (uint8_t index = 0; index < result.plan.eventCount; ++index) {
