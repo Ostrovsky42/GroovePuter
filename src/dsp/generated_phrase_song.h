@@ -12,10 +12,7 @@
 #include "src/state/undo_owner.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
-#include <memory>
-#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -63,6 +60,15 @@ inline const char* statusText(const Result& result) {
   return "PHRASE ERROR";
 }
 
+// PMB-P1 bounded PREPARE: this is the compact plan PREPARE produces, and it
+// deliberately holds NO 8-bar physical material array. PMB-A1/PMB-A2 proved
+// (byte-level, host-tested, permanently regression-guarded) that every
+// route's per-bar physical materialization is a pure, replayable function of
+// this plan's fields, so PREPARE only needs to PROVE every bar will
+// materialize (PREFLIGHT, one reused PhraseBar-sized scratch, discarded);
+// COMMIT later replays the identical computation bar-by-bar and persists it
+// immediately. See
+// docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md.
 struct PreparedPhraseArrangement {
   PhraseGenerator::PhraseRequest request{};
   PhraseGenerator::PhraseResult result{};
@@ -71,8 +77,22 @@ struct PreparedPhraseArrangement {
   int songSlot = -1;
   int audibleSongRow = -1;
   int firstLocalSlot = -1;
-  std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material{};
   GeneratedPhraseP1R::PreparationEvidence p1r{};
+
+  // Route + compact execution carrier, valid for the whole PREPARE->COMMIT
+  // lifetime of one generate() call. Exactly one of the two shapes is used,
+  // selected by useP1RRoute; genre is common to both (applyCurrentMigration
+  // needs it on the legacy path).
+  bool useP1RRoute = false;
+  GroovePuterRhythm::PreparedPhraseExecution p1rExecution{};
+  GenreSettings genre{};
+  bool legacyAtlas = false;
+  GenreRecipeId legacyRecipe = 0;
+  GrooveboxMode legacyMappedMode = GrooveboxMode::Minimal;
+  int legacyFlavor = 0;
+  float legacyBpm = 0.0f;
+  GenerativeParams legacyParams{};
+  GenreBehavior legacyBehavior{};
 };
 
 struct GeneratedPhraseUndoPayload {
@@ -93,6 +113,13 @@ static_assert(sizeof(GeneratedPhraseUndoPayload) <=
               "generated Phrase Undo must fit the canonical one-slot owner");
 static_assert(std::is_trivially_copyable<PreparedPhraseArrangement>::value,
               "Phrase PREPARE staging must remain fixed size");
+// PMB-P1 bound: the compact plan (route + execution state) must stay well
+// under one PhraseGenerator::PhraseBar (1,416 B) -- if this ever grows past
+// that, an 8-bar (or any per-bar) physical array has silently crept back in.
+// See docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md.
+static_assert(sizeof(PreparedPhraseArrangement) <= 1024,
+              "PMB-P1: PreparedPhraseArrangement must stay a compact plan, "
+              "not per-bar physical material");
 
 inline uint8_t atlasVariationForRole(PhraseGenerator::PhraseBarRole role) {
   switch (role) {
@@ -162,6 +189,53 @@ inline void applyCurrentMigration(
       genre, context, bar.drums, bar.synthA, bar.synthB);
 }
 
+// PMB-P1 bounded legacy materialization: rebuilds bar `barIndex`'s content
+// directly into the caller's single reused scratch buffer, from only the
+// compact fields captured on `prepared` at PREPARE time (no persistent
+// proceduralBase carrier -- PMB-A2 proved regenerating it fresh per bar is
+// deterministic/idempotent, and PhraseGenerator::deriveBar tolerates
+// base==output in-place aliasing). Called once per bar during PREFLIGHT
+// (output discarded, inside prepareWithGenerationAttempt) and once per bar
+// during COMMIT (output persisted, inside applyPreparedPersistent); PMB-A2
+// proved both calls are byte-identical for the same inputs.
+inline bool materializeLegacyBar(
+    MiniAcid& engine,
+    const Scene& scene,
+    const PreparedPhraseArrangement& prepared,
+    int barIndex,
+    PhraseGenerator::PhraseBar& bar) {
+  bar = PhraseGenerator::PhraseBar{};
+  const GenreSettings& genre = prepared.genre;
+  const auto role = PhraseGenerator::roleForBar(prepared.request.bars, barIndex);
+  const uint8_t phraseBarOrdinal = static_cast<uint8_t>(barIndex);
+
+  if (prepared.legacyAtlas) {
+    const uint8_t variation = atlasVariationForRole(role);
+    if (!AtlasRuntime::applyRecipe(
+            prepared.legacyRecipe, variation,
+            bar.synthA, bar.synthB, bar.drums, nullptr)) {
+      return false;
+    }
+    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar);
+    return true;
+  }
+
+  GrooveboxModeManager scratchMode(engine);
+  scratchMode.setModeLocal(prepared.legacyMappedMode);
+  scratchMode.setFlavorLocal(prepared.legacyFlavor);
+  scratchMode.setGenerationSeed(prepared.request.seed);
+  scratchMode.generatePattern(
+      bar.synthA, prepared.legacyBpm, prepared.legacyParams, prepared.legacyBehavior, 0);
+  scratchMode.generatePattern(
+      bar.synthB, prepared.legacyBpm, prepared.legacyParams, prepared.legacyBehavior, 1);
+  scratchMode.generateDrumPattern(
+      bar.drums, prepared.legacyParams, prepared.legacyBehavior);
+
+  applyCurrentMigration(scene, genre, 0, phraseBarOrdinal, bar);
+  PhraseGenerator::deriveBar(bar, role, prepared.request.seed, barIndex, bar);
+  return true;
+}
+
 inline bool exactPreparedSlotsRemainSafe(
     const Scene& scene,
     const PreparedPhraseArrangement& prepared) {
@@ -209,22 +283,40 @@ inline bool preparedTargetStillCommitSafe(
   return true;
 }
 
+// PMB-P1 bounded COMMIT: deterministically replays the exact same
+// per-bar materialization PREFLIGHT already proved would succeed (PMB-A1
+// for P1R, PMB-A2 for legacy), one reused PhraseBar-sized scratch at a
+// time, persisting each bar immediately instead of reading it out of an
+// already-populated 8-bar array. `engine` and `scene` must be the same
+// engine/scene PREPARE ran against -- this whole PREPARE->COMMIT sequence
+// is one synchronous, lease-protected call with no yielding in between, so
+// nothing can mutate the inputs a materializer reads between PREFLIGHT and
+// COMMIT (see docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md).
 inline void applyPreparedPersistent(
+    MiniAcid& engine,
     Scene& scene,
     const PreparedPhraseArrangement& prepared) {
   Song& song = scene.songs[prepared.songSlot];
+  PhraseGenerator::PhraseBar scratch{};
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
     const int localSlot = prepared.firstLocalSlot + bar;
     const int bank = localSlot / Bank<SynthPattern>::kPatterns;
     const int index = localSlot % Bank<SynthPattern>::kPatterns;
-    const PhraseGenerator::PhraseBar& material = prepared.material[bar];
-
-    scene.synthABanks[bank].patterns[index] = material.synthA;
-    scene.synthBBanks[bank].patterns[index] = material.synthB;
-    scene.drumBanks[bank].patterns[index] = material.drums;
-
     const int globalPattern = songPatternFromPageBankIndex(
         prepared.request.pageIndex, bank, index);
+
+    if (prepared.useP1RRoute) {
+      GeneratedPhraseP1R::materializeOneBar(
+          engine, prepared.p1rExecution, static_cast<uint8_t>(bar),
+          static_cast<int16_t>(globalPattern), scratch);
+    } else {
+      materializeLegacyBar(engine, scene, prepared, bar, scratch);
+    }
+
+    scene.synthABanks[bank].patterns[index] = scratch.synthA;
+    scene.synthBBanks[bank].patterns[index] = scratch.synthB;
+    scene.drumBanks[bank].patterns[index] = scratch.drums;
+
     SongPosition& position =
         song.positions[prepared.request.songStart + bar];
     position.patterns[static_cast<int>(SongTrack::SynthA)] =
@@ -415,6 +507,7 @@ inline bool prepareWithGenerationAttempt(
   }
 
   const GenreSettings genre = scene.genre;
+  prepared.genre = genre;
   const auto p1rDisposition = GeneratedPhraseP1R::prepare(
       engine,
       scene,
@@ -424,13 +517,14 @@ inline bool prepareWithGenerationAttempt(
       prepared.firstLocalSlot,
       generationAttemptOrdinal,
       attemptAvailable,
-      prepared.material,
+      prepared.p1rExecution,
       prepared.p1r);
   if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed) {
     prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
     return false;
   }
   if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Ready) {
+    prepared.useP1RRoute = true;
     prepared.result.error = PhraseGenerator::PhraseError::None;
     prepared.result.firstLocalSlot = prepared.firstLocalSlot;
     prepared.result.firstGlobalPattern = songPatternFromPageBankIndex(
@@ -444,54 +538,29 @@ inline bool prepareWithGenerationAttempt(
   // P1R-capable routes never silently fall back here after a typed execution
   // rejection/failure.
   auto& genreManager = engine.genreManager();
-  const GenreRecipeId recipe = genreManager.recipe();
+  prepared.useP1RRoute = false;
+  prepared.legacyRecipe = genreManager.recipe();
   const GenerativeMode activeGenre = genreManager.generativeMode();
-  const GenerativeParams params = genreManager.getCompiledGenerativeParams();
-  const GenreBehavior behavior = genreManager.getBehavior();
-  const GrooveboxMode mappedMode = GenreManager::grooveboxModeForRecipe(
-      recipe, activeGenre);
-  const bool atlasPhrase = AtlasRuntime::hasRecipe(recipe) &&
-      AtlasRuntime::variationCount(recipe) >= 3;
+  prepared.legacyParams = genreManager.getCompiledGenerativeParams();
+  prepared.legacyBehavior = genreManager.getBehavior();
+  prepared.legacyMappedMode = GenreManager::grooveboxModeForRecipe(
+      prepared.legacyRecipe, activeGenre);
+  prepared.legacyFlavor = engine.modeManager().flavor();
+  prepared.legacyBpm = engine.bpm();
+  prepared.legacyAtlas = AtlasRuntime::hasRecipe(prepared.legacyRecipe) &&
+      AtlasRuntime::variationCount(prepared.legacyRecipe) >= 3;
 
-  PhraseGenerator::PhraseBar proceduralBase{};
-  bool proceduralBaseReady = false;
-  GrooveboxModeManager scratchMode(engine);
-  scratchMode.setModeLocal(mappedMode);
-  scratchMode.setFlavorLocal(engine.modeManager().flavor());
-  scratchMode.setGenerationSeed(prepared.request.seed);
-
+  // PREFLIGHT: prove every bar materializes before any physical destination
+  // is touched. Bounded to one reused PhraseBar-sized scratch (no 8-bar
+  // array) -- COMMIT (applyPreparedPersistent) later calls
+  // materializeLegacyBar again, bar by bar, and PMB-A2 proved that replay is
+  // byte-identical to this preflight.
+  PhraseGenerator::PhraseBar preflightScratch{};
   for (int barIndex = 0; barIndex < bars; ++barIndex) {
-    const auto role = PhraseGenerator::roleForBar(bars, barIndex);
-    PhraseGenerator::PhraseBar& bar = prepared.material[barIndex];
-    const uint8_t phraseBarOrdinal = static_cast<uint8_t>(barIndex);
-    if (atlasPhrase) {
-      const uint8_t variation = atlasVariationForRole(role);
-      if (!AtlasRuntime::applyRecipe(
-              recipe, variation,
-              bar.synthA, bar.synthB, bar.drums, nullptr)) {
-        prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
-        return false;
-      }
-      applyCurrentMigration(
-          scene, genre, variation, phraseBarOrdinal, bar);
-      continue;
+    if (!materializeLegacyBar(engine, scene, prepared, barIndex, preflightScratch)) {
+      prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
+      return false;
     }
-
-    if (!proceduralBaseReady) {
-      scratchMode.generatePattern(
-          proceduralBase.synthA, engine.bpm(), params, behavior, 0);
-      scratchMode.generatePattern(
-          proceduralBase.synthB, engine.bpm(), params, behavior, 1);
-      scratchMode.generateDrumPattern(
-          proceduralBase.drums, params, behavior);
-      proceduralBaseReady = true;
-    }
-
-    PhraseGenerator::PhraseBar migratedBase = proceduralBase;
-    applyCurrentMigration(
-        scene, genre, 0, phraseBarOrdinal, migratedBase);
-    PhraseGenerator::deriveBar(
-        migratedBase, role, prepared.request.seed, barIndex, bar);
   }
 
   prepared.result.error = PhraseGenerator::PhraseError::None;
@@ -529,13 +598,15 @@ Result generate(
     return output;
   }
 
-  std::unique_ptr<PreparedPhraseArrangement> prepared(
-      new (std::nothrow) PreparedPhraseArrangement{});
-  if (!prepared) {
-    releaseWriteSlot(lease.slot);
-    output.status = LifecycleStatus::OutOfMemory;
-    return output;
-  }
+  // PMB-P1: PreparedPhraseArrangement no longer holds an 8-bar physical
+  // material array (see docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_
+  // COMMIT.md), so it is small and bounded enough to live on the stack --
+  // no heap allocation, and therefore no OutOfMemory path can be reached
+  // here anymore. LifecycleStatus::OutOfMemory/statusText's "PHRASE PREPARE
+  // OOM" case remain defined for API completeness (UI-P0 characterized
+  // them), but nothing sets that status on this path any longer.
+  PreparedPhraseArrangement preparedStorage{};
+  PreparedPhraseArrangement* const prepared = &preparedStorage;
 
   if (engine.isPlaying() &&
       (!engine.songModeEnabled() ||
@@ -615,7 +686,7 @@ Result generate(
       [&]() {
         const auto apply = [&]() {
           applyPreparedPersistent(
-              engine.sceneManager().currentScene(), *prepared);
+              engine, engine.sceneManager().currentScene(), *prepared);
         };
         applyGuard(apply);
       });

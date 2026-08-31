@@ -36,12 +36,18 @@ for forbidden in ('std::vector', 'std::deque', 'std::list', 'malloc(',
     require(forbidden not in ACTIVATION,
             f"D2 pending metadata leaked unbounded/heap ownership: {forbidden}")
 
-# PREPARE is bounded, control-side work. It stages all material before COMMIT.
+# PREPARE is bounded, control-side work. PMB-P1 replaced the 8-bar physical
+# staging array with a PREFLIGHT (prove every bar materializes) + COMMIT
+# (replay the identical materialization, one reused PhraseBar-sized scratch
+# at a time) split -- see
+# docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md. PMB-A1/PMB-A2
+# proved this replay is byte-identical, host-tested; holding all 8 bars live
+# at once is no longer a requirement and must not return.
 require('constexpr int kMaxPreparedBars = 8;' in GENERATED,
         "D2 PREPARE must remain bounded to at most eight bars")
-require('std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material' in GENERATED,
-        "D2 must stage generated bars before publication")
-prepare = between(GENERATED, 'inline bool prepareWithGenerationAttempt(', 'template <typename Guard>\nResult generate(')
+require('std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material' not in GENERATED,
+        "PMB-P1: an 8-bar physical staging array must not return to PREPARE")
+prepare = between(GENERATED, 'inline bool materializeLegacyBar(', 'template <typename Guard>\nResult generate(')
 require('applyRecipe' in prepare or 'deriveBar' in prepare,
         "D2 musical generation belongs to PREPARE")
 require('commitPrepared' not in prepare and 'markSceneMutated' not in prepare,

@@ -115,18 +115,48 @@ void verifyCoordinateCase(const Scene& scene, uint8_t bars) {
   printCoordinateCase(bars);
 }
 
-bool samePhraseMaterial(
+// PMB-P1: PreparedPhraseArrangement no longer holds physical material (see
+// docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md) -- PREPARE
+// now produces a compact plan (route + execution state). A raw memcmp of the
+// whole (trivially copyable) plan is NOT a valid determinism check here: the
+// plan's nested execution state (PreparedPhraseExecution) is built by
+// assigning from locally-constructed aggregates with explicit-field
+// initializers, which leaves their inter-field alignment padding as
+// unspecified stack content -- two logically-identical PREPARE calls can
+// carry different padding bytes despite every named field matching. The
+// same-request determinism contract that actually matters is: replaying the
+// same plan MATERIALIZES byte-identical physical bars, which is exactly what
+// PMB-A1/PMB-A2 proved and is what this checks directly, on demand, instead
+// of memcmp-ing implementation-detail padding.
+bool sameMaterializedBars(
+    MiniAcid& engine,
+    const Scene& scene,
     const GeneratedPhraseSong::PreparedPhraseArrangement& left,
     const GeneratedPhraseSong::PreparedPhraseArrangement& right,
     uint8_t bars) {
-  return std::memcmp(left.material.data(), right.material.data(),
-                     static_cast<std::size_t>(bars) *
-                         sizeof(PhraseGenerator::PhraseBar)) == 0;
+  if (left.useP1RRoute != right.useP1RRoute) return false;
+  for (uint8_t bar = 0; bar < bars; ++bar) {
+    PhraseGenerator::PhraseBar leftBar{};
+    PhraseGenerator::PhraseBar rightBar{};
+    bool leftOk = false;
+    bool rightOk = false;
+    if (left.useP1RRoute) {
+      leftOk = GeneratedPhraseP1R::materializeOneBar(engine, left.p1rExecution, bar, 0, leftBar);
+      rightOk = GeneratedPhraseP1R::materializeOneBar(engine, right.p1rExecution, bar, 0, rightBar);
+    } else {
+      leftOk = GeneratedPhraseSong::materializeLegacyBar(engine, scene, left, bar, leftBar);
+      rightOk = GeneratedPhraseSong::materializeLegacyBar(engine, scene, right, bar, rightBar);
+    }
+    if (leftOk != rightOk) return false;
+    if (leftOk && std::memcmp(&leftBar, &rightBar, sizeof(leftBar)) != 0) return false;
+  }
+  return true;
 }
 
 void verifyPrepareDeterminism(MiniAcid& engine, uint8_t bars) {
   configureFamily(engine, GenerativeMode::Rave, kBaseRecipeId);
   engine.modeManager().setGenerationSeed(kTestSeed);
+  const Scene& scene = engine.sceneManager().currentScene();
 
   GeneratedPhraseSong::PreparedPhraseArrangement first{};
   GeneratedPhraseSong::PreparedPhraseArrangement second{};
@@ -149,8 +179,10 @@ void verifyPrepareDeterminism(MiniAcid& engine, uint8_t bars) {
              first.result.firstLocalSlot == second.result.firstLocalSlot &&
              first.result.firstGlobalPattern == second.result.firstGlobalPattern,
          "identical PREPARE result metadata changed between reruns");
-  expect(samePhraseMaterial(first, second, bars),
-         "same request rerun is not byte-identical physical material");
+  if (firstOk) {
+    expect(sameMaterializedBars(engine, scene, first, second, bars),
+           "same request rerun does not materialize byte-identical physical bars");
+  }
 
   std::printf("E0A_DETERMINISM bars=%u byte_identical=PASS\n",
               static_cast<unsigned>(bars));

@@ -161,6 +161,31 @@ inline bool materializePreparedBars(
   return true;
 }
 
+// PMB-P1 bounded materialization: rebuilds the destination-independent pitch
+// source fresh (PMB-A1 proved this is deterministic/idempotent) and
+// materializes exactly one bar into the caller's single reused scratch
+// buffer. Pure given (execution, phraseBarOrdinal, physicalPatternAddress) --
+// PMB-A1 proved (byte-level, host-tested) that calling this twice with the
+// same arguments reproduces byte-identical output, which is what lets a
+// PREFLIGHT call (discarded) and a later COMMIT call (persisted) share one
+// PhraseBar-sized buffer instead of an 8-bar array. See
+// docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md.
+inline bool materializeOneBar(
+    MiniAcid& engine,
+    const GroovePuterRhythm::PreparedPhraseExecution& execution,
+    uint8_t phraseBarOrdinal,
+    int16_t physicalPatternAddress,
+    PhraseGenerator::PhraseBar& scratch) {
+  scratch = PhraseGenerator::PhraseBar{};
+  if (!prepareDestinationIndependentPitchSource(engine, execution, scratch)) {
+    return false;
+  }
+  const auto result = GroovePuterRhythm::materializePreparedPhraseBar(
+      execution, phraseBarOrdinal, physicalPatternAddress,
+      scratch.drums, scratch.synthA, scratch.synthB);
+  return result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+}
+
 inline PreparationDisposition prepare(
     MiniAcid& engine,
     const Scene& scene,
@@ -170,7 +195,7 @@ inline PreparationDisposition prepare(
     int firstLocalSlot,
     uint32_t generationAttemptOrdinal,
     bool attemptAvailable,
-    std::array<PhraseGenerator::PhraseBar, 8>& destination,
+    GroovePuterRhythm::PreparedPhraseExecution& executionOut,
     PreparationEvidence& evidence) {
   evidence = PreparationEvidence{};
   if (GroovePuterRhythm::selectStrongRhythmRoute(genre) ==
@@ -186,39 +211,51 @@ inline PreparationDisposition prepare(
   const auto level = GroovePuterState::currentGenerationLevel();
 
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
-  GroovePuterRhythm::PreparedPhraseExecution execution{};
   evidence.executionStatus = GroovePuterRhythm::preparePhraseExecution(
       genre,
       materializationSettingsFor(scene, level, generationAttemptOrdinal),
       evidence.phraseGenerationIdentity,
       bars,
       scratch,
-      execution);
+      executionOut);
   if (evidence.executionStatus !=
       GroovePuterRhythm::PhraseExecutionStatus::Ready) {
     return PreparationDisposition::Failed;
   }
 
-  evidence.progression = execution.progressionSource.id;
+  evidence.progression = executionOut.progressionSource.id;
   evidence.harmonicEventPositions =
-      execution.semantic.harmonicTimeline.totalEventPositions;
+      executionOut.semantic.harmonicTimeline.totalEventPositions;
 
-  PhraseGenerator::PhraseBar pitchSource{};
-  if (!prepareDestinationIndependentPitchSource(engine, execution, pitchSource)) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages ||
+      firstLocalSlot < 0 ||
+      firstLocalSlot + executionOut.length.effectivePhraseBars > kPatternsPerPage) {
     evidence.materializationStatus =
-        GroovePuterRhythm::StrongRhythmMigrationStatus::MaterializationFailed;
+        GroovePuterRhythm::StrongRhythmMigrationStatus::InvalidContext;
     return PreparationDisposition::Failed;
   }
 
-  if (!materializePreparedBars(
-          execution,
-          pitchSource,
-          pageIndex,
-          firstLocalSlot,
-          destination,
-          evidence)) {
-    return PreparationDisposition::Failed;
+  // PREFLIGHT: prove every bar materializes before any physical destination
+  // is touched. Bounded to one reused PhraseBar-sized scratch (no 8-bar
+  // array) -- COMMIT later calls materializeOneBar again, bar by bar, and
+  // PMB-A1 proved that replay is byte-identical to this preflight.
+  PhraseGenerator::PhraseBar preflightScratch{};
+  for (uint8_t bar = 0; bar < executionOut.length.effectivePhraseBars; ++bar) {
+    const int localSlot = firstLocalSlot + bar;
+    const int globalPattern = songPatternFromPageBankIndex(
+        pageIndex,
+        localSlot / Bank<SynthPattern>::kPatterns,
+        localSlot % Bank<SynthPattern>::kPatterns);
+    if (!materializeOneBar(engine, executionOut, bar,
+                           static_cast<int16_t>(globalPattern),
+                           preflightScratch)) {
+      evidence.materializationStatus =
+          GroovePuterRhythm::StrongRhythmMigrationStatus::MaterializationFailed;
+      return PreparationDisposition::Failed;
+    }
   }
+  evidence.materializationStatus =
+      GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
 
   return PreparationDisposition::Ready;
 }

@@ -88,9 +88,13 @@ require(
     "applyCurrentMigration(scene,genre,variation,phraseBarOrdinal,bar);",
     "Atlas PREPARE must pass the explicit Phrase-local ordinal",
 )
+# PMB-P1 removed the separate migratedBase copy: PhraseGenerator::deriveBar
+# tolerates base==output in-place aliasing (PMB-A2), so the procedural path
+# migrates the single reused scratch buffer (`bar`) directly instead of a
+# second temporary. The explicit Phrase-local ordinal contract is unchanged.
 require(
     compact(generated),
-    "applyCurrentMigration(scene,genre,0,phraseBarOrdinal,migratedBase);",
+    "applyCurrentMigration(scene,genre,0,phraseBarOrdinal,bar);",
     "procedural PREPARE must pass the explicit Phrase-local ordinal",
 )
 require(
@@ -104,17 +108,22 @@ require(
     "PREPARE migration context must carry evolutionOrdinal",
 )
 
-prepare_body = between(generated, "inline bool prepareWithGenerationAttempt(", "template <typename Guard>")
-raw_base_index = prepare_body.index("PhraseGenerator::PhraseBar proceduralBase{};")
-bar_loop_index = prepare_body.index("for (int barIndex = 0; barIndex < bars; ++barIndex)")
-copy_index = prepare_body.index("PhraseGenerator::PhraseBar migratedBase = proceduralBase;")
-per_bar_migration_index = prepare_body.index("applyCurrentMigration(", copy_index)
-derive_index = prepare_body.index("PhraseGenerator::deriveBar(", per_bar_migration_index)
-if not (
-    raw_base_index < bar_loop_index < copy_index < per_bar_migration_index < derive_index
-):
+# PMB-P1: proceduralBase is no longer built once and copied per bar --
+# PMB-A2 proved it is deterministically regenerable per call, and
+# PhraseGenerator::deriveBar tolerates base==output in-place aliasing, so
+# the bounded implementation regenerates directly into the single reused
+# scratch buffer for every materializeLegacyBar call: generate -> migrate
+# -> derive, in place. This is what lets PREFLIGHT and COMMIT share one
+# PhraseBar-sized buffer instead of an 8-bar array (see
+# docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md).
+legacy_bar_body = between(
+    generated, "inline bool materializeLegacyBar(", "inline bool exactPreparedSlotsRemainSafe(")
+generate_index = legacy_bar_body.index("scratchMode.generatePattern(")
+per_bar_migration_index = legacy_bar_body.index("applyCurrentMigration(", generate_index)
+derive_index = legacy_bar_body.index("PhraseGenerator::deriveBar(", per_bar_migration_index)
+if not (generate_index < per_bar_migration_index < derive_index):
     raise AssertionError(
-        "procedural PREPARE must remain raw base once -> per-bar copy -> migration -> deriveBar"
+        "procedural materialization must remain generate -> migration -> deriveBar, in place"
     )
 
 # The explicit evolution segment coordinate is context only in E0a. It must not

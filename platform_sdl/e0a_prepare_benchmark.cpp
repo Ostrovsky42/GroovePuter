@@ -70,8 +70,21 @@ bool runPrepare(MiniAcid& engine,
   const bool ok = GeneratedPhraseSong::prepare(engine, bars, 0, prepared);
   if (ok) {
     g_checksum += static_cast<uint64_t>(prepared.result.firstGlobalPattern + 1);
-    g_checksum += static_cast<uint64_t>(
-        prepared.material[bars - 1].synthA.steps[0].velocity);
+    // PMB-P1: PREPARE no longer holds physical material -- materialize the
+    // last bar on demand (same reused-scratch path production uses) purely
+    // to keep this benchmark's timed work from being optimized away.
+    PhraseGenerator::PhraseBar lastBar{};
+    const bool materialized =
+        prepared.useP1RRoute
+            ? GeneratedPhraseP1R::materializeOneBar(
+                  engine, prepared.p1rExecution, static_cast<uint8_t>(bars - 1),
+                  0, lastBar)
+            : GeneratedPhraseSong::materializeLegacyBar(
+                  engine, engine.sceneManager().currentScene(), prepared,
+                  bars - 1, lastBar);
+    if (materialized) {
+      g_checksum += static_cast<uint64_t>(lastBar.synthA.steps[0].velocity);
+    }
   }
   return ok;
 }

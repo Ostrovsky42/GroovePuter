@@ -6,11 +6,25 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 P1R = "a413561136b274a1b16b079f95f8d3ce3353fac5"
 
+# This started as I1's own exact-delta tripwire (4 files). UI-P0/UI-final and
+# PMB-P1 have each since legitimately added their own src/ files on top of
+# I1 (product/request state adapters, GENRE/FEEL/PHRASE page work, and now
+# PMB-P1's bounded-memory PREPARE/COMMIT rework of the same two I1 files).
+# The tripwire's purpose -- catch an unexpected file sneaking into this
+# delta -- still holds; the expected set is just the accumulated legitimate
+# delta through the current checkpoint, not I1's alone.
 production = {
     "src/dsp/generated_phrase_p1r_materializer.h",
     "src/dsp/generated_phrase_song.h",
     "src/ui/pages/pattern_edit_page.h",
     "src/ui/pages/synth_sequencer_page.cpp",
+    "src/state/generated_phrase_product_state.h",
+    "src/state/phrase_generation_request_state.h",
+    "src/ui/pages/feel_page.cpp",
+    "src/ui/pages/genre_page.cpp",
+    "src/ui/pages/genre_page.h",
+    "src/ui/pages/phrase_page.cpp",
+    "src/ui/pages/phrase_page.h",
 }
 
 changed_src = subprocess.check_output(
@@ -18,7 +32,7 @@ changed_src = subprocess.check_output(
     cwd=ROOT,
     text=True,
 ).splitlines()
-assert set(changed_src) == production, f"unexpected I1 production delta: {changed_src}"
+assert set(changed_src) == production, f"unexpected production delta since P1R: {changed_src}"
 
 protected = [
     "src/generation/migration/phrase_execution.h",
