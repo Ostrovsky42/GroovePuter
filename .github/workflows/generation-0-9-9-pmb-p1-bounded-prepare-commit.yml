@@ -1,0 +1,107 @@
+name: 0.9.9-PMB-P1 bounded Phrase PREPARE/COMMIT
+
+on:
+  push:
+    branches:
+      - agent/20260831-02-0.9.9-pmb-p1-bounded-phrase-prepare
+  pull_request:
+    paths:
+      - 'src/dsp/generated_phrase_song.h'
+      - 'src/dsp/generated_phrase_p1r_materializer.h'
+      - 'tests/test_0_9_9_phrase_pmb_p1_bounded_prepare_commit.cpp'
+      - 'tests/run_0_9_9_phrase_pmb_p1_tests.sh'
+      - 'platform_sdl/e0a_prepare_benchmark.cpp'
+      - 'docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md'
+      - '.github/workflows/generation-0-9-9-pmb-p1-bounded-prepare-commit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pmb-p1-host-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run focused PMB-P1 bounded PREPARE/COMMIT contracts
+        run: bash tests/run_0_9_9_phrase_pmb_p1_tests.sh
+
+      - name: Run P1R focused production execution gate
+        run: bash tests/run_0_9_9_phrase_p1r_tests.sh
+
+      - name: Run I1 end-to-end integration gate
+        run: bash tests/run_0_9_9_phrase_i1_tests.sh
+
+      - name: Run D2 live Phrase source contracts
+        run: bash tests/run_0_9_9_d2_tests.sh
+
+      - name: Run E0a temporal coordinate contracts
+        run: bash tests/run_0_9_9_e0a_tests.sh
+
+      - name: Run UI FINAL product pass contracts
+        run: bash tests/run_0_9_9_ui_final_tests.sh
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  pmb-p1-sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  pmb-p1-cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  pmb-p1-cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

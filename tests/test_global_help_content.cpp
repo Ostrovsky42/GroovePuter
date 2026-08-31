@@ -28,7 +28,7 @@ bool globalContains(const char* needle) {
 
 int main() {
     constexpr int kFirstPage = WorkflowPages::kGenre;
-    constexpr int kLastPage = WorkflowPages::kPhrase;
+    constexpr int kLastPage = WorkflowPages::kPhraseCore;
 
     for (int page = kFirstPage; page <= kLastPage; ++page) {
         const int pageLineCount = HelpContent::getPageLineCount(page);
@@ -54,20 +54,30 @@ int main() {
     assert(globalContains("Alt+H"));
     assert(globalContains("Fn+M"));
     assert(globalContains("Track mute fallback"));
-    assert(globalContains("Waveform except PHRASE"));
+    assert(globalContains("Waveform except CORE"));
     assert(!globalContains("Ctrl+H"));
 
     assert(sectionContains(WorkflowPages::kArrange, "Assign existing pattern"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate/materialize cell"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate current row"));
-    assert(sectionContains(WorkflowPages::kPhrase, "PHRASE CORE"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Ctrl+L/R    Move TO row +/-1"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Ctrl+U/D    Move TO row +/-8"));
-    assert(sectionContains(WorkflowPages::kPhrase, "INSERT before TO row"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Shifts following rows"));
-    assert(sectionContains(WorkflowPages::kPhrase, "REPLACE at TO row"));
-    assert(sectionContains(WorkflowPages::kPhrase, "No row shift"));
+    // PHRASE CORE retains the legacy capture/derive/write help content,
+    // split out of PHRASE into its own page in PHW-P1.
+    assert(sectionContains(WorkflowPages::kPhraseCore, "PHRASE CORE"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "Mutable pattern references"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "Ctrl+L/R    Move TO row +/-1"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "Ctrl+U/D    Move TO row +/-8"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "INSERT before TO row"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "Shifts following rows"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "REPLACE at TO row"));
+    assert(sectionContains(WorkflowPages::kPhraseCore, "No row shift"));
+
+    // PHRASE (product) no longer carries CORE's write/insert help text or a
+    // V:CORE mode switch -- placement is APPEND/EXPLICIT via a TO focus.
+    assert(sectionContains(WorkflowPages::kPhrase, "=== PHRASE ==="));
+    assert(sectionContains(WorkflowPages::kPhrase, "APPEND or EXPLICIT"));
+    assert(sectionContains(WorkflowPages::kPhrase, "FREE/OCCUPIED/NO ROOM"));
+    assert(!sectionContains(WorkflowPages::kPhrase, "PHRASE CORE"));
+    assert(!sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
     assert(sectionContains(WorkflowPages::kPerform, "PERFORMANCE TOOLS"));
     assert(sectionContains(WorkflowPages::kPlayer, "Physical track mute"));
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));

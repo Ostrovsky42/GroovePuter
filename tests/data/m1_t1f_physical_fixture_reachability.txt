@@ -1,0 +1,5 @@
+T6_FIRST mode=3 recipe=0 level=0 address=0 melodic=4 onsets=2 bars=2
+DOMAIN inputs=221184 valid=221184
+M1_T1F_T4_REST_HEAVY NOT_FOUND_IN_DOMAIN count=0
+M1_T1F_T5_DRIFT NOT_FOUND_IN_DOMAIN count=0
+M1_T1F_T6_CALL_RESPONSE REACHABLE count=20268

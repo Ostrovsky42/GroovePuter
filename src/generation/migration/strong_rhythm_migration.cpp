@@ -4,6 +4,16 @@
 #include "../rhythm/rhythm_realizer.h"
 
 namespace GroovePuterRhythm {
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+namespace {
+StrongRhythmMelodicRequestProbe* g_melodicRequestProbe = nullptr;
+}
+
+void setStrongRhythmMelodicRequestProbe(
+    StrongRhythmMelodicRequestProbe* probe) {
+  g_melodicRequestProbe = probe;
+}
+#endif
 namespace {
 
 uint32_t mixByte(uint32_t hash, uint8_t value) {
@@ -181,13 +191,20 @@ bool sparseSemanticBarsAllowed(const GenreSettings& settings,
          settings.generativeMode == static_cast<uint8_t>(GenerativeMode::FunkSoul);
 }
 
-uint8_t semanticBarOrdinal(const GenreSettings& settings,
-                           int16_t patternAddress) {
+uint8_t semanticBarOrdinal(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context) {
+  if (context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal) {
+    return phraseVocabularyBarOrdinal(context.phraseBarOrdinal);
+  }
+
   const bool useAddress =
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::LoFi) ||
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::HipHop) ||
       settings.generativeMode == static_cast<uint8_t>(GenerativeMode::FunkSoul);
-  return useAddress ? static_cast<uint8_t>(patternAddress & 0xFF) : 0;
+  return useAddress
+      ? static_cast<uint8_t>(context.patternAddress & 0xFF)
+      : 0;
 }
 
 SemanticSynthBRole semanticSynthBRole(CompositionSecondaryRole role) {
@@ -236,6 +253,30 @@ bool stage14BaseGenre(GenerativeMode mode) {
     default:
       return false;
   }
+}
+
+void copyCompositionToResult(const GenerationCompositionResult& composition,
+                             StrongRhythmMigrationResult& result) {
+  result.compositionStatus = composition.status;
+  result.selectionMode = composition.rhythmSelectionMode;
+  result.normalizedSelectionToAuto = composition.normalizedRhythmToAuto;
+  result.suggestedFeel = composition.suggestedFeel;
+  result.bassRhythmId = composition.bassRhythm;
+  result.chordRhythmId = composition.chordRhythm;
+  result.progressionId = composition.progression;
+  result.melodicRhythmId = composition.melodicRhythm;
+  result.motifShapeId = composition.motifShape;
+  result.phraseLaw = composition.phraseLaw;
+  result.phraseBars = composition.phraseBars;
+  result.corridor = composition.corridor;
+  result.synthBRole = semanticSynthBRole(composition.secondaryRole);
+}
+
+bool validMigrationContext(const StrongRhythmMigrationContext& context) {
+  return context.patternAddress >= 0 &&
+         context.patternAddress < kMaxGlobalPatterns &&
+         validLevel(context.level) && isValidFeelProfile(context.feelProfile) &&
+         context.feelAmount <= 100;
 }
 
 }  // namespace
@@ -309,55 +350,130 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
   }
 }
 
-StrongRhythmMigrationResult migrateStrongRhythmDrums(
+StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
-    DrumPatternSet& destination) {
+    uint16_t phraseGenerationIdentity,
+    StrongRhythmFrozenSelection& destination) {
   StrongRhythmMigrationResult result{};
+  destination = StrongRhythmFrozenSelection{};
   result.route = selectStrongRhythmRoute(settings);
   if (result.route == StrongRhythmRoute::Legacy) {
     result.status = StrongRhythmMigrationStatus::Legacy;
     return result;
   }
-  if (context.patternAddress < 0 ||
-      context.patternAddress >= kMaxGlobalPatterns ||
-      !validLevel(context.level) ||
-      !isValidFeelProfile(context.feelProfile) ||
-      context.feelAmount > 100) {
+  if (!validMigrationContext(context) ||
+      phraseGenerationIdentity == kUnspecifiedPhraseGenerationIdentity) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
 
   const uint32_t selectionSeed = projectSeedFor(settings, result.route);
-  const uint32_t realizationSeed =
-      realizationSeedFor(selectionSeed, context.generationAttemptOrdinal);
-  GenerationContext selectionGeneration{};
-  selectionGeneration.projectSeed = selectionSeed;
-  selectionGeneration.phraseOrdinal =
-      static_cast<uint16_t>(context.patternAddress);
-  const GenerationCompositionResult composition =
-      resolveGenerationComposition(settings, selectionGeneration);
-  result.compositionStatus = composition.status;
-  if (composition.status != GenerationCompositionStatus::Ok) {
+  destination.route = result.route;
+  destination.selectionGeneration.projectSeed = selectionSeed;
+  destination.selectionGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.realizationGeneration.projectSeed = realizationSeedFor(
+      selectionSeed, context.generationAttemptOrdinal);
+  destination.realizationGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.phraseGenerationIdentity = phraseGenerationIdentity;
+  destination.composition = resolveGenerationComposition(
+      settings, destination.selectionGeneration);
+  copyCompositionToResult(destination.composition, result);
+  if (destination.composition.status != GenerationCompositionStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          destination.composition.rhythmArchetypeId);
+  if (definition == nullptr) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  result.archetype = definition->key;
+  destination.resolved = true;
+  result.status = StrongRhythmMigrationStatus::Applied;
+  return result;
+}
+
+StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    uint16_t phraseGenerationIdentity,
+    uint8_t requestedPhraseBars,
+    PhraseLengthRequestResult& lengthResult,
+    StrongRhythmFrozenSelection& destination) {
+  StrongRhythmMigrationResult result{};
+  destination = StrongRhythmFrozenSelection{};
+  lengthResult = PhraseLengthRequestResult{};
+  result.route = selectStrongRhythmRoute(settings);
+  if (result.route == StrongRhythmRoute::Legacy) {
+    result.status = StrongRhythmMigrationStatus::Legacy;
+    return result;
+  }
+  if (!validMigrationContext(context) ||
+      phraseGenerationIdentity == kUnspecifiedPhraseGenerationIdentity) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
 
-  result.selectionMode = composition.rhythmSelectionMode;
-  result.normalizedSelectionToAuto = composition.normalizedRhythmToAuto;
-  result.suggestedFeel = composition.suggestedFeel;
-  result.bassRhythmId = composition.bassRhythm;
-  result.chordRhythmId = composition.chordRhythm;
-  result.progressionId = composition.progression;
-  result.melodicRhythmId = composition.melodicRhythm;
-  result.motifShapeId = composition.motifShape;
-  result.phraseLaw = composition.phraseLaw;
-  result.phraseBars = composition.phraseBars;
-  result.corridor = composition.corridor;
-  result.synthBRole = semanticSynthBRole(composition.secondaryRole);
-
+  const uint32_t selectionSeed = projectSeedFor(settings, result.route);
+  destination.route = result.route;
+  destination.selectionGeneration.projectSeed = selectionSeed;
+  destination.selectionGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.realizationGeneration.projectSeed = realizationSeedFor(
+      selectionSeed, context.generationAttemptOrdinal);
+  destination.realizationGeneration.phraseOrdinal = phraseGenerationIdentity;
+  destination.phraseGenerationIdentity = phraseGenerationIdentity;
+  lengthResult = resolveGenerationCompositionForPhraseBars(
+      settings, destination.selectionGeneration, requestedPhraseBars);
+  destination.composition = lengthResult.composition;
+  copyCompositionToResult(destination.composition, result);
+  if (lengthResult.status != PhraseLengthRequestStatus::Accepted ||
+      destination.composition.status != GenerationCompositionStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
   const ReferenceVocabulary::Definition* definition =
-      ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
+      ReferenceVocabulary::definitionForId(
+          destination.composition.rhythmArchetypeId);
+  if (definition == nullptr) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  result.archetype = definition->key;
+  destination.resolved = true;
+  result.status = StrongRhythmMigrationStatus::Applied;
+  return result;
+}
+
+StrongRhythmMigrationResult migrateStrongRhythmDrums(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& destination) {
+  StrongRhythmMigrationResult result{};
+  StrongRhythmFrozenSelection compatibilitySelection{};
+  const StrongRhythmFrozenSelection* selection = context.frozenSelection;
+  if (selection == nullptr) {
+    const StrongRhythmMigrationResult resolved =
+        resolveStrongRhythmFrozenSelection(
+            settings, context,
+            static_cast<uint16_t>(context.patternAddress),
+            compatibilitySelection);
+    if (resolved.status != StrongRhythmMigrationStatus::Applied) return resolved;
+    selection = &compatibilitySelection;
+  }
+  if (!validMigrationContext(context) || !selection->resolved ||
+      selection->phraseGenerationIdentity ==
+          kUnspecifiedPhraseGenerationIdentity) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  result.route = selection->route;
+  copyCompositionToResult(selection->composition, result);
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          selection->composition.rhythmArchetypeId);
   if (definition == nullptr) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
@@ -369,9 +485,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   request.archetypeId = definition->archetypeId;
   request.phraseBars = 1;
   request.level = context.level;
-  request.generation.projectSeed = realizationSeed;
-  request.generation.phraseOrdinal =
-      static_cast<uint16_t>(context.patternAddress);
+  request.generation = selection->realizationGeneration;
 
   const RhythmRealizationResult realization = realizeRhythmPhrase(request);
   result.realizationStatus = realization.status;
@@ -491,13 +605,19 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
   const bool allowSparse =
       sparseSemanticBarsAllowed(settings, definition->family);
-  const uint8_t barOrdinal =
-      semanticBarOrdinal(settings, context.patternAddress);
+  const uint8_t barOrdinal = semanticBarOrdinal(settings, context);
   const TonalGenerationProfile tonalProfile =
       tonalGenerationProfileFor(settings);
-  const uint32_t selectionSeed = projectSeedFor(settings, result.route);
-  const uint32_t realizationSeed =
-      realizationSeedFor(selectionSeed, context.generationAttemptOrdinal);
+  GenerationContext materializationGeneration{};
+  if (context.frozenSelection != nullptr) {
+    materializationGeneration = context.frozenSelection->realizationGeneration;
+  } else {
+    const uint32_t selectionSeed = projectSeedFor(settings, result.route);
+    materializationGeneration.projectSeed = realizationSeedFor(
+        selectionSeed, context.generationAttemptOrdinal);
+    materializationGeneration.phraseOrdinal =
+        static_cast<uint16_t>(context.patternAddress);
+  }
 
   BassRhythmRequest bassRequest{};
   bassRequest.requestedId = result.bassRhythmId;
@@ -510,9 +630,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   }
   bassRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::BassRhythm);
-  bassRequest.generation.projectSeed = realizationSeed;
-  bassRequest.generation.phraseOrdinal =
-      static_cast<uint16_t>(context.patternAddress);
+  bassRequest.generation = materializationGeneration;
   bassRequest.barOrdinal = barOrdinal;
   bassRequest.allowEmptyBar = allowSparse;
   const BassRhythmResult bass = realizeBassRhythm(bassRequest);
@@ -562,18 +680,71 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
-  ChordProgressionRequest progressionRequest{};
-  progressionRequest.requestedId = result.progressionId;
-  progressionRequest.family = definition->family;
-  progressionRequest.generation = chordRequest.generation;
-  progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);
-  progressionRequest.phraseBars = 1;
-  const ChordProgressionResult progression =
-      realizeChordProgression(progressionRequest);
+  HarmonicRhythmResult harmonic{};
+  ChordProgressionResult progression{};
+  if (context.phraseExecutionOverride == nullptr) {
+    HarmonicRhythmRequest harmonicRequest{};
+    harmonicRequest.progression = result.progressionId;
+    harmonicRequest.phraseBarOrdinal =
+        context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
+            ? 0
+            : context.phraseBarOrdinal;
+    harmonic = realizeHarmonicRhythm(harmonicRequest);
+    result.harmonicRhythmStatus = harmonic.status;
+    result.harmonicEventOnsets = harmonic.plan.onsets;
+    result.harmonicEventCount = harmonic.plan.eventCount;
+    if (harmonic.status != HarmonicRhythmStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+
+    ChordProgressionRequest progressionRequest{};
+    progressionRequest.requestedId = result.progressionId;
+    progressionRequest.family = definition->family;
+    progressionRequest.generation = chordRequest.generation;
+    progressionRequest.harmonicEventCount = harmonic.plan.eventCount;
+    progressionRequest.phraseBars = 1;
+    progression = realizeChordProgression(progressionRequest);
+  } else {
+    const StrongRhythmPhraseExecutionOverride& execution =
+        *context.phraseExecutionOverride;
+    if (execution.harmonicRhythm == nullptr ||
+        execution.progressionSource == nullptr ||
+        execution.progressionSource->period == 0 ||
+        execution.harmonicRhythm->eventCount == 0 ||
+        execution.harmonicRhythm->eventCount > kMaxHarmonicEvents) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+    harmonic.status = HarmonicRhythmStatus::Ok;
+    harmonic.plan = *execution.harmonicRhythm;
+    progression.plan.id = execution.progressionSource->id;
+    progression.plan.eventCount = harmonic.plan.eventCount;
+    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
+      if (!chordProgressionSourceEventAt(
+              *execution.progressionSource,
+              static_cast<uint16_t>(execution.firstGlobalHarmonicOrdinal + ordinal),
+              progression.plan.events[ordinal])) {
+        result.status = StrongRhythmMigrationStatus::InvalidContext;
+        return result;
+      }
+    }
+    progression.status = execution.progressionSource->period == 1
+        ? ChordProgressionStatus::ValidButStatic
+        : ChordProgressionStatus::Ok;
+  }
+
+  result.harmonicRhythmStatus = harmonic.status;
+  result.harmonicEventOnsets = harmonic.plan.onsets;
+  result.harmonicEventCount = harmonic.plan.eventCount;
   result.chordProgressionStatus = progression.status;
   result.progressionId = progression.plan.id;
   if (progression.status != ChordProgressionStatus::Ok &&
       progression.status != ChordProgressionStatus::ValidButStatic) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+  if (progression.plan.eventCount != harmonic.plan.eventCount) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -592,6 +763,12 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   melodicRequest.generation = bassRequest.generation;
   melodicRequest.barOrdinal = barOrdinal;
   melodicRequest.allowEmptyBar = allowSparse;
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+  if (g_melodicRequestProbe != nullptr) {
+    g_melodicRequestProbe->request = melodicRequest;
+    g_melodicRequestProbe->captured = true;
+  }
+#endif
   const MelodicMotifResult melodic = realizeMelodicMotif(melodicRequest);
   result.melodicMotifStatus = melodic.status;
   result.melodicRhythmId = melodic.plan.rhythmId;
@@ -729,7 +906,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   } else {
     const TonalMaterializationResult bassTonal = materializeRole(
         context, tonalProfile.bassRegister, progression.plan,
-        chord.plan.onsets, bassPitch.plan.onsets,
+        harmonic.plan.onsets, bassPitch.plan.onsets,
         bassPitch.plan.continuations, bassPitch.plan.tonalOffsets,
         bassPitch.plan.semitoneOffsetOrdinals);
     result.bassTonalStatus = bassTonal.status;
@@ -756,7 +933,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     if (result.synthBRole == SemanticSynthBRole::Chord) {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -781,7 +958,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, melodicPitch.plan.onsets,
+          harmonic.plan.onsets, melodicPitch.plan.onsets,
           melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;
@@ -808,7 +985,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -849,7 +1026,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, admittedOnsets, admittedContinuations,
+          harmonic.plan.onsets, admittedOnsets, admittedContinuations,
           admittedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;
@@ -934,6 +1111,20 @@ StrongRhythmMigrationResult migrateStrongRhythmSynths(
     SynthPattern& synthB) {
   return migrateStrongRhythmMaterial(
       settings, context, drums, synthA, synthB, false);
+}
+
+StrongRhythmMigrationResult migrateStrongRhythmFrozenMaterial(
+    const GenreSettings& settings,
+    const StrongRhythmFrozenSelection& selection,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB) {
+  StrongRhythmMigrationContext frozenContext = context;
+  frozenContext.frozenSelection = &selection;
+  frozenContext.phraseGenerationIdentity = selection.phraseGenerationIdentity;
+  return migrateStrongRhythmMaterial(
+      settings, frozenContext, drums, synthA, synthB, true);
 }
 
 }  // namespace GroovePuterRhythm

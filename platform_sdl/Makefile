@@ -50,12 +50,14 @@ SOURCES := \
 	../src/generation/generation_context.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \
+	../src/generation/composition/phrase_length_request.cpp \
 	../src/generation/composition/tonal_profile.cpp \
 	../src/generation/feel/feel_interpreter.cpp \
 	../src/generation/feel/feel_pattern_adapter.cpp \
 	../src/generation/rhythm/rhythm_catalog.cpp \
 	../src/generation/rhythm/relationship_resolver.cpp \
 	../src/generation/rhythm/rhythm_realizer.cpp \
+	../src/generation/rhythm/rhythm_realizer_evolution.cpp \
 	../src/generation/rhythm/reference_vocabulary.cpp \
 	../src/generation/rhythm/reference_phrase_vocabulary.cpp \
 	../src/generation/rhythm/bar_evolution.cpp \
@@ -73,6 +75,7 @@ SOURCES := \
 	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
+	../src/generation/migration/phrase_execution.cpp \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
@@ -130,6 +133,9 @@ SOURCES := \
 	sdl_display.cpp \
 	scene_storage_sdl.cpp
 
+E1_LIVE_BRIDGE_TARGET := e1_live_bridge_characterization
+E1_LIVE_BRIDGE_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_e1_live_bridge_runtime.cpp
+
 ROOT := $(abspath ..)
 DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
@@ -143,6 +149,12 @@ all: $(TARGET)
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+$(E1_LIVE_BRIDGE_TARGET): $(E1_LIVE_BRIDGE_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+e1-live-bridge-characterization: $(E1_LIVE_BRIDGE_TARGET)
+	./$(E1_LIVE_BRIDGE_TARGET)
 
 wasm: $(SOURCES)
 	mkdir -p $(ROOT)/web
@@ -177,7 +189,7 @@ bundle: $(TARGET)
 	@echo "You can now run: open $(APP_BUNDLE)"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(E1_LIVE_BRIDGE_TARGET)
 	rm -rf $(APP_BUNDLE)
 
-.PHONY: all clean wasm bundle
+.PHONY: all clean wasm bundle e1-live-bridge-characterization

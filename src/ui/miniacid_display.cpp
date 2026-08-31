@@ -133,7 +133,12 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
         case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
         case WorkflowPages::kPhrase:
-            page = std::make_unique<PhrasePage>(gfx_, mini_acid_, audio_guard_);
+            page = std::make_unique<PhrasePage>(
+                gfx_, mini_acid_, audio_guard_, /*coreMode=*/false);
+            break;
+        case WorkflowPages::kPhraseCore:
+            page = std::make_unique<PhrasePage>(
+                gfx_, mini_acid_, audio_guard_, /*coreMode=*/true);
             break;
         case WorkflowPages::kSampler:
             page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
@@ -512,7 +517,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'w' || event.key == 'W') &&
-            page_index_ != WorkflowPages::kPhrase) {
+            page_index_ != WorkflowPages::kPhraseCore) {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
             return true;
         }

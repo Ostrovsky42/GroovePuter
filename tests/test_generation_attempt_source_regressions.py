@@ -41,7 +41,7 @@ for retired in ("settings.morphTarget", "settings.morphAmount"):
         raise AssertionError(f"persisted MORPH returned to project seed: {retired}")
 
 selector = MIGRATION.split("StrongRhythmRoute selectStrongRhythmRoute", 1)[1].split(
-    "StrongRhythmMigrationResult migrateStrongRhythmDrums", 1
+    "StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection", 1
 )[0]
 for retired in ("morphTarget", "morphAmount"):
     if retired in selector:
@@ -58,20 +58,23 @@ require(realization_seed, "kGenerationAttemptSalt",
         "non-zero reroll seed lost explicit domain salt")
 
 # GA-07: composition/archetype identity is selected from selectionSeed only;
-# attempt variation begins only at the rhythm realization and role realization
-# layer. Do not allow attemptOrdinal into composition selection.
-drums = MIGRATION.split("StrongRhythmMigrationResult migrateStrongRhythmDrums", 1)[1].split(
-    "namespace {", 1
-)[0]
+# attempt variation begins only at realization. M1 extracts this split into the
+# frozen-selection resolver, so guard the owner rather than its former wrapper
+# location. Do not allow attemptOrdinal into composition selection.
+resolver = MIGRATION.split(
+    "StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection", 1
+)[1].split("StrongRhythmMigrationResult migrateStrongRhythmDrums", 1)[0]
 for needle in (
     "const uint32_t selectionSeed = projectSeedFor(settings, result.route);",
-    "const uint32_t realizationSeed =",
-    "realizationSeedFor(selectionSeed, context.generationAttemptOrdinal);",
-    "selectionGeneration.projectSeed = selectionSeed;",
-    "resolveGenerationComposition(settings, selectionGeneration);",
-    "request.generation.projectSeed = realizationSeed;",
+    "destination.selectionGeneration.projectSeed = selectionSeed;",
+    "destination.realizationGeneration.projectSeed = realizationSeedFor(",
+    "selectionSeed, context.generationAttemptOrdinal);",
+    "destination.composition = resolveGenerationComposition(",
+    "settings, destination.selectionGeneration);",
 ):
-    require(drums, needle, f"selection/realization seed split changed: {needle}")
+    require(resolver, needle, f"selection/realization seed split changed: {needle}")
+if "selectionGeneration.projectSeed = realizationSeedFor" in resolver:
+    raise AssertionError("attempt variation leaked into composition selection seed")
 
 # GA-01/03/05/06: fixed session-only owner, exact tuple axes, deterministic
 # round-robin history eviction, no persistence or heap. Table capacity may bound
@@ -143,16 +146,21 @@ for forbidden in (
     if forbidden in QUANTIZED:
         raise AssertionError(f"quantized reroll identity collapsed back to local slot: {forbidden}")
 
-# UI migration is explicit: future Genre apply/G zeroes saved MORPH fields and
-# exposes repeated G as reroll. Scene codec fields themselves are intentionally
-# retained elsewhere for backwards decode.
+# UI migration is explicit: future Genre apply/G zeroes saved MORPH fields.
+# Scene codec fields themselves are intentionally retained elsewhere for
+# backwards decode. UI-P5 deliberately retires the standalone REROLL/REPEAT G
+# affordance: repeated G reroll semantics stay internal to the canonical
+# generation boundary rather than exposing a second UI command.
 for needle in (
     "settings.morphTarget = 0;",
     "settings.morphAmount = 0;",
     "requestedSettings.morphTarget = 0;",
     "requestedSettings.morphAmount = 0;",
-    '"REROLL", "REPEAT G"',
 ):
     require(GENRE, needle, f"Genre MORPH migration changed: {needle}")
+for retired_affordance in ('"REROLL"', '"REPEAT G"'):
+    if retired_affordance in GENRE:
+        raise AssertionError(
+            f"standalone reroll UI affordance must stay retired: {retired_affordance}")
 
 print("Combined F-02/F-07 seed surface source regressions: OK")

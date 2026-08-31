@@ -20,6 +20,7 @@ COMMON_SOURCES=(
   "${ROOT}/src/generation/generation_context.cpp"
   "${ROOT}/src/generation/composition/rhythm_selection.cpp"
   "${ROOT}/src/generation/composition/generation_profile.cpp"
+  "${ROOT}/src/generation/composition/phrase_length_request.cpp"
   "${ROOT}/src/generation/composition/tonal_profile.cpp"
   "${ROOT}/src/generation/feel/feel_interpreter.cpp"
   "${ROOT}/src/generation/feel/feel_pattern_adapter.cpp"

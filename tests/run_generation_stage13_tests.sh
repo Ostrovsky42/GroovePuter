@@ -30,6 +30,7 @@ COMPOSITION_SOURCES=(
 
 MIGRATION_SOURCES=(
   "${COMPOSITION_SOURCES[@]}"
+  "${ROOT_DIR}/src/generation/composition/phrase_length_request.cpp"
   "${ROOT_DIR}/src/generation/composition/tonal_profile.cpp"
   "${ROOT_DIR}/src/generation/feel/feel_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/rhythm/relationship_resolver.cpp"

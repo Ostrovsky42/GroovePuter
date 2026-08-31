@@ -28,6 +28,15 @@ enum class PhraseAuditionStatus : uint8_t {
   Count,
 };
 
+// M1L uses the existing audition surface only. These literals are test-listening
+// cases, not composition policy or persistent scene state.
+enum class PhraseAuditionListeningCase : uint8_t {
+  CurrentWired = 0,
+  M1SparseControl,
+  M1SparseWired,
+  M1CallWired,
+};
+
 struct PhraseAuditionProbe {
   bool available = false;
   uint32_t commandDurationUs = 0;
@@ -52,6 +61,9 @@ struct PhraseAuditionResult {
   RealizationLevel level = RealizationLevel::P2Variation;
   uint8_t requestedBars = 1;
   uint8_t profileBars = 1;
+  PhraseAuditionListeningCase listeningCase =
+      PhraseAuditionListeningCase::CurrentWired;
+  uint8_t synthBNoteCounts[4]{};
   TrajectoryId firstTrajectoryId = kNoTrajectoryId;
   TrajectoryId secondTrajectoryId = kNoTrajectoryId;
   PhraseAuditionProbe probe{};
@@ -70,7 +82,10 @@ struct PhraseAuditionResult {
 // - uses the current Stage 15 tonal materialization context for synth A/B;
 // - on Cardputer ADV, records stack/internal-heap timing metrics and benchmarks
 //   Reduction/Break across every subtractive Stage 12 identity.
-PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine);
+PhraseAuditionResult regeneratePhraseAuditionWithProbe(
+    MiniAcid& engine,
+    PhraseAuditionListeningCase listeningCase =
+        PhraseAuditionListeningCase::CurrentWired);
 
 const char* phraseAuditionStatusName(PhraseAuditionStatus status);
 

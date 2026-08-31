@@ -3,6 +3,7 @@
 #include "src/debug_log.h"
 #include "src/audio/pattern_paging.h"
 #include "src/phrase/phrase_core.h"
+#include "src/state/generated_phrase_product_state.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -3154,6 +3155,15 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
   // So it's already in scene_-> We just need to make sure MiniAcid pulls it.
+
+  // This is the single chokepoint every scene-replacement path converges on
+  // (main load, auto/recovery load, and the SDL/string loadScene() path all
+  // call loadSceneEvented -> here). Only a successful replacement reaches
+  // this line -- the parse-failure path above returns false first -- so this
+  // is exactly "successful Scene replacement", never a load attempt alone
+  // (spec section 22: markLoadSucceeded()/revision bumps/setCurrentSceneName
+  // are NOT equivalent and must not be used as this trigger).
+  GroovePuterState::resetGeneratedPhraseProductState();
 
   return true;
 }

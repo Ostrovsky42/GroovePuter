@@ -1,0 +1,33 @@
+name: 0.9.9-E1a one evolution mutation owner
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  e1a-host-and-live-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Stage 6.1 ownership and mutation matrix
+        run: bash tests/run_rhythm_stage6_1_tests.sh
+
+      - name: Run Stage 12 phrase and fixed-seed characterization matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_phrase_stage12_tests.sh
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run real MiniAcid live-bridge characterization
+        working-directory: platform_sdl
+        run: make e1-live-bridge-characterization CXX=g++

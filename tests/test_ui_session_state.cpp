@@ -29,9 +29,10 @@ int main() {
     assert(pageAt(SessionWorkflow::Hub, 2) == SessionPages::kSynthB);
     assert(pageAt(SessionWorkflow::Hub, 3) == SessionPages::kDrums);
     assert(pageAt(SessionWorkflow::Hub, 4) == SessionPages::kPattern);
-    assert(pageCountForWorkflow(SessionWorkflow::Song) == 2);
+    assert(pageCountForWorkflow(SessionWorkflow::Song) == 3);
     assert(pageAt(SessionWorkflow::Song, 0) == SessionPages::kArrange);
     assert(pageAt(SessionWorkflow::Song, 1) == SessionPages::kPhrase);
+    assert(pageAt(SessionWorkflow::Song, 2) == SessionPages::kPhraseCore);
     assert(pageCountForWorkflow(SessionWorkflow::Settings) == 1);
     assert(pageAt(SessionWorkflow::Settings, 0) == SessionPages::kProject);
 
@@ -93,12 +94,20 @@ int main() {
         state, SessionPages::kSynthBParameters, 1, false);
     assert(synthBParamToDrums == SessionPages::kDrums);
 
-    const int phraseToSong = workflowNavigationTarget(
-        state, SessionPages::kPhrase, 1, false);
-    assert(phraseToSong == SessionPages::kArrange);
+    // Song workflow now cycles Arrange -> Phrase -> Phrase Core -> Arrange
+    // (PHW-P1 split PHRASE CORE out as its own normally-reachable page).
     const int songToPhrase = workflowNavigationTarget(
         state, SessionPages::kArrange, 1, false);
     assert(songToPhrase == SessionPages::kPhrase);
+    const int phraseToPhraseCore = workflowNavigationTarget(
+        state, SessionPages::kPhrase, 1, false);
+    assert(phraseToPhraseCore == SessionPages::kPhraseCore);
+    const int phraseCoreToSong = workflowNavigationTarget(
+        state, SessionPages::kPhraseCore, 1, false);
+    assert(phraseCoreToSong == SessionPages::kArrange);
+    const int songToPhraseCoreBackward = workflowNavigationTarget(
+        state, SessionPages::kArrange, -1, false);
+    assert(songToPhraseCoreBackward == SessionPages::kPhraseCore);
 
     state.activePage = SessionPages::kTexture;
     state.lastPageByWorkflow[workflowSessionIndex(SessionWorkflow::Generate)] =

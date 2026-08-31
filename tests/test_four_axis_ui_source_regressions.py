@@ -95,12 +95,12 @@ for needle in (
     "FocusRow::Repeats",
     "scene.feel.patternBars",
     "shiftRepeatBars",
-    '"REPEATS"',
+    '"FEEL CYCLE"',
     "if (focus_ == FocusRow::Preset)",
     "preset_index_ = wrapIndex",
 ):
     require(FEEL, needle, f"FEEL contract missing: {needle}")
-for repeat_value in ("1, 2, 4, 8", '"CYCLE: repeat 1/2/4/8 bars"'):
+for repeat_value in ("1, 2, 4, 8", '"LOCAL CYCLE: repeat 1/2/4/8 bars"'):
     require(FEEL, repeat_value, f"FEEL repeat contract missing: {repeat_value}")
 forbid(
     FEEL,

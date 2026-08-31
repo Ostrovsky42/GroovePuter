@@ -25,7 +25,9 @@ def require(text: str, needle: str, message: str) -> None:
 
 # GENRE plain G is explicit full materialization, independent of ENTER's APPLY
 # selector. It prepares the pending GENRE / VARIANT / RHYTHM state and routes
-# through the quantized owner.
+# through the quantized owner. UI-P5 renamed the footer's P/M legend to
+# P:DEPTH M:APPLY and deliberately retired the standalone REROLL/REPEAT G
+# affordance; reroll semantics stay internal to the canonical G boundary.
 for needle in (
     "void GenrePage::applyCurrent(bool forceRegenerate)",
     "forceRegenerate || applyMode != ApplyMode::ProfileOnly",
@@ -34,11 +36,13 @@ for needle in (
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
-    '"G:GEN P:LEVEL M:MODE"',
-    '"REROLL"',
-    '"REPEAT G"',
+    '"G:GEN P:DEPTH M:APPLY"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
+for retired_affordance in ('"REROLL"', '"REPEAT G"'):
+    if retired_affordance in GENRE:
+        raise AssertionError(
+            f"standalone reroll UI affordance must stay retired: {retired_affordance}")
 
 # F-02/F-07: STOP and PLAY both allocate the request identity before live
 # publication/mutation. STOP then runs legacy rollback + Stage15 migration

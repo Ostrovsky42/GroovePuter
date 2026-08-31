@@ -9,11 +9,11 @@ opens page-aware on-device help; this file is the fuller release reference.
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
-SONG:     SONG -> PHRASE CORE
+SONG:     SONG -> PHRASE -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
 ```
 
-There are **11 active pages**. Persisted `GENERATION` and `TEXTURE` IDs resolve to
+There are **12 active pages**. Persisted `GENERATION` and `TEXTURE` IDs resolve to
 FEEL. Persisted standalone Synth SOUND IDs resolve to their owning Synth A/B page;
 sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 
@@ -178,6 +178,7 @@ Inside NOTE ENTRY, `G` remains note input.
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
+| `Alt+J` | Jump to PHRASE with this row as the explicit `TO` destination |
 
 `B` changes assignment context only. `Alt+B` changes stored references. Song-slot
 crossing and the visible PAT assignment bank are independent controls.
@@ -191,7 +192,33 @@ pattern page instead of clearing the project. Song stores page-aware global patt
 so playback can return to the required page through the existing deferred page-switch
 path.
 
+## PHRASE
+
+Generated-Phrase product workflow. `NEXT REQUEST` (`LENGTH`/`DEPTH`/`TO`) and
+`LAST ACCEPTED` (`BAR`/activity) are separate objects, never one shared
+timeline.
+
+| Key | Action |
+|---|---|
+| `Up/Down` | Move focus `LENGTH -> DEPTH -> TO [-> BAR]` (`BAR` only when a live accepted Phrase exists) |
+| `Left/Right` | Adjust the focused field (length 1/2/4/8, depth, TO placement, or accepted bar) |
+| `Enter` (focus `TO`) | `EXPLICIT` row -> `APPEND` (no effect while already `APPEND`) |
+| `Enter` (focus `BAR`) | Focus the accepted bar's Song/pattern context (STOP-only) |
+| `G` | Generate into the resolved `TO` row |
+| `P` | Cycle `DEPTH` (shortcut, same owner as focused `DEPTH`) |
+
+`TO` always shows the row `G` would actually target right now: `APPEND` resolves
+against the Song's current logical end every frame, or `EXPLICIT` if entering
+PHRASE from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
+(`FREE`/`OCCUPIED`/`NO ROOM`) mirrors the exact generation-availability check.
+`LAST ACCEPTED` is retrospective only and disappears (`LAST --`) if its
+generated material is no longer structurally present in the Song.
+
 ## PHRASE CORE
+
+Legacy capture/derive/write workspace, now a separate page from PHRASE. Its
+own `TO:` destination and generation length are independent of the PHRASE
+product request above.
 
 | Key | Action |
 |---|---|

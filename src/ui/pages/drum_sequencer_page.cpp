@@ -212,9 +212,13 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
 
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
+  const bool phraseAuditionChord =
+      ui_event.ctrl && ui_event.alt && !ui_event.meta &&
+      (ui_event.key == 'g' || ui_event.key == 'G' ||
+       ui_event.scancode == GROOVEPUTER_G);
   if (activePageIndex() != 0 ||
       ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
-      UIInput::isGlobalNav(ui_event)) {
+      (UIInput::isGlobalNav(ui_event) && !phraseAuditionChord)) {
     return handleEventLegacy(ui_event);
   }
 
@@ -286,8 +290,33 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       : 0;
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+  const bool keyL =
+      lowerKey == 'l' || ui_event.scancode == GROOVEPUTER_L;
   const bool keyP =
       lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
+
+  static GroovePuterRhythm::PhraseAuditionListeningCase m1ListeningCase =
+      GroovePuterRhythm::PhraseAuditionListeningCase::CurrentWired;
+
+  // Ctrl+Alt+P is a global MIDI Player shortcut, so M1L owns the local L
+  // chord instead. It reaches this Drum Sequencer handler before legacy input.
+  if (keyL && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+    using Case = GroovePuterRhythm::PhraseAuditionListeningCase;
+    m1ListeningCase = m1ListeningCase == Case::CurrentWired
+        ? Case::M1SparseControl
+        : m1ListeningCase == Case::M1SparseControl
+        ? Case::M1SparseWired
+        : m1ListeningCase == Case::M1SparseWired
+            ? Case::M1CallWired
+            : Case::M1SparseControl;
+    const char* label = m1ListeningCase == Case::M1SparseControl
+        ? "M1L C SPARSE 1,1,1,1"
+        : m1ListeningCase == Case::M1SparseWired
+            ? "M1L W SPARSE 1,0,1,0"
+            : "M1L W CALL 2,2,2,2";
+    UI::showToast(label, 1800);
+    return true;
+  }
 
   // Cardputer ADV has no dedicated Shift key in the physical workflow. Use the
   // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
@@ -308,7 +337,7 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
     GroovePuterRhythm::PhraseAuditionResult audition{};
     page->withAudioGuard([&]() {
       audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
-          page->mini_acid_);
+          page->mini_acid_, m1ListeningCase);
 
       // The bridge writes Bank B by temporarily selecting every reserved slot.
       // Rebase MiniAcid's pattern-mode return state to the exact pre-audition
@@ -329,14 +358,22 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       }
     });
     char toast[72];
+    const char* listeningLabel = audition.listeningCase ==
+            GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseControl
+        ? "M1L C SPARSE 1,1,1,1"
+        : audition.listeningCase ==
+                GroovePuterRhythm::PhraseAuditionListeningCase::M1SparseWired
+            ? "M1L W SPARSE 1,0,1,0"
+            : audition.listeningCase ==
+                GroovePuterRhythm::PhraseAuditionListeningCase::M1CallWired
+                ? "M1L W CALL 2,2,2,2"
+                : "AUD";
     std::snprintf(
         toast,
         sizeof(toast),
-        "AUD %uB %s %s #%u",
-        static_cast<unsigned>(audition.requestedBars),
-        GroovePuterState::generationLevelShortName(audition.level),
-        GroovePuterRhythm::phraseAuditionStatusName(audition.status),
-        static_cast<unsigned>(audition.archetypeId));
+        "%s %s",
+        listeningLabel,
+        GroovePuterRhythm::phraseAuditionStatusName(audition.status));
     UI::showToast(toast, 1800);
     return true;
   }

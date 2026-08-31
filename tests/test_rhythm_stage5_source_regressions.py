@@ -61,16 +61,19 @@ require("recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(" in GENRE_PAGE
 # F-02/F-07 retires MORPH as an active generation axis. Persisted fields stay in
 # Scene for decode compatibility, but the Genre surface explicitly normalizes
 # them and repeated accepted G owns variation through attemptOrdinal instead.
+# UI-P5 deliberately retires the standalone "REROLL"/"REPEAT G" affordance:
+# reroll/attempt semantics stay internal to the canonical G generation
+# boundary rather than exposing a second UI command for the same operation.
 for token in (
     "settings.morphTarget = 0;",
     "settings.morphAmount = 0;",
     "requestedSettings.morphTarget = 0;",
     "requestedSettings.morphAmount = 0;",
-    '"REROLL"',
-    '"REPEAT G"',
+    "applyCurrent(true);",
 ):
     require(token in GENRE_PAGE, f"MORPH retirement contract missing: {token}")
-for retired in ("adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph"):
+for retired in ("adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph",
+                '"REROLL"', '"REPEAT G"'):
     require(retired not in GENRE_PAGE,
             f"retired MORPH UI owner returned: {retired}")
 

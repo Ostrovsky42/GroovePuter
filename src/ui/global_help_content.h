@@ -20,7 +20,7 @@ constexpr const char* kGlobalLines[] = {
     "Space       Active transport",
     "Alt+P       MIDI Player",
     "Alt+V       Groove Lab",
-    "Alt+W       Waveform except PHRASE",
+    "Alt+W       Waveform except CORE",
     "Alt+\\       Theme CARBON/CYBER",
     "Alt+X       LiveMix ON/OFF",
     "Alt+M       Song mode ON/OFF",
@@ -175,6 +175,19 @@ constexpr const char* kSongLines[] = {
     "Alt+Bksp    Clear full Song",
 };
 
+constexpr const char* kPhraseProductLines[] = {
+    "=== PHRASE ===",
+    "Up/Down     Focus field",
+    "Left/Right  Adjust focused field",
+    "TO          APPEND or EXPLICIT",
+    "Enter(TO)   Explicit -> Append",
+    "Enter(BAR)  Focus accepted bar",
+    "G           Generate at TO",
+    "P           Cycle DEPTH",
+    "LAST        Retrospective only",
+    "FREE/OCCUPIED/NO ROOM at TO",
+};
+
 constexpr const char* kPhraseLines[] = {
     "=== PHRASE CORE ===",
     "1..4        Select Phrase A/B/C/D",
@@ -294,6 +307,9 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case WorkflowPages::kArrange:
             count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
         case WorkflowPages::kPhrase:
+            count = sizeof(kPhraseProductLines) / sizeof(kPhraseProductLines[0]);
+            return kPhraseProductLines;
+        case WorkflowPages::kPhraseCore:
             count = sizeof(kPhraseLines) / sizeof(kPhraseLines[0]); return kPhraseLines;
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;

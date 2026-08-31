@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY = ROOT / "tests/data/stage15_tonal_legacy_baseline.tsv"
-TONAL = ROOT / "tests/data/stage15_tonal_enabled_baseline.tsv"
+PRE_F13 = ROOT / "tests/data/stage15_tonal_enabled_pre_f13_baseline.tsv"
 
 
 def load(path: Path):
@@ -17,20 +17,20 @@ def load(path: Path):
 
 
 legacy = load(LEGACY)
-tonal = load(TONAL)
-assert legacy.keys() == tonal.keys(), "legacy/tonal corpus keys diverged"
+pre_f13 = load(PRE_F13)
+assert legacy.keys() == pre_f13.keys(), "legacy/PRE-F13 tonal corpus keys diverged"
 
 pitch_changes = 0
 for key in sorted(legacy):
     before = legacy[key]
-    after = tonal[key]
+    after = pre_f13[key]
     for field in ("status", "secondary_role", "topology", "articulation"):
-        assert before[field] == after[field], f"{key}: tonal path changed {field}"
+        assert before[field] == after[field], f"{key}: PRE-F13 tonal path changed {field}"
     if before["pitch"] != after["pitch"]:
         pitch_changes += 1
 
-assert pitch_changes > 0, "tonal-enabled corpus never changes pitch"
+assert pitch_changes > 0, "PRE-F13 tonal-enabled corpus never changes pitch"
 print(
-    "Stage 15 tonal corpus boundary: OK "
+    "Stage 15 PRE-F13 tonal corpus boundary: OK "
     f"(256 rows, pitch changed in {pitch_changes}, topology/articulation unchanged)"
 )

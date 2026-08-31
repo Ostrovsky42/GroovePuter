@@ -45,6 +45,18 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool moveSelectionFrameBy(int deltaRow, int deltaCol);
   int voiceIndex() const { return voice_index_; }
 
+  // I1 display projection only. Song transport remains the owner of the
+  // physical pattern selection; the NOTES editor mirrors that selection so
+  // every visual style shows the pattern that is actually sounding. STOP does
+  // not rewind Song selection, so this also preserves the last played pattern
+  // as the immediate edit target.
+  void syncSongPatternContext() {
+    if (!mini_acid_.songModeEnabled()) return;
+    pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
+    bank_index_ = mini_acid_.current303BankIndex(voice_index_);
+    bank_cursor_ = bank_index_;
+  }
+
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
   enum class PatternMutationResult { Invalid = 0, NoChange, Committed };

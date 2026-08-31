@@ -125,10 +125,11 @@ def test_workflow_local_page_navigation() -> None:
             "legacy synth SOUND addresses must redirect to their owning synth pages")
     require("static constexpr int kSongPages[]" in workflow and
             "kArrange, kPhrase" in workflow and
-            "case WorkflowMode::Song: return 2;" in workflow and
+            "case WorkflowMode::Song: return 3;" in workflow and
             "case WorkflowMode::Song: return kSongPages[index];" in workflow and
             "return pageAt(mode, 0);" in workflow,
-            "SONG must open the arranger and retain Phrase as its second page")
+            "SONG must open the arranger and retain Phrase as its second page,"
+            " with Phrase Core as a third, separately reachable page (PHW-P1)")
     require("static constexpr int kSettingsPages[]" in workflow and
             "kProject" in workflow and
             "case WorkflowMode::Settings: return 1;" in workflow and

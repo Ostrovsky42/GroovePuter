@@ -94,7 +94,7 @@ for scan in ("GROOVEPUTER_A", "GROOVEPUTER_X", "GROOVEPUTER_C", "GROOVEPUTER_V")
 
 # Carry the independently verified generation-reset fix without pulling the
 # hardware-validation documentation branch into production ancestry.
-require('ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-16384}"' in build,
+require('ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-32768}"' in build,
         "3bba2437 LoopTask stack fix missing")
 require("GROOVEPUTER_DSP_ATLAS_RUNTIME_H" in atlas,
         "3bba2437 atlas_runtime include guard missing")

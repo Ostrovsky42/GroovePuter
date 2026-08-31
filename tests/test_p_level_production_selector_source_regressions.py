@@ -142,8 +142,13 @@ for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
 
 # Existing generation ownership remains separate: normal generation is G,
 # phrase audition is Ctrl+Alt+G, and CHAOS stays outside P1/P2/P3/reroll.
+# UI-P5 deliberately retires the standalone REROLL/REPEAT G affordance: reroll
+# semantics stay internal to the canonical G generation boundary.
 require(GENRE, "applyCurrent(true);", "GENRE G production route disappeared")
-require(GENRE, '"REROLL", "REPEAT G"', "GENRE reroll affordance disappeared")
+for retired_affordance in ('"REROLL"', '"REPEAT G"'):
+    if retired_affordance in GENRE:
+        raise AssertionError(
+            f"standalone reroll UI affordance must stay retired: {retired_affordance}")
 require(
     DRUM,
     "regenerateDrumsWithStrongRhythmMigration",

@@ -1,0 +1,26 @@
+name: 0.9.9 PHRASE-W1 harmonic WHEN owner recovery
+
+on:
+  push:
+    branches:
+      - agent/20260826-13-0.9.9-phrase-w1-harmonic-when-owner-recovery
+  pull_request:
+    branches:
+      - research/20260826-11-0.9.9-phrase-h1-progression-what-source
+
+jobs:
+  focused-harmonic-when-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-W1 focused recovery gate
+        run: bash tests/run_0_9_9_phrase_w1_tests.sh
+
+  core-host-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run core host regression
+        run: bash tests/run_host_tests.sh

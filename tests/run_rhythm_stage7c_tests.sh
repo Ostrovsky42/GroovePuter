@@ -11,6 +11,7 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/composition/rhythm_selection.cpp"
   "${ROOT_DIR}/src/generation/composition/generation_profile.cpp"
+  "${ROOT_DIR}/src/generation/composition/phrase_length_request.cpp"
   "${ROOT_DIR}/src/generation/composition/tonal_profile.cpp"
   "${ROOT_DIR}/src/generation/feel/feel_interpreter.cpp"
   "${ROOT_DIR}/src/generation/feel/feel_pattern_adapter.cpp"

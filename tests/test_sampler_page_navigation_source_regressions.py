@@ -21,7 +21,7 @@ def main() -> None:
     track_cpp = (ROOT / "src/sampler/drum_sampler_track.cpp").read_text(encoding="utf-8")
     help_source = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 
-    require("static constexpr int kPageCount = 16;" in config,
+    require("static constexpr int kPageCount = 17;" in config,
             "legacy SAMPLER page id must remain decodable")
     require("constexpr int kSampler = 15;" in session and
             "constexpr int kSampler = 15;" in workflow,
