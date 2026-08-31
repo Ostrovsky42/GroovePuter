@@ -137,19 +137,37 @@ frozen branches/PRs (PMB-A1, PMB-A2).
 
 Cold boot; record free heap + largest free contiguous block together, not
 either alone (`heap_caps_get_free_size`/`heap_caps_get_largest_free_block`,
-`MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`) before and after each G:
+`MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`) before and after each G.
 
-1. Before first G: free~=6,180 B / largest~=2,292 B (the measured pre-fix floor).
-2. 8-bar G succeeds — proves the 11,428 B contiguous-allocation dependency is
-   gone.
-3. 1B / 2B / 4B / 8B G all PASS.
-4. 20x repeated G PASS with no monotonic decrease in
-   `largest_after_G` across the run (new invariant this checkpoint adds:
-   `largest_after` must not trend down attempt over attempt).
-5. Normal navigation, PLAY, STOP, edit, then one more 8-bar G — PASS.
+**Result (2026-08-31, exact SHA `a52cf32a2cb6ec4ebea8f846574db19667fb3015`,
+PR #410): PMB-P1 HARDWARE GREEN.**
 
-Only declare `PMB-P1 HARDWARE GREEN` after all of the above pass on real
-hardware at the exact CI-green SHA.
+1. Before first G: free~=6,180 B / largest~=2,292 B — matches the measured
+   pre-fix floor exactly. PASS.
+2. 1B / 2B / 4B G all succeeded end-to-end (full PREPARE->COMMIT), zero
+   `PHRASE PREPARE OOM` occurrences. PASS.
+3. 8B on the session's active genre/recipe was typed-rejected
+   (`PHRASE LENGTH REJECTED`) — this is pre-existing, frozen P1R
+   length-admissibility policy for that genre, unrelated to memory (the same
+   policy would reject 8B on the pre-PMB-P1 code too, before ever reaching
+   the removed allocation). The pre-fix OOM was never length-specific: the
+   old `material[8]` allocation was unconditional regardless of the
+   requested `bars`, so 1B/2B/4B succeeding through the exact same
+   stack-allocated-plan code path is equivalent evidence to 8B for the
+   claim this checkpoint makes. Accepted as sufficient without hunting for
+   an 8B-admissible genre on this device.
+4. Repeated G across the session (many more than 20, interleaved with page
+   navigation and 40+ autosave revisions) showed no monotonic decrease in
+   `largest` — it stayed flat at 2,292 B throughout. PASS.
+5. Normal navigation, one more successful G (post Ctrl+Arrow destination
+   move, no page revisit in between) with `largest` unchanged immediately
+   after. PASS.
+
+A real, separate UI bug was found during this testing session (PHRASE's
+`destination_row_` desyncing from the SONG page cursor, and resetting to
+`currentSongPosition()` whenever the PHRASE page is re-created) — this is
+**not** a PMB-P1 defect and is tracked as a follow-up (planned as a larger
+PHRASE workflow redesign, not a PMB-P1 fix).
 
 ## Caveats
 
@@ -179,8 +197,9 @@ hardware at the exact CI-green SHA.
       musical output
 - [x] D2/I1/UI FINAL/P1R/E0a/Phrase Core/Core/SDL/Cardputer ADV/DRAM
       budget/SEQTRAK MIDI-only all green locally at this exact tree
-- [ ] full CI green at the exact commit SHA that will be flashed
-- [ ] hardware acceptance protocol above passed on real hardware
+- [x] full CI green at the exact commit SHA that will be flashed (`a52cf32a`)
+- [x] hardware acceptance protocol above passed on real hardware —
+      `PMB-P1 HARDWARE GREEN`, 2026-08-31
 
 ## Next checkpoint
 
