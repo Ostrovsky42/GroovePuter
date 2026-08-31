@@ -73,7 +73,7 @@ for needle in (
     "case 'w': return writeToCurrentRow(ui_event.alt);",
     "return clearCurrentSlot();",
     '"1-4:SLOT L/R:BAR U/D:CAPLEN"',
-    '"G:GEN V:PRODUCT ENT/D/W"',
+    '"G:GEN ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 # Ctrl+arrow TO/8-bar destination shortcuts still exist in CORE handleEvent;
@@ -92,8 +92,11 @@ require(CPP, '#include "src/dsp/generated_phrase_song.h"',
         "Phrase page must use the current generated-Phrase adapter")
 require(CPP, "bool PhrasePage::generatePhraseToSong()",
         "generated Phrase action implementation is missing")
-require(CPP, "const int songStart = static_cast<int>(destination_row_);",
-        "Phrase G must start at the visible TO destination")
+# PHW-P1: PHRASE (product) and PHRASE CORE are now separate page instances
+# sharing generatePhraseToSong(); CORE keeps its exact pre-PHW-P1
+# destination_row_ target, product resolves TO fresh via resolvedToRow().
+require(CPP, "? static_cast<int>(destination_row_)\n      : resolvedToRow();",
+        "Phrase CORE's G must still start at the visible TO destination")
 require(CPP, "GeneratedPhraseSong::generate(",
         "Phrase G must route through the current generated-Phrase adapter")
 require(CPP, "GeneratedPhraseSong::Result",
@@ -178,14 +181,16 @@ require(INSERT, "for (int row = logicalLength; row < insertRow; ++row)",
 require(INSERT, "finalLength > Song::kMaxPositions",
         "insert must preflight the true 128-row capacity boundary")
 
-# Global Alt+W remains the waveform shortcut everywhere except PHRASE, where
-# the page must receive it as explicit REPLACE.
-require(DISPLAY, "page_index_ != WorkflowPages::kPhrase",
-        "global Alt+W must exclude PHRASE so REPLACE is reachable")
+# Global Alt+W remains the waveform shortcut everywhere except PHRASE CORE,
+# where the page must receive it as explicit REPLACE. (PHW-P1 split PHRASE
+# CORE out as its own page; PHRASE (product) has no W/Alt+W action at all,
+# so it no longer needs this carve-out.)
+require(DISPLAY, "page_index_ != WorkflowPages::kPhraseCore",
+        "global Alt+W must exclude PHRASE CORE so REPLACE is reachable")
 waveform_start = DISPLAY.index("if (event.alt && (event.key == 'w' || event.key == 'W')")
 waveform_block = DISPLAY[waveform_start:waveform_start + 260]
-require(waveform_block, "page_index_ != WorkflowPages::kPhrase",
-        "Phrase exclusion must belong to the global waveform Alt+W condition")
+require(waveform_block, "page_index_ != WorkflowPages::kPhraseCore",
+        "Phrase Core exclusion must belong to the global waveform Alt+W condition")
 require(waveform_block, "UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled",
         "non-Phrase Alt+W must still toggle the waveform overlay")
 

@@ -90,11 +90,17 @@ require("GroovePuterState::cycleGenerationLevel(delta)" in genre_cpp,
 require("GroovePuterState::cycleGenerationLevel()" in genre_cpp,
         "plain P must use canonical DEPTH owner")
 
-# FEEL CYCLE remains scene.feel.patternBars and is distinct from Phrase Length.
+# FEEL CYCLE remains scene.feel.patternBars, owned by the FEEL page.
 require("scene.feel.patternBars = next;" in feel_cpp,
         "FEEL cycle owner changed")
-require("FEEL CYCLE" in phrase_cpp,
-        "Phrase product view must name FEEL CYCLE separately")
+# PHW-P1 redesigned the generated-Phrase product screen around
+# LENGTH/DEPTH/TO/BAR placement and admissibility (see spec sections 1-2,
+# 25); FEEL CYCLE is no longer displayed there at all, so there is no risk
+# of the two being conflated on-screen. scene.feel.patternBars must still
+# not appear in PhrasePage's own state (checked in test_0_9_9_ui_p0_source_
+# regressions.py), only its FEEL-page display convention changed.
+require("scene.feel.patternBars" not in phrase_h,
+        "PhrasePage must not own FEEL cycle state")
 
 # I1 follow/STOP remains authoritative. UI mirrors engine physical selection;
 # STOP must not restore pattern-mode selection.

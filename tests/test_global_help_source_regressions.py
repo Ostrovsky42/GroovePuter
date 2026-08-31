@@ -53,12 +53,14 @@ assert '"G:GEN Alt+G:ALL Q-I:PAT B:Bank"' in drum_legacy
 assert '"DRUM Alt[]:PG"' in drum_legacy
 assert '"REF         Mutable pattern references"' in help_content
 
-# Runtime workflow truth: 11 active pages. Generation/Texture and standalone SOUND
-# ids remain persisted compatibility aliases, not live pages.
+# Runtime workflow truth: 12 active pages (PHW-P1 split PHRASE CORE out of
+# PHRASE as its own separately-reachable Song-workflow page). Generation/
+# Texture and standalone SOUND ids remain persisted compatibility aliases,
+# not live pages.
 assert "case WorkflowMode::Perform: return 2;" in workflow
 assert "case WorkflowMode::Generate: return 2;" in workflow
 assert "case WorkflowMode::Hub: return 4;" in workflow
-assert "case WorkflowMode::Song: return 2;" in workflow
+assert "case WorkflowMode::Song: return 3;" in workflow
 assert "case WorkflowMode::Settings: return 1;" in workflow
 assert "if (page == kTexture || page == kGeneration) return kFeel;" in workflow
 assert "if (page == kSynthAParameters) return kSynthA;" in workflow
@@ -70,14 +72,14 @@ assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 # not advertise the retired three-page Generate/Groove-Lab contract as live UI.
 assert readme.startswith("# GroovePuter v0.9.1")
 assert "GENERATE: GENRE -> FEEL" in readme
-assert "SONG:     SONG -> PHRASE CORE" in readme
-assert "11 active pages" in readme
+assert "SONG:     SONG -> PHRASE -> PHRASE CORE" in readme
+assert "12 active pages" in readme
 assert "docs/releases/0_9_1_RELEASE.md" in readme
 assert "GENRE -> FEEL -> GENERATION" not in readme
 
 assert manual.startswith("# GroovePuter 0.9.1 Manual")
 assert "GENERATE: GENRE -> FEEL" in manual
-assert "11 active pages" in manual
+assert "12 active pages" in manual
 assert "GENERATION -> FEEL" in manual
 assert "TEXTURE    -> FEEL" in manual
 assert "Current `dev_0.9` Firmware" not in manual

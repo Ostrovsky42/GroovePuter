@@ -11,6 +11,7 @@
 #include "../amber_widgets.h"
 #include "../retro_ui_theme.h"
 #include "../amber_ui_theme.h"
+#include "../workflow_mode.h"
 
 namespace retro = RetroWidgets;
 namespace amber = AmberWidgets;
@@ -1537,6 +1538,23 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         showToast(kVoiceLaneInSongEditor ? "Lane: DR+VO" : "Lane: DR", 900);
         break;
     }
+    return true;
+  }
+
+  // Alt+J ("jump"): deliberate SONG -> PHRASE handoff. G is already SongPage's
+  // own generate/batch-generate key (plain/Ctrl/Alt+selection all reserved
+  // below) and P is the global MIDI Player shortcut in
+  // MiniAcidDisplay::handleEvent, so neither is available here. The one-shot
+  // cursor row is carried through the existing IPage transition context
+  // (row+1, so 0 stays "no explicit row" / normal APPEND entry) and consumed
+  // exactly once by PhrasePage::onEnter().
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lowerKey == 'j' || ui_event.scancode == GROOVEPUTER_J)) {
+    const int row = cursorRow();
+    requestPageTransition(WorkflowPages::kPhrase, row + 1);
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "PHRASE <- ROW %d", row + 1);
+    showToast(buf, 900);
     return true;
   }
 

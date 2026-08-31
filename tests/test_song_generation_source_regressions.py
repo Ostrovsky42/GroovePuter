@@ -130,7 +130,12 @@ def main() -> None:
     require("GroovePuterState::requestedPhraseBars()" in generated_action and
             "GeneratedPhraseSong::generate" in generated_action,
             "Phrase G does not use the dedicated Phrase request length and current adapter")
-    require("const int songStart = static_cast<int>(destination_row_);" in generated_action,
+    # PHW-P1: PHRASE (product) and PHRASE CORE are separate page instances
+    # sharing generatePhraseToSong(). CORE keeps the exact pre-PHW-P1
+    # destination_row_ target; product resolves TO fresh via
+    # resolvedToRow() (APPEND/EXPLICIT), never a cached destination.
+    require("? static_cast<int>(destination_row_)\n      : resolvedToRow();"
+            in generated_action,
             "Phrase G no longer starts at the visible TO destination")
     require("currentSongPosition()" not in generated_action,
             "Phrase G must not use a hidden Song playhead as its destination")
@@ -147,8 +152,8 @@ def main() -> None:
     require("mini_acid_.stop()" not in generated_action and
             "mini_acid_.start()" not in generated_action,
             "Phrase generation must never hide a stop/generate/restart cycle")
-    require("G:GEN V:PRODUCT ENT/D/W" in phrase_page,
-            "Phrase footer does not expose G together with the CORE command legend")
+    require("G:GEN ENT/D/W" in phrase_page,
+            "Phrase Core footer does not expose G together with its command legend")
     require("ui_event.ctrl && !ui_event.alt && !ui_event.meta" in phrase_page,
             "Phrase page must still expose the Ctrl+arrow TO/8-bar destination controls")
 

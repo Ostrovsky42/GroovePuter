@@ -42,6 +42,11 @@ enum class Workspace : uint8_t {
     // SETTINGS / GENERATE
     Project,
     Feel,
+
+    // SONG (appended at the end: existing enum values are preserved for
+    // persisted UI-session compatibility, so new entries never renumber
+    // the ones above).
+    PhraseCore,
 };
 
 namespace WorkflowPages {
@@ -63,6 +68,11 @@ constexpr int kPhrase = 14;
 // Legacy persisted/direct page id. Sampler product controls now live in the
 // SAMPLES tab inside DRUMS; page 15 normalizes to the owning DRUMS workflow.
 constexpr int kSampler = 15;
+// PHRASE CORE: the legacy capture/derive/write workspace, split out of
+// PHRASE (kPhrase) into its own independently-reachable page in PHW-P1.
+// PhraseCore musical/edit semantics are unchanged; only placement is
+// separated from the generated-Phrase product workflow.
+constexpr int kPhraseCore = 16;
 
 inline int normalizeLegacyPage(int page) {
     if (page == kTexture || page == kGeneration) return kFeel;
@@ -109,6 +119,7 @@ inline bool isWorkspacePage(int page) {
            isHubWorkflowPage(page) ||
            page == kArrange ||
            page == kPhrase ||
+           page == kPhraseCore ||
            isSettingsWorkflowPage(page);
 }
 
@@ -130,6 +141,7 @@ inline Workspace workspaceForPage(int page) {
         case kDrums: return Workspace::Drums;
         case kArrange: return Workspace::Arrange;
         case kPhrase: return Workspace::Phrase;
+        case kPhraseCore: return Workspace::PhraseCore;
         case kProject: return Workspace::Project;
         default: return Workspace::Groove;
     }
@@ -155,6 +167,7 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Arrange: return kArrange;
         case Workspace::Phrase: return kPhrase;
         case Workspace::Project: return kProject;
+        case Workspace::PhraseCore: return kPhraseCore;
     }
     return kGenre;
 }
@@ -164,7 +177,9 @@ inline WorkflowMode modeForPage(int page) {
     if (isPerformWorkflowPage(page)) return WorkflowMode::Perform;
     if (isGenerateWorkflowPage(page)) return WorkflowMode::Generate;
     if (isHubWorkflowPage(page)) return WorkflowMode::Hub;
-    if (page == kArrange || page == kPhrase) return WorkflowMode::Song;
+    if (page == kArrange || page == kPhrase || page == kPhraseCore) {
+        return WorkflowMode::Song;
+    }
     return WorkflowMode::Settings;
 }
 
@@ -199,7 +214,8 @@ inline const char* pageName(int page) {
         case kSynthB: return "SYNTH B";
         case kDrums: return "DRUMS";
         case kArrange: return "SONG";
-        case kPhrase: return "PHRASE CORE";
+        case kPhrase: return "PHRASE";
+        case kPhraseCore: return "PHRASE CORE";
         case kProject: return "PROJECT / SETUP";
         case kSampler: return "SAMPLER";
         default: return "PAGE";
@@ -211,7 +227,7 @@ inline int pageCountForMode(WorkflowMode mode) {
         case WorkflowMode::Perform: return 2;
         case WorkflowMode::Generate: return 2;
         case WorkflowMode::Hub: return 4;
-        case WorkflowMode::Song: return 2;
+        case WorkflowMode::Song: return 3;
         case WorkflowMode::Settings: return 1;
     }
     return 1;
@@ -228,7 +244,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPattern, kSynthA, kSynthB, kDrums,
     };
     static constexpr int kSongPages[] = {
-        kArrange, kPhrase,
+        kArrange, kPhrase, kPhraseCore,
     };
     static constexpr int kSettingsPages[] = {
         kProject,

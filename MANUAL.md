@@ -10,13 +10,13 @@ For the release freeze and acceptance boundary use
 
 ## 1. Workflow map
 
-GroovePuter 0.9.1 has **11 active pages** in five workflows:
+GroovePuter 0.9.1 has **12 active pages** in five workflows:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
-SONG:     SONG -> PHRASE CORE
+SONG:     SONG -> PHRASE -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
 ```
 

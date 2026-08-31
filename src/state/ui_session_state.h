@@ -17,7 +17,7 @@ enum class SessionWorkflow : uint8_t {
 };
 
 constexpr int kWorkflowSessionCount = 5;
-constexpr int kUiPageCount = 16;
+constexpr int kUiPageCount = 17;
 constexpr uint16_t kDefaultMasterVolumePermille = 600;
 constexpr uint16_t kMaxMasterVolumePermille = 1800;
 
@@ -38,6 +38,7 @@ constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 constexpr int kSampler = 15;
+constexpr int kPhraseCore = 16;
 }  // namespace SessionPages
 
 inline int normalizeLegacyUiPage(int page) {
@@ -92,7 +93,8 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
         page == SessionPages::kSynthB || page == SessionPages::kDrums) {
         return SessionWorkflow::Hub;
     }
-    if (page == SessionPages::kArrange || page == SessionPages::kPhrase) {
+    if (page == SessionPages::kArrange || page == SessionPages::kPhrase ||
+        page == SessionPages::kPhraseCore) {
         return SessionWorkflow::Song;
     }
     return SessionWorkflow::Settings;
@@ -179,7 +181,7 @@ inline int pageCountForWorkflow(SessionWorkflow workflow) {
         case SessionWorkflow::Perform: return 2;
         case SessionWorkflow::Generate: return 2;
         case SessionWorkflow::Hub: return 4;
-        case SessionWorkflow::Song: return 2;
+        case SessionWorkflow::Song: return 3;
         case SessionWorkflow::Settings: return 1;
     }
     return 1;
@@ -199,6 +201,7 @@ inline int pageAt(SessionWorkflow workflow, int index) {
     };
     static constexpr int kSongPages[] = {
         SessionPages::kArrange, SessionPages::kPhrase,
+        SessionPages::kPhraseCore,
     };
     static constexpr int kSettingsPages[] = {
         SessionPages::kProject,

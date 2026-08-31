@@ -27,13 +27,13 @@ evidence and are not 0.9.1 release gates.
 GroovePuter is a standalone groovebox. Yamaha SEQTRAK and other MIDI devices are
 optional targets, not runtime dependencies.
 
-The current workflow map has **11 active pages**:
+The current workflow map has **12 active pages**:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
-SONG:     SONG -> PHRASE CORE
+SONG:     SONG -> PHRASE -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
 ```
 
