@@ -343,7 +343,7 @@ inline bool preparePlayingCandidate(
   StrongRhythmMigrationContext context = migrationContextFor(scene, target);
   context.level = requestLevel;
   context.generationAttemptOrdinal = generationAttemptOrdinal;
-  (void)migrateStrongRhythmMaterial(
+  const StrongRhythmMigrationResult migration = migrateStrongRhythmMaterial(
       requestedGenre,
       context,
       candidate.drums,
@@ -353,7 +353,8 @@ inline bool preparePlayingCandidate(
   // The audio transport may advance Song/page ownership while generation runs.
   // Never publish a candidate for a target that is no longer the exact active
   // page/bank/slot tuple the user generated from.
-  return targetStillActive(scenes, target);
+  return migration.status == StrongRhythmMigrationStatus::Applied &&
+         targetStillActive(scenes, target);
 }
 
 inline bool prepareSynthCandidate(
@@ -495,12 +496,15 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     StrongRhythmMigrationContext context = migrationContextFor(scene, target);
     context.level = requestLevel;
     context.generationAttemptOrdinal = attemptOrdinal;
-    (void)migrateStrongRhythmMaterial(
+    const StrongRhythmMigrationResult migration = migrateStrongRhythmMaterial(
         scene.genre,
         context,
         scene.drumBanks[target.drumBank].patterns[target.drumSlot],
         scene.synthABanks[target.synthBank[0]].patterns[target.synthSlot[0]],
         scene.synthBBanks[target.synthBank[1]].patterns[target.synthSlot[1]]);
+    if (migration.status != StrongRhythmMigrationStatus::Applied) {
+      return QuantizedGenerationResult::Failed;
+    }
 
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
