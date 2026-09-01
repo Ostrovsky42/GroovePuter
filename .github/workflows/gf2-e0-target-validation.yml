@@ -1,0 +1,103 @@
+name: GF2-E0 target validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact commit SHA to validate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gf2-target-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve exact validation SHA
+        id: exact
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SHA: ${{ inputs.expected_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            expected="${DISPATCH_SHA}"
+          else
+            expected="${PR_HEAD_SHA}"
+          fi
+          if [[ ! "${expected}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "Invalid exact SHA: ${expected}" >&2
+            exit 2
+          fi
+          echo "sha=${expected}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.exact.outputs.sha }}
+
+      - name: Verify exact checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.exact.outputs.sha }}
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "GF2 expected SHA: ${EXPECTED_SHA}"
+          echo "GF2 actual SHA:   ${actual}"
+          test "${actual}" = "${EXPECTED_SHA}"
+
+      - name: Prepare SDL build dependencies
+        id: sdl_setup
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Prepare Arduino CLI
+        id: arduino_cli_setup
+        continue-on-error: true
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Prepare pinned M5Stack dependencies
+        id: arduino_deps_setup
+        if: ${{ always() && steps.arduino_cli_setup.outcome == 'success' }}
+        continue-on-error: true
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Run exact-SHA GF2 validation matrix
+        id: validation
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          GF2_SDL_SETUP_STATUS: ${{ steps.sdl_setup.outcome }}
+          GF2_ARDUINO_CLI_SETUP_STATUS: ${{ steps.arduino_cli_setup.outcome }}
+          GF2_ARDUINO_DEPS_SETUP_STATUS: ${{ steps.arduino_deps_setup.outcome }}
+        run: bash scripts/validate_gf2_targets.sh --all
+
+      - name: Preserve GF2 validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-target-validation-${{ steps.exact.outputs.sha }}
+          path: build/gf2-validation
+          if-no-files-found: warn
+
+      - name: Enforce mandatory GF2 target status
+        if: ${{ always() }}
+        shell: bash
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validation.outcome }}
+        run: |
+          if [[ "${VALIDATION_OUTCOME}" != "success" ]]; then
+            echo "GF2 target matrix is not GREEN: validation outcome=${VALIDATION_OUTCOME}" >&2
+            exit 1
+          fi
+          echo "GF2 target matrix is GREEN"
