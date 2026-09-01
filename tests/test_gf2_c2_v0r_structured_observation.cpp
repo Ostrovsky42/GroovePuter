@@ -1,10 +1,12 @@
 #include "../scenes.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/state/generation_request_state.h"
+#include "support/gf2_generation_observation.h"
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 class TestSceneManager {
  public:
@@ -167,8 +169,19 @@ inline StrongRhythmMigrationResult c2MigrateStrongRhythmSynths(
 #undef SceneManager
 
 namespace {
+using GroovePuterRhythm::GF2Measurement::GenerationObservation;
+using GroovePuterRhythm::GF2Measurement::MaterialProvenance;
+using GroovePuterRhythm::GF2Measurement::equivalent;
+using GroovePuterRhythm::GF2Measurement::materialFingerprint;
+using GroovePuterRhythm::GF2Measurement::observeGeneration;
+using GroovePuterRhythm::GF2Measurement::toJson;
 using GroovePuterRhythm::QuantizedGenerationResult;
 using GroovePuterRhythm::StrongRhythmMigrationStatus;
+
+struct CaseResult {
+  QuantizedGenerationResult generation = QuantizedGenerationResult::Failed;
+  GenerationObservation observation{};
+};
 
 void resetHarnessState() {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
@@ -186,9 +199,9 @@ void resetHarnessState() {
   GroovePuterState::resetGenerationAttemptState();
 }
 
-GenreSettings technoRequest() {
+GenreSettings requestFor(GenerativeMode mode) {
   GenreSettings request{};
-  request.generativeMode = static_cast<uint8_t>(GenerativeMode::Techno);
+  request.generativeMode = static_cast<uint8_t>(mode);
   request.recipe = kBaseRecipeId;
   request.morphTarget = 0;
   request.morphAmount = 0;
@@ -198,43 +211,141 @@ GenreSettings technoRequest() {
   return request;
 }
 
-int runRedContract() {
+GenreSettings unsupportedRequest() {
+  GenreSettings request = requestFor(GenerativeMode::Techno);
+  request.generativeMode = static_cast<uint8_t>(kGenerativeModeCount);
+  return request;
+}
+
+uint32_t liveMaterialFingerprint(const MiniAcid& engine) {
+  const Scene& scene = engine.sceneManager().currentScene();
+  return materialFingerprint(
+      scene.drumBanks[0].patterns[0],
+      scene.synthABanks[0].patterns[0],
+      scene.synthBBanks[0].patterns[0]);
+}
+
+bool generationAccepted(QuantizedGenerationResult result) {
+  return result == QuantizedGenerationResult::CommittedNow ||
+         result == QuantizedGenerationResult::PendingNextBar;
+}
+
+CaseResult runCase(bool playing, const GenreSettings& request) {
   resetHarnessState();
   MiniAcid engine;
-  engine.setPlaying(false);
-  const GenreSettings request = technoRequest();
-
+  engine.setPlaying(playing);
+  const uint32_t before = liveMaterialFingerprint(engine);
   const QuantizedGenerationResult generation =
       GroovePuterRhythm::regenerateWithQuantizedCommit(
           engine, request, GrooveboxMode::Minimal, false, 100.0f);
+  const uint32_t after = liveMaterialFingerprint(engine);
 
   if (!g_capture.called) {
     std::fprintf(stderr,
-                 "GF2-C2-V0R RED precondition failed: production migration was not invoked\n");
-    return 2;
-  }
-  if (g_capture.result.status != StrongRhythmMigrationStatus::Applied) {
-    std::fprintf(stderr,
-                 "GF2-C2-V0R RED precondition failed: expected real migration Applied, got %u\n",
-                 static_cast<unsigned>(g_capture.result.status));
-    return 3;
-  }
-  if (generation != QuantizedGenerationResult::CommittedNow) {
-    std::fprintf(stderr,
-                 "GF2-C2-V0R RED precondition failed: expected CommittedNow, got %u\n",
-                 static_cast<unsigned>(generation));
-    return 4;
+                 "GF2-C2-V0R: production migration was not invoked\n");
+    return {};
   }
 
-  std::printf(
-      "GF2-C2-V0R real path reached: migration=Applied generation=CommittedNow\n");
-  std::fprintf(
-      stderr,
-      "GF2-C2-V0R RED: structured request/execution/result/provenance observation unavailable\n");
-  return 1;
+  CaseResult result{};
+  result.generation = generation;
+  result.observation = observeGeneration(
+      g_capture.request,
+      g_capture.context,
+      g_capture.result,
+      static_cast<uint8_t>(generation),
+      generationAccepted(generation),
+      before,
+      after);
+  return result;
+}
+
+bool require(bool condition, const char* message) {
+  if (condition) return true;
+  std::fprintf(stderr, "GF2-C2-V0R FAIL: %s\n", message);
+  return false;
+}
+
+bool resultIdentityDiffers(const GenerationObservation& left,
+                           const GenerationObservation& right) {
+  return left.migrationRoute != right.migrationRoute ||
+         left.migrationArchetype != right.migrationArchetype ||
+         left.bassRhythmId != right.bassRhythmId ||
+         left.chordRhythmId != right.chordRhythmId ||
+         left.progressionId != right.progressionId ||
+         left.melodicRhythmId != right.melodicRhythmId ||
+         left.motifShapeId != right.motifShapeId ||
+         left.synthBRole != right.synthBRole ||
+         left.phraseLaw != right.phraseLaw ||
+         left.effectiveMaterialFingerprint != right.effectiveMaterialFingerprint;
+}
+
+int runContract() {
+  bool ok = true;
+
+  // Case A: same production request/context/state in two fresh runs.
+  const CaseResult a1 = runCase(false, requestFor(GenerativeMode::Techno));
+  const CaseResult a2 = runCase(false, requestFor(GenerativeMode::Techno));
+  ok &= require(
+      a1.generation == QuantizedGenerationResult::CommittedNow &&
+          a2.generation == QuantizedGenerationResult::CommittedNow,
+      "Case A must reach successful quantized execution twice");
+  ok &= require(equivalent(a1.observation, a2.observation),
+                "Case A observations must be equivalent");
+  std::puts(toJson("A", a1.observation).c_str());
+  if (ok) std::puts("GF2-C2-V0R CASE A deterministic observation: PASS");
+
+  // Case B: real migration Applied and the requested result becomes effective.
+  const CaseResult b = a1;
+  const bool caseB =
+      b.observation.migrationStatus ==
+          static_cast<uint8_t>(StrongRhythmMigrationStatus::Applied) &&
+      b.generation == QuantizedGenerationResult::CommittedNow &&
+      b.observation.generationAccepted &&
+      b.observation.requestedResultEffective &&
+      b.observation.provenance == MaterialProvenance::RequestedOperationAccepted &&
+      b.observation.effectiveMaterialFingerprint !=
+          b.observation.previousMaterialFingerprint;
+  ok &= require(caseB,
+                "Case B must attribute effective material to an Applied request");
+  std::puts(toJson("B", b.observation).c_str());
+  if (caseB) std::puts("GF2-C2-V0R CASE B successful migration observation: PASS");
+
+  // Case C: the same production owner sees a real non-Applied migration.
+  // PLAY is intentional: failed candidate preparation must leave live material
+  // untouched, making retained previous material directly observable.
+  const CaseResult c = runCase(true, unsupportedRequest());
+  const bool caseC =
+      c.observation.migrationStatus !=
+          static_cast<uint8_t>(StrongRhythmMigrationStatus::Applied) &&
+      c.generation == QuantizedGenerationResult::Failed &&
+      !c.observation.generationAccepted &&
+      !c.observation.requestedResultEffective &&
+      c.observation.provenance == MaterialProvenance::PreviousMaterialRetained &&
+      c.observation.effectiveMaterialFingerprint ==
+          c.observation.previousMaterialFingerprint;
+  ok &= require(caseC,
+                "Case C must expose retained previous material after non-Applied migration");
+  std::puts(toJson("C", c.observation).c_str());
+  if (caseC) std::puts("GF2-C2-V0R CASE C failed migration provenance: PASS");
+
+  // Case D: changing a semantic request must change execution/result evidence,
+  // not merely echo a different request field.
+  const CaseResult d = runCase(false, requestFor(GenerativeMode::Acid));
+  const bool caseD =
+      d.observation.requestedMode != b.observation.requestedMode &&
+      d.observation.migrationStatus ==
+          static_cast<uint8_t>(StrongRhythmMigrationStatus::Applied) &&
+      d.generation == QuantizedGenerationResult::CommittedNow &&
+      resultIdentityDiffers(b.observation, d.observation);
+  ok &= require(caseD,
+                "Case D semantic input change must alter execution/result evidence");
+  std::puts(toJson("D", d.observation).c_str());
+  if (caseD) std::puts("GF2-C2-V0R CASE D meaningful input sensitivity: PASS");
+
+  return ok ? 0 : 1;
 }
 }  // namespace
 
 int main() {
-  return runRedContract();
+  return runContract();
 }
