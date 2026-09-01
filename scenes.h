@@ -203,7 +203,7 @@ struct Rgb8 {
 };
 
 struct LedSettings {
-  LedMode mode = LedMode::Off;
+  LedMode mode = LedMode::Beat;
   LedSource source = LedSource::SynthA;
   Rgb8 color = {255, 128, 0}; // Amber
   uint8_t brightness = 40;
