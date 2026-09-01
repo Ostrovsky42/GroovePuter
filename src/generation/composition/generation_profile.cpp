@@ -394,6 +394,42 @@ uint32_t profileSalt(const GenerationProfileView& profile) {
 
 }  // namespace
 
+uint8_t availableRecipeCount(GenerativeMode genre) {
+  const uint8_t genreId = static_cast<uint8_t>(genre);
+  if (genreId >= kGenerativeModeCount) return 0;
+  uint8_t count = 0;
+  for (const ProfileDefinition& profile : kProfiles) {
+    if (profile.generativeMode == genreId) ++count;
+  }
+  return count;
+}
+
+bool availableRecipeAt(GenerativeMode genre, uint8_t ordinal,
+                       GenreRecipeId& recipe) {
+  const uint8_t genreId = static_cast<uint8_t>(genre);
+  if (genreId >= kGenerativeModeCount) return false;
+  for (const ProfileDefinition& profile : kProfiles) {
+    if (profile.generativeMode != genreId) continue;
+    if (ordinal == 0) {
+      recipe = profile.recipe;
+      return true;
+    }
+    --ordinal;
+  }
+  return false;
+}
+
+bool isRecipeAvailable(GenerativeMode genre, GenreRecipeId recipe) {
+  const uint8_t genreId = static_cast<uint8_t>(genre);
+  if (genreId >= kGenerativeModeCount) return false;
+  for (const ProfileDefinition& profile : kProfiles) {
+    if (profile.generativeMode == genreId && profile.recipe == recipe) {
+      return true;
+    }
+  }
+  return false;
+}
+
 GenerationProfileView generationProfileFor(const GenreSettings& settings) {
   const ProfileDefinition* definition = definitionFor(settings);
   if (definition == nullptr) return {};
