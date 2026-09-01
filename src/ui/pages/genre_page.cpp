@@ -15,41 +15,6 @@
 #include "../../state/scene_revision.h"
 
 namespace {
-struct RecipeChoices {
-  const GenreRecipeId* values = nullptr;
-  uint8_t count = 0;
-};
-
-constexpr GenreRecipeId kBaseOnlyRecipes[] = {kBaseRecipeId};
-constexpr GenreRecipeId kAcidRecipes[] = {kBaseRecipeId, 6, 7};
-constexpr GenreRecipeId kRaveRecipes[] = {kBaseRecipeId, 4};
-constexpr GenreRecipeId kDubRecipes[] = {kBaseRecipeId, 5, 10, 11};
-constexpr GenreRecipeId kBreakRecipes[] = {kBaseRecipeId, 1, 2, 3, 8, 9};
-constexpr GenreRecipeId kLoFiRecipes[] = {
-    kBaseRecipeId, kClassicChillRecipeId, kDrunkenGrooveRecipeId,
-    kLoFiHouseRecipeId, kMinimalSleepRecipeId,
-};
-constexpr GenreRecipeId kHipHopRecipes[] = {
-    kBaseRecipeId, kGoldenEraRecipeId, kDustyJazzRecipeId,
-};
-
-template <size_t N>
-constexpr RecipeChoices recipeChoices(const GenreRecipeId (&values)[N]) {
-  return RecipeChoices{values, static_cast<uint8_t>(N)};
-}
-
-RecipeChoices recipeChoicesForGenre(GenerativeMode genre) {
-  switch (genre) {
-    case GenerativeMode::Acid: return recipeChoices(kAcidRecipes);
-    case GenerativeMode::Rave: return recipeChoices(kRaveRecipes);
-    case GenerativeMode::Reggae: return recipeChoices(kDubRecipes);
-    case GenerativeMode::Broken: return recipeChoices(kBreakRecipes);
-    case GenerativeMode::LoFi: return recipeChoices(kLoFiRecipes);
-    case GenerativeMode::HipHop: return recipeChoices(kHipHopRecipes);
-    default: return recipeChoices(kBaseOnlyRecipes);
-  }
-}
-
 int wrapIndex(int value, int count) {
   if (count <= 0) return 0;
   while (value < 0) value += count;
@@ -71,16 +36,19 @@ GenreRecipeId sceneRecipe(const GenreSettings& settings) {
 
 GenreRecipeId normalizeRecipeForGenre(GenerativeMode genre,
                                       GenreRecipeId recipe) {
-  const RecipeChoices choices = recipeChoicesForGenre(genre);
-  for (uint8_t index = 0; index < choices.count; ++index) {
-    if (choices.values[index] == recipe) return recipe;
-  }
-  return kBaseRecipeId;
+  return GroovePuterRhythm::isRecipeAvailable(genre, recipe)
+             ? recipe
+             : kBaseRecipeId;
 }
 
-int recipeChoiceIndex(RecipeChoices choices, GenreRecipeId recipe) {
-  for (uint8_t index = 0; index < choices.count; ++index) {
-    if (choices.values[index] == recipe) return static_cast<int>(index);
+int recipeChoiceIndex(GenerativeMode genre, GenreRecipeId recipe) {
+  const uint8_t count = GroovePuterRhythm::availableRecipeCount(genre);
+  for (uint8_t index = 0; index < count; ++index) {
+    GenreRecipeId candidate = kBaseRecipeId;
+    if (GroovePuterRhythm::availableRecipeAt(genre, index, candidate) &&
+        candidate == recipe) {
+      return static_cast<int>(index);
+    }
   }
   return 0;
 }
@@ -139,12 +107,16 @@ void GenrePage::shiftGenre(int delta) {
 void GenrePage::cycleRecipeSelection(int delta) {
   const auto genre = static_cast<GenerativeMode>(
       std::clamp(genre_index_, 0, kGenerativeModeCount - 1));
-  const RecipeChoices choices = recipeChoicesForGenre(genre);
+  const uint8_t count = GroovePuterRhythm::availableRecipeCount(genre);
   const GenreRecipeId current = normalizeRecipeForGenre(
       genre, static_cast<GenreRecipeId>(recipeIndex_));
-  const int currentIndex = recipeChoiceIndex(choices, current);
-  recipeIndex_ = static_cast<int>(
-      choices.values[wrapIndex(currentIndex + delta, choices.count)]);
+  const int currentIndex = recipeChoiceIndex(genre, current);
+  GenreRecipeId next = kBaseRecipeId;
+  if (GroovePuterRhythm::availableRecipeAt(
+          genre, static_cast<uint8_t>(wrapIndex(currentIndex + delta, count)),
+          next)) {
+    recipeIndex_ = static_cast<int>(next);
+  }
   normalizePendingRhythm(true);
 }
 

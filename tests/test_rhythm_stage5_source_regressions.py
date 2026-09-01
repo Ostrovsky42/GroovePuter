@@ -38,18 +38,29 @@ require("GrooveboxMode" not in MIGRATION,
         "Stage 5 selector must not route broad GrooveboxMode families")
 
 # Hardware correction: the GENRE row must constrain which VARIANT recipes are
-# selectable. A global recipe list allowed e.g. Techno + Chicago Jack, where the
-# recipe route completely masked the selected base genre.
+# selectable. The composition profile catalog now owns that membership; the UI
+# must consume its bounded query API instead of duplicating Genre -> Recipe
+# arrays that can drift from production admission.
 for token in (
-    "kAcidRecipes",
-    "kRaveRecipes",
-    "kDubRecipes",
-    "kBreakRecipes",
-    "recipeChoicesForGenre",
+    "availableRecipeCount",
+    "availableRecipeAt",
+    "isRecipeAvailable",
     "normalizeRecipeForGenre",
 ):
     require(token in GENRE_PAGE,
             f"genre-scoped VARIANT contract missing: {token}")
+for duplicate_owner in (
+    "kBaseOnlyRecipes",
+    "kAcidRecipes",
+    "kRaveRecipes",
+    "kDubRecipes",
+    "kBreakRecipes",
+    "kLoFiRecipes",
+    "kHipHopRecipes",
+    "recipeChoicesForGenre",
+):
+    require(duplicate_owner not in GENRE_PAGE,
+            f"duplicate UI Recipe membership owner returned: {duplicate_owner}")
 variant_block = GENRE_PAGE.split(
     "void GenrePage::cycleRecipeSelection", 1
 )[1].split("GenreSettings GenrePage::pendingSettings", 1)[0]
