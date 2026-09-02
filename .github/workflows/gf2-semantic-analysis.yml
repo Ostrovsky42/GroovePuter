@@ -3,26 +3,10 @@ name: GF2 Semantic Analysis
 on:
   push:
     branches:
+      - "main"
+      - "dev_0.9.9"
       - "agent/20260901-06-0.9.10-gf2-analysis-orchestration"
   pull_request:
-    paths:
-      - "src/generation/**"
-      - "src/dsp/genre_manager.cpp"
-      - "scenes.cpp"
-      - "scenes.h"
-      - "json_evented.cpp"
-      - "tools/semantic_census.py"
-      - "tools/reachability_report.py"
-      - "tools/genre_diff.py"
-      - "tools/recipe_matrix.py"
-      - "tools/pattern_statistics.py"
-      - "tools/orchestrate_semantic_analysis.py"
-      - "tools/gf2/**"
-      - "tools/baselines/gf2_semantic_census.json"
-      - "docs/research/GF2_C1RF_FINAL_SEMANTIC_REACHABILITY.tsv"
-      - "tests/test_gf2_semantic_orchestration.py"
-      - "tests/run_gf2_semantic_orchestration_tests.sh"
-      - ".github/workflows/gf2-semantic-analysis.yml"
 
 jobs:
   semantic-analysis:
@@ -30,16 +14,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify census baseline and render report
+      - name: Run semantic orchestration contracts
         run: |
-          python3 tools/orchestrate_semantic_analysis.py \
-            --source-ref "${GITHUB_SHA}" \
-            --output-dir build/gf2-semantic-analysis \
-            --fail-on-change
+          SOURCE_REF="${GITHUB_SHA}" \
+            bash tests/run_gf2_semantic_orchestration_tests.sh
+      - name: Run frozen predecessor contracts
+        run: bash tests/run_gf2_c1df_final_distinctness_dependency.sh
       - name: Upload semantic analysis report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gf2-semantic-analysis-${{ github.sha }}
-          path: build/gf2-semantic-analysis/
+          path: build/gf2-semantic-analysis-test/
           if-no-files-found: error

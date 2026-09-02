@@ -88,19 +88,43 @@ def profile_snapshot(row: dict[str, str]) -> dict[str, object]:
     }
 
 
+def validate_structure(
+    profiles: list[dict[str, str]], archetypes: list[dict[str, str]]
+) -> None:
+    if not profiles:
+        raise RuntimeError("semantic census contains no profiles")
+    if not archetypes:
+        raise RuntimeError("semantic census contains no rhythm archetypes")
+    profile_keys = [
+        (row["genre_id"], row["recipe_id"], row["is_base"]) for row in profiles
+    ]
+    if len(set(profile_keys)) != len(profile_keys):
+        raise RuntimeError("semantic census contains duplicate profile identities")
+    archetype_ids = [row["archetype_id"] for row in archetypes]
+    if len(set(archetype_ids)) != len(archetype_ids):
+        raise RuntimeError("semantic census contains duplicate rhythm archetype ids")
+    base_genres = [row["genre_id"] for row in profiles if row["is_base"] == "1"]
+    if len(set(base_genres)) != len(base_genres):
+        raise RuntimeError("semantic census contains multiple BASE profiles for a genre")
+    base_genre_set = set(base_genres)
+    orphan_recipes = sorted(
+        row["recipe_name"]
+        for row in profiles
+        if row["is_base"] == "0" and row["genre_id"] not in base_genre_set
+    )
+    if orphan_recipes:
+        raise RuntimeError(f"recipes without BASE profiles: {orphan_recipes}")
+
+
 def build_snapshot(source_ref: str) -> dict[str, object]:
     generator = load_generator()
     generator.compile_dump()
     profiles = generator.dump_rows("profiles")
     archetypes = generator.dump_rows("archetypes")
-    generator.require(len(profiles) == 33, f"expected 33 profiles, found {len(profiles)}")
-    generator.require(
-        len(archetypes) == 24,
-        f"expected 24 archetypes, found {len(archetypes)}",
-    )
+    validate_structure(profiles, archetypes)
     generator.add_fingerprints(profiles, archetypes)
     generator.classify_recipes(profiles)
-    pairs = generator.base_pairs(profiles)
+    pairs = generator.base_pairs(profiles, expected_count=None)
 
     return {
         "schema_version": 1,

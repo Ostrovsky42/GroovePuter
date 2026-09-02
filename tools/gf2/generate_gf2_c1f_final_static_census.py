@@ -156,7 +156,11 @@ def tonal_sources() -> dict[str, str]:
         r"row\(GenerativeMode::(\w+),\s*(k\w+Profile)\)", source
     )
     result = dict(rows)
-    require(len(result) == 16, f"expected 16 tonal base rows, found {len(result)}")
+    require(rows, "expected at least one tonal base row")
+    require(
+        len(result) == len(rows),
+        "duplicate genre entry in tonal base rows",
+    )
     return result
 
 
@@ -383,7 +387,9 @@ def classify_recipes(profiles: list[dict[str, str]]) -> None:
         )
 
 
-def base_pairs(profiles: list[dict[str, str]]) -> list[dict[str, str]]:
+def base_pairs(
+    profiles: list[dict[str, str]], expected_count: int | None = 120
+) -> list[dict[str, str]]:
     bases = [row for row in profiles if row["is_base"] == "1"]
     pairs = []
     for left_index, left in enumerate(bases):
@@ -449,7 +455,11 @@ def base_pairs(profiles: list[dict[str, str]]) -> list[dict[str, str]]:
                 ),
                 "same_legacy_drum_payload": str(int(same_legacy_drum)),
             })
-    require(len(pairs) == 120, f"expected 120 BASE pairs, found {len(pairs)}")
+    if expected_count is not None:
+        require(
+            len(pairs) == expected_count,
+            f"expected {expected_count} BASE pairs, found {len(pairs)}",
+        )
     return pairs
 
 

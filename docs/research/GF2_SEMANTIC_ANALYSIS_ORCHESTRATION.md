@@ -19,16 +19,19 @@ checkout exact SHA
   -> render one Markdown report
 ```
 
-Candidate files are written below `build/gf2-semantic-analysis/`. The only
-versioned generated file is:
+Candidate files are written below `build/gf2-semantic-analysis/`. The
+versioned generated files are:
 
 ```text
 tools/baselines/gf2_semantic_census.json
+tools/baselines/gf2_reachability_report.json
 ```
 
 `source_sha` is provenance, not semantic data. A commit-only change therefore
 does not fail the comparison. Profile axes, semantic fingerprints, rhythm
-archetypes, and BASE-pair classifications are compared.
+archetypes, BASE-pair classifications, reachability statuses, owners, blockers,
+failure modes, and fallbacks are compared. Profile and archetype counts are not
+fixed: intentional catalog growth must appear in the diff before acceptance.
 
 ## Run
 
@@ -44,6 +47,7 @@ Outputs:
 - `semantic_census.json` — canonical candidate snapshot;
 - `genre_diff.json` — exact baseline/candidate semantic delta;
 - `reachability_report.json` — normalized C1RF status and blocker counts;
+- `reachability_diff.json` — exact reachability/owner delta;
 - `recipe_matrix.json` — each recipe compared with its own BASE profile;
 - `pattern_statistics.json` — declared vocabulary and collision statistics;
 - `report.md` — human-readable summary.
@@ -60,12 +64,14 @@ python3 tools/orchestrate_semantic_analysis.py \
   --update-baseline
 ```
 
-Commit the baseline change together with the production semantic change and its
-evidence. Do not update the baseline only to make CI green.
+Both baselines are updated by that command. Commit their changes together with
+the production semantic change and its evidence. Do not update a baseline only
+to make CI green.
 
 ## CI behavior
 
-`.github/workflows/gf2-semantic-analysis.yml` runs the fail-closed comparison
-for changes to generation semantics, the GF2 tools, the frozen reachability
-table, or the baseline. It uploads every JSON output and the Markdown report,
-including on failure.
+`.github/workflows/gf2-semantic-analysis.yml` runs on every pull request and on
+pushes to `main` and `dev_0.9.9`. It executes the orchestration unit/integration
+suite plus the frozen C1F/C1RF/C1DF predecessor contracts. CI fails on an
+unaccepted census or reachability delta and uploads every JSON output and the
+Markdown report, including on failure.

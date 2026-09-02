@@ -1,0 +1,530 @@
+{
+  "blocker_counts": {
+    "UNKNOWN": 12
+  },
+  "domain_status_counts": {
+    "COMPOSITION": {
+      "CONNECTED": 5
+    },
+    "DEPTH_MUTATION": {
+      "CONNECTED": 1,
+      "DROPPED": 3
+    },
+    "DRUM_POLICY": {
+      "CONNECTED": 1
+    },
+    "FAILURE_PROPAGATION": {
+      "CONNECTED": 1,
+      "FAILURE_MASKED": 1,
+      "LEGACY_FALLBACK": 1
+    },
+    "FEEL": {
+      "CONNECTED": 4,
+      "DROPPED": 1
+    },
+    "GENERATION_CORRIDOR": {
+      "DECLARED_ONLY": 3,
+      "PARTIALLY_CONNECTED": 1
+    },
+    "HARMONIC_RHYTHM": {
+      "CONNECTED": 1
+    },
+    "PHRASE_EVOLUTION": {
+      "DROPPED": 1
+    },
+    "PHRASE_LENGTH": {
+      "CONNECTED": 1,
+      "PARTIALLY_CONNECTED": 1
+    },
+    "RHYTHM_COMPATIBILITY": {
+      "CONNECTED": 4
+    },
+    "SECONDARY_ROLE": {
+      "CONNECTED": 1
+    },
+    "TEMPO": {
+      "DUPLICATE_OWNER": 1
+    },
+    "TONAL_POLICY": {
+      "CONNECTED": 7
+    }
+  },
+  "role_status_counts": {
+    "ALL": {
+      "CONNECTED": 2,
+      "DECLARED_ONLY": 2,
+      "DROPPED": 2,
+      "DUPLICATE_OWNER": 1,
+      "FAILURE_MASKED": 1,
+      "LEGACY_FALLBACK": 1,
+      "PARTIALLY_CONNECTED": 1
+    },
+    "BASS": {
+      "CONNECTED": 6,
+      "DROPPED": 1
+    },
+    "CHORD": {
+      "CONNECTED": 4,
+      "DROPPED": 1
+    },
+    "CHORD_BASS_MELODIC": {
+      "CONNECTED": 1
+    },
+    "CHORD_MELODIC": {
+      "CONNECTED": 2
+    },
+    "DRUMS": {
+      "CONNECTED": 4
+    },
+    "MELODIC_SECONDARY": {
+      "CONNECTED": 7,
+      "DROPPED": 1
+    },
+    "TEMPO": {
+      "DECLARED_ONLY": 1,
+      "PARTIALLY_CONNECTED": 1
+    }
+  },
+  "schema_version": 1,
+  "status_counts": {
+    "CONNECTED": 26,
+    "DECLARED_ONLY": 3,
+    "DROPPED": 5,
+    "DUPLICATE_OWNER": 1,
+    "FAILURE_MASKED": 1,
+    "LEGACY_FALLBACK": 1,
+    "PARTIALLY_CONNECTED": 2
+  },
+  "trace_count": 39,
+  "traces": [
+    {
+      "authoritative_owner": "ProfileDefinition.bass",
+      "blocker": "NONE",
+      "domain": "COMPOSITION",
+      "failure_mode": "invalid request or empty result",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "bass_rhythm_bag",
+      "status": "CONNECTED",
+      "terminal_effect": "bass onset and continuation topology"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.chord",
+      "blocker": "NONE",
+      "domain": "COMPOSITION",
+      "failure_mode": "invalid request or empty result",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "CHORD",
+      "semantic_field": "chord_rhythm_bag",
+      "status": "CONNECTED",
+      "terminal_effect": "chord onset and continuation topology"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.progression",
+      "blocker": "NONE",
+      "domain": "COMPOSITION",
+      "failure_mode": "invalid request or invalid event count",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "CHORD",
+      "semantic_field": "progression_bag",
+      "status": "CONNECTED",
+      "terminal_effect": "ChordProgressionPlan harmonic degrees/qualities"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.melodic",
+      "blocker": "NONE",
+      "domain": "COMPOSITION",
+      "failure_mode": "invalid request or empty result",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "melodic_rhythm_bag",
+      "status": "CONNECTED",
+      "terminal_effect": "melodic onset and continuation topology"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.motif",
+      "blocker": "NONE",
+      "domain": "COMPOSITION",
+      "failure_mode": "invalid request or projection failure",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "motif_shape_bag",
+      "status": "CONNECTED",
+      "terminal_effect": "motif source ordering in secondary pattern"
+    },
+    {
+      "authoritative_owner": "GroovePuterState::currentGenerationLevel",
+      "blocker": "UNKNOWN",
+      "domain": "DEPTH_MUTATION",
+      "failure_mode": "level is not copied into either role request",
+      "fallback": "role output still varies by generation attempt/seed",
+      "role": "BASS",
+      "semantic_field": "realization_level",
+      "status": "DROPPED",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "GroovePuterState::currentGenerationLevel",
+      "blocker": "UNKNOWN",
+      "domain": "DEPTH_MUTATION",
+      "failure_mode": "level is not copied into either role request",
+      "fallback": "role output still varies by generation attempt/seed",
+      "role": "CHORD",
+      "semantic_field": "realization_level",
+      "status": "DROPPED",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "GroovePuterState::currentGenerationLevel; RhythmArchetype.mutation",
+      "blocker": "NONE",
+      "domain": "DEPTH_MUTATION",
+      "failure_mode": "invalid level or unavailable attempt",
+      "fallback": "no strong result on failure",
+      "role": "DRUMS",
+      "semantic_field": "realization_level_and_mutation_budget",
+      "status": "CONNECTED",
+      "terminal_effect": "drum topology mutation within budget"
+    },
+    {
+      "authoritative_owner": "GroovePuterState::currentGenerationLevel",
+      "blocker": "UNKNOWN",
+      "domain": "DEPTH_MUTATION",
+      "failure_mode": "level is not copied into either role request",
+      "fallback": "role output still varies by generation attempt/seed",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "realization_level",
+      "status": "DROPPED",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "rhythmCompatibilityFor; ReferenceVocabulary rhythm payload",
+      "blocker": "NONE",
+      "domain": "DRUM_POLICY",
+      "failure_mode": "realization/materialization/feel may fail",
+      "fallback": "Atlas/legacy drum candidate survives masked failure",
+      "role": "DRUMS",
+      "semantic_field": "weighted_archetype_drum_grammar",
+      "status": "CONNECTED",
+      "terminal_effect": "physical drum pattern"
+    },
+    {
+      "authoritative_owner": "migrateStrongRhythmMaterial caller contract",
+      "blocker": "UNKNOWN",
+      "domain": "FAILURE_PROPAGATION",
+      "failure_mode": "caller discards non-Applied status and returns only target liveness",
+      "fallback": "pre-call Atlas/legacy/current material survives transaction",
+      "role": "ALL",
+      "semantic_field": "normal_genre_strong_migration_result",
+      "status": "FAILURE_MASKED",
+      "terminal_effect": "candidate publication"
+    },
+    {
+      "authoritative_owner": "PreparedPhraseExecution contract",
+      "blocker": "NONE",
+      "domain": "FAILURE_PROPAGATION",
+      "failure_mode": "any selection/projection/materialization failure rejects preparation",
+      "fallback": "no legacy fallback after a P1R-capable route is selected",
+      "role": "ALL",
+      "semantic_field": "phrase_p1r_migration_result",
+      "status": "CONNECTED",
+      "terminal_effect": "phrase rejection before persistent commit"
+    },
+    {
+      "authoritative_owner": "AtlasRuntime; GenreCatalog; existing Scene material",
+      "blocker": "UNKNOWN",
+      "domain": "FAILURE_PROPAGATION",
+      "failure_mode": "strong migration failure leaves destination unchanged",
+      "fallback": "Atlas recipe, legacy generator, or previously captured Scene material",
+      "role": "ALL",
+      "semantic_field": "upstream_material_fallback",
+      "status": "LEGACY_FALLBACK",
+      "terminal_effect": "upstream material reaches execution on masked failure"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.feels",
+      "blocker": "UNKNOWN",
+      "domain": "FEEL",
+      "failure_mode": "selected identity is copied only to result diagnostics",
+      "fallback": "Scene FEEL remains authoritative at materialization",
+      "role": "ALL",
+      "semantic_field": "profile_suggested_feel",
+      "status": "DROPPED",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "Scene.feel.timingProfile; Scene.generatorParams.microTimingAmount",
+      "blocker": "NONE",
+      "domain": "FEEL",
+      "failure_mode": "feel interpreter can fail",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "scene_timing_profile_and_amount",
+      "status": "CONNECTED",
+      "terminal_effect": "bass timing/velocity interpretation"
+    },
+    {
+      "authoritative_owner": "Scene.feel.timingProfile; Scene.generatorParams.microTimingAmount",
+      "blocker": "NONE",
+      "domain": "FEEL",
+      "failure_mode": "feel interpreter can fail",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "CHORD",
+      "semantic_field": "scene_timing_profile_and_amount",
+      "status": "CONNECTED",
+      "terminal_effect": "chord timing/velocity interpretation"
+    },
+    {
+      "authoritative_owner": "Scene.feel.timingProfile; Scene.generatorParams.microTimingAmount",
+      "blocker": "NONE",
+      "domain": "FEEL",
+      "failure_mode": "feel adapter can fail",
+      "fallback": "transaction preserves upstream drums on failure",
+      "role": "DRUMS",
+      "semantic_field": "scene_timing_profile_and_amount",
+      "status": "CONNECTED",
+      "terminal_effect": "drum timing/velocity interpretation"
+    },
+    {
+      "authoritative_owner": "Scene.feel.timingProfile; Scene.generatorParams.microTimingAmount",
+      "blocker": "NONE",
+      "domain": "FEEL",
+      "failure_mode": "feel interpreter can fail",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "scene_timing_profile_and_amount",
+      "status": "CONNECTED",
+      "terminal_effect": "melodic timing/velocity interpretation"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.corridor",
+      "blocker": "UNKNOWN",
+      "domain": "GENERATION_CORRIDOR",
+      "failure_mode": "no production density request consumes the values",
+      "fallback": "UI displays values only",
+      "role": "ALL",
+      "semantic_field": "density_min_and_max",
+      "status": "DECLARED_ONLY",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.corridor",
+      "blocker": "UNKNOWN",
+      "domain": "GENERATION_CORRIDOR",
+      "failure_mode": "no production grid request consumes the value",
+      "fallback": "UI does not expose grid separately",
+      "role": "ALL",
+      "semantic_field": "grid_steps",
+      "status": "DECLARED_ONLY",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.corridor",
+      "blocker": "UNKNOWN",
+      "domain": "GENERATION_CORRIDOR",
+      "failure_mode": "no clamp/arbitration consumer found",
+      "fallback": "UI displays bounds only",
+      "role": "TEMPO",
+      "semantic_field": "bpm_min_and_max",
+      "status": "DECLARED_ONLY",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.corridor",
+      "blocker": "UNKNOWN",
+      "domain": "GENERATION_CORRIDOR",
+      "failure_mode": "Atlas-backed recipe replaces requested corridor BPM",
+      "fallback": "current tempo when APPLY omits tempo",
+      "role": "TEMPO",
+      "semantic_field": "suggested_bpm",
+      "status": "PARTIALLY_CONNECTED",
+      "terminal_effect": "transport tempo when APPLY includes tempo"
+    },
+    {
+      "authoritative_owner": "HarmonicRhythm",
+      "blocker": "NONE",
+      "domain": "HARMONIC_RHYTHM",
+      "failure_mode": "invalid progression or event count fails preparation",
+      "fallback": "static progressions deliberately collapse to one event",
+      "role": "CHORD_BASS_MELODIC",
+      "semantic_field": "harmonic_event_timing",
+      "status": "CONNECTED",
+      "terminal_effect": "progression event changes across step time"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.phraseLaw",
+      "blocker": "UNKNOWN",
+      "domain": "PHRASE_EVOLUTION",
+      "failure_mode": "selected law is retained but never read by phrase execution",
+      "fallback": "independent rhythm-archetype trajectory policy remains authoritative",
+      "role": "ALL",
+      "semantic_field": "profile_phrase_law",
+      "status": "DROPPED",
+      "terminal_effect": "NONE"
+    },
+    {
+      "authoritative_owner": "Phrase generation request bars",
+      "blocker": "NONE",
+      "domain": "PHRASE_LENGTH",
+      "failure_mode": "unsupported or profile-inadmissible length rejects preparation",
+      "fallback": "no legacy fallback for a failed P1R-capable route",
+      "role": "ALL",
+      "semantic_field": "explicit_phrase_length_request",
+      "status": "CONNECTED",
+      "terminal_effect": "bounded 1/2/4/8-bar Song phrase"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.phraseLaw packed bars",
+      "blocker": "NONE",
+      "domain": "PHRASE_LENGTH",
+      "failure_mode": "only the P1R PHRASE path requests and consumes profile-admissible lengths",
+      "fallback": "normal one-bar Genre generation still requests phraseBars=1",
+      "role": "ALL",
+      "semantic_field": "profile_phrase_bars",
+      "status": "PARTIALLY_CONNECTED",
+      "terminal_effect": "accepted multi-bar phrase cardinality"
+    },
+    {
+      "authoritative_owner": "ReferenceVocabulary rhythm archetype",
+      "blocker": "NONE",
+      "domain": "RHYTHM_COMPATIBILITY",
+      "failure_mode": "role realization may reject request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "rhythm_family_archetype_and_protected_space",
+      "status": "CONNECTED",
+      "terminal_effect": "bass onset and continuation topology"
+    },
+    {
+      "authoritative_owner": "ReferenceVocabulary rhythm archetype",
+      "blocker": "NONE",
+      "domain": "RHYTHM_COMPATIBILITY",
+      "failure_mode": "role realization may reject request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "CHORD",
+      "semantic_field": "rhythm_family_archetype_and_protected_space",
+      "status": "CONNECTED",
+      "terminal_effect": "chord onset and continuation topology"
+    },
+    {
+      "authoritative_owner": "rhythmCompatibilityFor",
+      "blocker": "NONE",
+      "domain": "RHYTHM_COMPATIBILITY",
+      "failure_mode": "migration may fail after selection",
+      "fallback": "upstream Atlas/legacy drums survive when caller masks failure",
+      "role": "DRUMS",
+      "semantic_field": "rhythm_archetype_and_weight",
+      "status": "CONNECTED",
+      "terminal_effect": "drum onset/accent/continuation grammar"
+    },
+    {
+      "authoritative_owner": "ReferenceVocabulary rhythm archetype",
+      "blocker": "NONE",
+      "domain": "RHYTHM_COMPATIBILITY",
+      "failure_mode": "role realization may reject request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "rhythm_family_archetype_and_protected_space",
+      "status": "CONNECTED",
+      "terminal_effect": "melodic onset/continuation topology"
+    },
+    {
+      "authoritative_owner": "ProfileDefinition.secondaryRole",
+      "blocker": "NONE",
+      "domain": "SECONDARY_ROLE",
+      "failure_mode": "role branch may fail transactionally",
+      "fallback": "upstream Synth B survives on failure",
+      "role": "CHORD_MELODIC",
+      "semantic_field": "secondary_role",
+      "status": "CONNECTED",
+      "terminal_effect": "Synth B chord, melodic, or chord-with-fill admission"
+    },
+    {
+      "authoritative_owner": "AtlasGenerated::Recipe.bpm; ProfileDefinition.corridor",
+      "blocker": "UNKNOWN",
+      "domain": "TEMPO",
+      "failure_mode": "Atlas 116 replaces requested 86 when tempo is applied",
+      "fallback": "current tempo when tempo apply is disabled",
+      "role": "ALL",
+      "semantic_field": "minimal_space_atlas_bpm_vs_corridor",
+      "status": "DUPLICATE_OWNER",
+      "terminal_effect": "transport tempo"
+    },
+    {
+      "authoritative_owner": "TonalProfileRow; TonalGenerationProfile.bassPolicy",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "invalid policy/request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "bass_articulation_allowed_and_preferred",
+      "status": "CONNECTED",
+      "terminal_effect": "accent and slide intent"
+    },
+    {
+      "authoritative_owner": "TonalProfileRow; TonalGenerationProfile.bassPolicy",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "invalid policy/request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "bass_contour_allowed_and_preferred",
+      "status": "CONNECTED",
+      "terminal_effect": "bass degree/semitone offsets"
+    },
+    {
+      "authoritative_owner": "TonalGenerationProfile.bassRegister",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "projection can fail or be empty",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "BASS",
+      "semantic_field": "bass_register_corridor",
+      "status": "CONNECTED",
+      "terminal_effect": "Synth A absolute MIDI pitches"
+    },
+    {
+      "authoritative_owner": "TonalGenerationProfile.secondaryRegister",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "projection can fail or be empty",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "CHORD_MELODIC",
+      "semantic_field": "secondary_register_corridor",
+      "status": "CONNECTED",
+      "terminal_effect": "Synth B absolute MIDI pitches"
+    },
+    {
+      "authoritative_owner": "TonalProfileRow; TonalGenerationProfile.melodicPolicy",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "invalid policy/request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "melodic_contour_allowed_and_preferred",
+      "status": "CONNECTED",
+      "terminal_effect": "melodic degree offsets"
+    },
+    {
+      "authoritative_owner": "TonalProfileRow; TonalGenerationProfile.melodicPolicy",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "invalid policy/request",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "melodic_motif_operations",
+      "status": "CONNECTED",
+      "terminal_effect": "transformation of melodic degree offsets"
+    },
+    {
+      "authoritative_owner": "TonalProfileRow; TonalGenerationProfile.melodicPolicy",
+      "blocker": "NONE",
+      "domain": "TONAL_POLICY",
+      "failure_mode": "operation may normalize to Preserve when inapplicable",
+      "fallback": "transaction preserves upstream synth on failure",
+      "role": "MELODIC_SECONDARY",
+      "semantic_field": "melodic_rhythm_operations",
+      "status": "CONNECTED",
+      "terminal_effect": "controlled onset/continuation transformation"
+    }
+  ]
+}

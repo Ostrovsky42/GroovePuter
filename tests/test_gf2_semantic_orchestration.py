@@ -19,6 +19,10 @@ import orchestrate_semantic_analysis  # noqa: E402
 import pattern_statistics  # noqa: E402
 import reachability_report  # noqa: E402
 import recipe_matrix  # noqa: E402
+import semantic_census  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tools/gf2"))
+import generate_gf2_c1f_final_static_census as c1f_generator  # noqa: E402
 
 
 def profile(
@@ -112,6 +116,16 @@ class GenreDiffTests(unittest.TestCase):
         self.assertTrue(result["has_semantic_changes"])
         self.assertEqual(result["profiles"]["changed"][0]["changed_axes"], ["tonal"])
 
+    def test_fingerprint_only_change_is_reported(self) -> None:
+        baseline = census()
+        candidate = census()
+        candidate["profiles"][1]["fingerprints"]["full_trace_fingerprint"] = "changed"
+        result = genre_diff.build_diff(baseline, candidate)
+        self.assertEqual(
+            result["profiles"]["changed"][0]["changed_fingerprints"],
+            ["full_trace_fingerprint"],
+        )
+
 
 class DerivedReportTests(unittest.TestCase):
     def test_recipe_matrix_detects_only_changed_axes(self) -> None:
@@ -154,6 +168,30 @@ class DerivedReportTests(unittest.TestCase):
         self.assertEqual(result["status_counts"], {"CONNECTED": 1, "DROPPED": 1})
         self.assertEqual(result["domain_status_counts"]["FEEL"]["CONNECTED"], 1)
 
+    def test_reachability_diff_detects_owner_only_change(self) -> None:
+        rows = [
+            {
+                "domain": "FEEL",
+                "role": "ALL",
+                "semantic_field": "profile_feel",
+                "authoritative_owner": "ProfileDefinition",
+                "terminal_effect": "NONE",
+                "status": "DROPPED",
+                "blocker": "UNKNOWN",
+                "failure_mode": "selection is diagnostic only",
+                "fallback": "Scene FEEL",
+            }
+        ]
+        baseline = reachability_report.build_report(rows)
+        rows[0]["authoritative_owner"] = "Scene"
+        candidate = reachability_report.build_report(rows)
+        result = reachability_report.build_diff(baseline, candidate)
+        self.assertTrue(result["has_reachability_changes"])
+        self.assertEqual(
+            result["traces"]["changed"][0]["changed_fields"],
+            ["authoritative_owner"],
+        )
+
     def test_markdown_report_contains_diff_and_counts(self) -> None:
         candidate = census()
         diff = genre_diff.build_diff(census(), candidate)
@@ -174,15 +212,91 @@ class DerivedReportTests(unittest.TestCase):
         )
         recipes = recipe_matrix.build_matrix(candidate)
         patterns = pattern_statistics.build_statistics(candidate)
+        reachability_diff = reachability_report.build_diff(
+            reachability, reachability
+        )
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "report.md"
             orchestrate_semantic_analysis.render_report(
-                output, candidate, diff, reachability, recipes, patterns
+                output,
+                candidate,
+                diff,
+                reachability,
+                reachability_diff,
+                recipes,
+                patterns,
             )
             report = output.read_text(encoding="utf-8")
-        self.assertIn("Semantic changes: **NONE**", report)
+        self.assertIn("Census changes: **NONE**", report)
+        self.assertIn("Reachability changes: **NONE**", report)
         self.assertIn("| Profiles | 2 |", report)
         self.assertIn("| CONNECTED | 1 |", report)
+
+    def test_markdown_report_shows_fingerprint_only_changes(self) -> None:
+        baseline = census()
+        candidate = census()
+        candidate["profiles"][1]["fingerprints"]["full_trace_fingerprint"] = "changed"
+        diff = genre_diff.build_diff(baseline, candidate)
+        reachability = reachability_report.build_report(
+            [
+                {
+                    "domain": "RHYTHM",
+                    "role": "DRUMS",
+                    "semantic_field": "rhythm",
+                    "authoritative_owner": "Catalog",
+                    "terminal_effect": "onsets",
+                    "status": "CONNECTED",
+                    "blocker": "NONE",
+                    "failure_mode": "NONE",
+                    "fallback": "NONE",
+                }
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report.md"
+            orchestrate_semantic_analysis.render_report(
+                output,
+                candidate,
+                diff,
+                reachability,
+                reachability_report.build_diff(reachability, reachability),
+                recipe_matrix.build_matrix(candidate),
+                pattern_statistics.build_statistics(candidate),
+            )
+            report = output.read_text(encoding="utf-8")
+        self.assertIn("full_trace_fingerprint", report)
+
+
+class CensusEvolutionTests(unittest.TestCase):
+    def test_dynamic_base_pairs_allow_catalog_growth(self) -> None:
+        rows = []
+        for index in range(3):
+            row = {
+                "genre_key": f"Genre{index}",
+                "is_base": "1",
+                "primary_static_fingerprint": f"primary-{index}",
+                "corridor_fingerprint": f"corridor-{index}",
+                "role_fingerprint": "shared-role",
+                "tonal_payload_fingerprint": f"tonal-{index}",
+                "canonical_drum_fingerprint": f"drum-{index}",
+                "legacy_drum_fingerprint": f"legacy-{index}",
+            }
+            for bag in c1f_generator.BAGS:
+                row[bag] = f"{index + 1}:candidate@100"
+            rows.append(row)
+        pairs = c1f_generator.base_pairs(rows, expected_count=None)
+        self.assertEqual(len(pairs), 3)
+
+    def test_relative_cli_paths_are_rooted_at_repository(self) -> None:
+        self.assertEqual(
+            orchestrate_semantic_analysis.repo_path(Path("build/example")),
+            ROOT / "build/example",
+        )
+        absolute = ROOT / "build/absolute"
+        self.assertEqual(
+            orchestrate_semantic_analysis.repo_path(absolute),
+            absolute,
+        )
 
 
 class ReachabilityInputTests(unittest.TestCase):
