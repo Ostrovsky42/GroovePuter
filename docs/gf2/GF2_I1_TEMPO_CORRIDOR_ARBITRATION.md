@@ -256,10 +256,24 @@ Additional directly affected suites, all PASS:
 `tests/run_gf2_c2_v0r_tests.sh`, `tests/run_stage15_tonal_integration_tests.sh`,
 `tests/run_gf2_i1_tests.sh`.
 
-## Hardware listening check
+## Hardware listening check — RUN, PASS
 
-Not run in this session — physical Cardputer ADV A/B belongs to the user with
-the device in hand. Checklist to execute:
+Flashed and verified on the user's physical Cardputer ADV.
+
+```text
+flashed SHA   a6868297c6308b2dc2f379f5969d05aaf805be3a
+              (GF2-I1 merged with origin/main @ 6694876e)
+remote CI     41/41 checks pass on that exact SHA
+image         1 314 192 B written, hash verified
+DRAM globals  183 976 B (budget 191 488)
+port          /dev/ttyACM0
+```
+
+The user executed the A/B checklist below on the device and reported it working.
+Per-case BPM readings were not transcribed; the acceptance recorded here is the
+user's direct observation, not a measured log.
+
+Checklist executed:
 
 | case | setup | expected |
 |---|---|---|
@@ -269,4 +283,17 @@ the device in hand. Checklist to execute:
 | D | `PROFILE ONLY` | transport tempo untouched |
 | E | Deep Chord, `MATERIALIZE+BPM` | 120 → 116; the smallest of the six shifts, checked for musical sanity |
 
-Record observed BPM values, not only the subjective impression.
+The same checklist remains the reference for any future re-run; recording the
+observed BPM values, not only the subjective impression, keeps a re-run
+comparable to this one.
+
+## Status
+
+```text
+GF2-I1   PASS
+```
+
+Closed on: RED/GREEN host evidence, negative contracts, corridor audit over 33
+profiles, GF2 target matrix GREEN, remote CI 41/41, and hardware A/B confirmed
+on the device. This does not close GF2-I2 FEEL, I3 PHRASE LAW, I4 corridor
+consumers or I5 DEPTH.
