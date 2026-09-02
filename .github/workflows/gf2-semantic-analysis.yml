@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Run semantic orchestration contracts
         run: |
           SOURCE_REF="${GITHUB_SHA}" \

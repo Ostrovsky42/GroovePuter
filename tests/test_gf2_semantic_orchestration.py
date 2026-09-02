@@ -126,6 +126,16 @@ class GenreDiffTests(unittest.TestCase):
             ["full_trace_fingerprint"],
         )
 
+    def test_archetype_change_reports_fields(self) -> None:
+        baseline = census()
+        candidate = census()
+        candidate["archetypes"][0]["family"] = "Broken"
+        result = genre_diff.build_diff(baseline, candidate)
+        self.assertEqual(
+            result["archetypes"]["changed"],
+            [{"archetype_id": "1", "changed_fields": ["family"]}],
+        )
+
 
 class DerivedReportTests(unittest.TestCase):
     def test_recipe_matrix_detects_only_changed_axes(self) -> None:
@@ -266,8 +276,58 @@ class DerivedReportTests(unittest.TestCase):
             report = output.read_text(encoding="utf-8")
         self.assertIn("full_trace_fingerprint", report)
 
+    def test_markdown_report_lists_changed_base_pair_identity(self) -> None:
+        baseline = census()
+        candidate = census()
+        pair = {
+            "genre_a": "GenreA",
+            "genre_b": "GenreB",
+            "classification": "PARTIAL_COLLISION",
+        }
+        baseline["base_pairs"] = [pair]
+        candidate["base_pairs"] = [dict(pair, classification="STRONG_DISTINCTNESS")]
+        diff = genre_diff.build_diff(baseline, candidate)
+        reachability = reachability_report.build_report(
+            [
+                {
+                    "domain": "RHYTHM",
+                    "role": "DRUMS",
+                    "semantic_field": "rhythm",
+                    "authoritative_owner": "Catalog",
+                    "terminal_effect": "onsets",
+                    "status": "CONNECTED",
+                    "blocker": "NONE",
+                    "failure_mode": "NONE",
+                    "fallback": "NONE",
+                }
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report.md"
+            orchestrate_semantic_analysis.render_report(
+                output,
+                candidate,
+                diff,
+                reachability,
+                reachability_report.build_diff(reachability, reachability),
+                recipe_matrix.build_matrix(candidate),
+                pattern_statistics.build_statistics(candidate),
+            )
+            report = output.read_text(encoding="utf-8")
+        self.assertIn("GenreA::GenreB", report)
+
 
 class CensusEvolutionTests(unittest.TestCase):
+    def test_recipe_classification_allows_new_base_genre(self) -> None:
+        profiles = [
+            {"genre_key": f"Genre{index}", "is_base": "1"}
+            for index in range(17)
+        ]
+        c1f_generator.classify_recipes(profiles)
+        self.assertTrue(
+            all(row["classification_vs_base"] == "BASE" for row in profiles)
+        )
+
     def test_dynamic_base_pairs_allow_catalog_growth(self) -> None:
         rows = []
         for index in range(3):

@@ -75,13 +75,20 @@ def compare_archetypes(
 ) -> dict[str, object]:
     old = keyed(baseline.get("archetypes", []), "archetype_id")
     new = keyed(candidate.get("archetypes", []), "archetype_id")
+    changed = []
+    for key in sorted(old.keys() & new.keys(), key=int):
+        fields = sorted(set(old[key]) | set(new[key]))
+        changed_fields = [
+            field for field in fields if old[key].get(field) != new[key].get(field)
+        ]
+        if changed_fields:
+            changed.append(
+                {"archetype_id": key, "changed_fields": changed_fields}
+            )
     return {
         "added": sorted(new.keys() - old.keys(), key=int),
         "removed": sorted(old.keys() - new.keys(), key=int),
-        "changed": sorted(
-            (key for key in old.keys() & new.keys() if old[key] != new[key]),
-            key=int,
-        ),
+        "changed": changed,
     }
 
 

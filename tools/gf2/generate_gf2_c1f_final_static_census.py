@@ -293,10 +293,15 @@ def add_fingerprints(
 
 
 def classify_recipes(profiles: list[dict[str, str]]) -> None:
+    base_rows = [row for row in profiles if row["is_base"] == "1"]
     bases = {
-        row["genre_key"]: row for row in profiles if row["is_base"] == "1"
+        row["genre_key"]: row for row in base_rows
     }
-    require(len(bases) == 16, f"expected 16 BASE rows, found {len(bases)}")
+    require(base_rows, "expected at least one BASE row")
+    require(
+        len(bases) == len(base_rows),
+        "duplicate genre key in BASE rows",
+    )
 
     for row in profiles:
         if row["is_base"] == "1":
@@ -306,6 +311,10 @@ def classify_recipes(profiles: list[dict[str, str]]) -> None:
             row["runtime_trace_changes_vs_base"] = "NONE"
             continue
 
+        require(
+            row["genre_key"] in bases,
+            f"recipe has no BASE row: {row['genre_key']}/{row['recipe_name']}",
+        )
         base = bases[row["genre_key"]]
         membership_changed = any(
             support(row[bag]) != support(base[bag]) for bag in BAGS

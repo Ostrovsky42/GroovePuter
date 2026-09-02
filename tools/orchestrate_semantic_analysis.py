@@ -55,6 +55,7 @@ def render_report(
     patterns: dict[str, object],
 ) -> None:
     changed_profiles = diff["profiles"]["changed"]
+    changed_archetypes = diff["archetypes"]["changed"]
     lines = [
         "# GF2 Semantic Analysis Report",
         "",
@@ -85,10 +86,10 @@ def render_report(
         f"{markdown_list(diff['archetypes']['added'])}",
         "- Removed archetypes: "
         f"{markdown_list(diff['archetypes']['removed'])}",
-        f"- Changed archetypes: {markdown_list(diff['archetypes']['changed'])}",
+        f"- Changed archetypes: {len(changed_archetypes)}",
         f"- Added BASE pairs: {markdown_list(diff['base_pairs']['added'])}",
         f"- Removed BASE pairs: {markdown_list(diff['base_pairs']['removed'])}",
-        f"- Changed BASE pairs: {len(diff['base_pairs']['changed'])}",
+        f"- Changed BASE pairs: {markdown_list(diff['base_pairs']['changed'])}",
     ]
     if changed_profiles:
         lines.extend(
@@ -103,6 +104,13 @@ def render_report(
             f"{markdown_list(row['changed_fingerprints'])} | "
             f"{markdown_list(row['changed_metadata'])} |"
             for row in changed_profiles
+        )
+    if changed_archetypes:
+        lines.extend(["", "| Archetype | Changed fields |", "|---|---|"])
+        lines.extend(
+            f"| `{row['archetype_id']}` | "
+            f"{markdown_list(row['changed_fields'])} |"
+            for row in changed_archetypes
         )
 
     lines.extend(
