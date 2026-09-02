@@ -331,6 +331,32 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_usb_midi_output"
 
+# Dual-endpoint foundation: sparse note ownership and the DIN/UART transport.
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_note_ownership_table.cpp" \
+  -o "${BUILD_DIR}/test_midi_note_ownership_table"
+
+"${BUILD_DIR}/test_midi_note_ownership_table"
+echo "MIDI note ownership table: OK"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_uart_midi_transport_core.cpp" \
+  -o "${BUILD_DIR}/test_uart_midi_transport_core"
+
+"${BUILD_DIR}/test_uart_midi_transport_core"
+echo "UART MIDI transport core: OK"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_uart_midi_transport.cpp" \
+  "${ROOT_DIR}/src/platform/cardputer_uart_midi_transport.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_uart_midi_transport"
+
+"${BUILD_DIR}/test_cardputer_uart_midi_transport"
+echo "Cardputer UART MIDI transport: OK"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \

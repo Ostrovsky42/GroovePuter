@@ -14,7 +14,11 @@ def main() -> None:
     queue = (ROOT / "src/midi/scheduled_midi_transport_event_queue.h").read_text(encoding="utf-8")
     publisher = (ROOT / "src/midi/midi_transport_clock_publisher.h").read_text(encoding="utf-8")
     facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
-    transport_api = (ROOT / "src/midi/usb_midi_transport.h").read_text(encoding="utf-8")
+    # The output boundary moved to midi_transport.h so a DIN endpoint can
+    # implement it; usb_midi_transport.h is now only a compatibility alias.
+    transport_api = (ROOT / "src/midi/midi_transport.h").read_text(encoding="utf-8")
+    transport_alias = (ROOT / "src/midi/usb_midi_transport.h").read_text(
+        encoding="utf-8")
     capabilities = (ROOT / "src/midi/midi_transport_capabilities.h").read_text(encoding="utf-8")
     profile_runtime = (ROOT / "src/midi/midi_device_profile_runtime.h").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
@@ -92,6 +96,16 @@ def main() -> None:
             "sendStop()" in transport_api and
             "sendSongPositionPointer(uint16_t midiBeats)" in transport_api,
             "platform-neutral transport API needs optional Continue and SPP surfaces")
+    require("using IUsbMidiTransport = IMidiTransport;" in transport_alias,
+            "the USB-named header must stay a pure alias so every existing call "
+            "site keeps the same contract")
+    require("class IMidiTransport" in transport_api and
+            "class IUsbMidiTransport" not in transport_api,
+            "the shared boundary must not be named after one transport")
+    require("MidiTransportLink" in transport_api and
+            "Unverifiable" in transport_api,
+            "a write-only DIN link cannot report connection state; the "
+            "interface must let callers distinguish that from USB enumeration")
     require("struct MidiTransportCapabilities" in capabilities and
             "MidiContinueBehavior" in capabilities and
             "songPositionTx" in capabilities,
