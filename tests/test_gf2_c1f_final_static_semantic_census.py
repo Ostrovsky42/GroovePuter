@@ -11,6 +11,7 @@ PROFILE_PATH = ROOT / "docs/research/GF2_C1F_FINAL_STATIC_SEMANTIC_CENSUS.tsv"
 ARCHETYPE_PATH = ROOT / "docs/research/GF2_C1F_RHYTHM_ARCHETYPE_PAYLOADS.tsv"
 PAIR_PATH = ROOT / "docs/research/GF2_C1F_BASE_GENRE_PAIRS.tsv"
 BASE_SHA = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
+C1F_HEAD = "d24ebf42ba48c50d2057af055807dd2c1ec6f096"
 HISTORICAL_NORMALIZED_HASHES = {
     PROFILE_PATH: "32a601025718bf6a4768aa706620e668febc2508a36c73d952f779539433a700",
     PAIR_PATH: "3e82efd8e4a9d26e419e9dfeeec907acbfb45d3a0d1adb41df24e71dbbfe8667",
@@ -28,12 +29,12 @@ archetypes = rows(ARCHETYPE_PATH)
 pairs = rows(PAIR_PATH)
 
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", BASE_SHA, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1F_HEAD, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", BASE_SHA, "--"],
+    ["git", "diff", "--name-only", BASE_SHA, C1F_HEAD, "--"],
     cwd=ROOT,
     check=True,
     text=True,

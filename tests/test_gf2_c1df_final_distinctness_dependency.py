@@ -20,6 +20,7 @@ GENERATOR = ROOT / "tools/gf2/generate_gf2_c1df_dependency_maps.py"
 
 GF2_BASE = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
 C1RF_HEAD = "574b830526c784ffe761286096dd62e22d6361d4"
+C1DF_HEAD = "82cfbd9f2c05074cd58b3841b29fb871219e54c8"
 
 MAPPED_DOMAIN_ROOTS = {
     "RHYTHM_COMPATIBILITY",
@@ -220,12 +221,12 @@ assert "`GF2-C2`, `GF2-G1`, and `GF2-R2` are not started." in report
 assert "No aggregate reachability or Genre distance is calculated." in report
 
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", C1RF_HEAD, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1DF_HEAD, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", C1RF_HEAD, "--"],
+    ["git", "diff", "--name-only", C1RF_HEAD, C1DF_HEAD, "--"],
     cwd=ROOT,
     check=True,
     capture_output=True,
