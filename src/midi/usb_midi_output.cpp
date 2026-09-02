@@ -466,13 +466,15 @@ uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
 uint8_t UsbMidiOutput::wireOwnerCount(uint8_t zeroBasedChannel,
                                       uint8_t note) const {
     if (!begun_) return 0;
-    return wireOwners_[clampChannel(zeroBasedChannel)][clampDataByte(note)];
+    return owners_.wireOwnerCount(clampChannel(zeroBasedChannel),
+                                  clampDataByte(note));
 }
 
 uint8_t UsbMidiOutput::smfOwnerCount(uint8_t zeroBasedChannel,
                                      uint8_t note) const {
     if (!begun_) return 0;
-    return smfOwners_[clampChannel(zeroBasedChannel)][clampDataByte(note)];
+    return owners_.smfOwnerCount(clampChannel(zeroBasedChannel),
+                                 clampDataByte(note));
 }
 
 bool UsbMidiOutput::accepts(const MidiVoiceLane* lane) const {
@@ -486,13 +488,19 @@ bool UsbMidiOutput::acquireActiveNote(MidiVoiceLane& lane,
     velocity = clampDataByte(velocity);
     if (velocity < 1) velocity = 1;
 
-    uint8_t& owners = wireOwners_[lane.channel][note];
-    if (owners == 0) {
-        if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
+    // A full ownership table means this NoteOn cannot be tracked. NoteOn has
+    // no cleanup obligation, so refusing it leaves nothing on the wire.
+    auto* cell = owners_.open(lane.channel, note);
+    if (cell == nullptr) return false;
+    if (cell->wire == 0) {
+        if (!transport_.sendNoteOn(lane.channel, note, velocity)) {
+            owners_.prune();
+            return false;
+        }
         transport_.flush();
     }
 
-    if (owners < 255) ++owners;
+    if (cell->wire < 255) ++cell->wire;
     lane.activeNote = static_cast<int16_t>(note);
     lane.activeCount = 1;
     lane.pendingRelease = false;
@@ -507,9 +515,12 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
     }
 
     const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
-    uint8_t& owners = wireOwners_[lane.channel][note];
+    // Release never inserts: a missing cell means no owner, which is exactly
+    // the owners == 0 case below.
+    auto* cell = owners_.peek(lane.channel, note);
+    const uint8_t owners = cell ? cell->wire : 0;
     if (owners > 1) {
-        --owners;
+        --cell->wire;
         lane.activeNote = -1;
         lane.activeCount = 0;
         lane.pendingRelease = false;
@@ -528,7 +539,8 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
         return false;
     }
 
-    owners = 0;
+    if (cell != nullptr) cell->wire = 0;
+    owners_.prune();
     lane.activeNote = -1;
     lane.activeCount = 0;
     lane.pendingRelease = false;
@@ -557,13 +569,20 @@ bool UsbMidiOutput::acquirePercussiveNote(MidiVoiceLane& lane,
         return false;
     }
 
-    uint8_t& owners = wireOwners_[lane.channel][note];
-    if (lane.activeCount == 255 || owners == 255) return false;
-    if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
+    auto* cell = owners_.open(lane.channel, note);
+    if (cell == nullptr) return false;
+    if (lane.activeCount == 255 || cell->wire == 255) {
+        owners_.prune();
+        return false;
+    }
+    if (!transport_.sendNoteOn(lane.channel, note, velocity)) {
+        owners_.prune();
+        return false;
+    }
     transport_.flush();
 
     ++lane.activeCount;
-    ++owners;
+    ++cell->wire;
     lane.activeNote = static_cast<int16_t>(note);
     lane.pendingRelease = false;
     return true;
@@ -579,7 +598,8 @@ bool UsbMidiOutput::releasePercussiveNote(MidiVoiceLane& lane,
     }
 
     const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
-    uint8_t& owners = wireOwners_[lane.channel][note];
+    auto* cell = owners_.peek(lane.channel, note);
+    const uint8_t owners = cell ? cell->wire : 0;
     if (owners == 0) {
         lane.activeNote = -1;
         lane.activeCount = 0;
@@ -588,7 +608,7 @@ bool UsbMidiOutput::releasePercussiveNote(MidiVoiceLane& lane,
     }
 
     if (owners > 1) {
-        --owners;
+        --cell->wire;
         --lane.activeCount;
         if (lane.activeCount == 0) lane.activeNote = -1;
         lane.pendingRelease = false;
@@ -601,7 +621,8 @@ bool UsbMidiOutput::releasePercussiveNote(MidiVoiceLane& lane,
         return false;
     }
 
-    owners = 0;
+    cell->wire = 0;
+    owners_.prune();
     lane.activeCount = 0;
     lane.activeNote = -1;
     lane.pendingRelease = false;
@@ -619,14 +640,15 @@ bool UsbMidiOutput::releasePercussiveLane(MidiVoiceLane& lane,
     }
 
     const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
-    uint8_t& owners = wireOwners_[lane.channel][note];
+    auto* cell = owners_.peek(lane.channel, note);
+    const uint8_t owners = cell ? cell->wire : 0;
     const uint8_t laneOwners = lane.activeCount;
     const uint8_t otherOwners = owners > laneOwners
         ? static_cast<uint8_t>(owners - laneOwners)
         : 0;
 
     if (otherOwners > 0) {
-        owners = otherOwners;
+        cell->wire = otherOwners;
         lane.activeNote = -1;
         lane.activeCount = 0;
         lane.pendingRelease = false;
@@ -641,7 +663,8 @@ bool UsbMidiOutput::releasePercussiveLane(MidiVoiceLane& lane,
     }
     if (owners > 0) transport_.flush();
 
-    owners = 0;
+    if (cell != nullptr) cell->wire = 0;
+    owners_.prune();
     lane.activeNote = -1;
     lane.activeCount = 0;
     lane.pendingRelease = false;
@@ -674,7 +697,6 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
     velocity = clampDataByte(velocity);
     if (velocity < 1) velocity = 1;
     const uint8_t channel = generatedChannel(target);
-    uint8_t& owners = wireOwners_[channel][note];
 
     if (generatedNoteActive(targetIndex, note)) {
         // Generated tools may intentionally retrigger the same tone (ratchet).
@@ -686,12 +708,22 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
         return true;
     }
 
-    if (owners == 255u) return false;
-    if (owners == 0u) {
-        if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+    // Reserved only once the retrigger path above is ruled out, so a
+    // bitset/table disagreement cannot leave an empty cell behind.
+    auto* cell = owners_.open(channel, note);
+    if (cell == nullptr) return false;
+    if (cell->wire == 255u) {
+        owners_.prune();
+        return false;
+    }
+    if (cell->wire == 0u) {
+        if (!transport_.sendNoteOn(channel, note, velocity)) {
+            owners_.prune();
+            return false;
+        }
         transport_.flush();
     }
-    ++owners;
+    ++cell->wire;
     setGeneratedNoteActive(targetIndex, note, true);
     setGeneratedNotePendingRelease(targetIndex, note, false);
     return true;
@@ -709,9 +741,10 @@ bool UsbMidiOutput::releaseGeneratedNote(MusicalEventTarget target,
     }
 
     const uint8_t channel = generatedChannel(target);
-    uint8_t& owners = wireOwners_[channel][note];
+    auto* cell = owners_.peek(channel, note);
+    const uint8_t owners = cell ? cell->wire : 0;
     if (owners > 1u) {
-        --owners;
+        --cell->wire;
         setGeneratedNoteActive(targetIndex, note, false);
         setGeneratedNotePendingRelease(targetIndex, note, false);
         return true;
@@ -728,7 +761,8 @@ bool UsbMidiOutput::releaseGeneratedNote(MusicalEventTarget target,
         return false;
     }
     transport_.flush();
-    owners = 0;
+    if (cell != nullptr) cell->wire = 0;
+    owners_.prune();
     setGeneratedNoteActive(targetIndex, note, false);
     setGeneratedNotePendingRelease(targetIndex, note, false);
     return true;
@@ -789,13 +823,19 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
     velocity = clampDataByte(velocity);
     if (velocity < 1) velocity = 1;
 
-    if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+    // Reserve the ownership cell before the wire write. If the table is full
+    // the NoteOn is refused outright rather than sounding a note nothing owns.
+    auto* cell = owners_.open(channel, note);
+    if (cell == nullptr) return false;
+
+    if (!transport_.sendNoteOn(channel, note, velocity)) {
+        owners_.prune();
+        return false;
+    }
     transport_.flush();
 
-    uint8_t& smfOwners = smfOwners_[channel][note];
-    uint8_t& wireOwners = wireOwners_[channel][note];
-    if (smfOwners < 255) ++smfOwners;
-    if (wireOwners < 255) ++wireOwners;
+    if (cell->smf < 255) ++cell->smf;
+    if (cell->wire < 255) ++cell->wire;
     return true;
 }
 
@@ -807,18 +847,19 @@ bool UsbMidiOutput::handleSmfNoteOff(uint8_t zeroBasedChannel,
     note = clampDataByte(note);
     velocity = clampDataByte(velocity);
 
-    uint8_t& smfOwners = smfOwners_[channel][note];
-    uint8_t& wireOwners = wireOwners_[channel][note];
-    if (smfOwners == 0) return true;
+    auto* cell = owners_.peek(channel, note);
+    if (cell == nullptr || cell->smf == 0) return true;
 
-    if (wireOwners > 1) {
-        --smfOwners;
-        --wireOwners;
+    if (cell->wire > 1) {
+        --cell->smf;
+        --cell->wire;
+        owners_.prune();
         return true;
     }
 
-    if (wireOwners == 0) {
-        smfOwners = 0;
+    if (cell->wire == 0) {
+        cell->smf = 0;
+        owners_.prune();
         return true;
     }
 
@@ -826,61 +867,57 @@ bool UsbMidiOutput::handleSmfNoteOff(uint8_t zeroBasedChannel,
         return false;
     }
     transport_.flush();
-    smfOwners = 0;
-    wireOwners = 0;
+    cell->smf = 0;
+    cell->wire = 0;
+    owners_.prune();
     return true;
 }
 
 bool UsbMidiOutput::releaseAllSmfNotes() {
     pollConnection();
     bool allReleased = true;
-    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
-        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
-            uint8_t& smfOwners = smfOwners_[channel][note];
-            if (smfOwners == 0) continue;
+    // Only cells with a live owner exist, so this walks the notes that are
+    // actually sounding instead of the 2048-cell address space. Cells are
+    // mutated in place; nothing is inserted or pruned until the walk ends.
+    for (auto& cell : owners_) {
+        if (cell.smf == 0) continue;
 
-            uint8_t& wireOwners = wireOwners_[channel][note];
-            const uint8_t otherOwners = wireOwners > smfOwners
-                ? static_cast<uint8_t>(wireOwners - smfOwners)
-                : 0;
+        const uint8_t otherOwners = cell.wire > cell.smf
+            ? static_cast<uint8_t>(cell.wire - cell.smf)
+            : 0;
 
-            if (otherOwners > 0) {
-                wireOwners = otherOwners;
-                smfOwners = 0;
-                continue;
-            }
-
-            if (!mounted_ || !transport_.sendNoteOff(
-                    static_cast<uint8_t>(channel),
-                    static_cast<uint8_t>(note),
-                    0)) {
-                allReleased = false;
-                continue;
-            }
-            transport_.flush();
-            wireOwners = 0;
-            smfOwners = 0;
+        if (otherOwners > 0) {
+            cell.wire = otherOwners;
+            cell.smf = 0;
+            continue;
         }
+
+        if (!mounted_ || !transport_.sendNoteOff(cell.channel, cell.note, 0)) {
+            allReleased = false;
+            continue;
+        }
+        transport_.flush();
+        cell.wire = 0;
+        cell.smf = 0;
     }
+    owners_.prune();
     return releaseAbandonedSmfChannels() && allReleased;
 }
 
 void UsbMidiOutput::abandonAllSmfNotes() {
-    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
-        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
-            uint8_t& smfOwners = smfOwners_[channel][note];
-            if (smfOwners == 0) continue;
+    for (auto& cell : owners_) {
+        if (cell.smf == 0) continue;
 
-            uint8_t& wireOwners = wireOwners_[channel][note];
-            if (wireOwners <= smfOwners) {
-                abandonedSmfChannels_ |= static_cast<uint16_t>(1u << channel);
-            }
-            wireOwners = wireOwners > smfOwners
-                ? static_cast<uint8_t>(wireOwners - smfOwners)
-                : 0;
-            smfOwners = 0;
+        if (cell.wire <= cell.smf) {
+            abandonedSmfChannels_ |=
+                static_cast<uint16_t>(1u << cell.channel);
         }
+        cell.wire = cell.wire > cell.smf
+            ? static_cast<uint8_t>(cell.wire - cell.smf)
+            : 0;
+        cell.smf = 0;
     }
+    owners_.prune();
 }
 
 bool UsbMidiOutput::releaseAbandonedSmfChannels() {
@@ -892,14 +929,7 @@ bool UsbMidiOutput::releaseAbandonedSmfChannels() {
         const uint16_t mask = static_cast<uint16_t>(1u << channel);
         if ((abandonedSmfChannels_ & mask) == 0) continue;
 
-        bool hasKnownOwner = false;
-        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
-            if (wireOwners_[channel][note] != 0) {
-                hasKnownOwner = true;
-                break;
-            }
-        }
-        if (hasKnownOwner) {
+        if (owners_.channelHasWireOwner(static_cast<uint8_t>(channel))) {
             allReleased = false;
             continue;
         }
@@ -928,12 +958,7 @@ void UsbMidiOutput::clearActiveState() {
             generatedPendingRelease_[target][byte] = 0;
         }
     }
-    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
-        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
-            wireOwners_[channel][note] = 0;
-            smfOwners_[channel][note] = 0;
-        }
-    }
+    owners_.clear();
 }
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
