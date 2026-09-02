@@ -11,6 +11,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-current}"
 ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
+# Genre materialization keeps several transactional pattern copies alive in
+# the Arduino loop task. The ESP32 core defaults that task to 8 KiB, which is
+# insufficient on the DRAM-only Cardputer build and resets the device when
+# generation materializes a genre or synth pattern. The current Stage 15
+# generator has over 7 KiB of nested frames before the Arduino loop/UI frames,
+# so reserve 32 KiB for the control/UI task. Keep the audio task unchanged.
+ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-32768}"
 
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
@@ -40,10 +47,16 @@ rsync -a --delete \
   --exclude 'platform_sdl/build' \
   "${PROJECT_ROOT}/" "${TEMP_ROOT}/GroovePuter/"
 
+# Arduino CLI may compile nested sketch sources from generated build paths.
+# Keep the staged page directory on the include search path so quoted
+# implementation fragments remain visible without compiling them separately.
+ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages"
+
 "${ARDUINO_CLI}" compile \
   --clean \
   --fqbn "${FQBN}" \
   --build-path "${ARDUINO_BUILD_PATH}" \
+  --build-property "compiler.cpp.extra_flags=${ARDUINO_CPP_EXTRA_FLAGS}" \
   --output-dir "${BUILD_PATH}" \
   "$@" \
   "${TEMP_ROOT}/GroovePuter"

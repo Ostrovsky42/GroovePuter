@@ -1,0 +1,22 @@
+name: 0.9.9-D1 Pattern Phrase liveness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - agent/20260821-01-0.9.9-d1-material-liveness
+
+permissions:
+  contents: read
+
+jobs:
+  d1-liveness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run D1 focused and cumulative liveness gates
+        run: bash tests/run_0_9_9_d1_tests.sh
+      - name: Preserve Output Ownership
+        run: bash tests/run_output_ownership_tests.sh
+      - name: Preserve Device Profiles
+        run: bash tests/run_midi_device_profile_ui_0_9_7_tests.sh

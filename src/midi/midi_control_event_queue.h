@@ -7,6 +7,7 @@
 
 #include "midi_realtime_word.h"
 #include "../input/musical_event.h"
+#include "../output/output_ownership.h"
 
 // Single-producer/single-consumer handoff from the Arduino control loop to the
 // sole USB-MIDI owner task. Critical overflow degrades to a target-scoped live
@@ -21,6 +22,13 @@ public:
     static constexpr uint8_t kDxMask = 1u << 3;
 
     bool tryPush(const MusicalEvent& event) {
+        // Output ownership rejects only fresh external NoteOn. Cleanup events are
+        // still enqueued even after a live mode transition removes MIDI.
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsMidiNoteOn(event)) {
+            return false;
+        }
+
         const uint32_t head = head_.loadRelaxed();
         const uint32_t next = (head + 1u) % kStorageSize;
         if (next == tail_.loadAcquire()) {
@@ -39,12 +47,22 @@ public:
     }
 
     bool tryPop(MusicalEvent& event) {
-        const uint32_t tail = tail_.loadRelaxed();
-        if (tail == head_.loadAcquire()) return false;
+        while (true) {
+            const uint32_t tail = tail_.loadRelaxed();
+            if (tail == head_.loadAcquire()) return false;
 
-        event = events_[tail];
-        tail_.storeRelease((tail + 1u) % kStorageSize);
-        return true;
+            event = events_[tail];
+            tail_.storeRelease((tail + 1u) % kStorageSize);
+
+            // A NoteOn may have been queued immediately before the user removed
+            // the MIDI side. Re-check only NoteOn at the consumer boundary;
+            // NoteOff/AllNotesOff must still pass for cleanup.
+            if (event.type == MusicalEventType::NoteOn &&
+                !GroovePuterOutput::allowsMidiNoteOn(event)) {
+                continue;
+            }
+            return true;
+        }
     }
 
     uint8_t takePendingAllNotesOffMask() {
@@ -69,6 +87,13 @@ public:
             consumedDxEpoch_ = dxEpoch;
             mask |= kDxMask;
         }
+
+        const uint32_t outputEpochs = packedOutputDisableEpochs();
+        const uint32_t changed = outputEpochs ^ consumedOutputDisableEpochs_;
+        if ((changed & 0x000000FFu) != 0u) mask |= kSynthAMask;
+        if ((changed & 0x0000FF00u) != 0u) mask |= kSynthBMask;
+        if ((changed & 0x00FF0000u) != 0u) mask |= kDrumsMask;
+        consumedOutputDisableEpochs_ = outputEpochs;
         return mask;
     }
 
@@ -89,6 +114,15 @@ public:
     }
 
 private:
+    static uint32_t packedOutputDisableEpochs() {
+        return static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                   GroovePuterOutput::Track::SynthA)) |
+               (static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                    GroovePuterOutput::Track::SynthB)) << 8u) |
+               (static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                    GroovePuterOutput::Track::Drums)) << 16u);
+    }
+
     void markPendingAllNotesOff(MusicalEventTarget target) {
         switch (target) {
             case MusicalEventTarget::SynthA:
@@ -119,6 +153,7 @@ private:
     uint32_t consumedSynthBEpoch_{0};
     uint32_t consumedDrumsEpoch_{0};
     uint32_t consumedDxEpoch_{0};
+    uint32_t consumedOutputDisableEpochs_{0};
 };
 
 #endif  // GROOVEPUTER_MIDI_CONTROL_EVENT_QUEUE_H

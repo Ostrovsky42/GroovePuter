@@ -1,0 +1,78 @@
+Context,Key,Function,Behavior,Priority,Recommendation
+Global,Alt+H,Help,Toggle page-aware help,Hard-global,Keep
+Global,Fn+M,Navigation,Workspace launcher,Hard-global,Keep
+Global,Fn+Tab / Fn+Shift+Tab,Navigation,Next/previous workflow,Hard-global,Keep
+Global,[ / ],Navigation,Previous/next page in workflow,Fallback after page,Conflict with page-local pattern paging
+Global,Fn+[ / ],Navigation,Previous/next workflow,Hard-global,Keep
+Global,Alt+[ / ],Navigation,Previous/next detail/pattern page,Hard-global,Overlaps pattern page concept
+Global,Alt/Fn+1..0,Navigation,Direct page jump,Hard-global,Digits also have local tools/mutes
+Global,Space,Transport,Groove transport,Fallback after page,Intercepted by FEEL/TEXTURE/SMF
+Global,"1..9,0",Mute,Internal track mute,Late fallback,Intercepted by Phrase/Perform/SMF
+Global,Esc / Backspace / `,Navigation,Dismiss/back/previous page,Late fallback,Backspace is destructive locally
+Global,Alt+P,Navigation,MIDI Player,Hard-global,Keep
+Global,Alt+V,Navigation,Page 11 / GENERATION compatibility destination,Hard-global,Name/docs conflict
+Global,Alt+W,Overlay,Waveform,Hard-global except Phrase overwrite,Phrase Alt+W intentionally overrides
+Global,Alt+X,Song,LiveMix,Hard-global,Keep but expose state
+Global,Alt+M,Song,Song mode,Hard-global,Song page also handles
+Global,Alt+\,Theme,Theme toggle,Hard-global,Different set from Project style row
+Global,Ctrl+Alt+Backspace,Safety,Panic + reset project,Hard-global,Destructive; needs explicit acceptance
+Perform,Tab,Layer,Open/close Performance Tools,Page-local,Tab means subpage elsewhere
+Perform,1..8,Tools,ARP/direction/chord/memory/strum/ratchet/euclid/rotate,Page-local layer,Shadows global mute
+Perform,Shift+1..8,Tools,Reverse tool adjustment,Page-local layer,Shift reliability concern
+Perform,N,Mode,NOTE mode,Page-local,State must stay visible
+Perform,\,Routing,Cycle live target,Page-local,Alt+\ is theme
+Perform,", / .",Scale,Previous/next scale,Page-local,Keep
+Perform,- / =,Octave,Down/up,Page-local,Keep
+Perform,X,Safety,Panic live target,Page-local,Alt+X is LiveMix
+Genre,Tab / Up / Down,Focus,Select field,Page-local,Keep
+Genre,Left / Right,Adjust,Selected field,Page-local,Uses local wrap
+Genre,Alt+Left / Right,Adjust,Morph,Page-local,Keep
+Genre,Enter,Apply,Apply profile/materialize policy,Page-local,Persistent mutation contract gap
+Genre,M,Mode,Cycle apply policy,Page-local,Keep
+Feel,Tab / Up / Down,Focus,Select field,Page-local,Keep
+Feel,Left / Right,Adjust,Swing/humanize/preset,Page-local,Dirty/autosave gap
+Feel,Enter / Space,Apply,Apply preset,Page-local,Space shadows transport
+Generation,Arrows,Target,Move Song row,Page-local,Duplicate of SONG; PR #101
+Generation,Enter / G,Generate,Materialize row,Page-local,Duplicate of SONG; PR #101
+Texture,Tab / Up / Down,Focus,Select field,Page-local,Keep
+Texture,Left / Right,Adjust,Mode/amount/link,Page-local,Dirty/autosave gap
+Texture,Enter / Space,Apply,Apply texture,Page-local,Space shadows transport
+Synth Pattern,Tab,Subpage,Pattern/settings wrapper,Page-local,Docs call it automation
+Synth Pattern,Q..I,Pattern,Select slot,Page-local,Pattern addresses incomplete before PR #102
+Synth Pattern,B,Bank,Toggle A/B,Page-local,Keep
+Synth Pattern,Arrows,Edit,Move cursor/focus,Page-local,Keep
+Synth Pattern,Shift/Ctrl+Arrows,Selection,Extend selection,Page-local,Ctrl fallback needed on Cardputer
+Synth Pattern,Backspace/Delete/R,Clear,Clear step/selection,Page-local,Backspace shadows Back
+Synth Pattern,Alt+Backspace,Clear,Clear pattern,Page-local,Destructive
+Synth Pattern,G,Generate,Randomize current pattern,Page-local,Different generation ownership
+Synth Settings,Arrows,Adjust,Engine/parameter selection and value,Page-local,Custom acceleration implementation
+Drums,Tab,Subpage,Sequencer/subpage,Page-local,Docs/composition needs verification
+Drums,Q..I,Pattern,Select slot,Page-local,Keep
+Drums,B,Bank,Toggle bank,Page-local,Keep
+Drums,Enter,Edit,Toggle hit,Page-local,Keep
+Drums,A,Edit,Toggle accent,Page-local,Keep
+Drums,G / Ctrl+G / Alt+G,Generate,Pattern/voice/chaos randomize,Page-local,"Three scopes, footer must show"
+Drums,Backspace / Alt+Backspace,Clear,Cell/selection or whole pattern,Page-local,Backspace shadows Back
+Song,Arrows,Edit,Move cursor,Page-local,Keep
+Song,Shift/Ctrl+Arrows,Selection,Extend selection,Page-local,Keep
+Song,Enter,Navigation,Open referenced pattern editor,Page-local,Mode button toggles Song mode
+Song,Q..I,Pattern,Assign existing pattern,Page-local,Not generation
+Song,G / double G / Alt+G / Ctrl+G,Generate,Cell/row/selection/mode,Page-local,Dense gesture family
+Song,B / Alt+B / Ctrl+B,Bank/slot,"Bank, edit slot, playback slot",Page-local,Three concepts on B
+Song,Backspace / Tab / Alt+Backspace,Clear,Cell/selection/full Song,Page-local,Tab is destructive here
+Phrase,1..4,Slot,Select Phrase A-D,Page-local,Shadows global mute
+Phrase,Arrows,Length/preview,Cycle capture length/bar,Page-local,Keep
+Phrase,Enter,Capture,Capture Song region,Page-local,Keep
+Phrase,D / W / Alt+W,Derive/write,"Derive, safe write, overwrite",Page-local,Alt+W overrides global waveform
+Phrase,Backspace/Delete,Clear,Clear Phrase slot,Page-local,Backspace shadows Back
+MIDI Player,Space,Transport,SMF play/pause/arm,Page-local,Different from Groove transport
+MIDI Player,G,Transport,Groove transport/follow,Page-local,Two transports on one page
+MIDI Player,1..9,Mute,Physical SMF track mute,Page-local,Shadows global mute
+MIDI Player,U / I / S / D,Panel,Mute/channel/structure/performance,Page-local,Keep
+MIDI Player,C / T / M,Clock/routing,"Clock source, tempo mode, RAW/safe",Page-local,Dense state matrix
+MIDI Player,H,Navigation,HUB MIDI,Page-local,Help is Alt+H
+Hub MIDI,1..9 / Enter,Mute,Physical track mute,Page-local,"Same data, separate UI"
+Hub MIDI,C,Route,Edit per-track destination,Page-local,Only stopped/paused + safe routing
+Project,Tab,Section,Cycle Scenes/Setup/LED,Page-local,Tab semantics differ
+Project,G,Navigation,Jump to Genre,Page-local,Undocumented shortcut
+Project dialogs,Arrows / Enter / Backspace,Dialog,Focus/activate/cancel/up,Page-local,Raw scancode inconsistency

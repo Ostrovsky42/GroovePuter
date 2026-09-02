@@ -3,7 +3,11 @@
 #include "../audio/audio_config.h"
 #include "../../scenes.h"
 
-// TapeLooper provides an 8-second mono ring buffer with mode machine:
+// TapeLooper is a mono ring-buffer looper. Storage capacity is selected by
+// init() on supported targets; the current Cardputer ADV product policy keeps
+// the sample buffer unallocated so Tape cannot consume sampler/runtime DRAM.
+//
+// Modes:
 // - STOP: No recording or playback
 // - REC:  Record input to loop buffer (defines loop length)
 // - DUB:  Overdub input onto existing loop
@@ -16,9 +20,8 @@
 
 class TapeLooper {
 public:
-    // 2 seconds = ~88KB @ 22kHz mono 16-bit
-    // Fits in internal RAM (no PSRAM needed)
-    // Musically: 1 bar @ 120 BPM, perfect for techno/minimal
+    // Implementation ceiling used by supported allocation profiles.
+    // This is not the current Cardputer ADV allocation policy.
     static constexpr uint32_t kMaxSeconds = 2;
     static constexpr uint32_t kMaxSamples = kMaxSeconds * kSampleRate;
     static constexpr uint32_t kStutterFrames = 512; // ~23ms @ 22kHz
@@ -28,12 +31,15 @@ public:
     ~TapeLooper();
 
     // Initialize looper with dynamic memory
-    // Attempts to allocate 'maxSeconds' long buffer
-    // Priority: PSRAM, fallback: DRAM
-    // Returns true if any buffer was allocated
+    // Attempts to allocate 'maxSeconds' long buffer on supported targets.
+    // Priority: PSRAM, fallback: DRAM.
+    // Cardputer ADV currently has an explicit no-storage product policy.
+    // Returns true only when a usable sample buffer exists.
     bool init(float maxSeconds);
+    bool storageReady() const { return buffer_ != nullptr && maxSamples_ > 0; }
 
-    // Mode control (call with AudioGuard from UI thread!)
+    // Mode control (call with AudioGuard from UI thread!).
+    // Invariant: without usable storage every requested mode resolves to STOP.
     void setMode(TapeMode mode);
     TapeMode mode() const { return mode_; }
     
@@ -46,7 +52,7 @@ public:
     bool stutterActive() const { return stutterActive_; }
 
     // Safety overdub: when enabled, DUB auto-returns to PLAY after one loop cycle.
-    void setDubAutoExit(bool enabled) { dubAutoExit_ = enabled; }
+    void setDubAutoExit(bool enabled) { dubAutoExit_ = storageReady() && enabled; }
     bool dubAutoExit() const { return dubAutoExit_; }
     
     // Eject: full reset to clean state
@@ -62,7 +68,7 @@ public:
     // Status getters for UI
     float playheadProgress() const;  // 0.0..1.0
     float loopLengthSeconds() const;
-    bool hasLoop() const { return length_ > 0; }
+    bool hasLoop() const { return storageReady() && length_ > 0; }
     bool isFirstRecordPass() const { return mode_ == TapeMode::Rec && firstRecord_; }
     float recordElapsedSeconds() const { return static_cast<float>(playheadSamples()) / static_cast<float>(kSampleRate); }
     uint32_t loopLengthSamples() const { return length_; }
@@ -91,6 +97,8 @@ private:
     float volume_ = 1.0f;
     bool firstRecord_ = false;
     float peak_ = 0.0f;
+
+    void forceStoppedWithoutStorage_();
 
     // Read sample with linear interpolation (for speed changes)
     float readInterpolated(float pos) const;

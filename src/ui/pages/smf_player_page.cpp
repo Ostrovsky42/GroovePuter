@@ -8,6 +8,9 @@
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/midi/smf_track_inspector.h"
+#include "src/midi/smf_track_mute.h"
+#include "src/platform/cardputer_usb_midi_service.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -23,25 +26,140 @@ bool smfStateIsActive(GroovePuterMidi::SmfPlayerState state) {
            state == GroovePuterMidi::SmfPlayerState::Armed;
 }
 
-const char* browserBasename(const char* path) {
-    if (path == nullptr) return "";
-    const char* slash = std::strrchr(path, '/');
-    return slash == nullptr ? path : slash + 1;
+void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
+    static constexpr const char* kNames[] = {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    const int octave = static_cast<int>(note / 12u) - 1;
+    std::snprintf(dst, size, "%s%d", kNames[note % 12u], octave);
 }
 
-bool browserNameIsVisible(const char* name) {
-    return name != nullptr && name[0] != '\0' && name[0] != '.';
+const char* inspectorRouteLabel(bool raw, uint8_t sourceChannel) {
+    if (raw) return "RAW";
+    if (sourceChannel == 0) return "S1";
+    if (sourceChannel == 1) return "S2";
+    if (sourceChannel == 2) return "DX";
+    if (sourceChannel == 9) return "DRM";
+    return "OFF";
 }
 
-bool browserNameIsMidi(const char* name) {
-    if (!browserNameIsVisible(name)) return false;
-    const std::size_t length = std::strlen(name);
-    if (length < 4) return false;
-    const char* ext = name + length - 4;
-    return ext[0] == '.' &&
-           std::tolower(static_cast<unsigned char>(ext[1])) == 'm' &&
-           std::tolower(static_cast<unsigned char>(ext[2])) == 'i' &&
-           std::tolower(static_cast<unsigned char>(ext[3])) == 'd';
+bool trackMuted(const GroovePuterMidi::SmfTrackMuteSnapshot& tracks,
+                uint16_t trackIndex) {
+    return trackIndex < 64u &&
+           (tracks.mutedMask & (uint64_t{1} << trackIndex)) != 0;
+}
+
+int collectAudibleTracks(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        uint16_t* output,
+        int capacity) {
+    if (!output || capacity <= 0) return 0;
+    const uint16_t bounded = std::min<uint16_t>(
+        inspector.trackCount,
+        static_cast<uint16_t>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    int count = 0;
+    for (uint16_t track = 0; track < bounded && count < capacity; ++track) {
+        if (inspector.tracks[track].audible()) output[count++] = track;
+    }
+    return count;
+}
+
+int audibleTrackPosition(const uint16_t* tracks,
+                         int trackCount,
+                         uint16_t physicalTrack) {
+    for (int index = 0; index < trackCount; ++index) {
+        if (tracks[index] == physicalTrack) return index;
+    }
+    return -1;
+}
+
+bool selectAudibleTrackRelative(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        int delta) {
+    uint16_t audible[GroovePuterMidi::kSmfTrackInspectorMaxTracks]{};
+    const int count = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    if (count == 0) return false;
+
+    const GroovePuterMidi::SmfTrackMuteSnapshot mute =
+        GroovePuterMidi::smfTrackMuteState().snapshot();
+    int position = audibleTrackPosition(audible, count, mute.selectedTrack);
+    if (position < 0) position = 0;
+    else if (delta != 0) {
+        position = (position + delta) % count;
+        if (position < 0) position += count;
+    }
+    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
+}
+
+bool toggleAudibleTrackHotkey(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        int hotkeyIndex,
+        uint16_t* toggledTrack,
+        bool* mutedAfterToggle) {
+    uint16_t audible[GroovePuterMidi::kSmfTrackInspectorMaxTracks]{};
+    const int count = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    if (hotkeyIndex < 0 || hotkeyIndex >= count) return false;
+
+    GroovePuterMidi::SmfTrackMuteState& muteState =
+        GroovePuterMidi::smfTrackMuteState();
+    const uint16_t trackIndex = audible[hotkeyIndex];
+    if (!muteState.selectTrack(trackIndex) || !muteState.toggleSelected()) {
+        return false;
+    }
+
+    const GroovePuterMidi::SmfTrackMuteSnapshot snapshot =
+        muteState.snapshot();
+    if (toggledTrack) *toggledTrack = trackIndex;
+    if (mutedAfterToggle) {
+        *mutedAfterToggle = trackMuted(snapshot, trackIndex);
+    }
+    return true;
+}
+
+unsigned mutedAudibleTrackCount(
+        const GroovePuterMidi::SmfTrackMuteSnapshot& mute,
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector) {
+    unsigned count = 0;
+    const uint16_t bounded = std::min<uint16_t>(
+        inspector.trackCount,
+        static_cast<uint16_t>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    for (uint16_t track = 0; track < bounded; ++track) {
+        if (inspector.tracks[track].audible() && trackMuted(mute, track)) ++count;
+    }
+    return count;
+}
+
+void formatTrackChannel(const GroovePuterMidi::SmfTrackInfoSnapshot& info,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!output || outputSize == 0) return;
+    if (info.usesMultipleChannels()) {
+        std::snprintf(output, outputSize, "MIX");
+        return;
+    }
+    const int channel = info.primaryChannel();
+    if (channel < 0) std::snprintf(output, outputSize, "--");
+    else std::snprintf(output, outputSize, "C%02d", channel + 1);
+}
+
+void formatTrackProgram(const GroovePuterMidi::SmfTrackInfoSnapshot& info,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!output || outputSize == 0) return;
+    if (info.likelyDrums()) {
+        std::snprintf(output, outputSize, "DRUM");
+    } else if (info.hasProgramChange()) {
+        std::snprintf(output, outputSize, "P%03u",
+                      static_cast<unsigned>(info.firstProgram));
+    } else {
+        std::snprintf(output, outputSize, "P---");
+    }
 }
 }  // namespace
 
@@ -62,268 +180,12 @@ void SmfPlayerPage::onEnter(int context) {
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
     browserVisible_ = state.state == SmfPlayerState::Unloaded ||
                       state.state == SmfPlayerState::Error;
-    if (entryCount() == 0) refreshFiles();
+    if (browserVisible_) GroovePuterUi::midiFileManager().open();
 }
 
-void SmfPlayerPage::refreshFiles() {
-    directoryCount_ = 0;
-    fileCount_ = 0;
-    totalEntries_ = 0;
-    visibleWindowStart_ = -1;
-    browserStorageReady_ = false;
-    for (BrowserRow& row : browserRows_) row = {};
-#ifdef ARDUINO
-    if (currentPath_.empty()) currentPath_ = "/midi";
-    bool exists = SD.exists(currentPath_.c_str());
-    Serial.printf("[SMF-BROWSE] path=%s exists=%d\n", currentPath_.c_str(), (int)exists);
-    if (!exists) {
-        const bool reinit = GroovePuterPlatform::ensureCardputerSdMounted();
-        Serial.printf("[SMF-BROWSE] SD mount retry ok=%d\n", (int)reinit);
-        exists = SD.exists(currentPath_.c_str());
-        Serial.printf("[SMF-BROWSE] path=%s exists-after-retry=%d\n", currentPath_.c_str(),
-                      (int)exists);
-    }
-    if (!exists) SD.mkdir(currentPath_.c_str());
-#if defined(ESP32) || defined(ESP_PLATFORM)
-    const size_t freeBeforeOpen =
-        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-#endif
-    File root = SD.open(currentPath_.c_str());
-    Serial.printf(
-        "[SMF-BROWSE] root.open ok=%d isDir=%d"
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        " freeBefore=%u freeOpen=%u"
-#endif
-        "\n",
-        (int)(bool)root,
-        root ? (int)root.isDirectory() : -1
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        , static_cast<unsigned>(freeBeforeOpen),
-        static_cast<unsigned>(
-            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT))
-#endif
-    );
-    if (root && root.isDirectory()) {
-        browserStorageReady_ = true;
-        int seen = 0;
-        while (true) {
-            File entry = root.openNextFile();
-            if (!entry) break;
-            ++seen;
-
-            const bool isDir = entry.isDirectory();
-            const char* name = browserBasename(entry.name());
-            if (browserNameIsVisible(name)) {
-                if (isDir) {
-                    ++directoryCount_;
-                } else if (browserNameIsMidi(name)) {
-                    ++fileCount_;
-                }
-            }
-            entry.close();
-        }
-        root.close();
-        totalEntries_ = (hasParentEntry() ? 1 : 0) +
-                        directoryCount_ + fileCount_;
-        Serial.printf(
-            "[SMF-BROWSE] scanned=%d dirs=%d files=%d complete=1"
-#if defined(ESP32) || defined(ESP_PLATFORM)
-            " freeAfter=%u"
-#endif
-            "\n",
-            seen, directoryCount_, fileCount_
-#if defined(ESP32) || defined(ESP_PLATFORM)
-            , static_cast<unsigned>(
-                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT))
-#endif
-        );
-    } else {
-        if (root) root.close();
-        Serial.println("[SMF-BROWSE] complete=0 reason=root-unavailable");
-    }
-#endif
-    const int total = entryCount();
-    if (selection_ >= total) selection_ = total > 0 ? total - 1 : 0;
-    if (selection_ < 0) selection_ = 0;
-    ensureSelectionVisible(kBrowserVisibleRows);
-}
-
-void SmfPlayerPage::fillVisibleEntries() {
-    visibleWindowStart_ = scroll_;
-    for (BrowserRow& row : browserRows_) row = {};
-
-    if (hasParentEntry() && scroll_ == 0) {
-        browserRows_[0].logicalIndex = 0;
-        std::snprintf(browserRows_[0].displayName,
-                      sizeof(browserRows_[0].displayName), "..");
-    }
-
-#ifdef ARDUINO
-    File root = SD.open(currentPath_.c_str());
-    if (!root || !root.isDirectory()) {
-        if (root) root.close();
-        browserStorageReady_ = false;
-        directoryCount_ = 0;
-        fileCount_ = 0;
-        totalEntries_ = 0;
-        Serial.println("[SMF-BROWSE] window.open failed");
-        return;
-    }
-
-    const int parentOffset = hasParentEntry() ? 1 : 0;
-    const int requiredRows =
-        std::min(kBrowserVisibleRows, std::max(0, totalEntries_ - scroll_));
-    int filledRows = hasParentEntry() && scroll_ == 0 ? 1 : 0;
-    int directoryIndex = 0;
-    int fileIndex = 0;
-    while (filledRows < requiredRows) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-
-        const bool isDir = entry.isDirectory();
-        const char* name = browserBasename(entry.name());
-        int logicalIndex = -1;
-        if (browserNameIsVisible(name)) {
-            if (isDir) {
-                logicalIndex = parentOffset + directoryIndex++;
-            } else if (browserNameIsMidi(name)) {
-                logicalIndex = parentOffset + directoryCount_ + fileIndex++;
-            }
-        }
-
-        const int slot = logicalIndex - scroll_;
-        if (slot >= 0 && slot < kBrowserVisibleRows) {
-            BrowserRow& row = browserRows_[slot];
-            row.logicalIndex = logicalIndex;
-            std::snprintf(row.displayName, sizeof(row.displayName), "%s", name);
-            ++filledRows;
-        }
-        entry.close();
-    }
-    root.close();
-#endif
-}
-
-bool SmfPlayerPage::resolveEntry(int logicalIndex,
-                                 std::string& name,
-                                 bool& isDirectory) const {
-    name.clear();
-    isDirectory = false;
-    if (hasParentEntry() && logicalIndex == 0) {
-        name = "..";
-        isDirectory = true;
-        return true;
-    }
-
-#ifdef ARDUINO
-    const int parentOffset = hasParentEntry() ? 1 : 0;
-    const bool targetIsDirectory =
-        logicalIndex >= parentOffset &&
-        logicalIndex < parentOffset + directoryCount_;
-    const int targetOrdinal = targetIsDirectory
-        ? logicalIndex - parentOffset
-        : logicalIndex - parentOffset - directoryCount_;
-    if (targetOrdinal < 0) return false;
-
-    File root = SD.open(currentPath_.c_str());
-    if (!root || !root.isDirectory()) {
-        if (root) root.close();
-        return false;
-    }
-
-    int ordinal = 0;
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-        const bool entryIsDirectory = entry.isDirectory();
-        const char* entryName = browserBasename(entry.name());
-        const bool matches = browserNameIsVisible(entryName) &&
-            (targetIsDirectory
-                 ? entryIsDirectory
-                 : (!entryIsDirectory && browserNameIsMidi(entryName)));
-        if (matches && ordinal++ == targetOrdinal) {
-            name = entryName;
-            isDirectory = entryIsDirectory;
-            entry.close();
-            root.close();
-            return true;
-        }
-        entry.close();
-    }
-    root.close();
-#else
-    (void)logicalIndex;
-#endif
-    return false;
-}
-
-bool SmfPlayerPage::navigateIntoDir(const std::string& dirName) {
-#ifdef ARDUINO
-    std::string newPath = currentPath_ + "/" + dirName;
-    if (!SD.exists(newPath.c_str())) return false;
-    currentPath_ = newPath;
-    selection_ = 0;
-    scroll_ = 0;
-    refreshFiles();
-    return true;
-#else
-    (void)dirName;
-    return false;
-#endif
-}
-
-bool SmfPlayerPage::navigateUpDir() {
-    if (currentPath_ == "/midi" || currentPath_.empty()) return false;
-    const std::size_t lastSlash = currentPath_.rfind('/');
-    if (lastSlash == std::string::npos || lastSlash == 0) {
-        currentPath_ = "/midi";
-    } else {
-        currentPath_ = currentPath_.substr(0, lastSlash);
-    }
-    if (currentPath_.size() < 5) currentPath_ = "/midi";
-    selection_ = 0;
-    scroll_ = 0;
-    refreshFiles();
-    return true;
-}
-
-bool SmfPlayerPage::hasParentEntry() const { return currentPath_ != "/midi"; }
-
-int SmfPlayerPage::entryCount() const {
-    return totalEntries_;
-}
-
-bool SmfPlayerPage::isDirEntry(int index) const {
-    if (hasParentEntry()) {
-        if (index == 0) return true;
-        --index;
-    }
-    return index >= 0 && index < directoryCount_;
-}
-
-const char* SmfPlayerPage::displayName(int index) const {
-    const int slot = index - visibleWindowStart_;
-    if (slot < 0 || slot >= kBrowserVisibleRows) return "?";
-    const BrowserRow& row = browserRows_[slot];
-    return row.logicalIndex == index ? row.displayName : "?";
-}
-
-bool SmfPlayerPage::playSelected() {
-    if (hasParentEntry() && selection_ == 0) {
-        navigateUpDir();
-        return true;
-    }
-
-    std::string selectedName;
-    bool selectedIsDirectory = false;
-    if (!resolveEntry(selection_, selectedName, selectedIsDirectory)) {
+bool SmfPlayerPage::loadMidiPath(const char* path) {
+    if (!path || path[0] == '\0') {
         UI::showToast("MIDI entry unavailable", 900);
-        return true;
-    }
-    if (selectedIsDirectory) {
-        if (!navigateIntoDir(selectedName)) {
-            UI::showToast("MIDI folder unavailable", 900);
-        }
         return true;
     }
 
@@ -333,13 +195,12 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
     const SmfPlayerSnapshot playerState = player_->snapshot();
-
-    std::string path = currentPath_ + "/" + selectedName;
-    if (!player_->requestLoad(path.c_str())) {
+    if (!player_->requestLoad(path)) {
         UI::showToast("Player queue busy", 1000);
         return true;
     }
     browserVisible_ = false;
+    muteMixerVisible_ = false;
     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     const bool followSeqtrak = clock.source == TransportClockSource::SeqtrakExternal;
     UI::showToast(playerState.tempoMode == SmfTempoMode::Project
@@ -425,7 +286,9 @@ void SmfPlayerPage::toggleGrooveTransport() {
 }
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
-    if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl || event.meta) {
+    const bool numericMuteHotkey = event.key >= '1' && event.key <= '9';
+    if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl ||
+        (event.meta && !numericMuteHotkey)) {
         return false;
     }
 
@@ -449,26 +312,24 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
 
     if (browserVisible_) {
-        if (event.scancode == GROOVEPUTER_UP) {
-            if (selection_ > 0) --selection_;
-            ensureSelectionVisible(kBrowserVisibleRows);
-            return true;
+        char activatedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
+        const auto result = GroovePuterUi::midiFileManager().handleEvent(
+            event, activatedPath, sizeof(activatedPath));
+        if (result == GroovePuterUi::MidiFileManager::EventResult::FileActivated) {
+            return loadMidiPath(activatedPath);
         }
-        if (event.scancode == GROOVEPUTER_DOWN) {
-            if (selection_ + 1 < entryCount()) ++selection_;
-            ensureSelectionVisible(kBrowserVisibleRows);
-            return true;
-        }
-        if (event.key == '\n' || event.key == '\r') return playSelected();
-        if (event.key == '\b') {
-            if (currentPath_ != "/midi") {
-                navigateUpDir();
-                return true;
+        if (result == GroovePuterUi::MidiFileManager::EventResult::CloseRequested) {
+            if (player_) {
+                const SmfPlayerSnapshot state = player_->snapshot();
+                if (state.state != SmfPlayerState::Unloaded &&
+                    state.state != SmfPlayerState::Error) {
+                    browserVisible_ = false;
+                    return true;
+                }
             }
             return false;
         }
-        if (event.key == 'r' || event.key == 'R') {
-            refreshFiles();
+        if (result == GroovePuterUi::MidiFileManager::EventResult::Consumed) {
             return true;
         }
         if (event.key == 'm' || event.key == 'M') {
@@ -505,6 +366,125 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
     if (!player_) return false;
     const SmfPlayerSnapshot state = player_->snapshot();
+
+    if (event.key >= '1' && event.key <= '9') {
+        const unsigned hotkeySlot =
+            static_cast<unsigned>(event.key - '1');
+        uint16_t trackIndex = 0;
+        bool muted = false;
+        if (toggleAudibleTrackHotkey(
+                smfTrackInspectorState().snapshot(),
+                static_cast<int>(hotkeySlot),
+                &trackIndex,
+                &muted)) {
+            char toast[32];
+            std::snprintf(toast, sizeof(toast),
+                          "MIDI %u TRK %02u %s",
+                          hotkeySlot + 1u,
+                          static_cast<unsigned>(trackIndex + 1u),
+                          muted ? "MUTED" : "ON");
+            UI::showToast(toast, 700);
+        } else {
+            char toast[24];
+            std::snprintf(toast, sizeof(toast),
+                          "MIDI SLOT %u EMPTY",
+                          hotkeySlot + 1u);
+            UI::showToast(toast, 800);
+        }
+        return true;
+    }
+
+    if (event.key == 'u' || event.key == 'U') {
+        muteMixerVisible_ = !muteMixerVisible_;
+        if (muteMixerVisible_) {
+            performanceVisible_ = false;
+            channelInspectorVisible_ = false;
+            selectAudibleTrackRelative(smfTrackInspectorState().snapshot(), 0);
+        }
+        return true;
+    }
+
+    if (muteMixerVisible_) {
+        if (event.key == 'b' || event.key == 'B' || event.key == '\b') {
+            muteMixerVisible_ = false;
+            return true;
+        }
+        if (event.key == 'i' || event.key == 'I') {
+            muteMixerVisible_ = false;
+            channelInspectorVisible_ = true;
+            channelInspectorScroll_ = 0;
+            return true;
+        }
+        if (event.key == 'd' || event.key == 'D') {
+            muteMixerVisible_ = false;
+            performanceVisible_ = true;
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_UP ||
+            event.scancode == GROOVEPUTER_DOWN ||
+            event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT) {
+            int delta = 0;
+            if (event.scancode == GROOVEPUTER_UP) delta = -1;
+            else if (event.scancode == GROOVEPUTER_DOWN) delta = 1;
+            else if (event.scancode == GROOVEPUTER_LEFT) delta = -6;
+            else delta = 6;
+            if (!selectAudibleTrackRelative(
+                    smfTrackInspectorState().snapshot(), delta)) {
+                UI::showToast("NO AUDIBLE MIDI TRACKS", 800);
+            }
+            return true;
+        }
+        const bool toggleRequested =
+            event.key == 'k' || event.key == 'K' ||
+            event.key == '\n' || event.key == '\r';
+        if (toggleRequested) {
+            if (smfTrackMuteState().toggleSelected()) {
+                const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+                UI::showToast(tracks.selectedMuted()
+                                  ? "TRACK MUTED"
+                                  : "TRACK ON",
+                              700);
+            } else {
+                UI::showToast("NO MIDI TRACKS", 800);
+            }
+            return true;
+        }
+        if (event.key == 'a' || event.key == 'A') {
+            smfTrackMuteState().clear();
+            UI::showToast("ALL MIDI TRACKS ON", 800);
+            return true;
+        }
+        return true;
+    }
+
+    if (event.key == 'i' || event.key == 'I') {
+        channelInspectorVisible_ = !channelInspectorVisible_;
+        if (channelInspectorVisible_) {
+            performanceVisible_ = false;
+            muteMixerVisible_ = false;
+            channelInspectorScroll_ = 0;
+        }
+        return true;
+    }
+    if (channelInspectorVisible_) {
+        const SmfChannelInspectorSnapshot inspector = player_->channelInspector();
+        constexpr int kVisibleRows = 6;
+        const int maxScroll = std::max(
+            0, static_cast<int>(inspector.usedChannelCount()) - kVisibleRows);
+        if (event.scancode == GROOVEPUTER_UP) {
+            channelInspectorScroll_ = std::max(0, channelInspectorScroll_ - 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_DOWN) {
+            channelInspectorScroll_ = std::min(maxScroll, channelInspectorScroll_ + 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT) {
+            return true;
+        }
+    }
 
     if (event.scancode == GROOVEPUTER_LEFT) {
         player_->seekBars(event.shift ? -4 : -1);
@@ -568,6 +548,18 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         }
         return true;
     }
+    if (event.key == 'k' || event.key == 'K') {
+        if (smfTrackMuteState().toggleSelected()) {
+            const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+            UI::showToast(tracks.selectedMuted()
+                              ? "TRACK MUTED"
+                              : "TRACK ON",
+                          700);
+        } else {
+            UI::showToast("NO MIDI TRACKS", 900);
+        }
+        return true;
+    }
     if (event.key == 'v' || event.key == 'V') {
         const bool queued = player_->cycleVelocityBoost();
         UI::showToast(queued ? "MIDI: VELOCITY BOOST" : "MIDI PLAYER BUSY", 800);
@@ -588,6 +580,10 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'd' || event.key == 'D') {
         performanceVisible_ = !performanceVisible_;
+        if (performanceVisible_) {
+            channelInspectorVisible_ = false;
+            muteMixerVisible_ = false;
+        }
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
@@ -598,7 +594,9 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.key == 'b' || event.key == 'B' ||
         event.key == '\n' || event.key == '\r' || event.key == '\b') {
         browserVisible_ = true;
-        refreshFiles();
+        channelInspectorVisible_ = false;
+        muteMixerVisible_ = false;
+        GroovePuterUi::midiFileManager().open();
         return true;
     }
     if (event.key == 'm' || event.key == 'M') {
@@ -613,61 +611,32 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 }
 
 void SmfPlayerPage::drawHeader(IGfx& gfx) {
-    UI::drawStandardHeader(gfx, miniAcid_, performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER");
+    UI::drawStandardHeader(gfx, miniAcid_, muteMixerVisible_
+        ? "MIDI MUTES"
+        : (channelInspectorVisible_
+            ? "MIDI CHANNELS"
+            : (performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER")));
 }
 
 void SmfPlayerPage::drawContent(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
     if (browserVisible_) drawBrowser(gfx);
+    else if (muteMixerVisible_) drawMuteMixer(gfx);
+    else if (channelInspectorVisible_) drawChannelInspector(gfx);
     else if (performanceVisible_) drawPerformance(gfx);
     else drawNowPlaying(gfx);
 }
 
 void SmfPlayerPage::drawBrowser(IGfx& gfx) {
-    char header[48];
-    std::snprintf(header, sizeof(header), "MIDI LIBRARY  %.24s", currentPath_.c_str());
-    gfx.setTextColor(MusicVisuals::accentForStyle());
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), header);
-
-    const int total = entryCount();
-    if (total == 0) {
-        gfx.setTextColor(COLOR_LABEL);
-#ifdef ARDUINO
-        if (browserStorageReady_) {
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO MIDI FILES");
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "COPY .MID TO /MIDI");
-        } else {
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD UNAVAILABLE");
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "R: RETRY BROWSER");
-        }
-#else
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD BROWSER: CARDPUTER ONLY");
-#endif
-        return;
-    }
-
-    for (int row = 0; row < kBrowserVisibleRows; ++row) {
-        const int index = scroll_ + row;
-        if (index >= total) break;
-        const int y = LayoutManager::lineY(row + 1);
-        const bool selected = index == selection_;
-        if (selected) {
-            gfx.fillRect(Layout::CONTENT.x + 2, y - 1,
-                         Layout::CONTENT.w - 4, gfx.fontHeight() + 2,
-                         MusicVisuals::accentForStyle());
-        }
-        gfx.setTextColor(selected ? COLOR_BG : COLOR_TEXT);
-        char line[42];
-        const bool isDir = isDirEntry(index);
-        std::snprintf(line, sizeof(line), "%c%s%.32s",
-                      selected ? '>' : ' ', isDir ? "/" : " ", displayName(index));
-        gfx.drawText(Layout::COL_1 + 2, y, line);
-    }
+    const Rect midiBrowserBounds(Layout::CONTENT.x, Layout::CONTENT.y,
+                                 Layout::CONTENT.w, Layout::CONTENT.h);
+    GroovePuterUi::midiFileManager().draw(gfx, midiBrowserBounds, "PLAYER");
 }
 
 void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     player_ = smfPlayerService();
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
 
     const bool playing = state.state == SmfPlayerState::Playing;
     const bool armed = state.state == SmfPlayerState::Armed;
@@ -716,13 +685,27 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                   current,
                                   total,
                                   stateColor);
+    drawMidiWaveOverlay(gfx, state,
+                        Rect(Layout::COL_1 + 2, LayoutManager::lineY(3) + 1,
+                             Layout::CONTENT.w - 16, 9),
+                        MusicVisuals::secondaryForStyle());
 
     const unsigned percent = static_cast<unsigned>((static_cast<uint64_t>(current) * 100u) / total);
-    gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
-                  static_cast<unsigned long>(state.bar),
-                  static_cast<unsigned long>(state.totalBars),
-                  percent);
+    gfx.setTextColor(tracks.selectedMuted() ? COLOR_WARN : COLOR_LABEL);
+    if (tracks.trackCount > 0) {
+        std::snprintf(line, sizeof(line), "%lu/%lu BAR %u%%  TRK %u/%u %s",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent,
+                      static_cast<unsigned>(tracks.selectedTrack + 1u),
+                      static_cast<unsigned>(tracks.trackCount),
+                      tracks.selectedMuted() ? "MUTE" : "ON");
+    } else {
+        std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent);
+    }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
     if (state.tempoMode == SmfTempoMode::Project) {
@@ -748,15 +731,237 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), line);
 
-    gfx.setTextColor(COLOR_TEXT);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
-                     ? "G FOLLOW   SPACE MIDI   R RESTART"
-                     : "G GROOVE   SPACE MIDI   R RESTART");
+    const CardputerUsbMidiStatusSnapshot usb = snapshotCardputerUsbMidiStatus();
+    const char* usbState = !usb.registered || !usb.mounted
+        ? "WAIT"
+        : (usb.suspended ? "SLEEP" : (usb.stalled ? "BLOCKED" : "READY"));
+    gfx.setTextColor(usb.stalled || !usb.mounted ? COLOR_DANGER : COLOR_TEXT);
+    std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
+                  usbState,
+                  static_cast<unsigned>(usb.mounted),
+                  static_cast<unsigned long>(usb.txAccepted),
+                  static_cast<unsigned long>(usb.txRejected),
+                  static_cast<unsigned long>(usb.txRejectedEndpointBusy),
+                  static_cast<unsigned long>(usb.txRejectedEndpointStalled),
+                  static_cast<unsigned>(usb.queuedSmfEvents));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     const bool usbBlocked = std::strncmp(state.message, "USB MIDI BLOCKED", 16) == 0;
     gfx.setTextColor((error || usbBlocked) ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
+}
+
+void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
+    const SmfTrackMuteSnapshot mute = smfTrackMuteState().snapshot();
+    const SmfTrackInspectorSnapshot inspector = smfTrackInspectorState().snapshot();
+    uint16_t audible[kSmfTrackInspectorMaxTracks]{};
+    const int audibleCount = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(kSmfTrackInspectorMaxTracks));
+    char line[64];
+
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "MUTED %u / %u",
+                  mutedAudibleTrackCount(mute, inspector),
+                  static_cast<unsigned>(audibleCount));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+
+    if (audibleCount == 0) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO AUDIBLE MIDI TRACKS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "TEMPO-ONLY TRACKS ARE HIDDEN");
+        return;
+    }
+
+    constexpr int kVisibleRows = 6;
+    int selectedPosition = audibleTrackPosition(
+        audible,
+        audibleCount,
+        mute.selectedTrack);
+    if (selectedPosition < 0) selectedPosition = 0;
+    int start = selectedPosition - 2;
+    start = std::max(
+        0,
+        std::min(start, std::max(0, audibleCount - kVisibleRows)));
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int visibleIndex = start + row;
+        if (visibleIndex >= audibleCount) break;
+        const uint16_t trackIndex = audible[visibleIndex];
+        const SmfTrackInfoSnapshot& info = inspector.tracks[trackIndex];
+        const bool selectedRow = visibleIndex == selectedPosition;
+        const bool muted = trackMuted(mute, trackIndex);
+        const char hotkey = visibleIndex < 9
+            ? static_cast<char>('1' + visibleIndex)
+            : ' ';
+        const int y = LayoutManager::lineY(row + 1);
+
+        if (selectedRow) {
+            gfx.fillRect(Layout::COL_1 - 2, y - 1,
+                         Layout::CONTENT.w - 10, 11, COLOR_PANEL);
+        }
+
+        char fallback[kSmfTrackNameBytes]{};
+        std::snprintf(fallback, sizeof(fallback), "TRACK %02u",
+                      static_cast<unsigned>(trackIndex + 1u));
+        const char* name = info.hasName() ? info.name : fallback;
+        char channel[5]{};
+        char program[6]{};
+        formatTrackChannel(info, channel, sizeof(channel));
+        formatTrackProgram(info, program, sizeof(program));
+        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-15.15s %-3s %-4s",
+                      hotkey,
+                      selectedRow ? '>' : ' ',
+                      static_cast<unsigned>(trackIndex + 1u),
+                      muted ? "MUT" : "ON",
+                      name,
+                      channel,
+                      program);
+        gfx.setTextColor(muted
+                             ? COLOR_WARN
+                             : (selectedRow
+                                  ? MusicVisuals::accentForStyle()
+                                  : COLOR_TEXT));
+        gfx.drawText(Layout::COL_1, y, line);
+    }
+
+    gfx.setTextColor(COLOR_LABEL);
+    std::snprintf(line, sizeof(line), "HOT 1-9 ROW %u/%u TRK %02u",
+                  static_cast<unsigned>(selectedPosition + 1),
+                  static_cast<unsigned>(audibleCount),
+                  static_cast<unsigned>(audible[selectedPosition] + 1u));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
+}
+
+void SmfPlayerPage::drawMidiWaveOverlay(
+        IGfx& gfx,
+        const SmfPlayerSnapshot& state,
+        const Rect& region,
+        IGfxColor color) {
+    const SmfMidiVisualSnapshot& visual = state.midiVisual;
+    if (visual.epoch != lastMidiVisualEpoch_) {
+        lastMidiVisualEpoch_ = visual.epoch;
+        lastMidiVisualPulse_ = visual.pulseCounter;
+        midiWaveEnvelope_ = 0;
+        midiWavePhase_ = 0;
+    } else if (state.state == SmfPlayerState::Playing &&
+               visual.pulseCounter != lastMidiVisualPulse_) {
+        lastMidiVisualPulse_ = visual.pulseCounter;
+        // Fast attack: even a quiet accepted NoteOn must visibly move the
+        // progress waveform. Velocity still controls the remaining range.
+        midiWaveEnvelope_ = std::max<uint8_t>(64, visual.velocity);
+        midiWavePhase_ = static_cast<uint16_t>(
+            midiWavePhase_ + visual.note * 3u + visual.channel * 11u + 7u);
+    } else if (midiWaveEnvelope_ > 0) {
+        midiWaveEnvelope_ = midiWaveEnvelope_ > 5u
+            ? static_cast<uint8_t>(midiWaveEnvelope_ - 5u)
+            : 0u;
+    }
+
+    const int midY = region.y + region.h / 2;
+    gfx.drawLine(region.x, midY, region.x + region.w - 1, midY, COLOR_LABEL);
+    if (midiWaveEnvelope_ == 0 || region.w < 3 || region.h < 3) return;
+
+    const int maxAmplitude = std::max(1, region.h / 2);
+    const int amplitude = std::min(
+        maxAmplitude,
+        1 + ((maxAmplitude - 1) * static_cast<int>(midiWaveEnvelope_) + 63) / 127);
+    const int cycles = 2 + static_cast<int>(visual.note % 7u);
+    int previousX = region.x;
+    int previousY = midY;
+    constexpr int kPoints = 32;
+    for (int point = 1; point < kPoints; ++point) {
+        const int x = region.x + (point * (region.w - 1)) / (kPoints - 1);
+        const int phase = static_cast<int>(
+            (midiWavePhase_ + point * cycles * 4u) & 63u);
+        const int triangle = phase < 32 ? phase - 16 : 48 - phase;
+        const int accent = ((point + static_cast<int>(visual.pulseCounter)) & 7) == 0
+            ? (visual.velocity > 96 ? 5 : 2)
+            : 0;
+        const int y = midY - ((triangle + accent) * amplitude) / 16;
+        gfx.drawLine(previousX, previousY, x, y, color);
+        previousX = x;
+        previousY = y;
+    }
+    midiWavePhase_ = static_cast<uint16_t>(midiWavePhase_ + 3u + cycles);
+}
+
+void SmfPlayerPage::drawChannelInspector(IGfx& gfx) {
+    player_ = smfPlayerService();
+    const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfChannelInspectorSnapshot inspector = player_
+        ? player_->channelInspector()
+        : SmfChannelInspectorSnapshot{};
+
+    char line[64];
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "F%u PPQN %u TRK %u USED %u",
+                  static_cast<unsigned>(inspector.format),
+                  static_cast<unsigned>(inspector.division),
+                  static_cast<unsigned>(inspector.trackCount),
+                  static_cast<unsigned>(inspector.usedChannelCount()));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+
+    uint8_t used[kSmfMidiChannelCount]{};
+    int usedCount = 0;
+    for (uint8_t channel = 0; channel < kSmfMidiChannelCount; ++channel) {
+        if ((inspector.usedChannelMask & (1u << channel)) != 0) {
+            used[usedCount++] = channel;
+        }
+    }
+
+    constexpr int kVisibleRows = 6;
+    const int maxScroll = std::max(0, usedCount - kVisibleRows);
+    channelInspectorScroll_ = std::max(0, std::min(channelInspectorScroll_, maxScroll));
+
+    if (usedCount == 0) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO NOTE OR PROGRAM CHANNELS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "LOAD A MIDI FILE FIRST");
+        return;
+    }
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int index = channelInspectorScroll_ + row;
+        if (index >= usedCount) break;
+        const uint8_t channel = used[index];
+        const SmfChannelInfo& info = inspector.channels[channel];
+
+        char low[5] = "--";
+        char high[5] = "--";
+        if (info.hasNotes()) {
+            formatMidiNote(info.minNote, low, sizeof(low));
+            formatMidiNote(info.maxNote, high, sizeof(high));
+        }
+        char program[6] = "P---";
+        if (info.hasProgramChange) {
+            std::snprintf(program, sizeof(program), "P%03u",
+                          static_cast<unsigned>(info.firstProgram));
+        }
+        const unsigned shownNotes = static_cast<unsigned>(
+            info.noteCount > 9999u ? 9999u : info.noteCount);
+        const unsigned shownPoly = static_cast<unsigned>(
+            info.maxPolyphony > 99u ? 99u : info.maxPolyphony);
+        std::snprintf(line, sizeof(line),
+                      "C%02u N%04u %-3s-%-3s V%03u X%02u %s %-3s",
+                      static_cast<unsigned>(channel + 1u),
+                      shownNotes,
+                      low,
+                      high,
+                      static_cast<unsigned>(info.averageVelocity()),
+                      shownPoly,
+                      program,
+                      inspectorRouteLabel(state.rawRouting, channel));
+        gfx.setTextColor(info.likelyDrums
+                             ? MusicVisuals::accentForStyle()
+                             : COLOR_TEXT);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(row + 1), line);
+    }
+
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7),
+                 "I PLAYER UP/DN SCROLL P=PROGRAM");
 }
 
 void SmfPlayerPage::drawPerformance(IGfx& gfx) {
@@ -816,27 +1021,23 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load",
-                               seqMaster ? "C Master  G Follow  T Tempo"
-                                         : "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "ENT Open R Name X Delete",
+                               seqMaster ? "F Refresh C Master G Follow"
+                                         : "F Refresh C Master T Tempo");
+    } else if (muteMixerVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
+                               "1-9 Hot ENT/K Sel A AllOn");
+    } else if (channelInspectorVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
+                               "U Mutes D Perf B Files");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files",
-                               seqMaster ? "C Master  G Follow  T Tempo"
-                                         : "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "D Player B Files I Channels",
+                               seqMaster ? "U Mutes G Follow T Tempo"
+                                         : "U Mutes Space MIDI T Tempo");
     } else {
         UI::drawStandardFooter(gfx,
-                               seqMaster ? "Space MIDI  G Follow  C Master"
-                                         : "Space MIDI  C Master  R Restart",
-                               "B Files  T Tempo  V Vel  X Panic");
+                               seqMaster ? "Space MIDI G Follow C Master"
+                                         : "Space MIDI C Master R RESTART",
+                               "1-9 SMF Mute U Table I Info");
     }
-}
-
-void SmfPlayerPage::ensureSelectionVisible(int visibleRows) {
-    if (visibleRows < 1) visibleRows = 1;
-    if (selection_ < scroll_) scroll_ = selection_;
-    if (selection_ >= scroll_ + visibleRows) scroll_ = selection_ - visibleRows + 1;
-    const int maxScroll = std::max(0, entryCount() - visibleRows);
-    if (scroll_ > maxScroll) scroll_ = maxScroll;
-    if (scroll_ < 0) scroll_ = 0;
-    if (visibleWindowStart_ != scroll_) fillVisibleEntries();
 }

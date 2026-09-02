@@ -1,5 +1,12 @@
 #pragma once
 
+// The MIDI Player implementation keeps its accepted Stage 1A source intact
+// and layers Stage 1B through a thin wrapper translation unit. Consumers must
+// see the public method names; only smf_player_page.cpp is redirected to the
+// legacy/base method names by smf_player_page.h.
+#define GROOVEPUTER_SMF_PLAYER_WRAPPER_CONSUMER 1
+#define GROOVEPUTER_SEQUENCER_HUB_WRAPPER_CONSUMER 1
+
 #include <memory>
 
 #include "ui_core.h"
@@ -9,6 +16,7 @@
 #include "workflow_mode.h"
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/state/ui_session_state.h"
 
 class IAudioRecorder;
 class PerformanceKeyboard;
@@ -52,6 +60,7 @@ private:
   std::unique_ptr<IPage> createPage_(int index);
   IPage* getPage_(int index); // Returns existing or creates on-demand
   void transitionToPage_(int index, int context = 0);
+  void switchWorkflow_(int direction);
 
   // Lightweight on desktop; on Cardputer this restores schema-v1/v2 MIDI
   // transport controls before the first user event.
@@ -86,6 +95,9 @@ private:
   void showToast(const char* msg, int durationMs = 1500);
   void updateCyclePulse_();
   void handlePaging_();
+  void captureUiSession_();
+  void scheduleUiSessionSave_();
+  void servicePersistence_();
 
 private:
   char toastMsg_[32] = {0};
@@ -95,4 +107,11 @@ private:
   unsigned long cycle_pulse_until_ms_ = 0;
   VisualStyle applied_visual_style_ = VisualStyle::MINIMAL;
   bool visual_style_initialized_ = false;
+  GroovePuterState::UiSessionState ui_session_{};
+  bool ui_session_loaded_ = false;
+  bool ui_session_save_pending_ = false;
+  unsigned long ui_session_save_due_ms_ = 0;
+  uint32_t observed_scene_revision_ = 0;
+  bool recovery_save_pending_ = false;
+  unsigned long recovery_save_due_ms_ = 0;
 };

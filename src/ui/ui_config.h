@@ -1,6 +1,7 @@
 #pragma once
 
 namespace UI {
-    // Total number of UI pages. Page 13 is the standalone realtime MIDI Player.
-    static constexpr int kPageCount = 14;
+    // Fourteen established pages plus Phrase (product) and standalone
+    // Sampler, plus PHRASE CORE split out as its own page in PHW-P1.
+    static constexpr int kPageCount = 17;
 }

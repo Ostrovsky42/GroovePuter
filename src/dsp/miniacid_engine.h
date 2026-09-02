@@ -14,8 +14,10 @@
 #include "../../scene_storage.h"
 #include "../../scenes.h"
 #include "mono_synth_voice.h"
+#include "clamped_live_note_identity.h"
 #include "mini_tb303.h"
 #include "swappable_synth_voice.h"
+#include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
 #include "tube_distortion.h"
@@ -229,6 +231,12 @@ public:
   std::string currentDrumEngineName() const;
   std::string currentSceneName() const;
   std::vector<std::string> availableSceneNames() const;
+  bool autoSaveSceneRecovery();
+  bool lastSceneLoadRecoveredAutosave() const {
+    return lastSceneLoadRecoveredAutosave_;
+  }
+  float mainVolume() const;
+  void setDeviceMasterVolume(float value);
   bool loadSceneByName(const std::string& name);
   bool saveSceneAs(const std::string& name);
   bool createNewSceneWithName(const std::string& name);
@@ -289,6 +297,7 @@ public:
   void updateDrumReverbMix(float value);
   void updateDrumReverbDecay(float value);
   void setGrooveboxMode(GrooveboxMode mode);
+  void activateCommittedGrooveboxModeRuntime(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
   void setGrooveFlavor(int flavor);
@@ -381,7 +390,10 @@ private:
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
 
-  std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
+  OutputOwnedSynthVoiceSlot synthVoices_[NUM_303_VOICES] = {
+      OutputOwnedSynthVoiceSlot(GroovePuterOutput::Track::SynthA),
+      OutputOwnedSynthVoiceSlot(GroovePuterOutput::Track::SynthB),
+  };
   std::string synthEngineNames_[NUM_303_VOICES];
 
   PatternPublishingDrumVoice drums;
@@ -427,7 +439,7 @@ private:
 
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
-  int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
+  ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   uint32_t liveInputEpoch_ = 0;
@@ -437,7 +449,6 @@ private:
   int songPlaybackSlot_ = 0;
   bool liveMixMode_ = false;
   int songBarIndex_ = -1;
-  bool songReverseTogglePending_ = false;
   std::atomic<int8_t> currentPage_{0};
   std::atomic<int8_t> targetPage_{-1};
   std::atomic<bool> pageLoading_{false};
@@ -523,7 +534,6 @@ private:
 public:
   PerfStats perfStats;
   ISampleStore* sampleStore = nullptr;
-  std::unique_ptr<float[]> samplerOutBuffer;
   SampleIndex sampleIndex;
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
   std::unique_ptr<TapeFX> tapeFX;
@@ -534,7 +544,7 @@ public:
 
 private:
   GrooveboxModeManager modeManager_{*this};
-  GenreManager genreManager_;
+  GenreManager genreManager_{sceneManager_};
 
   uint32_t ditherState_ = 12345;
   bool tapeControlCached_ = false;
@@ -564,6 +574,8 @@ private:
 
   bool testToneEnabled_ = false;
   float testTonePhase_ = 0.0f;
+  bool deviceMasterVolumeOverride_ = false;
+  bool lastSceneLoadRecoveredAutosave_ = false;
 
   static float softLimit(float x) {
       float absX = (x > 0) ? x : -x;

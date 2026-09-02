@@ -1,0 +1,27 @@
+{
+  "ambiguous_or_unmapped_event_count": 664,
+  "atlas_sha256": "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd",
+  "bar_counts": {
+    "1": 302,
+    "2": 93,
+    "4": 17,
+    "5": 1
+  },
+  "candidate_decisions": {
+    "AUDITION_REVIEW": 2,
+    "HOLD_SINGLE_ROOT": 7
+  },
+  "claim_boundary": "NOVEL_CANDIDATE is not emitted by Pass 2 hardening; ACCEPT belongs to Stage 7 curation/listening.",
+  "distance_schema": "ATLAS_PASS2_DISTANCE_V2",
+  "events": 9377,
+  "patterns": 413,
+  "recurring_hardened_candidates": 9,
+  "research_one_bar_patterns": 263,
+  "research_source_structural_groups": 239,
+  "role_mapping_schema": "ATLAS_ROLE_MAPPING_V2",
+  "runtime_topology_schema": "GROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2",
+  "schema_version": "2.6.0",
+  "stage7_audition_policy": "Up to five aggregate candidates may enter a temporary listening harness; audition is not runtime admission.",
+  "stage7_production_admission": "CLOSED",
+  "support_schema": "ATLAS_PASS2_SUPPORT_V2"
+}

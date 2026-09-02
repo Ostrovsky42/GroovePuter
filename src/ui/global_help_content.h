@@ -1,195 +1,346 @@
 #pragma once
 
+#include "workflow_mode.h"
+
 namespace HelpContent {
 
 constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
-    "[ / ]      Next/Prev UI page",
-    "Alt+[ / ]  Next/Prev Patt page",
-    "Alt/Ctrl+1..0  Jump to UI page",
-    "Alt+V      Groove Lab",
-    "Alt+\\      Switch visual style",
-    "Alt+M      Song mode ON/OFF",
-    "Alt+W      Waveform overlay",
-    "Alt/Ctrl+H Toggle this help",
-    "ESC/Bksp   Back",
+    "Alt+H       Toggle this help",
+    "Ctrl+Z      Undo last edit",
+    "Up/Down     Scroll help",
+    "Left/Right  Help top/end",
+    "Fn+M        Workspace launcher",
+    "Fn+Tab      Next workflow",
+    "Fn+Sh+Tab   Previous workflow",
+    "[ / ]       Prev/next page",
+    "Fn+[ / ]    Prev/next workflow",
+    "Alt+[ / ]   Prev/next pattern page",
+    "Alt/Fn+1..0 Direct page jump",
+    "Space       Active transport",
+    "Alt+P       MIDI Player",
+    "Alt+V       Groove Lab",
+    "Alt+W       Waveform except CORE",
+    "Alt+\\       Theme CARBON/CYBER",
+    "Alt+X       LiveMix ON/OFF",
+    "Alt+M       Song mode ON/OFF",
+    "1..0        Track mute fallback",
+    "Esc/Bksp/`  Back / previous page",
+    "Ctrl+Alt+Bksp Project reset",
     "",
 };
 
-
 constexpr const char* kGenreLines[] = {
-    "=== GENRE PAGE ===",
-    "Arrows     Move in active lane",
-    "Tab        Genre/Texture/Presets/Apply",
-    "Enter      Apply selected",
-    "Space/M    Toggle Apply mode (SND/S+P/S+T)",
-    "1..8       Apply preset",
-    "0          Random Genre+Texture",
-    "C          Curated/Advanced (recommended/all)",
-    "G          Groove mode Acid/Minimal",
+    "=== GENRE 1/2 ===",
+    "Genre = corridor/vocabulary",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Genre/variant/rhythm/apply",
+    "Alt+L/R     Morph selected variant",
+    "Enter       Apply profile/materialize",
+    "M           Cycle apply mode",
+    "PROFILE     Keep existing patterns",
+    "MATERIALIZE Regenerate patterns",
+    "RHYTHM AUTO or fixed identity",
+    "No texture or feel changes",
 };
 
-constexpr const char* kPatternLines[] = {
-    "=== PATTERN EDIT (303) ===",
-    "Q..I       Select pattern 1..8",
-    "B          Toggle bank A/B",
-    "Arrows     Move cursor",
-    "Shift/Ctrl+Arrows  Extend selection",
-    "A/Z        Note +/-",
-    "S/X        Octave +/-",
-    "FN+Arrows  Up/Dn note, L/R oct",
-    "Alt/Ctrl+A Accent (uniform if selected)",
-    "Alt/Ctrl+S Slide (uniform if selected)",
-    "R          Clear step (REST)",
-    "Bksp/Del   Clear step",
-    "Alt+Bksp   Clear whole pattern",
-    "G          Randomize pattern",
-    "Ctrl+C/V   Copy/Paste",
-    "Ctrl+C     Lock selection frame",
-    "Arrows     Move locked frame",
-    "ESC/`/~    Clear selection",
-    "Alt+Esc    Chain mode (local)",
+constexpr const char* kSynthALines[] = {
+    "=== SYNTH A PATTERN ===",
+    "Tab         Pattern/automation",
+    "Q..I        Select pattern 1..8",
+    "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
+    "Arrows      Move cursor",
+    "Shift/Ctrl+Arrows Select area",
+    "A/Z         Note +/-",
+    "S/X         Octave +/-",
+    "Alt+Arrows  Rotate/parameter edit",
+    "Alt/Ctrl+A  Accent",
+    "Alt/Ctrl+S  Slide",
+    "F           Cycle step FX",
+    "R/Bksp/Del  Clear step (REST)",
+    "Alt+Bksp    Clear whole pattern",
+    "G           Randomize pattern",
+    "Ctrl+C/V    Copy/Paste",
+    "Esc/`       Clear selection",
 };
 
-constexpr const char* kTB303Lines[] = {
-    "=== TB303 PARAMS ===",
-    "Left/Right Focus control",
-    "Up/Down    Adjust value",
-    "Ctrl       Fine adjust (arrows)",
-    "A/Z S/X D/C F/V  Quick adjust",
-    "T/G        Oscillator +/-",
-    "Y/H        Filter type +/-",
-    "N/M        Distortion/Delay",
-    "Ctrl+Z/X/C/V  Reset parameter",
+constexpr const char* kSynthBLines[] = {
+    "=== SYNTH B PATTERN ===",
+    "Tab         Pattern/automation",
+    "Q..I        Select pattern 1..8",
+    "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
+    "Arrows      Move cursor",
+    "Shift/Ctrl+Arrows Select area",
+    "A/Z         Note +/-",
+    "S/X         Octave +/-",
+    "Alt+Arrows  Rotate/parameter edit",
+    "Alt/Ctrl+A  Accent",
+    "Alt/Ctrl+S  Slide",
+    "F           Cycle step FX",
+    "R/Bksp/Del  Clear step (REST)",
+    "Alt+Bksp    Clear whole pattern",
+    "G           Randomize pattern",
+    "Ctrl+C/V    Copy/Paste",
+    "Esc/`       Clear selection",
+};
+
+constexpr const char* kSynthASoundLines[] = {
+    "=== SYNTH A SOUND ===",
+    "Tab         Main/More parameters",
+    "Left/Right  Focus or change value",
+    "Up/Down     Value or row",
+    "Shift/Ctrl  Fine adjustment",
+    "Ctrl+1/2    Pattern bank",
+    "Q..I        Pattern when NOTE off",
+    "A/Z S/X D/C F/V Quick controls",
+    "T/G         Oscillator +/-",
+    "Y/H         Filter type +/-",
+    "N/M         Distortion/Delay",
+    "Ctrl+A/X/C/V Reset parameter",
+};
+
+constexpr const char* kSynthBSoundLines[] = {
+    "=== SYNTH B SOUND ===",
+    "Tab         Main/More parameters",
+    "Left/Right  Focus or change value",
+    "Up/Down     Value or row",
+    "Shift/Ctrl  Fine adjustment",
+    "Ctrl+1/2    Pattern bank",
+    "Q..I        Pattern when NOTE off",
+    "A/Z S/X D/C F/V Quick controls",
+    "T/G         Oscillator +/-",
+    "Y/H         Filter type +/-",
+    "N/M         Distortion/Delay",
+    "Ctrl+A/X/C/V Reset parameter",
 };
 
 constexpr const char* kDrumLines[] = {
-    "=== DRUM PAGE ===",
-    "Q..I       Select pattern 1..8",
-    "B          Toggle bank A/B",
-    "Arrows     Move cursor",
-    "Shift/Ctrl+Arrows  Extend selection",
-    "Enter      Toggle hit",
-    "A          Toggle accent",
-    "G          Randomize",
-    "Ctrl+G     Randomize voice",
-    "Alt+G      Chaos random",
-    "Ctrl+C/V   Copy/Paste",
-    "Ctrl+C     Lock selection frame",
-    "Arrows     Move locked frame",
-    "ESC/`/~    Clear selection",
-    "Alt+Esc    Chain mode (local)",
+    "=== DRUMS ===",
+    "Tab         Grid/feel/auto/samples",
+    "Q..I        Select pattern 1..8",
+    "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
+    "Arrows      Move cursor",
+    "Shift/Ctrl+Arrows Select area",
+    "Enter       Toggle hit",
+    "A           Toggle accent",
+    "G           Randomize pattern",
+    "Ctrl+G      Randomize voice",
+    "Alt+G       Chaos randomize all",
+    "Bksp/Del    Clear hit/selection",
+    "Alt+Bksp    Clear whole pattern",
+    "Ctrl+C/V    Copy/Paste",
+    "SAMPLES M   Layer ON/OFF",
+    "SAMPLES Bksp Clear pad sample",
+    "SAMPLES Enter Preview pad",
+    "SAMPLES Q-I Audition pads 1..8",
+    "Space       Transport on every tab",
+    "Esc/`       Clear selection",
 };
 
 constexpr const char* kSongLines[] = {
-    "=== SONG PAGE (LOCAL) ===",
-    "Arrows     Move cursor",
-    "Enter      Quick Jump to Editor",
-    "Shift/Ctrl+Arrows  Select area",
-    "Ctrl+C     Lock selection frame",
-    "Arrows     Move locked frame",
-    "Ctrl+V     Paste + clear selection",
-    "ESC/`/~    Clear selection",
-    "Q..I       Assign pattern 1..8",
-    "Bksp/Tab   Clear cell",
-    "M          Toggle song mode",
-    "Ctrl+L     Loop mode",
-    "G          Generate cell",
-    "G x2       Generate row",
-    "Alt+G      Generate selection",
-    "Alt+B      Toggle edit slot A/B",
-    "Ctrl+B     Toggle play slot A/B",
-    "B          Flip pattern bank (A<->B)",
-    "Alt+X      LiveMix ON/OFF",
-    "Ctrl+R     Reverse playback",
-    "Ctrl+M/N   Merge/Alternate",
-    "V          Toggle DR/VO lane",
-    "X          Toggle split compare",
-    "Alt+.      Clear full song",
+    "=== SONG ===",
+    "Arrows      Move cursor",
+    "Shift/Ctrl+Arrows Select area",
+    "Enter       Jump to pattern editor",
+    "Q..I        Assign existing pattern",
+    "G           Generate/materialize cell",
+    "G x2        Generate current row",
+    "Alt+G       Generate selection",
+    "Ctrl+G      Cycle generator mode",
+    "B           Flip pattern bank",
+    "Ctrl+N/M    Insert/delete row",
+    "Alt+B       Edit Song slot A/B",
+    "Ctrl+B      Play Song slot A/B",
+    "V           Toggle DR/VO lane",
+    "X           Split compare",
+    "L           Loop-lock playhead",
+    "Ctrl+L      Toggle loop mode",
+    "Ctrl+R      Reverse playback",
+    "Alt+X       LiveMix ON/OFF",
+    "Ctrl+C/V    Copy/Paste",
+    "Ctrl+1..8   Jump edit page 1..8",
+    "P           Cursor to playhead",
+    "Ctrl+W/S    Jump 8 rows",
+    "Ctrl+Alt+W/S Jump 32 rows",
+    "Alt+Q/E/R/T Save markers 1..4",
+    "Ctrl+Alt+Q/E/R/T Jump markers",
+    "Alt+,/.     Song top/end",
+    "Bksp/Tab    Clear cell",
+    "Alt+Bksp    Clear full Song",
 };
 
-constexpr const char* kProjectLines[] = {
-    "=== PROJECT PAGE ===",
-    "Arrows     Navigate",
-    "Enter      Activate control",
-    "G          Jump to Genre page",
+constexpr const char* kPhraseProductLines[] = {
+    "=== PHRASE ===",
+    "Up/Down     Focus field",
+    "Left/Right  Adjust focused field",
+    "TO          APPEND or EXPLICIT",
+    "Enter(TO)   Explicit -> Append",
+    "Enter(BAR)  Focus accepted bar",
+    "G           Generate at TO",
+    "P           Cycle DEPTH",
+    "LAST        Retrospective only",
+    "FREE/OCCUPIED/NO ROOM at TO",
 };
 
-constexpr const char* kTapeLines[] = {
-    "=== TAPE PAGE ===",
-    "X          Smart REC/PLAY/DUB workflow",
-    "A          CAPTURE (clear + REC + FX ON)",
-    "S          THICKEN (safe DUB x1 cycle)",
-    "D          WASH ON/OFF",
-    "G          Loop mute ON/OFF",
-    "Z/C/V      STOP / DUB / PLAY",
-    "1/2/3      Speed 0.5x / 1x / 2x",
-    "F          Toggle tape FX",
-    "Enter      Stutter ON/OFF",
-    "Space      Clear loop",
-    "Bksp/Del   Eject/reset loop",
-};
-
-constexpr const char* kFeelLines[] = {
-    "=== FEEL/TEXTURE PAGE ===",
-    "Tab        Focus lane",
-    "Up/Down    Select row",
-    "Left/Right Change value",
-    "Enter      Toggle/apply",
-    "+/-        LoFi/Drive amount",
+constexpr const char* kPhraseLines[] = {
+    "=== PHRASE CORE ===",
+    "1..4        Select Phrase A/B/C/D",
+    "Up/Down     Capture length 1/2/4/8",
+    "Left/Right  Preview Phrase bar",
+    "Ctrl+L/R    Move TO row +/-1",
+    "Ctrl+U/D    Move TO row +/-8",
+    "R           Cycle capture role",
+    "Shift+R     Previous role",
+    "P           Cycle derive parent",
+    "Enter       Capture current Song row",
+    "D           Derive parent into slot",
+    "W           INSERT before TO row",
+    "            Shifts following rows",
+    "Alt+W       REPLACE at TO row",
+    "            No row shift",
+    "Bksp/Del    Clear selected Phrase",
+    "REF         Mutable pattern references",
 };
 
 constexpr const char* kHubLines[] = {
-    "=== SEQUENCER HUB ===",
-    "Arrows     Navigate",
-    "Enter      Open track detail",
-    "Q..I       Swap pattern (local)",
-    "1..0       Toggle Track Mute",
-    "Bksp/ESC   Back",
+    "=== OVERVIEW / SEQUENCER HUB ===",
+    "Up/Down     Select track",
+    "Left/Right  Select step",
+    "-/=         Track volume",
+    "X           Toggle hit/note",
+    "A           Toggle accent",
+    "Enter       Open track detail",
+    "Esc/Bksp    Return to overview",
+    "Space       Transport",
+    "Q..I        Select local pattern",
+    "B           Toggle pattern bank",
+    "Ctrl+C/V    Copy/Paste",
+    "H           Player/HUB MIDI return",
+    "1..9        Physical SMF track mute",
+    "C           Edit saved per-file route",
 };
 
-constexpr const char* kSettingsLines[] = {
-    "=== SETTINGS PAGE ===",
-    "Tab        Next group",
-    "Up/Down    Select row",
-    "Left/Right Adjust value",
-    "Ctrl/Alt   Fast adjust",
-    "1..3       Apply preset (regen)",
+constexpr const char* kFeelLines[] = {
+    "=== FEEL 2/2 ===",
+    "Feel = timing/velocity only",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Adjust value/preset",
+    "Shift/Ctrl  Fast adjustment",
+    "Enter/Space Apply FEEL preset",
+    "Profile     Straight/Swing/Laid/Push",
+    "Swing       Runtime offbeat timing",
+    "Feel Amount Bounded role offset",
+    "Vel Human   Velocity deviation",
+    "Next gen; clock/pitch unchanged",
+    "No notes, roles or sound changes",
 };
 
-constexpr const char* kModeLines[] = {
-    "=== GROOVE LAB ===",
-    "Tab/Up/Dn  Focus row",
-    "Left/Right Change value",
-    "Enter/Space Preview (Regen)",
-    "A/B        Apply to 303 A/B",
-    "D          Apply to Drums",
-    "M          Toggle Macros",
+constexpr const char* kProjectLines[] = {
+    "=== PROJECT / SETUP ===",
+    "Tab         Next section",
+    "Up/Down     Select row",
+    "Left/Right  Adjust value/focus",
+    "Enter       Open or activate",
+    "G           Jump to Genre",
+    "Esc/Bksp    Close dialog/go up",
+    "X           Delete selected scene",
+    "Import: Tab Open MIDI matrix",
+};
+
+constexpr const char* kPerformLines[] = {
+    "=== MIDI KEYBOARD / PERFORM ===",
+    "QWERTYUIOP  Upper note manual",
+    "ASDFGHJKL   Lower note manual",
+    "N           NOTE mode ON/OFF",
+    "\\           Cycle output target",
+    ", / .       Previous/next scale",
+    "- / =       Octave down/up",
+    "X           Panic live target",
+    "Tab         PERFORMANCE TOOLS",
+    "1..8        Select performance tool",
+    "Shift+1..8  Cycle tool backward",
+    "Esc/`       Close tools layer",
+};
+
+constexpr const char* kPlayerLines[] = {
+    "=== MIDI PLAYER ===",
+    "Enter       Open selected MIDI file",
+    "Space       MIDI transport",
+    "H           Open/return HUB MIDI",
+    "1..9        Physical track mute",
+    "U           Physical mute mixer",
+    "I           Channel inspector",
+    "S           Structural inspector",
+    "D           Performance panel",
+    "B/Bksp      Files or previous panel",
+    "Arrows      Select/seek/adjust BPM",
+    "C           Clock source",
+    "T           Tempo mode",
+    "M           RAW/SEQTRAK routing",
+    "G           Groove transport/follow",
+    "R           Restart file",
+    "V           Velocity boost",
+    "X           Panic SMF notes",
 };
 
 inline const char* const* pageLines(int pageIndex, int& count) {
+    pageIndex = WorkflowPages::normalizeLegacyPage(pageIndex);
     switch (pageIndex) {
-        case 0: count = sizeof(kGenreLines) / sizeof(kGenreLines[0]); return kGenreLines;
-        case 1:
-        case 2: count = sizeof(kPatternLines) / sizeof(kPatternLines[0]); return kPatternLines;
-        case 3:
-        case 4: count = sizeof(kTB303Lines) / sizeof(kTB303Lines[0]); return kTB303Lines;
-        case 5: count = sizeof(kDrumLines) / sizeof(kDrumLines[0]); return kDrumLines;
-        case 6: count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
-        case 7: count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
-        case 8: count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
-        case 9: count = sizeof(kSettingsLines) / sizeof(kSettingsLines[0]); return kSettingsLines;
-        case 10: count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case 11: count = sizeof(kModeLines) / sizeof(kModeLines[0]); return kModeLines;
-        default: count = 0; return nullptr;
+        case WorkflowPages::kGenre:
+            count = sizeof(kGenreLines) / sizeof(kGenreLines[0]); return kGenreLines;
+        case WorkflowPages::kSynthA:
+            count = sizeof(kSynthALines) / sizeof(kSynthALines[0]); return kSynthALines;
+        case WorkflowPages::kSynthB:
+            count = sizeof(kSynthBLines) / sizeof(kSynthBLines[0]); return kSynthBLines;
+        case WorkflowPages::kSynthAParameters:
+            count = sizeof(kSynthASoundLines) / sizeof(kSynthASoundLines[0]); return kSynthASoundLines;
+        case WorkflowPages::kSynthBParameters:
+            count = sizeof(kSynthBSoundLines) / sizeof(kSynthBSoundLines[0]); return kSynthBSoundLines;
+        case WorkflowPages::kDrums:
+            count = sizeof(kDrumLines) / sizeof(kDrumLines[0]); return kDrumLines;
+        case WorkflowPages::kArrange:
+            count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
+        case WorkflowPages::kPhrase:
+            count = sizeof(kPhraseProductLines) / sizeof(kPhraseProductLines[0]);
+            return kPhraseProductLines;
+        case WorkflowPages::kPhraseCore:
+            count = sizeof(kPhraseLines) / sizeof(kPhraseLines[0]); return kPhraseLines;
+        case WorkflowPages::kPattern:
+            count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
+        case WorkflowPages::kTexture:
+        case WorkflowPages::kGeneration:
+        case WorkflowPages::kFeel:
+            count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
+        case WorkflowPages::kProject:
+            count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
+        case WorkflowPages::kPerform:
+            count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
+        case WorkflowPages::kPlayer:
+            count = sizeof(kPlayerLines) / sizeof(kPlayerLines[0]); return kPlayerLines;
+        default:
+            count = 0; return nullptr;
     }
+}
+
+inline const char* pageTitle(int pageIndex) {
+    return WorkflowPages::pageName(pageIndex);
+}
+
+inline int getPageLineCount(int pageIndex) {
+    int count = 0;
+    (void)pageLines(pageIndex, count);
+    return count;
 }
 
 inline int getTotalLines(int pageIndex) {
     const int globalCount = sizeof(kGlobalLines) / sizeof(kGlobalLines[0]);
-    int pageCount = 0;
-    (void)pageLines(pageIndex, pageCount);
-    return pageCount + globalCount;
+    return getPageLineCount(pageIndex) + globalCount;
 }
 
 inline const char* getLine(int pageIndex, int index) {

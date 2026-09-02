@@ -1,0 +1,17 @@
+name: Generation 0.9.9 E2c mutation delta contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2c-mutation-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run canonical mutation delta contract
+        run: bash tests/run_0_9_9_e2c_tests.sh

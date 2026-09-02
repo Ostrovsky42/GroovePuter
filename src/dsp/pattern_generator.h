@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "src/dsp/deterministic_rng.h"
 #include "src/dsp/genre_manager.h"
 
 class SmartPatternGenerator {
@@ -23,7 +24,7 @@ public:
     void setSeed(uint32_t seed);
     
 private:
-    uint32_t seed_;
+    DeterministicRng rng_;
     
     // Generators
     uint32_t generateRandom(uint8_t track_id);

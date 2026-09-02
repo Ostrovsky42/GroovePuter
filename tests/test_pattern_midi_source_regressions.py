@@ -43,6 +43,8 @@ def main() -> None:
             "MusicalEventTarget::Drums" in sink and
             "MusicalEventTarget::Dx" in sink,
             "USB output must retain Synth A/B, Drums and DX targets")
+    ownership_h = (ROOT / "src/midi/midi_note_ownership_table.h").read_text(
+        encoding="utf-8")
     require("kLaneCount = 20" in sink_h,
             "USB output must own live A/B/DX + seven live drums + Pattern A/B + eight Pattern drum voices")
     constructor_end = sink.index("uint8_t UsbMidiOutput::clampChannel")
@@ -58,8 +60,11 @@ def main() -> None:
     require("patternDrumChannel" in sink and
             "0, 1, 3, 4, 5, 6, 5, 2" in sink,
             "Pattern drums must map eight internal voices onto native SEQTRAK CH1..7")
-    require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
+    require("MidiEndpointOwnershipTable owners_;" in sink_h,
             "logical lanes sharing a MIDI channel need wire-level ownership")
+    require("wireOwnerCount" in ownership_h and "smfOwnerCount" in ownership_h,
+            "wire-level ownership must stay two-level: SMF owners are a subset "
+            "of wire owners, so dropping SMF cannot silence a pattern note")
     require("activeCount" in sink_h and "acquirePercussiveNote" in sink,
             "retriggered Pattern drums must retain bounded per-lane ownership")
     require("pendingRelease" in sink_h and "pendingRelease" in sink,
@@ -193,8 +198,11 @@ def main() -> None:
     require(re.search(r'xTaskCreatePinnedToCore\(\s*audioTask\s*,\s*"AudioTask"', sketch) is not None,
             "realtime publication depends on the pinned AudioTask identity")
 
-    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter,\n      g_patternMusicalEventQueue,\n      g_externalMidiTransportQueue)"
-    require(registration_call in sketch[setup_start:loop_start],
+    registration_call = "registerCardputerUsbMidiSink("
+    require(registration_call in sketch[setup_start:loop_start] and
+            "g_musicalEventRouter" in sketch[setup_start:loop_start] and
+            "g_patternMusicalEventQueue" in sketch[setup_start:loop_start] and
+            "g_externalMidiTransportQueue" in sketch[setup_start:loop_start],
             "setup must register the single USB owner with the scheduled queue")
     require("router.addSink(g_queueSink)" in transport,
             "live USB events must enter the dispatcher through a bounded sink")

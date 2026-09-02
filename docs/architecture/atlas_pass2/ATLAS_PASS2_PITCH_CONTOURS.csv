@@ -1,0 +1,13 @@
+domain,evidence_class,direction,pattern_count,dominant_contour,dominant_contour_count,median_note_count,median_unique_pitch_count,median_stepwise_fraction,median_octave_fraction,decision
+BassPitch,PROJECT_OWNED_EXACT,acid_house,6,PENDULUM_OR_MIXED,6,11.5,5.0,0.160256,0.0,HOLD
+BassPitch,PROJECT_OWNED_EXACT,boombap,6,PENDULUM_OR_MIXED,4,5.0,4.0,0.0,0.0,HOLD
+BassPitch,PROJECT_OWNED_EXACT,dub_techno,6,PENDULUM_OR_MIXED,4,4.0,3.0,0.0,0.0,HOLD
+BassPitch,PROJECT_OWNED_EXACT,jungle,6,VALLEY,4,3.0,3.0,0.5,0.0,HOLD
+BassPitch,PROJECT_OWNED_EXACT,lofi,5,PENDULUM_OR_MIXED,3,5,3,0.25,0.0,HOLD
+BassPitch,PROJECT_OWNED_EXACT,uk_garage,6,VALLEY,3,4.0,4.0,0.0,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,acid_house,4,FALL,4,2.5,2.5,0.0,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,boombap,4,RISE,2,2.5,2.5,0.25,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,dub_techno,4,FALL,4,2.5,2.5,0.0,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,jungle,4,RISE,2,2.5,2.5,0.0,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,lofi,3,ARCH,2,3,3,0.0,0.0,HOLD
+MotifContour,PROJECT_OWNED_EXACT,uk_garage,4,RISE,2,2.5,2.5,0.25,0.0,HOLD

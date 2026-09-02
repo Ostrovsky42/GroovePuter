@@ -1,0 +1,56 @@
+name: Stage 15 tonal baseline
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Stage15 tonal fixture roles
+        run: python3 tests/test_stage15_tonal_fixture_roles.py
+
+      - name: Compare frozen legacy tonal fingerprints
+        run: |
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_legacy_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_legacy_actual.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_legacy_actual.tsv
+
+      - name: Materialize frozen F-13 tonal snapshot
+        run: |
+          mkdir -p build/host-tests
+          base64 -d tests/data/stage15_tonal_enabled_f13_baseline.tsv.gz.b64 \
+            | gzip -dc > build/host-tests/stage15_tonal_enabled_f13_expected.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_enabled_f13_expected.tsv)" -eq 257
+
+      - name: Verify historical PRE-F13 to F-13 expression ownership delta
+        run: |
+          python3 tests/test_stage15_tonal_f13_corpus.py \
+            tests/data/stage15_tonal_enabled_pre_f13_baseline.tsv \
+            build/host-tests/stage15_tonal_enabled_f13_expected.tsv
+
+      - name: Compare current accepted Stage15 tonal golden
+        run: |
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal \
+            > build/host-tests/stage15_tonal_enabled_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
+          diff -u \
+            tests/data/stage15_tonal_enabled_baseline.tsv \
+            build/host-tests/stage15_tonal_enabled_actual.tsv
+
+      - name: Upload frozen F-13 tonal corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage15-tonal-f13-corpus
+          path: build/host-tests/stage15_tonal_enabled_f13_expected.tsv
+          if-no-files-found: error
+
+      - name: Check historical tonal ownership boundary
+        run: python3 tests/test_stage15_tonal_corpus_boundary.py

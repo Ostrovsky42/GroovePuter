@@ -1,0 +1,47 @@
+{
+  "atlas_sha256": "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd",
+  "bass_pitch_contour_eligible_patterns": 35,
+  "bass_rhythm_one_bar_patterns": 35,
+  "derived_four_bar_patterns": 17,
+  "events": 9377,
+  "measured_phrase_patterns": 19,
+  "measured_phrase_transition_counts": {
+    "ADD_ONLY": 3,
+    "DROP_ONLY": 2,
+    "EXACT_REPEAT": 4,
+    "MIXED": 10
+  },
+  "melodic_rhythm_one_bar_patterns": 35,
+  "motif_contour_eligible_patterns": 23,
+  "one_bar_eligible_patterns": 300,
+  "one_bar_structural_groups": 269,
+  "patterns": 413,
+  "published_recipe_effective_variation": {
+    "P1": {
+      "effective_variation_count": 12,
+      "effective_variation_ratio": 1.0,
+      "realization_count": 12
+    },
+    "P2": {
+      "effective_variation_count": 10,
+      "effective_variation_ratio": 0.833333,
+      "realization_count": 12
+    },
+    "P3": {
+      "effective_variation_count": 7,
+      "effective_variation_ratio": 0.583333,
+      "realization_count": 12
+    }
+  },
+  "recurring_skeleton_candidates": 8,
+  "rights_guard": "Committed outputs contain aggregate counts/distributions only and omit pattern IDs, structural group IDs, hashes, source locators, event lists and literal masks.",
+  "schema_version": "2.6.0",
+  "stage7_admission": "CLOSED",
+  "stage7_reason": "Pass 2 identifies recurring skeleton candidates but does not elevate them to runtime archetypes. Observation-to-grammar comparison is diagnostic only; human curation plus listening and cross-layer review remain required.",
+  "topology_decisions": {
+    "HOLD": 1,
+    "NEAR_EXISTING": 5,
+    "REVIEW": 2
+  },
+  "validation_failures": 0
+}

@@ -323,7 +323,8 @@ void TR808DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
 }
 
 float TR808DrumSynthVoice::frand() {
-  return (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+  noiseState = noiseState * 1664525u + 1013904223u;
+  return ((noiseState >> 16) & 0x7FFF) / 16384.0f - 1.0f;
 }
 
 float TR808DrumSynthVoice::applyAccentDistortion(float input, bool accent) {
@@ -1305,6 +1306,11 @@ void TR606DrumSynthVoice::setSampleRate(float sampleRateHz) {
   updateCymbalFilter(accentEnv, cymbalBandpass);
 }
 
+void TR606DrumSynthVoice::beginSample() {
+  accentEnv *= accentDecay;
+  updateMetalBank();
+}
+
 void TR606DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
   setAccent(accent);
   float vel = velocity / 100.0f;
@@ -1377,9 +1383,6 @@ void TR606DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
 }
 
 float TR606DrumSynthVoice::processKick() {
-  accentEnv *= accentDecay;
-  updateMetalBank();
-
   if (!kickActive)
     return 0.0f;
 
@@ -1519,8 +1522,8 @@ float TR606DrumSynthVoice::processCymbal() {
     return 0.0f;
   }
 
-  float clipped = tanhf(metalSignal * 2.2f);
-  float out = cymbalBandpass.process(clipped) * cymbalEnv;
+  float clipped = fast_tanh(metalSignal * 1.6f);
+  float out = cymbalBandpass.process(clipped) * cymbalEnv * 0.55f;
   return out;
 }
 
@@ -1577,8 +1580,10 @@ void TR606DrumSynthVoice::updateHatFilters(float accent) {
 }
 
 void TR606DrumSynthVoice::updateCymbalFilter(float accent, Biquad& filter) {
-  float freq = 8000.0f * (1.0f + 0.2f * accent);
-  float q = 0.9f;
+  float freq = 6200.0f * (1.0f + 0.10f * accent);
+  const float maxFreq = sampleRate * 0.40f;
+  if (freq > maxFreq) freq = maxFreq;
+  float q = 0.70f;
   float w0 = 2.0f * 3.14159265f * freq * invSampleRate;
   float alpha = sinf(w0) / (2.0f * q);
   float cosw = cosf(w0);

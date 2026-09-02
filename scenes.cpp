@@ -2,6 +2,8 @@
 #include "scenes.h"
 #include "src/debug_log.h"
 #include "src/audio/pattern_paging.h"
+#include "src/phrase/phrase_core.h"
+#include "src/state/generated_phrase_product_state.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -33,6 +35,11 @@ float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
     return value.as<float>();
   }
   return defaultValue;
+}
+
+bool isStableSynthEngineName(const std::string& name) {
+  return name == "TB303" || name == "SID" || name == "AY" ||
+         name == "SH101" || name == "SN76489" || name == "WAVEMORPH";
 }
 
 void clearDrumPattern(DrumPattern& pattern) {
@@ -99,7 +106,9 @@ void clearSceneData(Scene& scene) {
     clearSong(scene.songs[i]);
   }
   clearCustomPhrases(scene);
+  PhraseCore::reset(scene.phraseBank);
   for (auto& pad : scene.samplerPads) pad = SamplerPadState();
+  scene.samplerEnabled = true;
   for (float& volume : scene.trackVolumes) volume = 1.0f;
   scene.masterVolume = 0.6f;
   scene.generatorParams = GeneratorParams();
@@ -707,6 +716,7 @@ void SceneJsonObserver::onObjectStart() {
       else if (lastKey_ == "tape") path = Path::Tape;
       else if (lastKey_ == "feel") path = Path::Feel;
       else if (lastKey_ == "genre") path = Path::Genre;
+      else if (lastKey_ == "synthState") path = Path::SynthState;
       else if (lastKey_ == "led") path = Path::Led;
       else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
       else if (lastKey_ == "vocal") path = Path::Vocal;
@@ -723,6 +733,14 @@ void SceneJsonObserver::onObjectStart() {
     }
   }
   pushContext(Context::Type::Object, path);
+  if (path == Path::SynthState) {
+    synthStatePresent_ = true;
+    synthStateVersion_ = 0;
+    synthPatch_[0] = PersistedSynthPatch();
+    synthPatch_[1] = PersistedSynthPatch();
+    synthPatchValueCount_[0] = 0;
+    synthPatchValueCount_[1] = 0;
+  }
   if (path == Path::Unknown) {
     Serial.printf("[Parser] WARNING: Unknown object path, lastKey='%s', parent_path=%d, stackSize=%d (skipping)\n", 
                   lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
@@ -732,6 +750,20 @@ void SceneJsonObserver::onObjectStart() {
 
 void SceneJsonObserver::onObjectEnd() {
   if (error_) return;
+  if (stackSize_ > 0 && stack_[stackSize_ - 1].path == Path::SynthState) {
+    const bool valid =
+        synthStateVersion_ == kSynthStateSchemaVersion &&
+        isStableSynthEngineName(synthPatch_[0].engineName) &&
+        isStableSynthEngineName(synthPatch_[1].engineName) &&
+        synthPatch_[0].paramCount <= PersistedSynthPatch::kMaxParams &&
+        synthPatch_[1].paramCount <= PersistedSynthPatch::kMaxParams &&
+        synthPatchValueCount_[0] == PersistedSynthPatch::kMaxParams &&
+        synthPatchValueCount_[1] == PersistedSynthPatch::kMaxParams;
+    if (!valid) {
+      error_ = true;
+      return;
+    }
+  }
   popContext();
 }
 
@@ -747,6 +779,10 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
         else if (lastKey_ == "songs") path = Path::Songs;
         else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
+        else if (lastKey_ == "phraseCore") {
+          path = Path::PhraseCore;
+          PhraseCore::beginPersistentDecode(target_.phraseBank);
+        }
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
         else if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
         else if (lastKey_ == "synthBankIndex") path = Path::SynthBankIndex;
@@ -782,6 +818,9 @@ void SceneJsonObserver::onArrayStart() {
       } else if (parent.path == Path::Mute) {
         if (lastKey_ == "drums") path = Path::MuteDrums;
         else if (lastKey_ == "synth") path = Path::MuteSynth;
+      } else if (parent.path == Path::SynthState) {
+        if (lastKey_ == "a") path = Path::SynthStateAParams;
+        else if (lastKey_ == "b") path = Path::SynthStateBParams;
       }
     } else if (parent.type == Context::Type::Array) {
       path = deduceArrayPath(parent);
@@ -798,6 +837,9 @@ void SceneJsonObserver::onArrayStart() {
 
 void SceneJsonObserver::onArrayEnd() {
   if (error_) return;
+  if (stackSize_ > 0 && stack_[stackSize_ - 1].path == Path::PhraseCore) {
+    PhraseCore::sanitize(target_.phraseBank);
+  }
   popContext();
 }
 
@@ -805,6 +847,37 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   (void)isInteger;
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::SynthState) {
+    const int ivalue = static_cast<int>(value);
+    if (lastKey_ == "version") synthStateVersion_ = ivalue;
+    else if (lastKey_ == "aCount") {
+      if (ivalue < 0 || ivalue > PersistedSynthPatch::kMaxParams) { error_ = true; return; }
+      synthPatch_[0].paramCount = static_cast<uint8_t>(ivalue);
+    } else if (lastKey_ == "bCount") {
+      if (ivalue < 0 || ivalue > PersistedSynthPatch::kMaxParams) { error_ = true; return; }
+      synthPatch_[1].paramCount = static_cast<uint8_t>(ivalue);
+    }
+    return;
+  }
+  if (path == Path::SynthStateAParams || path == Path::SynthStateBParams) {
+    const int voice = path == Path::SynthStateAParams ? 0 : 1;
+    const int index = stack_[stackSize_ - 1].index;
+    if (index < 0 || index >= PersistedSynthPatch::kMaxParams || value < 0.0 || value > 1.0) {
+      error_ = true;
+      return;
+    }
+    synthPatch_[voice].params[index] = static_cast<float>(value);
+    synthPatchValueCount_[voice] = static_cast<uint8_t>(index + 1);
+    return;
+  }
+  if (path == Path::PhraseCore) {
+    const int index = stack_[stackSize_ - 1].index;
+    if (!PhraseCore::applyPersistentValue(
+            target_.phraseBank, index, static_cast<int32_t>(value))) {
+      error_ = true;
+    }
+    return;
+  }
   if (path == Path::Song) {
     if (lastKey_ == "length") {
       // Determine which song slot we are in
@@ -845,6 +918,12 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 0xFFFF) v = 0xFFFF;
       target_.feel.swingMask = static_cast<uint16_t>(v);
+    } else if (lastKey_ == "profile") {
+      if (v < 0 ||
+          v >= static_cast<int>(GroovePuterRhythm::FeelProfileId::Count)) {
+        v = static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight);
+      }
+      target_.feel.timingProfile = static_cast<uint8_t>(v);
     } else if (lastKey_ == "lofiAmt") {
       if (v < 0) v = 0;
       if (v > 100) v = 100;
@@ -862,14 +941,9 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v >= kGenerativeModeCount) v = 0;
       target_.genre.generativeMode = static_cast<uint8_t>(v);
-    } else if (lastKey_ == "tex") {
-      if (v < 0) v = 0;
-      if (v >= kTextureModeCount) v = 0;
-      target_.genre.textureMode = static_cast<uint8_t>(v);
-    } else if (lastKey_ == "amt") {
-      if (v < 0) v = 0;
-      if (v > 100) v = 100;
-      target_.genre.textureAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "tex" || lastKey_ == "textureMode" ||
+               lastKey_ == "amt" || lastKey_ == "textureAmount") {
+      // Legacy TEXTURE values are accepted but intentionally ignored.
     } else if (lastKey_ == "rcp") {
       if (v < 0) v = 0;
       if (v > 255) v = 255;
@@ -882,6 +956,17 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 255) v = 255;
       target_.genre.morphAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "rsm") {
+      target_.genre.rhythmSelectionMode =
+          v == static_cast<int>(GroovePuterRhythm::RhythmSelectionMode::Manual)
+              ? static_cast<uint8_t>(
+                    GroovePuterRhythm::RhythmSelectionMode::Manual)
+              : static_cast<uint8_t>(
+                    GroovePuterRhythm::RhythmSelectionMode::Auto);
+    } else if (lastKey_ == "rid") {
+      if (v < 0) v = 0;
+      if (v > 0xFFFF) v = 0xFFFF;
+      target_.genre.rhythmArchetypeId = static_cast<uint16_t>(v);
     }
     return;
   }
@@ -1093,6 +1178,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   if (path == Path::SynthParam) {
     int synthIdx = currentIndexFor(Path::SynthParams);
     if (synthIdx < 0 || synthIdx >= 2) return;
+    legacySynthParametersPresent_[synthIdx] = true;
     float fval = static_cast<float>(value);
     if (lastKey_ == "cutoff") {
       synthParameters_[synthIdx].cutoff = fval;
@@ -1257,6 +1343,13 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  // The streaming writer keeps project state in "state"; the older document
+  // writer placed this value at the root. Accept both layouts.
+  if ((path == Path::Root || path == Path::State) &&
+      lastKey_ == "samplerEnabled") {
+    target_.samplerEnabled = value;
+    return;
+  }
   if (path == Path::Song) {
       if (lastKey_ == "reverse") {
           int songIdx = 0;
@@ -1278,8 +1371,10 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
-    else if (lastKey_ == "cur") target_.genre.curatedMode = value;
-    else if (lastKey_ == "sound") target_.genre.applySoundMacros = value;
+    else if (lastKey_ == "cur" || lastKey_ == "curated" ||
+             lastKey_ == "sound" || lastKey_ == "snd") {
+      // Legacy TEXTURE policy values are decode-only.
+    }
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -1383,7 +1478,11 @@ void SceneJsonObserver::onString(const std::string& value) {
     // Handle object keys that expect string values
     if (context.path == Path::State && lastKey_ == "drumEngine") {
       drumEngineName_ = value;
-    } else if (context.path == Path::CustomPhrase) { // This path is for individual custom phrases, not an array
+    } else if (context.path == Path::SynthState && lastKey_ == "aType") {
+      synthPatch_[0].engineName = value;
+    } else if (context.path == Path::SynthState && lastKey_ == "bType") {
+      synthPatch_[1].engineName = value;
+    } else if (context.path == Path::CustomPhrase) {
       int idx = context.index; // This index would be from a parent array, if CustomPhrase was an array of objects
       if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
         std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
@@ -1460,6 +1559,20 @@ const SynthParameters& SceneJsonObserver::synthParameters(int synthIdx) const {
   return synthParameters_[clamped];
 }
 
+bool SceneJsonObserver::legacySynthParametersPresent(int synthIdx) const {
+  int clamped = synthIdx < 0 ? 0 : synthIdx > 1 ? 1 : synthIdx;
+  return legacySynthParametersPresent_[clamped];
+}
+
+bool SceneJsonObserver::hasVersionedSynthState() const {
+  return synthStatePresent_ && !error_;
+}
+
+const PersistedSynthPatch& SceneJsonObserver::synthPatch(int synthIdx) const {
+  int clamped = synthIdx < 0 ? 0 : synthIdx > 1 ? 1 : synthIdx;
+  return synthPatch_[clamped];
+}
+
 float SceneJsonObserver::bpm() const { return bpm_; }
 
 const Song& SceneJsonObserver::song() const { return song_; }
@@ -1507,6 +1620,9 @@ void SceneManager::loadDefaultScene() {
   synthDelay_[1] = false;
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
+  legacySynthParametersPresent_[0] = false;
+  legacySynthParametersPresent_[1] = false;
+  clearVersionedSynthState();
   drumEngineName_ = "808";
   synthEngineNames_[0] = "TB303";
   synthEngineNames_[1] = "TB303";
@@ -1520,6 +1636,7 @@ void SceneManager::loadDefaultScene() {
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
+  PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
       scene_->songs[i].length = 1;
@@ -1716,6 +1833,9 @@ void SceneManager::wipeToZero() {
   synthDelay_[1] = false;
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
+  legacySynthParametersPresent_[0] = false;
+  legacySynthParametersPresent_[1] = false;
+  clearVersionedSynthState();
   drumEngineName_ = "808";
   synthEngineNames_[0] = "TB303";
   synthEngineNames_[1] = "TB303";
@@ -1729,12 +1849,10 @@ void SceneManager::wipeToZero() {
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
+  PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
       scene_->songs[i].length = 1;
-      scene_->songs[i].positions[0].patterns[0] = 0;
-      scene_->songs[i].positions[0].patterns[1] = 0;
-      scene_->songs[i].positions[0].patterns[2] = 0;
       scene_->songs[i].positions[0].patterns[3] = -1;
       scene_->songs[i].reverse = false;
   }
@@ -1932,6 +2050,33 @@ void SceneManager::setSynthParameters(int synthIdx, const SynthParameters& param
 const SynthParameters& SceneManager::getSynthParameters(int synthIdx) const {
   int clampedSynth = clampSynthIndex(synthIdx);
   return synthParameters_[clampedSynth];
+}
+
+void SceneManager::setLegacySynthParametersPresent(int synthIdx, bool present) {
+  legacySynthParametersPresent_[clampSynthIndex(synthIdx)] = present;
+}
+
+bool SceneManager::legacySynthParametersPresent(int synthIdx) const {
+  return legacySynthParametersPresent_[clampSynthIndex(synthIdx)];
+}
+
+void SceneManager::setSynthPatch(int synthIdx, const PersistedSynthPatch& patch) {
+  const int idx = clampSynthIndex(synthIdx);
+  synthPatch_[idx] = patch;
+  if (synthPatch_[idx].paramCount > PersistedSynthPatch::kMaxParams) {
+    synthPatch_[idx].paramCount = PersistedSynthPatch::kMaxParams;
+  }
+  hasVersionedSynthState_ = true;
+}
+
+const PersistedSynthPatch& SceneManager::getSynthPatch(int synthIdx) const {
+  return synthPatch_[clampSynthIndex(synthIdx)];
+}
+
+void SceneManager::clearVersionedSynthState() {
+  hasVersionedSynthState_ = false;
+  synthPatch_[0] = PersistedSynthPatch();
+  synthPatch_[1] = PersistedSynthPatch();
 }
 
 void SceneManager::setDrumEngineName(const std::string& name) { drumEngineName_ = name; }
@@ -2294,6 +2439,11 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
       }
   }
   
+  ArduinoJson::JsonArray phraseCore = root["phraseCore"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < PhraseCore::kPersistValueCount; ++i) {
+    phraseCore.add(PhraseCore::persistentValueAt(scene_->phraseBank, i));
+  }
+
   ArduinoJson::JsonArray customPhrases = root["customPhrases"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
     customPhrases.add(std::string(scene_->customPhrases[i]));
@@ -2328,14 +2478,17 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   synthMutes.add(synthMute_[0]);
   synthMutes.add(synthMute_[1]);
 
-  ArduinoJson::JsonArray synthParams = state["synthParams"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < 2; ++i) {
-    ArduinoJson::JsonObject param = synthParams.add<ArduinoJson::JsonObject>();
-    param["cutoff"] = synthParameters_[i].cutoff;
-    param["resonance"] = synthParameters_[i].resonance;
-    param["envAmount"] = synthParameters_[i].envAmount;
-    param["envDecay"] = synthParameters_[i].envDecay;
-    param["oscType"] = synthParameters_[i].oscType;
+  ArduinoJson::JsonObject synthState = state["synthState"].to<ArduinoJson::JsonObject>();
+  synthState["version"] = kSynthStateSchemaVersion;
+  synthState["aType"] = synthPatch_[0].engineName;
+  synthState["aCount"] = synthPatch_[0].paramCount;
+  ArduinoJson::JsonArray synthAParams = synthState["a"].to<ArduinoJson::JsonArray>();
+  synthState["bType"] = synthPatch_[1].engineName;
+  synthState["bCount"] = synthPatch_[1].paramCount;
+  ArduinoJson::JsonArray synthBParams = synthState["b"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    synthAParams.add(synthPatch_[0].params[i]);
+    synthBParams.add(synthPatch_[1].params[i]);
   }
   ArduinoJson::JsonArray synthDistortion = state["synthDistortion"].to<ArduinoJson::JsonArray>();
   synthDistortion.add(synthDistortion_[0]);
@@ -2354,6 +2507,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   feelObj["grid"] = scene_->feel.gridSteps;
   feelObj["tb"] = scene_->feel.timebase;
   feelObj["bars"] = scene_->feel.patternBars;
+  feelObj["profile"] = scene_->feel.timingProfile;
   feelObj["lofi"] = scene_->feel.lofiEnabled;
   feelObj["lofiAmt"] = scene_->feel.lofiAmount;
   feelObj["drive"] = scene_->feel.driveEnabled;
@@ -2362,15 +2516,13 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
 
   ArduinoJson::JsonObject genreObj = state["genre"].to<ArduinoJson::JsonObject>();
   genreObj["gen"] = scene_->genre.generativeMode;
-  genreObj["tex"] = scene_->genre.textureMode;
-  genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["rcp"] = scene_->genre.recipe;
   genreObj["mto"] = scene_->genre.morphTarget;
   genreObj["mam"] = scene_->genre.morphAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
-  genreObj["cur"] = scene_->genre.curatedMode;
-  genreObj["sound"] = scene_->genre.applySoundMacros;
+  genreObj["rsm"] = scene_->genre.rhythmSelectionMode;
+  genreObj["rid"] = scene_->genre.rhythmArchetypeId;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2391,6 +2543,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
     padObj["rev"] = p.reverse;
     padObj["lop"] = p.loop;
   }
+  root["samplerEnabled"] = scene_->samplerEnabled;
 
   ArduinoJson::JsonObject tapeObj = root["tape"].to<ArduinoJson::JsonObject>();
   tapeObj["mode"] = static_cast<int>(scene_->tape.mode);
@@ -2424,6 +2577,26 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
 
   auto loaded = std::make_unique<Scene>();
   clearSceneData(*loaded);
+
+  ArduinoJson::JsonArrayConst phraseCoreValues =
+      obj["phraseCore"].as<ArduinoJson::JsonArrayConst>();
+  if (!phraseCoreValues.isNull()) {
+    if (static_cast<int>(phraseCoreValues.size()) !=
+        PhraseCore::kPersistValueCount) {
+      return false;
+    }
+    PhraseCore::beginPersistentDecode(loaded->phraseBank);
+    int phraseIndex = 0;
+    for (ArduinoJson::JsonVariantConst item : phraseCoreValues) {
+      if (!item.is<int>() ||
+          !PhraseCore::applyPersistentValue(
+              loaded->phraseBank, phraseIndex, item.as<int>())) {
+        return false;
+      }
+      ++phraseIndex;
+    }
+    PhraseCore::sanitize(loaded->phraseBank);
+  }
 
   if (!deserializeDrumBanks(drumBanksVal, loaded->drumBanks)) return false;
   if (!deserializeSynthBanks(synthABanksVal, loaded->synthABanks)) return false;
@@ -2616,6 +2789,15 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
     loaded->feel.patternBars = static_cast<uint8_t>(bars);
 
+    int profile = valueToInt(
+        feelObj["profile"],
+        static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight));
+    if (profile < 0 ||
+        profile >= static_cast<int>(GroovePuterRhythm::FeelProfileId::Count)) {
+      profile = static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight);
+    }
+    loaded->feel.timingProfile = static_cast<uint8_t>(profile);
+
     loaded->feel.lofiEnabled = feelObj["lofi"].is<bool>() ? feelObj["lofi"].as<bool>() : loaded->feel.lofiEnabled;
     int lofiAmt = valueToInt(feelObj["lofiAmt"], loaded->feel.lofiAmount);
     if (lofiAmt < 0) lofiAmt = 0;
@@ -2640,15 +2822,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (gen >= kGenerativeModeCount) gen = 0;
     loaded->genre.generativeMode = static_cast<uint8_t>(gen);
 
-    int tex = valueToInt(genreObj["tex"], loaded->genre.textureMode);
-    if (tex < 0) tex = 0;
-    if (tex >= kTextureModeCount) tex = 0;
-    loaded->genre.textureMode = static_cast<uint8_t>(tex);
-
-    int amt = valueToInt(genreObj["amt"], loaded->genre.textureAmount);
-    if (amt < 0) amt = 0;
-    if (amt > 100) amt = 100;
-    loaded->genre.textureAmount = static_cast<uint8_t>(amt);
+    // Historical tex/amt (and long-form aliases) are ignored. Concrete
+    // synth/FX state already persisted in the Scene remains authoritative.
 
     int recipe = valueToInt(genreObj["rcp"], loaded->genre.recipe);
     if (recipe < 0) recipe = 0;
@@ -2667,8 +2842,21 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
-    loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
-    loaded->genre.applySoundMacros = genreObj["sound"].is<bool>() ? genreObj["sound"].as<bool>() : loaded->genre.applySoundMacros;
+
+    int rhythmMode = valueToInt(
+        genreObj["rsm"],
+        static_cast<int>(GroovePuterRhythm::RhythmSelectionMode::Auto));
+    loaded->genre.rhythmSelectionMode =
+        rhythmMode == static_cast<int>(
+                          GroovePuterRhythm::RhythmSelectionMode::Manual)
+            ? static_cast<uint8_t>(
+                  GroovePuterRhythm::RhythmSelectionMode::Manual)
+            : static_cast<uint8_t>(
+                  GroovePuterRhythm::RhythmSelectionMode::Auto);
+    int rhythmId = valueToInt(genreObj["rid"], 0);
+    if (rhythmId < 0) rhythmId = 0;
+    if (rhythmId > 0xFFFF) rhythmId = 0xFFFF;
+    loaded->genre.rhythmArchetypeId = static_cast<uint16_t>(rhythmId);
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();
@@ -2861,13 +3049,17 @@ bool SceneManager::loadScene(const std::string& json) {
 // Static buffer to avoid heap fragmentation during loading
 static Scene s_tempLoadScene;
 
+Scene& sceneTransactionScratch() {
+  return s_tempLoadScene;
+}
+
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 #ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
 #endif
   
   // Reuse the static buffer
-  Scene* loaded = &s_tempLoadScene;
+  Scene* loaded = &sceneTransactionScratch();
   
   // Clear it before use
   clearSceneData(*loaded);
@@ -2937,6 +3129,17 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthDelay_[1] = observer.synthDelayEnabled(1);
   synthParameters_[0] = observer.synthParameters(0);
   synthParameters_[1] = observer.synthParameters(1);
+  legacySynthParametersPresent_[0] = observer.legacySynthParametersPresent(0);
+  legacySynthParametersPresent_[1] = observer.legacySynthParametersPresent(1);
+  synthEngineNames_[0] = observer.synthEngineName(0);
+  synthEngineNames_[1] = observer.synthEngineName(1);
+  clearVersionedSynthState();
+  if (observer.hasVersionedSynthState()) {
+    setSynthPatch(0, observer.synthPatch(0));
+    setSynthPatch(1, observer.synthPatch(1));
+    synthEngineNames_[0] = synthPatch_[0].engineName;
+    synthEngineNames_[1] = synthPatch_[1].engineName;
+  }
   drumEngineName_ = observer.drumEngineName();
   setSongLength(scene_->songs[scene_->activeSongSlot].length);
   songPosition_ = clampSongPosition(observer.songPosition());
@@ -2952,6 +3155,15 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
   // So it's already in scene_-> We just need to make sure MiniAcid pulls it.
+
+  // This is the single chokepoint every scene-replacement path converges on
+  // (main load, auto/recovery load, and the SDL/string loadScene() path all
+  // call loadSceneEvented -> here). Only a successful replacement reaches
+  // this line -- the parse-failure path above returns false first -- so this
+  // is exactly "successful Scene replacement", never a load attempt alone
+  // (spec section 22: markLoadSucceeded()/revision bumps/setCurrentSceneName
+  // are NOT equivalent and must not be used as this trigger).
+  GroovePuterState::resetGeneratedPhraseProductState();
 
   return true;
 }

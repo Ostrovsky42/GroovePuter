@@ -20,11 +20,13 @@
 #include "src/audio/audio_mutation_gate.h"
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
+#include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
+#include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
 #include "src/midi/external_midi_clock_follower.h"
@@ -383,6 +385,27 @@ void setup() {
   }
   markBootStage(85, "after SMF runtime init");
 
+  // Global MIDI settings must be restored before the dispatcher starts. The
+  // profile runtime is an input to later route projection; letting UI creation
+  // initialize it would make the USB task observe only the SEQTRAK fallback.
+  GroovePuterPlatform::initializeCardputerMidiSettingsSession();
+
+  // Start the dispatcher before engine/UI activity. Its full 4KB stack is
+  // statically reserved, so startup no longer depends on the largest free heap
+  // block left by SD and SMF initialization.
+  g_musicalEventRouter.addSink(g_internalSynthOutput);
+  screenLog("4d. USB MIDI Runtime...");
+  markBootStage(52, "before USB MIDI sink");
+  if (!registerCardputerUsbMidiSink(
+          g_musicalEventRouter,
+          g_patternMusicalEventQueue,
+          g_externalMidiTransportQueue)) {
+    Serial.println("[ERROR] USB MIDI runtime unavailable");
+    markBootStage(952, "USB MIDI runtime unavailable");
+  } else {
+    markBootStage(53, "after USB MIDI sink");
+  }
+
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
   g_encoder8 = new (std::nothrow) Encoder8Miniacid(g_miniAcidInstance);
@@ -402,20 +425,8 @@ void setup() {
   g_patternMusicalEventQueue.setPhaseReader(
       readPatternSequencerPhase, g_miniAcid);
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
-  g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
-
-  // The platform transport registers its descriptor before app_main starts
-  // USB. Defer begin() and router mutation until setup, when Arduino and the
-  // shared event router are fully initialized.
-  screenLog("6c. USB MIDI...");
-  markBootStage(52, "before USB MIDI sink");
-  registerCardputerUsbMidiSink(
-      g_musicalEventRouter,
-      g_patternMusicalEventQueue,
-      g_externalMidiTransportQueue);
-  markBootStage(53, "after USB MIDI sink");
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
@@ -519,13 +530,23 @@ void loop() {
 
   static constexpr unsigned long KEY_REPEAT_DELAY_MS = 350;
   static constexpr unsigned long KEY_REPEAT_INTERVAL_MS = 80;
-  static Keyboard_Class::KeysState lastKeysState{};
-  static bool hasLastKeys = false;
+  static Keyboard_Class::KeysState previousKeysState{};
+  static bool hasPreviousKeysState = false;
+  static UIEvent repeatEvent{};
+  static uint8_t repeatHid = 0;
+  static bool repeatActive = false;
+  static uint32_t repeatPressId = 0;
+  static uint32_t nextPressId = 1;
   static unsigned long nextRepeatAt = 0;
 
-  auto handleWithFallback = [&](UIEvent evt) {
-    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n",
-      (uint8_t)evt.key, evt.key >= 32 && evt.key < 127 ? evt.key : '.', evt.scancode, evt.app_event_type);
+  auto handleWithFallback = [&](UIEvent evt,
+                                const char* source,
+                                uint32_t pressId,
+                                bool repeat) {
+    Serial.printf("[KEY] press=%u src=%s repeat=%d fn=%d alt=%d ctrl=%d shift=%d key=0x%02X sc=%d\n",
+      (unsigned)pressId, source, repeat ? 1 : 0,
+      evt.meta ? 1 : 0, evt.alt ? 1 : 0, evt.ctrl ? 1 : 0,
+      evt.shift ? 1 : 0, (uint8_t)evt.key, evt.scancode);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
 
     bool handled = false;
@@ -684,8 +705,23 @@ void loop() {
     g_performanceKeyboard.releaseMissingKeys(pressed, count);
   };
 
-  auto processKeys = [&](const Keyboard_Class::KeysState& ks) {
+  auto processKeyEdges = [&](const Keyboard_Class::KeysState& ks,
+                             const Keyboard_Class::KeysState& previous,
+                             bool hadPrevious,
+                             uint32_t pressId) -> bool {
+    bool dispatched = false;
+    bool sawEdge = false;
+    bool armedRepeat = false;
+    uint16_t dispatchedDigitMask = 0;
+    uint32_t dispatchedLetterMask = 0;
+
     for (auto hid : ks.hid_keys) {
+      if (!GroovePuterInput::shouldDispatchHid(
+              ks, previous, hadPrevious, static_cast<uint8_t>(hid))) {
+        continue;
+      }
+      sawEdge = true;
+
       UIEvent evt{};
       evt.alt = ks.alt;
       evt.ctrl = ks.ctrl;
@@ -714,19 +750,24 @@ void loop() {
       } else if (hid == 0x38) {
         evt.scancode = GROOVEPUTER_RIGHT;
         shouldSend = true;
-      } else if (hid == 0x28 || hid == 0x58) { // enter
+      } else if (hid == 0x28 || hid == 0x58) {
         evt.key = '\n';
         shouldSend = true;
       } else if (hid == KEY_BACKSPACE) {
         evt.key = '\b';
         shouldSend = true;
-      } else if (hid == KEY_TAB || hid == 0x2B) { // 0x2B = USB HID TAB
+      } else if (hid == KEY_TAB || hid == 0x2B) {
         evt.key = '\t';
         evt.scancode = GROOVEPUTER_TAB;
         shouldSend = true;
-      } else if (hid >= 0x1E && hid <= 0x27) { // numbers 1..0
-        if (hid == 0x27) evt.key = '0';
-        else evt.key = '1' + (hid - 0x1E);
+      } else if (hid >= 0x1E && hid <= 0x27) {
+        evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
+        dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
+        shouldSend = true;
+      } else if (!ks.ctrl && !ks.alt && !ks.fn && hid >= 0x04 && hid <= 0x1D) {
+        evt.key = static_cast<char>('a' + (hid - 0x04));
+        mapHidLetterScancode(hid, evt.scancode);
+        dispatchedLetterMask |= GroovePuterInput::letterDispatchMask(evt.key);
         shouldSend = true;
       } else if (applyCtrlLetter(ks, hid, evt)) {
         mapHidLetterScancode(hid, evt.scancode);
@@ -735,83 +776,108 @@ void loop() {
         mapHidLetterScancode(hid, evt.scancode);
         shouldSend = true;
       }
-      if (shouldSend) {
-        handleWithFallback(evt);
+
+      if (!shouldSend) continue;
+      handleWithFallback(evt, "HID", pressId, false);
+      dispatched = true;
+
+      if (GroovePuterInput::mayArmRepeatForPhysicalKey(
+              ks, static_cast<uint8_t>(hid), evt)) {
+        repeatEvent = evt;
+        repeatHid = static_cast<uint8_t>(hid);
+        repeatPressId = pressId;
+        nextRepeatAt = millis() + KEY_REPEAT_DELAY_MS;
+        armedRepeat = true;
       }
     }
 
-    // do not send events only for modifier changes (ctrl/alt/shift/fn alone)
-    if (ks.hid_keys.empty() && ks.word.empty()) {
-      return;
-    }
-    for (auto inputChar : ks.word) {
-      if (inputChar != 0) {
-        unsigned char u = static_cast<unsigned char>(inputChar);
-        // Skip keys already handled via HID loop (numbers, navigation, special keys)
-        // This prevents "double-toggle" where a key on/off cycle happens in a single frame.
-        if (u >= '0' && u <= '9') continue;
-        if (u == '\n' || u == '\r' || u == '\b') continue;
-
-        // Skip letters if Ctrl/Alt held (handled via HID path)
-        if (ks.ctrl || ks.alt) {
-          bool isLetter = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z');
-          bool isCtrlChar = (u >= 1 && u <= 26);
-          if (isLetter || isCtrlChar) continue;
+    const bool suppressWordAfterModifierRelease =
+        hadPrevious && GroovePuterInput::modifierReleased(ks, previous);
+    if (!suppressWordAfterModifierRelease) {
+      for (auto inputChar : ks.word) {
+        if (!GroovePuterInput::shouldDispatchWord(
+                ks, previous, hadPrevious, inputChar)) {
+          continue;
         }
-      }
+        sawEdge = true;
 
-      UIEvent evt{};
-      evt.alt = ks.alt;
-      evt.ctrl = ks.ctrl;
-      evt.shift = ks.shift;
-      evt.meta = ks.fn;
-      evt.key = normalizeKeyChar(inputChar);
-      evt.scancode = mapAsciiLetterScancode(evt.key);
-      if (evt.key == '\t') {
-        evt.scancode = GROOVEPUTER_TAB;
-      }
+        if (inputChar != 0) {
+          const unsigned char u = static_cast<unsigned char>(inputChar);
+          if (GroovePuterInput::wordDigitAlreadyDispatched(
+                  inputChar, dispatchedDigitMask)) {
+            continue;
+          }
+          if (GroovePuterInput::wordLetterAlreadyDispatched(
+                  inputChar, dispatchedLetterMask)) {
+            continue;
+          }
+          if (u == '\n' || u == '\r' || u == '\b' || u == '\t') continue;
 
-      if (evt.key == '`' || evt.key == '~') { // escape
-        evt.scancode = GROOVEPUTER_ESCAPE;
+          if (ks.ctrl || ks.alt) {
+            const bool isLetter =
+                (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z');
+            const bool isCtrlChar = u >= 1 && u <= 26;
+            if (isLetter || isCtrlChar) continue;
+          }
+        }
+
+        UIEvent evt{};
+        evt.alt = ks.alt;
+        evt.ctrl = ks.ctrl;
+        evt.shift = ks.shift;
+        evt.meta = ks.fn;
+        evt.key = normalizeKeyChar(inputChar);
+        evt.scancode = mapAsciiLetterScancode(evt.key);
+        if (evt.key == '`' || evt.key == '~') {
+          evt.scancode = GROOVEPUTER_ESCAPE;
+        }
+        handleWithFallback(evt, "WORD", pressId, false);
+        dispatched = true;
       }
-      handleWithFallback(evt);
     }
+
+    if (sawEdge) {
+      repeatActive = armedRepeat;
+      if (!repeatActive) {
+        repeatHid = 0;
+        repeatPressId = 0;
+      }
+    }
+    return dispatched;
   };
 
-  bool keyChanged = M5Cardputer.Keyboard.isChange();
-  bool keyPressed = M5Cardputer.Keyboard.isPressed();
-  static uint32_t repeatCount = 0;
-  
-  if (keyChanged && keyPressed) {
+  const Keyboard_Class::KeysState currentKeysState =
+      M5Cardputer.Keyboard.keysState();
+  reconcilePerformanceKeys(currentKeysState);
+
+  const uint32_t candidatePressId = nextPressId;
+  const bool dispatched = processKeyEdges(
+      currentKeysState,
+      previousKeysState,
+      hasPreviousKeysState,
+      candidatePressId);
+  if (dispatched) {
+    ++nextPressId;
     if (g_miniDisplay) g_miniDisplay->dismissSplash();
-    Keyboard_Class::KeysState ks = M5Cardputer.Keyboard.keysState();
-    reconcilePerformanceKeys(ks);
-    processKeys(ks);
-    lastKeysState = ks;
-    hasLastKeys = true;
-    nextRepeatAt = millis() + KEY_REPEAT_DELAY_MS;
-    repeatCount = 0;
-  } else if (!keyPressed) {
-    g_performanceKeyboard.releaseMissingKeys(nullptr, 0);
-    if (hasLastKeys) {
-        // Serial.println("[Keys] Released");
-    }
-    hasLastKeys = false;
-    repeatCount = 0;
-  } else if (hasLastKeys && millis() >= nextRepeatAt) {
-    if (g_miniDisplay) g_miniDisplay->dismissSplash();
-    // Only repeat alphabetical keys or specific navigational keys to avoid spamming
-    // Serial.printf("[Keys] Repeating (HID=0x%02x)\n", lastKeysState.hid_keys[0]);
-    processKeys(lastKeysState);
-    nextRepeatAt = millis() + KEY_REPEAT_INTERVAL_MS;
-    
-    // Safety: if a key is held for more than 10 seconds, stop repeating until re-pressed
-    if (++repeatCount > 100) { // 10s / 80ms approx
-        hasLastKeys = false;
-        repeatCount = 0;
-        Serial.println("[Keys] Safety: Stopping long repeat");
-    }
   }
+
+  if (repeatActive &&
+      !GroovePuterInput::repeatKeyStillHeld(
+          currentKeysState, repeatHid, repeatEvent)) {
+    Serial.printf("[KEY] press=%u src=REPEAT blocked=1 hid=0x%02X\n",
+                  (unsigned)repeatPressId, (unsigned)repeatHid);
+    repeatActive = false;
+  }
+
+  const unsigned long nowMs = millis();
+  if (repeatActive &&
+      static_cast<int32_t>(nowMs - nextRepeatAt) >= 0) {
+    handleWithFallback(repeatEvent, "REPEAT", repeatPressId, true);
+    nextRepeatAt = nowMs + KEY_REPEAT_INTERVAL_MS;
+  }
+
+  previousKeysState = currentKeysState;
+  hasPreviousKeysState = true;
 
   static unsigned long lastUIUpdate = 0;
   if (millis() - lastUIUpdate > 40) {

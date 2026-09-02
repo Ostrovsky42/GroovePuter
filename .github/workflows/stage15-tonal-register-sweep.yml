@@ -1,0 +1,16 @@
+name: Stage 15 tonal register sweep
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  register-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exhaust production pattern address space
+        run: bash tests/run_stage15_tonal_register_sweep.sh

@@ -4,6 +4,9 @@
 #include <vector>
 
 #include "src/midi/smf_stream.h"
+#include "src/midi/smf_structural_inspector.h"
+#include "src/midi/smf_track_inspector.h"
+#include "src/midi/smf_track_mute.h"
 
 using namespace GroovePuterMidi;
 
@@ -86,6 +89,19 @@ std::vector<uint8_t> fixture() {
     return file;
 }
 
+std::vector<uint8_t> manyTrackFixture(uint16_t trackCount) {
+    std::vector<uint8_t> file;
+    tag(file, "MThd");
+    be32(file, 6);
+    be16(file, 1);
+    be16(file, trackCount);
+    be16(file, 480);
+    for (uint16_t track = 0; track < trackCount; ++track) {
+        appendTrack(file, {0x00, 0xFF, 0x2F, 0x00});
+    }
+    return file;
+}
+
 }  // namespace
 
 int main() {
@@ -95,11 +111,15 @@ int main() {
     assert(indexed.index.format == 1);
     assert(indexed.index.division == 480);
     assert(indexed.index.trackCount == 2);
+    assert(indexed.index.declaredTrackCount == 2);
+    assert(!indexed.index.tracksTruncated());
     assert(indexed.index.tracks[0].length > 0);
     assert(indexed.index.tracks[1].length > 0);
 
     SmfEventStreamMerger stream;
     assert(stream.open(source, indexed.index));
+    assert(smfTrackMuteState().snapshot().trackCount == 2);
+    assert(smfTrackMuteState().snapshot().mutedMask == 0);
 
     std::vector<SmfStreamEvent> events;
     SmfStreamEvent event;
@@ -129,6 +149,18 @@ int main() {
     assert(events[6].event.kind == SmfEventKind::ProgramChange);
     assert(events[6].event.data1 == 10);
 
+    const SmfStructuralInspectorSnapshot structure =
+        smfStructuralInspectorState().snapshot();
+    assert(structure.layerCount == 1);
+    assert(structure.layers[0].trackIndex == 1);
+    assert(structure.layers[0].noteCount == 2);
+    assert(structure.layers[0].minNote == 60);
+    assert(structure.layers[0].maxNote == 64);
+    assert(structure.layers[0].form[0] > 0);
+    for (uint8_t segment = 1; segment < kSmfStructuralFormSegments; ++segment) {
+        assert(structure.layers[0].form[segment] == 0);
+    }
+
     uint32_t musicStart = 0;
     bool foundMusic = false;
     for (const SmfStreamEvent& item : events) {
@@ -156,12 +188,71 @@ int main() {
     }
     assert(source.reads() == indexed.index.trackCount);
 
-    std::vector<uint8_t> tooMany = fixture();
-    tooMany[10] = 0x00;
-    tooMany[11] = 0x41;
-    MemorySource tooManySource(std::move(tooMany));
-    assert(SmfFileIndexer::build(tooManySource).error ==
-           SmfParseError::UnsupportedFormat);
+    // Muting one source track removes only its future NoteOn events.
+    // NoteOff remains cleanup-critical for notes queued before the mute.
+    smfTrackMuteState().selectRelative(1);
+    assert(smfTrackMuteState().snapshot().selectedTrack == 1);
+    assert(smfTrackMuteState().toggleSelected());
+    assert(smfTrackMuteState().snapshot().selectedMuted());
+    stream.reset();
+    events.clear();
+    while (stream.next(event)) events.push_back(event);
+    assert(events.size() == 5);
+    assert(events[0].event.kind == SmfEventKind::Tempo);
+    assert(events[1].event.kind == SmfEventKind::TimeSignature);
+    assert(events[2].event.kind == SmfEventKind::NoteOff);
+    assert(events[3].event.kind == SmfEventKind::NoteOff);
+    assert(events[4].event.kind == SmfEventKind::ProgramChange);
+    smfTrackMuteState().clear();
+
+    // Large files are validated through their final declared MTrk, while only
+    // the first bounded set is retained for playback and inspection.
+    MemorySource largeSource(manyTrackFixture(41));
+    const SmfIndexResult large = SmfFileIndexer::build(largeSource);
+    assert(large.ok());
+    assert(large.index.declaredTrackCount == 41);
+    assert(large.index.trackCount == kSmfMaxTracks);
+    assert(large.index.trackCount == 32);
+    assert(large.index.tracksTruncated());
+    assert(large.index.tracks[31].length == 4);
+
+    SmfEventStreamMerger largeStream;
+    assert(largeStream.open(largeSource, large.index));
+    const SmfTrackInspectorSnapshot largeInspector =
+        smfTrackInspectorState().snapshot();
+    assert(largeInspector.trackCount == 32);
+    assert(largeInspector.declaredTrackCount == 41);
+    assert(largeInspector.tracksTruncated());
+    assert(!largeStream.next(event));
+    assert(largeStream.ended());
+
+    // The arrangement projection is normalized across the actual analyzed
+    // length, so a 200-bar file still addresses all sixteen display segments.
+    SmfStructuralInspectorState arrangement;
+    arrangement.reset(96, 1);
+    const uint16_t bars[] = {0u, 50u, 100u, 150u, 199u};
+    for (uint16_t bar : bars) {
+        SmfEvent note{};
+        note.tick = static_cast<uint32_t>(bar) * 384u;
+        note.kind = SmfEventKind::NoteOn;
+        note.channel = 0u;
+        note.data1 = static_cast<uint8_t>(48u + (bar % 24u));
+        note.data2 = 100u;
+        arrangement.observe(0u, note);
+        note.kind = SmfEventKind::NoteOff;
+        note.tick += 96u;
+        arrangement.observe(0u, note);
+    }
+    arrangement.finalize();
+    const SmfStructuralInspectorSnapshot normalized = arrangement.snapshot();
+    assert(normalized.analyzedBars == 200u);
+    assert(normalized.layerCount == 1u);
+    assert(normalized.layers[0].noteCount == 5u);
+    assert(normalized.layers[0].form[0] > 0u);
+    assert(normalized.layers[0].form[4] > 0u);
+    assert(normalized.layers[0].form[8] > 0u);
+    assert(normalized.layers[0].form[12] > 0u);
+    assert(normalized.layers[0].form[15] > 0u);
 
     return 0;
 }

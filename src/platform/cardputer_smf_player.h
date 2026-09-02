@@ -13,6 +13,9 @@
 #include "src/midi/smf_scheduler.h"
 #include "src/midi/smf_stream.h"
 #include "src/midi/smf_timing.h"
+#include "src/midi/smf_track_output_route.h"
+#include "src/midi/smf_track_route_profile.h"
+#include "src/midi/smf_track_route_profile_runtime.h"
 
 class CardputerSmfPlayerService final : public GroovePuterMidi::ISmfPlayerService {
 public:
@@ -33,7 +36,10 @@ public:
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
+    bool persistTrackOutputRoutes(uint32_t generation) override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
+    GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
+    bool currentFilePath(char* output, std::size_t outputSize) const override;
 
 private:
     static constexpr std::size_t kCommandDepth = 4;
@@ -126,11 +132,14 @@ private:
     bool armProjectFromTick(uint32_t tick);
     bool planProjectLaunch(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    bool queueSongPositionPointerAtCurrentAnchor(uint32_t tick);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
     void logPerformance();
     void updatePlaybackSnapshot();
+    void resetMidiVisual();
+    void queueMidiVisualNote(uint32_t tick, uint8_t note, uint8_t velocity, uint8_t channel);
     void applyTempoScale(uint16_t scalePermille);
     uint16_t originalBpmX10At(uint32_t tick) const;
     uint16_t effectiveBpmX10At(uint32_t tick) const;
@@ -140,6 +149,20 @@ private:
     double currentProjectSmfTick(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
+    GroovePuterMidi::SmfRoutedNote routeSmfNote(
+            GroovePuterMidi::SmfRoutingMode mode,
+            uint8_t sourceChannel,
+            uint8_t sourceNote) {
+        const int8_t destinationOverride =
+            GroovePuterMidi::smfTrackOutputRouteState().destinationForProducer(
+                pendingEvent_.trackIndex,
+                fileIndex_.trackCount);
+        return GroovePuterMidi::routeSmfTrackNote(
+            mode,
+            sourceChannel,
+            sourceNote,
+            destinationOverride);
+    }
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
                          const char* message = nullptr);
     static void copyText(char* dst, std::size_t size, const char* src);
@@ -151,6 +174,7 @@ private:
     GroovePuterMidi::SmfEventStreamMerger stream_;
     GroovePuterMidi::SmfTimingMap timing_;
     GroovePuterMidi::SmfDocument timingDocument_;
+    GroovePuterMidi::SmfMidiVisualTimeline midiVisualTimeline_;
 
     GroovePuterMidi::SmfStreamEvent pendingEvent_{};
     bool hasPendingEvent_{false};
@@ -208,6 +232,8 @@ private:
 
     mutable portMUX_TYPE snapshotMux_ = portMUX_INITIALIZER_UNLOCKED;
     GroovePuterMidi::SmfPlayerSnapshot snapshot_{};
+    GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector_{};
+    char loadedPath_[kPathBytes]{};
 
     StaticQueue_t commandQueueStruct_{};
     alignas(4) uint8_t commandQueueStorage_[kCommandDepth * sizeof(Command)]{};

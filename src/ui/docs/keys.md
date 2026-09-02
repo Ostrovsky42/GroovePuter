@@ -1,179 +1,287 @@
-# MiniAcid Key Map (Cardputer)
+# GroovePuter 0.9.2 Key Map — Cardputer ADV
 
-Canonical key map for the currently active firmware version.
+This is the canonical external key reference for the current 0.9.2 hardening runtime. `Alt+H`
+opens page-aware on-device help; this file is the fuller release reference.
 
-## Стандартизация (Base Rules)
-| Класс клавиш | Сочетание | Описание | Приоритет |
-| --- | --- | --- | --- |
-| **Performance notes** | `QWERTYUIOP` + `ASDFGHJKL` | Scale-aware Synth A keyboard while NOTE mode is ON | После локальной команды страницы, до legacy fallback |
-| **Паттерны** | `Q..I` | Выбор паттерна 1..8 вне активного performance-note context | Локальный |
-| **Банки** | `Ctrl + 1..2` | Переключение банков A/B (для тек. трека/страницы) | Локальный |
-| **Страницы** | `Alt / Fn + 0..9` | Переключение страниц (Song, Pattern, Drum и др.) | **Глобальный** |
-| **Мьюты** | `1..9`, `0` | Звук дорожек 1..9 (Rim), 0 (Clap). Игнорируют CapsLock. | **Глобальный fallback** |
+## Workflows
 
-## Global Shortcuts
+```text
+PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
+GENERATE: GENRE -> FEEL
+HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
+SONG:     SONG -> PHRASE -> PHRASE CORE
+SETTINGS: PROJECT / SETUP
+```
+
+There are **12 active pages**. Persisted `GENERATION` and `TEXTURE` IDs resolve to
+FEEL. Persisted standalone Synth SOUND IDs resolve to their owning Synth A/B page;
+sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
+
+## Global navigation
+
 | Key | Action |
-| --- | --- |
-| `Fn+Tab` | Cycle `PERFORM → PATTERN → ARRANGE` |
-| `Fn+Shift+Tab` | Cycle workflow backward |
-| `Space` | Transport Play / Stop |
-| `Alt/Fn + 1..0` | Direct page jump (Global) |
-| `[` / `]` | Previous / Next page outside PERFORM; scale select on PERFORM |
-| `Alt+M` | Toggle Song mode |
-| `Alt+W` | Waveform overlay |
-| `Alt+V` | Jump to Groove Lab |
-| `Alt+\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
-| `Ctrl+H` | Global help overlay (Highest Priority) |
-| `1..9`, `0` | Track mutes when the active page does not consume the digit |
-| `Esc` | Back / Dismiss |
-| `Ctrl+Alt+Bksp` | Project reset (wipe) |
-
-## Priority & Interception Logic
-1. **Global Help Overlay**: intercepts input while visible.
-2. **Hard-Global Shortcuts**: `Fn+Tab`, transport, `Alt/Fn + 0..9`, `Ctrl+H`, `Alt+W`.
-3. **Local Page Handler**: the active page gets first refusal.
-4. **Performance NOTE Layer**: on supported pages, an unmodified performance key is routed to `PerformanceKeyboard`.
-   - NOTE mode ON + transport stopped: emit live note events.
-   - NOTE mode ON + transport running: consume the key without emitting `NoteOn`.
-   - NOTE mode OFF: return the key to legacy fallback commands.
-5. **Legacy Global Fallback**: page navigation, help, track mutes, randomize/BPM shortcuts.
-
-This order prevents `I/O/P/K/L` from reaching randomize/BPM commands while NOTE mode is active, even when transport temporarily owns Synth A.
-
----
-
-## PERFORM Page
-
-### Workflow and performance controls
-| Key | Action |
-| --- | --- |
-| `1` | Open PERFORM |
-| `2` | Open PATTERN |
-| `3` | Open ARRANGE |
-| `N` | Toggle NOTE mode ON/OFF |
-| `[` / `]` | Previous / next scale |
-| `-` / `=` | Octave down / up |
-| `X` | Release the live-owned Synth A note |
-| `Space` | Transport Play / Stop |
-
-### NOTE MODE: ON
-| Keys | Action |
-| --- | --- |
-| `ASDFGHJKL` | Lower scale-aware manual, starting at C2 by default |
-| `QWERTYUIOP` | Upper manual, exactly one octave above the lower row |
-
-Synth A is monophonic and uses last-note priority. Starting transport clears held performance notes and gives PatternPlayer exclusive ownership. Performance keys remain consumed while transport runs, so legacy pattern/BPM commands cannot fire accidentally.
-
-### NOTE MODE: OFF
-| Key | Legacy action |
-| --- | --- |
-| `I` | Randomize Synth A pattern |
-| `O` | Randomize Synth B pattern |
-| `P` | Randomize drums |
-| `K` / `L` | BPM down / up |
-| `N` | Return to NOTE mode |
-
-NOTE mode, scale, root, and octave are runtime-only in this stage and are not written to scene JSON.
-
-## Song Page
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | Assign pattern `1..8` (to cell or selection) |
-| **`Ctrl+1..8`** | **Switch edit page `1..8`** |
-| `B` | Flip bank `A/B` in cursor/selection |
-| `Alt+B` | Toggle edit slot `A/B` |
-| `Ctrl+B` | Toggle play slot `A/B` |
+|---|---|
+| `Alt+H` | Toggle page-aware help |
+| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |
+| `Fn+M` | Workspace launcher |
+| `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
+| `[` / `]` | Previous / next page inside workflow |
+| `Fn+[` / `Fn+]` | Previous / next workflow |
+| `Alt+[` / `Alt+]` | Previous / next pattern page |
+| `Alt/Fn+1..0` | Direct page jump |
+| `Space` | Active transport unless the page consumes it |
+| `Alt+P` | MIDI Player |
+| `Alt+K` | SAMPLER |
+| `Alt+V` | GENRE |
+| `Alt+W` | Waveform overlay except Phrase REPLACE |
 | `Alt+X` | LiveMix ON/OFF |
-| `X` | Toggle split compare |
-| `V` | Lane focus cycle `ALL -> AB -> DR+VO` |
-| `Ctrl+W/S` | Jump by `8` rows |
-| `Ctrl+Alt+W/S` | Jump by `32` rows |
-| `Alt+Q/E/R/T` | Save row marker 1..4 |
-| `Ctrl+Alt+Q/E/R/T` | Jump to marker 1..4 |
-| `Ctrl+R` | Reverse song direction |
-| `Ctrl+M` | Merge slots |
-| `Ctrl+N` | Alternate slots |
-| `Ctrl+L` | Loop mode |
-| `Bksp` | Clear cell / selected area |
-| `G` | Generate cell |
-| `G` double-tap | Generate row |
-| `Alt+G` | Generate selected area |
-| `Alt+Bksp` | Clear full arrangement |
+| `Alt+M` | Song mode ON/OFF |
+| `Alt+\` | `CARBON <-> CYBER` |
 
-## Project Page & MIDI Import
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate list / Adjust params |
-| `Enter` | **Open folder** / Select scene or file |
-| `Backspace` | **Go up one level** (in MIDI folders) / Close dialog |
-| `Tab` | Open Advanced Import Settings (in MIDI dialog) |
-| `X` | Delete selected scene or MIDI file |
-| `G` | Randomize scene name (in Save dialog) |
+The active page gets first refusal before global fallbacks.
 
-## Pattern Edit (303)
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate steps |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | **Select pattern 1..8** |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Bksp` / `Del` | **REST (Clear step)** / Clear selection |
-| `A/Z` | Note +/- |
-| `S/X` | Octave +/- |
-| `Alt+Left/Right` | Rotate pattern |
-| `Alt/Ctrl+A` | Accent toggle |
-| `Alt/Ctrl+S` | Slide toggle |
-| `Ctrl+C / Ctrl+V` | Copy / Paste |
-| `Alt+Bksp` | Clear whole pattern |
-| `G` | Randomize pattern |
-| `Tab` | Toggle `303A/303B` |
+## MIDI KEYBOARD / PERFORM
 
-## Drum Sequencer
 | Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | **Select pattern 1..8** |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
+|---|---|
+| `QWERTYUIOP` | Upper scale-aware manual |
+| `ASDFGHJKL` | Lower manual |
+| `N` | NOTE mode ON/OFF |
+| `\` | Cycle output target |
+| `,` / `.` | Previous / next scale |
+| `-` / `=` | Octave down / up |
+| `Tab` | Open/close PERFORMANCE TOOLS |
+
+### PERFORMANCE TOOLS
+
+| Key | Action |
+|---|---|
+| `1` | ARPEGGIATOR |
+| `2` | DIRECTION |
+| `3` | CHORD |
+| `4` | MEMORY |
+| `5` | STRUM |
+| `6` | RATCHET |
+| `7` | EUCLIDEAN |
+| `8` | ROTATE |
+| `9` | Receiver `MONO/POLY` |
+| `-` / `_` | Velocity -10 |
+| `=` / `+` | Velocity +10 |
+
+Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
+ownership; internal Synth A/B remain sequencer/pattern instruments.
+
+## GENRE 1/2
+
+| Key | Action |
+|---|---|
+| `Tab` / `Up/Down` | Select Genre/Variant/Rhythm/Apply field |
+| `Left/Right` | Adjust selected field |
+| `Enter` | Apply selected policy |
+| `G` | Explicit full Stage 15 generation |
+| `P` | `P1 CANON -> P2 VAR -> P3 TRANS` |
+| `M` | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
+
+During PLAY, accepted full generation publishes at the next real `BAR_START`; while
+stopped it commits immediately. Repeated accepted `G` rerolls the same selected
+musical identity through the bounded session attempt stream.
+
+## FEEL 2/2
+
+| Key | Action |
+|---|---|
+| `Tab` / `Up/Down` | Select FEEL field |
+| `Left/Right` | Adjust selected value |
+| hold `Left/Right` | Accelerated adjustment |
+| `Enter` / `Space` on PRESET | Apply selected FEEL preset |
+| `P` | Cycle shared P1/P2/P3 request level |
+
+FEEL owns timing and velocity only: profile, swing, bounded feel amount, velocity
+variation, repeat cycle `1/2/4/8`, and presets.
+
+## SYNTH A / SYNTH B
+
+`Tab` cycles `NOTES -> KNOBS -> MORE`.
+
+### NOTES
+
+| Key | Action |
+|---|---|
+| `Q..I` | Pattern slot 1..8 outside NOTE ENTRY |
+| `B` | Toggle bank A/B |
+| `Alt+[` / `Alt+]` | Previous / next pattern page |
+| `Arrows` | Move step cursor |
+| `N` | NOTE ENTRY ON/OFF |
+| `G` | Reroll only the selected synth lane when NOTE ENTRY is OFF |
+| `Ctrl+C/V` | Copy / Paste |
+
+Plain `G` uses the active Genre/Variant/Rhythm/P-level/harmony identity. During PLAY
+the selected lane publishes at `BAR_START`; the other synth and drums stay unchanged.
+Inside NOTE ENTRY, `G` remains note input.
+
+### KNOBS / MORE
+
+| Key | Action |
+|---|---|
+| `Tab` | Cycle NOTES / KNOBS / MORE |
+| `Left/Right` | Focus/change value |
+| `Up/Down` | Adjust value/select row |
+| `Ctrl+1..2` | Pattern bank A/B |
+| `Q..I` | Pattern selection when NOTE mode is off |
+| `A/Z S/X D/C F/V` | Quick parameter controls |
+| `T/G` | Oscillator +/- |
+| `Y/H` | Filter type +/- |
+| `N/M` | Distortion / Delay |
+| `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |
+
+## DRUMS
+
+| Key | Action |
+|---|---|
+| `Tab` | Sequencer / automation subpage |
+| `Q..I` | Pattern 1..8 |
+| `B` | Toggle bank A/B |
+| `Alt+[` / `Alt+]` | Previous / next pattern page |
+| `Arrows` | Move grid cursor |
 | `Enter` | Toggle hit |
 | `A` | Toggle accent |
-| `Bksp` / `Del` | **Clear hit** / Clear selection |
-| `G` | Randomize pattern |
-| `Ctrl+G` | Randomize focused voice |
-| `Alt+Bksp` | Clear whole pattern |
+| `G` | Drums-only strong generation at current P-level |
+| `Ctrl+G` | Randomize focused drum voice |
+| `Alt+G` | Full-pattern CHAOS |
+| `Ctrl+Alt+G` | Stage 12 phrase audition/probe |
+| `P` | Cycle shared P1/P2/P3 request level |
+| `Ctrl+C/V` | Copy / Paste |
 
-## TB303 Params
+## SONG
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Quick pattern select `1..8` when NOTE mode is OFF; live notes when NOTE mode is ON |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Left/Right` | Focus control |
-| `Up/Down` | Adjust value |
-| `A/Z` | Cutoff +/- when consumed by the page |
-| `S/X` | Resonance +/- when consumed by the page |
-| `N` / `M` | Distortion / Delay toggle when consumed by the page |
+|---|---|
+| `Left/Right` | Move `Synth A -> Synth B -> Drums`; crossing the outer edge changes edit Song slot A/B |
+| `Up/Down` | Move Song row |
+| `Enter` | Jump to referenced pattern editor |
+| `Q..I` | Assign existing slot from visible `PAT:A/B` context |
+| `G` | Generate safe material and assign selected cell; unique Song-generated material rerolls in place |
+| double `G` | Materialize Synth A + Synth B + Drums for current row |
+| `Alt+G` | Generate selected area |
+| `Ctrl+G` | Cycle Song generator mode |
+| `Backspace` | Clear current cell / selected Song cells |
+| `B` | Toggle visible `PAT:A/B` assignment bank |
+| `Alt+B` | Flip stored-reference/selection bank |
+| `Ctrl+B` | Play Song slot A/B |
+| `Alt+[` / `Alt+]` | Previous / next pattern page when the resident 16-slot page is full |
+| `Ctrl+N` / `Ctrl+M` | Insert / remove row |
+| `V` | Toggle DR/VO lane |
+| `X` | Split compare |
+| `L` | Loop-lock around playhead |
+| `Ctrl+L` | Loop mode |
+| `Ctrl+R` | Reverse playback |
+| `Alt+X` | LiveMix ON/OFF |
+| `Ctrl+C/V` | Copy / Paste |
+| `P` | Cursor to playhead |
+| `Alt+J` | Jump to PHRASE with this row as the explicit `TO` destination |
 
-## Feel & Texture
+`B` changes assignment context only. `Alt+B` changes stored references. Song-slot
+crossing and the visible PAT assignment bank are independent controls.
+
+0.9.2 hardening distinguishes Song-generated material from manual/imported material.
+Clearing a Song cell removes its arrangement reference; an unreferenced Song-generated
+orphan may be reused by later Song generation, while non-empty manual/imported patterns
+are never reclaimed automatically. A resident page still contains 16 slots per track;
+if all of them are legitimately referenced/manual, use `Alt+]` to move to another
+pattern page instead of clearing the project. Song stores page-aware global pattern IDs,
+so playback can return to the required page through the existing deferred page-switch
+path.
+
+## PHRASE
+
+Generated-Phrase product workflow. `NEXT REQUEST` (`LENGTH`/`DEPTH`/`TO`) and
+`LAST ACCEPTED` (`BAR`/activity) are separate objects, never one shared
+timeline.
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Select Pattern 1..8 when consumed by the page; otherwise live notes in NOTE mode |
-| `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select parameter / Adjust value |
-| `Tab` | Cycle focus (Feel / Drum FX / Presets) |
-| `1..4` | Apply feel preset (when Presets focused) |
+|---|---|
+| `Up/Down` | Move focus `LENGTH -> DEPTH -> TO [-> BAR]` (`BAR` only when a live accepted Phrase exists) |
+| `Left/Right` | Adjust the focused field (length 1/2/4/8, depth, TO placement, or accepted bar) |
+| `Enter` (focus `TO`) | `EXPLICIT` row -> `APPEND` (no effect while already `APPEND`) |
+| `Enter` (focus `BAR`) | Focus the accepted bar's Song/pattern context (STOP-only) |
+| `G` | Generate into the resolved `TO` row |
+| `P` | Cycle `DEPTH` (shortcut, same owner as focused `DEPTH`) |
 
-## Genre Page
+`TO` always shows the row `G` would actually target right now: `APPEND` resolves
+against the Song's current logical end every frame, or `EXPLICIT` if entering
+PHRASE from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
+(`FREE`/`OCCUPIED`/`NO ROOM`) mirrors the exact generation-availability check.
+`LAST ACCEPTED` is retrospective only and disappears (`LAST --`) if its
+generated material is no longer structurally present in the Song.
+
+## PHRASE CORE
+
+Legacy capture/derive/write workspace, now a separate page from PHRASE. Its
+own `TO:` destination and generation length are independent of the PHRASE
+product request above.
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Select Pattern 1..8 (Synth A) |
-| `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select Genre / Texture / Preset / Pattern |
-| `Enter` | Apply Genre + Texture |
-| `M` | Cycle Apply mode (Snd / Pat / BPM) |
-| `G` | Toggle Groovebox mode (Acid / Minimal) |
-| `C` | Toggle Curated mode (Recommendations) |
+|---|---|
+| `1..4` | Select Phrase A/B/C/D |
+| `Up/Down` | Capture/generation length `1/2/4/8` |
+| `Left/Right` | Preview saved Phrase bar |
+| `Ctrl+Left/Right` | Move visible `TO:` +/-1 row |
+| `Ctrl+Up/Down` | Move visible `TO:` +/-8 rows |
+| `R` / `Shift+R` | Next / previous capture role |
+| `P` | Cycle derive parent |
+| `Enter` | Capture current Song region |
+| `D` | Derive parent into selected slot |
+| `G` | Generate fresh connected Phrase at `TO:` |
+| `W` | INSERT saved Phrase before `TO:` and shift following rows |
+| `Alt+W` | REPLACE Phrase lanes at `TO:` without row shift |
 
-> [!TIP]
-> **CapsLock Safety**: QWERTY pattern selection (`Q..I`) and Track Mutes (`1..0`) work even if CapsLock is ON (Shift is ignored for these keys).
+Fresh multi-row Phrase generation is STOP-only. During PLAY it reports
+`STOP PLAYBACK FOR PHRASE`; successful `G` or `W` advances `TO:` by Phrase length.
+
+## OVERVIEW / SEQUENCER HUB
+
+### Normal overview
+
+| Key | Action |
+|---|---|
+| `Up/Down` | Select track |
+| `Left/Right` | Select step |
+| `Fn+Left/Right` | Selected-track volume -/+ |
+| `X` | Toggle hit/note |
+| `A` | Toggle accent |
+| `Enter` | Open track detail |
+| `Space` | Transport |
+| `Q..I` | Select local pattern |
+| `B` | Toggle pattern bank |
+| `Ctrl+C/V` | Copy / Paste |
+
+### HUB MIDI
+
+Open from MIDI Player with `H` after a file is loaded.
+
+| Key | Action |
+|---|---|
+| `H` / `Esc` | Return to MIDI Player |
+| `Up/Down` | Select projected physical layer |
+| `Left/Right` | Change route immediately `AUTO <-> CH1..CH10` |
+| `Fn+Left/Right` | Selected physical-track level +/-5% |
+| `Enter` | Mute/unmute selected layer |
+| `1..9` | Mute/unmute physical tracks directly |
+| `S` | Solo selected layer |
+| `A` | All MIDI tracks on |
+| `Space` | MIDI transport |
+
+Route changes work during PLAY and persist immediately per matching file identity.
+There is no pause-first or Enter-to-commit route mode. RAW routing keeps source
+channels and therefore does not accept explicit SEQTRAK destination overrides.
+
+## PROJECT / SETUP
+
+| Key | Action |
+|---|---|
+| `Tab` | Next section; MIDI browser can open import matrix |
+| `Up/Down` | Select row/file |
+| `Left/Right` | Adjust value/dialog focus |
+| `Enter` | Open/activate |
+| `G` | Jump to GENRE |
+| `Esc` / `Backspace` | Close dialog/go up directory |

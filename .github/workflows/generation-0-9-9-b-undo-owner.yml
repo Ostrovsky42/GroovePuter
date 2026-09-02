@@ -1,0 +1,41 @@
+name: 0.9.9-B generation mutation owner
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/0.9.9-b-generation-undo-owner
+
+permissions:
+  contents: read
+
+jobs:
+  generation-undo-owner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile fixed generation receipt contract
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_generation_undo_owner_0_9_9.cpp \
+            -o build/host-tests/test_generation_undo_owner_0_9_9
+          build/host-tests/test_generation_undo_owner_0_9_9
+
+      - name: Enforce PREPARE COMMIT ownership split
+        run: python3 tests/test_generation_undo_owner_0_9_9_source.py
+
+      - name: Preserve 0.9.9-A compatibility and Lo-Fi contracts
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_generation_0_9_9_compatibility.cpp \
+            -o build/host-tests/test_generation_0_9_9_compatibility
+          build/host-tests/test_generation_0_9_9_compatibility
+          python3 tests/test_generation_0_9_9_source_regressions.py
+
+      - name: Preserve 0.9.8 Undo owner contracts
+        run: |
+          bash tests/run_undo_0_9_8_r2_tests.sh
+          bash tests/run_undo_0_9_8_r3_tests.sh

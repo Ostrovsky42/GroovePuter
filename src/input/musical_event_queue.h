@@ -9,6 +9,7 @@
 #include "../midi/midi_transport_clock_publisher.h"
 #include "../midi/project_transport_timeline.h"
 #include "../midi/scheduled_musical_event_queue.h"
+#include "../output/output_ownership.h"
 
 // Compatibility facade used by MiniAcid's existing PatternPlayer publication
 // API. MiniAcid still emits normalized MusicalEvent values at the exact point
@@ -16,9 +17,9 @@
 // block here, and this facade converts the current sequencer phase into the
 // ScheduledMusicalEvent frame offset consumed by MidiDispatchTask.
 //
-// The same render bracket also publishes MIDI Clock/Start/Stop into a separate
-// bounded transport queue. Both queues share blockSequence+frameOffset timing,
-// while TinyUSB ownership remains entirely in MidiDispatchTask.
+// The same render bracket also publishes MIDI Clock/Start/Continue/Stop into a
+// separate bounded transport queue. Both queues share blockSequence+frameOffset
+// timing, while TinyUSB ownership remains entirely in MidiDispatchTask.
 //
 // PROJECT-tempo SMF playback reads the same block anchor through the bounded
 // ProjectTransportTimeline snapshot. No second wall-clock, transport task or
@@ -79,7 +80,8 @@ public:
                 renderStartPhaseSteps_,
                 renderBpm_,
                 renderSampleRate_,
-                transportPlaying);
+                transportPlaying,
+                restartFromBeginning);
         } else {
             transportClockPublisher_.reset();
         }
@@ -93,6 +95,14 @@ public:
     }
 
     bool tryPush(const MusicalEvent& event) {
+        // Pattern output ownership is enforced at the AudioTask producer edge.
+        // Suppressed NoteOn never consumes the bounded queue. NoteOff and
+        // AllNotesOff remain cleanup-critical across mode changes.
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsMidiNoteOn(event)) {
+            return false;
+        }
+
         if (!renderBlockActive_) {
             return suppressNonRealtimeEvent(event);
         }

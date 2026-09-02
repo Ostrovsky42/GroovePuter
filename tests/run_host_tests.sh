@@ -8,7 +8,19 @@ CXX="${CXX:-g++}"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_preflash_build_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_song_generation_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_axis_hardware_feedback_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_global_help_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_synth_a_bass_profile_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_pattern_midi_source_regressions.py"
@@ -17,7 +29,10 @@ python3 "${ROOT_DIR}/tests/test_midi_transport_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_midi_wave_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_route_persistence_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
+python3 "${ROOT_DIR}/tests/test_synth_persistence_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${CXX}" \
@@ -30,6 +45,18 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_genre_defaults"
 
 "${BUILD_DIR}/test_genre_defaults"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_global_help_content.cpp" \
+  -o "${BUILD_DIR}/test_global_help_content"
+
+"${BUILD_DIR}/test_global_help_content"
 
 "${CXX}" \
   -std=c++17 \
@@ -181,6 +208,30 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_smf_stream"
 
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_channel_inspector.cpp" \
+  -o "${BUILD_DIR}/test_smf_channel_inspector"
+
+"${BUILD_DIR}/test_smf_channel_inspector"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_midi_visual.cpp" \
+  -o "${BUILD_DIR}/test_smf_midi_visual"
+
+"${BUILD_DIR}/test_smf_midi_visual"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -224,6 +275,14 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_smf_routing"
 
 "${BUILD_DIR}/test_smf_routing"
+
+"${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
+
+"${BUILD_DIR}/test_smf_track_route_profile"
+
+"${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile_runtime.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile_runtime"
+
+"${BUILD_DIR}/test_smf_track_route_profile_runtime"
 
 "${CXX}" \
   -std=c++17 \
@@ -271,6 +330,40 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_usb_midi_output"
 
 "${BUILD_DIR}/test_usb_midi_output"
+
+# Dual-endpoint foundation: sparse note ownership and the DIN/UART transport.
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_note_ownership_table.cpp" \
+  -o "${BUILD_DIR}/test_midi_note_ownership_table"
+
+"${BUILD_DIR}/test_midi_note_ownership_table"
+echo "MIDI note ownership table: OK"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_uart_midi_transport_core.cpp" \
+  -o "${BUILD_DIR}/test_uart_midi_transport_core"
+
+"${BUILD_DIR}/test_uart_midi_transport_core"
+echo "UART MIDI transport core: OK"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_uart_midi_transport.cpp" \
+  "${ROOT_DIR}/src/platform/cardputer_uart_midi_transport.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_uart_midi_transport"
+
+"${BUILD_DIR}/test_cardputer_uart_midi_transport"
+echo "Cardputer UART MIDI transport: OK"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_tee_midi_transport.cpp" \
+  -o "${BUILD_DIR}/test_tee_midi_transport"
+
+"${BUILD_DIR}/test_tee_midi_transport"
+echo "Tee MIDI transport: OK"
 
 "${CXX}" \
   -std=c++17 \
@@ -359,3 +452,127 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_smf_external_transport_policy"
 
 "${BUILD_DIR}/test_smf_external_transport_policy"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_scene_revision.cpp" \
+  -o "${BUILD_DIR}/test_scene_revision"
+
+"${BUILD_DIR}/test_scene_revision"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_file_name_policy.cpp" \
+  -o "${BUILD_DIR}/test_midi_file_name_policy"
+
+"${BUILD_DIR}/test_midi_file_name_policy"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_ui_session_state.cpp" \
+  -o "${BUILD_DIR}/test_ui_session_state"
+
+"${BUILD_DIR}/test_ui_session_state"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_input_edges.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_input_edges"
+
+"${BUILD_DIR}/test_cardputer_input_edges"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_wave_morph_synth_voice.cpp" \
+  "${ROOT_DIR}/src/dsp/wave_morph_synth_voice.cpp" \
+  -o "${BUILD_DIR}/test_wave_morph_synth_voice"
+
+"${BUILD_DIR}/test_wave_morph_synth_voice"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_patterns.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_patterns"
+
+"${BUILD_DIR}/test_performance_patterns"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-unused-parameter \
+  -Wno-misleading-indentation \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_tr606_drum_voice.cpp" \
+  "${ROOT_DIR}/src/dsp/mini_drumvoices.cpp" \
+  "${ROOT_DIR}/src/dsp/audio_wavetables.cpp" \
+  "${ROOT_DIR}/src/dsp/tube_distortion.cpp" \
+  -o "${BUILD_DIR}/test_tr606_drum_voice"
+
+"${BUILD_DIR}/test_tr606_drum_voice"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_song_pattern_materializer.cpp" \
+  -o "${BUILD_DIR}/test_song_pattern_materializer"
+
+"${BUILD_DIR}/test_song_pattern_materializer"
+
+python3 tests/test_remove_texture_mode_runtime.py
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_rhythm_stage7c_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_feel_stage8_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_bass_stage9_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_chord_stage10_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_melodic_stage11_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_phrase_stage12_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_generation_stage13_tests.sh"

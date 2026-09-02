@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MINI_DRUMVOICES_H
+#define GROOVEPUTER_DSP_MINI_DRUMVOICES_H
 
 #include <stdint.h>
 
@@ -60,6 +62,8 @@ public:
 
   virtual void reset() = 0;
   virtual void setSampleRate(float sampleRate) = 0;
+  // Advance engine-wide state exactly once per rendered sample.
+  virtual void beginSample() {}
   virtual void triggerKick(bool accent = false, uint8_t velocity = 100) = 0;
   virtual void triggerSnare(bool accent = false, uint8_t velocity = 100) = 0;
   virtual void triggerHat(bool accent = false, uint8_t velocity = 100) = 0;
@@ -420,6 +424,7 @@ public:
 
   void reset() override;
   void setSampleRate(float sampleRate) override;
+  void beginSample() override;
   void triggerKick(bool accent = false, uint8_t velocity = 100) override;
   void triggerSnare(bool accent = false, uint8_t velocity = 100) override;
   void triggerHat(bool accent = false, uint8_t velocity = 100) override;
@@ -716,3 +721,5 @@ private:
 
   Parameter params[static_cast<int>(DrumParamId::Count)];
 };
+
+#endif  // GROOVEPUTER_DSP_MINI_DRUMVOICES_H

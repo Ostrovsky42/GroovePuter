@@ -17,6 +17,7 @@
 
 #include "../audio/audio_diagnostics.h"
 #include "../input/musical_event_queue.h"
+#include "../generation/migration/quantized_generation_commit.h"
 
 #include "../sampler/sample_index.h"
 #include "../ui/led_manager.h"
@@ -223,7 +224,6 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     sampleRateValue(sampleRate),
     drumEngineName_("808"),
     sceneStorage_(sceneStorage),
-    samplerOutBuffer(std::make_unique<float[]>(AUDIO_BUFFER_SAMPLES)),
     samplerTrack(std::make_unique<DrumSamplerTrack>()),
     tapeFX(std::make_unique<TapeFX>()),
     tapeLooper(std::make_unique<TapeLooper>()),
@@ -369,6 +369,7 @@ void MiniAcid::init() {
 }
 
 void MiniAcid::reset() {
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   LOG_PRINTLN("    - MiniAcid::reset: Start");
   if (synthVoices_[0]) synthVoices_[0]->reset();
   if (synthVoices_[1]) synthVoices_[1]->reset();
@@ -462,10 +463,6 @@ void MiniAcid::reset() {
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
-  // NOW reset bias tracking (after all base params are set)
-  genreManager_.resetTextureBiasTracking();
-  // Apply texture to bring engine into consistent state with current genre
-  genreManager_.applyTexture(*this);
   
   // Reset Retrig States
   retrigA_ = {};
@@ -498,6 +495,22 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
+  // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
+  // settle that exact pending destination immediately instead of discarding the
+  // activation and leaving the next START on the old runtime row. Ordinary C
+  // generation keeps its existing cancel+runtime-settlement behavior.
+  const bool songSettled =
+      GroovePuterRhythm::LiveSongArrangementDetail::
+          settlePendingSongArrangementOnStop(*this);
+  const bool phraseSettled = !songSettled &&
+      GroovePuterRhythm::PhraseLiveArrangementDetail::
+          settlePendingPhraseArrangementOnStop(*this);
+  if (!songSettled && !phraseSettled &&
+      GroovePuterRhythm::QuantizedGenerationDetail::
+          cancelPendingGenerationActivation(*this)) {
+    GroovePuterRhythm::QuantizedGenerationDetail::
+        synchronizeCommittedGenerationRuntime(*this);
+  }
   LOG_PRINTLN("[DSP] STOP command received");
   publishPatternAllNotesOff_();
   playing = false;
@@ -956,12 +969,16 @@ const Song& MiniAcid::song() const { return sceneManager_.song(); }
 int MiniAcid::activeSongSlot() const { return sceneManager_.activeSongSlot(); }
 void MiniAcid::setActiveSongSlot(int slot) {
   sceneManager_.setActiveSongSlot(slot);
-  songBarIndex_ = -1;
-  if (!liveMixMode_) {
-    songPlaybackSlot_ = sceneManager_.activeSongSlot();
-  }
-  if (songMode_ && songPlaybackSlot_ == sceneManager_.activeSongSlot()) {
-    applySongPositionSelection();
+  // D3 separates persistent EDIT selection from runtime PLAY selection. During
+  // transport, changing EDIT:A/B must never redirect the audible Song.
+  if (!playing) {
+    songBarIndex_ = -1;
+    if (!liveMixMode_) {
+      songPlaybackSlot_ = sceneManager_.activeSongSlot();
+    }
+    if (songMode_ && songPlaybackSlot_ == sceneManager_.activeSongSlot()) {
+      applySongPositionSelection();
+    }
   }
 }
 int MiniAcid::songPlaybackSlot() const { return songPlaybackSlot_; }
@@ -978,7 +995,7 @@ void MiniAcid::setLiveMixMode(bool enabled) {
   if (liveMixMode_ == enabled) return;
   liveMixMode_ = enabled;
   songBarIndex_ = -1;
-  if (!liveMixMode_) {
+  if (!liveMixMode_ && !playing) {
     songPlaybackSlot_ = sceneManager_.activeSongSlot();
     if (songMode_) applySongPositionSelection();
   }
@@ -991,13 +1008,10 @@ void MiniAcid::deleteSongRow(int position) { sceneManager_.deleteSongRow(positio
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
 bool MiniAcid::isSongReverse() const { return sceneManager_.isSongReverse(); }
 void MiniAcid::queueSongReverseToggle() {
-  if (playing && songMode_) {
-    songReverseTogglePending_ = true;
-    return;
-  }
+  if (playing && songMode_) return;
   sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
 }
-bool MiniAcid::hasPendingSongReverseToggle() const { return songReverseTogglePending_; }
+bool MiniAcid::hasPendingSongReverseToggle() const { return false; }
 
 int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
@@ -1086,23 +1100,39 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
 
   SynthEngineType target = SynthEngineType::TB303;
   const char* targetName = "TB303";
-  if (name.find("SID") != std::string::npos) {
+  if (name.find("WAVEMORPH") != std::string::npos ||
+      name.find("WAVE MORPH") != std::string::npos) {
+    target = SynthEngineType::WAVEMORPH;
+    targetName = "WAVEMORPH";
+  } else if (name.find("SH101") != std::string::npos ||
+             name.find("SH-101") != std::string::npos ||
+             name.find("MC202") != std::string::npos ||
+             name.find("MC-202") != std::string::npos) {
+    target = SynthEngineType::SH101;
+    targetName = "SH101";
+  } else if (name.find("SN76489") != std::string::npos ||
+             name.find("SEGA") != std::string::npos) {
+    target = SynthEngineType::SN76489;
+    targetName = "SN76489";
+  } else if (name.find("SID") != std::string::npos) {
     target = SynthEngineType::SID;
     targetName = "SID";
   } else if (name.find("OPL2") != std::string::npos ||
              name.find("YM3812") != std::string::npos ||
              name.find("FM") != std::string::npos) {
-    target = SynthEngineType::OPL2;
-    targetName = "OPL2";
+    target = SynthEngineType::TB303;
+    targetName = "TB303";
   } else if (name.find("AY") != std::string::npos ||
              name.find("YM2149") != std::string::npos ||
              name.find("PSG") != std::string::npos) {
     target = SynthEngineType::AY;
     targetName = "AY";
-  } else if (name.find("TB303") != std::string::npos || name.find("303") != std::string::npos) {
+  } else if (name.find("TB303") != std::string::npos ||
+             name.find("303") != std::string::npos) {
     target = SynthEngineType::TB303;
     targetName = "TB303";
   }
+
 
   if (synthEngineNames_[idx] == targetName) {
     return;
@@ -1136,7 +1166,7 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
-  return {"TB303", "SID", "AY", "OPL2"};
+  return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH"};
 }
 
 std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {
@@ -1615,6 +1645,11 @@ int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
 
 const SynthPattern& MiniAcid::activeSynthPattern(int synthIndex) const {
   int idx = clamp303Voice(synthIndex);
+  if (const SynthPattern* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
+              *this, idx)) {
+    return *pending;
+  }
   SongTrack track = idx == 0 ? SongTrack::SynthA : SongTrack::SynthB;
   int pat = songPatternIndexForTrack(track);
   if (pat < 0) return kEmptySynthPattern;
@@ -1624,6 +1659,11 @@ const SynthPattern& MiniAcid::activeSynthPattern(int synthIndex) const {
 const DrumPattern& MiniAcid::activeDrumPattern(int drumVoiceIndex) const {
   int idx = clampDrumVoice(drumVoiceIndex);
   int pat = songPatternIndexForTrack(SongTrack::Drums);
+  if (const DrumPatternSet* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(
+              *this)) {
+    return pending->voices[idx];
+  }
   const DrumPatternSet& set = pat >= 0 ? sceneManager_.getDrumPatternSet(pat)
                                        : kEmptyDrumPatternSet;
   return set.voices[idx];
@@ -1992,18 +2032,28 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
-    advanceSongBar_();
-    // Also regenerate if needed at bar start
+    // 0.9.9-D2: ACTIVATE the already-committed pending mutation before Song
+    // row advancement. Phrase live arrangement changes persistent Song refs and
+    // feel.patternBars during COMMIT, while the current bar keeps the old C
+    // audible overlay. Activating first makes the normal advanceSongBar_() turn
+    // the new destination's pre-first-bar phase into bar zero without exposing
+    // a transient next-row Voice/Pattern selection or stretching bar one.
+    // The hook remains the single 0.9.9-C pending owner and returns false; no
+    // generation, Scene write, allocation, filesystem work or second Undo is
+    // allowed on this audio-thread boundary.
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
     }
+    advanceSongBar_();
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   } else if (barTick % 24 == 0) {
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   }
 
-  // Timing constants
-  int swingPct = sceneManager_.currentScene().feel.swingPct;
+  // Timing constants. During C pending activation the Scene already holds
+  // committed truth, while the old swing remains the audible truth until BAR_START.
+  int swingPct = GroovePuterRhythm::QuantizedGenerationDetail::audibleGenerationSwingPct(
+      *this, sceneManager_.currentScene().feel.swingPct);
   if (swingPct < 50) swingPct = 50;
   if (swingPct > 75) swingPct = 75;
   int swingDelay = (int)std::round((swingPct - 50.0f) * 24.0f / 50.0f);
@@ -2032,7 +2082,11 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     }
 
     // Drums
-    const DrumPatternSet& dSet = sceneManager_.getCurrentDrumPattern();
+    const DrumPatternSet* pendingDrums =
+        GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
+    const DrumPatternSet& dSet = pendingDrums
+        ? *pendingDrums
+        : sceneManager_.getCurrentDrumPattern();
     for (int v = 0; v < 8; ++v) {
         VoiceId vId = (VoiceId)((int)VoiceId::DrumKick + v);
         int swingD = (s % 2 != 0 && (swingMask & (1 << (int)vId))) ? swingDelay : 0;
@@ -2118,14 +2172,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   }
   tapeControlCached_ = true;
 
-  // Optimization: render sampler track in a block once per buffer
-  uint32_t tSamplerStart = micros();
-  bool hasSampleStore = (sampleStore != nullptr);
-  if (hasSampleStore) {
-    std::fill(samplerOutBuffer.get(), samplerOutBuffer.get() + numSamples, 0.0f);
-    samplerTrack->process(samplerOutBuffer.get(), numSamples, *sampleStore);
-  }
-  uint32_t tSamplerTime = micros() - tSamplerStart;
+  const bool hasSampleStore = (sampleStore != nullptr);
 
   // Cache immutable-per-buffer flags
   const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
@@ -2163,6 +2210,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   // Profiling accumulators (detailed sections only when diagnostics is enabled)
   uint32_t tVoicesTotal = 0;
   uint32_t tDrumsTotal = 0;
+  uint32_t tSamplerTotal = 0;
   uint32_t tFxTotal = 0;
   uint32_t tVocalTotal = 0;
   uint32_t tLoopStart = micros();
@@ -2288,6 +2336,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tD0 = 0;
     if (detailedProfile) tD0 = micros();
     if (playing) {
+      // Engine-wide drum state must not depend on any individual mute.
+      drums->beginSample();
       if (!muteKick)    drumsMix += drums->processKick() * trackVolumes[(int)VoiceId::DrumKick];
       if (!muteSnare)   drumsMix += drums->processSnare() * trackVolumes[(int)VoiceId::DrumSnare];
       if (!muteHat)     drumsMix += drums->processHat() * trackVolumes[(int)VoiceId::DrumHatC];
@@ -2317,15 +2367,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tS0 = 0;
     if (detailedProfile) tS0 = micros();
     if (hasSampleStore) {
-      samplerSample = samplerOutBuffer[i];
+      // Tick/retrig dispatch above can start a sampler voice at this exact
+      // frame. Render only after those triggers so the WAV stays aligned with
+      // the built-in drum instead of slipping by one 512-frame audio block.
+      samplerTrack->processFrame(samplerSample, *sampleStore);
       sample += samplerSample;
     }
+    if (detailedProfile) tSamplerTotal += (micros() - tS0);
+    uint32_t tVocal0 = 0;
+    if (detailedProfile) tVocal0 = micros();
     float vocalSample = 0.0f;
     if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
       vocalSample = voiceCompressor_.process(vocalSynth_.process());
     }
     sample += vocalSample;
-    if (detailedProfile) tVocalTotal += (micros() - tS0);
+    if (detailedProfile) tVocalTotal += (micros() - tVocal0);
 
     uint32_t tF0 = 0;
     if (detailedProfile) tF0 = micros();
@@ -2374,11 +2430,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   }
   // seq handled by wrapper for accuracy
 
-  perfStats.dspTimeUs = (micros() - tLoopStart) + tSamplerTime;
+  perfStats.dspTimeUs = micros() - tLoopStart;
   if (detailedProfile) {
     perfStats.dspVoicesUs = tVoicesTotal;
     perfStats.dspDrumsUs = tDrumsTotal;
-    perfStats.dspSamplerUs = tSamplerTime + tVocalTotal;
+    perfStats.dspSamplerUs = tSamplerTotal + tVocalTotal;
     perfStats.dspFxUs = tFxTotal;
   }
 
@@ -2565,6 +2621,13 @@ void MiniAcid::setGrooveboxMode(GrooveboxMode mode) {
   syncModeToVoices();
 }
 
+void MiniAcid::activateCommittedGrooveboxModeRuntime(GrooveboxMode mode) {
+  // SceneManager already contains the committed mode. ACTIVATE only publishes
+  // the matching DSP/runtime state and therefore owns no persistence revision.
+  modeManager_.setModeLocal(mode);
+  syncModeToVoices();
+}
+
 void MiniAcid::syncModeToVoices() {
   GrooveboxMode mode = sceneManager_.getMode();
   const ModeConfig& cfg = modeManager_.config();
@@ -2604,12 +2667,8 @@ void MiniAcid::setGrooveFlavor(int flavor) {
   const int flv = sceneManager_.getGrooveFlavor();
   modeManager_.setFlavorLocal(flv);
 
-  // ONLY apply sound macros if explicitly enabled
-  if (sceneManager_.currentScene().genre.applySoundMacros) {
-    modeManager_.apply303Preset(0, flv);
-    modeManager_.apply303Preset(1, flv);
-    // Note: Tape macros disabled per latest design
-  }
+  // Flavor selection is metadata-only. Sound mutation belongs to explicit
+  // Genre MATERIALIZE/APPLY and must not be hidden behind Project settings.
 }
 
 int MiniAcid::grooveFlavor() const {
@@ -2631,10 +2690,6 @@ std::string MiniAcid::currentSceneName() const {
 std::vector<std::string> MiniAcid::availableSceneNames() const {
   if (!sceneStorage_) return {};
   std::vector<std::string> names = sceneStorage_->getAvailableSceneNames();
-  if (names.empty() && sceneStorage_) {
-    std::string current = sceneStorage_->getCurrentSceneName();
-    if (!current.empty()) names.push_back(current);
-  }
   std::sort(names.begin(), names.end());
   names.erase(std::unique(names.begin(), names.end()), names.end());
   return names;
@@ -2652,17 +2707,30 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // Scene persistence is explicit via Save/Save As.
   std::string previousName = sceneStorage_->getCurrentSceneName();
   
-  sceneStorage_->setCurrentSceneName(name);
+  if (!sceneStorage_->setCurrentSceneName(name)) {
+    Serial.printf("[LoadScene] Failed to select scene: %s\n", name.c_str());
+    return false;
+  }
 
-  bool loaded = sceneStorage_->readScene(sceneManager_);
-  Serial.printf("[LoadScene] readScene returned: %s\n", loaded ? "TRUE" : "FALSE");
+  bool recoveredAuto = false;
+  bool loaded = false;
+  if (sceneStorage_->hasSceneAuto()) {
+    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_);
+    loaded = recoveredAuto;
+  }
+  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_);
+  lastSceneLoadRecoveredAutosave_ = loaded && recoveredAuto;
+  Serial.printf("[LoadScene] loaded=%d recovery=%d\n",
+                loaded ? 1 : 0, recoveredAuto ? 1 : 0);
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
   
   if (!loaded) {
     Serial.printf("[LoadScene] FAILED - reverting to: %s\n", previousName.c_str());
     sceneStorage_->setCurrentSceneName(previousName);
+    lastSceneLoadRecoveredAutosave_ = false;
     return false;
   }
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
   Serial.println("[LoadScene] SUCCESS");
@@ -2671,24 +2739,38 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
 
 bool MiniAcid::saveSceneAs(const std::string& name) {
   if (!sceneStorage_) return false;
+  const std::string previousName = sceneStorage_->getCurrentSceneName();
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
-  return saveSceneToStorage();
+  if (saveSceneToStorage()) return true;
+  sceneStorage_->setCurrentSceneName(previousName);
+  return false;
 }
 
 bool MiniAcid::createNewSceneWithName(const std::string& name) {
   if (!sceneStorage_) return false;
-  sceneStorage_->setCurrentSceneName(name);
-  sceneManager_.loadDefaultScene();
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
+  const std::string previousName = sceneStorage_->getCurrentSceneName();
+  if (!sceneStorage_->setCurrentSceneName(name)) return false;
+
+  sceneManager_.wipeToZero();
   applySceneStateFromManager();
-  saveSceneToStorage();
-  return true;
+  if (saveSceneToStorage()) return true;
+
+  sceneStorage_->setCurrentSceneName(previousName);
+  return false;
 }
 
 void MiniAcid::loadSceneFromStorage() {
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
+  lastSceneLoadRecoveredAutosave_ = false;
   if (sceneStorage_) {
+    if (sceneStorage_->hasSceneAuto() &&
+        sceneStorage_->readSceneAuto(sceneManager_)) {
+      lastSceneLoadRecoveredAutosave_ = true;
+      LOG_PRINTLN("  - loadSceneFromStorage: recovered autosave");
+      return;
+    }
     if (sceneStorage_->readScene(sceneManager_)) return;
-    // String-based fallback REMOVED - it causes OOM on DRAM-only devices
-    // If streaming parse fails, load default scene
     LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
   }
   sceneManager_.loadDefaultScene();
@@ -2697,24 +2779,49 @@ void MiniAcid::loadSceneFromStorage() {
 bool MiniAcid::saveSceneToStorage() {
   if (!sceneStorage_) return false;
   syncSceneStateToManager();
-  return sceneStorage_->writeScene(sceneManager_);
+#ifdef ARDUINO
+  Serial.printf("[SamplerScene] save layer=%d\n",
+                sceneManager_.currentScene().samplerEnabled ? 1 : 0);
+#endif
+  if (!sceneStorage_->writeScene(sceneManager_)) return false;
+  if (!sceneStorage_->clearSceneAuto()) {
+    Serial.println("[SceneSave] main saved but recovery cleanup failed");
+    return false;
+  }
+  lastSceneLoadRecoveredAutosave_ = false;
+  return true;
+}
+
+bool MiniAcid::autoSaveSceneRecovery() {
+  if (!sceneStorage_ || playing) return false;
+  syncSceneStateToManager();
+  return sceneStorage_->writeSceneAuto(sceneManager_);
+}
+
+float MiniAcid::mainVolume() const {
+  return params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+}
+
+void MiniAcid::setDeviceMasterVolume(float value) {
+  params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(value);
+  deviceMasterVolumeOverride_ = true;
 }
 
 void MiniAcid::applySceneStateFromManager() {
   if (playing) publishPatternAllNotesOff_();
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   
-  // Reset bias tracking since scene overwrites all params
-  genreManager_.resetTextureBiasTracking();
-  
   modeManager_.setModeLocal(sceneManager_.getMode());
   modeManager_.setFlavorLocal(sceneManager_.getGrooveFlavor());
   syncModeToVoices();
   setBpm(sceneManager_.getBpm());
   
-  // Load master volume from scene
-  float sceneVolume = sceneManager_.currentScene().masterVolume;
-  params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  // Scene volume remains codec-compatible, but a device-session override
+  // wins after boot so loading another project cannot change speaker level.
+  if (!deviceMasterVolumeOverride_) {
+    const float sceneVolume = sceneManager_.currentScene().masterVolume;
+    params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  }
   // Fixed master safety LPF: keep this independent from scene/UI state.
   setMasterOutputHighCutHz(kMasterHighCutHz);
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
@@ -2747,36 +2854,56 @@ void MiniAcid::applySceneStateFromManager() {
   delay3032Enabled = sceneManager_.getSynthDelayEnabled(1);
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: setting voice params...");
-  const SynthParameters& paramsA = sceneManager_.getSynthParameters(0);
-  const SynthParameters& paramsB = sceneManager_.getSynthParameters(1);
-
   auto clamp01 = [](float v) -> float {
     if (v < 0.0f) return 0.0f;
     if (v > 1.0f) return 1.0f;
     return v;
   };
 
-  auto applySynthParams = [&](int idx, const SynthParameters& sp) {
-    if (!synthVoices_[idx]) return;
-    if (TB303Voice* v303 = tb303Voice(idx)) {
-      v303->setParameter(TB303ParamId::Cutoff, sp.cutoff);
-      v303->setParameter(TB303ParamId::Resonance, sp.resonance);
-      v303->setParameter(TB303ParamId::EnvAmount, sp.envAmount);
-      v303->setParameter(TB303ParamId::EnvDecay, sp.envDecay);
-      v303->setParameter(TB303ParamId::Oscillator, static_cast<float>(sp.oscType));
-      return;
+  if (sceneManager_.hasVersionedSynthState()) {
+    for (int idx = 0; idx < 2; ++idx) {
+      const PersistedSynthPatch& patch = sceneManager_.getSynthPatch(idx);
+      setSynthEngine(idx, patch.engineName);
+      if (!synthVoices_[idx]) continue;
+      SynthVoiceState runtimeState = synthVoices_[idx]->getState();
+      runtimeState.paramCount = std::min<uint8_t>(
+          patch.paramCount, PersistedSynthPatch::kMaxParams);
+      for (uint8_t p = 0; p < runtimeState.paramCount; ++p) {
+        runtimeState.params[p] = clamp01(patch.params[p]);
+      }
+      synthVoices_[idx]->setState(runtimeState);
+      synthEngineNames_[idx] = synthVoices_[idx]->getEngineName();
+      sceneManager_.setSynthEngineName(idx, synthEngineNames_[idx]);
     }
-
-    const uint8_t count = synthVoices_[idx]->parameterCount();
-    if (count > 0) synthVoices_[idx]->setParameterNormalized(0, clamp01(sp.cutoff));
-    if (count > 1) synthVoices_[idx]->setParameterNormalized(1, clamp01(sp.resonance));
-    if (count > 2) synthVoices_[idx]->setParameterNormalized(2, clamp01(sp.envAmount));
-    if (count > 3) synthVoices_[idx]->setParameterNormalized(3, clamp01(sp.envDecay));
-    if (count > 4) synthVoices_[idx]->setParameterNormalized(4, clamp01(static_cast<float>(sp.oscType) / 100.0f));
-  };
-
-  applySynthParams(0, paramsA);
-  applySynthParams(1, paramsB);
+  } else {
+    // Legacy compatibility. TB303 raw values keep their historical units.
+    // Non-TB engines with no legacy synthParams stay at engine-native defaults.
+    for (int idx = 0; idx < 2; ++idx) {
+      const SynthParameters& sp = sceneManager_.getSynthParameters(idx);
+      if (TB303Voice* v303 = tb303Voice(idx)) {
+        if (sceneManager_.legacySynthParametersPresent(idx)) {
+          v303->setParameter(TB303ParamId::Cutoff, sp.cutoff);
+          v303->setParameter(TB303ParamId::Resonance, sp.resonance);
+          v303->setParameter(TB303ParamId::EnvAmount, sp.envAmount);
+          v303->setParameter(TB303ParamId::EnvDecay, sp.envDecay);
+          v303->setParameter(TB303ParamId::Oscillator, static_cast<float>(sp.oscType));
+        }
+        continue;
+      }
+      if (!sceneManager_.legacySynthParametersPresent(idx) || !synthVoices_[idx]) {
+        continue;
+      }
+      // Historical non-TB scenes used these legacy field names as normalized
+      // slots 0..3 and oscType/100 as slot 4. Preserve that decode-only path.
+      const uint8_t count = synthVoices_[idx]->parameterCount();
+      if (count > 0) synthVoices_[idx]->setParameterNormalized(0, clamp01(sp.cutoff));
+      if (count > 1) synthVoices_[idx]->setParameterNormalized(1, clamp01(sp.resonance));
+      if (count > 2) synthVoices_[idx]->setParameterNormalized(2, clamp01(sp.envAmount));
+      if (count > 3) synthVoices_[idx]->setParameterNormalized(3, clamp01(sp.envDecay));
+      if (count > 4) synthVoices_[idx]->setParameterNormalized(
+          4, clamp01(static_cast<float>(sp.oscType) / 100.0f));
+    }
+  }
   
   
   distortion303.setEnabled(distortion303Enabled);
@@ -2806,6 +2933,11 @@ void MiniAcid::applySceneStateFromManager() {
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
   // Sync Sampler
+  samplerTrack->setEnabled(sceneManager_.currentScene().samplerEnabled);
+#ifdef ARDUINO
+  Serial.printf("[SamplerScene] apply layer=%d\n",
+                samplerTrack->isEnabled() ? 1 : 0);
+#endif
   for (int i = 0; i < 16; ++i) {
     const auto& s = sceneManager_.currentScene().samplerPads[i];
     auto& p = samplerTrack->pad(i);
@@ -2846,26 +2978,15 @@ void MiniAcid::applySceneStateFromManager() {
     vocalSynth_.setCustomPhrase(i, sceneManager_.currentScene().customPhrases[i]);
   }
   
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
-  // Restore genre state from scene before applying timbre/texture
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: restore genre metadata...");
+  // Restore genre metadata. Normal Scene Load must not project genre sound over
+  // the explicitly restored synth patch.
   const auto& gs = sceneManager_.currentScene().genre;
   genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
-  genreManager_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
   genreManager_.setRecipe(gs.recipe);
   genreManager_.setMorphTarget(gs.morphTarget);
   genreManager_.setMorphAmount(gs.morphAmount);
   syncGrooveModeToGenre();
-
-  // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
-  genreManager_.applyGenreTimbre(*this);
-  
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: resetTextureBiasTracking...");
-  // 2. Reset bias tracking so subsequent texture application is fresh delta from new base
-  genreManager_.resetTextureBiasTracking();
-  
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyTexture...");
-  // 3. Apply texture (delta bias + FX)
-  genreManager_.applyTexture(*this);
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTiming...");
   applyFeelTimingFromScene_();
@@ -2926,7 +3047,9 @@ void MiniAcid::applyFeelTimingFromScene_() {
 }
 
 void MiniAcid::syncSceneStateToManager() {
-  sceneManager_.setBpm(bpmValue);
+  if (!GroovePuterRhythm::QuantizedGenerationDetail::hasPendingFullGenerationActivation(*this)) {
+    sceneManager_.setBpm(bpmValue);
+  }
   sceneManager_.setDrumEngineName(drumEngineName_);
   sceneManager_.setSynthEngineName(0, currentSynthEngineName(0));
   sceneManager_.setSynthEngineName(1, currentSynthEngineName(1));
@@ -2934,7 +3057,6 @@ void MiniAcid::syncSceneStateToManager() {
   // Save master volume to scene
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
   sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreManager_.generativeMode());
-  sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreManager_.textureMode());
   sceneManager_.currentScene().genre.recipe = static_cast<uint8_t>(genreManager_.recipe());
   sceneManager_.currentScene().genre.morphTarget = static_cast<uint8_t>(genreManager_.morphTarget());
   sceneManager_.currentScene().genre.morphAmount = genreManager_.morphAmount();
@@ -2958,39 +3080,42 @@ void MiniAcid::syncSceneStateToManager() {
   int songPosToStore = songMode_ ? songPlayheadPosition_ : sceneManager_.getSongPosition();
   sceneManager_.setSongPosition(clampSongPosition(songPosToStore));
 
-  auto clamp01 = [](float v) -> float {
-    if (v < 0.0f) return 0.0f;
-    if (v > 1.0f) return 1.0f;
-    return v;
-  };
-
-  auto buildSynthParams = [&](int idx) -> SynthParameters {
-    SynthParameters out;
-    if (TB303Voice* v303 = tb303Voice(idx)) {
-      out.cutoff = v303->parameterValue(TB303ParamId::Cutoff);
-      out.resonance = v303->parameterValue(TB303ParamId::Resonance);
-      out.envAmount = v303->parameterValue(TB303ParamId::EnvAmount);
-      out.envDecay = v303->parameterValue(TB303ParamId::EnvDecay);
-      out.oscType = v303->oscillatorIndex();
-      return out;
-    }
-
+  for (int idx = 0; idx < 2; ++idx) {
+    PersistedSynthPatch patch;
+    patch.engineName = currentSynthEngineName(idx);
     if (synthVoices_[idx]) {
-      const uint8_t count = synthVoices_[idx]->parameterCount();
-      if (count > 0) out.cutoff = clamp01(synthVoices_[idx]->getParameterNormalized(0));
-      if (count > 1) out.resonance = clamp01(synthVoices_[idx]->getParameterNormalized(1));
-      if (count > 2) out.envAmount = clamp01(synthVoices_[idx]->getParameterNormalized(2));
-      if (count > 3) out.envDecay = clamp01(synthVoices_[idx]->getParameterNormalized(3));
-      if (count > 4) out.oscType = static_cast<int>(clamp01(synthVoices_[idx]->getParameterNormalized(4)) * 100.0f + 0.5f);
+      const SynthVoiceState runtimeState = synthVoices_[idx]->getState();
+      patch.paramCount = std::min<uint8_t>(
+          runtimeState.paramCount, PersistedSynthPatch::kMaxParams);
+      for (uint8_t p = 0; p < patch.paramCount; ++p) {
+        float value = runtimeState.params[p];
+        if (value < 0.0f) value = 0.0f;
+        if (value > 1.0f) value = 1.0f;
+        patch.params[p] = value;
+      }
     }
-    return out;
-  };
+    sceneManager_.setSynthPatch(idx, patch);
+    sceneManager_.setLegacySynthParametersPresent(idx, false);
+  }
 
-  SynthParameters paramsA = buildSynthParams(0);
-  sceneManager_.setSynthParameters(0, paramsA);
-
-  SynthParameters paramsB = buildSynthParams(1);
-  sceneManager_.setSynthParameters(1, paramsB);
+  // SamplerPage edits the realtime pad objects. Explicit Save must mirror
+  // those values into the resident Scene before the Scene writer converts the
+  // compact runtime SampleId to its authoritative stable SampleRef.
+  if (samplerTrack) {
+    sceneManager_.currentScene().samplerEnabled = samplerTrack->isEnabled();
+    for (int i = 0; i < 16; ++i) {
+      const auto& runtimePad = samplerTrack->pad(i);
+      auto& scenePad = sceneManager_.currentScene().samplerPads[i];
+      scenePad.sampleId = runtimePad.id.value;
+      scenePad.volume = runtimePad.volume;
+      scenePad.pitch = runtimePad.pitch;
+      scenePad.startFrame = runtimePad.startFrame;
+      scenePad.endFrame = runtimePad.endFrame;
+      scenePad.chokeGroup = runtimePad.chokeGroup;
+      scenePad.reverse = runtimePad.reverse;
+      scenePad.loop = runtimePad.loop;
+    }
+  }
 
   // Save voice parameters to scene
   auto& v = sceneManager_.currentScene().vocal;
@@ -3371,7 +3496,11 @@ void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
   const SynthPattern& pattern = activeSynthPattern(synthIdx);
   const SynthStep& step = pattern.steps[stepIdx];
 
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const GenreSettings* audibleGenre =
+      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleGenreSettings(*this);
+  const auto recipe = audibleGenre
+      ? GenreCatalog::grooveRecipe(*audibleGenre)
+      : genreManager_.getGrooveRecipe();
   float gateMult = recipe.gateLengthRatio;
   if (gateMult < 0.1f) gateMult = 0.5f;
   float vMult = (synthIdx == 0) ? 0.85f : 1.05f;
@@ -3415,7 +3544,11 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
   if (songPatternDrums < 0) return;
 
-  const DrumPatternSet& currentDrumPatternSet = sceneManager_.getCurrentDrumPattern();
+  const DrumPatternSet* pendingDrums =
+      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
+  const DrumPatternSet& currentDrumPatternSet = pendingDrums
+      ? *pendingDrums
+      : sceneManager_.getCurrentDrumPattern();
   if (stepIdx == currentStepIndex) {
       applyDrumAutomationLanesForStep_(currentDrumPatternSet, stepIdx);
   }
@@ -3499,10 +3632,6 @@ void MiniAcid::advanceSongBar_() {
   if (boundary.advanceRow) {
     cyclePulseCounter_++;
     if (songMode_) {
-      if (songReverseTogglePending_) {
-        sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
-        songReverseTogglePending_ = false;
-      }
       advanceSongPlayhead();
     }
   }

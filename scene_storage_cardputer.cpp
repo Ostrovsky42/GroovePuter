@@ -13,7 +13,9 @@
 #endif
 
 #include "scenes.h"
+#include "src/audio/pattern_paging.h"
 #include "src/platform/cardputer_sd.h"
+#include "src/sampler/sample_scene_persistence.h"
 
 namespace {
 constexpr size_t kMaxSceneNamesInUi = 24;
@@ -199,6 +201,10 @@ void SceneStorageCardputer::initializeStorage() {
   }
 
   loadStoredSceneName();
+  if (!PatternPagingService::setProjectName(currentSceneName_)) {
+    Serial.printf("Failed to select pattern namespace: %s\n",
+                  currentSceneName_.c_str());
+  }
 }
 
 bool SceneStorageCardputer::readScene(std::string& out) {
@@ -249,7 +255,8 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   const std::string path = currentScenePath();
   File file = SD.open(path.c_str(), FILE_READ);
   if (file) {
-    const bool ok = manager.loadSceneEvented(file);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(file);
+    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
     file.close();
     if (ok) return true;
     Serial.printf("Main scene is invalid, trying backup: %s\n", path.c_str());
@@ -258,7 +265,9 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   const std::string backupPath = siblingPath(path, kBackupSuffix);
   File backup = SD.open(backupPath.c_str(), FILE_READ);
   if (!backup) return false;
-  const bool recovered = manager.loadSceneEvented(backup);
+  GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(backup);
+  const bool recovered = manager.loadSceneEvented(filteredBackup) &&
+                         !filteredBackup.failed();
   backup.close();
   return recovered;
 }
@@ -276,7 +285,8 @@ bool SceneStorageCardputer::writeScene(const SceneManager& manager) {
     return false;
   }
 
-  const bool serialized = manager.writeSceneJson(file);
+  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);
+  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();
   file.flush();
   const size_t bytesWritten = file.size();
   file.close();
@@ -307,7 +317,8 @@ bool SceneStorageCardputer::writeSceneAuto(const SceneManager& manager) {
 
   File file = SD.open(tempPath.c_str(), FILE_WRITE);
   if (!file) return false;
-  const bool serialized = manager.writeSceneJson(file);
+  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);
+  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();
   file.flush();
   const size_t bytesWritten = file.size();
   file.close();
@@ -325,7 +336,8 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   const std::string autoPath = currentAutoScenePath();
   File autoFile = SD.open(autoPath.c_str(), FILE_READ);
   if (autoFile) {
-    const bool ok = manager.loadSceneEvented(autoFile);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);
+    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
     autoFile.close();
     if (ok) return true;
   }
@@ -333,12 +345,33 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   const std::string autoBackup = siblingPath(autoPath, kBackupSuffix);
   File autoBackupFile = SD.open(autoBackup.c_str(), FILE_READ);
   if (autoBackupFile) {
-    const bool ok = manager.loadSceneEvented(autoBackupFile);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(
+        autoBackupFile);
+    const bool ok = manager.loadSceneEvented(filteredBackup) &&
+                    !filteredBackup.failed();
     autoBackupFile.close();
     if (ok) return true;
   }
 
-  return readScene(manager);
+  return false;
+}
+
+bool SceneStorageCardputer::hasSceneAuto() const {
+  if (!isInitialized_) return false;
+  const std::string path = currentAutoScenePath();
+  return SD.exists(path.c_str()) ||
+         SD.exists(siblingPath(path, kBackupSuffix).c_str());
+}
+
+bool SceneStorageCardputer::clearSceneAuto() {
+  if (!isInitialized_) return false;
+  const std::string path = currentAutoScenePath();
+  const std::string backup = siblingPath(path, kBackupSuffix);
+  const std::string temp = siblingPath(path, kTempSuffix);
+  if (SD.exists(path.c_str()) && !SD.remove(path.c_str())) return false;
+  if (SD.exists(backup.c_str()) && !SD.remove(backup.c_str())) return false;
+  if (SD.exists(temp.c_str()) && !SD.remove(temp.c_str())) return false;
+  return !SD.exists(path.c_str()) && !SD.exists(backup.c_str());
 }
 
 std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
@@ -381,13 +414,6 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
 
   std::sort(names.begin(), names.end());
   names.erase(std::unique(names.begin(), names.end()), names.end());
-
-  if (names.empty()) {
-    try {
-      names.emplace_back(currentSceneName_);
-    } catch (const std::bad_alloc&) {
-    }
-  }
   return names;
 }
 
@@ -399,12 +425,38 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   const std::string normalized = normalizeSceneName(name);
   if (!isInitialized_) {
     currentSceneName_ = normalized;
+    PatternPagingService::setProjectName(currentSceneName_);
     return false;
   }
 
   const std::string previous = currentSceneName_;
+  if (normalized == previous) {
+    return PatternPagingService::setProjectName(previous);
+  }
+
+  const std::string targetPath = scenePathFor(normalized);
+  const std::string targetBackup = siblingPath(targetPath, kBackupSuffix);
+  const bool sceneAlreadyExists =
+      SD.exists(targetPath.c_str()) || SD.exists(targetBackup.c_str());
+
+  if (!sceneAlreadyExists &&
+      !PatternPagingService::copyProjectPages(previous, normalized)) {
+    return false;
+  }
+
   currentSceneName_ = normalized;
+  if (!PatternPagingService::setProjectName(currentSceneName_)) {
+    currentSceneName_ = previous;
+    PatternPagingService::setProjectName(previous);
+    return false;
+  }
+
+  // Existing scenes are selections and should become the next boot target now.
+  // New scene names are only committed after the scene data itself is written.
+  if (!sceneAlreadyExists) return true;
   if (persistCurrentSceneName()) return true;
+
   currentSceneName_ = previous;
+  PatternPagingService::setProjectName(previous);
   return false;
 }

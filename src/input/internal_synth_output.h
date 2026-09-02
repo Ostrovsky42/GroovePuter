@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "musical_event_router.h"
 #include "src/audio/audio_mutation_gate.h"
 
@@ -19,4 +21,7 @@ private:
 
     MiniAcid& engine_;
     AudioMutationGate& mutationGate_;
+    // Only tracks sampler voices started by this PERFORM sink. It is not a MIDI
+    // note-owner table; one bit corresponds to one normalized drum lane 0..7.
+    uint8_t liveDrumPadMask_{0};
 };

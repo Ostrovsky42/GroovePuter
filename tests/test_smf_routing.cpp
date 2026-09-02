@@ -1,6 +1,9 @@
 #include <cassert>
 
+#include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_routing.h"
+#include "src/midi/smf_session_generation.h"
+#include "src/midi/smf_track_output_route.h"
 
 using namespace GroovePuterMidi;
 
@@ -46,10 +49,160 @@ int main() {
     assert(dx.mapped && dx.channel == 9 && dx.note == 64);
 
     // DX is a dedicated CH10 destination, never the fallback bucket. Extra
-    // melodic lanes are filtered before the USB queue until CUSTOM routing
-    // gives them an explicit destination.
+    // melodic lanes remain filtered until a track gets an explicit destination.
     assert(!unmapped.mapped && unmapped.note == 64);
     assert(!extraMelodic.mapped && extraMelodic.note == 67);
+
+    const SmfRoutedNote forcedKick =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 4, 41, 0);
+    const SmfRoutedNote forcedCymbal =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 4, 41, 6);
+    const SmfRoutedNote forcedSynth1 =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 14, 67, 7);
+    const SmfRoutedNote forcedDx =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 14, 67, 9);
+    const SmfRoutedNote invalidDestination =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 0, 64, 10);
+    const SmfRoutedNote rawIgnoresOverride =
+        routeSmfTrackNote(SmfRoutingMode::Raw, 9, 36, 7);
+
+    assert(forcedKick.mapped && forcedKick.channel == 0 && forcedKick.note == 60);
+    assert(forcedCymbal.mapped && forcedCymbal.channel == 6 && forcedCymbal.note == 60);
+    assert(forcedSynth1.mapped && forcedSynth1.channel == 7 && forcedSynth1.note == 67);
+    assert(forcedDx.mapped && forcedDx.channel == 9 && forcedDx.note == 67);
+    assert(!invalidDestination.mapped);
+    assert(rawIgnoresOverride.mapped &&
+           rawIgnoresOverride.channel == 9 &&
+           rawIgnoresOverride.note == 36);
+
+    const uint32_t generation = smfBeginSessionOpen();
+    assert(generation != 0u);
+    assert(smfCompleteSessionOpen(generation));
+    smfTrackMuteState().reset(64);
+
+    SmfTrackOutputRouteState& routes = smfTrackOutputRouteState();
+    SmfTrackOutputRouteSnapshot routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.generation == generation);
+    assert(routeSnapshot.trackCount == 4);
+    for (uint16_t track = 0; track < routeSnapshot.trackCount; ++track) {
+        assert(routeSnapshot.destinationFor(track) == kSmfTrackOutputRouteAuto);
+        assert(routes.revisionTagForRealtime(track) == 0u);
+    }
+
+    assert(routes.setDestination(2, 7, generation, 4));
+    assert(routes.destinationFor(2, 4) == 7);
+    assert(routes.revisionTagForRealtime(2) == 1u);
+
+    uint8_t releaseTrack = 0xFFu;
+    assert(routes.takePendingReleaseTrack(releaseTrack));
+    assert(releaseTrack == 2u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
+
+    // Re-applying the same route is a no-op: it must not cut a sounding note,
+    // advance the per-track revision, or publish another cleanup request.
+    assert(routes.setDestination(2, 7, generation, 4));
+    assert(routes.revisionTagForRealtime(2) == 1u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
+
+    // The scheduler-side lookup captures destination and revision atomically;
+    // the next queue publication consumes exactly that one-event stamp.
+    assert(routes.destinationForProducer(2, 4) == 7);
+    assert(routes.consumeProducerRevisionTag(2) == 1u);
+
+    assert(!routes.setDestination(4, 7, generation, 4));
+    assert(!routes.setDestination(2, 10, generation, 4));
+
+    // A live route change releases only the selected track's active physical
+    // note. An old lookahead NoteOn is still popped for the dispatcher's normal
+    // stale diagnostics, but its route revision prevents any USB write. Two
+    // route changes before cleanup must not invalidate the scoped NoteOff.
+    {
+        ScheduledSmfMidiEventQueue routeQueue;
+        ScheduledSmfMidiEvent event{};
+
+        assert(routes.destinationForProducer(3, 4) == kSmfTrackOutputRouteAuto);
+        assert(routeQueue.tryPushNoteOn(7, 64, 100, 20, 0, 0, 3));
+        assert(routeQueue.tryPop(event));
+        assert(event.type == ScheduledSmfMidiEventType::NoteOn);
+        assert(event.channel == 7 && event.note == 64 && event.trackIndex == 3);
+        assert(scheduledSmfMidiEventGenerationIsCurrent(
+            event, routeQueue.generation()));
+        assert(routeQueue.recordDispatched(event));
+
+        // This event sits in the producer lookahead with the old AUTO revision.
+        assert(routes.destinationForProducer(3, 4) == kSmfTrackOutputRouteAuto);
+        assert(routeQueue.tryPushNoteOn(7, 65, 100, 21, 0, 0, 3));
+
+        // Simulate two fast Right presses before MidiDispatchTask consumes the
+        // first route-release mailbox. The cleanup bit coalesces, but the single
+        // physical active owner still has to receive exactly one NoteOff.
+        assert(routes.setDestination(3, 8, generation, 4));
+        assert(routes.setDestination(3, 9, generation, 4));
+        assert(routes.revisionTagForRealtime(3) == 2u);
+
+        assert(routeQueue.tryPop(event));
+        assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+        assert(event.trackIndex == 3);
+        assert(event.channel == 7 && event.note == 64);
+        assert(scheduledSmfMidiEventRouteRevisionTag(event) ==
+               kSmfTrackOutputRouteRevisionCleanup);
+        assert(scheduledSmfMidiEventGenerationIsCurrent(
+            event, routeQueue.generation()));
+        assert(routeQueue.recordDispatched(event));
+        assert(routeQueue.immediateTrackReleaseCount() == 1u);
+
+        assert(routeQueue.tryPop(event));
+        assert(event.type == ScheduledSmfMidiEventType::NoteOn);
+        assert(event.note == 65 && event.trackIndex == 3);
+        assert(scheduledSmfMidiEventRouteRevisionTag(event) == 0u);
+        assert(!scheduledSmfMidiEventRouteRevisionIsCurrent(event));
+        assert(!scheduledSmfMidiEventGenerationIsCurrent(
+            event, routeQueue.generation()));
+
+        assert(routes.destinationForProducer(3, 4) == 9);
+        assert(routeQueue.tryPushNoteOn(9, 66, 100, 22, 0, 0, 3));
+        assert(routeQueue.tryPop(event));
+        assert(event.type == ScheduledSmfMidiEventType::NoteOn);
+        assert(event.channel == 9 && event.note == 66);
+        assert(scheduledSmfMidiEventRouteRevisionTag(event) == 2u);
+        assert(scheduledSmfMidiEventGenerationIsCurrent(
+            event, routeQueue.generation()));
+        assert(routeQueue.recordDispatched(event));
+    }
+
+    routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.generation == generation);
+    assert(routeSnapshot.destinationFor(2) == 7);
+    assert(routeSnapshot.destinationFor(3) == 9);
+    assert(routeSnapshot.overridden(2));
+    assert(routeSnapshot.overridden(3));
+
+    int8_t restored[4] = {
+        kSmfTrackOutputRouteAuto, 8, 9, kSmfTrackOutputRouteAuto};
+    assert(routes.replaceDestinations(restored, 4, generation));
+    routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.destinationFor(0) == kSmfTrackOutputRouteAuto);
+    assert(routeSnapshot.destinationFor(1) == 8);
+    assert(routeSnapshot.destinationFor(2) == 9);
+    assert(routeSnapshot.destinationFor(3) == kSmfTrackOutputRouteAuto);
+    assert(routes.revisionTagForRealtime(1) == 0u);
+    assert(routes.revisionTagForRealtime(2) == 0u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
+
+    restored[2] = 10;
+    assert(!routes.replaceDestinations(restored, 4, generation));
+    assert(routes.snapshot(4).destinationFor(2) == 9);
+
+    const uint32_t nextGeneration = smfBeginSessionOpen();
+    assert(nextGeneration != 0u && nextGeneration != generation);
+    assert(smfCompleteSessionOpen(nextGeneration));
+    routeSnapshot = routes.snapshot(2);
+    assert(routeSnapshot.generation == nextGeneration);
+    assert(routeSnapshot.trackCount == 2);
+    assert(routeSnapshot.destinationFor(0) == kSmfTrackOutputRouteAuto);
+    assert(routeSnapshot.destinationFor(1) == kSmfTrackOutputRouteAuto);
+    assert(routes.revisionTagForRealtime(0) == 0u);
+    assert(routes.revisionTagForRealtime(1) == 0u);
 
     return 0;
 }

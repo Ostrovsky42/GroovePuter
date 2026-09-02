@@ -37,7 +37,6 @@ inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
                                              uint8_t sourceChannel,
                                              uint8_t sourceNote) {
     sourceChannel = sourceChannel > 15 ? 15 : sourceChannel;
-    sourceNote = sourceNote > 127 ? 127 : sourceNote;
     if (mode == SmfRoutingMode::Raw) {
         return SmfRoutedNote{sourceChannel, sourceNote};
     }
@@ -72,11 +71,33 @@ inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
     // generic catch-all: source CH1/CH2/CH3 explicitly select SYNTH1/SYNTH2/DX.
     // Extra source channels have no deterministic SEQTRAK destination. Drop
     // them before the scheduler queue instead of spending USB bandwidth on an
-    // unused channel. Per-track CUSTOM routing can expose them later.
+    // unused channel. A per-track override can expose them explicitly.
     if (sourceChannel == 0) return SmfRoutedNote{7, sourceNote};   // SYNTH1
     if (sourceChannel == 1) return SmfRoutedNote{8, sourceNote};   // SYNTH2
     if (sourceChannel == 2) return SmfRoutedNote{9, sourceNote};   // DX
     return SmfRoutedNote{0, sourceNote, false};                    // UNMAPPED
+}
+
+inline constexpr SmfRoutedNote routeSmfNoteToSeqtrakDestination(
+        int8_t destinationChannel,
+        uint8_t sourceNote) {
+    if (destinationChannel < 0 || destinationChannel > 9) {
+        return SmfRoutedNote{0, sourceNote, false};
+    }
+    const uint8_t channel = static_cast<uint8_t>(destinationChannel);
+    const uint8_t note = channel <= 6u ? 60u : sourceNote;
+    return SmfRoutedNote{channel, note};
+}
+
+inline constexpr SmfRoutedNote routeSmfTrackNote(
+        SmfRoutingMode mode,
+        uint8_t sourceChannel,
+        uint8_t sourceNote,
+        int8_t destinationOverride) {
+    if (mode == SmfRoutingMode::Seqtrak && destinationOverride >= 0) {
+        return routeSmfNoteToSeqtrakDestination(destinationOverride, sourceNote);
+    }
+    return routeSmfNote(mode, sourceChannel, sourceNote);
 }
 
 }  // namespace GroovePuterMidi

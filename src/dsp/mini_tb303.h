@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MINI_TB303_H
+#define GROOVEPUTER_DSP_MINI_TB303_H
 
 #include <stdint.h>
 #include <memory>
@@ -35,11 +37,11 @@ public:
   const Parameter& parameter(TB303ParamId id) const;
   void setParameter(TB303ParamId id, float value);
   void setParameterNormalized(TB303ParamId id, float norm);
-  
-  // IMonoSynthVoice implementations
+
   void reset() override;
   void setSampleRate(float sampleRate) override;
-  void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100) override;
+  void startNote(float freqHz, bool accent, bool slideFlag,
+                 uint8_t velocity = 100) override;
   void release() override;
   float process() override;
   uint8_t parameterCount() const override;
@@ -48,7 +50,7 @@ public:
   const Parameter& getParameter(uint8_t index) const override;
   const char* getEngineName() const override { return "TB303"; }
   void setMode(GrooveboxMode mode) override;
-  void setLoFiAmount(float amount) override; // 0..1 for various degradations
+  void setLoFiAmount(float amount) override;
 
   void adjustParameter(TB303ParamId id, int steps);
   float parameterValue(TB303ParamId id) const;
@@ -58,7 +60,12 @@ public:
   void setSubOscillator(bool enabled);
   void setNoiseAmount(float amount);
 
+  bool isVoiceActive() const;
+  float amplitudeEnvelope() const { return ampEnvelope_; }
+
 private:
+  enum class AmpStage : uint8_t { Idle, Attack, Decay, Sustain, Release };
+
   float oscSaw();
   float oscSquare(float saw);
   float oscPulse();
@@ -67,26 +74,33 @@ private:
   float oscillatorSample();
   float svfProcess(float input);
   float applyLoFiDegradation(float input);
+  float advanceAmplitudeEnvelope();
+  void updateAmplitudeCoefficients();
   void initParameters();
   void updateFilterModel();
-
 
   static constexpr int kSuperSawOscCount = 6;
 
   float phase;
   float superPhases[kSuperSawOscCount];
-  
-  // Wavetable phase accumulators (10.22 fixed-point)
+
   uint32_t phaseAcc_;
+  uint32_t subPhaseAcc_;
   uint32_t superPhasesAcc_[kSuperSawOscCount];
-  
-  float freq;       // current frequency (Hz)
-  float targetFreq; // slide target
-  float slideSpeed; // how fast we slide toward target
-  float env;        // filter envelope value
-  bool gate;        // note on/off
-  bool slide;       // slide flag for next note
-  float amp;        // amplitude
+
+  float freq;
+  float targetFreq;
+  float slideSpeed;
+  float env;
+  bool gate;
+  bool slide;
+
+  AmpStage ampStage_ = AmpStage::Idle;
+  float ampEnvelope_ = 0.0f;
+  float ampVelocity_ = 0.0f;
+  float ampAttackCoeff_ = 1.0f;
+  float ampDecayCoeff_ = 1.0f;
+  float ampReleaseCoeff_ = 0.0f;
 
   float sampleRate;
   float invSampleRate;
@@ -94,12 +108,12 @@ private:
 
   Parameter params[static_cast<int>(TB303ParamId::Count)];
   std::unique_ptr<AudioFilter> filter;
-  
+
   GrooveboxMode mode_ = GrooveboxMode::Acid;
   float loFiAmount_ = 0.0f;
   uint32_t noiseState_ = 12345;
   float driftPhase_ = 0.0f;
-  
+
   bool subEnabled_ = false;
   float subPhase_ = 0.0f;
   float subMix_ = 0.25f;
@@ -107,17 +121,20 @@ private:
   float noiseAmount_ = 0.0f;
 
   int lastFilterType_ = -1;
-  float postLPF_ = 0.0f;  // 1-pole anti-harshness post-filter state
+  float postLPF_ = 0.0f;
   struct LowShelfEQ {
     float cutoff = 0.01f;
-    float boost = 1.25f; // ~2dB
+    float boost = 1.25f;
     float lpf = 0.0f;
     float process(float input) {
       lpf += cutoff * (input - lpf);
       return input + lpf * (boost - 1.0f);
     }
+    void reset() { lpf = 0.0f; }
   } bassBoost_;
-  
+
   float cachedLoFiLevels_ = 1.0f;
   float cachedRecipLoFiLevels_ = 1.0f;
 };
+
+#endif  // GROOVEPUTER_DSP_MINI_TB303_H

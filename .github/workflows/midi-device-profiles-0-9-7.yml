@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R1
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  device-profile-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R1 device-profile contract
+        run: bash tests/run_midi_device_profiles_0_9_7_tests.sh

@@ -2,8 +2,10 @@
 
 #include <cstdint>
 
-#include "src/midi/usb_midi_transport.h"
+#include "src/midi/midi_transport_capabilities.h"
+#include "src/midi/smf_player_service.h"
 #include "src/midi/usb_midi_packet_pacer.h"
+#include "src/midi/usb_midi_transport.h"
 
 #if !defined(ARDUINO)
 #error "CardputerUsbMidiTransport is available only in the Arduino firmware build"
@@ -21,6 +23,13 @@ struct CardputerUsbMidiTransportDiagnostics {
     uint32_t txNotMounted{0};
     uint32_t txPacingWaits{0};
     uint32_t txPacingWaitMicros{0};
+    // Sampled only after TinyUSB rejects a packet. These distinguish an
+    // undrained class FIFO from a lower-level IN endpoint that is stuck busy
+    // or halted.
+    uint32_t txRejectedEndpointBusy{0};
+    uint32_t txRejectedEndpointStalled{0};
+    bool endpointBusyOnLastReject{false};
+    bool endpointStalledOnLastReject{false};
     uint32_t rxPackets{0};
     // A host that suspends the bus stops polling the IN endpoint entirely while
     // TinyUSB still reports the interface mounted. That looks identical to a
@@ -31,14 +40,17 @@ struct CardputerUsbMidiTransportDiagnostics {
 
 // Native ESP32-S3 TinyUSB MIDI transport for Cardputer-Adv.
 //
-// The platform owns one global instance so USBMIDI can register its descriptor
-// before Arduino's app_main() starts the TinyUSB CDC composite. begin() and
-// router registration are deliberately deferred until setup().
+// The platform owns one global instance so its MIDI descriptor is registered
+// before Arduino's app_main() starts the TinyUSB CDC composite. The stock
+// USBMIDI allocator can cross-pair CDC and MIDI endpoint numbers; this transport
+// reserves one duplex endpoint instead, matching the working MIDI-only profile.
+// begin() and router registration are deliberately deferred until setup().
 class CardputerUsbMidiTransport final : public IUsbMidiTransport {
 public:
-    CardputerUsbMidiTransport() = default;
+    CardputerUsbMidiTransport();
 
     bool begin() override;
+    bool started() const { return begun_; }
     bool mounted() const override;
     bool suspended() const;
     // Polled from the dispatcher: the Arduino core already owns the TinyUSB
@@ -61,6 +73,74 @@ public:
     bool sendTimingClock() override;
     bool sendStart() override;
     bool sendStop() override;
+
+    // Called only by MidiDispatchTask. The configured device profile decides
+    // whether a real FB is valid or whether resume must use the validated Start
+    // fallback. For a class-compliant/General-MIDI target, a PROJECT SMF resume
+    // sends F2 immediately before FB using the current player tick and PPQN.
+    bool sendContinue() override {
+        const GroovePuterMidi::MidiTransportCapabilities capabilities =
+            GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();
+
+        if (capabilities.songPositionTx) {
+            GroovePuterMidi::ISmfPlayerService* player =
+                GroovePuterMidi::smfPlayerService();
+            if (player != nullptr) {
+                const GroovePuterMidi::SmfPlayerSnapshot state =
+                    player->snapshot();
+                const bool resumableProjectState =
+                    state.tempoMode == GroovePuterMidi::SmfTempoMode::Project &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Unloaded &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Loading &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Stopped &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Error;
+                if (resumableProjectState) {
+                    const GroovePuterMidi::SmfChannelInspectorSnapshot inspector =
+                        player->channelInspector();
+                    if (inspector.division > 0) {
+                        const uint16_t position =
+                            GroovePuterMidi::songPositionPointerFromPpqnTicks(
+                                state.currentTick, inspector.division);
+                        if (!sendSongPositionPointer(position)) return false;
+                    }
+                }
+            }
+        }
+
+        if (capabilities.continueTx) {
+            midiEventPacket_t packet{
+                0x0F,  // USB-MIDI CIN: single-byte realtime message
+                0xFB,  // MIDI Continue
+                0,
+                0,
+            };
+            return writePacket(packet);
+        }
+
+        if (capabilities.continueBehavior ==
+                GroovePuterMidi::MidiContinueBehavior::RestartFromBeginning &&
+            capabilities.startTx) {
+            return writeRealtimePacket(0xFA);  // validated Start fallback
+        }
+        return false;
+    }
+
+    bool sendSongPositionPointer(uint16_t sixteenthNotes) override {
+        if (!GroovePuterMidi::midiTransportCapabilityRuntime()
+                 .capabilities().songPositionTx) {
+            return false;
+        }
+        const uint16_t value =
+            GroovePuterMidi::clampSongPositionPointer(sixteenthNotes);
+        midiEventPacket_t packet{
+            0x03,  // USB-MIDI CIN: three-byte system common message
+            0xF2,  // Song Position Pointer
+            GroovePuterMidi::songPositionPointerLsb(value),
+            GroovePuterMidi::songPositionPointerMsb(value),
+        };
+        return writePacket(packet);
+    }
+
     void flush() override;
 
 private:
@@ -80,8 +160,8 @@ private:
                             uint8_t velocity);
     bool writeRealtimePacket(uint8_t status);
 
-    USBMIDI midi_;
     GroovePuterMidi::UsbMidiPacketPacer txPacer_{kPacketSpacingMicros};
+    bool descriptorRegistered_{false};
     bool begun_{false};
     mutable CardputerUsbMidiTransportDiagnostics diagnostics_{};
     mutable bool mountStateKnown_{false};
@@ -89,3 +169,17 @@ private:
     mutable bool suspendStateKnown_{false};
     mutable bool lastSuspended_{false};
 };
+
+// DIN/UART MIDI endpoint (M5Stack Unit MIDI on the Grove UART).
+//
+// This mirrors the USB stream on a second wire; it is not an independently
+// routed endpoint. Both wires carry the same channels and notes, because a
+// single musical owner drives both. In the Unit's SEPARATE mode the onboard
+// SAM2695 and the DIN OUT jack share one TX line, so enabling this also makes
+// the local synth sound whatever goes to DIN OUT.
+//
+// The link is write-only: enabling it is not evidence that anything is
+// listening.
+void setCardputerDinMidiEnabled(bool enabled);
+bool cardputerDinMidiEnabled();
+

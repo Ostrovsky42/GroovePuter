@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R3
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R3 runtime owner
+        run: bash tests/run_midi_device_profile_runtime_0_9_7_tests.sh

@@ -1,0 +1,25 @@
+name: 0.9.9 PHRASE-C1 semantic contract
+
+on:
+  push:
+    branches:
+      - agent/20260826-10-0.9.9-phrase-c1-semantic-contract-convergence
+  pull_request:
+    branches:
+      - agent/20260826-06-0.9.9-m1l-multibar-melodic-listening
+  workflow_dispatch:
+
+jobs:
+  focused-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Source ownership guard
+        run: python3 tests/test_0_9_9_phrase_c1_source_contract.py
+
+      - name: Focused semantic contract
+        run: bash tests/run_0_9_9_phrase_c1_tests.sh

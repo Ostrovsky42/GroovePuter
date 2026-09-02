@@ -1,0 +1,19 @@
+name: 0.9.9 PHRASE-W1R W1 replay on finalized H1-F1
+
+on:
+  push:
+    branches:
+      - agent/20260828-02-0.9.9-phrase-w1r-h1-f1-replay
+  pull_request:
+    branches:
+      - agent/20260828-01-0.9.9-phrase-h1-f1-source-period
+
+jobs:
+  focused-w1-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-W1R focused replay gate
+        run: bash tests/run_0_9_9_phrase_w1r_tests.sh

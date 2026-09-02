@@ -25,36 +25,34 @@ struct SampleSlot {
 class RamSampleStore : public ISampleStore {
 public:
   RamSampleStore();
-  
+
   // --- Audio Thread Interface (Lock-Free) ---
   // Handle-based API (preferred)
   SampleHandle acquireHandle(SampleId id) override;
   void releaseHandle(SampleHandle h) override;
   SampleView viewHandle(SampleHandle h) const override;
-  
+
   // Legacy ID-based API (deprecated)
   void acquire(SampleId id) override;
   void release(SampleId id) override;
   SampleView view(SampleId id) const override;
 
-  // --- Main Thread Interface ---
+  // --- Control/Main Thread Interface ---
+  bool registerFile(SampleId id, const std::string& path) override;
   bool preload(SampleId id) override;
   void evictLRU() override;
   std::size_t freePoolBytes() const override;
   void setPoolSize(std::size_t bytes) { maxPoolBytes_ = bytes; }
-
-  // Helpers
-  void registerFile(SampleId id, const std::string& path);
 
 protected:
   uint32_t nextTime();
 
   // Slots: accessible by both threads
   std::array<SampleSlot, kMaxSampleSlots> slots_;
-  
+
   // Main thread only state
   std::mutex pathsMutex_;
-  std::map<uint32_t, std::string> filePaths_; // ID -> Path
+  std::map<uint32_t, std::string> filePaths_; // validated runtime ID -> Path
   std::size_t currentPoolUsage_;
   std::size_t maxPoolBytes_;
   std::atomic<uint32_t> timeCounter_;

@@ -1,0 +1,32 @@
+name: 0.9.9 PHRASE-H1 progression WHAT source
+
+on:
+  push:
+    branches:
+      - research/20260826-11-0.9.9-phrase-h1-progression-what-source
+  pull_request:
+    branches:
+      - agent/20260826-10-0.9.9-phrase-c1-semantic-contract-convergence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-progression-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run PHRASE-H1 progression WHAT source characterization
+        run: bash tests/run_0_9_9_phrase_h1_tests.sh
+
+  core-host-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run core host regression
+        run: bash tests/run_host_tests.sh

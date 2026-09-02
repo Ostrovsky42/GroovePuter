@@ -8,6 +8,7 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 
+#include "src/state/scene_revision.h"
 DrumAutomationPage::DrumAutomationPage(MiniAcid& mini_acid)
     : mini_acid_(mini_acid) {}
 
@@ -81,6 +82,7 @@ void DrumAutomationPage::addNode() {
   }
   l.nodeCount = static_cast<uint8_t>(idx + 1);
   node_index_ = idx;
+  GroovePuterState::markSceneMutated();
 }
 
 void DrumAutomationPage::removeNode() {
@@ -92,6 +94,7 @@ void DrumAutomationPage::removeNode() {
   }
   l.nodeCount = static_cast<uint8_t>(l.nodeCount - 1);
   normalizeNodeIndex();
+  GroovePuterState::markSceneMutated();
 }
 
 const char* DrumAutomationPage::targetName(uint8_t target) const {
@@ -128,6 +131,7 @@ void DrumAutomationPage::moveRow(int delta) {
 
 void DrumAutomationPage::adjustRowValue(int delta) {
   if (delta == 0) return;
+  bool changed = false;
   switch (row_) {
     case Row::Lane: {
       int next = lane_index_ + delta;
@@ -147,18 +151,16 @@ void DrumAutomationPage::adjustRowValue(int delta) {
           DRUM_AUTOMATION_ENGINE_SWITCH,
       };
       int idx = 0;
-      uint8_t current = lane().targetParam;
+      const uint8_t current = lane().targetParam;
       for (int i = 0; i < static_cast<int>(sizeof(kTargets)); ++i) {
-        if (kTargets[i] == current) {
-          idx = i;
-          break;
-        }
+        if (kTargets[i] == current) { idx = i; break; }
       }
       idx += delta;
       const int count = static_cast<int>(sizeof(kTargets) / sizeof(kTargets[0]));
       while (idx < 0) idx += count;
       while (idx >= count) idx -= count;
       editLane().targetParam = kTargets[idx];
+      changed = editLane().targetParam != current;
       break;
     }
     case Row::NodeIndex: {
@@ -176,90 +178,116 @@ void DrumAutomationPage::adjustRowValue(int delta) {
     case Row::NodeStep: {
       if (!hasNode()) break;
       AutomationNode& n = editNode();
+      const uint8_t before = n.step;
       int step = static_cast<int>(n.step) + delta;
       while (step < 0) step += 16;
       while (step >= 16) step -= 16;
       n.step = static_cast<uint8_t>(step);
+      changed = n.step != before;
       break;
     }
     case Row::NodeValue: {
       if (!hasNode()) break;
       AutomationNode& n = editNode();
+      const float before = n.value;
       n.value = std::clamp(n.value + 0.05f * static_cast<float>(delta), 0.0f, 1.0f);
+      changed = n.value != before;
       break;
     }
     case Row::NodeCurve: {
       if (!hasNode()) break;
       AutomationNode& n = editNode();
+      const uint8_t before = n.curveType;
       int curve = static_cast<int>(n.curveType) + delta;
       while (curve < 0) curve += 3;
       while (curve > 2) curve -= 3;
       n.curveType = static_cast<uint8_t>(curve);
+      changed = n.curveType != before;
       break;
     }
     case Row::GrooveSwing: {
       PatternGroove& groove = editPatternSet().groove;
+      const float before = groove.swing;
       if (groove.swing < 0.0f) {
         if (delta > 0) groove.swing = 0.0f;
       } else {
-        float next = groove.swing + 0.02f * static_cast<float>(delta);
+        const float next = groove.swing + 0.02f * static_cast<float>(delta);
         if (next < 0.0f) groove.swing = -1.0f;
         else groove.swing = std::clamp(next, 0.0f, 0.66f);
       }
+      changed = groove.swing != before;
       break;
     }
     case Row::GrooveHumanize: {
       PatternGroove& groove = editPatternSet().groove;
+      const float before = groove.humanize;
       if (groove.humanize < 0.0f) {
         if (delta > 0) groove.humanize = 0.0f;
       } else {
-        float next = groove.humanize + 0.05f * static_cast<float>(delta);
+        const float next = groove.humanize + 0.05f * static_cast<float>(delta);
         if (next < 0.0f) groove.humanize = -1.0f;
         else groove.humanize = std::clamp(next, 0.0f, 1.0f);
       }
+      changed = groove.humanize != before;
       break;
     }
     default:
       break;
   }
+  if (changed) GroovePuterState::markSceneMutated();
 }
 
 bool DrumAutomationPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (UIInput::isTab(ui_event)) return false;
 
+  static UIInput::HoldAccelerator holdAccelerator;
+  const auto isContinuousRow = [&]() {
+    return row_ == Row::NodeValue ||
+           row_ == Row::GrooveSwing ||
+           row_ == Row::GrooveHumanize;
+  };
+
   int nav = UIInput::navCode(ui_event);
   if (nav == GROOVEPUTER_UP) {
+    holdAccelerator.reset();
     moveRow(-1);
     return true;
   }
   if (nav == GROOVEPUTER_DOWN) {
+    holdAccelerator.reset();
     moveRow(1);
     return true;
   }
-  if (nav == GROOVEPUTER_LEFT) {
-    adjustRowValue(-1);
-    return true;
-  }
-  if (nav == GROOVEPUTER_RIGHT) {
-    adjustRowValue(1);
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    const int direction = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+    int delta = direction;
+    if (isContinuousRow()) {
+      delta *= holdAccelerator.multiplier(direction);
+    } else {
+      holdAccelerator.reset();
+    }
+    adjustRowValue(delta);
     return true;
   }
 
   char key = ui_event.key;
   if (!key) return false;
 
+  holdAccelerator.reset();
   if (key == '\n' || key == '\r') {
     if (row_ == Row::NodeIndex) {
       addNode();
       return true;
     }
     if (row_ == Row::GrooveSwing) {
-      editPatternSet().groove.swing = -1.0f;
+      auto& swing = editPatternSet().groove.swing;
+      if (swing != -1.0f) { swing = -1.0f; GroovePuterState::markSceneMutated(); }
       return true;
     }
     if (row_ == Row::GrooveHumanize) {
-      editPatternSet().groove.humanize = -1.0f;
+      auto& humanize = editPatternSet().groove.humanize;
+      if (humanize != -1.0f) { humanize = -1.0f; GroovePuterState::markSceneMutated(); }
       return true;
     }
     return true;

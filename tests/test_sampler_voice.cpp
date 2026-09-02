@@ -99,8 +99,39 @@ void testReverseOneShotReleasesHandle() {
   assert(!store.acquired());
 }
 
+void testFrameRendererMatchesBlockRenderer() {
+  const std::vector<int16_t> pcm = {1000, 2000, 3000, 4000, 3000, 2000, 1000};
+  FakeSampleStore blockStore(pcm);
+  FakeSampleStore frameStore(pcm);
+  SamplerVoice blockVoice;
+  SamplerVoice frameVoice;
+
+  SamplerVoice::Params params{};
+  params.id = {42};
+  params.pitch = 0.75f;
+  params.gain = 0.8f;
+
+  blockVoice.trigger(params, blockStore);
+  frameVoice.trigger(params, frameStore);
+
+  std::array<float, 16> blockOutput{};
+  std::array<float, 16> frameOutput{};
+  blockVoice.process(blockOutput.data(), blockOutput.size(), blockStore);
+  for (float& sample : frameOutput) {
+    frameVoice.processFrame(sample, frameStore);
+  }
+
+  for (std::size_t i = 0; i < blockOutput.size(); ++i) {
+    assert(std::fabs(blockOutput[i] - frameOutput[i]) < 0.000001f);
+  }
+  assert(blockVoice.isActive() == frameVoice.isActive());
+  assert(blockStore.acquireCount() == frameStore.acquireCount());
+  assert(blockStore.releaseCount() == frameStore.releaseCount());
+}
+
 int main() {
   testReverseDefaultEndStartsAtLastFrame();
   testReverseOneShotReleasesHandle();
+  testFrameRendererMatchesBlockRenderer();
   return 0;
 }

@@ -1,0 +1,56 @@
+name: 0.9.9 UI-P0 ownership audit
+
+on:
+  push:
+    branches:
+      - 'research/20260828-08-0.9.9-ui-p0-ownership-audit'
+  pull_request:
+    branches:
+      - 'agent/20260828-05-0.9.9-phrase-i1-end-to-end-synth-phrase'
+
+jobs:
+  ui-p0-source-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce exact I1 ancestry and immutable UI-P0 file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='fb30bbb93f739d8b3e4514ae931cbc73fc8eeb09'
+          git cat-file -e "${BASE}^{commit}"
+          git merge-base --is-ancestor "$BASE" HEAD
+          MERGE_BASE="$(git merge-base "$BASE" HEAD)"
+          test "$MERGE_BASE" = "$BASE"
+
+          REQUIRED=(
+            '.github/workflows/0-9-9-ui-p0-ownership-audit.yml'
+            'docs/contracts/0_9_9_UI_P0_PRODUCT_UI_OWNERSHIP_AUDIT.md'
+            'tests/test_0_9_9_ui_p0_source_regressions.py'
+          )
+          for path in "${REQUIRED[@]}"; do
+            test -f "$path" || {
+              echo "UI-P0 required checkpoint file missing: $path" >&2
+              exit 1
+            }
+          done
+
+          mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort)
+          printf '%s\n' "${CHANGED[@]}"
+
+          UNEXPECTED="$({
+            printf '%s\n' "${CHANGED[@]}"
+          } | comm -23 - <(printf '%s\n' "${REQUIRED[@]}" | sort))"
+
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo 'UI-P0 permits only its workflow, audit document, and source-characterization test.' >&2
+            echo 'Unexpected changed paths:' >&2
+            printf '%s\n' "$UNEXPECTED" >&2
+            exit 1
+          fi
+
+      - name: Run UI-P0 ownership/source characterization
+        run: python3 tests/test_0_9_9_ui_p0_source_regressions.py

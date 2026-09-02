@@ -9,12 +9,13 @@
 enum class MidiTransportEventType : uint8_t {
     Clock,
     Start,
+    Continue,
     Stop,
 };
 
 // Sample-timed MIDI transport event. Transport events deliberately do not reuse
-// MusicalEvent/MusicalEventTarget: MIDI Clock and Start/Stop are system realtime
-// messages with their own lifecycle and overflow semantics.
+// MusicalEvent/MusicalEventTarget: MIDI Clock and Start/Continue/Stop are system
+// realtime messages with their own lifecycle and overflow semantics.
 struct ScheduledMidiTransportEvent {
     MidiTransportEventType type{MidiTransportEventType::Clock};
     uint32_t blockSequence{0};
@@ -27,6 +28,7 @@ inline constexpr uint8_t midiTransportEventPriority(
         MidiTransportEventType type) {
     switch (type) {
         case MidiTransportEventType::Start:
+        case MidiTransportEventType::Continue:
         case MidiTransportEventType::Stop:
             return 0;
         case MidiTransportEventType::Clock:
@@ -57,7 +59,7 @@ inline constexpr bool scheduledMidiTransportEventBefore(
 // Cross-queue scheduling contract used by the dispatcher: a transport event
 // precedes a musical event when its sample timestamp is earlier, and transport
 // owns an exactly equal sample timestamp. Within transport traffic the helper
-// above keeps Start/Stop ahead of Clock.
+// above keeps lifecycle messages ahead of Clock.
 inline constexpr bool scheduledMidiTransportEventBeforeMusical(
         const ScheduledMidiTransportEvent& transport,
         const ScheduledMusicalEvent& musical) {

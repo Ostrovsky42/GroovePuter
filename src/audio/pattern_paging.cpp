@@ -7,6 +7,7 @@
 #include "../../platform_sdl/arduino_compat.h"
 #endif
 
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -14,7 +15,8 @@
 
 namespace {
 
-constexpr char kPatternDirectory[] = "/patterns";
+constexpr char kPatternRootDirectory[] = "/patterns";
+constexpr char kDefaultProjectName[] = "grooveputer_scene";
 constexpr char kMagic[4] = {'G', 'P', 'P', 'G'};
 constexpr uint32_t kCrcInitial = 0xFFFFFFFFu;
 constexpr uint32_t kCrcPolynomial = 0xEDB88320u;
@@ -31,16 +33,171 @@ struct PageFileHeader {
     uint32_t drumBytes;
 };
 
-struct PageStaging {
-    Bank<SynthPattern> synthA[kBankCount];
-    Bank<SynthPattern> synthB[kBankCount];
-    Bank<DrumPatternSet> drums[kBankCount];
-};
+constexpr size_t kSynthBanksSize = sizeof(Bank<SynthPattern>) * kBankCount;
+constexpr size_t kDrumBanksSize = sizeof(Bank<DrumPatternSet>) * kBankCount;
 
-// A single static staging area avoids heap allocation and guarantees that
-// Scene is untouched until the complete file has passed header, size and CRC
-// validation. Paging is serialized by the audio mutation gate.
-PageStaging g_stagingPage{};
+std::string& activeProjectNameStorage() {
+    static std::string projectName = kDefaultProjectName;
+    return projectName;
+}
+
+int& activePageIndexStorage() {
+    static int pageIndex = 0;
+    return pageIndex;
+}
+
+std::string normalizeProjectName(const std::string& projectName) {
+    return projectName.empty() ? std::string(kDefaultProjectName) : projectName;
+}
+
+std::string encodeProjectName(const std::string& projectName) {
+    const std::string normalized = normalizeProjectName(projectName);
+    std::string encoded;
+    encoded.reserve(normalized.size());
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    for (unsigned char ch : normalized) {
+        // '_' is the escape prefix and must itself be encoded. This keeps
+        // "a b" (_20) distinct from a literal "a_20b" project name.
+        if (std::isalnum(ch) || ch == '-') {
+            encoded.push_back(static_cast<char>(ch));
+        } else {
+            encoded.push_back('_');
+            encoded.push_back(kHex[(ch >> 4) & 0x0F]);
+            encoded.push_back(kHex[ch & 0x0F]);
+        }
+    }
+    return encoded.empty() ? std::string(kDefaultProjectName) : encoded;
+}
+
+std::string projectDirectoryFor(const std::string& projectName) {
+    return std::string(kPatternRootDirectory) + "/" +
+           encodeProjectName(projectName);
+}
+
+std::string pagePathFor(const std::string& projectName, int pageIndex) {
+    char fileName[32];
+    std::snprintf(fileName, sizeof(fileName), "/page_%02d.gpp", pageIndex);
+    return projectDirectoryFor(projectName) + fileName;
+}
+
+std::string legacyPagePath(int pageIndex) {
+    char buffer[48];
+    std::snprintf(buffer, sizeof(buffer), "%s/page_%02d.gpp",
+                  kPatternRootDirectory, pageIndex);
+    return std::string(buffer);
+}
+
+bool ensureRootDirectory() {
+    return SD.exists(kPatternRootDirectory) || SD.mkdir(kPatternRootDirectory);
+}
+
+bool ensureProjectDirectory(const std::string& projectName) {
+    if (!ensureRootDirectory()) return false;
+    const std::string directory = projectDirectoryFor(projectName);
+    return SD.exists(directory.c_str()) || SD.mkdir(directory.c_str());
+}
+
+bool removeIfExists(const std::string& path) {
+    return !SD.exists(path.c_str()) || SD.remove(path.c_str());
+}
+
+bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
+    File source = SD.open(sourcePath.c_str(), FILE_READ);
+    if (!source) return false;
+
+    if (!removeIfExists(targetPath)) {
+        source.close();
+        return false;
+    }
+    File target = SD.open(targetPath.c_str(), FILE_WRITE);
+    if (!target) {
+        source.close();
+        return false;
+    }
+
+    uint8_t buffer[512];
+    bool ok = true;
+    while (source.available()) {
+        const size_t readCount = source.read(buffer, sizeof(buffer));
+        if (readCount == 0) {
+            ok = false;
+            break;
+        }
+        if (target.write(buffer, readCount) != readCount) {
+            ok = false;
+            break;
+        }
+    }
+    target.flush();
+    source.close();
+    target.close();
+
+    if (!ok) removeIfExists(targetPath);
+    return ok;
+}
+
+bool clearProjectPagesFor(const std::string& projectName) {
+    bool ok = true;
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string mainPath = pagePathFor(projectName, page);
+        ok = removeIfExists(mainPath) && ok;
+        ok = removeIfExists(mainPath + ".tmp") && ok;
+        ok = removeIfExists(mainPath + ".bak") && ok;
+    }
+    return ok;
+}
+
+bool projectHasAnyPage(const std::string& projectName) {
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string mainPath = pagePathFor(projectName, page);
+        if (SD.exists(mainPath.c_str()) ||
+            SD.exists((mainPath + ".bak").c_str())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool migrateLegacyPages(const std::string& targetProject) {
+    if (projectHasAnyPage(targetProject)) return true;
+
+    bool hasLegacy = false;
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string legacyMain = legacyPagePath(page);
+        if (SD.exists(legacyMain.c_str()) ||
+            SD.exists((legacyMain + ".bak").c_str()) ||
+            SD.exists((legacyMain + ".tmp").c_str())) {
+            hasLegacy = true;
+            break;
+        }
+    }
+    if (!hasLegacy) return true;
+    if (!ensureProjectDirectory(targetProject)) return false;
+
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string legacyMain = legacyPagePath(page);
+        const std::string targetMain = pagePathFor(targetProject, page);
+        if (SD.exists(legacyMain.c_str()) &&
+            !copyFile(legacyMain, targetMain)) {
+            clearProjectPagesFor(targetProject);
+            return false;
+        }
+        if (SD.exists((legacyMain + ".bak").c_str()) &&
+            !copyFile(legacyMain + ".bak", targetMain + ".bak")) {
+            clearProjectPagesFor(targetProject);
+            return false;
+        }
+    }
+
+    bool removed = true;
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string legacyMain = legacyPagePath(page);
+        removed = removeIfExists(legacyMain) && removed;
+        removed = removeIfExists(legacyMain + ".tmp") && removed;
+        removed = removeIfExists(legacyMain + ".bak") && removed;
+    }
+    return removed;
+}
 
 uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t length) {
     for (size_t i = 0; i < length; ++i) {
@@ -58,15 +215,10 @@ uint32_t finalizeCrc(uint32_t crc) {
 }
 
 uint32_t payloadSize() {
-    return static_cast<uint32_t>(sizeof(g_stagingPage.synthA) +
-                                 sizeof(g_stagingPage.synthB) +
-                                 sizeof(g_stagingPage.drums));
+    return static_cast<uint32_t>(kSynthBanksSize * 2u + kDrumBanksSize);
 }
 
 uint32_t layoutFingerprint() {
-    // FNV-1a over every ABI-sensitive dimension. A changed struct size, bank
-    // count or pattern count invalidates old cache pages instead of reading
-    // them into a different firmware layout.
     const uint32_t values[] = {
         static_cast<uint32_t>(sizeof(DrumStep)),
         static_cast<uint32_t>(sizeof(DrumPatternSet)),
@@ -122,9 +274,9 @@ bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
            header.headerSize == sizeof(PageFileHeader) &&
            header.payloadSize == payloadSize() &&
            header.layoutFingerprint == layoutFingerprint() &&
-           header.synthABytes == sizeof(g_stagingPage.synthA) &&
-           header.synthBBytes == sizeof(g_stagingPage.synthB) &&
-           header.drumBytes == sizeof(g_stagingPage.drums) &&
+           header.synthABytes == kSynthBanksSize &&
+           header.synthBBytes == kSynthBanksSize &&
+           header.drumBytes == kDrumBanksSize &&
            fileSize == sizeof(PageFileHeader) + header.payloadSize;
 }
 
@@ -136,7 +288,7 @@ bool readAll(File& file, void* data, size_t length) {
     return file.read(reinterpret_cast<uint8_t*>(data), length) == length;
 }
 
-bool readAndValidatePage(const std::string& path, PageStaging& staging) {
+bool readAndValidatePage(const std::string& path, Scene& staging) {
     File file = SD.open(path.c_str(), FILE_READ);
     if (!file) return false;
 
@@ -147,9 +299,9 @@ bool readAndValidatePage(const std::string& path, PageStaging& staging) {
         return false;
     }
 
-    if (!readAll(file, staging.synthA, sizeof(staging.synthA)) ||
-        !readAll(file, staging.synthB, sizeof(staging.synthB)) ||
-        !readAll(file, staging.drums, sizeof(staging.drums))) {
+    if (!readAll(file, staging.synthABanks, sizeof(staging.synthABanks)) ||
+        !readAll(file, staging.synthBBanks, sizeof(staging.synthBBanks)) ||
+        !readAll(file, staging.drumBanks, sizeof(staging.drumBanks))) {
         file.close();
         return false;
     }
@@ -157,14 +309,14 @@ bool readAndValidatePage(const std::string& path, PageStaging& staging) {
 
     uint32_t crc = kCrcInitial;
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthA),
-        sizeof(staging.synthA));
+        reinterpret_cast<const uint8_t*>(staging.synthABanks),
+        sizeof(staging.synthABanks));
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthB),
-        sizeof(staging.synthB));
+        reinterpret_cast<const uint8_t*>(staging.synthBBanks),
+        sizeof(staging.synthBBanks));
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.drums),
-        sizeof(staging.drums));
+        reinterpret_cast<const uint8_t*>(staging.drumBanks),
+        sizeof(staging.drumBanks));
     return finalizeCrc(crc) == header.payloadCrc32;
 }
 
@@ -193,15 +345,43 @@ bool PatternPagingService::validPageIndex(int pageIndex) {
     return pageIndex >= 0 && pageIndex < kMaxPages;
 }
 
+bool PatternPagingService::setProjectName(const std::string& projectName) {
+    const std::string normalized = normalizeProjectName(projectName);
+    std::string& active = activeProjectNameStorage();
+    const std::string previous = active;
+    active = normalized;
+    if (!ensureDirectory() || !migrateLegacyPages(active)) {
+        active = previous;
+        ensureDirectory();
+        return false;
+    }
+    return true;
+}
+
+const std::string& PatternPagingService::currentProjectName() {
+    return activeProjectNameStorage();
+}
+
+int PatternPagingService::activePageIndex() {
+    return activePageIndexStorage();
+}
+
 bool PatternPagingService::ensureDirectory() {
-    return SD.exists(kPatternDirectory) || SD.mkdir(kPatternDirectory);
+    return ensureProjectDirectory(activeProjectNameStorage());
+}
+
+std::string PatternPagingService::projectDirectory(
+    const std::string& projectName) {
+    return projectDirectoryFor(projectName);
+}
+
+std::string PatternPagingService::pagePathForProject(
+    const std::string& projectName, int pageIndex) {
+    return pagePathFor(projectName, pageIndex);
 }
 
 std::string PatternPagingService::pagePath(int pageIndex) {
-    char buffer[48];
-    std::snprintf(buffer, sizeof(buffer), "%s/page_%02d.gpp",
-                  kPatternDirectory, pageIndex);
-    return std::string(buffer);
+    return pagePathFor(activeProjectNameStorage(), pageIndex);
 }
 
 std::string PatternPagingService::tempPath(int pageIndex) {
@@ -232,12 +412,17 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     file.flush();
     file.close();
 
-    if (!wrote || !readAndValidatePage(temporaryPath, g_stagingPage)) {
+    Scene& staging = sceneTransactionScratch();
+    if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
         SD.remove(temporaryPath.c_str());
         return false;
     }
 
-    return commitTemporaryPage(mainPath, temporaryPath, oldBackupPath);
+    if (!commitTemporaryPage(mainPath, temporaryPath, oldBackupPath)) {
+        return false;
+    }
+    activePageIndexStorage() = pageIndex;
+    return true;
 }
 
 bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
@@ -246,20 +431,29 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
     const std::string mainPath = pagePath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);
 
-    bool loaded = readAndValidatePage(mainPath, g_stagingPage);
-    if (!loaded) {
-        loaded = readAndValidatePage(oldBackupPath, g_stagingPage);
-    }
+    Scene& staging = sceneTransactionScratch();
+    bool loaded = readAndValidatePage(mainPath, staging);
+    if (!loaded) loaded = readAndValidatePage(oldBackupPath, staging);
     if (!loaded) return false;
 
-    // This is the only point where active pattern state is modified.
-    std::memcpy(scene.synthABanks, g_stagingPage.synthA,
+    std::memcpy(scene.synthABanks, staging.synthABanks,
                 sizeof(scene.synthABanks));
-    std::memcpy(scene.synthBBanks, g_stagingPage.synthB,
+    std::memcpy(scene.synthBBanks, staging.synthBBanks,
                 sizeof(scene.synthBBanks));
-    std::memcpy(scene.drumBanks, g_stagingPage.drums,
+    std::memcpy(scene.drumBanks, staging.drumBanks,
                 sizeof(scene.drumBanks));
+    activePageIndexStorage() = pageIndex;
     return true;
+}
+
+bool PatternPagingService::restoreBackup(int pageIndex) {
+    if (!validPageIndex(pageIndex)) return false;
+    const std::string mainPath = pagePath(pageIndex);
+    const std::string oldBackupPath = backupPath(pageIndex);
+    Scene& staging = sceneTransactionScratch();
+    if (!readAndValidatePage(oldBackupPath, staging)) return false;
+    if (!removeIfExists(mainPath)) return false;
+    return SD.rename(oldBackupPath.c_str(), mainPath.c_str());
 }
 
 void PatternPagingService::initializeEmptyPage(Scene& scene) {
@@ -293,4 +487,39 @@ bool PatternPagingService::removePage(int pageIndex) {
         removedAny = SD.remove(oldBackupPath.c_str()) || removedAny;
     }
     return removedAny;
+}
+
+bool PatternPagingService::copyProjectPages(
+    const std::string& sourceProject,
+    const std::string& targetProject) {
+    const std::string source = normalizeProjectName(sourceProject);
+    const std::string target = normalizeProjectName(targetProject);
+    if (source == target) return true;
+    if (!ensureProjectDirectory(source) || !ensureProjectDirectory(target)) {
+        return false;
+    }
+    if (!clearProjectPagesFor(target)) return false;
+
+    for (int page = 0; page < kMaxPages; ++page) {
+        const std::string sourceMain = pagePathFor(source, page);
+        const std::string targetMain = pagePathFor(target, page);
+        if (SD.exists(sourceMain.c_str()) &&
+            !copyFile(sourceMain, targetMain)) {
+            clearProjectPagesFor(target);
+            return false;
+        }
+        if (SD.exists((sourceMain + ".bak").c_str()) &&
+            !copyFile(sourceMain + ".bak", targetMain + ".bak")) {
+            clearProjectPagesFor(target);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool PatternPagingService::clearProjectPages() {
+    if (!ensureDirectory()) return false;
+    const bool cleared = clearProjectPagesFor(activeProjectNameStorage());
+    if (cleared) activePageIndexStorage() = 0;
+    return cleared;
 }

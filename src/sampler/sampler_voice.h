@@ -28,6 +28,69 @@ public:
   // Note: will call store.release(id) when playback finishes.
   void process(float* output, uint32_t numFrames, ISampleStore& store);
 
+  // Audio Thread: Render exactly one frame after current-frame sequencer
+  // dispatch. Uses metadata cached by trigger(), so it performs no store lookup.
+  inline __attribute__((always_inline)) void processFrame(
+      float& output, ISampleStore& store) {
+    if (!active_ || pcm_ == nullptr) return;
+
+    // The admitted mono pool is at most 16,384 frames, so float retains ample
+    // playhead precision while avoiding software double/floor in this hot path.
+    const float pos = position_;
+    const int i0 = static_cast<int>(pos);
+    if (i0 < static_cast<int>(startFrame_) ||
+        i0 >= static_cast<int>(endFrame_)) {
+      releaseHandle_(store);
+      return;
+    }
+
+    float sample = static_cast<float>(pcm_[i0]);
+    if (interpolate_) {
+      const int i1 = i0 + 1;
+      float next = sample;
+      if (i1 < static_cast<int>(endFrame_)) {
+        next = static_cast<float>(pcm_[i1]);
+      }
+      sample += (pos - static_cast<float>(i0)) * (next - sample);
+    }
+
+    float fadeGain = 1.0f;
+    if (fadingOut_) {
+      fadeGain = static_cast<float>(fadeCounter_) /
+                 static_cast<float>(kFadeFrames);
+      if (fadeCounter_ > 0) {
+        --fadeCounter_;
+      } else {
+        releaseHandle_(store);
+        return;
+      }
+    } else if (fadeCounter_ > 0) {
+      fadeGain = 1.0f -
+                 (static_cast<float>(fadeCounter_) /
+                  static_cast<float>(kFadeFrames));
+      --fadeCounter_;
+    }
+
+    output += sample * fadeGain * pcmGain_;
+    position_ += step_;
+
+    if (reverse_) {
+      if (position_ < static_cast<float>(startFrame_)) {
+        if (loop_) {
+          position_ = static_cast<float>(endFrame_ - 1);
+        } else {
+          releaseHandle_(store);
+        }
+      }
+    } else if (position_ >= static_cast<float>(endFrame_)) {
+      if (loop_) {
+        position_ = static_cast<float>(startFrame_);
+      } else {
+        releaseHandle_(store);
+      }
+    }
+  }
+
   bool isActive() const { return active_; }
   
   // Tag used for choke groups or identifying the source (e.g. pad index)
@@ -36,16 +99,18 @@ public:
 
 private:
   SampleHandle handle_;  // Handle to acquired slot
-  double position_ = 0;
+  const int16_t* pcm_ = nullptr;  // Pinned by handle_ while the voice is active.
+  float position_ = 0.0f;
   int tag_ = -1;
   
   // Internal playback state
-  double playbackRate_ = 1.0;
-  float gain_ = 1.0f;
+  float step_ = 1.0f;
+  float pcmGain_ = 1.0f / 32768.0f;
   uint32_t startFrame_ = 0;
   uint32_t endFrame_ = 0;
   bool reverse_ = false;
   bool loop_ = false;
+  bool interpolate_ = false;
   
   bool active_ = false;
   
@@ -54,4 +119,5 @@ private:
   bool fadingOut_ = false;
   
   void reset();
+  void releaseHandle_(ISampleStore& store);
 };

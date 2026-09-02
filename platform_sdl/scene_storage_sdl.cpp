@@ -9,6 +9,8 @@
 #endif
 
 #include "scenes.h"
+#include "../src/audio/pattern_paging.h"
+#include "../src/output/output_scene_persistence.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -34,6 +36,16 @@ EM_JS(int, wasm_write_scene, (const char* key, const char* data), {
     const value = UTF8ToString(data);
     localStorage.setItem(storageKey, value);
     return 1;
+  } catch (e) {
+    return 0;
+  }
+});
+
+EM_JS(int, wasm_remove_scene, (const char* key), {
+  const storageKey = UTF8ToString(key);
+  try {
+    localStorage.removeItem(storageKey);
+    return localStorage.getItem(storageKey) === null ? 1 : 0;
   } catch (e) {
     return 0;
   }
@@ -74,8 +86,9 @@ EM_JS(int, wasm_list_scene_names, (char* out, int maxLen), {
     if (key === prefix) {
       names.push('grooveputer_scene');
     } else if (key.startsWith(prefix + ':')) {
-      if(key.substring(prefix.length + 1) == "current") continue;
-      names.push(key.substring(prefix.length + 1));
+      const suffix = key.substring(prefix.length + 1);
+      if (suffix === 'current' || suffix.endsWith(':auto')) continue;
+      names.push(suffix);
     }
   }
   const joined = names.join('\\n');
@@ -91,6 +104,7 @@ SceneStorageSdl::SceneStorageSdl() : currentSceneName_(kDefaultSceneName) {}
 
 void SceneStorageSdl::initializeStorage() {
   loadStoredSceneName();
+  PatternPagingService::setProjectName(currentSceneName_);
 }
 
 std::string SceneStorageSdl::normalizeSceneName(const std::string& name) const {
@@ -109,6 +123,14 @@ std::string SceneStorageSdl::sceneFilePath() const {
   std::string path = normalizeSceneName(currentSceneName_);
   path += kSceneExtension;
   return path;
+}
+
+std::string SceneStorageSdl::autoSceneFilePath() const {
+  return normalizeSceneName(currentSceneName_) + kAutoSceneExtension;
+}
+
+std::string SceneStorageSdl::autoSceneKeyForStorage() const {
+  return sceneKeyForStorage(currentSceneName_) + ":auto";
 }
 
 void SceneStorageSdl::loadStoredSceneName() {
@@ -172,16 +194,24 @@ bool SceneStorageSdl::readScene(std::string& out) {
 }
 
 bool SceneStorageSdl::writeScene(const SceneManager& manager) {
-  std::string out;
-  bool ok = manager.writeSceneJson(out);
-  if (!ok) return false;
-  return writeScene(out);
+  std::string base;
+  if (!manager.writeSceneJson(base)) return false;
+  std::string persisted;
+  if (!GroovePuterOutput::injectOutputModesIntoScene(base, persisted)) {
+    return false;
+  }
+  return writeScene(persisted);
 }
 
 bool SceneStorageSdl::readScene(SceneManager& manager) {
   std::string serialized;
   if (!readScene(serialized)) return false;
-  return manager.loadScene(serialized);
+  GroovePuterOutput::PersistedOutputModes outputModes{};
+  if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
+    return false;
+  }
+  if (!manager.loadScene(serialized)) return false;
+  return outputModes.commit();
 }
 
 bool SceneStorageSdl::writeScene(const std::string& data) {
@@ -208,6 +238,13 @@ std::vector<std::string> SceneStorageSdl::findSceneNamesOnDisk() const {
     if (ec) break;
     if (!entry.is_regular_file()) continue;
     const fs::path& path = entry.path();
+    const std::string filename = path.filename().string();
+    const size_t autoLen = std::strlen(kAutoSceneExtension);
+    if (filename.size() >= autoLen &&
+        filename.compare(filename.size() - autoLen, autoLen,
+                         kAutoSceneExtension) == 0) {
+      continue;
+    }
     if (path.extension() == kSceneExtension) {
       names.push_back(path.stem().string());
     }
@@ -252,16 +289,96 @@ std::string SceneStorageSdl::getCurrentSceneName() const {
 }
 
 bool SceneStorageSdl::setCurrentSceneName(const std::string& name) {
-  currentSceneName_ = normalizeSceneName(name);
-  return persistCurrentSceneName();
+  const std::string normalized = normalizeSceneName(name);
+  const std::string previous = currentSceneName_;
+  if (normalized == previous) {
+    return PatternPagingService::setProjectName(previous) &&
+           persistCurrentSceneName();
+  }
+
+  bool sceneAlreadyExists = false;
+#ifdef __EMSCRIPTEN__
+  const std::string targetKey = sceneKeyForStorage(normalized);
+  sceneAlreadyExists = wasm_read_scene(targetKey.c_str(), nullptr, 0) > 0;
+#else
+  sceneAlreadyExists = std::filesystem::exists(normalized + kSceneExtension);
+#endif
+
+  if (!sceneAlreadyExists &&
+      !PatternPagingService::copyProjectPages(previous, normalized)) {
+    return false;
+  }
+
+  currentSceneName_ = normalized;
+  if (!PatternPagingService::setProjectName(currentSceneName_) ||
+      !persistCurrentSceneName()) {
+    currentSceneName_ = previous;
+    PatternPagingService::setProjectName(previous);
+    persistCurrentSceneName();
+    return false;
+  }
+  return true;
 }
 
 bool SceneStorageSdl::writeSceneAuto(const SceneManager& manager) {
-  // For SDL/Desktop, auto-save = regular save (simplified)
-  return writeScene(manager);
+  std::string base;
+  if (!manager.writeSceneJson(base)) return false;
+  std::string serialized;
+  if (!GroovePuterOutput::injectOutputModesIntoScene(base, serialized)) {
+    return false;
+  }
+#ifdef __EMSCRIPTEN__
+  const std::string key = autoSceneKeyForStorage();
+  return wasm_write_scene(key.c_str(), serialized.c_str()) > 0;
+#else
+  std::ofstream file(autoSceneFilePath(), std::ios::out | std::ios::trunc);
+  if (!file.is_open()) return false;
+  file << serialized;
+  return file.good();
+#endif
 }
 
 bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
-  // For SDL/Desktop, auto-load = regular load (simplified)
-  return readScene(manager);
+  std::string serialized;
+#ifdef __EMSCRIPTEN__
+  const std::string key = autoSceneKeyForStorage();
+  const int length = wasm_read_scene(key.c_str(), nullptr, 0);
+  if (length <= 0) return false;
+  serialized.resize(static_cast<size_t>(length));
+  const int written = wasm_read_scene(key.c_str(), serialized.data(), length);
+  if (written <= 0) return false;
+  serialized.resize(static_cast<size_t>(written));
+#else
+  std::ifstream file(autoSceneFilePath(), std::ios::in);
+  if (!file.is_open()) return false;
+  serialized.assign(std::istreambuf_iterator<char>(file),
+                    std::istreambuf_iterator<char>());
+#endif
+  if (serialized.empty()) return false;
+  GroovePuterOutput::PersistedOutputModes outputModes{};
+  if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
+    return false;
+  }
+  if (!manager.loadScene(serialized)) return false;
+  return outputModes.commit();
+}
+
+bool SceneStorageSdl::hasSceneAuto() const {
+#ifdef __EMSCRIPTEN__
+  const std::string key = autoSceneKeyForStorage();
+  return wasm_read_scene(key.c_str(), nullptr, 0) > 0;
+#else
+  return std::filesystem::exists(autoSceneFilePath());
+#endif
+}
+
+bool SceneStorageSdl::clearSceneAuto() {
+#ifdef __EMSCRIPTEN__
+  const std::string key = autoSceneKeyForStorage();
+  return wasm_remove_scene(key.c_str()) > 0;
+#else
+  std::error_code error;
+  std::filesystem::remove(autoSceneFilePath(), error);
+  return !error && !std::filesystem::exists(autoSceneFilePath());
+#endif
 }

@@ -16,6 +16,8 @@
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
 #include "../src/input/performance_keyboard.h"
+#include "../src/input/internal_synth_output.h"
+#include "../src/audio/audio_mutation_gate.h"
 #include "arduino_compat.h"
 
 // Define Serial and SD instances for SDL build
@@ -29,10 +31,19 @@ SDMock SD;
 #endif
 
 struct AudioContext {
-  explicit AudioContext(float sampleRate) : storage(), pool(), synth(sampleRate, &storage), device(0) { synth.sampleStore = &pool; }
+  explicit AudioContext(float sampleRate)
+      : storage(),
+        pool(),
+        synth(sampleRate, &storage),
+        internalSynthOutput(synth, mutationGate),
+        device(0) {
+    synth.sampleStore = &pool;
+  }
   SceneStorageSdl storage;
   RamSampleStore pool;
   MiniAcid synth;
+  AudioMutationGate mutationGate;
+  InternalSynthOutput internalSynthOutput;
   SDL_AudioDeviceID device;
 #ifndef __EMSCRIPTEN__
   DesktopAudioRecorder recorder;
@@ -57,6 +68,7 @@ struct AppState {
 
 static void audioCallback(void *userdata, Uint8 *stream, int len) {
   AudioContext *ctx = static_cast<AudioContext *>(userdata);
+  ctx->mutationGate.waitAtAudioBoundary();
   int16_t *out = reinterpret_cast<int16_t *>(stream);
   size_t frames = static_cast<size_t>(len) / sizeof(int16_t);
 
@@ -304,6 +316,7 @@ static void cleanup(AppState& s) {
     printf("WAV Recording stopped: %s\n", s.audio.recorder.filename().c_str());
   }
   SDL_CloseAudioDevice(s.audio.device);
+  s.audio.mutationGate.setAudioTaskActive(false);
   delete s.ui;
   s.ui = nullptr;
   delete s.sdl;
@@ -381,6 +394,10 @@ int main(int argc, char **argv) {
   }
 
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
+  state.audio.mutationGate.setAudioTaskActive(true);
+  if (!state.router.addSink(state.audio.internalSynthOutput)) {
+    fprintf(stderr, "Failed to connect internal synth MIDI sink\n");
+  }
 
   state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth, state.keyboard);
   AudioGuard guard;

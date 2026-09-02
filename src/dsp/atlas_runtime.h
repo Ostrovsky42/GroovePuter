@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_DSP_ATLAS_RUNTIME_H
+#define GROOVEPUTER_DSP_ATLAS_RUNTIME_H
 
 #include "../../scenes.h"
 
@@ -29,3 +30,5 @@ bool applyRecipe(uint8_t runtimeRecipeId,
                  AtlasRuntimeMetadata* metadata = nullptr);
 
 }  // namespace AtlasRuntime
+
+#endif  // GROOVEPUTER_DSP_ATLAS_RUNTIME_H

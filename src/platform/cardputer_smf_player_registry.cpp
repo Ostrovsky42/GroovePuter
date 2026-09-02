@@ -65,6 +65,10 @@ public:
         return player_.snapshot();
     }
 
+    SmfChannelInspectorSnapshot channelInspector() const override {
+        return player_.channelInspector();
+    }
+
     bool begin() {
         return ensureStarted();
     }

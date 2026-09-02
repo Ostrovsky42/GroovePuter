@@ -169,7 +169,7 @@ This is a regression. With no Fn held, `nextWorkspace()` must use `pageIndexInMo
 
 ### Generator Tab leaves the page
 
-Confirm `SettingsPage::handleEvent()` still consumes plain `Tab` for TIMING / NOTES / SCALE.
+Confirm `FeelPage::handleEvent()` still consumes plain `Tab` for TIMING / NOTES / SCALE.
 
 ### Player cannot be reached from PERFORM
 

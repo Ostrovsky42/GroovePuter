@@ -11,6 +11,10 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "src/dsp/mini_dsp_params.h"
 #include "src/dsp/genre_manager.h"
+#include "src/generation/composition/rhythm_selection_types.h"
+#include "src/generation/feel/feel_types.h"
+#include "src/phrase/phrase_types.h"
+#include "src/phrase/phrase_persistence.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -130,11 +134,20 @@ struct SynthPattern {
 };
 
 struct SynthParameters {
+  // Legacy TB303-shaped decode-only state. New saves use PersistedSynthPatch.
   float cutoff = 800.0f;
   float resonance = 0.6f;
   float envAmount = 400.0f;
   float envDecay = 420.0f;
   int oscType = 0;
+};
+
+static constexpr uint8_t kSynthStateSchemaVersion = 1;
+struct PersistedSynthPatch {
+  static constexpr uint8_t kMaxParams = 6;
+  std::string engineName = "TB303";
+  float params[kMaxParams] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  uint8_t paramCount = 0;
 };
 
 enum class SongTrack : uint8_t {
@@ -326,6 +339,8 @@ struct FeelSettings {
     uint8_t patternBars = 1;  // 1,2,4,8
     uint8_t swingPct = 50;    // 50..75 (MPC Style)
     uint16_t swingMask = 0xFFFF; // Bitmask of VoiceId
+    uint8_t timingProfile = static_cast<uint8_t>(
+        GroovePuterRhythm::FeelProfileId::Straight);
     bool lofiEnabled = false;
     uint8_t lofiAmount = 50;  // 0..100
     bool driveEnabled = false;
@@ -335,15 +350,14 @@ struct FeelSettings {
 
 struct GenreSettings {
     uint8_t generativeMode = 0;   // GenerativeMode enum value
-    uint8_t textureMode = 0;      // TextureMode enum value
-    uint8_t textureAmount = 70;   // 0..100 intensity
     uint8_t recipe = 0;           // 0 = base (no subgenre recipe)
     uint8_t morphTarget = 0;      // 0 = none
     uint8_t morphAmount = 0;      // 0..255
     bool regenerateOnApply = false; // true: SOUND+PATTERN, false: SOUND ONLY (default)
     bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
-    bool curatedMode = true;      // true: only allowed Genre x Texture combos
-    bool applySoundMacros = false; // true: Flavor change overwrites 303/Tape
+    uint8_t rhythmSelectionMode = static_cast<uint8_t>(
+        GroovePuterRhythm::RhythmSelectionMode::Auto);
+    uint16_t rhythmArchetypeId = 0; // stable ID; meaningful only in MANUAL
 };
 
 struct DrumFX {
@@ -359,11 +373,14 @@ struct Scene {
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
   SamplerPadState samplerPads[16];
+  // OFF preserves pad assignments and must survive an explicit project save.
+  bool samplerEnabled = true;
   TapeState tape;
   FeelSettings feel;
   GenreSettings genre;
   DrumFX drumFX;
   Song songs[2];
+  PhraseCore::PhraseBank phraseBank;
   int activeSongSlot = 0;
   GrooveboxMode mode = GrooveboxMode::Minimal;
   uint8_t grooveFlavor = 0;
@@ -382,6 +399,11 @@ struct Scene {
       1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f // Drums
   };
 };
+
+// Shared transaction storage for scene parsing and pattern-page validation.
+// Both operations run synchronously through the UI/boot path, and neither may
+// modify the active scene until its input has been fully validated.
+Scene& sceneTransactionScratch();
 
 class SceneJsonObserver : public JsonObserver {
 public:
@@ -410,6 +432,9 @@ public:
   bool synthDistortionEnabled(int idx) const;
   bool synthDelayEnabled(int idx) const;
   const SynthParameters& synthParameters(int synthIdx) const;
+  bool legacySynthParametersPresent(int synthIdx) const;
+  bool hasVersionedSynthState() const;
+  const PersistedSynthPatch& synthPatch(int synthIdx) const;
   float bpm() const;
   const Song& song() const;
   bool hasSong() const;
@@ -458,6 +483,9 @@ private:
     SynthDelay,
     SynthParams,
     SynthParam,
+    SynthState,
+    SynthStateAParams,
+    SynthStateBParams,
     SamplerPads,
     SamplerPad,
     Tape,
@@ -469,6 +497,7 @@ private:
     Song,
     SongPositions,
     SongPosition,
+    PhraseCore,
     CustomPhrases,
     CustomPhrase,
     Vocal,
@@ -510,6 +539,11 @@ private:
   bool synthDistortion_[2] = {false, false};
   bool synthDelay_[2] = {false, false};
   SynthParameters synthParameters_[2];
+  bool legacySynthParametersPresent_[2] = {false, false};
+  bool synthStatePresent_ = false;
+  int synthStateVersion_ = 0;
+  PersistedSynthPatch synthPatch_[2];
+  uint8_t synthPatchValueCount_[2] = {0, 0};
   float bpm_ = 100.0f;
   Song song_;
   bool hasSong_ = false;
@@ -573,6 +607,12 @@ public:
   bool getSynthDelayEnabled(int synthIdx) const;
   void setSynthParameters(int synthIdx, const SynthParameters& params);
   const SynthParameters& getSynthParameters(int synthIdx) const;
+  void setLegacySynthParametersPresent(int synthIdx, bool present);
+  bool legacySynthParametersPresent(int synthIdx) const;
+  void setSynthPatch(int synthIdx, const PersistedSynthPatch& patch);
+  const PersistedSynthPatch& getSynthPatch(int synthIdx) const;
+  void clearVersionedSynthState();
+  bool hasVersionedSynthState() const { return hasVersionedSynthState_; }
   void setDrumEngineName(const std::string& name);
   const std::string& getDrumEngineName() const;
   void setSynthEngineName(int synthIdx, const std::string& name);
@@ -652,6 +692,9 @@ private:
   bool synthDistortion_[2] = {false, false};
   bool synthDelay_[2] = {false, false};
   SynthParameters synthParameters_[2];
+  bool legacySynthParametersPresent_[2] = {false, false};
+  bool hasVersionedSynthState_ = false;
+  PersistedSynthPatch synthPatch_[2];
   float bpm_ = 100.0f;
   bool songMode_ = false;
   int songPosition_ = 0;
@@ -703,6 +746,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   auto writeInt = [&](int value) -> bool {
     char buffer[16];
     int written = std::snprintf(buffer, sizeof(buffer), "%d", value);
+    if (written < 0 || written >= static_cast<int>(sizeof(buffer))) return false;
+    return writeChunk(buffer, static_cast<size_t>(written));
+  };
+  auto writeUint32 = [&](uint32_t value) -> bool {
+    char buffer[16];
+    int written = std::snprintf(buffer, sizeof(buffer), "%u",
+                                static_cast<unsigned>(value));
     if (written < 0 || written >= static_cast<int>(sizeof(buffer))) return false;
     return writeChunk(buffer, static_cast<size_t>(written));
   };
@@ -970,11 +1020,27 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(drumBankIndex_)) return false;
   if (!writeLiteral(",\"drumEngine\":")) return false;
   if (!writeString(drumEngineName_)) return false;
-  if (!writeLiteral(",\"synthEngines\":[")) return false;
-  if (!writeString(synthEngineNames_[0])) return false;
-  if (!writeChar(',')) return false;
-  if (!writeString(synthEngineNames_[1])) return false;
-  if (!writeChar(']')) return false;
+  if (!writeLiteral(",\"synthState\":{\"version\":")) return false;
+  if (!writeInt(kSynthStateSchemaVersion)) return false;
+  if (!writeLiteral(",\"aType\":")) return false;
+  if (!writeString(synthPatch_[0].engineName)) return false;
+  if (!writeLiteral(",\"aCount\":")) return false;
+  if (!writeInt(synthPatch_[0].paramCount)) return false;
+  if (!writeLiteral(",\"a\":[")) return false;
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    if (!writeFloat(synthPatch_[0].params[i])) return false;
+  }
+  if (!writeLiteral("],\"bType\":")) return false;
+  if (!writeString(synthPatch_[1].engineName)) return false;
+  if (!writeLiteral(",\"bCount\":")) return false;
+  if (!writeInt(synthPatch_[1].paramCount)) return false;
+  if (!writeLiteral(",\"b\":[")) return false;
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    if (!writeFloat(synthPatch_[1].params[i])) return false;
+  }
+  if (!writeLiteral("]}")) return false;
   if (!writeLiteral(",\"synthBankIndex\":[")) return false;
   if (!writeInt(synthBankIndex_[0])) return false;
   if (!writeChar(',')) return false;
@@ -987,22 +1053,6 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBoolArray(synthMute_, 2)) return false;
   if (!writeChar(']')) return false;
   if (!writeChar('}')) return false;
-  if (!writeLiteral(",\"synthParams\":[")) return false;
-  for (int i = 0; i < 2; ++i) {
-    if (i > 0 && !writeChar(',')) return false;
-    if (!writeLiteral("{\"cutoff\":")) return false;
-    if (!writeFloat(synthParameters_[i].cutoff)) return false;
-    if (!writeLiteral(",\"resonance\":")) return false;
-    if (!writeFloat(synthParameters_[i].resonance)) return false;
-    if (!writeLiteral(",\"envAmount\":")) return false;
-    if (!writeFloat(synthParameters_[i].envAmount)) return false;
-    if (!writeLiteral(",\"envDecay\":")) return false;
-    if (!writeFloat(synthParameters_[i].envDecay)) return false;
-    if (!writeLiteral(",\"oscType\":")) return false;
-    if (!writeInt(synthParameters_[i].oscType)) return false;
-    if (!writeChar('}')) return false;
-  }
-  if (!writeChar(']')) return false;
   if (!writeLiteral(",\"synthDistortion\":[")) return false;
   if (!writeBool(synthDistortion_[0])) return false;
   if (!writeChar(',')) return false;
@@ -1026,6 +1076,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->feel.swingPct)) return false;
   if (!writeLiteral(",\"mask\":")) return false;
   if (!writeInt(scene_->feel.swingMask)) return false;
+  if (!writeLiteral(",\"profile\":")) return false;
+  if (!writeInt(scene_->feel.timingProfile)) return false;
   if (!writeLiteral(",\"lofi\":")) return false;
   if (!writeBool(scene_->feel.lofiEnabled)) return false;
   if (!writeLiteral(",\"lofiAmt\":")) return false;
@@ -1040,10 +1092,6 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
 
   if (!writeLiteral(",\"genre\":{\"gen\":")) return false;
   if (!writeInt(scene_->genre.generativeMode)) return false;
-  if (!writeLiteral(",\"tex\":")) return false;
-  if (!writeInt(scene_->genre.textureMode)) return false;
-  if (!writeLiteral(",\"amt\":")) return false;
-  if (!writeInt(scene_->genre.textureAmount)) return false;
   if (!writeLiteral(",\"rcp\":")) return false;
   if (!writeInt(scene_->genre.recipe)) return false;
   if (!writeLiteral(",\"mto\":")) return false;
@@ -1054,10 +1102,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBool(scene_->genre.regenerateOnApply)) return false;
   if (!writeLiteral(",\"tempo\":")) return false;
   if (!writeBool(scene_->genre.applyTempoOnApply)) return false;
-  if (!writeLiteral(",\"cur\":")) return false;
-  if (!writeBool(scene_->genre.curatedMode)) return false;
-  if (!writeLiteral(",\"sound\":")) return false;
-  if (!writeBool(scene_->genre.applySoundMacros)) return false;
+  if (!writeLiteral(",\"rsm\":")) return false;
+  if (!writeInt(scene_->genre.rhythmSelectionMode)) return false;
+  if (!writeLiteral(",\"rid\":")) return false;
+  if (!writeInt(scene_->genre.rhythmArchetypeId)) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;
@@ -1098,7 +1146,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (i > 0 && !writeChar(',')) return false;
     const auto& p = scene_->samplerPads[i];
     if (!writeLiteral("{\"id\":")) return false;
-    if (!writeInt(p.sampleId)) return false;
+    // A runtime SampleId uses all 32 bits. Signed output makes high IDs
+    // negative, which the sampler stable-ref filter correctly rejects.
+    if (!writeUint32(p.sampleId)) return false;
     if (!writeLiteral(",\"vol\":")) return false;
     if (!writeFloat(p.volume)) return false;
     if (!writeLiteral(",\"pch\":")) return false;
@@ -1116,6 +1166,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
+  if (!writeLiteral(",\"samplerEnabled\":")) return false;
+  if (!writeBool(scene_->samplerEnabled)) return false;
   // Serial.print(".");
 
   if (!writeLiteral(",\"tape\":{\"mode\":")) return false;
@@ -1188,6 +1240,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeFloat(scene_->drumFX.reverbDecay)) return false;
   if (!writeChar('}')) return false;
 
+  if (!writeLiteral(",\"phraseCore\":[")) return false;
+  for (int i = 0; i < PhraseCore::kPersistValueCount; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    if (!writeInt(PhraseCore::persistentValueAt(scene_->phraseBank, i))) return false;
+  }
+  if (!writeChar(']')) return false;
+
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
       if (i > 0 && !writeChar(',')) return false;
@@ -1211,12 +1270,8 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 
 template <typename TReader>
 bool SceneManager::loadSceneEvented(TReader&& reader) {
-  static size_t bytesRead = 0;
-  bytesRead = 0;
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
-    int c = reader.read();
-    if (c >= 0) bytesRead++;
-    return c; 
+    return reader.read();
   };
   return loadSceneEventedWithReader(nextChar);
 }

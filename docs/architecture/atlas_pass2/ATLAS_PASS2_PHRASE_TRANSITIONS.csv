@@ -1,0 +1,11 @@
+evidence_class,scope,transition_signature,count,median_adds,median_drops
+MEASURED,two_bar_source_observation_transition,EXACT_REPEAT,4,0.0,0.0
+MEASURED,two_bar_source_observation_transition,ADD_ONLY,3,2,0
+MEASURED,two_bar_source_observation_transition,DROP_ONLY,2,0.0,2.5
+MEASURED,two_bar_source_observation_transition,MIXED,10,2.5,3.0
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,EXACT_REPEAT > ADD_ONLY > DROP_ONLY,3,,
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,EXACT_REPEAT > ADD_ONLY > MIXED,7,,
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,EXACT_REPEAT > MIXED > DROP_ONLY,1,,
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,EXACT_REPEAT > MIXED > MIXED,1,,
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,MIXED > DROP_ONLY > ADD_ONLY,1,,
+EDITORIAL_CURATED,four_bar_derived_composite_sequence,MIXED > MIXED > MIXED,4,,

@@ -1,0 +1,6 @@
+domain,evidence_class,eligible_pattern_count,distinct_structural_group_count,note
+RhythmTopology,RESEARCH_AGGREGATE,263,239,Strongest Pass 2 evidence domain.
+BassRhythm,PROJECT_OWNED_EXACT,35,28,"One-bar BassRhythm is editorial/project-owned, not research aggregate."
+BassPitch,PROJECT_OWNED_EXACT,35,,Useful for hypothesis generation only; Stage 8 admission remains HOLD.
+MotifContour,PROJECT_OWNED_EXACT,23,,No research-measured one-bar motif corpus in v2.6.
+PhraseDevelopment,MEASURED,19,19,Measured evidence is 2-bar source observations; 4-bar sequences are derived/editorial.

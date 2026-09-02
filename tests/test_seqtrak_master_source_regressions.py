@@ -78,7 +78,7 @@ def main() -> None:
     ).read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
 
-    require("midi_.readPacket(&packet)" in transport,
+    require("tud_midi_packet_read" in transport,
             "the sole platform transport must own TinyUSB RX")
     require("readPacket(midiEventPacket_t& packet)" in transport_h,
             "the Cardputer transport must expose bounded packet polling")
@@ -153,7 +153,7 @@ def main() -> None:
     require("Preferences" not in settings_session_h and
             "midi_companion_settings_codec" not in settings_session_h and
             "transport_clock_runtime" not in settings_session_h,
-            "public UI binding must not leak NVS or realtime headers")
+            "public platform binding must not leak NVS or realtime headers")
     require("#ifdef ARDUINO" in settings_session_h and
             "initializeCardputerMidiSettingsSession" in settings_session_h,
             "desktop binding must be a no-op while Cardputer restores settings")
@@ -162,8 +162,20 @@ def main() -> None:
             "applyPersistedControl" in settings_session_cpp and
             "setControlChangedCallback" in settings_session_cpp,
             "Arduino platform unit must load and save clock controls through NVS")
+
+    settings_boot = "GroovePuterPlatform::initializeCardputerMidiSettingsSession();"
+    usb_boot = "registerCardputerUsbMidiSink("
+    display_boot = "new (std::nothrow) MiniAcidDisplay("
+    require('#include "src/platform/cardputer_midi_settings_session.h"' in sketch and
+            settings_boot in sketch,
+            "root boot must explicitly restore persisted MIDI settings")
+    require(sketch.index(settings_boot) < sketch.index(usb_boot) <
+            sketch.index(display_boot),
+            "persisted MIDI settings must be restored before USB dispatcher creation, while heavy UI allocation remains later")
     require("CardputerMidiSettingsBinding midi_settings_binding_" in display_h,
-            "root UI construction must restore persisted transport controls")
+            "late UI binding may remain only as an idempotent compatibility call during the boot-ownership migration")
+    require("if (initialized_) return;" in settings_session_cpp,
+            "the compatibility UI call must not cause a second NVS restore")
     require("Preferences" not in sketch and "Preferences" not in transport and
             "Preferences" not in smf_service,
             "NVS access must stay out of AudioTask, MidiDispatchTask and SmfPlayerTask")

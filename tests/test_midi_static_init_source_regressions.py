@@ -19,7 +19,7 @@ def main() -> None:
 
     require("lanes_[" not in ctor,
             "global UsbMidiOutput constructor must not initialize routing lanes")
-    require("wireOwners_[" not in ctor,
+    require("owners_" not in ctor,
             "global UsbMidiOutput constructor must not clear wire ownership")
     require("configureLanes();" in source[source.index("bool UsbMidiOutput::begin"):],
             "routing lanes must be configured from begin() after Arduino startup")
@@ -27,8 +27,17 @@ def main() -> None:
             "begin() must configure/clear routing before starting MIDI transport")
     require("MidiVoiceLane lanes_[kLaneCount];" in header,
             "lane storage must remain passive static storage before begin()")
-    require("wireOwners_[kMidiChannelCount][kMidiNoteCount];" in header,
+    require("MidiEndpointOwnershipTable owners_;" in header,
             "wire-owner storage must remain passive static storage before begin()")
+    ownership = (ROOT / "src/midi/midi_note_ownership_table.h").read_text(
+        encoding="utf-8")
+    for forbidden in ("new ", "malloc", "std::vector", "std::map", "std::unordered"):
+        require(forbidden not in ownership,
+                "ownership storage must stay fixed-capacity and allocation "
+                f"free before begin(): found {forbidden}")
+    require("Cell cells_[kCapacity]{};" in ownership,
+            "ownership cells must be plain zero-initialized storage so the "
+            "global sink stays constant-initialized in .bss")
     require("if (!begun_) return;\n    pollConnection();" in source,
             "events arriving before begin() must fail closed without reading lanes")
 

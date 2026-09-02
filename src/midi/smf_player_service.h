@@ -1,6 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+
+#include "smf_channel_inspector.h"
+#include "smf_midi_visual.h"
 
 namespace GroovePuterMidi {
 
@@ -91,6 +95,7 @@ struct SmfPlayerSnapshot {
     SmfTempoMode tempoMode{SmfTempoMode::Original};
     SmfLaunchMode launchMode{SmfLaunchMode::NextBar};
     SmfPlayerPerformanceSnapshot performance{};
+    SmfMidiVisualSnapshot midiVisual{};
 };
 
 class ISmfPlayerService {
@@ -112,7 +117,16 @@ public:
     virtual bool adjustTempoBpm(int deltaBpm) = 0;
     virtual bool resetTempo() = 0;
     virtual bool cycleVelocityBoost() = 0;
+    virtual bool persistTrackOutputRoutes(uint32_t generation) {
+        (void)generation;
+        return false;
+    }
     virtual SmfPlayerSnapshot snapshot() const = 0;
+    virtual SmfChannelInspectorSnapshot channelInspector() const = 0;
+    virtual bool currentFilePath(char* output, std::size_t outputSize) const {
+        if (output && outputSize > 0) output[0] = '\0';
+        return false;
+    }
 };
 
 // Tiny service registry keeps UI pages platform-neutral. Cardputer registers

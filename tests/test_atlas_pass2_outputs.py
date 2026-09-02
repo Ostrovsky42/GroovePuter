@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "docs/architecture/atlas_pass2"
+
+expected_files = {
+    "ATLAS_PASS2_SUMMARY.json",
+    "ATLAS_PASS2_TOPOLOGY_CANDIDATES.csv",
+    "ATLAS_PASS2_DISTANCE_DISTRIBUTIONS.csv",
+    "ATLAS_PASS2_RELATIONSHIPS.csv",
+    "ATLAS_PASS2_PHRASE_TRANSITIONS.csv",
+    "ATLAS_PASS2_PITCH_CONTOURS.csv",
+    "ATLAS_PASS2_EVIDENCE_COVERAGE.csv",
+    "ATLAS_PASS2_EFFECTIVE_VARIATION_BASELINE.csv",
+    "ATLAS_PASS2_NEGATIVE_SPACE.csv",
+    "ATLAS_PASS2_OUTPUT_HASHES.sha256",
+}
+assert expected_files.issubset({path.name for path in OUT.iterdir() if path.is_file()})
+
+manifest = {}
+for line in (OUT / "ATLAS_PASS2_OUTPUT_HASHES.sha256").read_text(encoding="utf-8").splitlines():
+    digest, filename = line.split(None, 1)
+    manifest[filename.strip()] = digest
+assert len(manifest) == 9
+mismatches = []
+for filename, expected_digest in manifest.items():
+    actual_digest = hashlib.sha256((OUT / filename).read_bytes()).hexdigest()
+    if actual_digest != expected_digest:
+        mismatches.append((filename, expected_digest, actual_digest))
+if mismatches:
+    for filename, expected_digest, actual_digest in mismatches:
+        print(f"HASH_MISMATCH {filename} expected={expected_digest} actual={actual_digest}")
+    raise AssertionError(f"{len(mismatches)} aggregate output hash mismatch(es)")
+
+summary = json.loads((OUT / "ATLAS_PASS2_SUMMARY.json").read_text(encoding="utf-8"))
+assert summary["atlas_sha256"] == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
+assert summary["schema_version"] == "2.6.0"
+assert summary["validation_failures"] == 0
+assert summary["patterns"] == 413
+assert summary["events"] == 9377
+assert summary["one_bar_eligible_patterns"] == 300
+assert summary["one_bar_structural_groups"] == 269
+assert summary["recurring_skeleton_candidates"] == 8
+assert summary["topology_decisions"] == {"HOLD": 1, "NEAR_EXISTING": 5, "REVIEW": 2}
+assert summary["stage7_admission"] == "CLOSED"
+assert summary["measured_phrase_patterns"] == 19
+assert summary["measured_phrase_transition_counts"] == {
+    "EXACT_REPEAT": 4,
+    "ADD_ONLY": 3,
+    "DROP_ONLY": 2,
+    "MIXED": 10,
+}
+assert summary["derived_four_bar_patterns"] == 17
+assert summary["bass_rhythm_one_bar_patterns"] == 35
+assert summary["bass_pitch_contour_eligible_patterns"] == 35
+assert summary["motif_contour_eligible_patterns"] == 23
+
+
+def read(name):
+    with (OUT / name).open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+topology = read("ATLAS_PASS2_TOPOLOGY_CANDIDATES.csv")
+assert [row["candidate_id"] for row in topology] == [f"SKEL_{i:02d}" for i in range(1, 9)]
+assert all(int(row["structural_group_count"]) >= 3 for row in topology)
+assert {row["decision"] for row in topology} <= {"NEAR_EXISTING", "REVIEW", "HOLD"}
+assert not any(row["decision"] == "ACCEPT" for row in topology)
+assert sum(row["decision"] == "REVIEW" for row in topology) == 2
+assert sum(row["runtime_compatible_archetype_count"] == "0" for row in topology) == 3
+
+distances = read("ATLAS_PASS2_DISTANCE_DISTRIBUTIONS.csv")
+metrics = {row["metric"] for row in distances}
+assert "atlas_all_structural_group_pair_drum_jaccard" in metrics
+assert "atlas_research_structural_group_pair_drum_jaccard" in metrics
+assert "atlas_variation_of_drum_jaccard" in metrics
+assert "runtime_grammar_envelope_pair_jaccard_diagnostic" in metrics
+assert "atlas_to_nearest_runtime_required_miss_rate_diagnostic" in metrics
+assert "atlas_to_nearest_runtime_outside_support_rate_diagnostic" in metrics
+assert "atlas_to_nearest_runtime_density_deviation_steps_diagnostic" in metrics
+assert "atlas_to_nearest_runtime_support_jaccard_diagnostic" in metrics
+
+relationships = read("ATLAS_PASS2_RELATIONSHIPS.csv")
+for row in relationships:
+    assert int(row["structural_group_count"]) >= 3
+    if row["domain"] == "KickToBassRhythm":
+        assert row["evidence_class"] == "PROJECT_OWNED_EXACT"
+    else:
+        assert row["evidence_class"] == "RESEARCH_AGGREGATE"
+
+phrases = read("ATLAS_PASS2_PHRASE_TRANSITIONS.csv")
+measured = [row for row in phrases if row["evidence_class"] == "MEASURED"]
+derived = [row for row in phrases if row["evidence_class"] == "EDITORIAL_CURATED"]
+assert sum(int(row["count"]) for row in measured) == 19
+assert sum(int(row["count"]) for row in derived) == 17
+assert {row["transition_signature"]: int(row["count"]) for row in measured} == {
+    "EXACT_REPEAT": 4,
+    "ADD_ONLY": 3,
+    "DROP_ONLY": 2,
+    "MIXED": 10,
+}
+
+pitch = read("ATLAS_PASS2_PITCH_CONTOURS.csv")
+assert pitch
+assert all(row["evidence_class"] == "PROJECT_OWNED_EXACT" for row in pitch)
+assert all(row["decision"] == "HOLD" for row in pitch)
+
+negative_space = read("ATLAS_PASS2_NEGATIVE_SPACE.csv")
+assert len(negative_space) == 176
+assert all(int(row["active_structural_group_count"]) >= 5 for row in negative_space)
+assert all(float(row["absence_fraction"]) >= 0.90 for row in negative_space)
+assert all(row["evidence_class"] == "RESEARCH_AGGREGATE" for row in negative_space)
+assert all(row["role"] != "BassRhythm" for row in negative_space)
+
+variation = read("ATLAS_PASS2_EFFECTIVE_VARIATION_BASELINE.csv")
+by_slot = {row["slot"]: row for row in variation}
+assert int(by_slot["P1"]["effective_variation_count"]) == 12
+assert int(by_slot["P2"]["effective_variation_count"]) == 10
+assert int(by_slot["P3"]["effective_variation_count"]) == 7
+
+# Aggregate outputs must not leak raw/reversible identifiers.
+for path in OUT.iterdir():
+    if not path.is_file():
+        continue
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".csv":
+        header = text.splitlines()[0].lower().split(",")
+        for token in ("pattern_id", "structural_group_id", "structural_hash", "expressive_hash", "source_locator", "exact_mask"):
+            assert not any(token in field for field in header), f"restricted field leaked in {path.name}: {token}"
+    assert "PAT_" not in text, f"raw pattern id leaked in {path.name}"
+    assert "SG_" not in text, f"structural group id leaked in {path.name}"
+    assert "source_locator" not in text
+    assert "structural_hash" not in text
+    assert "expressive_hash" not in text
+
+print("Atlas Pass 2 aggregate output schema/rights: OK")

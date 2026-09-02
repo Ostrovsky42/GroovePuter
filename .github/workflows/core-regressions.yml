@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main
+      - dev
       - agent/fix-core-reliability
+      - agent/smf-structural-inspector
   pull_request:
 
 permissions:
@@ -16,8 +18,137 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Run Groove Vocabulary Stage 1 tests
+        run: bash tests/run_rhythm_stage1_tests.sh
+
+      - name: Run Groove Vocabulary Stage 2 tests
+        run: bash tests/run_rhythm_stage2_tests.sh
+
+      - name: Run Groove Vocabulary Stage 3 tests
+        run: bash tests/run_rhythm_stage3_tests.sh
+
+      - name: Run Groove Vocabulary Stage 4 tests
+        run: bash tests/run_rhythm_stage4_tests.sh
+
+      - name: Run Groove Vocabulary Stage 5 tests
+        run: bash tests/run_rhythm_stage5_tests.sh
+
+      - name: Run Groove Vocabulary Stage 6 tests
+        run: bash tests/run_rhythm_stage6_tests.sh
+
+      - name: Run Groove Vocabulary Stage 6.1 hardening tests
+        run: bash tests/run_rhythm_stage6_1_tests.sh
+
+      - name: Run Generation Stage 12 tests
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_phrase_stage12_tests.sh
+
+      - name: Validate Atlas Pass 1 schema
+        run: python3 tests/test_atlas_pass1_schema.py
+
+      - name: Validate Atlas Pass 2 runtime baseline
+        env:
+          ATLAS_PASS2_PRINT_RUNTIME_DUMP: "1"
+        run: bash tests/run_atlas_pass2_runtime_dump.sh
+
+      - name: Validate Atlas Pass 2 extraction contracts
+        run: |
+          python3 tests/test_atlas_pass2_extractor.py
+          python3 tests/test_atlas_pass2_outputs.py
+
+      - name: Run Generation Stage 13/14 tests
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_generation_stage13_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
+
+      - name: Run pattern editor input ownership tests
+        run: python3 tests/test_pattern_editor_input_ownership.py
+
+      - name: Run step note entry source regressions
+        run: python3 tests/test_step_note_entry_source_regressions.py
+
+      - name: Run project pattern storage tests
+        run: |
+          mkdir -p build/host-tests
+          cat > build/host-tests/pattern_paging_scratch.cpp <<'CPP'
+          #include "scenes.h"
+
+          Scene& sceneTransactionScratch() {
+            static Scene scratch{};
+            return scratch;
+          }
+          CPP
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_paging.cpp \
+            src/audio/pattern_paging.cpp \
+            src/audio/pattern_project_cleanup.cpp \
+            build/host-tests/pattern_paging_scratch.cpp \
+            -o build/host-tests/test_pattern_paging
+          build/host-tests/test_pattern_paging
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_address.cpp \
+            -o build/host-tests/test_pattern_address
+          build/host-tests/test_pattern_address
+
+      - name: Run UI status chrome tests
+        run: |
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run synth engine tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
+
+          params = (root / 'src/ui/pages/tb303_params_page.cpp').read_text(encoding='utf-8')
+          synth_page = (root / 'src/ui/pages/synth_sequencer_page.cpp').read_text(encoding='utf-8')
+          assert 'removeDisabledSynthEngines' in params
+          assert 'availableSynthEngines' in params
+          assert '{"TB303", "SID", "AY", "OPL2"' not in params
+          assert 'removeDisabledSynthEngines' not in synth_page
+          assert 'std::make_shared<TB303ParamsPage>' in synth_page
+
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
+          PY
+
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-c++20-extensions -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
+
+      - name: Run dirty-region display tests
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
 
   sdl-build:
     runs-on: ubuntu-latest
@@ -51,3 +182,22 @@ jobs:
 
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

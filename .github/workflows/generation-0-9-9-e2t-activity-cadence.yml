@@ -1,0 +1,89 @@
+name: 0.9.9-E2t rhythm evolution activity cadence
+
+on:
+  push:
+    branches:
+      - agent/20260824-03-0.9.9-e2t-activity-cadence
+  pull_request:
+    paths:
+      - 'src/generation/rhythm/evolution_activity.h'
+      - 'tests/test_0_9_9_e2t_activity_cadence.cpp'
+      - 'tests/test_0_9_9_e2t_source_regressions.py'
+      - 'tests/run_0_9_9_e2t_tests.sh'
+      - 'docs/audits/E2T_ACTIVITY_CADENCE.md'
+      - '.github/workflows/generation-0-9-9-e2t-activity-cadence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  e2t-host-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run focused E2t cadence contracts
+        run: bash tests/run_0_9_9_e2t_tests.sh
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+  e2t-sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  e2t-cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  e2t-cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

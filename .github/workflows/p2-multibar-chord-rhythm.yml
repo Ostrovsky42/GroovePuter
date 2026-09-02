@@ -1,0 +1,71 @@
+name: P2 Multi-Bar ChordRhythm
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/roles/chord_rhythm_timeline.*"
+      - "tests/test_multibar_chord_rhythm*"
+      - "tests/run_multibar_chord_rhythm_tests.sh"
+      - "scripts/measure_p2_chord_rhythm_resources.sh"
+      - "docs/architecture/P2_MULTIBAR_CHORD_RHYTHM.md"
+      - ".github/workflows/p2-multibar-chord-rhythm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-and-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Guard isolated P2 scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only fc42763e7798866e61895bf1b8d62339ec59e0a7...HEAD)"
+          printf '%s\n' "${changed}"
+          unexpected="$(printf '%s\n' "${changed}" | grep -Ev '^(\.github/workflows/p2-multibar-chord-rhythm\.yml|docs/architecture/P2_MULTIBAR_CHORD_RHYTHM\.md|scripts/measure_p2_chord_rhythm_resources\.sh|src/generation/roles/chord_rhythm_timeline\.(h|cpp)|tests/run_multibar_chord_rhythm_tests\.sh|tests/test_multibar_chord_rhythm(_source_regressions\.py|\.cpp))$' || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo "P2 touched files outside isolated capability scope:" >&2
+            printf '%s\n' "${unexpected}" >&2
+            exit 1
+          fi
+      - name: Run P2 host matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_multibar_chord_rhythm_tests.sh
+
+  esp32-resource-probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Measure P2 timeline on ESP32-S3 ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/measure_p2_chord_rhythm_resources.sh "${{ matrix.profile }}" \
+            2>&1 | tee "build/p2-chord-rhythm-${{ matrix.profile }}.log"
+      - name: Upload P2 resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-chord-rhythm-${{ matrix.profile }}-resources
+          path: build/p2-chord-rhythm-${{ matrix.profile }}.log
+          if-no-files-found: error

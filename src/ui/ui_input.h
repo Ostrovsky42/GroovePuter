@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef GROOVEPUTER_SRC_UI_UI_INPUT_H_
+#define GROOVEPUTER_SRC_UI_UI_INPUT_H_
+
 #include "ui_core.h"
 
 // Unified input helpers for arrow-first navigation.
@@ -38,6 +41,52 @@ static inline bool isTab(const UIEvent& e) {
   return e.key == '\t' || e.scancode == GROOVEPUTER_TAB;
 }
 
+// Converts the existing 80 ms Cardputer arrow repeat stream into a bounded
+// value-step multiplier. A tap remains exact; a continuous hold ramps gently
+// through x1 -> x2 -> x3 -> x4. Direction changes and gaps between repeat
+// events reset it. Explicit forced-fast callers retain the historical x5 step.
+// Pages opt in only for continuous numeric ranges so menu/list navigation does
+// not accelerate accidentally.
+class HoldAccelerator {
+ public:
+  int multiplier(int direction, bool forcedFast = false) {
+    return multiplierAt(direction, millis(), forcedFast);
+  }
+
+  int multiplierAt(int direction, uint32_t nowMs, bool forcedFast = false) {
+    if (direction == 0) {
+      reset();
+      return 1;
+    }
+
+    if (direction == last_direction_ &&
+        static_cast<uint32_t>(nowMs - last_event_ms_) <= 160u) {
+      if (streak_ < 32) ++streak_;
+    } else {
+      streak_ = 0;
+    }
+    last_direction_ = direction;
+    last_event_ms_ = nowMs;
+
+    if (forcedFast) return 5;
+    if (streak_ >= 24) return 4;
+    if (streak_ >= 14) return 3;
+    if (streak_ >= 6) return 2;
+    return 1;
+  }
+
+  void reset() {
+    last_direction_ = 0;
+    last_event_ms_ = 0;
+    streak_ = 0;
+  }
+
+ private:
+  int last_direction_ = 0;
+  uint32_t last_event_ms_ = 0;
+  uint8_t streak_ = 0;
+};
+
 // Global navigation keys are reserved at the app level.
 // IMPORTANT: To avoid breaking in-page editing (303/drums), global page jumps require CTRL.
 // Bracket paging remains global without modifiers.
@@ -65,3 +114,5 @@ static inline bool isGlobalNav(const UIEvent& e) {
 }
 
 } // namespace UIInput
+
+#endif  // GROOVEPUTER_SRC_UI_UI_INPUT_H_

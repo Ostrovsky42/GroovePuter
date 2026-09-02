@@ -1,0 +1,64 @@
+name: 0.9.6 output ownership
+
+on:
+  pull_request:
+    paths:
+      - "src/output/**"
+      - "src/input/internal_synth_output.cpp"
+      - "src/input/internal_synth_output.h"
+      - "src/input/musical_event_queue.h"
+      - "src/midi/midi_control_event_queue.h"
+      - "src/midi/scheduled_musical_event_queue.h"
+      - "src/dsp/miniacid_engine.h"
+      - "src/dsp/pattern_drum_event_tap.h"
+      - "src/sampler/drum_sampler_track.cpp"
+      - "src/sampler/drum_sampler_track.h"
+      - "src/sampler/sample_scene_persistence.h"
+      - "platform_sdl/scene_storage_sdl.cpp"
+      - "src/ui/pages/synth_sequencer_page.cpp"
+      - "src/ui/pages/synth_sequencer_page.h"
+      - "src/ui/pages/drum_sequencer_page.cpp"
+      - "tests/test_output_ownership*.cpp"
+      - "tests/test_output_ownership*.py"
+      - "tests/test_output_scene_persistence.cpp"
+      - "tests/run_output_ownership_tests.sh"
+      - "docs/releases/0_9_6_*OUTPUT_OWNERSHIP*.md"
+      - ".github/workflows/output-ownership.yml"
+  push:
+    branches:
+      - dev_0.9.6
+    paths:
+      - "src/output/**"
+      - "src/input/internal_synth_output.cpp"
+      - "src/input/internal_synth_output.h"
+      - "src/input/musical_event_queue.h"
+      - "src/midi/midi_control_event_queue.h"
+      - "src/midi/scheduled_musical_event_queue.h"
+      - "src/dsp/miniacid_engine.h"
+      - "src/dsp/pattern_drum_event_tap.h"
+      - "src/sampler/drum_sampler_track.cpp"
+      - "src/sampler/drum_sampler_track.h"
+      - "src/sampler/sample_scene_persistence.h"
+      - "platform_sdl/scene_storage_sdl.cpp"
+      - "src/ui/pages/synth_sequencer_page.cpp"
+      - "src/ui/pages/synth_sequencer_page.h"
+      - "src/ui/pages/drum_sequencer_page.cpp"
+      - "tests/test_output_ownership*.cpp"
+      - "tests/test_output_ownership*.py"
+      - "tests/test_output_scene_persistence.cpp"
+      - "tests/run_output_ownership_tests.sh"
+      - "docs/releases/0_9_6_*OUTPUT_OWNERSHIP*.md"
+      - ".github/workflows/output-ownership.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  output-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run output ownership contract
+        run: bash tests/run_output_ownership_tests.sh

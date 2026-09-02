@@ -1,0 +1,66 @@
+name: Cardputer memory baseline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/cardputer-memory-baseline.yml"
+      - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
+      - "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md"
+      - "scripts/build_cardputer_memory_baseline.sh"
+      - "scripts/check_cardputer_dram_budget.sh"
+      - "scripts/instrument_cardputer_memory_runtime.py"
+      - "scripts/report_cardputer_memory_baseline.sh"
+      - "scripts/report_cardputer_tinyusb_class_buffers.sh"
+      - "tests/test_cardputer_memory_baseline_source_regressions.py"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Guard baseline boundaries
+        run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
+
+  baseline-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+        image-kind: [product, runtime]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and report ${{ matrix.profile }} ${{ matrix.image-kind }} image
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/build_cardputer_memory_baseline.sh \
+            "${{ matrix.profile }}" "${{ matrix.image-kind }}" --warnings all \
+            2>&1 | tee \
+              "build/cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}.log"
+
+      - name: Upload baseline build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}
+          path: build/cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}.log
+          if-no-files-found: error

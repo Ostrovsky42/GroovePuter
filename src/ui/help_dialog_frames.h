@@ -244,7 +244,7 @@ inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpHeading(gfx, layout.left_x, left_y, "Navigation");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "LEFT/RIGHT", "col / mode focus", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "LEFT/RIGHT", "track / edit slot", COLOR_LABEL);
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP/DOWN", "rows", COLOR_LABEL);
   left_y += lh;
@@ -257,7 +257,9 @@ inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "set 1-8", COLOR_PATTERN_SELECTED_FILL);
+  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "set 1-8 @ PAT", COLOR_PATTERN_SELECTED_FILL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "B", "PAT bank A/B", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Jump to Editor", IGfxColor::Green());
   drawHelpItem(gfx, layout.right_x, left_y, "BKSP/TAB", "clear cell/selection", IGfxColor::Red());
@@ -338,26 +340,26 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Slots / Mix");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ALT+B", "toggle edit slot A/B", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+B", "flip stored ref bank", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+B", "toggle play slot A/B", IGfxColor::Yellow());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "B", "flip pattern bank A/B", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "B", "PAT assignment bank A/B", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "ALT+X", "LiveMix ON/OFF", IGfxColor::Yellow());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "V / X", "DR<->VO lane / Split", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "V / X", "lane ALL/AB/DR / Split", IGfxColor::Yellow());
   left_y += lh;
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Song ops");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+R", "Reverse song order", IGfxColor::Green());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M", "Merge A+B into one", IGfxColor::Magenta());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M", "Delete row", IGfxColor::Red());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+N", "Alternate A/B patterns", IGfxColor::Magenta());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+N", "Insert row", IGfxColor::Green());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "M", "Toggle song mode", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+M", "Toggle song mode", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "G", "Generate new song", IGfxColor::Cyan());
 }

@@ -10,13 +10,32 @@
 #include "cardputer_adv_hardware.h"
 
 namespace GroovePuterPlatform {
+namespace {
+
+CardputerSdReadyHook g_sdReadyHook = nullptr;
+bool g_sdReadyNotified = false;
+
+void notifySdReadyOnce() {
+    if (g_sdReadyNotified || g_sdReadyHook == nullptr) return;
+    g_sdReadyNotified = true;
+    g_sdReadyHook();
+}
+
+}  // namespace
+
+void setCardputerSdReadyHook(CardputerSdReadyHook hook) {
+    g_sdReadyHook = hook;
+}
 
 bool cardputerSdMounted() {
     return SD.cardType() != CARD_NONE;
 }
 
 bool ensureCardputerSdMounted() {
-    if (cardputerSdMounted()) return true;
+    if (cardputerSdMounted()) {
+        notifySdReadyOnce();
+        return true;
+    }
 
     const size_t freeBefore =
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -44,6 +63,8 @@ bool ensureCardputerSdMounted() {
                   static_cast<int>(SD.cardType()),
                   static_cast<unsigned>(freeAfter),
                   static_cast<unsigned>(largestAfter));
+
+    if (mounted) notifySdReadyOnce();
     return mounted;
 }
 

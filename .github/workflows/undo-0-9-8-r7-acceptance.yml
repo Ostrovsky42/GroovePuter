@@ -1,0 +1,43 @@
+name: Undo Safe Editing 0.9.8 R7
+
+on:
+  push:
+    paths:
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'scripts/check_cardputer_dram_budget.sh'
+      - '.github/workflows/core-regressions.yml'
+      - '.github/workflows/undo-0-9-8-r6-ux.yml'
+      - '.github/workflows/undo-0-9-8-r7-acceptance.yml'
+      - 'docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md'
+      - 'tests/run_undo_0_9_8_r6_tests.sh'
+      - 'tests/run_undo_0_9_8_r7_tests.sh'
+      - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
+  pull_request:
+    paths:
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'scripts/check_cardputer_dram_budget.sh'
+      - '.github/workflows/core-regressions.yml'
+      - '.github/workflows/undo-0-9-8-r6-ux.yml'
+      - '.github/workflows/undo-0-9-8-r7-acceptance.yml'
+      - 'docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md'
+      - 'tests/run_undo_0_9_8_r6_tests.sh'
+      - 'tests/run_undo_0_9_8_r7_tests.sh'
+      - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
+
+jobs:
+  acceptance-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cumulative R2-R7 software acceptance contracts
+        run: bash tests/run_undo_0_9_8_r7_tests.sh

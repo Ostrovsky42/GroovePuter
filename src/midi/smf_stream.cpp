@@ -4,6 +4,11 @@
 #include <cstring>
 #include <limits>
 
+#include "smf_session_generation.h"
+#include "smf_structural_inspector.h"
+#include "smf_track_inspector.h"
+#include "smf_track_mute.h"
+
 namespace GroovePuterMidi {
 namespace {
 
@@ -51,8 +56,7 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
     const uint16_t declaredTracks = be16(header + 10);
     result.index.division = be16(header + 12);
 
-    if (result.index.format > 1 || declaredTracks == 0 ||
-        declaredTracks > kSmfMaxTracks) {
+    if (result.index.format > 1 || declaredTracks == 0) {
         result.error = SmfParseError::UnsupportedFormat;
         return result;
     }
@@ -69,6 +73,7 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
 
     uint32_t offset = static_cast<uint32_t>(firstChunk);
     uint16_t foundTracks = 0;
+    uint16_t retainedTracks = 0;
     while (foundTracks < declaredTracks) {
         if (offset > source.size() || source.size() - offset < 8) {
             result.error = SmfParseError::InvalidTrack;
@@ -89,15 +94,19 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
         }
 
         if (isTag(chunkHeader, "MTrk")) {
-            result.index.tracks[foundTracks++] = SmfTrackSpan{
-                static_cast<uint32_t>(dataOffset),
-                chunkLength,
-            };
+            if (retainedTracks < kSmfMaxTracks) {
+                result.index.tracks[retainedTracks++] = SmfTrackSpan{
+                    static_cast<uint32_t>(dataOffset),
+                    chunkLength,
+                };
+            }
+            ++foundTracks;
         }
         offset = static_cast<uint32_t>(chunkEnd);
     }
 
-    result.index.trackCount = foundTracks;
+    result.index.trackCount = retainedTracks;
+    result.index.declaredTrackCount = foundTracks;
     result.error = SmfParseError::None;
     return result;
 }
@@ -275,6 +284,25 @@ bool SmfTrackStream::next(SmfStreamEvent& out) {
                 ended_ = true;
                 return false;
             }
+            if (metaType == 0x03u) {
+                char name[kSmfTrackNameBytes]{};
+                const uint32_t copyLength = std::min<uint32_t>(
+                    length, static_cast<uint32_t>(kSmfTrackNameBytes - 1u));
+                for (uint32_t i = 0; i < copyLength; ++i) {
+                    uint8_t value = 0;
+                    if (!readByte(value)) {
+                        ended_ = true;
+                        return false;
+                    }
+                    name[i] = static_cast<char>(value);
+                }
+                if (!skip(length - copyLength)) {
+                    ended_ = true;
+                    return false;
+                }
+                smfTrackInspectorState().setName(trackIndex_, name);
+                continue;
+            }
             if (metaType == 0x51u && length == 3) {
                 uint8_t b0 = 0, b1 = 0, b2 = 0;
                 if (!readByte(b0) || !readByte(b1) || !readByte(b2)) {
@@ -333,14 +361,33 @@ bool SmfTrackStream::next(SmfStreamEvent& out) {
 
 bool SmfEventStreamMerger::open(ISmfByteSource& source,
                                 const SmfFileIndex& index) {
+    const uint32_t generation = smfBeginSessionOpen();
+
+    auto invalidate = [this]() {
+        source_ = nullptr;
+        index_ = SmfFileIndex{};
+        smfTrackMuteState().reset(0);
+        smfTrackInspectorState().reset(0, 0);
+        smfStructuralInspectorState().reset(0, 0);
+        captureStructuralAnalysis_ = false;
+        trackCacheBytes_ = 0u;
+        selected_ = -1;
+        selectedValid_ = false;
+        for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
+    };
+
+    invalidate();
     if (index.trackCount == 0 || index.trackCount > kSmfMaxTracks) return false;
+
     source_ = &source;
     index_ = index;
-    for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
-    selectedValid_ = false;
+    smfTrackMuteState().reset(index.trackCount);
+    smfTrackInspectorState().reset(index.trackCount, index.declaredTrackCount);
+    smfStructuralInspectorState().reset(index.division, index.trackCount);
+    captureStructuralAnalysis_ = true;
 
-    // Split the shared pool across the tracks this file actually uses, keeping
-    // each slice sector-sized so SD transfers stay aligned.
+    // Split the shared pool across the tracks this file actually uses. Slices
+    // are sector-aligned whenever they are at least one sector wide.
     uint32_t perTrack = static_cast<uint32_t>(
         std::min<std::size_t>(kSmfTrackReadCacheBytes,
                               kSmfStreamCacheBytes / index_.trackCount));
@@ -351,11 +398,16 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
 
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
-            source_ = nullptr;
+            invalidate();
             return false;
         }
         streams_[i].setCache(cachePool_ + i * perTrack, perTrack);
         prime(i);
+    }
+
+    if (!smfCompleteSessionOpen(generation)) {
+        invalidate();
+        return false;
     }
     return true;
 }
@@ -402,12 +454,26 @@ int SmfEventStreamMerger::selectedTrack() const {
 }
 
 bool SmfEventStreamMerger::next(SmfStreamEvent& out) {
-    const int selected = selectedTrack();
-    if (selected < 0) return false;
-    const std::size_t track = static_cast<std::size_t>(selected);
-    out = next_[track];
-    prime(track);
-    return true;
+    while (true) {
+        const int selected = selectedTrack();
+        if (selected < 0) {
+            if (captureStructuralAnalysis_) {
+                smfStructuralInspectorState().finalize();
+                captureStructuralAnalysis_ = false;
+            }
+            return false;
+        }
+        const std::size_t track = static_cast<std::size_t>(selected);
+        out = next_[track];
+        prime(track);
+
+        smfTrackInspectorState().observe(out.trackIndex, out.event);
+        if (captureStructuralAnalysis_) {
+            smfStructuralInspectorState().observe(out.trackIndex, out.event);
+        }
+        const bool noteOn = out.event.kind == SmfEventKind::NoteOn;
+        if (shouldEmitSmfTrackEvent(noteOn, out.trackIndex)) return true;
+    }
 }
 
 bool SmfEventStreamMerger::peek(SmfStreamEvent& out) const {

@@ -1,10 +1,13 @@
 #pragma once
 
+#include <cstdint>
+
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
+#include "src/state/scene_revision.h"
 
 #ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
@@ -22,12 +25,12 @@ using namespace RetroTheme;
 using namespace RetroWidgets;
 #endif
 
-class SequencerHubPage : public IPage {
+class SequencerHubPageBase : public IPage {
 public:
     enum class Mode { OVERVIEW, DETAIL };
     enum class FocusLane { GRID, PATTERN, BANK };
 
-    SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+    SequencerHubPageBase(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
@@ -37,7 +40,7 @@ public:
     void setHubStyle(VisualStyle style) { hub_style_ = style; }
     VisualStyle getHubStyle() const { return hub_style_; }
 
-private:
+protected:
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "SEQUENCER HUB";
@@ -83,5 +86,35 @@ private:
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
+        GroovePuterState::markSceneMutated();
     }
 };
+
+class SequencerHubPage final : public SequencerHubPageBase {
+public:
+    using SequencerHubPageBase::SequencerHubPageBase;
+
+    void onEnter(int context) override;
+    void draw(IGfx& gfx) override;
+    bool handleEvent(UIEvent& event) override;
+
+private:
+    bool midiOverview_{false};
+    bool midiReturnToPlayer_{false};
+    bool midiRouteEdit_{false};
+    int8_t midiRouteDraft_{-1};
+    uint8_t midiSelected_{0};
+    uint8_t midiScroll_{0};
+    uint32_t midiGeneration_{0};
+
+    void drawMidiOverview(IGfx& gfx);
+    bool handleMidiOverviewEvent(UIEvent& event);
+    bool toggleMidiLayer(uint8_t layerIndex);
+    void syncMidiScroll(uint8_t layerCount);
+    void syncMidiSessionSelection();
+    void returnFromMidiOverview();
+};
+
+#if !defined(GROOVEPUTER_SEQUENCER_HUB_WRAPPER_CONSUMER)
+#define SequencerHubPage SequencerHubPageBase
+#endif

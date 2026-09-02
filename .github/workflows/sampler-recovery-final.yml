@@ -1,0 +1,15 @@
+name: Sampler recovery 0.9.3 final
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sampler-recovery-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run complete 0.9.3 sampler recovery contract
+        run: bash tests/run_sampler_recovery_0_9_3_tests.sh

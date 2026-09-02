@@ -8,7 +8,6 @@ SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
 SDL_LIBS := $(shell sdl2-config --libs 2>/dev/null)
 
 ifeq ($(strip $(SDL_CFLAGS)),)
-  # Standard Linux paths
   SDL_CFLAGS := -I/usr/include/SDL2 -D_THREAD_SAFE
   SDL_LIBS := -lSDL2
 endif
@@ -21,7 +20,7 @@ ifeq ($(strip $(SDL_GFX_CFLAGS)),)
   SDL_GFX_LIBS := -L/opt/homebrew/lib -lSDL2_gfx
 endif
 
-TARGET := miniacid
+TARGET := grooveputer
 SOURCES := \
 	../src/dsp/filter.cpp \
 	../src/dsp/mini_tb303.cpp \
@@ -33,7 +32,9 @@ SOURCES := \
 	../src/dsp/sid_synth_voice.cpp \
 	../src/dsp/sid_synth.cpp \
 	../src/dsp/ay_synth_voice.cpp \
-	../src/dsp/opl2_synth_voice.cpp \
+	../src/dsp/sh101_synth_voice.cpp \
+	../src/dsp/sn76489_synth_voice.cpp \
+	../src/dsp/wave_morph_synth_voice.cpp \
 	../src/dsp/mode_manager.cpp \
 	../src/dsp/genre_manager.cpp \
 	../src/dsp/audio_wavetables.cpp \
@@ -46,6 +47,35 @@ SOURCES := \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
+	../src/generation/generation_context.cpp \
+	../src/generation/composition/rhythm_selection.cpp \
+	../src/generation/composition/generation_profile.cpp \
+	../src/generation/composition/phrase_length_request.cpp \
+	../src/generation/composition/tonal_profile.cpp \
+	../src/generation/feel/feel_interpreter.cpp \
+	../src/generation/feel/feel_pattern_adapter.cpp \
+	../src/generation/rhythm/rhythm_catalog.cpp \
+	../src/generation/rhythm/relationship_resolver.cpp \
+	../src/generation/rhythm/rhythm_realizer.cpp \
+	../src/generation/rhythm/rhythm_realizer_evolution.cpp \
+	../src/generation/rhythm/reference_vocabulary.cpp \
+	../src/generation/rhythm/reference_phrase_vocabulary.cpp \
+	../src/generation/rhythm/bar_evolution.cpp \
+	../src/generation/materialization/pattern_materializer.cpp \
+	../src/generation/roles/semantic_pattern_projector.cpp \
+	../src/generation/roles/bass_rhythm.cpp \
+	../src/generation/roles/bass_pitch_behavior.cpp \
+	../src/generation/roles/chord_rhythm.cpp \
+	../src/generation/roles/chord_progression.cpp \
+	../src/generation/roles/melodic_motif.cpp \
+	../src/generation/roles/melodic_pitch_intent.cpp \
+	../src/generation/tonal/tonal_projector.cpp \
+	../src/generation/tonal/tonal_materializer.cpp \
+	../src/generation/phrase/phrase_evolution.cpp \
+	../src/generation/migration/tonal_pattern_adapter.cpp \
+	../src/generation/migration/strong_rhythm_migration.cpp \
+	../src/generation/migration/strong_rhythm_live_bridge.cpp \
+	../src/generation/migration/phrase_execution.cpp \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
@@ -57,6 +87,8 @@ SOURCES := \
 	../src/ui/layout_manager.cpp \
 	../src/ui/ui_widgets.cpp \
 	../src/ui/ui_clipboard.cpp \
+	../src/ui/midi_file_manager.cpp \
+	../src/platform/cardputer_ui_session.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \
@@ -68,14 +100,15 @@ SOURCES := \
 	../src/ui/pages/drum_sequencer_page.cpp \
 	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
+	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/mode_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
-	../src/ui/pages/feel_texture_page.cpp \
+	../src/ui/pages/smf_player_page_structural.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
-	../src/ui/pages/settings_page.cpp \
+	../src/ui/pages/sequencer_hub_page_midi.cpp \
+	../src/ui/pages/feel_page.cpp \
 	../src/ui/pages/sampler_page.cpp \
 	../src/ui/pages/tape_page.cpp \
 	../src/ui/components/pattern_selection_bar.cpp \
@@ -85,6 +118,7 @@ SOURCES := \
 	../src/audio/desktop_audio_recorder.cpp \
 	../src/audio/wasm_audio_recorder.cpp \
 	../src/audio/pattern_paging.cpp \
+	../src/audio/pattern_project_cleanup.cpp \
 	../src/audio/midi_importer.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \
@@ -99,12 +133,15 @@ SOURCES := \
 	sdl_display.cpp \
 	scene_storage_sdl.cpp
 
+E1_LIVE_BRIDGE_TARGET := e1_live_bridge_characterization
+E1_LIVE_BRIDGE_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_e1_live_bridge_runtime.cpp
+
 ROOT := $(abspath ..)
 DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
 WASM_FLAGS := -I.. -std=c++17 -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144 -sASSERTIONS=1 -sUSE_SDL_GFX=2 -sEXPORTED_RUNTIME_METHODS='[UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8]'
 
-APP_BUNDLE := miniacid.app
+APP_BUNDLE := grooveputer.app
 SDL2_DYLIB := /opt/homebrew/opt/sdl2/lib/libSDL2-2.0.0.dylib
 SDL2_GFX_DYLIB := /opt/homebrew/opt/sdl2_gfx/lib/libSDL2_gfx-1.0.0.dylib
 
@@ -113,9 +150,15 @@ all: $(TARGET)
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
 
+$(E1_LIVE_BRIDGE_TARGET): $(E1_LIVE_BRIDGE_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+e1-live-bridge-characterization: $(E1_LIVE_BRIDGE_TARGET)
+	./$(E1_LIVE_BRIDGE_TARGET)
+
 wasm: $(SOURCES)
 	mkdir -p $(ROOT)/web
-	$(DOCKER) run --rm -v $(ROOT):/src -w /src/platform_sdl $(EMCC_IMAGE) emcc $(SOURCES) $(WASM_FLAGS) -o /src/web/miniacid.html
+	$(DOCKER) run --rm -v $(ROOT):/src -w /src/platform_sdl $(EMCC_IMAGE) emcc $(SOURCES) $(WASM_FLAGS) -o /src/web/grooveputer.html
 
 bundle: $(TARGET)
 	@echo "Creating app bundle..."
@@ -137,8 +180,8 @@ bundle: $(TARGET)
 	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<plist version="1.0"><dict>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleExecutable</key><string>$(TARGET)</string>' >> $(APP_BUNDLE)/Contents/Info.plist
-	@echo '<key>CFBundleIdentifier</key><string>com.miniacid.app</string>' >> $(APP_BUNDLE)/Contents/Info.plist
-	@echo '<key>CFBundleName</key><string>MiniAcid</string>' >> $(APP_BUNDLE)/Contents/Info.plist
+	@echo '<key>CFBundleIdentifier</key><string>com.grooveputer.app</string>' >> $(APP_BUNDLE)/Contents/Info.plist
+	@echo '<key>CFBundleName</key><string>GroovePuter</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleVersion</key><string>1.0</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundlePackageType</key><string>APPL</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '</dict></plist>' >> $(APP_BUNDLE)/Contents/Info.plist
@@ -146,7 +189,7 @@ bundle: $(TARGET)
 	@echo "You can now run: open $(APP_BUNDLE)"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(E1_LIVE_BRIDGE_TARGET)
 	rm -rf $(APP_BUNDLE)
 
-.PHONY: all clean wasm bundle
+.PHONY: all clean wasm bundle e1-live-bridge-characterization
