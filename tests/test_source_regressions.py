@@ -258,8 +258,52 @@ def test_atlas_recipe_precedes_random_fallback() -> None:
             "compiled Atlas patterns must be attempted before random fallback")
     require("scene.feel.swingPct = atlasMetadata.swingPercent" in block,
             "Atlas recipe swing must be applied with the pattern")
-    require("scene.genre.applyTempoOnApply" in block,
-            "Atlas BPM must respect the existing tempo opt-in")
+
+    # GF2-I1: Atlas material application is not a tempo owner. The generation
+    # corridor of the requested genre/recipe resolves the production tempo once,
+    # and the request/candidate/commit path carries it. Atlas source BPM stays
+    # readable provenance.
+    require("setBpm(" not in block,
+            "Atlas materialization must not write the production tempo")
+    require("atlasMetadata.bpm" in block,
+            "Atlas source BPM must remain available as provenance")
+
+
+def test_atlas_candidate_preparation_keeps_resolved_tempo() -> None:
+    impl = (
+        ROOT / "src/generation/migration/quantized_generation_commit_impl.h"
+    ).read_text(encoding="utf-8")
+    start = impl.index("inline bool preparePlayingCandidate(")
+    end = impl.index("inline bool prepareSynthCandidate(", start)
+    block = impl[start:end]
+
+    require("candidate.bpm = applyTempo && requestedBpm > 0.0f" in block,
+            "candidate tempo must be resolved once from the generation request")
+    require("candidate.swingPct = atlasMetadata.swingPercent" in block,
+            "reviewed Atlas swing must still reach the candidate")
+    require("candidate.bpm = static_cast<float>(atlasMetadata.bpm)" not in block,
+            "Atlas metadata must not overwrite the resolved candidate tempo")
+    require(block.count("candidate.bpm =") == 1,
+            "the prepared candidate must have exactly one tempo writer")
+
+
+def test_genre_page_profile_only_never_generates_or_retempos() -> None:
+    page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
+    start = page.index("void GenrePage::applyCurrent(bool forceRegenerate)")
+    end = page.index("void GenrePage::updateFromEngine()", start)
+    block = page[start:end]
+
+    require("const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;"
+            in block,
+            "tempo opt-in must be owned by the MATERIALIZE+BPM apply mode")
+    require("profile.corridor.suggestedBpm" in block,
+            "MATERIALIZE+BPM must resolve tempo from the generation corridor")
+    for call in block.split("regenerateWithQuantizedCommit")[1:]:
+        require("doApplyTempo, requestedBpm" in call.split(";")[0],
+                "generation requests must carry the resolved corridor tempo")
+    require(block.count("regenerateWithQuantizedCommit") ==
+            block.count("if (doRegenerate)") + 1,
+            "PROFILE ONLY must not reach generation or tempo application")
 
 
 def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
@@ -608,6 +652,8 @@ def main() -> None:
     test_generative_params_have_safe_defaults()
     test_atlas_recipe_catalog_and_legacy_fallbacks()
     test_atlas_recipe_precedes_random_fallback()
+    test_atlas_candidate_preparation_keeps_resolved_tempo()
+    test_genre_page_profile_only_never_generates_or_retempos()
     test_genre_page_uses_recipe_mode_and_tempo_order()
     test_atlas_compiler_matches_manifest_contract()
     test_recipe_selector_is_visible_and_navigable()
