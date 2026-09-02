@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+python3 tests/test_gf2_frozen_git_boundary.py
 python3 tests/test_gf2_semantic_orchestration.py
 python3 tools/orchestrate_semantic_analysis.py \
   --source-ref "${SOURCE_REF:-HEAD}" \

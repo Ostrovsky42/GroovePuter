@@ -5,6 +5,8 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 
+from gf2_frozen_git_boundary import resolve_frozen_commit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "docs/research/GF2_C1F_FINAL_STATIC_SEMANTIC_CENSUS.tsv"
@@ -12,6 +14,8 @@ ARCHETYPE_PATH = ROOT / "docs/research/GF2_C1F_RHYTHM_ARCHETYPE_PAYLOADS.tsv"
 PAIR_PATH = ROOT / "docs/research/GF2_C1F_BASE_GENRE_PAIRS.tsv"
 BASE_SHA = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
 C1F_HEAD = "d24ebf42ba48c50d2057af055807dd2c1ec6f096"
+C1F_TREE = "e81d84b5fa23315f287cc308cb0df6e6d3fbce62"
+C1F_SUBJECT = "research(0.9.10-gf2): revalidate Gate A on v0.9.9"
 HISTORICAL_NORMALIZED_HASHES = {
     PROFILE_PATH: "32a601025718bf6a4768aa706620e668febc2508a36c73d952f779539433a700",
     PAIR_PATH: "3e82efd8e4a9d26e419e9dfeeec907acbfb45d3a0d1adb41df24e71dbbfe8667",
@@ -27,14 +31,20 @@ def rows(path: Path) -> list[dict[str, str]]:
 profiles = rows(PROFILE_PATH)
 archetypes = rows(ARCHETYPE_PATH)
 pairs = rows(PAIR_PATH)
+C1F_BOUNDARY = resolve_frozen_commit(
+    ROOT,
+    exact_sha=C1F_HEAD,
+    expected_tree=C1F_TREE,
+    expected_subject=C1F_SUBJECT,
+)
 
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", C1F_HEAD, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1F_BOUNDARY, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", BASE_SHA, C1F_HEAD, "--"],
+    ["git", "diff", "--name-only", BASE_SHA, C1F_BOUNDARY, "--"],
     cwd=ROOT,
     check=True,
     text=True,

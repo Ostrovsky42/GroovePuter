@@ -13,6 +13,8 @@ import subprocess
 from collections import Counter
 from pathlib import Path
 
+from gf2_frozen_git_boundary import resolve_frozen_commit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "docs/research/GF2_C1RF_FINAL_SEMANTIC_REACHABILITY.tsv"
@@ -21,6 +23,10 @@ C1_TABLE = ROOT / "docs/research/GF2_C1F_FINAL_STATIC_SEMANTIC_CENSUS.tsv"
 RELEASE_BASE = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
 C1F_BASE = "d24ebf42ba48c50d2057af055807dd2c1ec6f096"
 C1RF_HEAD = "574b830526c784ffe761286096dd62e22d6361d4"
+C1F_TREE = "e81d84b5fa23315f287cc308cb0df6e6d3fbce62"
+C1RF_TREE = "1ff2312cc9888cb33546eff0d47c00a4149f85c0"
+C1F_SUBJECT = "research(0.9.10-gf2): revalidate Gate A on v0.9.9"
+C1RF_SUBJECT = "research(0.9.10-gf2): revalidate reachability on v0.9.9"
 
 EXPECTED_COLUMNS = [
     "domain",
@@ -146,13 +152,26 @@ assert "exact_base" in c1_columns
 assert len(c1_rows) == 33
 assert {row["exact_base"] for row in c1_rows} == {RELEASE_BASE}
 
+C1F_BOUNDARY = resolve_frozen_commit(
+    ROOT,
+    exact_sha=C1F_BASE,
+    expected_tree=C1F_TREE,
+    expected_subject=C1F_SUBJECT,
+)
+C1RF_BOUNDARY = resolve_frozen_commit(
+    ROOT,
+    exact_sha=C1RF_HEAD,
+    expected_tree=C1RF_TREE,
+    expected_subject=C1RF_SUBJECT,
+)
+
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", C1RF_HEAD, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1RF_BOUNDARY, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", C1F_BASE, C1RF_HEAD, "--"],
+    ["git", "diff", "--name-only", C1F_BOUNDARY, C1RF_BOUNDARY, "--"],
     cwd=ROOT,
     check=True,
     text=True,

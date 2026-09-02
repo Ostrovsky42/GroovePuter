@@ -8,6 +8,8 @@ import subprocess
 from collections import Counter
 from pathlib import Path
 
+from gf2_frozen_git_boundary import resolve_frozen_commit
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CENSUS = ROOT / "docs/research/GF2_C1F_FINAL_STATIC_SEMANTIC_CENSUS.tsv"
@@ -21,6 +23,10 @@ GENERATOR = ROOT / "tools/gf2/generate_gf2_c1df_dependency_maps.py"
 GF2_BASE = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
 C1RF_HEAD = "574b830526c784ffe761286096dd62e22d6361d4"
 C1DF_HEAD = "82cfbd9f2c05074cd58b3841b29fb871219e54c8"
+C1RF_TREE = "1ff2312cc9888cb33546eff0d47c00a4149f85c0"
+C1DF_TREE = "382708e6d1fd5ca07031a90ed2a57f9879d060ec"
+C1RF_SUBJECT = "research(0.9.10-gf2): revalidate reachability on v0.9.9"
+C1DF_SUBJECT = "research(0.9.10-gf2): map final distinctness dependencies"
 
 MAPPED_DOMAIN_ROOTS = {
     "RHYTHM_COMPATIBILITY",
@@ -220,13 +226,26 @@ assert "GF2-C2 = BLOCKED" in report
 assert "`GF2-C2`, `GF2-G1`, and `GF2-R2` are not started." in report
 assert "No aggregate reachability or Genre distance is calculated." in report
 
+C1RF_BOUNDARY = resolve_frozen_commit(
+    ROOT,
+    exact_sha=C1RF_HEAD,
+    expected_tree=C1RF_TREE,
+    expected_subject=C1RF_SUBJECT,
+)
+C1DF_BOUNDARY = resolve_frozen_commit(
+    ROOT,
+    exact_sha=C1DF_HEAD,
+    expected_tree=C1DF_TREE,
+    expected_subject=C1DF_SUBJECT,
+)
+
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", C1DF_HEAD, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1DF_BOUNDARY, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", C1RF_HEAD, C1DF_HEAD, "--"],
+    ["git", "diff", "--name-only", C1RF_BOUNDARY, C1DF_BOUNDARY, "--"],
     cwd=ROOT,
     check=True,
     capture_output=True,
