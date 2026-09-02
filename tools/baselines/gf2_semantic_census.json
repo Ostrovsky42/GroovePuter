@@ -1,0 +1,4076 @@
+{
+  "archetypes": [
+    {
+      "archetype_id": "401",
+      "archetype_key": "0",
+      "bpm_max": "136",
+      "bpm_min": "122",
+      "drum_payload_fingerprint": "58ead95419354e0b8d933f05d1c920d3e3a24dd9c8a90aa88d0a3c6dd5175726",
+      "family": "0",
+      "name": "straight_drive",
+      "semantic_payload_fingerprint": "31d34de4b20329d17b4fa9e4bfaacf45cf359ea252aaab6f4bf120b2099a97db"
+    },
+    {
+      "archetype_id": "402",
+      "archetype_key": "1",
+      "bpm_max": "134",
+      "bpm_min": "120",
+      "drum_payload_fingerprint": "5bbd9dd2451f931c2e2dda79ee09d3f3da2aeb7784b6547a44e3f97b40b550c6",
+      "family": "0",
+      "name": "offbeat_open_hat",
+      "semantic_payload_fingerprint": "34353ec8dd93dae24686b19a3e751cc552764199cbb7edf25fc9a36e478a53ed"
+    },
+    {
+      "archetype_id": "403",
+      "archetype_key": "2",
+      "bpm_max": "140",
+      "bpm_min": "124",
+      "drum_payload_fingerprint": "335cdf9baf4614637fcbba7a72e9078100e8e9c10d2cebf93c063e05a086a1be",
+      "family": "0",
+      "name": "hypnotic_sparse",
+      "semantic_payload_fingerprint": "418a86743ebf5827e4fe3d2261e7446fd7370042463c4789c1340362bc3f66e7"
+    },
+    {
+      "archetype_id": "404",
+      "archetype_key": "3",
+      "bpm_max": "142",
+      "bpm_min": "124",
+      "drum_payload_fingerprint": "d42d35fce341aba5076df8c721b3daae173c7aed9a2042481061f28ee497dedc",
+      "family": "1",
+      "name": "broken_techno",
+      "semantic_payload_fingerprint": "bb0f5e19dad5b34e209f4e236ee72da4d893e062506131e16618dcd6852fe7ea"
+    },
+    {
+      "archetype_id": "405",
+      "archetype_key": "4",
+      "bpm_max": "134",
+      "bpm_min": "120",
+      "drum_payload_fingerprint": "8472e7ee9e0758787d6f9d1c7d968dbc09a3dfa939353a6809c6e89b21f428a9",
+      "family": "0",
+      "name": "straight_acid",
+      "semantic_payload_fingerprint": "4978133cb58bef2a3f9f2391b2bde2143e2e3cc4aba44e2dd455db3f8042a5f1"
+    },
+    {
+      "archetype_id": "406",
+      "archetype_key": "5",
+      "bpm_max": "138",
+      "bpm_min": "122",
+      "drum_payload_fingerprint": "d066bb41ef7e41bf04bc9bbb4532c8002c7f43d54418583754fcc3c0bdb78977",
+      "family": "0",
+      "name": "rolling_acid",
+      "semantic_payload_fingerprint": "78f9ca3163865e3a0e497cffd5fa9d5e7fe63812fc42f535a86c857f5ef33aa8"
+    },
+    {
+      "archetype_id": "407",
+      "archetype_key": "6",
+      "bpm_max": "140",
+      "bpm_min": "122",
+      "drum_payload_fingerprint": "cddc2d02365582405e368741d611c25d960a1e1d8e05059afa6bb2e3f99c928d",
+      "family": "1",
+      "name": "syncopated_acid",
+      "semantic_payload_fingerprint": "c54b7d04d07ca1f0201bca31571028caf443694bc0f4448619bd43a9fa05803b"
+    },
+    {
+      "archetype_id": "408",
+      "archetype_key": "7",
+      "bpm_max": "132",
+      "bpm_min": "116",
+      "drum_payload_fingerprint": "056302ee081226bdb7b6b966f8a13a032bd9030d864a7da793dea2e893fd6259",
+      "family": "7",
+      "name": "sparse_acid",
+      "semantic_payload_fingerprint": "05d7b1d0e73d005dd9ffa4b3801f66add9178290a1391162b38c2a35fd13c478"
+    },
+    {
+      "archetype_id": "409",
+      "archetype_key": "8",
+      "bpm_max": "122",
+      "bpm_min": "72",
+      "drum_payload_fingerprint": "4e854e08e0bbbd7666b3b1ec742056ded86871736489d2f1612c8526756029d0",
+      "family": "5",
+      "name": "one_drop_space",
+      "semantic_payload_fingerprint": "b326bb6f6290f7da0681dd6f1b455799de9cc3dd222315f3d7669cae4b11a5f6"
+    },
+    {
+      "archetype_id": "410",
+      "archetype_key": "9",
+      "bpm_max": "132",
+      "bpm_min": "108",
+      "drum_payload_fingerprint": "7a4e3daadc58b77247dfab8a497947ac87c764ab37acda38a7c05b39f1c3f43a",
+      "family": "5",
+      "name": "steppers",
+      "semantic_payload_fingerprint": "8f64dffc87c8de8501738925ec0edd4651b6ee9d180197f6b231eebae1588c6a"
+    },
+    {
+      "archetype_id": "411",
+      "archetype_key": "10",
+      "bpm_max": "124",
+      "bpm_min": "88",
+      "drum_payload_fingerprint": "7bdb393e6dcc18873f73e88cdc0589ace8f5bb5f0dbdda079c7460170ddce92b",
+      "family": "5",
+      "name": "sparse_skank",
+      "semantic_payload_fingerprint": "74331aa5a36cd3f4a7b79f3ce7c4fcd7681b5f1f0921bd904a151d6f9987b190"
+    },
+    {
+      "archetype_id": "412",
+      "archetype_key": "11",
+      "bpm_max": "128",
+      "bpm_min": "96",
+      "drum_payload_fingerprint": "eefa93493bac0622096b556ce2ded36f8db496694113a58765b2eadd25315767",
+      "family": "5",
+      "name": "chord_response",
+      "semantic_payload_fingerprint": "4349403aac116eaf8a3e24bc25d849b1ca543c59474b6b3c625ecfe113f195d9"
+    },
+    {
+      "archetype_id": "413",
+      "archetype_key": "12",
+      "bpm_max": "180",
+      "bpm_min": "160",
+      "drum_payload_fingerprint": "87e2d2882536c6dd248c966a277c9659e498797f8ce43ed5a3611a6c88daa8cd",
+      "family": "2",
+      "name": "two_step_roll",
+      "semantic_payload_fingerprint": "443d65fd963a3697b8a730b4618adf814e5e51a96c7ba4e943583296207d796f"
+    },
+    {
+      "archetype_id": "414",
+      "archetype_key": "13",
+      "bpm_max": "182",
+      "bpm_min": "164",
+      "drum_payload_fingerprint": "08f122fe889c900fa68ee1c85c0edc579bdd84e9d9339a16078dbcf80a6ba267",
+      "family": "2",
+      "name": "ghosted_roll",
+      "semantic_payload_fingerprint": "d24a5c9d9c0864474a4464e2611b8be1aee0e2c9f6a9c052b64ede799fafcb49"
+    },
+    {
+      "archetype_id": "415",
+      "archetype_key": "14",
+      "bpm_max": "178",
+      "bpm_min": "158",
+      "drum_payload_fingerprint": "e74d4aadfb9065f805fd659a69e325cde5f8ac918c9db8b91de4aa8165913cc0",
+      "family": "2",
+      "name": "sparse_fast_break",
+      "semantic_payload_fingerprint": "aed3a9e4d7a5b3242d89bdf9187dc0ee58498a4717c3fe094577377a4350e212"
+    },
+    {
+      "archetype_id": "416",
+      "archetype_key": "15",
+      "bpm_max": "176",
+      "bpm_min": "150",
+      "drum_payload_fingerprint": "f5941032d43efd25f1eeda27de224702ce77b1bf895b1c1dda42516256b08640",
+      "family": "2",
+      "name": "halftime_switch",
+      "semantic_payload_fingerprint": "0b22f4f7667c98232f4d6324fde453cd71294d44ee25c3c4e727de10cd7f07a3"
+    },
+    {
+      "archetype_id": "417",
+      "archetype_key": "16",
+      "bpm_max": "138",
+      "bpm_min": "128",
+      "drum_payload_fingerprint": "e420861de9bb5443d1ca1ad9bc0f4d0ab073f60381bc30b32a2fcf9ae2290f63",
+      "family": "3",
+      "name": "classic_2step",
+      "semantic_payload_fingerprint": "64ff698f6d3777e9b3e27b978fd7e43e2339165894fa43bba643dce2dd56280f"
+    },
+    {
+      "archetype_id": "418",
+      "archetype_key": "17",
+      "bpm_max": "142",
+      "bpm_min": "130",
+      "drum_payload_fingerprint": "4f66189f045dc0cde01d538da86f6c3ba3bf3c21ce834db656119c211a5d4d82",
+      "family": "3",
+      "name": "skippy_2step",
+      "semantic_payload_fingerprint": "ceca48c926960b8346929f6a1ad247768882c2fc246a8be7663becd05a3355dd"
+    },
+    {
+      "archetype_id": "419",
+      "archetype_key": "18",
+      "bpm_max": "140",
+      "bpm_min": "126",
+      "drum_payload_fingerprint": "51829bd328713ced8977e6df4e583eded864ffc5c06be193d7658c2111226c7b",
+      "family": "3",
+      "name": "shuffled_4x4",
+      "semantic_payload_fingerprint": "a9d8f6383c2e76ee5c45b95e7c6ac0ae3419a9008498db4b11186abf68e8123b"
+    },
+    {
+      "archetype_id": "420",
+      "archetype_key": "19",
+      "bpm_max": "142",
+      "bpm_min": "116",
+      "drum_payload_fingerprint": "71b6dad74dd1ec2669fb58ff5458698021043b5b48122ac4429a6c0dcddc0a5e",
+      "family": "1",
+      "name": "machine_syncopation",
+      "semantic_payload_fingerprint": "25347fe728619506f0000b7b3d497f2d27e8704b39c6a27c6268b997c17be25c"
+    },
+    {
+      "archetype_id": "711",
+      "archetype_key": "20",
+      "bpm_max": "122",
+      "bpm_min": "122",
+      "drum_payload_fingerprint": "d6c51e4693ddcd55602ab1e024929085d586e4e360585a33b2362eae86b193a8",
+      "family": "0",
+      "name": "stacked_quarters",
+      "semantic_payload_fingerprint": "d6c51e4693ddcd55602ab1e024929085d586e4e360585a33b2362eae86b193a8"
+    },
+    {
+      "archetype_id": "712",
+      "archetype_key": "21",
+      "bpm_max": "116",
+      "bpm_min": "116",
+      "drum_payload_fingerprint": "dc775f294b7f436e818db620ea627d41ca6d44c36a8ee4afe449ad1f6027c9fb",
+      "family": "1",
+      "name": "electro_backskip",
+      "semantic_payload_fingerprint": "dc775f294b7f436e818db620ea627d41ca6d44c36a8ee4afe449ad1f6027c9fb"
+    },
+    {
+      "archetype_id": "713",
+      "archetype_key": "22",
+      "bpm_max": "112",
+      "bpm_min": "112",
+      "drum_payload_fingerprint": "6e94a20bb5945ce8175696b18f89200b1f0d569105da82a5c004da69cf3e4f28",
+      "family": "6",
+      "name": "funk_house_bridge",
+      "semantic_payload_fingerprint": "6e94a20bb5945ce8175696b18f89200b1f0d569105da82a5c004da69cf3e4f28"
+    },
+    {
+      "archetype_id": "714",
+      "archetype_key": "23",
+      "bpm_max": "114",
+      "bpm_min": "114",
+      "drum_payload_fingerprint": "d5ec7219d7b01231b1d9f6168c573ed019d75f5d100de9b03f01935021e45450",
+      "family": "4",
+      "name": "electro_gap_push",
+      "semantic_payload_fingerprint": "d5ec7219d7b01231b1d9f6168c573ed019d75f5d100de9b03f01935021e45450"
+    }
+  ],
+  "base_pairs": [
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Darksynth",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Electro",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Outrun",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Rave",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Reggae",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "1",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Acid",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Broken",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "1",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Chip",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Electro",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Rave",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Reggae",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Darksynth",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "DrumAndBass",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "1",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "Rave",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "Reggae",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Electro",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "1",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "FunkSoul",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "FunkSoul",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "FunkSoul",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "HipHop",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "HipHop",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "HipHop",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "HipHop",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "House",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Darksynth",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Electro",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Rave",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Reggae",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Outrun",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "Reggae",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Rave",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "TripHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Reggae",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Techno",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Techno",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Techno",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Techno",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "Techno",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "Broken",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "Chip",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "FunkSoul",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "HipHop",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "House",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;LEGACY_DRUM",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "Techno",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL;LEGACY_DRUM",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "TripHop",
+      "genre_b": "UkGarage",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "0",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR",
+      "classification": "PARTIAL_COLLISION",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "UkGarage",
+      "genre_b": "DrumAndBass",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "1",
+      "same_tonal_payload": "1"
+    },
+    {
+      "changed_domains": "RHYTHM;COMPOSITION_OTHER;CORRIDOR;ROLE;TONAL",
+      "classification": "STRONG_DISTINCTNESS",
+      "exact_base": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+      "genre_a": "UkGarage",
+      "genre_b": "LoFi",
+      "same_canonical_drum_payload": "0",
+      "same_corridor": "0",
+      "same_legacy_drum_payload": "1",
+      "same_other_composition_weights": "0",
+      "same_rhythm_weights": "0",
+      "same_secondary_role": "0",
+      "same_tonal_payload": "0"
+    }
+  ],
+  "profiles": [
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "132",
+          "bpm_min": "118",
+          "bpm_suggested": "124",
+          "density_max": "13",
+          "density_min": "6",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "84c2c4172588891d8d5ca8656f82b670f8e9b947960017c0e05adb8fa7b504b3",
+          "rhythm_payload_fingerprint": "b4456f39f89bd8846b2921eed948935cc4136efc7f91a5023ac9398eea3e997f",
+          "rhythms": "405:straight_acid@120;408:sparse_acid@100"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x01f6|bass_preferred_contours_mask=0x00f0|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0382|melodic_preferred_contours_mask=0x0082|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "84c2c4172588891d8d5ca8656f82b670f8e9b947960017c0e05adb8fa7b504b3",
+        "composition_support_fingerprint": "4f13cc8e0d33e0214ab71ab66166445ea7d25e16020861bd387c2c3a9099f977",
+        "composition_weighted_fingerprint": "9c5c6a869d6b517417479fa445136d8c972ba4586a17923928165b15aff59c48",
+        "corridor_fingerprint": "52e9ca06ee1f8389baeb2ee7d34f2ef0c717399de8c624f549ce98dc6ea33e59",
+        "full_trace_fingerprint": "ae1b3f1b9d299ad460fb893783654f9d0cdb4ed1391e374a6e93ac9e2b9170bb",
+        "primary_static_fingerprint": "09a76859bc9c3ea9fbea58a4fccb393afd285a9734828ac361153fcb5a66bddf",
+        "rhythm_payload_fingerprint": "b4456f39f89bd8846b2921eed948935cc4136efc7f91a5023ac9398eea3e997f",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "bb3bca5533d5ac6507a15b510c185fc9bb9ae2dfb20d95ce9c5860b9d78c2fd8"
+      },
+      "genre": "Acid",
+      "genre_id": "0",
+      "genre_key": "Acid",
+      "key": "Acid:6",
+      "kind": "RECIPE",
+      "recipe": "Chicago Jack",
+      "recipe_id": "6",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "145",
+          "bpm_min": "126",
+          "bpm_suggested": "136",
+          "density_max": "15",
+          "density_min": "8",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "c0e9f088d2a0a3d88f43903f592a2379024667a1a1e916ae7a84c0394e92016c",
+          "rhythm_payload_fingerprint": "4e5bffa3809f48c09894e6d618ea956f4aae2c5dba22c6cb06ffb3f6e2aff1d8",
+          "rhythms": "406:rolling_acid@120;407:syncopated_acid@110"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x01f6|bass_preferred_contours_mask=0x00f0|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0382|melodic_preferred_contours_mask=0x0082|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "c0e9f088d2a0a3d88f43903f592a2379024667a1a1e916ae7a84c0394e92016c",
+        "composition_support_fingerprint": "e4181588e6a202a2ef75e365740dff31670eb4b6614ec35813934aaa453f1084",
+        "composition_weighted_fingerprint": "5a70ead697c9fcbdca61e9d4abd9c94a0112517193d5013cb5bed4267ca3f688",
+        "corridor_fingerprint": "461a47be9e2e98b4e29fb84254c141e5f2fedb16a3a52817afeaddf7c7f81f82",
+        "full_trace_fingerprint": "2b3dce86356eb9ca3d2e9fa5c7703cb28427deef03d3517b5bae25a7578c71b6",
+        "primary_static_fingerprint": "e9e63334c9cb07ab47d162838465f94b2942b8019c5e35927ccfce73cf6099e2",
+        "rhythm_payload_fingerprint": "4e5bffa3809f48c09894e6d618ea956f4aae2c5dba22c6cb06ffb3f6e2aff1d8",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "bb3bca5533d5ac6507a15b510c185fc9bb9ae2dfb20d95ce9c5860b9d78c2fd8"
+      },
+      "genre": "Acid",
+      "genre_id": "0",
+      "genre_key": "Acid",
+      "key": "Acid:7",
+      "kind": "RECIPE",
+      "recipe": "Rolling Acid",
+      "recipe_id": "7",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "150",
+          "bpm_min": "118",
+          "bpm_suggested": "132",
+          "density_max": "14",
+          "density_min": "6",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "3d34efe31805abbd37b5011c4b5e5d68439c9c72cd2befd88588b9bc7722ec31",
+          "rhythm_payload_fingerprint": "3f8fa002b9840f6544a436269f30e5ee738d64a955f2d0486436560016a839d8",
+          "rhythms": "405:straight_acid@120;406:rolling_acid@110;407:syncopated_acid@100;408:sparse_acid@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x01f6|bass_preferred_contours_mask=0x00f0|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0382|melodic_preferred_contours_mask=0x0082|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "3d34efe31805abbd37b5011c4b5e5d68439c9c72cd2befd88588b9bc7722ec31",
+        "composition_support_fingerprint": "b63a4b55b6358cdc9b26090fd0add4f87e480c992b88ea73c591370d1cbe1b62",
+        "composition_weighted_fingerprint": "25305a082f22b8340e6504791e0faee0049d338afe93da0eb6950dd43a56bc6d",
+        "corridor_fingerprint": "fa910fe1455351778a38363a9f6fc2967393cdfd494817c4179ea7e624a6b590",
+        "full_trace_fingerprint": "f02351eb96c656f032954f22af3dd68ee14ba9f1f1045f1b044f53bc8e4d22bd",
+        "primary_static_fingerprint": "55898004bfe8847d0583b5524fda77479e170c33c2c91ad988d5b50a3d4c2d0c",
+        "rhythm_payload_fingerprint": "3f8fa002b9840f6544a436269f30e5ee738d64a955f2d0486436560016a839d8",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "bb3bca5533d5ac6507a15b510c185fc9bb9ae2dfb20d95ce9c5860b9d78c2fd8"
+      },
+      "genre": "Acid",
+      "genre_id": "0",
+      "genre_key": "Acid",
+      "key": "Acid:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "138",
+          "bpm_min": "125",
+          "bpm_suggested": "132",
+          "density_max": "13",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "75403f6cd03bda42ccf755ebc19ba3438eaf70165e7d35e02c6e9cd0006bfa5b",
+          "rhythm_payload_fingerprint": "294490ce195648139d26f94880e380a3a6787c82b19b418e0012bcc255b20c84",
+          "rhythms": "417:classic_2step@120;418:skippy_2step@110;419:shuffled_4x4@100;420:machine_syncopation@80"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "75403f6cd03bda42ccf755ebc19ba3438eaf70165e7d35e02c6e9cd0006bfa5b",
+        "composition_support_fingerprint": "bf7799b4abf8726873654abaec34c6b2f1aa1668b4c0d4f395afcf8332547ba8",
+        "composition_weighted_fingerprint": "3b30fd692ddf16e4353f56a16b7e6b93328b5a9b903d6d806ff85f29fdefc760",
+        "corridor_fingerprint": "e76ae969098172c50e19e39c44bfd891c63cef5dc8d3342a45227bba9f876993",
+        "full_trace_fingerprint": "0d60db6c8332980b3503385110b464c66c2a5cf1a06a3abe44a8ac927de9848d",
+        "primary_static_fingerprint": "a8dcb533669f4383be7a86ca443343095ed87965faa93f4eb8664a8af6b2c8f8",
+        "rhythm_payload_fingerprint": "294490ce195648139d26f94880e380a3a6787c82b19b418e0012bcc255b20c84",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:1",
+      "kind": "RECIPE",
+      "recipe": "UK Garage",
+      "recipe_id": "1",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "180",
+          "bpm_min": "160",
+          "bpm_suggested": "174",
+          "density_max": "15",
+          "density_min": "7",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "9d0b740aee6325bd40854b4b5256e4afdbad89f105ecc454670014d962a1de25",
+          "rhythm_payload_fingerprint": "34b5ff835a66893147171f0a232c72514384544992ec3c905a5932254f5b7201",
+          "rhythms": "413:two_step_roll@120;414:ghosted_roll@110;415:sparse_fast_break@100;416:halftime_switch@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "9d0b740aee6325bd40854b4b5256e4afdbad89f105ecc454670014d962a1de25",
+        "composition_support_fingerprint": "51b53fc35f70dbb544336d9948514f05a1569fb541e6f1ceb0ed36532d5f4709",
+        "composition_weighted_fingerprint": "5ae30555c671bb78fea0ba235412a143c2ced5182f67bb2ba668aa56c47b6573",
+        "corridor_fingerprint": "55f993afde440a505344ff73295ee9e868383d96125c253dc6e21d1963e9b408",
+        "full_trace_fingerprint": "700041b4241b099801c31393066dbec3b08dfb706a4ebb078b04461dd89b9ceb",
+        "primary_static_fingerprint": "14a5e36497664fc98e3840bf94310d0573c0ac701bdf8a283811c5b616205891",
+        "rhythm_payload_fingerprint": "34b5ff835a66893147171f0a232c72514384544992ec3c905a5932254f5b7201",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:2",
+      "kind": "RECIPE",
+      "recipe": "Drum&Bass",
+      "recipe_id": "2",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "165",
+          "bpm_min": "145",
+          "bpm_suggested": "158",
+          "density_max": "15",
+          "density_min": "6",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "b04728a67d3e8723d35620ee295c2d1118836fc3a62f23fbfa5f517d84e81766",
+          "rhythm_payload_fingerprint": "414a6f74290a50a230d570a81402f456ec3ae99d420586ae9b25d95b86681deb",
+          "rhythms": "415:sparse_fast_break@90;416:halftime_switch@100;420:machine_syncopation@120;714:electro_gap_push@110"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "b04728a67d3e8723d35620ee295c2d1118836fc3a62f23fbfa5f517d84e81766",
+        "composition_support_fingerprint": "a1c607db0c3b66fa8d4d40c5031ce84c6e8c9a59d3a665cf51a8f2e7d0aae437",
+        "composition_weighted_fingerprint": "f7d2124cec6b370d21734de6fff44f1e2eaf5cce8d837a698255390dfa4b7714",
+        "corridor_fingerprint": "0f9aab78f98d344742bbf357bf61cd7eee4e6cd0d81deb25a6f0e20edc99ae43",
+        "full_trace_fingerprint": "6c5185f345235e2adeddaef3420e4f5211a51cf94cde1ea5783c37023950b580",
+        "primary_static_fingerprint": "213fd0537bc74ffa165b66114294f7630880ed929a6bdb3e84f1d54e6e2510d9",
+        "rhythm_payload_fingerprint": "414a6f74290a50a230d570a81402f456ec3ae99d420586ae9b25d95b86681deb",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:3",
+      "kind": "RECIPE",
+      "recipe": "Footwork",
+      "recipe_id": "3",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "136",
+          "bpm_min": "126",
+          "bpm_suggested": "132",
+          "density_max": "12",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "8e114e634cced70cea6454417f7255268c1015b90edb86abc8e6a998b3e2fc0b",
+          "rhythm_payload_fingerprint": "c51c24b24977829c7b8283e1edfb67b864efbc16fe6f248ecb009ed467111dcf",
+          "rhythms": "417:classic_2step@120;419:shuffled_4x4@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "8e114e634cced70cea6454417f7255268c1015b90edb86abc8e6a998b3e2fc0b",
+        "composition_support_fingerprint": "a56bc5b9fe964d3d79fc4528c14885311a329c11d6d61ec849f4948000a00eb4",
+        "composition_weighted_fingerprint": "521e25e65490f378ebde83b1e242e3770824ef2884bf04342ffe3bb63ac47b20",
+        "corridor_fingerprint": "417f30ef5e490eea2818e0d7da75d4c57dacc10acea340d3a55d937ee764e771",
+        "full_trace_fingerprint": "9c42ca5e4c17a164c43cc05167a34382430fbc2a820c7519dd4eee3b4d7b9d1e",
+        "primary_static_fingerprint": "4a7b8c23c86a256968afbf339dbb80877b23761a44b222e860c062062c3f8911",
+        "rhythm_payload_fingerprint": "c51c24b24977829c7b8283e1edfb67b864efbc16fe6f248ecb009ed467111dcf",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:8",
+      "kind": "RECIPE",
+      "recipe": "Classic 2-Step",
+      "recipe_id": "8",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@75;4:GAP FILL@45;6:SPARSE ANCHOR@120;8:HALF-TIME POCKET@100;10:SUSTAIN/DROP@80"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "140",
+          "bpm_min": "128",
+          "bpm_suggested": "134",
+          "density_max": "11",
+          "density_min": "3",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "2439844eee8b84f2103e4cb8d371a7c2934f97fe066159d72b95e013c844b66e",
+          "rhythm_payload_fingerprint": "d00c40ec0df7b24f7b6cf361c8d821a1ad2da1679cb35527979a54ad6a7ca477",
+          "rhythms": "418:skippy_2step@120;420:machine_syncopation@100"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "2439844eee8b84f2103e4cb8d371a7c2934f97fe066159d72b95e013c844b66e",
+        "composition_support_fingerprint": "9107b319f2264f9fcb2ffe049d82ca5fa63755da1a69377c9b35fd73956f05d6",
+        "composition_weighted_fingerprint": "f551861878f4b54f52d70ba63a0759de3e8cdd193e9189ee1d21815631fbaf69",
+        "corridor_fingerprint": "274c602e5b8698bf58ec77bdc6736aae017a2630d4b779dbc65bf765342db28a",
+        "full_trace_fingerprint": "059ac5e0535ed3b73a0980f76da8c7f2c9e0393644a25780f973f483dae4e940",
+        "primary_static_fingerprint": "7b98bfe47f8a642ce66ddefb28051fab8e56e81fe8c7a758ece051df5a31369c",
+        "rhythm_payload_fingerprint": "d00c40ec0df7b24f7b6cf361c8d821a1ad2da1679cb35527979a54ad6a7ca477",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:9",
+      "kind": "RECIPE",
+      "recipe": "Dark Skippy",
+      "recipe_id": "9",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "148",
+          "bpm_min": "118",
+          "bpm_suggested": "132",
+          "density_max": "14",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "a351fa7ecfca7a1671db61630c0df1fe5635b542086e0047e368b109ea4faa64",
+          "rhythm_payload_fingerprint": "2ef8822b8bbaa9569644c59e68b7ca134db1a7ed6a156cdc7ace0f732f3aaf1b",
+          "rhythms": "413:two_step_roll@100;414:ghosted_roll@100;415:sparse_fast_break@90;416:halftime_switch@90;417:classic_2step@110;418:skippy_2step@110;419:shuffled_4x4@90;420:machine_syncopation@80"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "a351fa7ecfca7a1671db61630c0df1fe5635b542086e0047e368b109ea4faa64",
+        "composition_support_fingerprint": "f5ceb2f5f901d803cea704d8d1ea155b18bc19ccbad24158fd3aec587b9e11ab",
+        "composition_weighted_fingerprint": "e1954b32575ca020982c1536ad4a61059fa7af1c2a6e8ad9c6fe912ed2a465e5",
+        "corridor_fingerprint": "b1b377f18db1098eac8a1cb811c70f7bf1c3a66a99b2b04aa84bdadaf7d91f5b",
+        "full_trace_fingerprint": "e552b942e7de1330fc84ed15bc245f466f7c4c282c656989429c937d75ced32d",
+        "primary_static_fingerprint": "ffb7847c1139ecf43350297bf4d4f9317c7bbf4a40f07066bf9fa23c694e693d",
+        "rhythm_payload_fingerprint": "2ef8822b8bbaa9569644c59e68b7ca134db1a7ed6a156cdc7ace0f732f3aaf1b",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Breaks",
+      "genre_id": "7",
+      "genre_key": "Broken",
+      "key": "Broken:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "1:ROOT PULSE@100;7:ROLLING DRIVE@95;9:SYNCOPATED HOOK@110"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "170",
+          "bpm_min": "96",
+          "bpm_suggested": "128",
+          "density_max": "15",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@90;3:POP CYCLE@120;6:MINOR FALL@60"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "50c9eadbcfa8dff51a863f23fc5b9a57230d07f63eb3330b1d00369f656d6f0a",
+          "rhythm_payload_fingerprint": "89ff5b5a80a9450c4cc0339c341cb2684795256a58df7cdfe5e6e30a6ca59a91",
+          "rhythms": "420:machine_syncopation@120;711:stacked_quarters@80;712:electro_backskip@100;714:electro_gap_push@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0156|bass_preferred_contours_mask=0x0054|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03fe|melodic_preferred_contours_mask=0x00dc|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "50c9eadbcfa8dff51a863f23fc5b9a57230d07f63eb3330b1d00369f656d6f0a",
+        "composition_support_fingerprint": "7a372d07a15e0da9b9570418a3f95b709ec109d82bafd3309793ae60eed51d33",
+        "composition_weighted_fingerprint": "f797afe190b0147cca4a45670a205997fa3f9d3afd2bfb508705d71274251d22",
+        "corridor_fingerprint": "589ff032ac2f10e11378f2338563f9431629a694085d8f2f610a103a8cf68537",
+        "full_trace_fingerprint": "1d0debe9d6153db45cf816713cf0a9677af9f6338e55332cf8112f18172815d5",
+        "primary_static_fingerprint": "fafa8b1d4d4ddc3af0ab95e524ef2cb9b333b180614ce395884d031f84e708ae",
+        "rhythm_payload_fingerprint": "89ff5b5a80a9450c4cc0339c341cb2684795256a58df7cdfe5e6e30a6ca59a91",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "9ac37ac14d0d6214a208ace541755a8fdbb7923e6baf4d1fa9861452b4d9ae1c"
+      },
+      "genre": "Chip",
+      "genre_id": "8",
+      "genre_key": "Chip",
+      "key": "Chip:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "148",
+          "bpm_min": "122",
+          "bpm_suggested": "134",
+          "density_max": "13",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@55;5:PARALLEL SHIFT@85;6:MINOR FALL@140"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "28fdba02c91f69cf95d510e936a3d71d4eded1a4b4264481b5d481e8ded7915f",
+          "rhythm_payload_fingerprint": "d10b3235948d562e753d93e7690053a75dffcd18832ef36c4ae2935e692e4bb8",
+          "rhythms": "401:straight_drive@120;402:offbeat_open_hat@110;403:hypnotic_sparse@100;404:broken_techno@100;711:stacked_quarters@80"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0156|bass_preferred_contours_mask=0x0054|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03fe|melodic_preferred_contours_mask=0x00dc|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "28fdba02c91f69cf95d510e936a3d71d4eded1a4b4264481b5d481e8ded7915f",
+        "composition_support_fingerprint": "f2606670dcd7dd5bb1079a083234aaf839d571050444b9573887a8a96b6a5d81",
+        "composition_weighted_fingerprint": "a84d6d00eff6d457cea4c0aead761f7a6ee8cff5958b51f4c997a8b447cf145f",
+        "corridor_fingerprint": "f79ab6ca6ca0f328353899e1148a296ee4a35fbcb60d7bd53f42f7ad049b2925",
+        "full_trace_fingerprint": "91bddbc2b33afe2657b4b19bbb99154c7c695b1c2822ebddf62f62cd0fcb44fc",
+        "primary_static_fingerprint": "b1fdbaba59f95af22ff2dd51d2a43d892fc54790017f0c2fee83ff58525fbfb1",
+        "rhythm_payload_fingerprint": "d10b3235948d562e753d93e7690053a75dffcd18832ef36c4ae2935e692e4bb8",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "9ac37ac14d0d6214a208ace541755a8fdbb7923e6baf4d1fa9861452b4d9ae1c"
+      },
+      "genre": "Darksynth",
+      "genre_id": "2",
+      "genre_key": "Darksynth",
+      "key": "Darksynth:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "180",
+          "bpm_min": "160",
+          "bpm_suggested": "174",
+          "density_max": "15",
+          "density_min": "7",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "eb07e7d3510ad1633d365eb3e56d262cef8242ed2045647ad02b6874a82847c1",
+          "rhythm_payload_fingerprint": "b9b3b6ccc787179355b66749e92459443a3682e5fbefa821d0a311224f86aa1c",
+          "rhythms": "413:two_step_roll@125;414:ghosted_roll@115;415:sparse_fast_break@105;416:halftime_switch@95"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "eb07e7d3510ad1633d365eb3e56d262cef8242ed2045647ad02b6874a82847c1",
+        "composition_support_fingerprint": "51b53fc35f70dbb544336d9948514f05a1569fb541e6f1ceb0ed36532d5f4709",
+        "composition_weighted_fingerprint": "5e56c3bd9ace9e38a5cd5ef27e66d485d370b4a5ac2512230cbaa05a27b03c89",
+        "corridor_fingerprint": "55f993afde440a505344ff73295ee9e868383d96125c253dc6e21d1963e9b408",
+        "full_trace_fingerprint": "e7bef3ea7b19fbd0b546fe62123911afd0946119490cb8600e10daf31d12bec9",
+        "primary_static_fingerprint": "926c04fe098ff04955de03e38a71be21dd4286c496d55be6d7ec8d6172a900ff",
+        "rhythm_payload_fingerprint": "b9b3b6ccc787179355b66749e92459443a3682e5fbefa821d0a311224f86aa1c",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Drum&Bass",
+      "genre_id": "14",
+      "genre_key": "DrumAndBass",
+      "key": "DrumAndBass:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "132",
+          "bpm_min": "102",
+          "bpm_suggested": "116",
+          "density_max": "12",
+          "density_min": "4",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "2deb5e98e38a44b4385910b68442140e597aac4d5d0669b79af299cd66e163df",
+          "rhythm_payload_fingerprint": "a9d8dc1a23b668d14a58e0d143e76e3cdd979e61ec456597c556125ff1957edf",
+          "rhythms": "404:broken_techno@80;420:machine_syncopation@120;712:electro_backskip@120;714:electro_gap_push@110"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "2deb5e98e38a44b4385910b68442140e597aac4d5d0669b79af299cd66e163df",
+        "composition_support_fingerprint": "4fca71486031858100d941999d906c56db6dfe618461d0e18640f8c0c1fa8669",
+        "composition_weighted_fingerprint": "9beb572c2e9d3adfc4c37a3763e92a5365abee5fb288729f3ac1da788b03ec7c",
+        "corridor_fingerprint": "35d06c5f3b35bedddd605208fc33728bd26f54ff727ba4b4d56b87a8903fc209",
+        "full_trace_fingerprint": "be387ec084423754a67d8d7657e9158342e3e5d39f56ced81b06e92bea598359",
+        "primary_static_fingerprint": "752848e30a7d95f02067eae64e563480330c264d17d3a597f25b958b815a793f",
+        "rhythm_payload_fingerprint": "a9d8dc1a23b668d14a58e0d143e76e3cdd979e61ec456597c556125ff1957edf",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "Electro",
+      "genre_id": "3",
+      "genre_key": "Electro",
+      "key": "Electro:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@110;4:GAP FILL@70;6:SPARSE ANCHOR@100;8:HALF-TIME POCKET@120;9:SYNCOPATED HOOK@70"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "116",
+          "bpm_min": "88",
+          "bpm_suggested": "102",
+          "density_max": "11",
+          "density_min": "4",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "3:POP CYCLE@90;4:II-V-I@140;7:BORROWED LIFT@85"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "796e37e77c2873e281ed2b5b5fee42ae5846135a938d7cd1b76abe292a10d6aa",
+          "rhythm_payload_fingerprint": "09e1bec3f3cc1b93474770ee14958cc46247dab664857062212a57a20efd8d8d",
+          "rhythms": "415:sparse_fast_break@75;416:halftime_switch@90;713:funk_house_bridge@150"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "796e37e77c2873e281ed2b5b5fee42ae5846135a938d7cd1b76abe292a10d6aa",
+        "composition_support_fingerprint": "ac5bbf9be8f4f2fd8d042c7cf2a56953ffe34f4a814da51a663676c2281b4c54",
+        "composition_weighted_fingerprint": "fbbbfec72b8400e7150aa7c9a58cbd401b324e13b3655fa51f1df9f951cb1477",
+        "corridor_fingerprint": "df577e57e6299ae99ff1870dea5e025a838eba4c87f9c1683381d3aa3cd22e33",
+        "full_trace_fingerprint": "cff40fdb0bfe98e5f3d61584f174dfd07f1777099ffcac31efbeda241c7b3b5e",
+        "primary_static_fingerprint": "c65d6db1222fc7a3455e12a58d27688fb85e819c5f51c820e768c1622fd6b334",
+        "rhythm_payload_fingerprint": "09e1bec3f3cc1b93474770ee14958cc46247dab664857062212a57a20efd8d8d",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Funk/Soul",
+      "genre_id": "12",
+      "genre_key": "FunkSoul",
+      "key": "FunkSoul:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@110;4:GAP FILL@70;6:SPARSE ANCHOR@100;8:HALF-TIME POCKET@120;9:SYNCOPATED HOOK@70"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "100",
+          "bpm_min": "82",
+          "bpm_suggested": "92",
+          "density_max": "10",
+          "density_min": "4",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@20;1:SWING COMPAT@90;2:LAID BACK@150;3:PUSH/PULL@120"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@85;4:II-V-I@135;5:PARALLEL SHIFT@110"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "f53e25927153aded8a29ad857c39d1e6cab549ee4ed1f0637e53e024794c4794",
+          "rhythm_payload_fingerprint": "23049cdafd0d596c5a8ef5595e0e8b2e592ada17a91933ed17e9ffb8e65f37a0",
+          "rhythms": "416:halftime_switch@135;712:electro_backskip@90;713:funk_house_bridge@85;714:electro_gap_push@100"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "f53e25927153aded8a29ad857c39d1e6cab549ee4ed1f0637e53e024794c4794",
+        "composition_support_fingerprint": "b67de6148ff766e22229679d01fe784ff28f100550021ec13d797ce9be57c8e2",
+        "composition_weighted_fingerprint": "f9a6c346ab698a2a71ac5a0b7e937d01d0fd8b6349be22ada195642fbe3289bb",
+        "corridor_fingerprint": "0e51f2187f62a7e4698efccc7650d9eb2d1e70c700cf6bc43c32789bc350cd04",
+        "full_trace_fingerprint": "02300566b05bd4ac0e1288eb6ed0e71d9ef622160715de251f03a1a8de361b6c",
+        "primary_static_fingerprint": "5c9bf0476bddf8159aadcc68aae8f5b530ec764a676a475e7c861fb25e481594",
+        "rhythm_payload_fingerprint": "23049cdafd0d596c5a8ef5595e0e8b2e592ada17a91933ed17e9ffb8e65f37a0",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Hip-Hop",
+      "genre_id": "11",
+      "genre_key": "HipHop",
+      "key": "HipHop:16",
+      "kind": "RECIPE",
+      "recipe": "Golden Era",
+      "recipe_id": "16",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@110;4:GAP FILL@70;6:SPARSE ANCHOR@100;8:HALF-TIME POCKET@120;9:SYNCOPATED HOOK@70"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "94",
+          "bpm_min": "70",
+          "bpm_suggested": "84",
+          "density_max": "9",
+          "density_min": "3",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "1:SWING COMPAT@120;2:LAID BACK@125;3:PUSH/PULL@150"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@85;4:II-V-I@135;5:PARALLEL SHIFT@110"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "388af6b3693711c7a9d471019a72851c5fed7c7bbd4fb3a27f6bb28eb10a786f",
+          "rhythm_payload_fingerprint": "94f213cb609e0b26ebda0df01a70ad00bf72205ebc21f4a7a213b61cec69117c",
+          "rhythms": "415:sparse_fast_break@85;416:halftime_switch@115;713:funk_house_bridge@135"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "388af6b3693711c7a9d471019a72851c5fed7c7bbd4fb3a27f6bb28eb10a786f",
+        "composition_support_fingerprint": "a7f741a1610ddfa409a7ff10739588d436f4b9f4667cf5c80485212594e4ae28",
+        "composition_weighted_fingerprint": "5a6dbfce948432623a10c65a2445a0bf7a25d5236c68598ffceef3b06b0f1aa1",
+        "corridor_fingerprint": "81c778339aa82ed90d147d518805393b104021b355b32c2c6768305ef4478fde",
+        "full_trace_fingerprint": "c45da8df1ffd2ed1853c2b56f73c2d3de6c7d511cce56c2834245cbc9fde4092",
+        "primary_static_fingerprint": "58206d772a625b3996ac537dc3ae212959307afc573d2887cf15b49e731e7f82",
+        "rhythm_payload_fingerprint": "94f213cb609e0b26ebda0df01a70ad00bf72205ebc21f4a7a213b61cec69117c",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Hip-Hop",
+      "genre_id": "11",
+      "genre_key": "HipHop",
+      "key": "HipHop:17",
+      "kind": "RECIPE",
+      "recipe": "Dusty Jazz",
+      "recipe_id": "17",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@110;4:GAP FILL@70;6:SPARSE ANCHOR@100;8:HALF-TIME POCKET@120;9:SYNCOPATED HOOK@70"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "104",
+          "bpm_min": "76",
+          "bpm_suggested": "90",
+          "density_max": "10",
+          "density_min": "3",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@20;1:SWING COMPAT@90;2:LAID BACK@150;3:PUSH/PULL@120"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@85;4:II-V-I@135;5:PARALLEL SHIFT@110"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "bc73b65f8f11561a54ceaf3df54714a6897d567deda7edb3a1d7cd5a3d6423a9",
+          "rhythm_payload_fingerprint": "7bd773f07bb53fe12ba0c1ce1d1259b18d7535bd1ed34b724e6c7c0bb871c704",
+          "rhythms": "415:sparse_fast_break@105;416:halftime_switch@125;712:electro_backskip@90;713:funk_house_bridge@85;714:electro_gap_push@110"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "bc73b65f8f11561a54ceaf3df54714a6897d567deda7edb3a1d7cd5a3d6423a9",
+        "composition_support_fingerprint": "0ab339f6bde0851a1905ba72213e4fa6051677e09720ab245f6be3c759c224e8",
+        "composition_weighted_fingerprint": "664b7b5a889e8902a612e38de18c70415d97a4518fab9aacb8909c8ae1781c6d",
+        "corridor_fingerprint": "7810bbc45e378e35c628105ea9bcce995f3f2007df5bd2d46d4f0b88965b77bf",
+        "full_trace_fingerprint": "0b26a7084a7f3aa815ee45b77b83c851d2c9026a7bacd704606781836e254b8a",
+        "primary_static_fingerprint": "d0ae6a326dcd56b6abbada270c267997da8db96549d18dc5593ca63251de4a31",
+        "rhythm_payload_fingerprint": "7bd773f07bb53fe12ba0c1ce1d1259b18d7535bd1ed34b724e6c7c0bb871c704",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Hip-Hop",
+      "genre_id": "11",
+      "genre_key": "HipHop",
+      "key": "HipHop:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "128",
+          "bpm_min": "112",
+          "bpm_suggested": "122",
+          "density_max": "13",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@50;3:POP CYCLE@150;7:BORROWED LIFT@45"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "d25a8d21260ac30a29e25d0e2b731e222d5a61bd8638c632839d2b9778cb14fb",
+          "rhythm_payload_fingerprint": "198bdbaa663db28d3d624966b155afaeeadc26b02716d365db1052152f6fe27b",
+          "rhythms": "401:straight_drive@90;402:offbeat_open_hat@90;419:shuffled_4x4@70;711:stacked_quarters@125;713:funk_house_bridge@130"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0002|bass_preferred_contours_mask=0x0000|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=12|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "d25a8d21260ac30a29e25d0e2b731e222d5a61bd8638c632839d2b9778cb14fb",
+        "composition_support_fingerprint": "1c6a4e204370f4065d41791e2039937d11b1e09da87a793d3ea65bcde01b263c",
+        "composition_weighted_fingerprint": "0837d724a89f25c698bcfeda4dd82c2264ef36274409cbba2d207daee2462ae3",
+        "corridor_fingerprint": "ac9a6af98148b633a6b4186bed5eef49e0857d0fb46501ec5730256adc10657d",
+        "full_trace_fingerprint": "90f284687f5265e2a32b0d1db00cabe8d89419c7e4076da063157fbe530437ea",
+        "primary_static_fingerprint": "01968d9521722412eadfec231a080392910fbac968c2c01fd8e078f62ea43e35",
+        "rhythm_payload_fingerprint": "198bdbaa663db28d3d624966b155afaeeadc26b02716d365db1052152f6fe27b",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "454e0e55ecf1a6eab6d3e9c5f00ca597d790bc619740642f46070c388f344f18"
+      },
+      "genre": "House",
+      "genre_id": "9",
+      "genre_key": "House",
+      "key": "House:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_contour=ROOT ANCHOR;tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@60;4:GAP FILL@40;6:SPARSE ANCHOR@150;8:HALF-TIME POCKET@135;10:SUSTAIN/DROP@115"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "82",
+          "bpm_min": "58",
+          "bpm_suggested": "72",
+          "density_max": "7",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@20;1:SWING COMPAT@90;2:LAID BACK@150;3:PUSH/PULL@120"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@100;4:II-V-I@130;5:PARALLEL SHIFT@135;7:BORROWED LIFT@70"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "7755e38b6198e7d194cff00e43cb7af193765bf59e06f39505231c2d5d31ba63",
+          "rhythm_payload_fingerprint": "e444672332d6344a9ab36fd6cff848f27168f149b50206af57a1670f06fd7c93",
+          "rhythms": "415:sparse_fast_break@115;416:halftime_switch@145;713:funk_house_bridge@85"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "7755e38b6198e7d194cff00e43cb7af193765bf59e06f39505231c2d5d31ba63",
+        "composition_support_fingerprint": "50c44c72810c1cd554a8bfd7f10b9ab6396a2a6bfa13e851bb631e15dd9f044c",
+        "composition_weighted_fingerprint": "eb2d4e6bda21f1a591b99d8cadb065b9f7bdc0249f50badc0d6de03c24b2ecd5",
+        "corridor_fingerprint": "e060e65d063203e026490267a0f1f96e6f796aaea967a1c8bb1e2fbbf0a23b01",
+        "full_trace_fingerprint": "883e6ef347d70f651e62cf8318bc0d866713eea44ab478c2d79a504affaa63a8",
+        "primary_static_fingerprint": "89eccbf08f5d547173c8248da87cd55ad554b6dbac3cf17cd3838e26c9308b47",
+        "rhythm_payload_fingerprint": "e444672332d6344a9ab36fd6cff848f27168f149b50206af57a1670f06fd7c93",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Lo-Fi",
+      "genre_id": "15",
+      "genre_key": "LoFi",
+      "key": "LoFi:12",
+      "kind": "RECIPE",
+      "recipe": "Classic Chill",
+      "recipe_id": "12",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@110;4:GAP FILL@70;6:SPARSE ANCHOR@100;8:HALF-TIME POCKET@120;9:SYNCOPATED HOOK@70"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "92",
+          "bpm_min": "66",
+          "bpm_suggested": "82",
+          "density_max": "9",
+          "density_min": "3",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "1:SWING COMPAT@120;2:LAID BACK@125;3:PUSH/PULL@150"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@100;4:II-V-I@130;5:PARALLEL SHIFT@135;7:BORROWED LIFT@70"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "783da9530a561f12151ab8abb48731fdbe8ddd4f42cd2f0d894addd9fd9a40ce",
+          "rhythm_payload_fingerprint": "e2f90902a47d2f52f8adeefa09f5f6b6fd65051d34d0984e5ff287e5873921b1",
+          "rhythms": "415:sparse_fast_break@70;416:halftime_switch@105;713:funk_house_bridge@130;714:electro_gap_push@90"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "783da9530a561f12151ab8abb48731fdbe8ddd4f42cd2f0d894addd9fd9a40ce",
+        "composition_support_fingerprint": "fa31ad257d00a427c9ed6d8ca3813d6bb644c6feaf5966bb458f7b93da4d4124",
+        "composition_weighted_fingerprint": "0d85563fd1b7ed8640a766446185419f1a437c690390aa0df2b68ebc666c8387",
+        "corridor_fingerprint": "60d2bcb3e1f8825184721ca40302b32bde9fe03c0bed8a7f96ad778f52c2df55",
+        "full_trace_fingerprint": "cacd2926f9488a39e9f23c7e899880c26c942d28168b71b6ec8ee9e5eff1ca93",
+        "primary_static_fingerprint": "5250923a9e343378aae615c91b7dd5277962b69a12f54f975ab94cae1607a664",
+        "rhythm_payload_fingerprint": "e2f90902a47d2f52f8adeefa09f5f6b6fd65051d34d0984e5ff287e5873921b1",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Lo-Fi",
+      "genre_id": "15",
+      "genre_key": "LoFi",
+      "key": "LoFi:13",
+      "kind": "RECIPE",
+      "recipe": "Drunken Groove",
+      "recipe_id": "13",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@70;2:WHOLE BAR HOLD@80;4:OFFBEAT STAB@120;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "118",
+          "bpm_min": "92",
+          "bpm_suggested": "106",
+          "density_max": "11",
+          "density_min": "4",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@55;1:SWING COMPAT@110;2:LAID BACK@80;3:PUSH/PULL@90"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@50;3:POP CYCLE@150;7:BORROWED LIFT@45"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "93240c2dd62f858ed26eab5afa07f02964447d418320aad5576390b791e7e477",
+          "rhythm_payload_fingerprint": "5d094ada9b418dc65a633e5310b0961fb6af1cacb04cbd827e85a01bed22f512",
+          "rhythms": "402:offbeat_open_hat@65;419:shuffled_4x4@85;711:stacked_quarters@115;713:funk_house_bridge@140"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "93240c2dd62f858ed26eab5afa07f02964447d418320aad5576390b791e7e477",
+        "composition_support_fingerprint": "88b95895bb10ab5758f423b90f26767c305d1a7ad25900a233959f75cd7028b1",
+        "composition_weighted_fingerprint": "ba8c1c483b0683e44b24f8293bd5f22f48d3889b0fe3c4f22ee59a2c2d108d7e",
+        "corridor_fingerprint": "99f9ba0705358317919378e23a4a5f35a077e44729fcfb91c082988a72aa500c",
+        "full_trace_fingerprint": "7d994d99f452efc798d79a8bcf1c0c8128fb139d3fe4650bf99ebd1ec3f10859",
+        "primary_static_fingerprint": "42a28e237fce23914b6172793af49aa7ae391fea01872f93da2066c1899b888f",
+        "rhythm_payload_fingerprint": "5d094ada9b418dc65a633e5310b0961fb6af1cacb04cbd827e85a01bed22f512",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Lo-Fi",
+      "genre_id": "15",
+      "genre_key": "LoFi",
+      "key": "LoFi:14",
+      "kind": "RECIPE",
+      "recipe": "Lo-Fi House",
+      "recipe_id": "14",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@60;4:GAP FILL@40;6:SPARSE ANCHOR@150;8:HALF-TIME POCKET@135;10:SUSTAIN/DROP@115"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "66",
+          "bpm_min": "42",
+          "bpm_suggested": "54",
+          "density_max": "5",
+          "density_min": "1",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@20;1:SWING COMPAT@90;2:LAID BACK@150;3:PUSH/PULL@120"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@100;4:II-V-I@130;5:PARALLEL SHIFT@135;7:BORROWED LIFT@70"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "526296f9b906c2d787b44f1d8bf223701fae5b8691a2e4240bc69615f5da05fe",
+          "rhythm_payload_fingerprint": "de4172e90dbe483618d32df701271bf2c790cec59dba266756f92c7696facd67",
+          "rhythms": "403:hypnotic_sparse@85;415:sparse_fast_break@70;416:halftime_switch@155"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "526296f9b906c2d787b44f1d8bf223701fae5b8691a2e4240bc69615f5da05fe",
+        "composition_support_fingerprint": "48370a724efb63313dc02f77571a4b9b473f2ae3cb54a0c1acf8a3f5a218c863",
+        "composition_weighted_fingerprint": "73d206db75974388d117a14ae00514d6ce9d6243e275910b4b530d1aa4c7cd6c",
+        "corridor_fingerprint": "a39df7ca82f39dcc591dfddbefe01881f1ea15a7bd4b483cd5ecf42a3427c5ba",
+        "full_trace_fingerprint": "2b64b7455f3b17c0ce808a4a6202c102b05f7f628f30325b690530dc3193f716",
+        "primary_static_fingerprint": "50bd06407c0d7a047d2e174d60dc8215420bfe6aa87756b8e6665a7af7ac4960",
+        "rhythm_payload_fingerprint": "de4172e90dbe483618d32df701271bf2c790cec59dba266756f92c7696facd67",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Lo-Fi",
+      "genre_id": "15",
+      "genre_key": "LoFi",
+      "key": "LoFi:15",
+      "kind": "RECIPE",
+      "recipe": "Minimal Sleep",
+      "recipe_id": "15",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@60;4:GAP FILL@40;6:SPARSE ANCHOR@150;8:HALF-TIME POCKET@135;10:SUSTAIN/DROP@115"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@125;2:WHOLE BAR HOLD@150;5:BACKBEAT STAB@55;7:SPARSE CHORD REPLY@115"
+        },
+        "corridor": {
+          "bpm_max": "90",
+          "bpm_min": "54",
+          "bpm_suggested": "72",
+          "density_max": "8",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@20;1:SWING COMPAT@90;2:LAID BACK@150;3:PUSH/PULL@120"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@110;2:DELAYED ANSWER@105;3:TWO-NOTE HOOK@100;4:PICKUP PHRASE@60;5:LONG TONE@95;6:REST HEAVY@160;7:BAR-END RESPONSE@90;9:DRIFT PHRASE@105"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@75;2:TWO-NOTE CELL@125;4:CALL/RESPONSE@105;5:PIVOT@55"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@100;4:II-V-I@130;5:PARALLEL SHIFT@135;7:BORROWED LIFT@70"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "ec0ea3293b30f04d467ab483e2f170557e71592f56da82a647983f224bb69cb0",
+          "rhythm_payload_fingerprint": "2eb379eb29329ba508f30ea823ad9b8f9aac60ad0e02c3da9428e2a0c06af3b5",
+          "rhythms": "403:hypnotic_sparse@55;415:sparse_fast_break@115;416:halftime_switch@135;713:funk_house_bridge@95;714:electro_gap_push@65"
+        },
+        "secondary_role": {
+          "secondary_role": "ChordWithMelodicFill"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "ec0ea3293b30f04d467ab483e2f170557e71592f56da82a647983f224bb69cb0",
+        "composition_support_fingerprint": "cf45f63def542ba2c922bb95de30a219d5352c8582f2d261fa5109d8bce4a3c2",
+        "composition_weighted_fingerprint": "b04cd0add4ae6800ab4eab2702c9ebf06b6aef7c089a486c71183bdd15df3694",
+        "corridor_fingerprint": "ec54d5a3fd45e94c0a1185b6d11e3ad75cfef879fd38e6fad2c924245f47a4f0",
+        "full_trace_fingerprint": "6e50a46fa6fffcf69284e2433ed7b14c6317c7c76de1e928597b646180bc93de",
+        "primary_static_fingerprint": "d26b55decb13d78a83460cc4c3e117f21e1355677d74647fed9ef92e78f13706",
+        "rhythm_payload_fingerprint": "2eb379eb29329ba508f30ea823ad9b8f9aac60ad0e02c3da9428e2a0c06af3b5",
+        "role_fingerprint": "22ed600c24cd9978dd85e2de61fa76efa62dd7efb1f3e4c92261e5fa578d8b4f",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Lo-Fi",
+      "genre_id": "15",
+      "genre_key": "LoFi",
+      "key": "LoFi:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "1:ROOT PULSE@100;7:ROLLING DRIVE@95;9:SYNCOPATED HOOK@110"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@110;2:WHOLE BAR HOLD@100;5:BACKBEAT STAB@35;7:SPARSE CHORD REPLY@120"
+        },
+        "corridor": {
+          "bpm_max": "125",
+          "bpm_min": "88",
+          "bpm_suggested": "108",
+          "density_max": "11",
+          "density_min": "4",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@50;3:POP CYCLE@150;7:BORROWED LIFT@45"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "21e65b7f7d7fa2a87ded1f8bd3e143fde58ce8f05aa84623479df9e9b2efb03d",
+          "rhythm_payload_fingerprint": "c17cb9afa69a54b31ca8675fdb127b1c04efe0685e2a5ffdbcf01eaf21adde90",
+          "rhythms": "401:straight_drive@90;403:hypnotic_sparse@120;711:stacked_quarters@110;713:funk_house_bridge@100"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0156|bass_preferred_contours_mask=0x0054|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03fe|melodic_preferred_contours_mask=0x00dc|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "21e65b7f7d7fa2a87ded1f8bd3e143fde58ce8f05aa84623479df9e9b2efb03d",
+        "composition_support_fingerprint": "f67f57335a54f77a2987a6ada96d0e8a9758858206cb123ef31f805b31c2805e",
+        "composition_weighted_fingerprint": "ee3e83ade487662af38932568cedc583d9b229ae8d1535bbf86df6b290d88c5b",
+        "corridor_fingerprint": "6f690dd1226b7afaea1dcba15404e8fd132638f1623742ceee424de51a1bf861",
+        "full_trace_fingerprint": "a0b4f3a30cd29a64062c5759e8621c3db56c33df55e18966c5c94d65722efbfb",
+        "primary_static_fingerprint": "4b470097f2085d117fdfaf2ffa244e2e9b8d9378b7e16fd683ee5f36c73d8e30",
+        "rhythm_payload_fingerprint": "c17cb9afa69a54b31ca8675fdb127b1c04efe0685e2a5ffdbcf01eaf21adde90",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "9ac37ac14d0d6214a208ace541755a8fdbb7923e6baf4d1fa9861452b4d9ae1c"
+      },
+      "genre": "Synthwave",
+      "genre_id": "1",
+      "genre_key": "Outrun",
+      "key": "Outrun:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "150",
+          "bpm_min": "138",
+          "bpm_suggested": "145",
+          "density_max": "15",
+          "density_min": "8",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "95ae5e71cc71f0dc38e428e561e60f1f8f51140c96a027d8b99b69d6441d709c",
+          "rhythm_payload_fingerprint": "2137913191cacb9ea513a9d28eca32bf213cfd1248d5ef3447df288a749dcc7b",
+          "rhythms": "401:straight_drive@120;402:offbeat_open_hat@110;406:rolling_acid@100"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0002|bass_preferred_contours_mask=0x0000|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=12|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "95ae5e71cc71f0dc38e428e561e60f1f8f51140c96a027d8b99b69d6441d709c",
+        "composition_support_fingerprint": "5dfe5a596c31e9e1d52a046cad5d273836f9dcbcc2afc68f8795812e2bc5a549",
+        "composition_weighted_fingerprint": "4027e78be53f0a88d555943df6341cd00d66e42f8cd73870c18ce766653948bd",
+        "corridor_fingerprint": "d624c1334b94e617510ea7c30326ff0119b322cb3df546908b704edb68d997c5",
+        "full_trace_fingerprint": "ee9ab1e81deab5d09560ce57735cacd68d769c94a85cd933d01cebc4bea2be75",
+        "primary_static_fingerprint": "fa706461de1668a8072fa3336353183076ddc974db1a2f210c9f268dccb09212",
+        "rhythm_payload_fingerprint": "2137913191cacb9ea513a9d28eca32bf213cfd1248d5ef3447df288a749dcc7b",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "454e0e55ecf1a6eab6d3e9c5f00ca597d790bc619740642f46070c388f344f18"
+      },
+      "genre": "Rave",
+      "genre_id": "4",
+      "genre_key": "Rave",
+      "key": "Rave:4",
+      "kind": "RECIPE",
+      "recipe": "Psytrance",
+      "recipe_id": "4",
+      "single_option_axes": "tonal.bass_contour=ROOT ANCHOR;tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "160",
+          "bpm_min": "132",
+          "bpm_suggested": "145",
+          "density_max": "15",
+          "density_min": "7",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "1:LOOP/1bar@65;2:LOOP/2bar@110;20:REPEAT/REPLY/4bar@70"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "d0d9ce93d7a8cc4b3fc09cdcd5a060d6708c778fbc76247b42f87d01a059d3ef",
+          "rhythm_payload_fingerprint": "3d2ddcb3bbbf64aa728a2d1a85301f6dcd4ca596697f4377fb4508e67283ad1e",
+          "rhythms": "401:straight_drive@120;402:offbeat_open_hat@110;404:broken_techno@90;419:shuffled_4x4@80"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0002|bass_preferred_contours_mask=0x0000|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=12|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "d0d9ce93d7a8cc4b3fc09cdcd5a060d6708c778fbc76247b42f87d01a059d3ef",
+        "composition_support_fingerprint": "aede2c596e322259ccad6b3b5be6a3d6ae6397d5970b501716e4e2196ba04a80",
+        "composition_weighted_fingerprint": "ead99e607c48c43a5fcf209d5ea38e890e0f86b01952e3177840644741e09775",
+        "corridor_fingerprint": "f37dc6193f32b8d2ea6930bc9a5f5d48e326bf69b3b64acf1655e1c9c9a5dedf",
+        "full_trace_fingerprint": "a352444304ad297110bcbc7e2d3a0b00853e9e4af1e3fa7800686d9c70ada8b9",
+        "primary_static_fingerprint": "6be63d445020de1a3537af6458cca67d2e8a3e985a243d6b486dc1848196859e",
+        "rhythm_payload_fingerprint": "3d2ddcb3bbbf64aa728a2d1a85301f6dcd4ca596697f4377fb4508e67283ad1e",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "454e0e55ecf1a6eab6d3e9c5f00ca597d790bc619740642f46070c388f344f18"
+      },
+      "genre": "Rave",
+      "genre_id": "4",
+      "genre_key": "Rave",
+      "key": "Rave:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_contour=ROOT ANCHOR;tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@85;4:GAP FILL@75;6:SPARSE ANCHOR@120;10:SUSTAIN/DROP@100"
+        },
+        "chord": {
+          "chord": "2:WHOLE BAR HOLD@55;4:OFFBEAT STAB@85;7:SPARSE CHORD REPLY@95;8:DUB CHORD SPACE@120"
+        },
+        "corridor": {
+          "bpm_max": "124",
+          "bpm_min": "108",
+          "bpm_suggested": "116",
+          "density_max": "8",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@25;2:LAID BACK@120;3:PUSH/PULL@65"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@100;5:LONG TONE@70;6:REST HEAVY@120;9:DRIFT PHRASE@90"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@100;2:TWO-NOTE CELL@65;4:CALL/RESPONSE@110"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@80;2:PEDAL DRONE@150;7:BORROWED LIFT@55"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "925acf22b8f24e22c58866832f5b3ce0edb9e262fb818d07cd67f18f3a874139",
+          "rhythm_payload_fingerprint": "664814c429aea190dbd8dcecfb17d73ded76fd1dcc16b4cd6bbfac12c54864b9",
+          "rhythms": "412:chord_response@120"
+        },
+        "secondary_role": {
+          "secondary_role": "Chord"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0116|bass_preferred_contours_mask=0x0106|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "925acf22b8f24e22c58866832f5b3ce0edb9e262fb818d07cd67f18f3a874139",
+        "composition_support_fingerprint": "6f37580b34679d6e33a74d7c6cbaceee1c7f3a96312f1774dfc1113a0099809e",
+        "composition_weighted_fingerprint": "fca22e4df3e07bc8dee45d766fca68cbe58d67e17572314733ee174ddd4633a5",
+        "corridor_fingerprint": "f4267d2f198c413184f162f74be87c3fd2edacbc2b7a751cbe3cac2bdd59147d",
+        "full_trace_fingerprint": "468a565fdf85fb0c35f18f41fa2edd99d06b0e4deab8242551a311e97e71c998",
+        "primary_static_fingerprint": "a7df848f9e4d46dcf9162ac4c2120e805455eb284f3ac590f884203d7cff4ae5",
+        "rhythm_payload_fingerprint": "664814c429aea190dbd8dcecfb17d73ded76fd1dcc16b4cd6bbfac12c54864b9",
+        "role_fingerprint": "456bb0100878d4840d9afc2a296736fdb8e6eddb7641902a990da60ebe248977",
+        "tonal_payload_fingerprint": "02b5183ddc0c44522a7d231b4c8c9ce7dba294e83d08d14daad6d704452a5ee1"
+      },
+      "genre": "Dub/Reggae",
+      "genre_id": "5",
+      "genre_key": "Reggae",
+      "key": "Reggae:10",
+      "kind": "RECIPE",
+      "recipe": "Deep Chord",
+      "recipe_id": "10",
+      "single_option_axes": "composition.rhythms=chord_response;tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@85;4:GAP FILL@75;6:SPARSE ANCHOR@120;10:SUSTAIN/DROP@100"
+        },
+        "chord": {
+          "chord": "2:WHOLE BAR HOLD@55;4:OFFBEAT STAB@85;7:SPARSE CHORD REPLY@95;8:DUB CHORD SPACE@120"
+        },
+        "corridor": {
+          "bpm_max": "102",
+          "bpm_min": "72",
+          "bpm_suggested": "86",
+          "density_max": "7",
+          "density_min": "1",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "1:SWING COMPAT@60;2:LAID BACK@120;3:PUSH/PULL@40"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@100;5:LONG TONE@70;6:REST HEAVY@120;9:DRIFT PHRASE@90"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@100;2:TWO-NOTE CELL@65;4:CALL/RESPONSE@110"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@80;2:PEDAL DRONE@150;7:BORROWED LIFT@55"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "d999b1fe2dda3dcc8865c489a1e8c9954edd922b33c8987ec8149032f1752567",
+          "rhythm_payload_fingerprint": "e88ca51a757d7fa92a234a692f64ba8f0b8a7fb525c507878d697adf34ed4aea",
+          "rhythms": "409:one_drop_space@100;411:sparse_skank@120;412:chord_response@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Chord"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0116|bass_preferred_contours_mask=0x0106|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MEMBERSHIP-CHANGE;MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "d999b1fe2dda3dcc8865c489a1e8c9954edd922b33c8987ec8149032f1752567",
+        "composition_support_fingerprint": "1c173d340a0687c1552e41e93d1d7cedba9c30ac41481c5e09f556480d7da585",
+        "composition_weighted_fingerprint": "04b0bfbad293cd1fef6f26bef6528b126a6767c345a224dbae70ae06beba71de",
+        "corridor_fingerprint": "0f532416b89b3059f90f7f66aef388c23d5d9c8a7b656efdafcc43f24b0c55a9",
+        "full_trace_fingerprint": "4dc09dd9789eb00033c0088616451bac55d485d183e5f4c195a33ddcba686630",
+        "primary_static_fingerprint": "93c95f73e8f0037665b36342bbb6e615a3cac859f42594e0910882774ccc2d9b",
+        "rhythm_payload_fingerprint": "e88ca51a757d7fa92a234a692f64ba8f0b8a7fb525c507878d697adf34ed4aea",
+        "role_fingerprint": "456bb0100878d4840d9afc2a296736fdb8e6eddb7641902a990da60ebe248977",
+        "tonal_payload_fingerprint": "02b5183ddc0c44522a7d231b4c8c9ce7dba294e83d08d14daad6d704452a5ee1"
+      },
+      "genre": "Dub/Reggae",
+      "genre_id": "5",
+      "genre_key": "Reggae",
+      "key": "Reggae:11",
+      "kind": "RECIPE",
+      "recipe": "Minimal Space",
+      "recipe_id": "11",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@85;4:GAP FILL@75;6:SPARSE ANCHOR@120;10:SUSTAIN/DROP@100"
+        },
+        "chord": {
+          "chord": "2:WHOLE BAR HOLD@55;4:OFFBEAT STAB@85;7:SPARSE CHORD REPLY@95;8:DUB CHORD SPACE@120"
+        },
+        "corridor": {
+          "bpm_max": "128",
+          "bpm_min": "112",
+          "bpm_suggested": "120",
+          "density_max": "8",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "1:SWING COMPAT@60;2:LAID BACK@120;3:PUSH/PULL@40"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@100;5:LONG TONE@70;6:REST HEAVY@120;9:DRIFT PHRASE@90"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@100;2:TWO-NOTE CELL@65;4:CALL/RESPONSE@110"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@80;2:PEDAL DRONE@150;7:BORROWED LIFT@55"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "243e91fd6443f32003f121dc73676f6658b972182bc0e51c493b26cdd7a5ba38",
+          "rhythm_payload_fingerprint": "94674cf83308869bbd7b2fdfda752b4e984997989d7584549f5362bce6aaffdc",
+          "rhythms": "409:one_drop_space@110;410:steppers@100;411:sparse_skank@110;412:chord_response@120"
+        },
+        "secondary_role": {
+          "secondary_role": "Chord"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0116|bass_preferred_contours_mask=0x0106|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "COMPOSITION;CORRIDOR;DRUM",
+      "classification_vs_base": "MULTI-DOMAIN",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "243e91fd6443f32003f121dc73676f6658b972182bc0e51c493b26cdd7a5ba38",
+        "composition_support_fingerprint": "20978971d3425122a117bcc364c1cad5801b5cfc2f47055d058e0919f5cb6fcf",
+        "composition_weighted_fingerprint": "6d4466e7264ec309fe6fae666dd7e00cab9c6d7649262061c838534b0c3d452c",
+        "corridor_fingerprint": "fa5bdbdd3a37c6de2ad7eaf2d8a39886a171138da8d22cdad331743ec759de08",
+        "full_trace_fingerprint": "94157de49b2b9ec126d01f800e5a97b17ea55fb25ca0206a5cd2c06c432c5ed2",
+        "primary_static_fingerprint": "34da30a241a72313904c932e084304b85fa29e983734bf0e7952b8ac8c395c16",
+        "rhythm_payload_fingerprint": "94674cf83308869bbd7b2fdfda752b4e984997989d7584549f5362bce6aaffdc",
+        "role_fingerprint": "456bb0100878d4840d9afc2a296736fdb8e6eddb7641902a990da60ebe248977",
+        "tonal_payload_fingerprint": "02b5183ddc0c44522a7d231b4c8c9ce7dba294e83d08d14daad6d704452a5ee1"
+      },
+      "genre": "Dub/Reggae",
+      "genre_id": "5",
+      "genre_key": "Reggae",
+      "key": "Reggae:5",
+      "kind": "RECIPE",
+      "recipe": "Dub Techno",
+      "recipe_id": "5",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@85;4:GAP FILL@75;6:SPARSE ANCHOR@120;10:SUSTAIN/DROP@100"
+        },
+        "chord": {
+          "chord": "2:WHOLE BAR HOLD@55;4:OFFBEAT STAB@85;7:SPARSE CHORD REPLY@95;8:DUB CHORD SPACE@120"
+        },
+        "corridor": {
+          "bpm_max": "105",
+          "bpm_min": "68",
+          "bpm_suggested": "82",
+          "density_max": "9",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "1:SWING COMPAT@60;2:LAID BACK@120;3:PUSH/PULL@40"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@100;5:LONG TONE@70;6:REST HEAVY@120;9:DRIFT PHRASE@90"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@100;2:TWO-NOTE CELL@65;4:CALL/RESPONSE@110"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@80;2:PEDAL DRONE@150;7:BORROWED LIFT@55"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "f3941208f737a54e174d3103a23e0e4ed20c6fd465cc6a4c7066357e83c7b59c",
+          "rhythm_payload_fingerprint": "a6b50fcbf6916177ba0f5f7ef2a98318cd33b35857fe6a67eab4eb77fd271d11",
+          "rhythms": "409:one_drop_space@120;410:steppers@110;411:sparse_skank@110;412:chord_response@100"
+        },
+        "secondary_role": {
+          "secondary_role": "Chord"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0116|bass_preferred_contours_mask=0x0106|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "f3941208f737a54e174d3103a23e0e4ed20c6fd465cc6a4c7066357e83c7b59c",
+        "composition_support_fingerprint": "20978971d3425122a117bcc364c1cad5801b5cfc2f47055d058e0919f5cb6fcf",
+        "composition_weighted_fingerprint": "e9f589b109628c06d81bf061120d9066675649436ecf2f37492436653a2b401f",
+        "corridor_fingerprint": "b16df9792a74fec71d40bf06e9b22a32ff5d13aa325a3d27fe06d94426b806af",
+        "full_trace_fingerprint": "5f7f798c2a8684db5bfc16839c6261280ff6e36b7af96319025100e827d7a1b3",
+        "primary_static_fingerprint": "327e75f27a499cd17bbb1e2400123cd93318ed364136f98974693a2c1d5cd0e0",
+        "rhythm_payload_fingerprint": "a6b50fcbf6916177ba0f5f7ef2a98318cd33b35857fe6a67eab4eb77fd271d11",
+        "role_fingerprint": "456bb0100878d4840d9afc2a296736fdb8e6eddb7641902a990da60ebe248977",
+        "tonal_payload_fingerprint": "02b5183ddc0c44522a7d231b4c8c9ce7dba294e83d08d14daad6d704452a5ee1"
+      },
+      "genre": "Dub/Reggae",
+      "genre_id": "5",
+      "genre_key": "Reggae",
+      "key": "Reggae:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "2:KICK LOCK@70;5:OFFBEAT PUSH@90;7:ROLLING DRIVE@110;9:SYNCOPATED HOOK@75"
+        },
+        "chord": {
+          "chord": "3:HALF BAR CHANGE@75;4:OFFBEAT STAB@110;6:ANTICIPATED CHANGE@85;9:SYNCOPATED COMP@70"
+        },
+        "corridor": {
+          "bpm_max": "146",
+          "bpm_min": "124",
+          "bpm_suggested": "134",
+          "density_max": "14",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@120;3:PUSH/PULL@45"
+        },
+        "melodic": {
+          "melodic": "3:TWO-NOTE HOOK@80;4:PICKUP PHRASE@85;8:SYNCOPATED MOTIF@110;10:REPEATED CELL@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@70;2:TWO-NOTE CELL@110;3:MIRROR@65;5:PIVOT@90"
+        },
+        "phrase": {
+          "phrases": "2:LOOP/2bar@55;20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@120"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@190;2:PEDAL DRONE@35"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "ce1682837115867767a0659e26cf1d8c1cad1ce991efef9e0118aaf0e5747c9e",
+          "rhythm_payload_fingerprint": "fb759f1731e97769b2fcce604bd98d3312c8577888592677d1b822ab3f6b7f0e",
+          "rhythms": "401:straight_drive@120;402:offbeat_open_hat@110;403:hypnotic_sparse@105;404:broken_techno@105;420:machine_syncopation@90"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0002|bass_preferred_contours_mask=0x0000|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x0002|melodic_preferred_contours_mask=0x0000|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=12|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "ce1682837115867767a0659e26cf1d8c1cad1ce991efef9e0118aaf0e5747c9e",
+        "composition_support_fingerprint": "ba50997a1170a9582d7491d59ee3aae781f3b72a2ac2c652b9ab8d63964265a6",
+        "composition_weighted_fingerprint": "0337394872c509ffe2bfd38e479d6914e0ef15aeb088ab37ecaddbe34b89b987",
+        "corridor_fingerprint": "57f3fc05aa21ceacb7f1f7cb271c1b9b29664f3d22942b1d0fadd0e00073fe09",
+        "full_trace_fingerprint": "5b3fd7754b2e6bca18426fad3527b4264dca28882ffba26a7418f41c86516dee",
+        "primary_static_fingerprint": "56bca709b31b83aca80e444e449970cda55db86312a9ef24919965de40e52b0b",
+        "rhythm_payload_fingerprint": "fb759f1731e97769b2fcce604bd98d3312c8577888592677d1b822ab3f6b7f0e",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "454e0e55ecf1a6eab6d3e9c5f00ca597d790bc619740642f46070c388f344f18"
+      },
+      "genre": "Techno",
+      "genre_id": "10",
+      "genre_key": "Techno",
+      "key": "Techno:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_contour=ROOT ANCHOR;tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_contour=STATIC;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@75;4:GAP FILL@45;6:SPARSE ANCHOR@120;8:HALF-TIME POCKET@100;10:SUSTAIN/DROP@80"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@110;2:WHOLE BAR HOLD@100;5:BACKBEAT STAB@35;7:SPARSE CHORD REPLY@120"
+        },
+        "corridor": {
+          "bpm_max": "98",
+          "bpm_min": "66",
+          "bpm_suggested": "80",
+          "density_max": "9",
+          "density_min": "2",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@25;2:LAID BACK@120;3:PUSH/PULL@65"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@85;2:DELAYED ANSWER@110;3:TWO-NOTE HOOK@70;5:LONG TONE@75;6:REST HEAVY@120"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@100;2:TWO-NOTE CELL@65;4:CALL/RESPONSE@110"
+        },
+        "phrase": {
+          "phrases": "20:REPEAT/REPLY/4bar@100;36:DEVELOP/RETURN/4bar@70;56:SPARSE DRIFT/8bar@120"
+        },
+        "progression": {
+          "progressions": "2:PEDAL DRONE@70;4:II-V-I@150;5:PARALLEL SHIFT@100"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "cd78fefb0c21213d585ae8b5c3c554cf785cdd0eadb6167f4b1f37e53556e32d",
+          "rhythm_payload_fingerprint": "576825ad9319db0a76d19bbbb6acde73e73bcd44580b5c939b4b9eec20c682f0",
+          "rhythms": "415:sparse_fast_break@120;416:halftime_switch@130;713:funk_house_bridge@90;714:electro_gap_push@75"
+        },
+        "secondary_role": {
+          "secondary_role": "Chord"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0136|bass_preferred_contours_mask=0x0130|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x03b2|melodic_preferred_contours_mask=0x00b2|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "cd78fefb0c21213d585ae8b5c3c554cf785cdd0eadb6167f4b1f37e53556e32d",
+        "composition_support_fingerprint": "9a45374ca94e5ec95e3eca255643058995fc0006398b8e6dd6c53c2b5d9afe6f",
+        "composition_weighted_fingerprint": "daa3e4751b2088c0dceeaec0cc4055900a314bfa52f8a94aa91113b67e61c5a1",
+        "corridor_fingerprint": "6799c890ec89ed42747e9698f5a03341a5c4d7c9c347375fecdb32edca26bdda",
+        "full_trace_fingerprint": "756e1dbb2f526dbd416e58c4686e2659519d39c1845db6a0f92b2340ac372c28",
+        "primary_static_fingerprint": "42dd771216084d87b1edbe66619d5ee5aa0b788b6018b04d5c7a1f1fb122c011",
+        "rhythm_payload_fingerprint": "576825ad9319db0a76d19bbbb6acde73e73bcd44580b5c939b4b9eec20c682f0",
+        "role_fingerprint": "456bb0100878d4840d9afc2a296736fdb8e6eddb7641902a990da60ebe248977",
+        "tonal_payload_fingerprint": "98fcdf0bc8ddb3504bf6c2fbc150e6e37cc3e6f491cbe3e267907984d26af51a"
+      },
+      "genre": "Trip-Hop",
+      "genre_id": "6",
+      "genre_key": "TripHop",
+      "key": "TripHop:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    },
+    {
+      "axes": {
+        "bass": {
+          "bass": "3:KICK ANSWER@90;4:GAP FILL@90;5:OFFBEAT PUSH@70;9:SYNCOPATED HOOK@120"
+        },
+        "chord": {
+          "chord": "1:HELD PAD@55;5:BACKBEAT STAB@80;6:ANTICIPATED CHANGE@100;7:SPARSE CHORD REPLY@90"
+        },
+        "corridor": {
+          "bpm_max": "140",
+          "bpm_min": "126",
+          "bpm_suggested": "132",
+          "density_max": "13",
+          "density_min": "5",
+          "grid_steps": "16"
+        },
+        "feel": {
+          "feels": "0:STRAIGHT@45;1:SWING COMPAT@110;3:PUSH/PULL@70"
+        },
+        "melodic": {
+          "melodic": "1:SPARSE CALL@55;2:DELAYED ANSWER@110;4:PICKUP PHRASE@85;7:BAR-END RESPONSE@100"
+        },
+        "motif": {
+          "motifs": "1:SOURCE ORDER@55;3:MIRROR@75;4:CALL/RESPONSE@120;5:PIVOT@80"
+        },
+        "phrase": {
+          "phrases": "18:REPEAT/REPLY/2bar@55;20:REPEAT/REPLY/4bar@110;36:DEVELOP/RETURN/4bar@95"
+        },
+        "progression": {
+          "progressions": "1:STATIC MODAL@85;5:PARALLEL SHIFT@65;6:MINOR FALL@45;7:BORROWED LIFT@80"
+        },
+        "rhythm": {
+          "canonical_drum_fingerprint": "dee6ce31a257768023603cd5070efcefe94a7acc4d72d8a114ab2c1cbc6c5915",
+          "rhythm_payload_fingerprint": "10365923466ab308a87784e08e6a2ecbec3ad4beee8a6a16dd1017696cd52de9",
+          "rhythms": "417:classic_2step@125;418:skippy_2step@120;419:shuffled_4x4@105;420:machine_syncopation@75"
+        },
+        "secondary_role": {
+          "secondary_role": "Melodic"
+        },
+        "tonal": {
+          "tonal_payload": "bass_allowed_contours_mask=0x0076|bass_preferred_contours_mask=0x0034|bass_allowed_articulations_mask=0x0002|bass_preferred_articulations_mask=0x0000|melodic_allowed_rhythm_ops_mask=0x0002|melodic_preferred_rhythm_ops_mask=0x0000|melodic_allowed_contours_mask=0x038e|melodic_preferred_contours_mask=0x038c|melodic_allowed_motif_ops_mask=0x0002|melodic_preferred_motif_ops_mask=0x0000|bass_register_min=24|bass_register_max=47|bass_register_max_leap=23|secondary_register_min=48|secondary_register_max=71|secondary_register_max_leap=16"
+        }
+      },
+      "changed_domains_vs_base": "NONE",
+      "classification_vs_base": "BASE",
+      "fingerprints": {
+        "canonical_drum_fingerprint": "dee6ce31a257768023603cd5070efcefe94a7acc4d72d8a114ab2c1cbc6c5915",
+        "composition_support_fingerprint": "bf7799b4abf8726873654abaec34c6b2f1aa1668b4c0d4f395afcf8332547ba8",
+        "composition_weighted_fingerprint": "6f416f0e78667757b83c2112c04ec1a1f094e12469537cd381848f994fba2b4e",
+        "corridor_fingerprint": "d1ba1b3d15a65ca5d56271892fd3eb2f381bfc52e9d19627bbb37c4eea708177",
+        "full_trace_fingerprint": "d52ac58ae651f11e118e4e9a3465d75ab8df8ef93b5e6e9f6ae1ddc91f4129c8",
+        "primary_static_fingerprint": "d74035d4a6d6c5d6055e8bbaa439b3de7d229af5f019ada9be1fef7042cd5f33",
+        "rhythm_payload_fingerprint": "10365923466ab308a87784e08e6a2ecbec3ad4beee8a6a16dd1017696cd52de9",
+        "role_fingerprint": "9f3c0de140688689933e6406b2fdec1bc35a0cc468c4a1f70bea761ad40cdbf0",
+        "tonal_payload_fingerprint": "87f030fa12014045b56c2df5bb96c00a765200b4ec4e079883afb5916c9a2f80"
+      },
+      "genre": "UK Garage",
+      "genre_id": "13",
+      "genre_key": "UkGarage",
+      "key": "UkGarage:BASE",
+      "kind": "BASE",
+      "recipe": "BASE",
+      "recipe_id": "BASE",
+      "single_option_axes": "tonal.bass_articulation=PLAIN;tonal.melodic_rhythm_operation=PRESERVE;tonal.melodic_motif_operation=NONE"
+    }
+  ],
+  "schema_version": 1,
+  "semantic_base_sha": "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d",
+  "source_sha": "82cfbd9f2c05074cd58b3841b29fb871219e54c8"
+}

@@ -9,6 +9,8 @@ build_output/
 *.a
 *.d
 *.log
+__pycache__/
+*.py[cod]
 platform_sdl/miniacid
 platform_sdl/grooveputer
 
