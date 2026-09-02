@@ -697,8 +697,6 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
     velocity = clampDataByte(velocity);
     if (velocity < 1) velocity = 1;
     const uint8_t channel = generatedChannel(target);
-    auto* cell = owners_.open(channel, note);
-    if (cell == nullptr) return false;
 
     if (generatedNoteActive(targetIndex, note)) {
         // Generated tools may intentionally retrigger the same tone (ratchet).
@@ -710,6 +708,10 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
         return true;
     }
 
+    // Reserved only once the retrigger path above is ruled out, so a
+    // bitset/table disagreement cannot leave an empty cell behind.
+    auto* cell = owners_.open(channel, note);
+    if (cell == nullptr) return false;
     if (cell->wire == 255u) {
         owners_.prune();
         return false;

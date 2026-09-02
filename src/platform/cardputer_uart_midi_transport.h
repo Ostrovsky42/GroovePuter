@@ -29,6 +29,10 @@ constexpr int kCardputerUartMidiTxPin = 2;
 // time, so a saturated link cannot starve the dispatcher.
 constexpr std::size_t kCardputerUartMidiDrainBudget = 32;
 
+// Explicit driver TX buffer. service() paces itself with availableForWrite(),
+// which reports nothing usable when the driver has no buffer of its own.
+constexpr std::size_t kCardputerUartMidiTxBufferBytes = 256;
+
 class CardputerUartMidiTransport final : public IMidiTransport {
 public:
     bool begin() override;

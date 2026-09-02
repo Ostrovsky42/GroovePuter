@@ -44,6 +44,7 @@ public:
     struct Diagnostics {
         uint32_t secondaryRejected{0};
         uint32_t secondaryOnlyDelivered{0};
+        uint32_t secondarySkipped{0};
         uint32_t primaryConsecutiveRejects{0};
         uint32_t primaryStallDemotions{0};
     };
@@ -149,16 +150,30 @@ private:
             diagnostics_.primaryConsecutiveRejects = 0;
         }
 
-        bool secondaryResult = false;
-        if (secondaryEnabled_ && secondary_.mounted()) {
-            secondaryResult = send(secondary_);
-            if (!secondaryResult) ++diagnostics_.secondaryRejected;
-        }
-
         // The primary keeps its authority only while it is actually working.
         // Once demoted, a dead wire can no longer silence a live one.
         const bool primaryAuthoritative =
             primaryMounted && !(wasStalled || primaryStalled());
+
+        // The result this call returns is what the owner records. If an
+        // authoritative primary refused the message, the owner will treat it as
+        // never sent - so the secondary must not send it either. Otherwise a
+        // single transient USB backpressure event leaves a note sounding on the
+        // DIN synth that no owner knows about, and on the SMF path its retries
+        // stack duplicate NoteOn messages on that wire.
+        //
+        // This is what makes "both wires receive identical traffic" true rather
+        // than aspirational.
+        const bool skipSecondary = primaryAuthoritative && !primaryResult;
+
+        bool secondaryResult = false;
+        if (skipSecondary) {
+            ++diagnostics_.secondarySkipped;
+        } else if (secondaryEnabled_ && secondary_.mounted()) {
+            secondaryResult = send(secondary_);
+            if (!secondaryResult) ++diagnostics_.secondaryRejected;
+        }
+
         if (primaryAuthoritative) return primaryResult;
         if (secondaryResult) ++diagnostics_.secondaryOnlyDelivered;
         return primaryResult || secondaryResult;

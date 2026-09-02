@@ -9,7 +9,6 @@
 
 #if !defined(ARDUINO)
 #error "CardputerUsbMidiTransport is available only in the Arduino firmware build"
-
 #endif
 
 #include "USB.h"

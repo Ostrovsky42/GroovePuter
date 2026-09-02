@@ -1558,7 +1558,11 @@ void setCardputerDinMidiEnabled(bool enabled) {
         for (uint8_t channel = 0; channel < 16; ++channel) {
             (void)din.sendControlChange(channel, 123, 0);
         }
-        din.service();
+        // Deliberately not drained here. service() is called only from
+        // midiDispatchTask, and the queue's producer/consumer split assumes
+        // exactly one drainer; draining from whatever task flips this toggle
+        // would race the dispatcher. The dispatcher picks these up on its next
+        // iteration, well before a human notices.
     }
     g_wire.setSecondaryEnabled(enabled);
 }

@@ -107,6 +107,54 @@ void usbBackpressureStillReportsFailure() {
     usb.accept = false;
 
     assert(!tee.sendNoteOn(0, 60, 100));
+
+    // And the secondary must NOT have sent it. The owner records this call as
+    // "never sent", so a note on the DIN wire here would have no owner and
+    // therefore never receive its NoteOff. An earlier version did send it, and
+    // this assertion pinned that bug as contract.
+    assert(din.sent.empty());
+    assert(tee.diagnostics().secondarySkipped == 1);
+}
+
+void aSingleUsbRejectLeavesNothingSoundingOnTheSecondary() {
+    // Transient backpressure, far below the stall threshold, followed by a
+    // successful retry: exactly one NoteOn must exist on each wire.
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+
+    usb.accept = false;
+    assert(!tee.sendNoteOn(0, 60, 100));
+    assert(din.sent.empty());
+
+    usb.accept = true;
+    assert(tee.sendNoteOn(0, 60, 100));
+    assert(usb.sent.size() == 1);
+    assert(din.sent.size() == 1);
+
+    assert(tee.sendNoteOff(0, 60, 0));
+    assert(usb.sent.size() == 2);
+    assert(din.sent.size() == 2);
+}
+
+void smfStyleRetriesDoNotStackDuplicatesOnTheSecondary() {
+    // The SMF path retries a refused send up to 24 times. Every refusal must
+    // leave the secondary untouched, or those retries become duplicate NoteOn
+    // messages on the DIN wire.
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+
+    usb.accept = false;
+    for (int attempt = 0; attempt < 24; ++attempt) {
+        assert(!tee.sendNoteOn(0, 60, 100));
+    }
+    assert(din.sent.empty());
+
+    usb.accept = true;
+    assert(tee.sendNoteOn(0, 60, 100));
     assert(din.sent.size() == 1);
 }
 
@@ -280,6 +328,8 @@ int main() {
     bothWiresReceiveIdenticalTraffic();
     secondaryRejectionIsCountedNotEscalated();
     usbBackpressureStillReportsFailure();
+    aSingleUsbRejectLeavesNothingSoundingOnTheSecondary();
+    smfStyleRetriesDoNotStackDuplicatesOnTheSecondary();
     dinRunsStandaloneWithNoUsbHost();
     unmountedEverywhereReportsUnmounted();
     linkKindDegradesToTheLeastVerifiableActiveWire();

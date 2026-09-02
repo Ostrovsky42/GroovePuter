@@ -36,6 +36,12 @@ bool CardputerUartMidiTransport::begin() {
     deferredCount_ = 0;
     panicChannels_ = 0;
 #if defined(ARDUINO_M5STACK_CARDPUTER)
+    // service() paces itself with availableForWrite(), which is only
+    // meaningful when the driver owns a TX buffer. Sizing it explicitly keeps
+    // that contract independent of the core's default, which has been zero on
+    // some arduino-esp32 releases - and a zero-sized buffer reports no room
+    // forever, so nothing would ever drain. Must precede begin().
+    uart().setTxBufferSize(kCardputerUartMidiTxBufferBytes);
     uart().begin(static_cast<unsigned long>(kUartMidiBaud),
                  SERIAL_8N1,
                  kCardputerUartMidiRxPin,
@@ -88,21 +94,27 @@ bool CardputerUartMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
 
 bool CardputerUartMidiTransport::deferNoteOff(uint8_t channel, uint8_t note) {
     if (!begun_) return false;
+    // Taking responsibility for delivery is success from the caller's point of
+    // view: the message will reach the wire from service(). Reporting failure
+    // here would make the owner keep the note pending and send the NoteOff a
+    // second time once the queue drained - and, in DIN-only operation where
+    // this endpoint is authoritative, would block the lane's next acquire.
     for (std::size_t i = 0; i < deferredCount_; ++i) {
         if (deferred_[i].channel == channel && deferred_[i].note == note) {
-            return false;
+            return true;
         }
     }
     if (deferredCount_ >= kDeferredNoteOffCapacity) {
-        // The exact note is no longer recoverable. Escalate to the channel-wide
-        // recovery rather than leaving something sounding.
+        // The exact note is no longer recoverable, so this is a real failure.
+        // The channel-wide recovery still prevents anything being left
+        // sounding.
         panicChannels_ |= static_cast<uint16_t>(1u << channel);
         return false;
     }
     deferred_[deferredCount_].channel = channel;
     deferred_[deferredCount_].note = note;
     ++deferredCount_;
-    return false;
+    return true;
 }
 
 void CardputerUartMidiTransport::retryDeferredNoteOffs() {
