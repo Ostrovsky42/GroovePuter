@@ -1,6 +1,6 @@
 # GF2-M0 — Transient Memory Invariant Resolution
 
-Status: **FINDING RESOLVED; FREEZE PENDING REPLICATION**
+Status: **FINDING RESOLVED; FREEZE PENDING LIFECYCLE COVERAGE + MIDI-ONLY**
 
 GF2-M0 is a research / characterization / release-contract checkpoint. It is
 not a memory optimization task, GF2-I1, or GF2-C2 Gate B.
@@ -12,28 +12,53 @@ no production code, changes no musical semantics, and proves nothing
 retroactively. It closes one measurement gap.
 
 ```text
-GF2-M0R IMPLEMENTATION              PASS
-GF2-M0R SOURCE CONTRACT             PASS
-GF2-M0R TARGET BUILDS               PASS
-GF2-M0R CI                          PASS
+GF2-M0R IMPLEMENTATION          PASS
+GF2-M0R SOURCE CONTRACT         PASS
+GF2-M0R TARGET BUILDS           PASS
+GF2-M0R CI                      PASS
 
-GF2-M0 MEMORY RESOURCE ATTRIBUTION  RESOLVED
-  heap                              non-critical for PHRASE
-  fragmentation                     no PHRASE-attributed drift observed
-  loop stack                        dominant transient resource
+GF2-M0 STACK ATTRIBUTION
+  RESOLVED / REPLICATED
 
-GF2-M0 HISTORICAL 2292 INVARIANT    REJECTED
-GF2-M0 CURRENT HARDWARE EVIDENCE    PASS - normal / run #1
+GF2-M0 STACK OBSERVED MAX
+  5220 B additional loop-task low-water
+  replicated across 2 cold boots
+  not yet a formal upper bound
 
-GF2-M0 REPLICATION                  OPEN
-  second cold boot                  missing
-  midi-only                         missing
+GF2-M0 HEAP LEAK
+  NOT OBSERVED
 
-GF2-M0 RELEASE THRESHOLD            NOT FROZEN
+GF2-M0 HEAP FRAGMENTATION
+  NOT OBSERVED IN PHRASE WINDOW
+
+GF2-M0 HEAP OPERATION PRESSURE
+  NOT YET FROZEN
+  lifecycle-dependent
+  observed:
+    common paths       32 B
+    PendingNextBar    556 B max, n=3
+
+GF2-M0 LIFECYCLE COVERAGE
+  INCOMPLETE
+
+GF2-M0 NORMAL PROFILE
+  REPLICATION IN PROGRESS
+
+GF2-M0 MIDI-ONLY
+  NOT RUN
+
+GF2-M0 HISTORICAL 2292 INVARIANT
+  REJECTED
+
+GF2-M0
+  FINDING RESOLVED
+  FREEZE PENDING LIFECYCLE COVERAGE + MIDI-ONLY
 ```
 
-Run #1 measurements and the extracted series:
-[GF2_M0_HARDWARE_EVIDENCE_RUN1.md](GF2_M0_HARDWARE_EVIDENCE_RUN1.md).
+Hardware evidence:
+[run #1](GF2_M0_HARDWARE_EVIDENCE_RUN1.md) - first capture, two lifecycle
+branches; [run #2](GF2_M0_HARDWARE_EVIDENCE_RUN2.md) - cold boot #2, five
+branches, stack result replicated to the byte.
 
 The old invariant was not merely miscalibrated. It described execution depth
 through the size of the largest contiguous heap block - the wrong resource
@@ -772,34 +797,45 @@ Replication on a second cold boot and on the midi-only profile. No release
 threshold is frozen until the observed worst case stops moving.
 ```
 
-## Replication protocol
+## Run #3 protocol - targeted lifecycle census
 
-Run #1 showed the stack low-water still moving at operation 37, so replication
-is defined by a saturation condition rather than a fixed count.
+Run #2 satisfied every count in the previous saturation protocol (93 attempts,
+34 successes, against a 50/20 minimum) and still sampled `PendingNextBar` three
+times. One of those three produced the only non-baseline heap behaviour observed
+so far, 556 B.
 
-```text
-minimum
-  >= 50 PHRASE attempts
-  >= 20 successful generations
-
-prefer
-  continue until no new loop-stack low-water appears for
-  >= 25 consecutive successful generations
-```
-
-Cold boot #2 answers three questions:
+The lesson is that soak length measures the depth of the successful generation
+path and says nothing about lifecycle coverage. Run #3 is therefore scoped by
+branch counts, not duration.
 
 ```text
-1. does the absence of PHRASE heap/fragmentation drift reproduce?
-2. does a deeper loop-stack watermark appear?
-3. how stable are the initial heap / largest-block states between boots?
+PendingNextBar   >= 20     highest priority
+Busy             >= 20
+TargetChanged    >= 20
+
+CommittedNow     already covered (50 across two runs)
+Failed           already covered (60 across two runs)
 ```
 
-The midi-only profile follows the same protocol; the question of interest there
-is whether stack headroom changes or only the overall runtime memory envelope.
+Per branch, record: count, max(preFree - localMinFree), max stack low-water
+change, pre/post largestInternal8, and whether the post footprint recovers.
 
-The 27 failures observed in run #1 (19/46 successful) are deliberately out of
-scope for M0 and belong to the failure-census line.
+`PendingNextBar` is reachable only under playback. Reproduce the seq=85
+condition: PLAY active, generation requested near a bar boundary so the commit
+defers. If 20 such events keep the same shape - 32 B or 556 B, no growth, full
+recovery to the ordinary footprint - the heap conclusion becomes solid enough to
+freeze.
+
+A branch that proves genuinely hard to provoke may be sampled less, but that is
+then recorded explicitly as a coverage limitation rather than passed over.
+
+Only after the census does midi-only run, on the same protocol; the question of
+interest there is whether stack headroom changes or only the overall runtime
+memory envelope.
+
+The failures observed across both runs (60 `Failed`, plus `Busy` and
+`TargetChanged` rejections) are deliberately out of scope for M0 and belong to
+the failure-census line.
 
 Historical PMB-P1 hardware evidence proves the old OOM fix on `a52cf32...`; it
 does not establish the final transient release contract for E0/M0.
