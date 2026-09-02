@@ -20,6 +20,7 @@ REPORT = ROOT / "docs/research/GF2_C1RF_FINAL_SEMANTIC_REACHABILITY.md"
 C1_TABLE = ROOT / "docs/research/GF2_C1F_FINAL_STATIC_SEMANTIC_CENSUS.tsv"
 RELEASE_BASE = "0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d"
 C1F_BASE = "d24ebf42ba48c50d2057af055807dd2c1ec6f096"
+C1RF_HEAD = "574b830526c784ffe761286096dd62e22d6361d4"
 
 EXPECTED_COLUMNS = [
     "domain",
@@ -146,12 +147,12 @@ assert len(c1_rows) == 33
 assert {row["exact_base"] for row in c1_rows} == {RELEASE_BASE}
 
 subprocess.run(
-    ["git", "merge-base", "--is-ancestor", C1F_BASE, "HEAD"],
+    ["git", "merge-base", "--is-ancestor", C1RF_HEAD, "HEAD"],
     cwd=ROOT,
     check=True,
 )
 changed_paths = subprocess.run(
-    ["git", "diff", "--name-only", C1F_BASE, "--"],
+    ["git", "diff", "--name-only", C1F_BASE, C1RF_HEAD, "--"],
     cwd=ROOT,
     check=True,
     text=True,
