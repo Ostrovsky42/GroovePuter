@@ -185,6 +185,94 @@ void flushFollowsTheEnableFlag() {
     assert(usb.flushes == 2 && din.flushes == 1);
 }
 
+
+// --- stalled primary must not silence the secondary ----------------------
+//
+// Reproduces the hardware failure: USB plugged into a computer with no open
+// MIDI port. The device stays mounted, the TX FIFO fills after about sixteen
+// packets, and every later write is refused. With "mounted" treated as
+// "authoritative" that dead wire vetoed the live one and DIN went silent.
+
+void aStalledPrimaryLosesAuthorityAndTheSecondaryKeepsPlaying() {
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+
+    // The FIFO takes a few packets, then refuses everything.
+    for (int i = 0; i < 16; ++i) assert(tee.sendNoteOn(0, 60, 100));
+    usb.accept = false;
+
+    bool sawFailure = false;
+    for (unsigned i = 0; i < TeeMidiTransport::kPrimaryStallRejects; ++i) {
+        if (!tee.sendNoteOn(0, 61, 100)) sawFailure = true;
+    }
+    // Normal backpressure must still be reported while below the threshold,
+    // otherwise the caller's retry policy silently changes meaning.
+    assert(sawFailure);
+    assert(tee.primaryStalled());
+
+    // Past the threshold the live wire wins.
+    assert(tee.sendNoteOn(0, 62, 100));
+    assert(tee.diagnostics().primaryStallDemotions == 1);
+    assert(!din.sent.empty());
+}
+
+void aRecoveredPrimaryRegainsAuthority() {
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+    usb.accept = false;
+
+    for (unsigned i = 0; i <= TeeMidiTransport::kPrimaryStallRejects; ++i) {
+        tee.sendNoteOn(0, 60, 100);
+    }
+    assert(tee.primaryStalled());
+
+    // Traffic must keep being offered while stalled, which is how the host
+    // opening its port is noticed at all.
+    const std::size_t before = usb.sent.size();
+    usb.accept = true;
+    assert(tee.sendNoteOn(0, 60, 100));
+    assert(usb.sent.size() == before + 1);
+    assert(!tee.primaryStalled());
+
+    // Authoritative again: a fresh USB rejection is reported as failure.
+    usb.accept = false;
+    assert(!tee.sendNoteOn(0, 60, 100));
+}
+
+void transientBackpressureDoesNotDemoteThePrimary() {
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+
+    for (unsigned i = 0; i < TeeMidiTransport::kPrimaryStallRejects * 4; ++i) {
+        usb.accept = (i % 8) != 0;   // occasional refusal, always recovering
+        tee.sendNoteOn(0, 60, 100);
+    }
+    assert(!tee.primaryStalled());
+    assert(tee.diagnostics().primaryStallDemotions == 0);
+}
+
+void unmountingThePrimaryClearsTheStallCounter() {
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+    usb.accept = false;
+    for (unsigned i = 0; i <= TeeMidiTransport::kPrimaryStallRejects; ++i) {
+        tee.sendNoteOn(0, 60, 100);
+    }
+    assert(tee.primaryStalled());
+
+    usb.mountedFlag = false;
+    tee.sendNoteOn(0, 60, 100);
+    assert(!tee.primaryStalled());
+}
+
 }  // namespace
 
 int main() {
@@ -198,5 +286,9 @@ int main() {
     realtimeAndRecoveryAlsoTee();
     beginSucceedsIfEitherWireStarts();
     flushFollowsTheEnableFlag();
+    aStalledPrimaryLosesAuthorityAndTheSecondaryKeepsPlaying();
+    aRecoveredPrimaryRegainsAuthority();
+    transientBackpressureDoesNotDemoteThePrimary();
+    unmountingThePrimaryClearsTheStallCounter();
     return 0;
 }

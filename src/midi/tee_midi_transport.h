@@ -26,9 +26,26 @@ namespace GroovePuterMidi {
 // require per-endpoint ownership and are a separate step.
 class TeeMidiTransport final : public IMidiTransport {
 public:
+    // A mounted endpoint is not necessarily a working one. A USB host that
+    // enumerates the device but never drains the IN endpoint - a computer with
+    // no open MIDI port, or SEQTRAK against a composite build - fills the TX
+    // FIFO after about sixteen packets and then rejects everything, while
+    // still reporting mounted.
+    //
+    // Treating "mounted" as "authoritative" let that dead wire veto the other
+    // one: every send was reported failed, the owner rolled the note back, and
+    // the DIN endpoint went silent because of the state of a completely
+    // different cable.
+    //
+    // Normal backpressure clears within the caller's retry window, so the
+    // threshold sits far above a burst and far below a stall.
+    static constexpr uint32_t kPrimaryStallRejects = 64;
+
     struct Diagnostics {
         uint32_t secondaryRejected{0};
         uint32_t secondaryOnlyDelivered{0};
+        uint32_t primaryConsecutiveRejects{0};
+        uint32_t primaryStallDemotions{0};
     };
 
     TeeMidiTransport(IMidiTransport& primary, IMidiTransport& secondary)
@@ -49,6 +66,11 @@ public:
     // playing with no USB host attached.
     bool mounted() const override {
         return primary_.mounted() || (secondaryEnabled_ && secondary_.mounted());
+    }
+
+    // True while the primary is enumerated but has stopped accepting traffic.
+    bool primaryStalled() const {
+        return diagnostics_.primaryConsecutiveRejects >= kPrimaryStallRejects;
     }
 
     // The tee is only as verifiable as its least verifiable active wire.
@@ -110,7 +132,22 @@ private:
     template <typename SendFn>
     bool dispatch(SendFn&& send) {
         const bool primaryMounted = primary_.mounted();
+        const bool wasStalled = primaryStalled();
+
+        // Keep offering traffic to a stalled primary: that is how it comes
+        // back when the host finally opens the port.
         const bool primaryResult = primaryMounted ? send(primary_) : false;
+        if (primaryMounted) {
+            if (primaryResult) {
+                diagnostics_.primaryConsecutiveRejects = 0;
+            } else if (diagnostics_.primaryConsecutiveRejects <
+                       kPrimaryStallRejects) {
+                ++diagnostics_.primaryConsecutiveRejects;
+                if (primaryStalled()) ++diagnostics_.primaryStallDemotions;
+            }
+        } else {
+            diagnostics_.primaryConsecutiveRejects = 0;
+        }
 
         bool secondaryResult = false;
         if (secondaryEnabled_ && secondary_.mounted()) {
@@ -118,9 +155,13 @@ private:
             if (!secondaryResult) ++diagnostics_.secondaryRejected;
         }
 
-        if (primaryMounted) return primaryResult;
+        // The primary keeps its authority only while it is actually working.
+        // Once demoted, a dead wire can no longer silence a live one.
+        const bool primaryAuthoritative =
+            primaryMounted && !(wasStalled || primaryStalled());
+        if (primaryAuthoritative) return primaryResult;
         if (secondaryResult) ++diagnostics_.secondaryOnlyDelivered;
-        return secondaryResult;
+        return primaryResult || secondaryResult;
     }
 
     IMidiTransport& primary_;

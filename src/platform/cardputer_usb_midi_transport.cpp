@@ -680,7 +680,8 @@ void logDiagnosticsIfDue() {
         // dinDropOff and dinPanic are the numbers that must stay at zero,
         // because they are what strands a note on the synth.
         "din=%u dinQ=%u dinMaxQ=%u dinSent=%u dinDropOn=%u dinDropOff=%u "
-        "dinDefer=%u dinPanic=%u dinRt=%u dinTeeRej=%u\n",
+        "dinDefer=%u dinPanic=%u dinRt=%u dinTeeRej=%u "
+        "usbStallRej=%u usbDemoted=%u\n",
         static_cast<unsigned>(scheduledDepth),
         static_cast<unsigned>(transportDepth),
         static_cast<unsigned>(smfDepth),
@@ -736,7 +737,9 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(dinTransport.deferredNoteOffs()),
         static_cast<unsigned>(dinTransport.channelsAwaitingPanic()),
         static_cast<unsigned>(dinDiag.droppedRealtime),
-        static_cast<unsigned>(g_wire.diagnostics().secondaryRejected));
+        static_cast<unsigned>(g_wire.diagnostics().secondaryRejected),
+        static_cast<unsigned>(g_wire.diagnostics().primaryConsecutiveRejects),
+        static_cast<unsigned>(g_wire.diagnostics().primaryStallDemotions));
 
     const auto clock = GroovePuterMidi::transportClockRuntime().snapshot();
     Serial.printf(
