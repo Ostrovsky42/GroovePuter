@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "src/input/musical_event_router.h"
+#include "midi_note_ownership_table.h"
 #include "usb_midi_transport.h"
 
 struct UsbMidiRouteConfig {
@@ -173,8 +174,10 @@ private:
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
-    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
-    uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
+    // Sparse ownership: only cells with a live owner are stored. The dense
+    // 16x128 pair cost 4096 B per endpoint, which a second endpoint cannot
+    // afford within the Cardputer DRAM headroom.
+    GroovePuterMidi::MidiEndpointOwnershipTable owners_;
     uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
     uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
     uint16_t abandonedSmfChannels_;

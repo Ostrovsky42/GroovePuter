@@ -205,8 +205,12 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("acquireGeneratedNote(event.target, event.note, event.velocity)" in usb and
                  "releaseGeneratedNote(event.target, event.note, event.velocity)" in usb,
                  "MONO and POLY direct notes must use the bounded exact-note ownership path")
-    base.require("wireOwners_" in usb_h and "generatedActive_" in usb_h,
+    base.require("owners_" in usb_h and "generatedActive_" in usb_h,
                  "manual performance notes must remain inside bounded ownership storage")
+    ownership_h = (base.ROOT / "src/midi/midi_note_ownership_table.h").read_text(
+        encoding="utf-8")
+    base.require("kMidiEndpointOwnershipCapacity = 128" in ownership_h,
+                 "performance ownership capacity must stay an explicit bound")
 
     base.require("kMinVelocity = 10" in keyboard_h and
                  "kMaxVelocity = 120" in keyboard_h and
