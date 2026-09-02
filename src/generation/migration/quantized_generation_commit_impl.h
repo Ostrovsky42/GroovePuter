@@ -311,10 +311,12 @@ inline bool preparePlayingCandidate(
       &atlasMetadata);
 
   if (atlasBacked) {
+    // GF2-I1: reviewed Atlas swing is production material and reaches the
+    // candidate. Atlas BPM is source/corpus provenance for the compiled
+    // pattern and must not become a second tempo owner: the generation
+    // request already resolved candidate.bpm from the profile corridor, and
+    // that value is what COMMIT and BAR_START activation carry.
     candidate.swingPct = atlasMetadata.swingPercent;
-    if (applyTempo && atlasMetadata.bpm > 0) {
-      candidate.bpm = static_cast<float>(atlasMetadata.bpm);
-    }
   } else {
     const GenerativeParams genreParams =
         GenreCatalog::compiledGenerativeParams(requestedGenre);

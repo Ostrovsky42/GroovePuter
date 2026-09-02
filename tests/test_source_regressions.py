@@ -301,9 +301,20 @@ def test_genre_page_profile_only_never_generates_or_retempos() -> None:
     for call in block.split("regenerateWithQuantizedCommit")[1:]:
         require("doApplyTempo, requestedBpm" in call.split(";")[0],
                 "generation requests must carry the resolved corridor tempo")
-    require(block.count("regenerateWithQuantizedCommit") ==
-            block.count("if (doRegenerate)") + 1,
-            "PROFILE ONLY must not reach generation or tempo application")
+
+    # PROFILE ONLY selects language without rewriting material or tempo: both
+    # generation entries stay behind doRegenerate, and Genre Apply never writes
+    # a tempo of its own.
+    require("if (doRegenerate && mini_acid_.isPlaying())" in block,
+            "PLAY generation must stay behind the regenerate opt-in")
+    require(block.count("regenerateWithQuantizedCommit") == 2,
+            "Genre Apply must keep exactly one stopped and one playing entry")
+    guarded = block.split("if (doRegenerate) {")
+    require(len(guarded) >= 2 and
+            guarded[1].lstrip().startswith("generationResult ="),
+            "stopped generation must stay behind the regenerate opt-in")
+    require("setBpm" not in block,
+            "Genre Apply must not write tempo outside the generation request")
 
 
 def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
