@@ -1,6 +1,6 @@
 # GF2-M0 — Transient Memory Invariant Resolution
 
-Status: **BLOCKED ON CURRENT-E0 HARDWARE RUNTIME EVIDENCE**
+Status: **FINDING RESOLVED; FREEZE PENDING REPLICATION**
 
 GF2-M0 is a research / characterization / release-contract checkpoint. It is
 not a memory optimization task, GF2-I1, or GF2-C2 Gate B.
@@ -12,12 +12,34 @@ no production code, changes no musical semantics, and proves nothing
 retroactively. It closes one measurement gap.
 
 ```text
-measurement infrastructure          EXISTS
-stack HWM byte contract             PROVEN
-current exact-SHA hardware run      MISSING
-PHRASE-scoped measurement           IMPLEMENTED BY M0R
-hardware evidence                   STILL REQUIRED
+GF2-M0R IMPLEMENTATION              PASS
+GF2-M0R SOURCE CONTRACT             PASS
+GF2-M0R TARGET BUILDS               PASS
+GF2-M0R CI                          PASS
+
+GF2-M0 MEMORY RESOURCE ATTRIBUTION  RESOLVED
+  heap                              non-critical for PHRASE
+  fragmentation                     no PHRASE-attributed drift observed
+  loop stack                        dominant transient resource
+
+GF2-M0 HISTORICAL 2292 INVARIANT    REJECTED
+GF2-M0 CURRENT HARDWARE EVIDENCE    PASS - normal / run #1
+
+GF2-M0 REPLICATION                  OPEN
+  second cold boot                  missing
+  midi-only                         missing
+
+GF2-M0 RELEASE THRESHOLD            NOT FROZEN
 ```
+
+Run #1 measurements and the extracted series:
+[GF2_M0_HARDWARE_EVIDENCE_RUN1.md](GF2_M0_HARDWARE_EVIDENCE_RUN1.md).
+
+The old invariant was not merely miscalibrated. It described execution depth
+through the size of the largest contiguous heap block - the wrong resource
+entirely. After PMB-P1 removed the large heap allocation, PHRASE stopped being
+a heap-pressure path, but its computational depth remained and now shows up in
+the loop-task stack watermark.
 
 Two earlier positions in this document are superseded:
 
@@ -565,7 +587,9 @@ not proves
   heap headroom or fragmentation
 ```
 
-Status: **INSTRUMENTED BY GF2-M0R; HARDWARE MEASUREMENT STILL REQUIRED**.
+Status: **MEASURED IN RUN #1**: additional loop-stack low-water 5220 B,
+14608 B free stack remaining. Observed maximum, not a demonstrated upper
+bound - see the seq=37 caveat in the run #1 evidence.
 
 ### PSRAM / EXTERNAL MEMORY
 
@@ -736,13 +760,46 @@ A successful build is not runtime evidence.
 
 ```text
 GF2-M0 STATUS
-BLOCKED ON HARDWARE RUNTIME EVIDENCE
+FINDING RESOLVED; FREEZE PENDING REPLICATION
 
-BLOCKER
-No current exact-E0/M0 Cardputer ADV operation-scoped free_internal /
-largest_internal / stack-headroom series exists from which numeric runtime
-thresholds and recovery tolerance can be justified.
+RESOLVED BY RUN #1
+Operation-scoped series exists. Resource attribution is settled: heap pressure
+~32 B with no persistent loss and no PHRASE-attributed fragmentation; the
+dominant transient resource is the loop-task stack.
+
+REMAINING
+Replication on a second cold boot and on the midi-only profile. No release
+threshold is frozen until the observed worst case stops moving.
 ```
+
+## Replication protocol
+
+Run #1 showed the stack low-water still moving at operation 37, so replication
+is defined by a saturation condition rather than a fixed count.
+
+```text
+minimum
+  >= 50 PHRASE attempts
+  >= 20 successful generations
+
+prefer
+  continue until no new loop-stack low-water appears for
+  >= 25 consecutive successful generations
+```
+
+Cold boot #2 answers three questions:
+
+```text
+1. does the absence of PHRASE heap/fragmentation drift reproduce?
+2. does a deeper loop-stack watermark appear?
+3. how stable are the initial heap / largest-block states between boots?
+```
+
+The midi-only profile follows the same protocol; the question of interest there
+is whether stack headroom changes or only the overall runtime memory envelope.
+
+The 27 failures observed in run #1 (19/46 successful) are deliberately out of
+scope for M0 and belong to the failure-census line.
 
 Historical PMB-P1 hardware evidence proves the old OOM fix on `a52cf32...`; it
 does not establish the final transient release contract for E0/M0.
