@@ -23,6 +23,8 @@
 #include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
+#include "src/midi/tee_midi_transport.h"
+#include "src/platform/cardputer_uart_midi_transport.h"
 #include "src/midi/smf_dispatch_policy.h"
 #include "src/midi/smf_late_policy.h"
 #include "src/midi/smf_track_mute.h"
@@ -207,8 +209,13 @@ struct MidiDispatchDiagnostics {
 // during global initialization.
 CardputerUsbMidiTransport g_transport;
 UsbEndpointHealth g_endpointHealth(kUsbEndpointStallThresholdMs);
+// One musical owner, two wires. The tee sits below UsbMidiOutput so note
+// ownership, cleanup and retry policy stay exactly as they were for USB alone;
+// see tee_midi_transport.h for why a second output object would not.
+GroovePuterMidi::TeeMidiTransport g_wire(
+    g_transport, GroovePuterMidi::cardputerUartMidiTransport());
 UsbMidiOutput g_output(
-    g_transport,
+    g_wire,
     UsbMidiRouteConfig{
         7,     // live Synth A -> MIDI channel 8
         7,     // PatternPlayer Synth A -> MIDI channel 8
@@ -656,6 +663,9 @@ void logDiagnosticsIfDue() {
         ? g_patternQueue->transportQueue().criticalRecoveryCount()
         : 0;
 
+    const auto& dinTransport = GroovePuterMidi::cardputerUartMidiTransport();
+    const auto& dinDiag = dinTransport.diagnostics();
+
     Serial.printf(
         "[MIDI-DISPATCH] sched=%u transport=%u smf=%u live=%u sent=%u/%u "
         "drumGate=%u/%u/%u active=%u "
@@ -665,7 +675,12 @@ void logDiagnosticsIfDue() {
         "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
-        "liveDrop=%u/%u suppressed=%u panic=%u/%u\n",
+        "liveDrop=%u/%u suppressed=%u panic=%u/%u "
+        // DIN endpoint. dinDropOn is the visible cost of a 1040 msg/s wire;
+        // dinDropOff and dinPanic are the numbers that must stay at zero,
+        // because they are what strands a note on the synth.
+        "din=%u dinQ=%u dinMaxQ=%u dinSent=%u dinDropOn=%u dinDropOff=%u "
+        "dinDefer=%u dinPanic=%u dinRt=%u dinTeeRej=%u\n",
         static_cast<unsigned>(scheduledDepth),
         static_cast<unsigned>(transportDepth),
         static_cast<unsigned>(smfDepth),
@@ -711,7 +726,17 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_controlQueue.droppedCriticalCount()),
         static_cast<unsigned>(suppressed),
         static_cast<unsigned>(g_diagnostics.patternPanics),
-        static_cast<unsigned>(g_diagnostics.controlPanics));
+        static_cast<unsigned>(g_diagnostics.controlPanics),
+        static_cast<unsigned>(g_wire.secondaryEnabled() ? 1 : 0),
+        static_cast<unsigned>(dinTransport.pendingBytes()),
+        static_cast<unsigned>(dinDiag.maxFillBytes),
+        static_cast<unsigned>(dinDiag.bytesSent),
+        static_cast<unsigned>(dinDiag.droppedMusical),
+        static_cast<unsigned>(dinDiag.droppedCritical),
+        static_cast<unsigned>(dinTransport.deferredNoteOffs()),
+        static_cast<unsigned>(dinTransport.channelsAwaitingPanic()),
+        static_cast<unsigned>(dinDiag.droppedRealtime),
+        static_cast<unsigned>(g_wire.diagnostics().secondaryRejected));
 
     const auto clock = GroovePuterMidi::transportClockRuntime().snapshot();
     Serial.printf(
@@ -787,6 +812,11 @@ enum class PendingKind : uint8_t {
 };
 
 void midiDispatchTask(void*) {
+    // Enabled at start-up for the first hardware slice: there is no UI toggle
+    // yet, so this is the only way the DIN wire can be heard. Note that with
+    // DIN on, mounted() is true even with no USB host, so SMF no longer parks
+    // in USB WAIT when nothing is listening on USB.
+    g_wire.setSecondaryEnabled(true);
     if (!g_output.begin()) {
         Serial.println("[MIDI-DISPATCH] USB MIDI begin failed");
     }
@@ -811,6 +841,9 @@ void midiDispatchTask(void*) {
     while (true) {
         g_output.pollConnection();
         g_transport.pollSuspendState();
+        // Bounded per iteration: the DIN wire moves 320 us per byte, so the
+        // transport queues and this drains what the UART driver will take.
+        GroovePuterMidi::cardputerUartMidiTransport().service();
         drainIncomingMidiPackets();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
@@ -1512,3 +1545,19 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
         g_smfQueue ? g_smfQueue->approximateSize() : 0u, UINT16_MAX));
     return snapshot;
 }
+
+void setCardputerDinMidiEnabled(bool enabled) {
+    // Turning the wire off must not leave notes sounding on it. The owner
+    // cannot see the two wires separately, so the DIN queue is cleared through
+    // the channel-mode recovery the SMF path already uses.
+    if (!enabled && g_wire.secondaryEnabled()) {
+        auto& din = GroovePuterMidi::cardputerUartMidiTransport();
+        for (uint8_t channel = 0; channel < 16; ++channel) {
+            (void)din.sendControlChange(channel, 123, 0);
+        }
+        din.service();
+    }
+    g_wire.setSecondaryEnabled(enabled);
+}
+
+bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }

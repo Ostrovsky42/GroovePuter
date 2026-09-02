@@ -33,6 +33,8 @@ HardwareSerial& uart() {
 bool CardputerUartMidiTransport::begin() {
     if (begun_) return true;
     core_.reset();
+    deferredCount_ = 0;
+    panicChannels_ = 0;
 #if defined(ARDUINO_M5STACK_CARDPUTER)
     uart().begin(static_cast<unsigned long>(kUartMidiBaud),
                  SERIAL_8N1,
@@ -75,8 +77,65 @@ bool CardputerUartMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
                                              uint8_t note,
                                              uint8_t velocity) {
     // Critical: dropping this is what strands a sounding note.
-    return queueChannelMessage(kStatusNoteOff, zeroBasedChannel, note, velocity,
-                               UartMidiPriority::Critical);
+    if (queueChannelMessage(kStatusNoteOff, zeroBasedChannel, note, velocity,
+                            UartMidiPriority::Critical)) {
+        return true;
+    }
+    // The reserve is exhausted. Nobody upstream will retry this for us, so the
+    // note is remembered here and retried until the wire takes it.
+    return deferNoteOff(clampChannel(zeroBasedChannel), clampDataByte(note));
+}
+
+bool CardputerUartMidiTransport::deferNoteOff(uint8_t channel, uint8_t note) {
+    if (!begun_) return false;
+    for (std::size_t i = 0; i < deferredCount_; ++i) {
+        if (deferred_[i].channel == channel && deferred_[i].note == note) {
+            return false;
+        }
+    }
+    if (deferredCount_ >= kDeferredNoteOffCapacity) {
+        // The exact note is no longer recoverable. Escalate to the channel-wide
+        // recovery rather than leaving something sounding.
+        panicChannels_ |= static_cast<uint16_t>(1u << channel);
+        return false;
+    }
+    deferred_[deferredCount_].channel = channel;
+    deferred_[deferredCount_].note = note;
+    ++deferredCount_;
+    return false;
+}
+
+void CardputerUartMidiTransport::retryDeferredNoteOffs() {
+    std::size_t i = 0;
+    while (i < deferredCount_) {
+        const uint8_t bytes[3] = {
+            static_cast<uint8_t>(kStatusNoteOff | deferred_[i].channel),
+            deferred_[i].note,
+            0,
+        };
+        if (!core_.enqueue(bytes, sizeof(bytes), UartMidiPriority::Critical)) {
+            // Still no room; keep it and try again on the next service().
+            ++i;
+            continue;
+        }
+        deferred_[i] = deferred_[deferredCount_ - 1];
+        --deferredCount_;
+    }
+}
+
+void CardputerUartMidiTransport::retryChannelPanics() {
+    if (panicChannels_ == 0) return;
+    for (uint8_t channel = 0; channel < 16; ++channel) {
+        const uint16_t mask = static_cast<uint16_t>(1u << channel);
+        if ((panicChannels_ & mask) == 0) continue;
+        const uint8_t bytes[3] = {
+            static_cast<uint8_t>(kStatusControlChange | channel), 123, 0,
+        };
+        if (!core_.enqueue(bytes, sizeof(bytes), UartMidiPriority::Critical)) {
+            return;
+        }
+        panicChannels_ &= static_cast<uint16_t>(~mask);
+    }
 }
 
 bool CardputerUartMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
@@ -117,7 +176,13 @@ bool CardputerUartMidiTransport::sendSongPositionPointer(uint16_t midiBeats) {
 }
 
 void CardputerUartMidiTransport::service() {
-    if (!begun_ || core_.empty()) return;
+    if (!begun_) return;
+    // Recovery first: a NoteOff that lost the race for the reserve must reach
+    // the wire ahead of new musical traffic, otherwise a saturated link keeps
+    // deferring it indefinitely.
+    retryDeferredNoteOffs();
+    retryChannelPanics();
+    if (core_.empty()) return;
 #if defined(ARDUINO_M5STACK_CARDPUTER)
     core_.drain(
         [](const uint8_t* data, std::size_t length) -> std::size_t {

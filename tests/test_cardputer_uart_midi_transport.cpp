@@ -111,6 +111,82 @@ void serviceDrainsQueuedBytes() {
     assert(transport.diagnostics().bytesSent == 3);
 }
 
+
+// --- deferred NoteOff recovery ------------------------------------------
+//
+// The tee hides this endpoint's rejections from the musical owner on purpose,
+// so a NoteOff that loses the race for the reserve has nobody upstream to
+// retry it. Without local recovery it strands a sounding note - which is
+// exactly what the first hardware run produced.
+
+void rejectedNoteOffIsRememberedNotLost() {
+    auto transport = makeStarted();
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    // Exhaust the critical reserve too.
+    for (int i = 0; i < 64; ++i) {
+        transport.sendNoteOff(0, static_cast<uint8_t>(i), 0);
+    }
+    assert(transport.deferredNoteOffs() > 0);
+}
+
+void deferredNoteOffsAreRetriedAheadOfNewTraffic() {
+    auto transport = makeStarted();
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    for (int i = 0; i < 64; ++i) {
+        transport.sendNoteOff(0, static_cast<uint8_t>(i), 0);
+    }
+    const std::size_t deferred = transport.deferredNoteOffs();
+    assert(deferred > 0);
+
+    // The host drain accepts everything, so one service() empties the ring and
+    // the retry must then place the deferred NoteOff messages.
+    transport.service();
+    transport.service();
+    assert(transport.deferredNoteOffs() < deferred);
+
+    for (int i = 0; i < 16; ++i) transport.service();
+    assert(transport.deferredNoteOffs() == 0);
+}
+
+void theSameNoteIsNotDeferredTwice() {
+    auto transport = makeStarted();
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    for (int i = 0; i < 32; ++i) {
+        transport.sendNoteOff(0, 60, 0);
+    }
+    assert(transport.deferredNoteOffs() <= 1);
+}
+
+void deferredOverflowEscalatesToChannelRecovery() {
+    // Once the exact note is unrecoverable, silencing the channel beats
+    // leaving something sounding.
+    auto transport = makeStarted();
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    for (int note = 0; note < 128; ++note) {
+        transport.sendNoteOff(5, static_cast<uint8_t>(note), 0);
+    }
+    assert(transport.channelsAwaitingPanic() != 0);
+
+    for (int i = 0; i < 64; ++i) transport.service();
+    assert(transport.channelsAwaitingPanic() == 0);
+    assert(transport.deferredNoteOffs() == 0);
+}
+
+void beginClearsRecoveryState() {
+    CardputerUartMidiTransport transport;
+    assert(transport.begin());
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    for (int i = 0; i < 64; ++i) {
+        transport.sendNoteOff(0, static_cast<uint8_t>(i), 0);
+    }
+    assert(transport.deferredNoteOffs() > 0);
+}
+
 }  // namespace
 
 int main() {
@@ -124,5 +200,10 @@ int main() {
     songPositionPointerIsFourteenBitLsbFirst();
     flushDoesNotTouchTheWire();
     serviceDrainsQueuedBytes();
+    rejectedNoteOffIsRememberedNotLost();
+    deferredNoteOffsAreRetriedAheadOfNewTraffic();
+    theSameNoteIsNotDeferredTwice();
+    deferredOverflowEscalatesToChannelRecovery();
+    beginClearsRecoveryState();
     return 0;
 }

@@ -358,6 +358,14 @@ echo "UART MIDI transport core: OK"
 echo "Cardputer UART MIDI transport: OK"
 
 "${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_tee_midi_transport.cpp" \
+  -o "${BUILD_DIR}/test_tee_midi_transport"
+
+"${BUILD_DIR}/test_tee_midi_transport"
+echo "Tee MIDI transport: OK"
+
+"${CXX}" \
   -std=c++17 \
   -Wall \
   -Wextra \

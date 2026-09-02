@@ -66,6 +66,10 @@ public:
     }
     std::size_t pendingBytes() const { return core_.pendingBytes(); }
 
+    // Deferred NoteOff bookkeeping, exposed for diagnostics and tests.
+    std::size_t deferredNoteOffs() const { return deferredCount_; }
+    uint16_t channelsAwaitingPanic() const { return panicChannels_; }
+
 private:
     bool queueChannelMessage(uint8_t status,
                              uint8_t zeroBasedChannel,
@@ -73,7 +77,33 @@ private:
                              uint8_t data2,
                              UartMidiPriority priority);
 
+    bool deferNoteOff(uint8_t channel, uint8_t note);
+    void retryDeferredNoteOffs();
+    void retryChannelPanics();
+
+    // A DIN wire carries about 1040 three-byte messages per second, well below
+    // what dense pattern and SMF material emits, so the queue does saturate.
+    // The tee deliberately hides this endpoint's rejections from the musical
+    // owner - escalating them would make the SMF path resend notes the USB
+    // wire already delivered - which means a dropped NoteOff has no owner to
+    // retry it and would strand a sounding note on the synth.
+    //
+    // This endpoint therefore owns its own recovery: a rejected NoteOff is
+    // remembered and retried from service() until the wire takes it.
+    static constexpr std::size_t kDeferredNoteOffCapacity = 64;
+
+    struct DeferredNoteOff {
+        uint8_t channel;
+        uint8_t note;
+    };
+
     UartMidiTransportCore core_;
+    DeferredNoteOff deferred_[kDeferredNoteOffCapacity]{};
+    std::size_t deferredCount_{0};
+    // Set when the deferred table itself overflows. The exact note is no
+    // longer recoverable, so the channel gets the same terminal all-notes-off
+    // treatment the SMF cleanup path already uses.
+    uint16_t panicChannels_{0};
     bool begun_{false};
 };
 

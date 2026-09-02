@@ -9,6 +9,7 @@
 
 #if !defined(ARDUINO)
 #error "CardputerUsbMidiTransport is available only in the Arduino firmware build"
+
 #endif
 
 #include "USB.h"
@@ -169,3 +170,17 @@ private:
     mutable bool suspendStateKnown_{false};
     mutable bool lastSuspended_{false};
 };
+
+// DIN/UART MIDI endpoint (M5Stack Unit MIDI on the Grove UART).
+//
+// This mirrors the USB stream on a second wire; it is not an independently
+// routed endpoint. Both wires carry the same channels and notes, because a
+// single musical owner drives both. In the Unit's SEPARATE mode the onboard
+// SAM2695 and the DIN OUT jack share one TX line, so enabling this also makes
+// the local synth sound whatever goes to DIN OUT.
+//
+// The link is write-only: enabling it is not evidence that anything is
+// listening.
+void setCardputerDinMidiEnabled(bool enabled);
+bool cardputerDinMidiEnabled();
+
