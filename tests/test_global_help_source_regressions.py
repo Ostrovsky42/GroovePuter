@@ -68,14 +68,14 @@ assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 
-# Canonical release-facing documents must identify the same current workflow and must
-# not advertise the retired three-page Generate/Groove-Lab contract as live UI.
-assert readme.startswith("# GroovePuter v0.9.1")
-assert "GENERATE: GENRE -> FEEL" in readme
-assert "SONG:     SONG -> PHRASE -> PHRASE CORE" in readme
-assert "12 active pages" in readme
-assert "docs/releases/0_9_1_RELEASE.md" in readme
-assert "GENRE -> FEEL -> GENERATION" not in readme
+# The root README on main is the branch-neutral public landing document. Frozen
+# 0.9.1 release truth is validated independently through MANUAL.md and the release
+# record below, so the landing page must not be coupled to the historical 0.9.1 title.
+assert readme.startswith("# GroovePuter\n")
+assert "Portable standalone groovebox and hardware musical brain" in readme
+assert "`main` is the public project landing branch" in readme
+assert "docs/PRODUCT_POSITIONING.md" in readme
+assert "GENRE != FEEL != GENERATION REQUEST != SOUND" in readme
 
 assert manual.startswith("# GroovePuter 0.9.1 Manual")
 assert "GENERATE: GENRE -> FEEL" in manual
