@@ -116,13 +116,14 @@ run_host() {
     cd "${ROOT}"
     bash tests/run_host_tests.sh &&
       bash tests/run_generation_0_9_9_c_tests.sh &&
-      bash tests/run_gf2_c2_v0r_tests.sh
+      bash tests/run_gf2_c2_v0r_tests.sh &&
+      bash tests/run_gf2_i1_tests.sh
   )
   local rc=$?
   set -e
   if (( rc == 0 )); then
     STATUS[HOST]="PASS"
-    DETAIL[HOST]="run_host_tests + 0.9.9-C/I0R + C2-V0R"
+    DETAIL[HOST]="run_host_tests + 0.9.9-C/I0R + C2-V0R + I1"
   else
     STATUS[HOST]="FAIL"
     DETAIL[HOST]="authoritative host regression chain; exit=${rc}"
