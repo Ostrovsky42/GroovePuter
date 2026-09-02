@@ -5,6 +5,84 @@ Status: **BLOCKED ON CURRENT-E0 HARDWARE RUNTIME EVIDENCE**
 GF2-M0 is a research / characterization / release-contract checkpoint. It is
 not a memory optimization task, GF2-I1, or GF2-C2 Gate B.
 
+## GF2-M0R addendum — PHRASE-scoped probe
+
+GF2-M0R is a bounded diagnostic/tooling change on top of this research. It adds
+no production code, changes no musical semantics, and proves nothing
+retroactively. It closes one measurement gap.
+
+```text
+measurement infrastructure          EXISTS
+stack HWM byte contract             PROVEN
+current exact-SHA hardware run      MISSING
+PHRASE-scoped measurement           IMPLEMENTED BY M0R
+hardware evidence                   STILL REQUIRED
+```
+
+Two earlier positions in this document are superseded:
+
+- The stack high-water **unit** question is closed. Exact E0 already ships
+  `scripts/instrument_cardputer_memory_runtime.py`, and its contract in
+  `docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md` establishes
+  `uxTaskGetStackHighWaterMark()` values as free stack **bytes**, not words.
+- Heap telemetry is no longer sample-only. The 10 ms poller in `loop()` cannot
+  observe anything while `GeneratedPhraseSong::generate()` blocks the loop task,
+  so M0R brackets that call directly instead of sampling around it.
+
+### What the probe emits
+
+One `[MEM-PHRASE]` line per generation operation:
+
+```text
+seq result
+preFreeInternal8 localMinFreeInternal8 postFreeInternal8
+preLargestInternal8 postLargestInternal8
+preLoopStackFreeBytes postLoopStackFreeBytes
+```
+
+### What the numbers mean, and what they do not
+
+```text
+localMinFreeInternal8
+  = minimum system-wide free INTERNAL|8BIT heap while the PHRASE-scoped
+    local monitor was active
+ != bytes allocated by PHRASE
+    (other tasks run inside the window)
+
+preLargestInternal8 / postLargestInternal8
+  = plain before/after readings
+ != an operation-local peak
+    (ESP-IDF exposes no local-minimum monitor for the largest free block;
+     fragmentation drift is read across repeated operations instead)
+
+postLoopStackFreeBytes
+  = loop-task minimum free stack bytes since task start, sampled after the
+    operation and before any diagnostic printf
+```
+
+The local monitor is pre-warmed once before the runtime baseline, because the
+first `heap_caps_monitor_local_minimum_free_size_start()` may allocate its own
+bookkeeping, and that allocation must not be charged to a PHRASE window.
+
+### Historical provenance is unchanged
+
+```text
+2292 B
+= observed largest free contiguous INTERNAL|8BIT block on one Cardputer ADV
+  low-memory runtime state
+!= transient-memory budget
+
+11428 B
+= historical contiguous PreparedPhraseArrangement allocation request,
+  removed by PMB-P1
+!= current-E0 measured transient peak
+```
+
+Exact E0 carries `static_assert(sizeof(PreparedPhraseArrangement) <= 1024)`, so
+M0R does not fix a known production allocation bug.
+
+M0R establishes no byte thresholds. Measurement comes first.
+
 ## Frozen ancestry
 
 ```text
@@ -473,19 +551,21 @@ definition
   Minimum remaining stack headroom / maximum observed stack use for the task
   executing PHRASE generation.
 API
-  FreeRTOS stack high-water API appropriate to the pinned ESP32/Arduino runtime;
-  exact API and unit semantics must be verified before making it a gate
+  uxTaskGetStackHighWaterMark(), already used by the exact-E0 runtime telemetry
+  infrastructure
 points
-  controlled current-E0 PHRASE runtime / task lifetime high-water
+  controlled current-E0 PHRASE runtime / task lifetime high-water, plus the
+  operation-scoped pre/post pair added by GF2-M0R
 units
-  normalize to bytes only after API semantics are verified
+  bytes; the byte contract is proven by exact-E0 telemetry and documented in
+  docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md
 proves
   stack headroom for the executing task
 not proves
   heap headroom or fragmentation
 ```
 
-Status: **REQUIRED FOR A COMPLETE CURRENT-E0 TRANSIENT MODEL; NOT YET MEASURED**.
+Status: **INSTRUMENTED BY GF2-M0R; HARDWARE MEASUREMENT STILL REQUIRED**.
 
 ### PSRAM / EXTERNAL MEMORY
 
@@ -582,7 +662,8 @@ On Cardputer ADV, at the **exact candidate SHA**, after a stable production boot
 4. repeat successful PHRASE sufficiently to reveal retained loss/fragmentation
    (historical PMB-P1 used 20+ repetitions);
 5. exercise normal navigation / PLAY / STOP / edit state and repeat PHRASE;
-6. measure stack high-water with a verified API/unit contract;
+6. measure stack high-water in bytes via the proven uxTaskGetStackHighWaterMark
+   contract, using the operation-scoped pre/post pair from GF2-M0R;
 7. fail on allocation/stack failure or progressive unrecovered loss;
 8. derive absolute minimum free-internal, largest-block, stack-headroom and
    recovery-tolerance thresholds only from exact-SHA hardware evidence plus an
@@ -624,7 +705,7 @@ largest_internal_bytes
 ALSO SAVE
 PHRASE status/result
 allocation/stack failure if any
-stack high-water with verified units
+stack high-water in bytes (proven contract)
 exact firmware SHA
 device/target
 scenario identity
