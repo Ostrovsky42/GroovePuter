@@ -30,6 +30,58 @@ compile_dump() {
 GCC_BIN="${BUILD_DIR}/gf2_gate_b_dump_gcc"
 compile_dump "${CXX:-g++}" "${GCC_BIN}"
 
+# Focused serialization fixture: a research-side failed/non-applied observation
+# must never turn default-constructed physical values into musical zero evidence.
+"${GCC_BIN}" --self-test-missing-observation > "${BUILD_DIR}/missing-observation.tsv"
+python3 - "${BUILD_DIR}/missing-observation.tsv" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open(newline="", encoding="utf-8") as handle:
+    rows = list(csv.DictReader(handle, delimiter="\t"))
+assert len(rows) == 1, rows
+row = rows[0]
+expected_fields = {
+    "physical_duration",
+    "kick_onsets",
+    "backbeat_onsets",
+    "hat_onsets",
+    "support_onsets",
+    "kick_accents",
+    "backbeat_accents",
+    "hat_accents",
+    "support_accents",
+    "drum_timing",
+    "synth_a_onsets",
+    "synth_b_onsets",
+    "synth_a_accents",
+    "synth_b_accents",
+    "synth_a_ghosts",
+    "synth_b_ghosts",
+    "synth_a_timing",
+    "synth_b_timing",
+    "synth_a_pitch_class",
+    "synth_b_pitch_class",
+    "synth_a_contour",
+    "synth_b_contour",
+    "harmonic_event_onsets",
+    "harmonic_event_count",
+    "chord_onsets",
+    "melodic_fill_onsets",
+    "chord_applied",
+    "melodic_applied",
+    "synth_b_role",
+    "physical_event_count",
+    "silence_mask",
+}
+assert set(row) == expected_fields, (set(row), expected_fields)
+for field in sorted(expected_fields):
+    assert row[field] == "NOT_OBSERVED", (field, row[field])
+print("Gate B failed-materialization serialization: NOT_OBSERVED")
+PY
+
 "${GCC_BIN}" "${ROOT}/tests/support/gf2_gate_b_seeds.tsv" \
   > "${BUILD_DIR}/raw.tsv" 2> "${BUILD_DIR}/meta.txt"
 "${GCC_BIN}" "${ROOT}/tests/support/gf2_gate_b_seeds.tsv" \
@@ -107,8 +159,8 @@ assert accepted, "production corpus produced no accepted material"
 assert all(r["v0r_requested_result_effective"] == "YES" for r in accepted)
 
 failed = [r for r in rows if r["migration_status"] != "APPLIED"]
-assert failed, "Gate B missing-observation regression requires failed/non-applied production witnesses"
 physical_fields = (
+    "physical_duration",
     "kick_onsets",
     "backbeat_onsets",
     "hat_onsets",
