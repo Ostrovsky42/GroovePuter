@@ -33,5 +33,19 @@ jobs:
           test -z "$(git diff --name-only "${BASE}...HEAD" -- src/)"
       - name: Execute production-backed corpus dump
         run: bash tests/run_gf2_gate_b_dump_tests.sh
-      - name: Gate B RED analysis contract
+      - name: Gate B analysis contract
         run: python3 tests/test_gf2_gate_b_analysis.py
+      - name: Generate review artifacts
+        run: |
+          rm -rf build/host-tests/gf2-gate-b/generated
+          python3 tools/gf2_gate_b.py \
+            --raw build/host-tests/gf2-gate-b/raw.tsv \
+            --seeds tests/support/gf2_gate_b_seeds.tsv \
+            --contract tests/support/gf2_gate_b_contract.json \
+            --output-dir build/host-tests/gf2-gate-b/generated
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-gate-b-generated
+          path: build/host-tests/gf2-gate-b/generated
+          if-no-files-found: error
