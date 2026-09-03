@@ -331,6 +331,7 @@ static void cleanup(AppState& s) {
 static void mainLoopTick(void* userdata) {
   AppState* s = static_cast<AppState*>(userdata);
   handleEvents(*s);
+  s->audio.internalSynthOutput.syncPatternOwnership();
   updateUI(*s);
   if (!s->running) {
 #ifdef __EMSCRIPTEN__

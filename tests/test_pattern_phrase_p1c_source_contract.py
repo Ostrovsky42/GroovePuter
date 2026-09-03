@@ -4,6 +4,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "2860f99d254baa96e06d48b3a52d3e729c2e707a"
+P1C_TIP = "9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38"
 ALLOWED_PRODUCTION = {
     "src/phrase/runtime_synth_events.h",
     "src/phrase/runtime_synth_events.cpp",
@@ -23,37 +24,50 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def changed_paths() -> list[str]:
-    result = subprocess.run(
-        ["git", "diff", "--name-only", f"{BASE}...HEAD"],
+def output(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
         cwd=ROOT,
         check=True,
         text=True,
         capture_output=True,
-    )
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    ).stdout.strip()
 
 
-subprocess.run(["git", "cat-file", "-e", f"{BASE}^{{commit}}"], cwd=ROOT, check=True)
-merge_base = subprocess.run(
-    ["git", "merge-base", "HEAD", BASE],
-    cwd=ROOT,
-    check=True,
-    text=True,
-    capture_output=True,
-).stdout.strip()
-require(merge_base == BASE, f"P1C base mismatch: merge-base={merge_base} expected={BASE}")
+def changed_paths(base: str, head: str) -> list[str]:
+    text = output("diff", "--name-only", f"{base}...{head}")
+    return [line.strip() for line in text.splitlines() if line.strip()]
 
-paths = changed_paths()
-production = {path for path in paths if path.startswith("src/")}
+
+for sha in (BASE, P1C_TIP):
+    subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=ROOT, check=True)
+
 require(
-    production.issubset(ALLOWED_PRODUCTION),
-    f"P1C production firewall violated: {sorted(production - ALLOWED_PRODUCTION)}",
+    output("merge-base", P1C_TIP, BASE) == BASE,
+    "P1C canonical base ancestry mismatch",
 )
 require(
-    not (set(paths) & PROTECTED_PATHS),
-    f"P1C Performance/scheduler firewall violated: {sorted(set(paths) & PROTECTED_PATHS)}",
+    output("merge-base", "HEAD", P1C_TIP) == P1C_TIP,
+    "P1C canonical integrated tip is not an ancestor of HEAD",
 )
+
+canonical_paths = changed_paths(BASE, P1C_TIP)
+canonical_production = {path for path in canonical_paths if path.startswith("src/")}
+require(
+    canonical_production.issubset(ALLOWED_PRODUCTION),
+    f"P1C canonical production firewall violated: {sorted(canonical_production - ALLOWED_PRODUCTION)}",
+)
+require(
+    not (set(canonical_paths) & PROTECTED_PATHS),
+    f"P1C canonical Performance/scheduler firewall violated: {sorted(set(canonical_paths) & PROTECTED_PATHS)}",
+)
+
+for path in sorted(ALLOWED_PRODUCTION):
+    unchanged = subprocess.run(
+        ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--", path],
+        cwd=ROOT,
+    ).returncode == 0
+    require(unchanged, f"P1C representation changed after canonical integration: {path}")
 
 header = ROOT / "src/phrase/runtime_synth_events.h"
 source = ROOT / "src/phrase/runtime_synth_events.cpp"

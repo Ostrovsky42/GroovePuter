@@ -84,36 +84,40 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
     require("target_ == MusicalEventTarget::Drums" in keyboard_source,
             "native drum routing must remain outside melodic transforms")
 
-    require("bool toolsLayerVisible_{false};" in page_header,
-            "PERFORM must keep tool-layer state local to the page")
+    require("bool toolsLayerVisible_{false};" in page_header and
+            "selectedContext_" in page_header and "selectedRow_" in page_header,
+            "PERFORM must keep only bounded local navigation state")
     require("event.key == '\\t' || event.scancode == GROOVEPUTER_TAB" in page,
-            "plain Tab must open the local performance tool layer")
-    tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
-    for key in ("case '1':", "case '2':", "case '3':", "case '4':",
-                "case '5':", "case '6':", "case '7':", "case '8':"):
-        require(key in tool_block, f"PERFORM tool layer must expose {key}")
-    require("captureHeldPerformanceKeys(keyboard_)" in tool_block and
-            "restoreHeldPerformanceKeys(keyboard_, heldSnapshot)" in tool_block,
-            "tool changes must rehydrate physically held notes after legacy panic-based setters")
-    require("keyboard.heldCount() != 0" in page and
-            "keyboard.isPhysicalKeyHeld(key)" in page,
-            "revoice must be bounded and avoid duplicate logical key ownership")
+            "plain Tab must open the local Performance Instrument layer")
+    require("HeldPerformanceSnapshot" not in page and
+            "captureHeldPerformanceKeys" not in page and
+            "restoreHeldPerformanceKeys" not in page and
+            "keyboard_.keyDown(" not in page,
+            "UI changes must never synthetically recreate physical held-key ownership")
     require("new " not in page and "std::vector" not in page,
-            "held-note revoice must remain fixed-allocation")
+            "Performance Instrument UI must remain fixed-allocation")
     handle_block = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     require("event.meta" in handle_block and "return false" in handle_block,
             "Fn/meta commands must pass through instead of stealing global shortcuts")
+    for scancode in ("GROOVEPUTER_LEFT", "GROOVEPUTER_RIGHT",
+                     "GROOVEPUTER_UP", "GROOVEPUTER_DOWN"):
+        require(scancode in tool_block,
+                f"local Performance Instrument layer must consume {scancode}")
+    require("adjustSelectedValue" in tool_block and "toggleSelectedValue" in tool_block,
+            "tool edits must use one bounded contextual command dispatcher")
+    require("keyboard_.panic()" not in tool_block,
+            "local command dispatcher must not own global panic")
     require("Fn A/C/K/S/R/E/V" not in page and "Tab Tools" in page,
             "PERFORM hints must describe the local tool layer, not conflicting Fn keys")
     require("keyboard_.setTempoBpm(miniAcid_.bpm());" in page,
             "arp/ratchet timing must follow the current GroovePuter BPM")
-    for label in ("1 ARPEGGIATOR", "2 DIRECTION", "3 CHORD", "4 MEMORY",
-                  "5 STRUM", "6 RATCHET", "7 EUCLIDEAN", "8 ROTATE"):
-        require(label in page, f"PERFORM tools must show the full label {label}")
-    for abbreviated in ("1 ARP  ", "2 DIR  ", "3 CHD  ", "4 MEM  ",
-                        "5 STR  ", "6 RAT  ", "7 EUC  ", "8 ROT  "):
-        require(abbreviated not in page,
-                f"PERFORM tools must not regress to abbreviated label {abbreviated}")
+    for label in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]",
+                  "ROOT", "SCALE", "OCTAVE", "VELOCITY",
+                  "MODE", "INVERSION", "SPREAD", "LEADING", "MEMORY",
+                  "ORDER", "RATE", "OCTAVES", "GATE", "LATCH",
+                  "RATCHET", "EUCLID", "ROTATE", "STRUM"):
+        require(label in page, f"PERFORM contextual tools must show {label}")
 
     require("kGeneratedBitsetBytes" in usb_header and
             "generatedActive_" in usb_header and

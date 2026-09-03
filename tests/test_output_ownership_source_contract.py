@@ -51,7 +51,10 @@ def test_perform_drums_reuse_existing_local_owner() -> None:
     header = (ROOT / "src/input/internal_synth_output.h").read_text(encoding="utf-8")
 
     start = cpp.index("if (event.target == MusicalEventTarget::Drums)")
-    end = cpp.index("// <=0.9.5 PERFORM", start)
+    end = cpp.index(
+        "if (event.source == MusicalEventSource::PerformanceKeyboardPoly)",
+        start,
+    )
     block = cpp[start:end]
     require("allowsInternalNoteOn(event)" in block,
             "PERFORM Drums NoteOn must use canonical output ownership")
