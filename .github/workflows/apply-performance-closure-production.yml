@@ -24,7 +24,7 @@ jobs:
       - name: Verify focused closure
         run: |
           bash tests/run_performance_closure_tests.sh
-          g++ -std=c++17 -Wall -Wextra -Werror -I. -fsyntax-only src/input/internal_synth_output.cpp
+          g++ -std=c++20 -Wall -Wextra -Werror -I. -fsyntax-only src/input/internal_synth_output.cpp
           git diff --check
       - name: Commit production fix
         run: |
