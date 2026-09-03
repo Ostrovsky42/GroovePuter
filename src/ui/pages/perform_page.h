@@ -35,14 +35,17 @@ private:
     void adjustSelectedValue(int direction);
     void toggleSelectedValue();
     uint8_t rowCountForContext() const;
+    uint8_t currentRow() const;
+    const char* selectedRowHint() const;
+    void drawToolTabs(IGfx& gfx, int y);
     void drawToolsLayer(IGfx& gfx);
 
     MiniAcid& miniAcid_;
     PerformanceKeyboard& keyboard_;
     bool toolsLayerVisible_{false};
+    // Local navigation state only: the selected context and, per context, the
+    // selected row. Musical values are always read from PerformanceKeyboard.
     PerformanceToolContext selectedContext_{PerformanceToolContext::Key};
-    uint8_t selectedRow_{0};
-    bool toolsFullRedraw_{true};
-    bool toolsSelectionDirty_{true};
+    uint8_t selectedRow_[static_cast<int>(PerformanceToolContext::Count)]{};
     std::string title_{"PERFORM"};
 };

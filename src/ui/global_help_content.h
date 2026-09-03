@@ -266,12 +266,11 @@ constexpr const char* kPerformLines[] = {
     ", / .       Previous/next scale",
     "- / =       Octave down/up",
     "X           Panic live target",
-    "Tab         Open/cycle tools",
-    "Left/Right  KEY/CHORD/ARP/RHYTHM",
-    "Up/Down     Select parameter",
-    "- / +       Change selected value",
+    "Tab         PERFORMANCE TOOLS / next",
+    "Backspace   Previous context",
+    "Up/Down     Select parameter row",
+    "Left/Right  Change selected value",
     "Enter       Toggle/secondary action",
-    "9           Receiver MONO/POLY",
     "Esc/`       Close tools layer",
 };
 

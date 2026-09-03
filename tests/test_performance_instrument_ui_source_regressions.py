@@ -29,8 +29,9 @@ def main() -> None:
                 f"PERFORM tools must expose the {context} navigation context")
     require("selectedContext_" in header and "selectedRow_" in header,
             "PERFORM may store only local context/row navigation state")
-    require("toolsFullRedraw_" in header and "toolsSelectionDirty_" in header,
-            "PERFORM may keep bounded rendering dirtiness without caching musical values")
+    require("toolsFullRedraw_" not in header and "toolsSelectionDirty_" not in header,
+            "MiniAcidDisplay repaints the whole frame every update, so PERFORM must "
+            "not keep partial-repaint dirtiness that leaves labels blank after frame one")
     for forbidden in (
         "PerformanceUiState", "root_", "scale_", "arpRate_", "chordMode_",
         "euclideanPulses_", "ratchetCount_",
@@ -49,7 +50,7 @@ def main() -> None:
     require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM"' in page,
             "Tab layer must declare the four musician-facing context labels")
     for marker in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]"):
-        require(marker in tools,
+        require(marker in page,
                 f"active context must have a structural non-color marker: {marker}")
 
     for getter in (
@@ -102,6 +103,18 @@ def main() -> None:
                 f"local Performance Instrument navigation must consume {scancode}")
     require("adjustSelectedValue" in tool_handler and "toggleSelectedValue" in tool_handler,
             "local edits must dispatch through one bounded command path")
+    require("case GROOVEPUTER_LEFT:\n            adjustSelectedValue(-1);" in tool_handler and
+            "case GROOVEPUTER_RIGHT:\n            adjustSelectedValue(1);" in tool_handler,
+            "Left/Right must edit the selected value; context switching is Tab/Shift+Tab")
+    require("UIInput::navCode(event)" in tool_handler,
+            "arrow handling must use the shared nav decoder (scancode or key form)")
+    for keycap in ("case ';'", "case ','", "case '.'", "case '/'"):
+        require(keycap in tool_handler,
+                f"Cardputer arrow keycap character must be swallowed in tools: {keycap}")
+    require("case '-':" not in tool_handler and "case '=':" not in tool_handler,
+            "-/= must keep their live PERFORM octave meaning inside the tools layer")
+    require("toolsLayerVisible_ && event.key == '\\b'" in page,
+            "Backspace must step to the previous context: the Cardputer has no Shift key")
     require("keyboard_.panic()" not in tool_handler,
             "local tool edits must not directly introduce global panic")
 
@@ -127,11 +140,20 @@ def main() -> None:
     require("new " not in page and "std::vector" not in page,
             "Performance Instrument UI must remain fixed-allocation")
 
-    require("const bool fullRedraw = toolsFullRedraw_;" in tools and
-            "if (fullRedraw) {\n        LayoutManager::clearContent(gfx);" in tools and
-            "gfx.fillRect(valueX - 2, firstRowY" in tools and
-            "toolsSelectionDirty_" in tools,
-            "tools surface must use full clear only for context invalidation and partial value/selection repaint otherwise")
+    require(tools.index("LayoutManager::clearContent(gfx);") < tools.index("drawToolTabs("),
+            "tools surface must clear and fully repaint every frame: the display "
+            "clears the screen before each page draw, so a partial repaint blanks labels")
+    require("fullRedraw" not in tools and "toolsSelectionDirty_" not in tools,
+            "tools surface must not gate label/tab drawing behind dirtiness flags")
+    tabs = block(page, "void PerformPage::drawToolTabs", "void PerformPage::drawToolsLayer")
+    require("kToolContextActiveNames[i]" in tabs and "x += (len + 3) * charW;" in tabs,
+            "context tabs must occupy fixed slots so labels do not shift when switching")
+    require("selectedRowHint()" in tools,
+            "tools surface must show what -/+ and Enter do for the selected row")
+    require("uint8_t selectedRow_[static_cast<int>(PerformanceToolContext::Count)]" in header,
+            "each context must remember its own selected row")
+    require('UI::showToast("PERFORM: KEY' not in page,
+            "opening the tools layer must not cover the fresh surface with a toast")
     draw_content = block(page, "void PerformPage::drawContent", "void PerformPage::drawFooter")
     tools_pos = draw_content.index("if (toolsLayerVisible_)")
     normal_clear_pos = draw_content.index("LayoutManager::clearContent(gfx);")
