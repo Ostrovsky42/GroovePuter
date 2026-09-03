@@ -62,6 +62,8 @@ constexpr const char* kSynthALines[] = {
     "R/Bksp/Del  Clear step (REST)",
     "Alt+Bksp    Clear whole pattern",
     "G           Randomize pattern",
+    "Ctrl+G      Randomize voice",
+    "Alt+G       Chaos randomize all",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
 };
@@ -84,6 +86,8 @@ constexpr const char* kSynthBLines[] = {
     "R/Bksp/Del  Clear step (REST)",
     "Alt+Bksp    Clear whole pattern",
     "G           Randomize pattern",
+    "Ctrl+G      Randomize voice",
+    "Alt+G       Chaos randomize all",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
 };
@@ -262,9 +266,11 @@ constexpr const char* kPerformLines[] = {
     ", / .       Previous/next scale",
     "- / =       Octave down/up",
     "X           Panic live target",
-    "Tab         PERFORMANCE TOOLS",
-    "1..8        Select performance tool",
-    "Shift+1..8  Cycle tool backward",
+    "Tab         PERFORMANCE TOOLS / next",
+    "Backspace   Previous context",
+    "Up/Down     Select parameter row",
+    "Left/Right  Change selected value",
+    "Enter       Toggle/secondary action",
     "Esc/`       Close tools layer",
 };
 

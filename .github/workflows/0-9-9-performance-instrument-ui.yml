@@ -1,0 +1,15 @@
+name: 0.9.9 Performance Instrument UI
+
+on:
+  push:
+    branches:
+      - feature/20260903-02-0.9.9-performance-instrument-ui
+  workflow_dispatch:
+
+jobs:
+  focused-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run focused Performance Instrument UI tests
+        run: bash tests/run_0_9_9_performance_instrument_ui_tests.sh

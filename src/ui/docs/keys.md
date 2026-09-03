@@ -50,23 +50,26 @@ The active page gets first refusal before global fallbacks.
 | `\` | Cycle output target |
 | `,` / `.` | Previous / next scale |
 | `-` / `=` | Octave down / up |
-| `Tab` | Open/close PERFORMANCE TOOLS |
+| `Tab` | Open PERFORMANCE TOOLS (or cycle context when open) |
 
 ### PERFORMANCE TOOLS
 
+Contextual layer: a fixed tab bar `[KEY] CHORD ARP RHYTHM`, one parameter per
+row, and a hint line at the bottom that says what `Left/Right` and `Enter` do
+for the selected row. Each context remembers its own selected row. Output
+target and MONO/POLY receiver mode are rows in KEY.
+
 | Key | Action |
 |---|---|
-| `1` | ARPEGGIATOR |
-| `2` | DIRECTION |
-| `3` | CHORD |
-| `4` | MEMORY |
-| `5` | STRUM |
-| `6` | RATCHET |
-| `7` | EUCLIDEAN |
-| `8` | ROTATE |
-| `9` | Receiver `MONO/POLY` |
-| `-` / `_` | Velocity -10 |
-| `=` / `+` | Velocity +10 |
+| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM) |
+| `Up` / `Down` | Select parameter row |
+| `Left` / `Right` | Decrease / increase selected value |
+| `Enter` | Toggle or secondary action for the row (see hint line) |
+| `Esc` / `` ` `` | Return to live PERFORM |
+
+The `; , . /` characters are swallowed while the layer is open: on the
+Cardputer those keys are the arrow keycaps and arrive together with the arrow
+scancode.
 
 Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
 ownership; internal Synth A/B remain sequencer/pattern instruments.

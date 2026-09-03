@@ -216,19 +216,19 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("bool PerformanceKeyboard::adjustVelocity" in keyboard_cpp and
                  "if (velocity == 0) velocity = keyVelocity_;" in keyboard_cpp,
                  "future Cardputer keyDown events must use the configurable fixed velocity")
-    base.require("case '-':" in page and
-                 "keyboard_.adjustVelocity(-1);" in page and
-                 "keyboard_.adjustVelocity(1);" in page and
-                 '"VEL %u  -/+"' in page and
-                 '"9 VOICE | -/+ VELOCITY"' in page,
-                 "PERFORMANCE TOOLS must expose velocity in 10-point steps without Shift")
+    base.require("VELOCITY" in page and
+                 "case 3: keyboard_.adjustVelocity(direction); break;" in page and
+                 '"-/+ VALUE  ENTER ALT  9 VOICE"' in page,
+                 "KEY context must expose velocity through the contextual -/+ dispatcher")
 
     base.require("case '9':" in page and
                  "keyboard_.toggleVoiceMode();" in page and
-                 "VOICE: POLY / RECEIVER" in page and
-                 "VOICE: MONO / RECEIVER" in page and
+                 '"VOICE: %s / RECEIVER"' in page and
                  "INT+USB" not in page,
-                 "PERFORM UI must describe MONO/POLY as receiver voice modes")
+                 "PERFORM UI must keep the compatibility receiver voice-mode command authoritative")
+    base.require("HeldPerformanceSnapshot" not in page and
+                 "restoreHeldPerformanceKeys" not in page,
+                 "receiver-mode compatibility must not revive cleared physical key ownership")
 
 
 base.test_manual_polyphony_is_external_and_bounded = (
