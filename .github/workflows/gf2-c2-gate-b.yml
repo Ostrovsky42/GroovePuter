@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  red-contract:
+  gate-b:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,5 +31,7 @@ jobs:
           git cat-file -e "${BASE}^{commit}"
           git diff --check "${BASE}...HEAD"
           test -z "$(git diff --name-only "${BASE}...HEAD" -- src/)"
+      - name: Execute production-backed corpus dump
+        run: bash tests/run_gf2_gate_b_dump_tests.sh
       - name: Gate B RED analysis contract
         run: python3 tests/test_gf2_gate_b_analysis.py
