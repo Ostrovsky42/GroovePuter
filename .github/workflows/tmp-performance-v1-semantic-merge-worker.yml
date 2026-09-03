@@ -1,4 +1,4 @@
-name: TMP Performance V1 semantic merge worker
+name: TMP Performance V1 exact-head release proof
 
 on:
   push:
@@ -6,25 +6,26 @@ on:
       - tmp/20260904-performance-v1-semantic-merge-worker
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CANDIDATE_SHA: 1f96500cca21c36317449d4cbf2769279af00b88
 
 jobs:
-  semantic-merge:
+  performance-p1c-gf2:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      OURS: a0742e217400bb759952ce5d7853785be9fcdcd0
-      THEIRS: fb08d0a68920ecfa5e2bfcf57f419592b48fba9b
-      BASE: 0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d
-      TARGET_BRANCH: integration/20260903-07-0.9.10-performance-v1
+    timeout-minutes: 60
     steps:
-      - name: Checkout worker branch
+      - name: Checkout exact published candidate
         uses: actions/checkout@v4
         with:
+          ref: 1f96500cca21c36317449d4cbf2769279af00b88
           fetch-depth: 0
 
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+
       - name: Install authoritative host dependencies
-        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -33,268 +34,267 @@ jobs:
             libsdl2-dev \
             libsdl2-gfx-dev
 
-      - name: Verify exact intended parents
-        shell: bash
+      - name: Performance V1 focused
+        env:
+          ASAN_OPTIONS: detect_leaks=0
         run: |
-          set -euo pipefail
-          git fetch --no-tags origin \
-            "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}" \
-            "refs/heads/feature/20260903-01-0.9.9-performance-instrument-v1:refs/remotes/origin/feature/20260903-01-0.9.9-performance-instrument-v1"
-          test "$(git rev-parse refs/remotes/origin/${TARGET_BRANCH})" = "${OURS}"
-          test "$(git rev-parse refs/remotes/origin/feature/20260903-01-0.9.9-performance-instrument-v1)" = "${THEIRS}"
-          test "$(git merge-base "${OURS}" "${THEIRS}")" = "${BASE}"
-
-      - name: Materialize semantic two-parent merge
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --detach "${OURS}"
-
-          set +e
-          git merge --no-ff --no-commit "${THEIRS}"
-          merge_rc=$?
-          set -e
-          echo "initial git merge rc=${merge_rc}"
-
-          conflicts="$(git diff --name-only --diff-filter=U || true)"
-          if [ -n "${conflicts}" ]; then
-            printf 'Initial conflicts:\n%s\n' "${conflicts}"
-          fi
-
-          allowed_conflicts='src/dsp/miniacid_engine.cpp
-          src/midi/midi_transport.h
-          src/midi/tee_midi_transport.h
-          src/midi/uart_midi_transport_core.h
-          src/midi/usb_midi_transport.h
-          src/platform/cardputer_uart_midi_transport.cpp
-          src/platform/cardputer_uart_midi_transport.h
-          tests/test_midi_transport_source_regressions.py
-          tests/test_performance_source_regressions.py
-          tests/test_source_regressions.py
-          tests/test_tee_midi_transport.cpp'
-
-          while IFS= read -r f; do
-            [ -z "${f}" ] && continue
-            if ! printf '%s\n' "${allowed_conflicts}" | sed 's/^[[:space:]]*//' | grep -Fxq "${f}"; then
-              echo "UNEXPECTED MERGE CONFLICT: ${f}" >&2
-              exit 40
-            fi
-          done <<< "${conflicts}"
-
-          current_wins=(
-            src/midi/midi_transport.h
-            src/midi/tee_midi_transport.h
-            src/midi/uart_midi_transport_core.h
-            src/midi/usb_midi_transport.h
-            src/platform/cardputer_uart_midi_transport.cpp
-            src/platform/cardputer_uart_midi_transport.h
-            tests/test_midi_transport_source_regressions.py
-            tests/test_tee_midi_transport.cpp
-          )
-          for f in "${current_wins[@]}"; do
-            if git ls-files -u -- "${f}" | grep -q .; then
-              git checkout --ours -- "${f}"
-              git add "${f}"
-              echo "RESOLVED CURRENT-0.9.10: ${f}"
-            fi
-          done
-
-          remaining="$(git diff --name-only --diff-filter=U || true)"
-          if [ -n "${remaining}" ]; then
-            echo "SEMANTIC CONFLICTS REQUIRE EXPLICIT RESOLUTION BEFORE PUSH:" >&2
-            printf '%s\n' "${remaining}" >&2
-            for f in ${remaining}; do
-              echo "===== ${f} =====" >&2
-              git diff --cc -- "${f}" >&2 || true
-            done
-            exit 42
-          fi
-
-          # P1C's original firewall was checkpoint-local and hard-coded BASE...HEAD.
-          # In a later integration candidate HEAD legitimately contains Performance
-          # production changes. Preserve the firewall by pinning the canonical P1C
-          # delta and separately requiring its representation to remain byte-identical.
-          cat > tests/test_pattern_phrase_p1c_source_contract.py <<'PY'
-          #!/usr/bin/env python3
-          from pathlib import Path
-          import subprocess
-
-          ROOT = Path(__file__).resolve().parents[1]
-          BASE = "2860f99d254baa96e06d48b3a52d3e729c2e707a"
-          P1C_TIP = "9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38"
-          ALLOWED_PRODUCTION = {
-              "src/phrase/runtime_synth_events.h",
-              "src/phrase/runtime_synth_events.cpp",
-          }
-          PROTECTED_PATHS = {
-              "src/input/performance_keyboard.cpp",
-              "src/input/performance_keyboard.h",
-              "src/input/internal_synth_output.cpp",
-              "src/input/internal_synth_output.h",
-              "src/dsp/miniacid_engine.cpp",
-              "src/dsp/miniacid_engine.h",
-          }
-
-
-          def require(condition: bool, message: str) -> None:
-              if not condition:
-                  raise AssertionError(message)
-
-
-          def output(*args: str) -> str:
-              return subprocess.run(
-                  ["git", *args],
-                  cwd=ROOT,
-                  check=True,
-                  text=True,
-                  capture_output=True,
-              ).stdout.strip()
-
-
-          def changed_paths(base: str, head: str) -> list[str]:
-              text = output("diff", "--name-only", f"{base}...{head}")
-              return [line.strip() for line in text.splitlines() if line.strip()]
-
-
-          for sha in (BASE, P1C_TIP):
-              subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=ROOT, check=True)
-
-          require(
-              output("merge-base", P1C_TIP, BASE) == BASE,
-              "P1C canonical base ancestry mismatch",
-          )
-          require(
-              output("merge-base", "HEAD", P1C_TIP) == P1C_TIP,
-              "P1C canonical integrated tip is not an ancestor of HEAD",
-          )
-
-          canonical_paths = changed_paths(BASE, P1C_TIP)
-          canonical_production = {path for path in canonical_paths if path.startswith("src/")}
-          require(
-              canonical_production.issubset(ALLOWED_PRODUCTION),
-              f"P1C canonical production firewall violated: {sorted(canonical_production - ALLOWED_PRODUCTION)}",
-          )
-          require(
-              not (set(canonical_paths) & PROTECTED_PATHS),
-              f"P1C canonical Performance/scheduler firewall violated: {sorted(set(canonical_paths) & PROTECTED_PATHS)}",
-          )
-
-          for path in sorted(ALLOWED_PRODUCTION):
-              unchanged = subprocess.run(
-                  ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--", path],
-                  cwd=ROOT,
-              ).returncode == 0
-              require(unchanged, f"P1C representation changed after canonical integration: {path}")
-
-          header = ROOT / "src/phrase/runtime_synth_events.h"
-          source = ROOT / "src/phrase/runtime_synth_events.cpp"
-          if not header.exists() or not source.exists():
-              print("P1C source contract: pre-implementation RED (runtime files absent)")
-              raise SystemExit(0)
-
-          text = header.read_text(encoding="utf-8") + "\n" + source.read_text(encoding="utf-8")
-          for forbidden in (
-              "gridSteps",
-              "AudioMutationGate",
-              "UndoOwner",
-              "PhraseBank",
-              "PhraseCore::",
-              "std::vector",
-              "malloc(",
-              "calloc(",
-              "realloc(",
-              "new Runtime",
-              "miniacid_engine",
-              "performance_keyboard",
-              "internal_synth_output",
-          ):
-              require(forbidden not in text, f"forbidden P1C dependency/token: {forbidden}")
-
-          for required in (
-              "RuntimeSynthEvent",
-              "RuntimeSynthEventBuffer",
-              "PatternProjectionSettings",
-              "PatternProjectionStatus",
-              "projectPatternToRuntimeEvents",
-              "kTicksPerBar",
-              "kSubticksPerTick",
-              "kMaxPhraseBars",
-              "kMaxSynthEvents",
-          ):
-              require(required in text, f"missing P1C contract token: {required}")
-
-          print("P1C source contract: OK")
-          PY
-          chmod +x tests/test_pattern_phrase_p1c_source_contract.py
-          git add tests/test_pattern_phrase_p1c_source_contract.py
-
-          grep -q 'MidiNoteOwnershipTable' src/midi/midi_note_ownership_table.h
-          if grep -R -n 'wireOwners_' \
-              src/midi/midi_transport.h \
-              src/midi/tee_midi_transport.h \
-              src/midi/uart_midi_transport_core.h \
-              src/midi/usb_midi_transport.h \
-              src/platform/cardputer_uart_midi_transport.cpp \
-              src/platform/cardputer_uart_midi_transport.h; then
-            echo 'Legacy wireOwners_ resurfaced in authoritative transport path' >&2
-            exit 43
-          fi
-          grep -q 'suspendLiveNoteProjection' src/dsp/miniacid_engine.cpp
-          grep -q 'patternOwnedMask_' src/dsp/miniacid_engine.cpp
-          test -f src/phrase/runtime_synth_events.h
-          test -f src/phrase/runtime_synth_events.cpp
-          git diff --quiet "${OURS}" -- src/phrase/runtime_synth_events.h src/phrase/runtime_synth_events.cpp
-
-          git status --short
-          git commit -m "Merge Performance Instrument V1 into 0.9.10 integration"
-          merge_sha="$(git rev-parse HEAD)"
-          read -r commit p1 p2 extra <<< "$(git rev-list --parents -n 1 HEAD)"
-          test "${commit}" = "${merge_sha}"
-          test "${p1}" = "${OURS}"
-          test "${p2}" = "${THEIRS}"
-          test -z "${extra:-}"
-          echo "MERGE_SHA=${merge_sha}" >> "${GITHUB_ENV}"
-          echo "Materialized merge SHA: ${merge_sha}"
-
-      - name: Focused Performance closure on exact candidate tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
           bash tests/run_performance_closure_tests.sh
           python3 tests/test_midi_transport_source_regressions.py
           python3 tests/test_performance_source_regressions.py
           python3 tests/test_pattern_midi_source_regressions.py
 
-      - name: P1C focused on exact candidate tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
-          bash tests/run_pattern_phrase_p1c_tests.sh
+      - name: GF2 I1
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i1_tests.sh
 
-      - name: GF2 frozen semantic firewall on exact candidate tree
-        shell: bash
+      - name: GF2 I2
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i2_tests.sh
+
+      - name: GF2 I2A
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i2a_tests.sh
+
+      - name: GF2 I3
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i3_tests.sh
+
+      - name: GF2 I4
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i4_tests.sh
+
+      - name: GF2 I5
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i5_tests.sh
+
+      - name: P1C focused
         env:
           ASAN_OPTIONS: detect_leaks=0
         run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
-          bash tests/run_gf2_i1_tests.sh
-          bash tests/run_gf2_i2_tests.sh
-          bash tests/run_gf2_i2a_tests.sh
-          bash tests/run_gf2_i3_tests.sh
-          bash tests/run_gf2_i4_tests.sh
-          bash tests/run_gf2_i5_tests.sh
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          bash tests/run_pattern_phrase_p1c_tests.sh
 
-      - name: Publish candidate only if exact parent has not moved
-        shell: bash
+  host-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact published candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 1f96500cca21c36317449d4cbf2769279af00b88
+          fetch-depth: 0
+
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+
+      - name: Run Groove Vocabulary Stage 1 tests
+        run: bash tests/run_rhythm_stage1_tests.sh
+
+      - name: Run Groove Vocabulary Stage 2 tests
+        run: bash tests/run_rhythm_stage2_tests.sh
+
+      - name: Run Groove Vocabulary Stage 3 tests
+        run: bash tests/run_rhythm_stage3_tests.sh
+
+      - name: Run Groove Vocabulary Stage 4 tests
+        run: bash tests/run_rhythm_stage4_tests.sh
+
+      - name: Run Groove Vocabulary Stage 5 tests
+        run: bash tests/run_rhythm_stage5_tests.sh
+
+      - name: Run Groove Vocabulary Stage 6 tests
+        run: bash tests/run_rhythm_stage6_tests.sh
+
+      - name: Run Groove Vocabulary Stage 6.1 hardening tests
+        run: bash tests/run_rhythm_stage6_1_tests.sh
+
+      - name: Run Generation Stage 12 tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_phrase_stage12_tests.sh
+
+      - name: Validate Atlas Pass 1 schema
+        run: python3 tests/test_atlas_pass1_schema.py
+
+      - name: Validate Atlas Pass 2 runtime baseline
+        env:
+          ATLAS_PASS2_PRINT_RUNTIME_DUMP: "1"
+        run: bash tests/run_atlas_pass2_runtime_dump.sh
+
+      - name: Validate Atlas Pass 2 extraction contracts
         run: |
-          set -euo pipefail
-          git fetch --no-tags origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          live="$(git rev-parse refs/remotes/origin/${TARGET_BRANCH})"
-          test "${live}" = "${OURS}"
-          git push origin "${MERGE_SHA}:refs/heads/${TARGET_BRANCH}"
-          echo "Published exact integration SHA ${MERGE_SHA}"
+          python3 tests/test_atlas_pass2_extractor.py
+          python3 tests/test_atlas_pass2_outputs.py
+
+      - name: Run Generation Stage 13/14 tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_generation_stage13_tests.sh
+
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Run pattern editor input ownership tests
+        run: python3 tests/test_pattern_editor_input_ownership.py
+
+      - name: Run step note entry source regressions
+        run: python3 tests/test_step_note_entry_source_regressions.py
+
+      - name: Run project pattern storage tests
+        run: |
+          mkdir -p build/host-tests
+          cat > build/host-tests/pattern_paging_scratch.cpp <<'CPP'
+          #include "scenes.h"
+
+          Scene& sceneTransactionScratch() {
+            static Scene scratch{};
+            return scratch;
+          }
+          CPP
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_paging.cpp \
+            src/audio/pattern_paging.cpp \
+            src/audio/pattern_project_cleanup.cpp \
+            build/host-tests/pattern_paging_scratch.cpp \
+            -o build/host-tests/test_pattern_paging
+          build/host-tests/test_pattern_paging
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_address.cpp \
+            -o build/host-tests/test_pattern_address
+          build/host-tests/test_pattern_address
+
+      - name: Run UI status chrome tests
+        run: |
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run synth engine tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
+
+          params = (root / 'src/ui/pages/tb303_params_page.cpp').read_text(encoding='utf-8')
+          synth_page = (root / 'src/ui/pages/synth_sequencer_page.cpp').read_text(encoding='utf-8')
+          assert 'removeDisabledSynthEngines' in params
+          assert 'availableSynthEngines' in params
+          assert '{"TB303", "SID", "AY", "OPL2"' not in params
+          assert 'removeDisabledSynthEngines' not in synth_page
+          assert 'std::make_shared<TB303ParamsPage>' in synth_page
+
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
+          PY
+
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-c++20-extensions -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
+
+      - name: Run dirty-region display tests
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact published candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 1f96500cca21c36317449d4cbf2769279af00b88
+
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact published candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 1f96500cca21c36317449d4cbf2769279af00b88
+
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact published candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 1f96500cca21c36317449d4cbf2769279af00b88
+
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA}"
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
