@@ -1,0 +1,43 @@
+name: 0.9.10 Pattern Phrase P1C Runtime Foundation
+
+on:
+  push:
+    branches:
+      - feature/20260903-06-0.9.10-pattern-phrase-p1c-runtime-foundation
+  pull_request:
+    paths:
+      - 'src/phrase/runtime_synth_events.h'
+      - 'src/phrase/runtime_synth_events.cpp'
+      - 'tests/test_pattern_phrase_p0_source_contract.py'
+      - 'tests/test_pattern_phrase_p0_runtime.cpp'
+      - 'tests/test_pattern_phrase_p1c_runtime_events.cpp'
+      - 'tests/test_pattern_phrase_p1c_source_contract.py'
+      - 'tests/run_pattern_phrase_p1c_tests.sh'
+      - 'docs/contracts/0_9_10_PATTERN_PHRASE_P1C_RUNTIME_FOUNDATION.md'
+      - '.github/workflows/0_9_10_pattern_phrase_p1c_runtime_foundation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  p1c-runtime-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run P1C focused gate
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p1c_tests.sh
