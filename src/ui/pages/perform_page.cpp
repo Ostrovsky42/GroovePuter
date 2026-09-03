@@ -89,6 +89,8 @@ void PerformPage::moveContext(int direction) {
     while (next >= count) next -= count;
     selectedContext_ = static_cast<PerformanceToolContext>(next);
     selectedRow_ = 0;
+    toolsFullRedraw_ = true;
+    toolsSelectionDirty_ = true;
 }
 
 void PerformPage::moveRow(int direction) {
@@ -97,6 +99,7 @@ void PerformPage::moveRow(int direction) {
     while (next < 0) next += count;
     while (next >= count) next -= count;
     selectedRow_ = static_cast<uint8_t>(next);
+    toolsSelectionDirty_ = true;
 }
 
 void PerformPage::adjustSelectedValue(int direction) {
@@ -308,8 +311,28 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int labelX = Layout::COL_1 + 8;
     const int valueX = Layout::COL_2;
+    const int lineHeight = LayoutManager::lineY(1) - LayoutManager::lineY(0);
+    const int firstRowY = LayoutManager::lineY(2);
+    const int rowRegionHeight = LayoutManager::lineY(7) + lineHeight - firstRowY;
+    const UI::ThemePalette palette = UI::themePalette();
+    const bool fullRedraw = toolsFullRedraw_;
     char line[72];
     char value[48];
+
+    if (fullRedraw) {
+        LayoutManager::clearContent(gfx);
+    } else {
+        gfx.fillRect(Layout::CONTENT.x, LayoutManager::lineY(0),
+                     Layout::CONTENT.w, lineHeight, palette.background);
+        gfx.fillRect(valueX - 2, firstRowY,
+                     Layout::CONTENT.x + Layout::CONTENT.w - valueX + 2,
+                     rowRegionHeight, palette.background);
+    }
+
+    if (toolsSelectionDirty_ && !fullRedraw) {
+        gfx.fillRect(Layout::COL_1, firstRowY, 7, rowRegionHeight,
+                     palette.background);
+    }
 
     if (keyboard_.target() == MusicalEventTarget::Drums) {
         std::snprintf(line, sizeof(line), "%s  CH1-7",
@@ -323,36 +346,40 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
-    const uint8_t contextIndex = static_cast<uint8_t>(selectedContext_);
-    switch (selectedContext_) {
-        case PerformanceToolContext::Key:
-            std::snprintf(line, sizeof(line), "[KEY] CHORD ARP RHYTHM");
-            break;
-        case PerformanceToolContext::Chord:
-            std::snprintf(line, sizeof(line), "KEY [CHORD] ARP RHYTHM");
-            break;
-        case PerformanceToolContext::Arp:
-            std::snprintf(line, sizeof(line), "KEY CHORD [ARP] RHYTHM");
-            break;
-        case PerformanceToolContext::Rhythm:
-            std::snprintf(line, sizeof(line), "KEY CHORD ARP [RHYTHM]");
-            break;
-        case PerformanceToolContext::Count:
-            std::snprintf(line, sizeof(line), "KEY CHORD ARP RHYTHM");
-            break;
+    if (fullRedraw) {
+        switch (selectedContext_) {
+            case PerformanceToolContext::Key:
+                std::snprintf(line, sizeof(line), "[KEY] CHORD ARP RHYTHM");
+                break;
+            case PerformanceToolContext::Chord:
+                std::snprintf(line, sizeof(line), "KEY [CHORD] ARP RHYTHM");
+                break;
+            case PerformanceToolContext::Arp:
+                std::snprintf(line, sizeof(line), "KEY CHORD [ARP] RHYTHM");
+                break;
+            case PerformanceToolContext::Rhythm:
+                std::snprintf(line, sizeof(line), "KEY CHORD ARP [RHYTHM]");
+                break;
+            case PerformanceToolContext::Count:
+                std::snprintf(line, sizeof(line), "KEY CHORD ARP RHYTHM");
+                break;
+        }
+        gfx.setTextColor(COLOR_ACCENT);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
     }
-    (void)contextIndex;
-    (void)kToolContextNames;
-    gfx.setTextColor(COLOR_ACCENT);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
+
+    if (fullRedraw || toolsSelectionDirty_) {
+        gfx.setTextColor(COLOR_ACCENT);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2 + selectedRow_), ">");
+    }
 
     auto drawRow = [&](uint8_t row, const char* label, const char* rowValue) {
         const int y = LayoutManager::lineY(2 + row);
-        const bool selected = row == selectedRow_;
-        gfx.setTextColor(selected ? COLOR_ACCENT : COLOR_LABEL);
-        gfx.drawText(Layout::COL_1, y, selected ? ">" : " ");
-        gfx.drawText(labelX, y, label);
-        gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
+        if (fullRedraw) {
+            gfx.setTextColor(COLOR_LABEL);
+            gfx.drawText(labelX, y, label);
+        }
+        gfx.setTextColor(row == selectedRow_ ? COLOR_WHITE : COLOR_LABEL);
         gfx.drawText(valueX, y, rowValue);
     };
 
@@ -456,6 +483,9 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         case PerformanceToolContext::Count:
             break;
     }
+
+    toolsFullRedraw_ = false;
+    toolsSelectionDirty_ = false;
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
@@ -471,6 +501,8 @@ bool PerformPage::handleEvent(UIEvent& event) {
             toolsLayerVisible_ = true;
             selectedContext_ = PerformanceToolContext::Key;
             selectedRow_ = 0;
+            toolsFullRedraw_ = true;
+            toolsSelectionDirty_ = true;
             UI::showToast("PERFORM: KEY / CHORD / ARP / RHYTHM", 800);
         } else {
             moveContext(1);
@@ -543,13 +575,14 @@ void PerformPage::drawHeader(IGfx& gfx) {
 }
 
 void PerformPage::drawContent(IGfx& gfx) {
-    LayoutManager::clearContent(gfx);
     keyboard_.setTempoBpm(miniAcid_.bpm());
 
     if (toolsLayerVisible_) {
         drawToolsLayer(gfx);
         return;
     }
+
+    LayoutManager::clearContent(gfx);
 
     const int active = keyboard_.activeNote();
     const int activeVelocity = keyboard_.activeVelocity();
