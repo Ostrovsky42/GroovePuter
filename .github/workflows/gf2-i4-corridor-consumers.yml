@@ -7,6 +7,8 @@ on:
       - "src/generation/migration/**"
       - "src/generation/rhythm/**"
       - "tests/test_gf2_i4_corridor_consumers.cpp"
+      - "tests/test_gf2_i4_phrase_density.cpp"
+      - "tests/test_gf2_i4_request_initializer_contract.py"
       - "tests/run_gf2_i4_tests.sh"
       - "docs/gf2/GF2_I4_CORRIDOR_CONSUMERS.md"
       - ".github/workflows/gf2-i4-corridor-consumers.yml"
@@ -19,5 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Run GF2-I4 focused host gate
         run: bash tests/run_gf2_i4_tests.sh
