@@ -174,6 +174,52 @@ FEEL AMOUNT      left at the new default for case C
 Case C is the checkpoint. If the profile is only audible after the musician
 hunts for the amount control, I2A has not delivered.
 
+### Result — case C FAILED
+
+Flashed at `22923001` with remote CI green on the same SHA. Switching PROFILE
+was still not distinguishable by ear at the shipped default, or at maximum
+amount.
+
+The same listener **does** hear the SWING control. That is a calibration, not a
+failure report:
+
+| control | displacement at 132 BPM | audible |
+|---|---|---|
+| SWING 75% | 12 ticks / 56.8 ms | yes |
+| LAID BACK at the default | 3 ticks / 14.2 ms | no |
+| PUSH/PULL at the default | 2 ticks / 9.4 ms | no |
+
+The perceptual threshold therefore lies above 2 ticks and at or below 12. The
+provisional contract threshold of 2 ticks sits below it.
+
+The ceiling matters more than the default here. At FEEL AMOUNT 100 the profiles
+top out at 6 ticks (LAID BACK), 4 ticks (PUSH/PULL) and 2 ticks
+(SwingCompatible) — roughly half the swing range. If the calibrated threshold
+lands above 6 ticks, the amount control cannot reach it at any setting and the
+profile coefficients themselves are the binding constraint.
+
+## Calibration pending
+
+The next step is not a code change. It is one measurement: find the smallest
+SWING setting that a listener still distinguishes from 50%, which converts
+directly to a threshold in ticks (`round((pct - 50) * 24 / 50)`).
+
+| outcome | reading | consequence |
+|---|---|---|
+| lost at 54–56% (2–3 ticks) | the profiles are already large enough | the problem is distribution, not size: swing moves every odd step uniformly, the profile moves a scattered subset in mixed directions |
+| lost at 58–65% (4–7 ticks) | the profile ceiling sits at or below the threshold | reopen the profile coefficients — the decision I2A deliberately deferred |
+| only audible from 70% (10+ ticks) | micro-timing at this scale is not a musically available axis here | record it as a limitation rather than engineering against it |
+
+Deferred by the musician pending a calibration session with a drummer. This is
+the right call: the remaining decision is perceptual, and guessing the threshold
+would put a number in the contract that no listener validated.
+
+Until then `kMinDisplacedEvents` / `kMinOffsetTicks` in
+`tests/test_gf2_i2a_feel_magnitude.cpp` are marked PROVISIONAL in source. The
+contract currently proves the effect is present, deterministic and mutually
+distinct. It does **not** prove it is audible, and the checkpoint does not claim
+that.
+
 ## Semantic delta
 
 ```text
@@ -185,6 +231,16 @@ tempo arbitration           unchanged (GF2-I1)
 FEEL resolution             unchanged (GF2-I2)
 velocity                    unchanged
 ```
+
+## Status
+
+```text
+GF2-I2A   contract PASS, acceptance BLOCKED on perceptual calibration
+```
+
+The amplitude change ships: at 0.2 two of three profiles were byte-identical to
+STRAIGHT, which was indefensible regardless of where the perceptual threshold
+turns out to be. It is necessary and, on this evidence, not yet sufficient.
 
 ## What I2A does not close
 

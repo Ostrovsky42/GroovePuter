@@ -28,12 +28,21 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
-// Thresholds taken from docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv. Over
-// the 22 expected-active recipes at 50% the weakest case is LAID BACK with 5
-// displaced events and PUSH/PULL with 3, both at 2 ticks; at the previous 20%
-// default PUSH/PULL displaced nothing at all. Three events and two ticks is
-// therefore below the measured floor of a working amplitude and far above the
-// value that shipped inaudible.
+// PROVISIONAL, pending perceptual calibration.
+//
+// Thresholds taken from docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv: over
+// the expected-active recipes at 50% the weakest case is LAID BACK with 5
+// displaced events and PUSH/PULL with 3, both at 2 ticks, while at the previous
+// 20% default PUSH/PULL displaced nothing at all.
+//
+// These numbers are a floor derived from the material, not from a listener. On
+// hardware the shipped amplitude was still not distinguishable by ear, while the
+// SWING control at 12 ticks clearly was - so the perceptual threshold lies
+// somewhere above 2 ticks and at or below 12. Until that is calibrated against a
+// listener, this contract proves the effect is present and mutually distinct; it
+// does not yet prove it is audible, and must not be read as if it did.
+//
+// See docs/gf2/GF2_I2A_FEEL_AMPLITUDE.md, "Calibration pending".
 constexpr int kMinDisplacedEvents = 3;
 constexpr int kMinOffsetTicks = 2;
 
