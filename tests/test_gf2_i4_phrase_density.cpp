@@ -28,6 +28,7 @@ namespace {
 
 constexpr uint8_t kFourBarPhraseBars = 4;
 constexpr uint8_t kSparseDriftPhraseBars = 8;
+constexpr RhythmArchetypeId kSparseDriftControlledArchetypeId = 415;
 constexpr uint16_t kMaxFixtureOrdinal = 96;
 
 int g_failures = 0;
@@ -92,11 +93,76 @@ bool lawMatches(PhraseEvolutionLawId actual, PhraseEvolutionLawId wanted) {
   return actual == wanted;
 }
 
+PhraseFixture findFixtureForSettings(
+    const GenreSettings& settings,
+    PhraseEvolutionLawId wanted,
+    uint8_t requestedPhraseBars,
+    bool requireDensityDifferentFromPreferred) {
+  static PhraseExecutionScratch scratch{};
+  static PreparedPhraseExecution prepared{};
+
+  for (uint16_t identity = 0;
+       identity < kMaxFixtureOrdinal;
+       ++identity) {
+    scratch = PhraseExecutionScratch{};
+    prepared = PreparedPhraseExecution{};
+    const PhraseExecutionStatus status = preparePhraseExecution(
+        settings, materializationSettings(), identity, requestedPhraseBars,
+        scratch, prepared);
+    if (status != PhraseExecutionStatus::Ready ||
+        prepared.phraseTrajectory == kNoTrajectoryId ||
+        prepared.selection.composition.phraseBars != requestedPhraseBars ||
+        !lawMatches(prepared.selection.composition.phraseLaw, wanted) ||
+        prepared.selection.structuralDensityTarget ==
+            kNoStructuralDensityTarget) {
+      continue;
+    }
+
+    const ReferenceVocabulary::Definition* definition =
+        ReferenceVocabulary::definitionForId(
+            prepared.selection.composition.rhythmArchetypeId);
+    const RhythmArchetype* archetype = definition == nullptr
+        ? nullptr
+        : ReferenceVocabulary::archetypeFor(definition->key);
+    if (archetype == nullptr) continue;
+    if (requireDensityDifferentFromPreferred &&
+        prepared.selection.structuralDensityTarget ==
+            archetype->density.structuralPreferred) {
+      continue;
+    }
+
+    PhraseFixture fixture{};
+    fixture.found = true;
+    fixture.settings = settings;
+    fixture.phraseIdentity = identity;
+    fixture.requestedPhraseBars = requestedPhraseBars;
+    fixture.prepared = prepared;
+    return fixture;
+  }
+  return PhraseFixture{};
+}
+
 PhraseFixture findFixture(PhraseEvolutionLawId wanted,
                           uint8_t requestedPhraseBars,
                           bool requireDensityDifferentFromPreferred) {
-  static PhraseExecutionScratch scratch{};
-  static PreparedPhraseExecution prepared{};
+  // SparseDrift is shipped as an eight-bar choice by kPhraseSlow. An AUTO draw
+  // is not a semantic precondition for I3 execution, and a bounded seed sweep
+  // can miss a phrase-enabled rhythm archetype. Use the already-proven shipped
+  // Lo-Fi compatibility with SparseFastBreak/415 to exercise the real eight-bar
+  // request deterministically through the same production PREPARE path.
+  if (wanted == PhraseEvolutionLawId::SparseDrift &&
+      requestedPhraseBars == kSparseDriftPhraseBars) {
+    GenreSettings sparse{};
+    sparse.generativeMode = static_cast<uint8_t>(GenerativeMode::LoFi);
+    sparse.recipe = kBaseRecipeId;
+    sparse.rhythmSelectionMode =
+        static_cast<uint8_t>(RhythmSelectionMode::Manual);
+    sparse.rhythmArchetypeId = kSparseDriftControlledArchetypeId;
+    const PhraseFixture controlled = findFixtureForSettings(
+        sparse, wanted, requestedPhraseBars,
+        requireDensityDifferentFromPreferred);
+    if (controlled.found) return controlled;
+  }
 
   for (uint8_t mode = 0; mode < kGenerativeModeCount; ++mode) {
     const GenerativeMode genre = static_cast<GenerativeMode>(mode);
@@ -114,44 +180,10 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
           static_cast<uint8_t>(RhythmSelectionMode::Auto);
       settings.rhythmArchetypeId = kNoArchetypeId;
 
-      for (uint16_t identity = 0;
-           identity < kMaxFixtureOrdinal;
-           ++identity) {
-        scratch = PhraseExecutionScratch{};
-        prepared = PreparedPhraseExecution{};
-        const PhraseExecutionStatus status = preparePhraseExecution(
-            settings, materializationSettings(), identity, requestedPhraseBars,
-            scratch, prepared);
-        if (status != PhraseExecutionStatus::Ready ||
-            prepared.phraseTrajectory == kNoTrajectoryId ||
-            prepared.selection.composition.phraseBars != requestedPhraseBars ||
-            !lawMatches(prepared.selection.composition.phraseLaw, wanted) ||
-            prepared.selection.structuralDensityTarget ==
-                kNoStructuralDensityTarget) {
-          continue;
-        }
-
-        const ReferenceVocabulary::Definition* definition =
-            ReferenceVocabulary::definitionForId(
-                prepared.selection.composition.rhythmArchetypeId);
-        const RhythmArchetype* archetype = definition == nullptr
-            ? nullptr
-            : ReferenceVocabulary::archetypeFor(definition->key);
-        if (archetype == nullptr) continue;
-        if (requireDensityDifferentFromPreferred &&
-            prepared.selection.structuralDensityTarget ==
-                archetype->density.structuralPreferred) {
-          continue;
-        }
-
-        PhraseFixture fixture{};
-        fixture.found = true;
-        fixture.settings = settings;
-        fixture.phraseIdentity = identity;
-        fixture.requestedPhraseBars = requestedPhraseBars;
-        fixture.prepared = prepared;
-        return fixture;
-      }
+      const PhraseFixture fixture = findFixtureForSettings(
+          settings, wanted, requestedPhraseBars,
+          requireDensityDifferentFromPreferred);
+      if (fixture.found) return fixture;
     }
   }
   return PhraseFixture{};
@@ -179,6 +211,9 @@ void testLawRemainsCausal(PhraseEvolutionLawId law,
   if (law == PhraseEvolutionLawId::SparseDrift) {
     expect("SparseDrift uses the shipped eight-bar request",
            requestedPhraseBars == kSparseDriftPhraseBars);
+    expect("SparseDrift controlled fixture keeps shipped SparseFastBreak/415",
+           fixture.prepared.selection.composition.rhythmArchetypeId ==
+               kSparseDriftControlledArchetypeId);
     expect("eight-bar SparseDrift retains the four-bar evolution vocabulary",
            fixture.prepared.phrasePlan.barCount == kFourBarPhraseBars);
   }
