@@ -1,0 +1,172 @@
+name: TMP Performance V1 semantic merge worker
+
+on:
+  push:
+    branches:
+      - tmp/20260904-performance-v1-semantic-merge-worker
+
+permissions:
+  contents: write
+
+jobs:
+  semantic-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OURS: a0742e217400bb759952ce5d7853785be9fcdcd0
+      THEIRS: fb08d0a68920ecfa5e2bfcf57f419592b48fba9b
+      BASE: 0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d
+      TARGET_BRANCH: integration/20260903-07-0.9.10-performance-v1
+    steps:
+      - name: Checkout worker branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact intended parents
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}" \
+            "refs/heads/feature/20260903-01-0.9.9-performance-instrument-v1:refs/remotes/origin/feature/20260903-01-0.9.9-performance-instrument-v1"
+          test "$(git rev-parse refs/remotes/origin/${TARGET_BRANCH})" = "${OURS}"
+          test "$(git rev-parse refs/remotes/origin/feature/20260903-01-0.9.9-performance-instrument-v1)" = "${THEIRS}"
+          test "$(git merge-base "${OURS}" "${THEIRS}")" = "${BASE}"
+
+      - name: Materialize semantic two-parent merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --detach "${OURS}"
+
+          set +e
+          git merge --no-ff --no-commit "${THEIRS}"
+          merge_rc=$?
+          set -e
+          echo "initial git merge rc=${merge_rc}"
+
+          conflicts="$(git diff --name-only --diff-filter=U || true)"
+          if [ -n "${conflicts}" ]; then
+            printf 'Initial conflicts:\n%s\n' "${conflicts}"
+          fi
+
+          allowed_conflicts='src/dsp/miniacid_engine.cpp
+          src/midi/midi_transport.h
+          src/midi/tee_midi_transport.h
+          src/midi/uart_midi_transport_core.h
+          src/midi/usb_midi_transport.h
+          src/platform/cardputer_uart_midi_transport.cpp
+          src/platform/cardputer_uart_midi_transport.h
+          tests/test_midi_transport_source_regressions.py
+          tests/test_performance_source_regressions.py
+          tests/test_source_regressions.py
+          tests/test_tee_midi_transport.cpp'
+
+          while IFS= read -r f; do
+            [ -z "${f}" ] && continue
+            if ! printf '%s\n' "${allowed_conflicts}" | sed 's/^[[:space:]]*//' | grep -Fxq "${f}"; then
+              echo "UNEXPECTED MERGE CONFLICT: ${f}" >&2
+              exit 40
+            fi
+          done <<< "${conflicts}"
+
+          # Frozen resolution rule: current 0.9.10 MIDI ownership/runtime wins.
+          current_wins=(
+            src/midi/midi_transport.h
+            src/midi/tee_midi_transport.h
+            src/midi/uart_midi_transport_core.h
+            src/midi/usb_midi_transport.h
+            src/platform/cardputer_uart_midi_transport.cpp
+            src/platform/cardputer_uart_midi_transport.h
+            tests/test_midi_transport_source_regressions.py
+            tests/test_tee_midi_transport.cpp
+          )
+          for f in "${current_wins[@]}"; do
+            if git ls-files -u -- "${f}" | grep -q .; then
+              git checkout --ours -- "${f}"
+              git add "${f}"
+              echo "RESOLVED CURRENT-0.9.10: ${f}"
+            fi
+          done
+
+          remaining="$(git diff --name-only --diff-filter=U || true)"
+          if [ -n "${remaining}" ]; then
+            echo "SEMANTIC CONFLICTS REQUIRE EXPLICIT RESOLUTION BEFORE PUSH:" >&2
+            printf '%s\n' "${remaining}" >&2
+            for f in ${remaining}; do
+              echo "===== ${f} =====" >&2
+              git diff --cc -- "${f}" >&2 || true
+            done
+            exit 42
+          fi
+
+          # Frozen ownership/runtime sanity checks before creating a candidate SHA.
+          grep -q 'MidiNoteOwnershipTable' src/midi/midi_note_ownership_table.h
+          grep -q 'owners_' src/midi/tee_midi_transport.h
+          if grep -R -n 'wireOwners_' \
+              src/midi/midi_transport.h \
+              src/midi/tee_midi_transport.h \
+              src/midi/uart_midi_transport_core.h \
+              src/midi/usb_midi_transport.h \
+              src/platform/cardputer_uart_midi_transport.cpp \
+              src/platform/cardputer_uart_midi_transport.h; then
+            echo 'Legacy wireOwners_ resurfaced in authoritative transport path' >&2
+            exit 43
+          fi
+          grep -q 'suspendLiveNoteProjection' src/dsp/miniacid_engine.cpp
+          grep -q 'patternOwnedMask_' src/dsp/miniacid_engine.cpp
+          test -f src/phrase/runtime_synth_events.h
+          test -f src/phrase/runtime_synth_events.cpp
+
+          git status --short
+          git commit -m "Merge Performance Instrument V1 into 0.9.10 integration"
+          merge_sha="$(git rev-parse HEAD)"
+          read -r commit p1 p2 extra <<< "$(git rev-list --parents -n 1 HEAD)"
+          test "${commit}" = "${merge_sha}"
+          test "${p1}" = "${OURS}"
+          test "${p2}" = "${THEIRS}"
+          test -z "${extra:-}"
+          echo "MERGE_SHA=${merge_sha}" >> "${GITHUB_ENV}"
+          echo "Materialized merge SHA: ${merge_sha}"
+
+      - name: Focused Performance closure on exact candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
+          bash tests/run_performance_closure_tests.sh
+          python3 tests/test_midi_transport_source_regressions.py
+          python3 tests/test_performance_source_regressions.py
+          python3 tests/test_pattern_midi_source_regressions.py
+
+      - name: P1C focused on exact candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
+          bash tests/run_pattern_phrase_p1c_tests.sh
+
+      - name: GF2 frozen semantic firewall on exact candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
+          bash tests/run_gf2_i1_tests.sh
+          bash tests/run_gf2_i2_tests.sh
+          bash tests/run_gf2_i2a_tests.sh
+          bash tests/run_gf2_i3_tests.sh
+          bash tests/run_gf2_i4_tests.sh
+          bash tests/run_gf2_i5_tests.sh
+
+      - name: Publish candidate only if exact parent has not moved
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          live="$(git rev-parse refs/remotes/origin/${TARGET_BRANCH})"
+          test "${live}" = "${OURS}"
+          git push origin "${MERGE_SHA}:refs/heads/${TARGET_BRANCH}"
+          echo "Published exact integration SHA ${MERGE_SHA}"
