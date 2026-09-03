@@ -29,6 +29,21 @@ PHRASE_SOURCES+=("/src/generation/migration/phrase_execution.cpp")
   -o "${BUILD_DIR}/phrase_density"
 "${BUILD_DIR}/phrase_density"
 
-# I4 must preserve every already-accepted GF2 semantic checkpoint.
+python3 "${ROOT}/tests/test_gf2_i4_request_initializer_contract.py"
+
+# Explicit one-bar compatibility proof for the pre-I4 RhythmRealizer contract.
+bash "${ROOT}/tests/run_rhythm_stage2_tests.sh" > /dev/null
+echo "GF2-I4 one-bar RhythmRealizer compatibility: PASS"
+
+# Run inherited GF2 checkpoints explicitly. Some runners intentionally chain to
+# earlier gates as well; explicit invocation here makes the I4 evidence legible.
+bash "${ROOT}/tests/run_gf2_i1_tests.sh" > /dev/null
+echo "GF2-I1 tempo/corridor arbitration regression: PASS"
+bash "${ROOT}/tests/run_gf2_i2_tests.sh" > /dev/null
+echo "GF2-I2 profile FEEL regression: PASS"
+bash "${ROOT}/tests/run_gf2_i2a_tests.sh" > /dev/null
+echo "GF2-I2A FEEL amplitude regression: PASS"
 bash "${ROOT}/tests/run_gf2_i3_tests.sh" > /dev/null
-echo "GF2-I4 inherited I1/I2/I2A/I3 chain: intact"
+echo "GF2-I3 phrase-law execution regression: PASS"
+
+echo "GF2-I4 focused + inherited regression gate: PASS"
