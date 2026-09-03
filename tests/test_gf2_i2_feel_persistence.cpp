@@ -71,11 +71,28 @@ int main() {
              manager.currentScene().feel.timingProfile ==
                  static_cast<uint8_t>(FeelProfileId::LaidBack));
 
-  // A fresh Scene keeps the established default; AUTO is opt-in.
-  manager.loadDefaultScene();
-  expectTrue("fresh scenes default to STRAIGHT, not AUTO",
-             manager.currentScene().feel.timingProfile ==
+  // A fresh FeelSettings keeps the established default; AUTO is opt-in and
+  // never appears in a Scene the musician did not put it in.
+  expectTrue("fresh FeelSettings default to STRAIGHT, not AUTO",
+             FeelSettings().timingProfile ==
                  static_cast<uint8_t>(FeelProfileId::Straight));
+
+  // A document with no profile field at all still decodes as STRAIGHT.
+  manager.loadDefaultScene();
+  manager.currentScene().feel.timingProfile =
+      static_cast<uint8_t>(FeelProfileId::PushPullControlled);
+  std::string legacyNoField = manager.dumpCurrentScene();
+  const std::string profileField = ",\"profile\":3";
+  const size_t fieldPos = legacyNoField.find(profileField);
+  expectTrue("the profile field is present to remove",
+             fieldPos != std::string::npos);
+  if (fieldPos != std::string::npos) {
+    legacyNoField.erase(fieldPos, profileField.size());
+    expectTrue("pre-FEEL document loads", manager.loadScene(legacyNoField));
+    expectTrue("a missing profile field decodes as STRAIGHT, not AUTO",
+               manager.currentScene().feel.timingProfile ==
+                   static_cast<uint8_t>(FeelProfileId::Straight));
+  }
 
   // An out-of-range profile still falls back to STRAIGHT.
   manager.loadDefaultScene();

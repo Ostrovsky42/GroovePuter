@@ -55,8 +55,10 @@ void testStableProfilesAndDeterminism() {
 
 void testNoDriftAndBounds() {
   const FeelPhrase phrase = denseEightBarPhrase();
+  // The interpreter executes concrete timing characters only; Auto is a
+  // selection mode resolved before interpretation (GF2-I2).
   for (uint8_t profileValue = 0;
-       profileValue < static_cast<uint8_t>(FeelProfileId::Count);
+       profileValue < static_cast<uint8_t>(FeelProfileId::Auto);
        ++profileValue) {
     for (uint32_t seed = 0; seed < 64; ++seed) {
       TimedFeelPhrase timed{};
