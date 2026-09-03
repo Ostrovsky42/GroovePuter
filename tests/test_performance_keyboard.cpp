@@ -141,12 +141,11 @@ int main() {
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36,
                 MusicalEventSource::PerformanceKeyboardPoly);
 
-    // POLY+CHORD is a sustained union, not last-root replacement.
+    // POLY+CHORD is a sustained union, not last-root replacement. Changing an
+    // idle chord mode does not emit destructive cleanup when nothing is sounding.
     sink.clear();
     keyboard.setChordMode(PerformanceChordMode::Fifth);
-    assert(sink.events.size() == 1);
-    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
-    sink.clear();
+    assert(sink.events.empty());
 
     assert(keyboard.keyDown('a', 96));  // 36,43,48
     assert(sink.events.size() == 3);
@@ -185,8 +184,7 @@ int main() {
     // Direct POLY+CHORD has an explicit 16-unique-note ceiling.
     sink.clear();
     keyboard.setChordMode(PerformanceChordMode::Minor7);
-    assert(sink.events.size() == 1);
-    sink.clear();
+    assert(sink.events.empty());
     for (char key : std::string("asdfgh")) assert(keyboard.keyDown(key));
     assert(keyboard.heldCount() == 6);
     assert(sink.events.size() == PerformanceKeyboard::kMaxPolyChordNotes);
@@ -201,8 +199,7 @@ int main() {
 
     sink.clear();
     keyboard.setChordMode(PerformanceChordMode::Off);
-    assert(sink.events.size() == 1);
-    sink.clear();
+    assert(sink.events.empty());
     keyboard.setVoiceMode(PerformanceVoiceMode::Mono);
     assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
     assert(!keyboard.directPolyphonyEnabled());
