@@ -159,6 +159,11 @@ PhraseExecutionStatus preparePhraseExecution(
         : destination.length.effectivePhraseBars;
     evolution.level = materialization.level;
     evolution.generation = destination.selection.realizationGeneration;
+    // GF2-I4: this value was projected exactly once when the frozen selection
+    // was prepared. Phrase-law changes bar function only; it never re-arbitrates
+    // the profile activity intent per bar.
+    evolution.structuralDensityTarget =
+        destination.selection.structuralDensityTarget;
     evolution.requestedTrajectoryId = destination.phraseTrajectory;
 
     const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
