@@ -1,0 +1,39 @@
+name: 0.9.10 Pattern Phrase P0 Characterization
+
+on:
+  push:
+    branches:
+      - research/20260903-01-0.9.10-pattern-phrase-p0-characterization
+  pull_request:
+    paths:
+      - 'tests/test_pattern_phrase_p0_source_contract.py'
+      - 'tests/test_pattern_phrase_p0_runtime.cpp'
+      - 'tests/run_pattern_phrase_p0_characterization.sh'
+      - 'docs/contracts/0_9_10_PATTERN_PHRASE_P0_CHARACTERIZATION.md'
+      - '.github/workflows/0_9_10_pattern_phrase_p0_characterization.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  characterize-current-pattern-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run PATTERN / PHRASE P0 characterization
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p0_characterization.sh
