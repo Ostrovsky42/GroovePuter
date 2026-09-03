@@ -42,9 +42,10 @@ void expect(const char* label, bool condition) {
   ++g_failures;
 }
 
-PhraseExecutionMaterializationSettings materializationSettings() {
+PhraseExecutionMaterializationSettings materializationSettings(
+    RealizationLevel level = RealizationLevel::P2Variation) {
   PhraseExecutionMaterializationSettings value{};
-  value.level = RealizationLevel::P2Variation;
+  value.level = level;
   value.generationAttemptOrdinal = 0;
   value.feelProfile = FeelProfileId::Straight;
   value.feelAmount = 0;
@@ -97,6 +98,7 @@ PhraseFixture findFixtureForSettings(
     const GenreSettings& settings,
     PhraseEvolutionLawId wanted,
     uint8_t requestedPhraseBars,
+    RealizationLevel level,
     bool requireDensityDifferentFromPreferred) {
   static PhraseExecutionScratch scratch{};
   static PreparedPhraseExecution prepared{};
@@ -107,7 +109,7 @@ PhraseFixture findFixtureForSettings(
     scratch = PhraseExecutionScratch{};
     prepared = PreparedPhraseExecution{};
     const PhraseExecutionStatus status = preparePhraseExecution(
-        settings, materializationSettings(), identity, requestedPhraseBars,
+        settings, materializationSettings(level), identity, requestedPhraseBars,
         scratch, prepared);
     if (status != PhraseExecutionStatus::Ready ||
         prepared.phraseTrajectory == kNoTrajectoryId ||
@@ -145,11 +147,13 @@ PhraseFixture findFixtureForSettings(
 PhraseFixture findFixture(PhraseEvolutionLawId wanted,
                           uint8_t requestedPhraseBars,
                           bool requireDensityDifferentFromPreferred) {
-  // SparseDrift is shipped as an eight-bar choice by kPhraseSlow. An AUTO draw
-  // is not a semantic precondition for I3 execution, and a bounded seed sweep
-  // can miss a phrase-enabled rhythm archetype. Use the already-proven shipped
-  // Lo-Fi compatibility with SparseFastBreak/415 to exercise the real eight-bar
-  // request deterministically through the same production PREPARE path.
+  // SparseDrift is shipped as an eight-bar choice by kPhraseSlow. At P2 the
+  // law maps to trajectory 3, whose intrinsic two-bar shape cannot satisfy the
+  // current bounded four-bar BarEvolution request: trajectoryRefEligible()
+  // correctly requires an exact shape match and PREPARE falls back to per-bar
+  // realization. At P3 SparseDrift maps to trajectory 8, whose four-bar shape
+  // exactly matches the existing bounded seam. Use that real shipped-valid
+  // combination rather than weakening I3 admission or changing its vocabulary.
   if (wanted == PhraseEvolutionLawId::SparseDrift &&
       requestedPhraseBars == kSparseDriftPhraseBars) {
     GenreSettings sparse{};
@@ -160,6 +164,7 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
     sparse.rhythmArchetypeId = kSparseDriftControlledArchetypeId;
     const PhraseFixture controlled = findFixtureForSettings(
         sparse, wanted, requestedPhraseBars,
+        RealizationLevel::P3Transformation,
         requireDensityDifferentFromPreferred);
     if (controlled.found) return controlled;
   }
@@ -182,6 +187,7 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
 
       const PhraseFixture fixture = findFixtureForSettings(
           settings, wanted, requestedPhraseBars,
+          RealizationLevel::P2Variation,
           requireDensityDifferentFromPreferred);
       if (fixture.found) return fixture;
     }
@@ -214,6 +220,10 @@ void testLawRemainsCausal(PhraseEvolutionLawId law,
     expect("SparseDrift controlled fixture keeps shipped SparseFastBreak/415",
            fixture.prepared.selection.composition.rhythmArchetypeId ==
                kSparseDriftControlledArchetypeId);
+    expect("SparseDrift uses the shipped-valid P3 trajectory mapping",
+           fixture.prepared.materialization.level ==
+               RealizationLevel::P3Transformation &&
+           fixture.prepared.phraseTrajectory == 8);
     expect("eight-bar SparseDrift retains the four-bar evolution vocabulary",
            fixture.prepared.phrasePlan.barCount == kFourBarPhraseBars);
   }
