@@ -149,35 +149,102 @@ Lo-Fi base       density 2..8
 Drum & Bass base density 7..15
 ```
 
-Acceptance requires, per bar:
-
-- at least **4** structural-onset difference;
-- at least **3** materialized physical structural drum-hit difference;
-- canonical kick/backbeat anchors preserved.
-
-GF2-I4 does not weaken these thresholds after implementation.
-
-## Phrase-law compatibility
-
-Density arbitration occurs before phrase execution and is frozen once. The I4
-phrase regression proves shipped `DevelopReturn`, `RepeatReply`, and
-`SparseDrift` remain causally distinct after density wiring.
-
-`SparseDrift` is tested with its real shipped **8-bar** request. Production I3
-continues to use the existing **4-bar BarEvolution vocabulary seam** and maps the
-prepared plan across the eight-bar phrase; GF2-I4 does not expand or redesign
-BarEvolution vocabulary.
-
-The combined contract is:
+Final measured evidence is:
 
 ```text
-one frozen profile density target
-+
-existing I3 bar-function evolution
-=
-profile activity remains causal
-AND
-temporal phrase evolution remains causal
+profile centers:                       5 / 11
+projected structural density targets: 11 / 16
+structural onsets:                    11 / 16   spread 5
+materialized structural drum events:  9 / 13   spread 4
+canonical primary anchors:             preserved
+```
+
+Acceptance remains at least **4** structural-onset difference and at least
+**3** materialized physical structural drum-hit difference per bar. GF2-I4 did
+not weaken either threshold after implementation.
+
+## SparseDrift 8-bar admission diagnosis
+
+The first deterministic phrase fixture combined individually valid shipped
+pieces but was not itself a valid trajectory-enabled production combination:
+
+```text
+Lo-Fi base
++ Manual SparseFastBreak / 415
++ SparseDrift
++ P2
++ request 8 bars
+```
+
+At P2, I3 resolves:
+
+```text
+SparseDrift -> trajectory 3
+trajectory 3 intrinsic barCount = 2
+```
+
+For an eight-bar phrase request, production PREPARE deliberately keeps the
+existing BarEvolution vocabulary seam bounded to four bars:
+
+```text
+requested phraseBars = 8
+bounded BarEvolution phraseBars = 4
+```
+
+The exact rejecting predicate is the existing `trajectoryRefEligible()` shape
+check:
+
+```text
+trajectory->barCount == phraseBars
+```
+
+Therefore the old fixture reaches `2 != 4` and the trajectory is correctly
+rejected. This is an admission result, not a density failure. Production phrase
+admission, I3 trajectory tables, SparseDrift's shipped eight-bar length and the
+four-bar BarEvolution vocabulary were left unchanged.
+
+The real deterministic shipped-valid path is:
+
+```text
+Lo-Fi base
++ Manual SparseFastBreak / 415
++ SparseDrift
++ P3
++ request 8 bars
++ production PREPARE
+```
+
+At P3:
+
+```text
+SparseDrift -> trajectory 8
+trajectory 8 intrinsic barCount = 4
+bounded BarEvolution phraseBars = 4
+4 == 4 -> admitted
+```
+
+Final executable evidence is:
+
+```text
+law=SparseDrift
+requested_bars=8
+plan_bars=4
+target=11
+trajectory=8
+max_bar_difference=8
+```
+
+This proves the shipped eight-bar request is preserved while the existing
+four-bar BarEvolution seam is reused across it. One frozen profile density
+target is carried throughout, phrase law still changes temporal topology, and
+density remains independently causal.
+
+`DevelopReturn` and `RepeatReply` are also preserved as distinct executable
+phrase laws after density wiring:
+
+```text
+DevelopReturn: requested_bars=4 plan_bars=4 target=17 trajectory=6 max_bar_difference=3
+RepeatReply:   requested_bars=4 plan_bars=4 target=17 trajectory=5 max_bar_difference=2
 ```
 
 ## Request initialization compatibility
@@ -192,9 +259,51 @@ All production/test/tool call sites are audited by
 `tests/test_gf2_i4_request_initializer_contract.py`. Existing request creation
 uses empty/default aggregate initialization followed by explicit member
 assignment, so the new field receives the sentinel default and does not rebind
-an existing positional value. The regression rejects any non-empty positional
-aggregate initializer for these request types to prevent a future silent field
-shift.
+an existing positional value. The final audit reports **41 SAFE / 0 UNSAFE**.
+
+## Embedded memory / representation closure
+
+The initial density carrier placement caused `PreparedPhraseArrangement` to
+round from 1024 to 1028 bytes through alignment in `StrongRhythmFrozenSelection`.
+That was a representation regression, not a reason to raise the embedded memory
+budget.
+
+The byte-sized `structuralDensityTarget` was placed next to the existing
+byte-sized route field so it occupies existing alignment space. No density
+owner, admission rule or musical behaviour changed, and the 1024-byte guard was
+not increased.
+
+Final Cardputer ADV compile and fixed-DRAM budget checks both pass. The two
+unrelated EOF-only production hunks were also removed; no substantive code was
+changed for formatting.
+
+## Final verification
+
+Validated implementation HEAD before this documentation-only closure commit:
+
+```text
+38063fd2ec9f9875c63c24386cfc2d85d080a21d
+```
+
+Required verification on that exact implementation state:
+
+```text
+GF2-I4 focused runner                    PASS
+GF2-I1 tempo/corridor arbitration        PASS
+GF2-I2 profile FEEL                      PASS
+GF2-I2A FEEL amplitude                   PASS
+GF2-I3 phrase-law execution              PASS
+one-bar RhythmRealizer compatibility     PASS
+aggregate initializer contract           PASS (41 SAFE / 0 UNSAFE)
+git diff --check                         PASS
+
+HOST                                     PASS
+SDL                                      PASS
+CARDPUTER_ADV                            PASS
+FIXED_DRAM                               PASS
+SEQTRAK_MIDI_ONLY                        PASS
+exact-SHA GF2 target-validation matrix   PASS
+```
 
 ## Explicit exclusions
 
