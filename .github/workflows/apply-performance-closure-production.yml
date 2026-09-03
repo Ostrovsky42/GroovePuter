@@ -1,0 +1,400 @@
+name: Apply Performance closure production patch
+
+on:
+  push:
+    branches:
+      - feature/20260903-03-0.9.9-performance-instrument-v1-closure
+    paths:
+      - ".github/workflows/apply-performance-closure-production.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/20260903-03-0.9.9-performance-instrument-v1-closure
+          fetch-depth: 0
+
+      - name: Apply exact production delta
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"expected block missing in {path}: {old[:120]!r}")
+              updated = text.replace(old, new, 1)
+              if updated == text:
+                  raise SystemExit(f"no change made in {path}")
+              p.write_text(updated, encoding="utf-8")
+
+          Path("src/input/internal_synth_output.h").write_text(r'''#pragma once
+
+#include <cstdint>
+
+#include "musical_event_router.h"
+#include "src/audio/audio_mutation_gate.h"
+
+class MiniAcid;
+
+// Physical output sink and fixed-size arbitration owner for internal Synth A/B.
+// PatternPlayer keeps the physical Pattern path inside MiniAcid/AudioTask; this
+// sink only projects the highest-priority currently-active live candidate when
+// Pattern does not own the voice.
+class InternalSynthOutput final : public IMusicalEventSink {
+public:
+    struct MonoArbitrationState {
+        struct Candidate {
+            bool active{false};
+            MusicalEventSource source{MusicalEventSource::MidiInput};
+            uint8_t note{0};
+            uint8_t velocity{0};
+        };
+
+        bool patternOwned{false};
+        Candidate generatedCandidate{};
+        Candidate directCandidate{};
+        Candidate otherLiveCandidate{};
+        Candidate currentlyProjectedLiveCandidate{};
+
+        void applyLiveEvent(const MusicalEvent& event) {
+            if (event.type == MusicalEventType::AllNotesOff) {
+                panic();
+                return;
+            }
+
+            Candidate* candidate = candidateForSource(event.source);
+            if (candidate == nullptr) return;
+
+            if (event.type == MusicalEventType::NoteOn) {
+                *candidate = Candidate{
+                    true, event.source, event.note, event.velocity};
+                return;
+            }
+
+            if (event.type == MusicalEventType::NoteOff &&
+                candidate->active &&
+                candidate->source == event.source &&
+                candidate->note == event.note) {
+                *candidate = Candidate{};
+            }
+        }
+
+        void setPatternOwned(bool owned) { patternOwned = owned; }
+
+        void panic() {
+            generatedCandidate = Candidate{};
+            directCandidate = Candidate{};
+            otherLiveCandidate = Candidate{};
+        }
+
+        Candidate selectedCandidate() const {
+            if (patternOwned) return Candidate{};
+            if (generatedCandidate.active) return generatedCandidate;
+            if (directCandidate.active) return directCandidate;
+            if (otherLiveCandidate.active) return otherLiveCandidate;
+            return Candidate{};
+        }
+
+    private:
+        Candidate* candidateForSource(MusicalEventSource source) {
+            switch (source) {
+                case MusicalEventSource::Arpeggiator:
+                    return &generatedCandidate;
+                case MusicalEventSource::PerformanceKeyboard:
+                    return &directCandidate;
+                case MusicalEventSource::MidiInput:
+                    return &otherLiveCandidate;
+                case MusicalEventSource::PatternPlayer:
+                case MusicalEventSource::PerformanceKeyboardPoly:
+                    return nullptr;
+            }
+            return nullptr;
+        }
+    };
+
+    InternalSynthOutput(MiniAcid& engine, AudioMutationGate& mutationGate)
+        : engine_(engine), mutationGate_(mutationGate) {}
+
+    void handleMusicalEvent(const MusicalEvent& event) override;
+    void syncPatternOwnership();
+
+private:
+    static int synthIndex(MusicalEventTarget target);
+    static bool sameCandidate(const MonoArbitrationState::Candidate& lhs,
+                              const MonoArbitrationState::Candidate& rhs);
+    void applyPatternOwnershipLocked(int voice, bool owned);
+    void reconcileLiveProjectionLocked(int voice);
+
+    MiniAcid& engine_;
+    AudioMutationGate& mutationGate_;
+    MonoArbitrationState monoState_[2]{};
+    // Only tracks sampler voices started by this PERFORM sink. It is not a MIDI
+    // note-owner table; one bit corresponds to one normalized drum lane 0..7.
+    uint8_t liveDrumPadMask_{0};
+};
+''', encoding="utf-8")
+
+          Path("src/input/internal_synth_output.cpp").write_text(r'''#include "internal_synth_output.h"
+
+#include "src/dsp/miniacid_engine.h"
+#include "src/output/output_ownership.h"
+
+namespace {
+uint8_t clampInternalLiveNote(uint8_t note) {
+    if (note < MiniAcid::kMin303Note) {
+        return static_cast<uint8_t>(MiniAcid::kMin303Note);
+    }
+    if (note > MiniAcid::kMax303Note) {
+        return static_cast<uint8_t>(MiniAcid::kMax303Note);
+    }
+    return note;
+}
+
+bool isPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboard ||
+           source == MusicalEventSource::PerformanceKeyboardPoly ||
+           source == MusicalEventSource::Arpeggiator;
+}
+
+bool isInternalMonoPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboard ||
+           source == MusicalEventSource::Arpeggiator;
+}
+
+float samplerVelocity(uint8_t velocity) {
+    if (velocity < 1) velocity = 1;
+    if (velocity > 127) velocity = 127;
+    return static_cast<float>(velocity) / 127.0f;
+}
+}  // namespace
+
+int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
+    return target == MusicalEventTarget::SynthB ? 1 : 0;
+}
+
+bool InternalSynthOutput::sameCandidate(
+    const MonoArbitrationState::Candidate& lhs,
+    const MonoArbitrationState::Candidate& rhs) {
+    if (lhs.active != rhs.active) return false;
+    if (!lhs.active) return true;
+    return lhs.source == rhs.source && lhs.note == rhs.note;
+}
+
+void InternalSynthOutput::reconcileLiveProjectionLocked(int voice) {
+    MonoArbitrationState& state = monoState_[voice];
+    const MonoArbitrationState::Candidate next = state.selectedCandidate();
+    const MonoArbitrationState::Candidate current =
+        state.currentlyProjectedLiveCandidate;
+
+    if (sameCandidate(current, next)) {
+        state.currentlyProjectedLiveCandidate = next;
+        return;
+    }
+
+    if (current.active) {
+        engine_.liveNoteOff(voice, clampInternalLiveNote(current.note));
+    }
+    if (next.active) {
+        engine_.liveNoteOn(
+            voice, clampInternalLiveNote(next.note), next.velocity);
+    }
+    state.currentlyProjectedLiveCandidate = next;
+}
+
+void InternalSynthOutput::applyPatternOwnershipLocked(int voice, bool owned) {
+    MonoArbitrationState& state = monoState_[voice];
+    if (state.patternOwned == owned) return;
+
+    state.setPatternOwned(owned);
+    if (owned) {
+        // Pattern has already started the physical voice in AudioTask. Clear
+        // only live projection identity: releasing here would release Pattern.
+        if (state.currentlyProjectedLiveCandidate.active) {
+            engine_.suspendLiveNoteProjection(voice);
+            state.currentlyProjectedLiveCandidate =
+                MonoArbitrationState::Candidate{};
+        }
+        return;
+    }
+
+    // Pattern already released the physical voice. Re-project only a candidate
+    // that is still logically active now; no displaced-note history exists.
+    reconcileLiveProjectionLocked(voice);
+}
+
+void InternalSynthOutput::syncPatternOwnership() {
+    const bool synthAOwned = engine_.patternOwnsInternalSynth(0);
+    const bool synthBOwned = engine_.patternOwnsInternalSynth(1);
+    if (monoState_[0].patternOwned == synthAOwned &&
+        monoState_[1].patternOwned == synthBOwned) {
+        return;
+    }
+
+    AudioMutationScope mutationScope(mutationGate_);
+    applyPatternOwnershipLocked(0, engine_.patternOwnsInternalSynth(0));
+    applyPatternOwnershipLocked(1, engine_.patternOwnsInternalSynth(1));
+}
+
+void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
+    // PatternPlayer owns and renders internal voices inside AudioTask. Its
+    // normalized events are additive external-output data only; Pattern
+    // ownership reaches this arbiter through syncPatternOwnership().
+    if (event.source == MusicalEventSource::PatternPlayer ||
+        event.target == MusicalEventTarget::Dx) {
+        return;
+    }
+
+    if (event.target == MusicalEventTarget::Drums) {
+        // Preserve the existing local drum/sampler path unchanged. This closure
+        // applies mono arbitration only to Synth A/B.
+        if (!isPerformanceSource(event.source)) return;
+        if (event.channel >= 8) return;
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsInternalNoteOn(event)) {
+            return;
+        }
+
+        AudioMutationScope mutationScope(mutationGate_);
+        const uint8_t lane = event.channel;
+        const uint8_t mask = static_cast<uint8_t>(1u << lane);
+
+        switch (event.type) {
+            case MusicalEventType::NoteOn: {
+                triggerRegisteredLocalDrumVoice(lane, event.velocity);
+                if (engine_.sampleStore && engine_.samplerTrack &&
+                    engine_.samplerTrack->isEnabled() &&
+                    engine_.samplerTrack->pad(lane).id.value != 0) {
+                    engine_.samplerTrack->triggerPad(
+                        lane,
+                        samplerVelocity(event.velocity),
+                        *engine_.sampleStore);
+                    liveDrumPadMask_ |= mask;
+                }
+                break;
+            }
+            case MusicalEventType::NoteOff:
+                if ((liveDrumPadMask_ & mask) != 0u) {
+                    if (engine_.samplerTrack &&
+                        engine_.samplerTrack->pad(lane).loop) {
+                        engine_.samplerTrack->stopPad(lane);
+                    }
+                    liveDrumPadMask_ &= static_cast<uint8_t>(~mask);
+                }
+                break;
+            case MusicalEventType::AllNotesOff:
+                if (engine_.samplerTrack) {
+                    for (uint8_t pad = 0; pad < 8; ++pad) {
+                        const uint8_t padMask =
+                            static_cast<uint8_t>(1u << pad);
+                        if ((liveDrumPadMask_ & padMask) != 0u) {
+                            engine_.samplerTrack->stopPad(pad);
+                        }
+                    }
+                }
+                liveDrumPadMask_ = 0;
+                break;
+        }
+        return;
+    }
+
+    // Manual POLY remains an external-MIDI concern. The internal Synth A/B
+    // engines receive one deterministic mono projection only.
+    if (event.source == MusicalEventSource::PerformanceKeyboardPoly) return;
+
+    // Legacy output mode suppresses only new local PERFORM NoteOn. Cleanup and
+    // OTHER LIVE retain the existing behavior.
+    if (isInternalMonoPerformanceSource(event.source) &&
+        event.type == MusicalEventType::NoteOn &&
+        !GroovePuterOutput::allowsInternalNoteOn(event)) {
+        return;
+    }
+
+    AudioMutationScope mutationScope(mutationGate_);
+    const int voice = synthIndex(event.target);
+    applyPatternOwnershipLocked(
+        voice, engine_.patternOwnsInternalSynth(voice));
+
+    MonoArbitrationState& state = monoState_[voice];
+    state.applyLiveEvent(event);
+    reconcileLiveProjectionLocked(voice);
+}
+''', encoding="utf-8")
+
+          replace_once(
+              "src/input/performance_keyboard.cpp",
+              '''void PerformanceKeyboard::setTransportPlaying(bool playing) {\n    serviceHardwareClock();\n    if (transportPlaying_ == playing) return;\n    transportPlaying_ = playing;\n    if (activeStepEngineEnabled() || requestedStepEngineEnabled()) resetPulseClock(true);\n}''',
+              '''void PerformanceKeyboard::setTransportPlaying(bool playing) {\n    serviceHardwareClock();\n    if (transportPlaying_ == playing) return;\n    stopGeneratedOutput();\n    transportPlaying_ = playing;\n    if (activeStepEngineEnabled() || requestedStepEngineEnabled()) resetPulseClock(true);\n}''')
+
+          replace_once(
+              "src/dsp/miniacid_engine.h",
+              '#include <stdint.h>\n#include <memory>',
+              '#include <stdint.h>\n#include <atomic>\n#include <memory>')
+          replace_once(
+              "src/dsp/miniacid_engine.h",
+              '''  void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);\n  void liveNoteOff(int synthIndex, uint8_t midiNote);\n  void allLiveNotesOff();\n  void setPatternEventQueue(MusicalEventQueue* queue);\n  int liveNote(int synthIndex) const;''',
+              '''  void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);\n  void liveNoteOff(int synthIndex, uint8_t midiNote);\n  void allLiveNotesOff();\n  void suspendLiveNoteProjection(int synthIndex);\n  bool patternOwnsInternalSynth(int synthIndex) const;\n  void setPatternEventQueue(MusicalEventQueue* queue);\n  int liveNote(int synthIndex) const;''')
+          replace_once(
+              "src/dsp/miniacid_engine.h",
+              '''  PatternEventQueueHandle patternEventQueue_;\n  int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};\n  uint32_t liveInputEpoch_ = 0;''',
+              '''  PatternEventQueueHandle patternEventQueue_;\n  int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};\n  std::atomic<uint8_t> patternOwnedMask_{0};\n  uint32_t liveInputEpoch_ = 0;''')
+
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              '''void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {\n  if (playing) return;\n  const int idx = clamp303Voice(synthIndex);''',
+              '''void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {\n  const int idx = clamp303Voice(synthIndex);''')
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              '''void MiniAcid::allLiveNotesOff() {\n  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {\n    if (synthVoices_[idx]) synthVoices_[idx]->release();\n    liveNotes_[idx] = -1;\n  }\n  gateCountdownA_ = 0;\n  gateCountdownB_ = 0;\n}\n''',
+              '''void MiniAcid::allLiveNotesOff() {\n  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {\n    if (synthVoices_[idx]) synthVoices_[idx]->release();\n    liveNotes_[idx] = -1;\n  }\n  gateCountdownA_ = 0;\n  gateCountdownB_ = 0;\n}\n\nvoid MiniAcid::suspendLiveNoteProjection(int synthIndex) {\n  liveNotes_[clamp303Voice(synthIndex)] = -1;\n}\n\nbool MiniAcid::patternOwnsInternalSynth(int synthIndex) const {\n  const int idx = clamp303Voice(synthIndex);\n  const uint8_t mask = static_cast<uint8_t>(1u << idx);\n  return (patternOwnedMask_.load(std::memory_order_acquire) & mask) != 0u;\n}\n''')
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              '''void MiniAcid::publishPatternNoteOn_(int synthIdx,\n                                     uint8_t note,\n                                     uint8_t velocity) {\n  const int idx = clamp303Voice(synthIdx);\n  if (!patternEventQueue_) return;''',
+              '''void MiniAcid::publishPatternNoteOn_(int synthIdx,\n                                     uint8_t note,\n                                     uint8_t velocity) {\n  const int idx = clamp303Voice(synthIdx);\n  patternOwnedMask_.fetch_or(\n      static_cast<uint8_t>(1u << idx), std::memory_order_release);\n  if (!patternEventQueue_) return;''')
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              '''void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {\n  const int idx = clamp303Voice(synthIdx);\n  const int16_t note = patternMidiNotes_[idx];''',
+              '''void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {\n  const int idx = clamp303Voice(synthIdx);\n  const uint8_t clearMask =\n      static_cast<uint8_t>(~static_cast<uint8_t>(1u << idx));\n  patternOwnedMask_.fetch_and(clearMask, std::memory_order_release);\n  const int16_t note = patternMidiNotes_[idx];''')
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              '''void MiniAcid::publishPatternAllNotesOff_() {\n  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {''',
+              '''void MiniAcid::publishPatternAllNotesOff_() {\n  patternOwnedMask_.store(0u, std::memory_order_release);\n  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {''')
+
+          replace_once(
+              "GroovePuter.ino",
+              '''    g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());\n    const uint32_t epoch = g_miniAcid->liveInputEpoch();''',
+              '''    g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());\n    g_internalSynthOutput.syncPatternOwnership();\n    const uint32_t epoch = g_miniAcid->liveInputEpoch();''')
+
+          replace_once(
+              "platform_sdl/sdl_main.cpp",
+              '''  AppState* s = static_cast<AppState*>(userdata);\n  handleEvents(*s);\n  updateUI(*s);''',
+              '''  AppState* s = static_cast<AppState*>(userdata);\n  handleEvents(*s);\n  s->audio.internalSynthOutput.syncPatternOwnership();\n  updateUI(*s);''')
+          PY
+
+      - name: Verify focused RED becomes GREEN
+        shell: bash
+        run: |
+          bash tests/run_performance_closure_tests.sh
+          g++ -std=c++17 -Wall -Wextra -Werror -I. -fsyntax-only src/input/internal_synth_output.cpp
+          git diff --check
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-performance-closure-production.yml
+          git add src/input/internal_synth_output.h src/input/internal_synth_output.cpp \
+                  src/input/performance_keyboard.cpp \
+                  src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp \
+                  GroovePuter.ino platform_sdl/sdl_main.cpp
+          git commit -m "fix: close performance ownership arbitration"
+          git push origin HEAD:feature/20260903-03-0.9.9-performance-instrument-v1-closure
