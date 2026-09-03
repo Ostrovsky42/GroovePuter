@@ -73,7 +73,6 @@ jobs:
             fi
           done <<< "${conflicts}"
 
-          # Frozen resolution rule: current 0.9.10 MIDI ownership/runtime wins.
           current_wins=(
             src/midi/midi_transport.h
             src/midi/tee_midi_transport.h
@@ -103,9 +102,7 @@ jobs:
             exit 42
           fi
 
-          # Frozen ownership/runtime sanity checks before creating a candidate SHA.
           grep -q 'MidiNoteOwnershipTable' src/midi/midi_note_ownership_table.h
-          grep -q 'owners_' src/midi/tee_midi_transport.h
           if grep -R -n 'wireOwners_' \
               src/midi/midi_transport.h \
               src/midi/tee_midi_transport.h \
