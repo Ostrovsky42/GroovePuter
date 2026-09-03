@@ -310,14 +310,10 @@ inline bool preparePlayingCandidate(
       candidate.drums,
       &atlasMetadata);
 
-  if (atlasBacked) {
-    // GF2-I1: reviewed Atlas swing is production material and reaches the
-    // candidate. Atlas BPM is source/corpus provenance for the compiled
-    // pattern and must not become a second tempo owner: the generation
-    // request already resolved candidate.bpm from the profile corridor, and
-    // that value is what COMMIT and BAR_START activation carry.
-    candidate.swingPct = atlasMetadata.swingPercent;
-  } else {
+  // GF2-I2: Atlas supplies the pattern material. Its recorded bpm/swingPercent
+  // stay in atlasMetadata as corpus provenance and never overwrite the
+  // resolved request tempo or the musician's FEEL swing.
+  if (!atlasBacked) {
     const GenerativeParams genreParams =
         GenreCatalog::compiledGenerativeParams(requestedGenre);
     const GenreBehavior behavior = GenreCatalog::behavior(requestedGenre);

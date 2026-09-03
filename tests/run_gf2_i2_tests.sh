@@ -43,4 +43,8 @@ mapfile -t COMMON_SOURCES < <(
   "${ROOT}/scenes.cpp" "${ROOT}/json_evented.cpp" \
   "${ROOT}/src/audio/pattern_paging.cpp" \
   -o "${BUILD_DIR}/feel_persistence"
+
+python3 "${ROOT}/tests/test_source_regressions.py"
 "${BUILD_DIR}/feel_persistence"
+
+python3 "${ROOT}/tests/test_source_regressions.py"
