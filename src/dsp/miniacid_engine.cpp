@@ -2556,10 +2556,9 @@ void MiniAcid::regeneratePatternsWithGenre() {
           genreManager_.recipe(), 0,
           editSynthPattern(0), editSynthPattern(1),
           sceneManager_.editCurrentDrumPattern(), &atlasMetadata)) {
-    Scene& scene = sceneManager_.currentScene();
-    scene.feel.swingPct = atlasMetadata.swingPercent;
-    // GF2-I1: this is a material owner only. Tempo belongs to the generation
-    // request that resolved it from the profile corridor; Atlas BPM stays
+    // GF2-I1/I2: this is a material owner only. Tempo belongs to the
+    // generation request that resolved it from the profile corridor, and
+    // swing belongs to the musician's FEEL settings. Atlas BPM and swing stay
     // readable provenance for diagnostics and corpus review.
     LOG_DEBUG("  - Atlas recipe applied: %s %s bpm=%u swing=%u\n",
               atlasMetadata.displayName, atlasMetadata.slotId,

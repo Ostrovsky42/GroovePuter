@@ -121,11 +121,17 @@ const char* feelProfileName(FeelProfileId profile) {
     case FeelProfileId::SwingCompatible: return "SWING COMPAT";
     case FeelProfileId::LaidBack: return "LAID BACK";
     case FeelProfileId::PushPullControlled: return "PUSH/PULL";
+    case FeelProfileId::Auto: return "AUTO";
     default: return "STRAIGHT";
   }
 }
 
 bool isValidFeelProfile(FeelProfileId profile) {
+  return static_cast<uint8_t>(profile) <
+         static_cast<uint8_t>(FeelProfileId::Auto);
+}
+
+bool isSelectableFeelProfile(FeelProfileId profile) {
   return static_cast<uint8_t>(profile) <
          static_cast<uint8_t>(FeelProfileId::Count);
 }

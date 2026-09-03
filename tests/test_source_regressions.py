@@ -256,8 +256,11 @@ def test_atlas_recipe_precedes_random_fallback() -> None:
     fallback_pos = block.index("getCompiledGenerativeParams()")
     require(atlas_pos < fallback_pos,
             "compiled Atlas patterns must be attempted before random fallback")
-    require("scene.feel.swingPct = atlasMetadata.swingPercent" in block,
-            "Atlas recipe swing must be applied with the pattern")
+    # GF2-I2: Atlas material application is not a swing owner either. Swing
+    # belongs to FeelSettings; the source pattern's analysed swing is evidence
+    # about the corpus, not a live control.
+    require("scene.feel.swingPct" not in block,
+            "Atlas materialization must not write the musician's FEEL swing")
 
     # GF2-I1: Atlas material application is not a tempo owner. The generation
     # corridor of the requested genre/recipe resolves the production tempo once,
@@ -279,12 +282,39 @@ def test_atlas_candidate_preparation_keeps_resolved_tempo() -> None:
 
     require("candidate.bpm = applyTempo && requestedBpm > 0.0f" in block,
             "candidate tempo must be resolved once from the generation request")
-    require("candidate.swingPct = atlasMetadata.swingPercent" in block,
-            "reviewed Atlas swing must still reach the candidate")
+    require("candidate.swingPct = scene.feel.swingPct" in block,
+            "the candidate must carry the musician's FEEL swing")
     require("candidate.bpm = static_cast<float>(atlasMetadata.bpm)" not in block,
             "Atlas metadata must not overwrite the resolved candidate tempo")
+    require("candidate.swingPct = atlasMetadata.swingPercent" not in block,
+            "Atlas metadata must not overwrite the musician's FEEL swing")
     require(block.count("candidate.bpm =") == 1,
             "the prepared candidate must have exactly one tempo writer")
+    require(block.count("candidate.swingPct =") == 1,
+            "the prepared candidate must have exactly one swing writer")
+
+
+def test_feel_profile_resolution_has_one_owner() -> None:
+    types = (ROOT / "src/generation/feel/feel_types.h").read_text(encoding="utf-8")
+    require("Auto," in types and "PushPullControlled,\n  Auto," in types,
+            "Auto must be appended after the concrete FEEL profiles")
+    require("resolveFeelProfile" in types,
+            "FEEL arbitration must have one named rule")
+
+    interpreter = (
+        ROOT / "src/generation/feel/feel_interpreter.cpp"
+    ).read_text(encoding="utf-8")
+    require("static_cast<uint8_t>(FeelProfileId::Auto);" in interpreter,
+            "isValidFeelProfile must exclude the Auto selection mode")
+
+    migration = (
+        ROOT / "src/generation/migration/strong_rhythm_migration.cpp"
+    ).read_text(encoding="utf-8")
+    require(migration.count("resolveFeelProfile(") == 2,
+            "FEEL must be arbitrated only in the two frozen-selection resolvers")
+    start = migration.index("StrongRhythmMigrationResult migrateStrongRhythmMaterial(")
+    require("context.feelProfile" not in migration[start:],
+            "role materialization must use the resolved FEEL, not the raw selection")
 
 
 def test_genre_page_profile_only_never_generates_or_retempos() -> None:
@@ -664,6 +694,7 @@ def main() -> None:
     test_atlas_recipe_catalog_and_legacy_fallbacks()
     test_atlas_recipe_precedes_random_fallback()
     test_atlas_candidate_preparation_keeps_resolved_tempo()
+    test_feel_profile_resolution_has_one_owner()
     test_genre_page_profile_only_never_generates_or_retempos()
     test_genre_page_uses_recipe_mode_and_tempo_order()
     test_atlas_compiler_matches_manifest_contract()

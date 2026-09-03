@@ -9,11 +9,16 @@
 namespace GroovePuterRhythm {
 
 // Stable Scene IDs. Append only: persisted Scenes store the numeric value.
+// Straight..PushPullControlled are concrete timing characters. Auto is a
+// selection mode, not a fifth timing curve: it delegates the choice to the
+// generation profile and is resolved to a concrete profile before any timing
+// is interpreted.
 enum class FeelProfileId : uint8_t {
   Straight = 0,
   SwingCompatible,
   LaidBack,
   PushPullControlled,
+  Auto,
   Count,
 };
 
@@ -58,7 +63,22 @@ struct TimedFeelPhrase {
 };
 
 const char* feelProfileName(FeelProfileId profile);
+
+// A concrete timing character the FEEL interpreter can execute. Auto is not
+// one: an unresolved Auto reaching interpretation is a resolution bug, never a
+// silent Straight.
 bool isValidFeelProfile(FeelProfileId profile);
+
+// A value the musician may select on the FEEL page and a Scene may persist:
+// any concrete profile, or Auto.
+bool isSelectableFeelProfile(FeelProfileId profile);
+
+// The single FEEL arbitration rule. Auto delegates to the generation profile's
+// prior; any concrete selection wins over it.
+inline FeelProfileId resolveFeelProfile(FeelProfileId requested,
+                                        FeelProfileId suggested) {
+  return requested == FeelProfileId::Auto ? suggested : requested;
+}
 
 static_assert(std::is_trivially_copyable<FeelPhrase>::value,
               "FeelPhrase must remain fixed-capacity");

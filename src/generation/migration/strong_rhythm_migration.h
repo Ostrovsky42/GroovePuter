@@ -152,6 +152,9 @@ struct StrongRhythmFrozenSelection {
   GenerationContext selectionGeneration{};
   GenerationContext realizationGeneration{};
   uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
+  // GF2-I2: derived once with the composition so every role of one musical
+  // decision materializes with the same concrete FEEL. Never persisted.
+  FeelProfileId resolvedFeel = FeelProfileId::Straight;
   bool resolved = false;
 };
 
@@ -168,7 +171,10 @@ struct StrongRhythmMigrationResult {
   FeelPatternApplyStatus feelStatus = FeelPatternApplyStatus::Ok;
   GenerationCompositionStatus compositionStatus =
       GenerationCompositionStatus::NoProfile;
+  // What the generation profile selected, and what materialization actually
+  // used. They differ whenever the musician selected a concrete FEEL.
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
+  FeelProfileId resolvedFeel = FeelProfileId::Straight;
   // Planning metadata only until Stage 12's physical reachability gate clears.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
   uint8_t phraseBars = 1;

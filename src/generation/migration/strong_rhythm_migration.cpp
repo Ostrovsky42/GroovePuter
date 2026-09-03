@@ -275,7 +275,8 @@ void copyCompositionToResult(const GenerationCompositionResult& composition,
 bool validMigrationContext(const StrongRhythmMigrationContext& context) {
   return context.patternAddress >= 0 &&
          context.patternAddress < kMaxGlobalPatterns &&
-         validLevel(context.level) && isValidFeelProfile(context.feelProfile) &&
+         validLevel(context.level) &&
+         isSelectableFeelProfile(context.feelProfile) &&
          context.feelAmount <= 100;
 }
 
@@ -383,6 +384,11 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  // GF2-I2: FEEL is arbitrated once, here, where the composition identity is
+  // known and before any physical materialization.
+  destination.resolvedFeel = resolveFeelProfile(
+      context.feelProfile, destination.composition.suggestedFeel);
+  result.resolvedFeel = destination.resolvedFeel;
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
@@ -434,6 +440,10 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  // GF2-I2: one FEEL resolution for the whole phrase, shared by every bar.
+  destination.resolvedFeel = resolveFeelProfile(
+      context.feelProfile, destination.composition.suggestedFeel);
+  result.resolvedFeel = destination.resolvedFeel;
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
@@ -471,6 +481,13 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   }
   result.route = selection->route;
   copyCompositionToResult(selection->composition, result);
+  // The frozen selection owns the arbitration; materialization never re-reads
+  // the raw Scene selection mode.
+  result.resolvedFeel = selection->resolvedFeel;
+  if (!isValidFeelProfile(result.resolvedFeel)) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           selection->composition.rhythmArchetypeId);
@@ -510,7 +527,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     return result;
   }
   result.feelStatus = applyFeelToMaterializedPattern(
-      realization.plan, binding, context.feelProfile, context.feelAmount,
+      realization.plan, binding, result.resolvedFeel, context.feelAmount,
       request.generation, candidate);
   if (result.feelStatus != FeelPatternApplyStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -588,6 +605,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   StrongRhythmMigrationResult result =
       migrateStrongRhythmDrums(settings, context, nextDrums);
   if (result.status != StrongRhythmMigrationStatus::Applied) return result;
+  // GF2-I2: every role of one musical decision hears the exact FEEL the frozen
+  // selection arbitrated for the drums. No role re-resolves it.
+  const FeelProfileId resolvedFeel = result.resolvedFeel;
   if (!replaceDrums) nextDrums = drums;
   if (context.tonalMaterializationEnabled && !validTonalContext(context)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
@@ -811,7 +831,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       return result;
     }
     result.bassFeelStatus = applyFeelToSemanticPattern(
-        RhythmRole::BassRhythm, bass.plan.onsets, context.feelProfile,
+        RhythmRole::BassRhythm, bass.plan.onsets, resolvedFeel,
         context.feelAmount, bassRequest.generation, nextSynthA);
     if (result.bassFeelStatus != FeelInterpretStatus::Ok) {
       result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -826,7 +846,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.chordFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::ChordRhythm, chord.plan.onsets, context.feelProfile,
+          RhythmRole::ChordRhythm, chord.plan.onsets, resolvedFeel,
           context.feelAmount, chordRequest.generation, nextSynthB);
       if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -843,7 +863,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.melodicFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::MelodicRhythm, melodic.plan.onsets, context.feelProfile,
+          RhythmRole::MelodicRhythm, melodic.plan.onsets, resolvedFeel,
           context.feelAmount, melodicRequest.generation, nextSynthB);
       if (result.melodicFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -859,7 +879,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.chordFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::ChordRhythm, chord.plan.onsets, context.feelProfile,
+          RhythmRole::ChordRhythm, chord.plan.onsets, resolvedFeel,
           context.feelAmount, chordRequest.generation, chordPattern);
       if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -884,7 +904,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.melodicFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::MelodicRhythm, admittedOnsets, context.feelProfile,
+          RhythmRole::MelodicRhythm, admittedOnsets, resolvedFeel,
           context.feelAmount, melodicRequest.generation, melodicPattern);
       if (result.melodicFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -923,7 +943,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       return result;
     }
     result.bassFeelStatus = applyFeelToSemanticPattern(
-        RhythmRole::BassRhythm, bassPitch.plan.onsets, context.feelProfile,
+        RhythmRole::BassRhythm, bassPitch.plan.onsets, resolvedFeel,
         context.feelAmount, bassRequest.generation, nextSynthA);
     if (result.bassFeelStatus != FeelInterpretStatus::Ok) {
       result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -948,7 +968,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.chordFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::ChordRhythm, chord.plan.onsets, context.feelProfile,
+          RhythmRole::ChordRhythm, chord.plan.onsets, resolvedFeel,
           context.feelAmount, chordRequest.generation, nextSynthB);
       if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -975,7 +995,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       }
       result.melodicFeelStatus = applyFeelToSemanticPattern(
           RhythmRole::MelodicRhythm, melodicPitch.plan.onsets,
-          context.feelProfile, context.feelAmount,
+          resolvedFeel, context.feelAmount,
           melodicRequest.generation, nextSynthB);
       if (result.melodicFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -1002,7 +1022,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.chordFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::ChordRhythm, chord.plan.onsets, context.feelProfile,
+          RhythmRole::ChordRhythm, chord.plan.onsets, resolvedFeel,
           context.feelAmount, chordRequest.generation, chordPattern);
       if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
@@ -1044,7 +1064,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         return result;
       }
       result.melodicFeelStatus = applyFeelToSemanticPattern(
-          RhythmRole::MelodicRhythm, admittedOnsets, context.feelProfile,
+          RhythmRole::MelodicRhythm, admittedOnsets, resolvedFeel,
           context.feelAmount, melodicRequest.generation, melodicPattern);
       if (result.melodicFeelStatus != FeelInterpretStatus::Ok) {
         result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
