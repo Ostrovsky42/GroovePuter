@@ -27,11 +27,9 @@ jobs:
           fetch-depth: 0
       - name: Final reporting semantics regression
         run: python3 tests/test_gf2_gate_b_finalize.py
-      - name: Gate B bootstrap proof
-        env:
-          GF2_GATE_B_ALLOW_UNFROZEN: '1'
+      - name: Gate B strict artifact proof
         run: bash tests/run_gf2_gate_b_tests.sh
-      - name: Upload review artifacts
+      - name: Upload strict proof artifacts
         uses: actions/upload-artifact@v4
         with:
           name: gf2-gate-b-generated
