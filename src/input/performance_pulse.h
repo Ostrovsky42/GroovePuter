@@ -4,9 +4,8 @@
 
 #include <cstdint>
 
-// ProjectTransportTimeline expresses time in sixteenth-note project steps.
-// Keep rates rational until the final conversion to the existing double
-// timeline coordinate so triplets never accumulate rounded durations.
+#include "performance_instrument_types.h"
+
 enum class PerformanceRate : uint8_t {
     Quarter = 0,
     Eighth,
@@ -54,10 +53,26 @@ constexpr const char* performanceRateName(PerformanceRate rate) {
     return "1/16";
 }
 
-// Rate/gate are musician-facing values. The remaining clocked settings are
-// kept here so all NEXT_STEP changes can be copied atomically at one pulse
-// boundary; a ratchet group can never be half old / half new.
+struct PerformanceMutationConfig {
+    uint32_t seed{0x47505631u};
+    uint8_t skipPercent{0};
+    uint8_t octaveJumpPercent{0};
+    uint8_t deviatePercent{0};
+};
+
+constexpr bool performanceMutationConfigEqual(const PerformanceMutationConfig& a,
+                                              const PerformanceMutationConfig& b) {
+    return a.seed == b.seed &&
+           a.skipPercent == b.skipPercent &&
+           a.octaveJumpPercent == b.octaveJumpPercent &&
+           a.deviatePercent == b.deviatePercent;
+}
+
+// Every field here has NEXT_STEP semantics. Setters edit `pending`; one pulse
+// boundary copies the entire structure to `active` before materialization.
 struct PerformanceClockedConfig {
+    bool arpEnabled{false};
+    PerformanceArpDirection arpDirection{PerformanceArpDirection::Up};
     PerformanceRate rate{PerformanceRate::Sixteenth};
     uint8_t gatePercent{60};
     uint8_t ratchetCount{1};
@@ -65,27 +80,24 @@ struct PerformanceClockedConfig {
     uint8_t euclideanPulses{0};
     uint8_t euclideanRotation{0};
     uint8_t arpOctaves{1};
+    bool latchEnabled{false};
+    PerformanceMutationConfig mutation{};
 };
 
 constexpr bool performanceClockedConfigEqual(const PerformanceClockedConfig& a,
                                              const PerformanceClockedConfig& b) {
-    return a.rate == b.rate &&
+    return a.arpEnabled == b.arpEnabled &&
+           a.arpDirection == b.arpDirection &&
+           a.rate == b.rate &&
            a.gatePercent == b.gatePercent &&
            a.ratchetCount == b.ratchetCount &&
            a.euclideanLength == b.euclideanLength &&
            a.euclideanPulses == b.euclideanPulses &&
            a.euclideanRotation == b.euclideanRotation &&
-           a.arpOctaves == b.arpOctaves;
+           a.arpOctaves == b.arpOctaves &&
+           a.latchEnabled == b.latchEnabled &&
+           performanceMutationConfigEqual(a.mutation, b.mutation);
 }
-
-// Small deterministic PRNG for future/pulse mutation. Its state lives with the
-// performance session; TAKE persistence stores the seed, not a random outcome.
-struct PerformanceMutationConfig {
-    uint32_t seed{0x47505631u};  // "GPV1"
-    uint8_t skipPercent{0};
-    uint8_t octaveJumpPercent{0};
-    uint8_t deviatePercent{0};
-};
 
 class PerformanceMutationRng {
 public:
