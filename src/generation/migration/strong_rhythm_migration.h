@@ -79,6 +79,10 @@ enum class SemanticSynthBRole : uint8_t {
 
 struct StrongRhythmFrozenSelection;
 
+// Fresh-P1R corrected-ancestry adapter. The old frozen P1R executor consumed
+// the H1-F1 WHAT source through a bool/out-param helper. Finalized H1-F1 exposes
+// ChordProgressionEventResult instead. Keep the P1R execution algorithm frozen
+// while translating only that API shape inside the allowed P1R owner.
 inline bool chordProgressionSourceEventAt(
     const ChordProgressionSource& source,
     uint32_t globalHarmonicOrdinal,
@@ -93,6 +97,9 @@ inline bool chordProgressionSourceEventAt(
   return true;
 }
 
+// P1R transient execution seam. It carries already-frozen H2 WHEN and one
+// H1-F1 WHAT source into the existing one-bar materializer. It owns neither
+// policy nor storage and is valid only for the duration of one call.
 struct StrongRhythmPhraseExecutionOverride {
   const HarmonicRhythmPlan* harmonicRhythm = nullptr;
   const ChordProgressionSource* progressionSource = nullptr;
@@ -104,24 +111,39 @@ struct StrongRhythmPhraseExecutionOverride {
 };
 
 struct StrongRhythmMigrationContext {
+  // Existing pattern address remains part of deterministic generation identity.
   int16_t patternAddress = 0;
   RealizationLevel level = RealizationLevel::P2Variation;
 
+  // F-07: assigned when a generation request is accepted. It is transient
+  // session/request state, never Scene/project persistence. Ordinal zero is the
+  // compatibility path; non-zero ordinals may vary realization while the
+  // selected rhythm archetype remains attempt-invariant.
   uint32_t generationAttemptOrdinal = 0;
 
+  // E0a: PREPARE-owned semantic coordinates for one physical Phrase bar.
+  // Unspecified keeps non-Phrase callers on the exact compatibility path.
+  // evolutionOrdinal is explicit context for the existing 4+4 structure; E0a
+  // does not force it into generation that does not already consume it.
   uint8_t phraseBarOrdinal = kUnspecifiedPhraseBarOrdinal;
   uint8_t evolutionOrdinal = 0;
 
+  // M1 phrase materialization supplies one logical identity shared by all
+  // physical destination bars. Unspecified preserves ordinary one-bar callers.
   uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
   const StrongRhythmFrozenSelection* frozenSelection = nullptr;
 
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;
 
+  // Stage 15 tonal integration is explicit and transient. Legacy callers that
+  // do not provide tonal context keep the established pitch-redistribution path.
   bool tonalMaterializationEnabled = false;
   uint8_t rootPitchClass = 0;
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
 
+  // P1R appends this optional seam so all ordinary aggregate/default callers
+  // retain the legacy path when no prepared phrase execution is supplied.
   const StrongRhythmPhraseExecutionOverride* phraseExecutionOverride = nullptr;
 };
 
@@ -137,9 +159,8 @@ struct StrongRhythmFrozenSelection {
   // GF2-I2: derived once with the composition so every role of one musical
   // decision materializes with the same concrete FEEL. Never persisted.
   FeelProfileId resolvedFeel = FeelProfileId::Straight;
-  // GF2-I4: profile activity intent is projected once against the selected
-  // archetype on PREPARE/frozen-selection. Every phrase bar forwards this same
-  // value; phrase-law remains the sole owner of temporal bar evolution.
+  // GF2-I4: projected exactly once from the profile corridor against the
+  // selected archetype. Phrase/bar execution only forwards this value.
   uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   bool resolved = false;
 };
@@ -157,9 +178,12 @@ struct StrongRhythmMigrationResult {
   FeelPatternApplyStatus feelStatus = FeelPatternApplyStatus::Ok;
   GenerationCompositionStatus compositionStatus =
       GenerationCompositionStatus::NoProfile;
+  // What the generation profile selected, and what materialization actually
+  // used. They differ whenever the musician selected a concrete FEEL.
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
   FeelProfileId resolvedFeel = FeelProfileId::Straight;
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
+  // GF2-I3: which bar function this bar of the phrase played.
   BarFunction phraseBarFunction = BarFunction::Statement;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
@@ -212,6 +236,9 @@ struct StrongRhythmMigrationResult {
   FeelInterpretStatus melodicFeelStatus = FeelInterpretStatus::Ok;
   SemanticSynthBRole synthBRole = SemanticSynthBRole::Chord;
 
+  // Ephemeral semantic topology. One physical Synth B remains monophonic:
+  // hybrid mode gives chord onsets/continuations priority and records only
+  // melodic onsets admitted into otherwise free cells.
   StepMask chordOnsets = 0;
   StepMask melodicFillOnsets = 0;
   bool chordRhythmApplied = false;
@@ -220,6 +247,8 @@ struct StrongRhythmMigrationResult {
 };
 
 #ifdef GROOVEPUTER_M1_TEST_PROBE
+// Focused host-test observation only.  Normal firmware neither declares nor
+// links this type or its storage; migration semantics remain untouched.
 struct StrongRhythmMelodicRequestProbe {
   bool captured = false;
   MelodicMotifRequest request{};
@@ -231,6 +260,11 @@ void setStrongRhythmMelodicRequestProbe(
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
 
+// GF2-I3: the declared phrase law expressed as a bar-function programme the
+// rhythm layer can execute. A trajectory already *is* such a programme, so a
+// law resolves to one rather than introducing a parallel axis. The stronger
+// development shapes are P3-only in the shipped vocabulary, so the mapping is
+// level-dependent; returns kNoTrajectoryId when the law wants no evolution.
 TrajectoryId phraseTrajectoryForLaw(PhraseEvolutionLawId law,
                                     RealizationLevel level);
 
@@ -246,6 +280,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     SynthPattern& synthA,
     SynthPattern& synthB);
 
+// Genre-aware synth-only materialization. Drums are rhythm context and remain
+// byte-for-byte unchanged; both synth candidates are produced so the caller can
+// atomically publish only the selected physical voice.
 StrongRhythmMigrationResult migrateStrongRhythmSynths(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
@@ -253,12 +290,18 @@ StrongRhythmMigrationResult migrateStrongRhythmSynths(
     SynthPattern& synthA,
     SynthPattern& synthB);
 
+// M1 four-bar path: resolve composition once under an explicit logical phrase
+// identity, then materialize each explicit phraseBarOrdinal into independent
+// physical storage. The ordinary one-bar APIs above retain compatibility.
 StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     uint16_t phraseGenerationIdentity,
     StrongRhythmFrozenSelection& destination);
 
+// P1R exact-length sibling. It performs the same strong-rhythm selection setup
+// but calls the frozen M4 exact phrase-length resolver exactly once. Legacy
+// callers remain on resolveStrongRhythmFrozenSelection().
 StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
