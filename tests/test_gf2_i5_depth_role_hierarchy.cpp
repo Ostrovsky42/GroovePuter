@@ -1,10 +1,14 @@
 // GF2-I5 — DEPTH / role-hierarchy characterization.
 //
-// RED contract: if the existing P1/P2/P3 DEPTH axis is genuinely a role-
-// hierarchy axis, changing only RealizationLevel must change whether the
-// profile-selected Synth-B secondary role participates. Existing rhythm and
-// phrase semantics are measured at the same time so a failed hierarchy
-// hypothesis cannot be confused with a non-causal DEPTH control.
+// Final contract after executable RED characterization:
+// - P1/P2/P3 is a causal realization/transformation-magnitude axis.
+// - changing only RealizationLevel does not change profile-selected Synth-B
+//   role identity, role admission, or materialized Synth-B activity in the
+//   measured shipped families.
+// - profile.secondaryRole independently owns Synth-B role participation.
+//
+// I5 therefore records negative capacity for role hierarchy via DEPTH without
+// changing production semantics or rewriting the frozen I3 trajectory contract.
 
 #include <cstdint>
 #include <cstdio>
@@ -162,6 +166,10 @@ RhythmMetrics rhythmMetricsFor(const GenerationProfileView& profile,
   return metrics;
 }
 
+uint16_t transformationActivity(const RhythmMetrics& metrics) {
+  return static_cast<uint16_t>(metrics.secondary + metrics.ghosts);
+}
+
 struct SynthBObservation {
   bool ready = false;
   CompositionSecondaryRole selectedRole = CompositionSecondaryRole::Count;
@@ -200,6 +208,13 @@ SynthBObservation synthBObservation(const GenreSettings& settings,
 uint8_t participationSignature(const SynthBObservation& observation) {
   return static_cast<uint8_t>((observation.chordApplied ? 1u : 0u) |
                               (observation.melodicApplied ? 2u : 0u));
+}
+
+bool sameMaterializedActivity(const SynthBObservation& lhs,
+                              const SynthBObservation& rhs) {
+  return lhs.activeEvents == rhs.activeEvents &&
+      lhs.chordEvents == rhs.chordEvents &&
+      lhs.melodicFillEvents == rhs.melodicFillEvents;
 }
 
 SemanticSynthBRole expectedSemanticRole(CompositionSecondaryRole role) {
@@ -266,11 +281,23 @@ void testCurrentDepthIsCausalRealizationMagnitude() {
          lofiP1.ready && lofiP2.ready && lofiP3.ready);
   expect("DnB P1/P2/P3 controlled rhythm realizations succeed",
          dnbP1.ready && dnbP2.ready && dnbP3.ready);
+  expect("Lo-Fi primary structural activity is stable across DEPTH",
+         lofiP1.structural == lofiP2.structural &&
+             lofiP2.structural == lofiP3.structural);
+  expect("DnB primary structural activity is stable across DEPTH",
+         dnbP1.structural == dnbP2.structural &&
+             dnbP2.structural == dnbP3.structural);
+  expect("Lo-Fi DEPTH increases optional/ghost transformation activity",
+         transformationActivity(lofiP1) < transformationActivity(lofiP2) &&
+             transformationActivity(lofiP2) < transformationActivity(lofiP3));
+  expect("DnB DEPTH increases optional/ghost transformation activity",
+         transformationActivity(dnbP1) < transformationActivity(dnbP2) &&
+             transformationActivity(dnbP2) < transformationActivity(dnbP3));
   expect("Lo-Fi DEPTH changes rhythm realization topology",
-         lofiP1.topologyHash != lofiP2.topologyHash ||
+         lofiP1.topologyHash != lofiP2.topologyHash &&
              lofiP2.topologyHash != lofiP3.topologyHash);
   expect("DnB DEPTH changes rhythm realization topology",
-         dnbP1.topologyHash != dnbP2.topologyHash ||
+         dnbP1.topologyHash != dnbP2.topologyHash &&
              dnbP2.topologyHash != dnbP3.topologyHash);
   expect("P1/P2/P3 preserve canonical primary anchors in both families",
          lofiP1.primaryAnchorsPreserved && lofiP2.primaryAnchorsPreserved &&
@@ -304,7 +331,7 @@ void testCurrentDepthIsCausalRealizationMagnitude() {
          developP2 != developP3 && sparseP2 != sparseP3);
 }
 
-void testDepthRoleHierarchyHypothesisRed() {
+void testDepthDoesNotExpressRoleHierarchy() {
   struct FamilyCase {
     const char* name;
     GenerativeMode mode;
@@ -335,12 +362,12 @@ void testDepthRoleHierarchyHypothesisRed() {
                p2.selectedRole == p3.selectedRole &&
                p1.materializedRole == p2.materializedRole &&
                p2.materializedRole == p3.materializedRole);
-
-    const bool participationChanged =
-        participationSignature(p1) != participationSignature(p2) ||
-        participationSignature(p2) != participationSignature(p3);
-    expect("RED: role-hierarchy DEPTH changes Synth-B participation",
-           participationChanged);
+    expect("Synth-B role participation is unchanged by DEPTH",
+           participationSignature(p1) == participationSignature(p2) &&
+               participationSignature(p2) == participationSignature(p3));
+    expect("Synth-B materialized activity is unchanged by DEPTH",
+           sameMaterializedActivity(p1, p2) &&
+               sameMaterializedActivity(p2, p3));
   }
 }
 
@@ -384,7 +411,7 @@ void testSecondaryRoleIsASeparateOwnerAtSameDepth() {
 
 int main() {
   testCurrentDepthIsCausalRealizationMagnitude();
-  testDepthRoleHierarchyHypothesisRed();
+  testDepthDoesNotExpressRoleHierarchy();
   testSecondaryRoleIsASeparateOwnerAtSameDepth();
 
   if (g_failures != 0) {
