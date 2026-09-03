@@ -60,10 +60,21 @@ int main() {
         assert(f.keyboard.chordMode() == PerformanceChordMode::Memory);
         f.sink.clear();
         assert(f.keyboard.keyDown('s', 90));
-        assert(f.sink.events.size() == 3);
-        assert(f.sink.events[0].note == 38);
-        assert(f.sink.events[1].note == 41);
-        assert(f.sink.events[2].note == 45);
+        // Re-rooting an active memory voicing first releases the old generated
+        // notes, then starts the new memory voicing. Cleanup must precede attack.
+        assert(f.sink.events.size() == 6);
+        assert(count(f.sink.events, MusicalEventType::NoteOff) == 3);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 3);
+        for (std::size_t i = 0; i < 3; ++i) {
+            assert(f.sink.events[i].type == MusicalEventType::NoteOff);
+            assert(f.sink.events[i].source == MusicalEventSource::Arpeggiator);
+        }
+        assert(f.sink.events[3].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[3].note == 38);
+        assert(f.sink.events[4].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[4].note == 41);
+        assert(f.sink.events[5].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[5].note == 45);
     }
 
     {
