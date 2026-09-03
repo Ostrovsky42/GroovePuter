@@ -152,6 +152,10 @@ struct StrongRhythmMigrationContext {
 // second composition model. It is caller-owned and ephemeral.
 struct StrongRhythmFrozenSelection {
   StrongRhythmRoute route = StrongRhythmRoute::Legacy;
+  // GF2-I4: projected exactly once from the profile corridor against the
+  // selected archetype. Phrase/bar execution only forwards this value. Keep
+  // it beside the byte-sized route so it occupies existing aggregate padding.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   GenerationCompositionResult composition{};
   GenerationContext selectionGeneration{};
   GenerationContext realizationGeneration{};
@@ -159,9 +163,6 @@ struct StrongRhythmFrozenSelection {
   // GF2-I2: derived once with the composition so every role of one musical
   // decision materializes with the same concrete FEEL. Never persisted.
   FeelProfileId resolvedFeel = FeelProfileId::Straight;
-  // GF2-I4: projected exactly once from the profile corridor against the
-  // selected archetype. Phrase/bar execution only forwards this value.
-  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   bool resolved = false;
 };
 
@@ -221,7 +222,7 @@ struct StrongRhythmMigrationResult {
   MelodicMotifStatus melodicMotifStatus =
       MelodicMotifStatus::InvalidRequest;
   MelodicRhythmId melodicRhythmId = MelodicRhythmId::Auto;
-  MotifShapeId motifShapeId = MotifShapeId::Auto;
+  MotifShapeId motifShape = MotifShapeId::Auto;
   MelodicPitchIntentStatus melodicPitchIntentStatus =
       MelodicPitchIntentStatus::InvalidRequest;
   MelodicContourId melodicPitchContour = MelodicContourId::Auto;
