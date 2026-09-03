@@ -455,8 +455,7 @@ bool isValidGenerationProfile(const GenerationProfileView& profile) {
       profile.corridor.bpmMin < 30 ||
       profile.corridor.bpmMin > profile.corridor.suggestedBpm ||
       profile.corridor.suggestedBpm > profile.corridor.bpmMax ||
-      (profile.corridor.gridSteps != 8 && profile.corridor.gridSteps != 16 &&
-       profile.corridor.gridSteps != 32) ||
+      profile.corridor.gridSteps != 16 ||
       profile.corridor.densityMin > profile.corridor.densityMax ||
       profile.corridor.densityMax > 16 ||
       static_cast<uint8_t>(profile.secondaryRole) >= static_cast<uint8_t>(CompositionSecondaryRole::Count)) {
