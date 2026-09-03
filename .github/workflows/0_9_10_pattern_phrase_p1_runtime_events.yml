@@ -1,0 +1,39 @@
+name: 0.9.10 Pattern Phrase P1 Runtime Events
+
+on:
+  push:
+    branches:
+      - feature/20260903-02-0.9.10-pattern-phrase-p1-runtime-events
+  pull_request:
+    paths:
+      - 'src/phrase/runtime_synth_events.h'
+      - 'src/phrase/runtime_synth_events.cpp'
+      - 'tests/test_pattern_phrase_p1_runtime_events.cpp'
+      - 'tests/test_pattern_phrase_p1_source_contract.py'
+      - 'tests/run_pattern_phrase_p1_runtime_events.sh'
+      - 'docs/tests/PATTERN_PHRASE_P1_RUNTIME_EVENTS.md'
+      - 'docs/superpowers/specs/2026-09-03-pattern-phrase-p1-runtime-events-design.md'
+      - 'docs/superpowers/plans/2026-09-03-pattern-phrase-p1-runtime-events.md'
+      - '.github/workflows/0_9_10_pattern_phrase_p1_runtime_events.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-event-projection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install compiler matrix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang
+
+      - name: Run P1 focused gate
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        run: bash tests/run_pattern_phrase_p1_runtime_events.sh
