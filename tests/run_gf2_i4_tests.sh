@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-i4"
+BASE_SHA="64c2a3b4391364bb444d757899692e9ef8cf4190"
 mkdir -p "${BUILD_DIR}"
+
+git -C "${ROOT}" cat-file -e "${BASE_SHA}^{commit}"
+git -C "${ROOT}" diff --check "${BASE_SHA}...HEAD"
+echo "GF2-I4 git diff --check: PASS"
 
 mapfile -t SOURCES < <(
   sed -n '/COMMON_SOURCES=(/,/)/p' "${ROOT}/tests/run_stage15_tonal_integration_tests.sh" |
