@@ -18,3 +18,16 @@ mkdir -p "${BUILD_DIR}"
   -o "${BUILD_DIR}/test_performance_closure"
 
 "${BUILD_DIR}/test_performance_closure"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}/tests/stubs" \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_internal_synth_output_cleanup.cpp" \
+  "${ROOT_DIR}/src/input/internal_synth_output.cpp" \
+  -o "${BUILD_DIR}/test_internal_synth_output_cleanup"
+
+"${BUILD_DIR}/test_internal_synth_output_cleanup"
