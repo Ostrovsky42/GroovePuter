@@ -1,0 +1,23 @@
+name: GF2-I4 corridor consumers
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/composition/generation_profile.cpp"
+      - "src/generation/migration/**"
+      - "src/generation/rhythm/**"
+      - "tests/test_gf2_i4_corridor_consumers.cpp"
+      - "tests/run_gf2_i4_tests.sh"
+      - "docs/gf2/GF2_I4_CORRIDOR_CONSUMERS.md"
+      - ".github/workflows/gf2-i4-corridor-consumers.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  corridor-consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run GF2-I4 focused host gate
+        run: bash tests/run_gf2_i4_tests.sh
