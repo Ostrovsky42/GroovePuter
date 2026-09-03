@@ -12,6 +12,7 @@ registry_header_path = root / "src/platform/cardputer_smf_player_registry.h"
 registry_cpp_path = root / "src/platform/cardputer_smf_player_registry.cpp"
 transport_header_path = root / "src/platform/cardputer_usb_midi_transport.h"
 transport_cpp_path = root / "src/platform/cardputer_usb_midi_transport.cpp"
+phrase_page_path = root / "src/ui/pages/phrase_page.cpp"
 
 
 def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
@@ -94,6 +95,38 @@ transport_cpp_path.write_text(
       "    return g_dispatchTaskHandle;\n"
       "}\n",
     encoding="utf-8",
+)
+
+# PHRASE probe hooks are declared locally so this file needs no diagnostic
+# header. Both edits apply to the temporary runtime tree only.
+replace_once(
+    phrase_page_path,
+    '#include "src/state/scene_revision.h"\n',
+    '#include "src/state/scene_revision.h"\n'
+    "\n"
+    "// GF2-M0R diagnostic hooks, defined in the instrumented sketch.\n"
+    "void beginPhraseMemoryProbe();\n"
+    "void endPhraseMemoryProbe(int resultStatus);\n",
+    "PHRASE probe declarations",
+)
+
+replace_once(
+    phrase_page_path,
+    "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
+    "  beginPhraseMemoryProbe();\n"
+    "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
+    "PHRASE probe begin hook",
+)
+
+# The generation call is a single initialising statement with one exit, so the
+# end hook needs no change to existing error handling.
+replace_once(
+    phrase_page_path,
+    "      });\n\n  if (!result) {\n",
+    "      });\n"
+    "  endPhraseMemoryProbe(static_cast<int>(result.status));\n"
+    "\n  if (!result) {\n",
+    "PHRASE probe end hook",
 )
 
 text = ino_path.read_text(encoding="utf-8")
@@ -203,8 +236,17 @@ static void logCardputerMemoryBaseline(const char* phase) {
       (unsigned)(dispatchTask ? 1 : 0));
 }
 
+// The first heap_caps_monitor_local_minimum_free_size_start() may allocate
+// its own bookkeeping. Prewarm once here so that allocation lands before the
+// runtime baseline and can never be charged to a PHRASE measurement window.
+static void prewarmCardputerMemoryLocalMinimumMonitor() {
+  (void)heap_caps_monitor_local_minimum_free_size_start();
+  (void)heap_caps_monitor_local_minimum_free_size_stop();
+}
+
 static void startCardputerMemoryBaseline() {
   g_memoryBaselineRuntimeStarted = true;
+  prewarmCardputerMemoryLocalMinimumMonitor();
   sampleCardputerMemoryBaseline();
   logCardputerMemoryBaseline("runtime-start");
 }
@@ -219,6 +261,64 @@ static void pollCardputerMemoryBaseline() {
     g_memoryBaselineLastLogMs = nowMs;
     logCardputerMemoryBaseline("periodic");
   }
+}
+
+// GF2-M0R operation-scoped PHRASE probe.
+//
+// GeneratedPhraseSong::generate() runs synchronously on the loop task, so the
+// 10 ms poller above cannot sample anything while it executes. These hooks
+// bracket the operation instead. External linkage: phrase_page.cpp calls them
+// from another translation unit.
+static uint32_t g_phraseProbeSeq = 0;
+static uint32_t g_phraseProbePreFreeInternal8 = 0;
+static uint32_t g_phraseProbePreLargestInternal8 = 0;
+static uint32_t g_phraseProbePreLoopStackFreeBytes = 0;
+
+void beginPhraseMemoryProbe() {
+  g_phraseProbePreFreeInternal8 = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  g_phraseProbePreLargestInternal8 = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  g_phraseProbePreLoopStackFreeBytes =
+      (uint32_t)uxTaskGetStackHighWaterMark(nullptr);
+  (void)heap_caps_monitor_local_minimum_free_size_start();
+}
+
+void endPhraseMemoryProbe(int resultStatus) {
+  // Read the minimum while the local monitor is still active: after stop()
+  // heap_caps_get_minimum_free_size() reverts to its since-startup meaning.
+  const uint32_t localMinFreeInternal8 = heap_caps_get_minimum_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const uint32_t postFreeInternal8 = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const uint32_t postLargestInternal8 = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  // Captured before any Serial.printf so logging cannot move the mark.
+  const uint32_t postLoopStackFreeBytes =
+      (uint32_t)uxTaskGetStackHighWaterMark(nullptr);
+  (void)heap_caps_monitor_local_minimum_free_size_stop();
+
+  // localMinFreeInternal8 is the PHRASE-scoped system minimum free
+  // INTERNAL|8BIT heap. Other tasks run during the window, so it is an
+  // operation-window safety figure, not bytes allocated by PHRASE.
+  //
+  // The largest-block values are plain before/after readings. ESP-IDF has no
+  // operation-local monitor for the largest free block, so neither one is an
+  // operation peak; fragmentation drift is read across repeated operations.
+  Serial.printf(
+      "[MEM-PHRASE] seq=%u result=%d preFreeInternal8=%u "
+      "localMinFreeInternal8=%u postFreeInternal8=%u preLargestInternal8=%u "
+      "postLargestInternal8=%u preLoopStackFreeBytes=%u "
+      "postLoopStackFreeBytes=%u\n",
+      (unsigned)(++g_phraseProbeSeq),
+      resultStatus,
+      (unsigned)g_phraseProbePreFreeInternal8,
+      (unsigned)localMinFreeInternal8,
+      (unsigned)postFreeInternal8,
+      (unsigned)g_phraseProbePreLargestInternal8,
+      (unsigned)postLargestInternal8,
+      (unsigned)g_phraseProbePreLoopStackFreeBytes,
+      (unsigned)postLoopStackFreeBytes);
 }
 '''
 

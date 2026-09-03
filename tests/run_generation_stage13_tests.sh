@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/host-tests"
 mkdir -p "${BUILD_DIR}"
 
+bash "${ROOT_DIR}/tests/run_gf2_0r_recipe_catalog_tests.sh"
 python3 "${ROOT_DIR}/tests/test_generation_stage13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_orthogonality_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_source_regressions.py"

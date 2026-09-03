@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "../../dsp/genre_manager.h"
 #include "../feel/feel_types.h"
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
@@ -96,6 +97,14 @@ struct GenerationCompositionResult {
 
 GenerationProfileView generationProfileFor(const GenreSettings& settings);
 bool isValidGenerationProfile(const GenerationProfileView& profile);
+
+// The production profile table owns Recipe membership. Enumeration ordinals
+// are transient catalog positions only; callers receive the persisted Recipe
+// ID and never depend on ProfileDefinition storage.
+uint8_t availableRecipeCount(GenerativeMode genre);
+bool availableRecipeAt(GenerativeMode genre, uint8_t ordinal,
+                       GenreRecipeId& recipe);
+bool isRecipeAvailable(GenerativeMode genre, GenreRecipeId recipe);
 
 bool selectWeightedIdentityFromView(
     WeightedIdentityView view,

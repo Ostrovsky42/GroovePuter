@@ -1,0 +1,29 @@
+name: GF2-C2-V0R structured observation
+
+on:
+  push:
+    branches:
+      - 'research/20260901-02-0.9.10-gf2-c2-v0r-structured-observation'
+    paths:
+      - 'tests/test_gf2_c2_v0r_structured_observation.cpp'
+      - 'tests/run_gf2_c2_v0r_tests.sh'
+      - 'tests/support/gf2_generation_observation.h'
+      - '.github/workflows/gf2-c2-v0r-structured-observation.yml'
+  pull_request:
+    paths:
+      - 'tests/test_gf2_c2_v0r_structured_observation.cpp'
+      - 'tests/run_gf2_c2_v0r_tests.sh'
+      - 'tests/support/gf2_generation_observation.h'
+      - '.github/workflows/gf2-c2-v0r-structured-observation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structured-observation-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run GF2-C2-V0R host contract
+        run: bash tests/run_gf2_c2_v0r_tests.sh

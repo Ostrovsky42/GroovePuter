@@ -197,4 +197,54 @@ for path in (
 ):
     require(path in doc, f"boundary audit missing changed path: {path}")
 
+# GF2-M0R: PHRASE-scoped transient memory probe.
+#
+# The 10 ms poll in loop() cannot observe an internal low point while the
+# synchronous GeneratedPhraseSong::generate() call blocks the loop task, so the
+# probe must be operation-scoped rather than sample-based.
+for api in (
+    "heap_caps_monitor_local_minimum_free_size_start",
+    "heap_caps_monitor_local_minimum_free_size_stop",
+):
+    require(api in instrument,
+            f"PHRASE-scoped probe missing local-minimum monitor API: {api}")
+require(instrument.count("heap_caps_monitor_local_minimum_free_size_start") >= 2,
+        "the local-minimum monitor must be pre-warmed once before the runtime "
+        "baseline so its first bookkeeping allocation cannot contaminate the "
+        "PHRASE measurement window")
+require("prewarm" in instrument.lower(),
+        "the monitor pre-warm step must be identifiable in the instrumenter")
+require("src/ui/pages/phrase_page.cpp" in instrument,
+        "PHRASE probe must patch the temporary copy of phrase_page.cpp")
+require("GeneratedPhraseSong::generate" in instrument,
+        "PHRASE probe must anchor on the synchronous generation call site")
+for hook in ("beginPhraseMemoryProbe", "endPhraseMemoryProbe"):
+    require(hook in instrument, f"PHRASE probe hook missing: {hook}")
+require("[MEM-PHRASE]" in instrument,
+        "PHRASE-scoped diagnostic record missing")
+for field in (
+    "seq=",
+    "result=",
+    "preFreeInternal8=",
+    "localMinFreeInternal8=",
+    "postFreeInternal8=",
+    "preLargestInternal8=",
+    "postLargestInternal8=",
+    "preLoopStackFreeBytes=",
+    "postLoopStackFreeBytes=",
+):
+    require(field in instrument, f"[MEM-PHRASE] field missing: {field}")
+
+# ESP-IDF exposes no operation-local monitor for the largest free block, so the
+# probe must not name any pre/post largest-block value as an operation peak.
+for forbidden in (
+    "localMinLargestInternal8",
+    "phrasePeakInternal8",
+    "phraseAllocatedBytes",
+    "phraseOwnedBytes",
+):
+    require(forbidden not in instrument,
+            f"no operation-local largest-block monitor exists: {forbidden}")
+
+
 print("Cardputer memory baseline source regressions: PASS")
