@@ -248,10 +248,6 @@ uint16_t respondDeficit(const LaneRelationship& relation,
   constexpr uint8_t kCoordinateCount = kMaxPhraseBars * kStepsPerBar;
   uint8_t responseCount[kCoordinateCount]{};
 
-  // Assign every target to exactly one source using the same deterministic
-  // nearest-source / earlier-coordinate tie break as RelationshipResolver,
-  // but index by absolute phrase coordinate instead of storing coordinate
-  // tables on the stack.
   for (uint8_t targetBar = 0; targetBar < occupancy.barCount; ++targetBar) {
     const StepMask targetMask = occupancy.roleMasks[
         targetBar][static_cast<uint8_t>(relation.target)];
@@ -276,8 +272,6 @@ uint16_t respondDeficit(const LaneRelationship& relation,
           const int sourceAbsolute = sourceBar * kStepsPerBar + sourceStep;
           const int delta = targetAbsolute - sourceAbsolute;
           const int distance = delta < 0 ? -delta : delta;
-          // Scanning bar/step in ascending order preserves the normative
-          // earlier-coordinate winner when distances tie.
           if (distance < bestDistance) {
             bestDistance = distance;
             bestSourceAbsolute = sourceAbsolute;
@@ -707,11 +701,11 @@ bool fillLaneMinimums(const RhythmArchetype& archetype,
 
 void fillPreferredDensity(const RhythmArchetype& archetype,
                           PhraseOccupancy& occupancy,
+                          uint8_t structuralTarget,
                           uint32_t seed) {
   for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
     uint8_t guard = 0;
-    while (totalStructural(occupancy, bar) <
-               archetype.density.structuralPreferred &&
+    while (totalStructural(occupancy, bar) < structuralTarget &&
            guard++ < kRhythmRoleCount * kStepsPerBar) {
       int bestLane = -1;
       int bestStep = -1;
@@ -786,6 +780,7 @@ bool occupancyRespectsBaseBounds(const RhythmArchetype& archetype,
 bool establishIdentity(const RhythmArchetype& archetype,
                        const GenerationContext& context,
                        uint8_t phraseBars,
+                       uint8_t structuralTarget,
                        PhraseRhythmIdentity& identity) {
   identity = {};
   identity.archetypeId = archetype.id;
@@ -817,7 +812,7 @@ bool establishIdentity(const RhythmArchetype& archetype,
                                identitySeed ^ 0x52454C31u)) {
     return false;
   }
-  fillPreferredDensity(archetype, occupancy,
+  fillPreferredDensity(archetype, occupancy, structuralTarget,
                        identitySeed ^ 0x44454E31u);
   if (!repairHardRelationships(archetype, occupancy,
                                identitySeed ^ 0x52454C32u)) {
@@ -1004,10 +999,6 @@ uint8_t ghostBudgetFor(const RhythmArchetype& archetype,
     return direct;
   }
 
-  // P3 is cumulative by contract: transformation keeps the P2 ornament layer
-  // unless the catalog later supplies an explicit P3 ghost budget. This turns
-  // P1/P2/P3 into canonical -> subtle -> transformed rather than replacing
-  // the P2 ghost class with a different P3 secondary class.
   const MutationBudget& p2 = archetype.mutation.level[
       static_cast<uint8_t>(RealizationLevel::P2Variation)];
   return p2.maxGhostAdds != 0 ? p2.maxGhostAdds : legacyGhostBudget(p2);
@@ -1070,10 +1061,6 @@ void addVariation(const RhythmArchetype& archetype,
   const uint8_t secondaryAdds = secondaryBudgetFor(budget);
   const uint8_t ghostAdds = ghostBudgetFor(archetype, plan.level);
 
-  // Preserve legacy deterministic output for the variation class that already
-  // existed at this level. P2 remains bit-for-bit on its old unsalted ghost
-  // path; P3 keeps the old unsalted secondary path. Only the new second pass
-  // receives a disjoint salt.
   if (secondaryAdds != 0) {
     addVariationPass(archetype, seed,
                      plan, occupancy, secondaryAdds, true);
@@ -1103,6 +1090,11 @@ bool requestValid(const RhythmRealizationRequest& request,
         phraseBarsBit(request.phraseBars))) {
     return false;
   }
+  if (request.structuralDensityTarget != kNoStructuralDensityTarget &&
+      (request.structuralDensityTarget < archetype->density.structuralMin ||
+       request.structuralDensityTarget > archetype->density.structuralMax)) {
+    return false;
+  }
   if (request.reuseIdentity &&
       (request.reuseIdentity->phraseBars != request.phraseBars ||
        request.reuseIdentity->archetypeId != request.archetypeId)) {
@@ -1122,6 +1114,17 @@ bool rolePlanIsEmpty(const RoleRhythmPlan& plan) {
 }
 
 }  // namespace
+
+uint8_t projectStructuralDensityTarget(const RhythmArchetype& archetype,
+                                       uint8_t normalizedDensity) {
+  if (normalizedDensity > 16u) return kNoStructuralDensityTarget;
+  const uint8_t minimum = archetype.density.structuralMin;
+  const uint8_t maximum = archetype.density.structuralMax;
+  if (maximum <= minimum) return minimum;
+  const uint16_t range = static_cast<uint16_t>(maximum - minimum);
+  const uint16_t scaled = static_cast<uint16_t>(range * normalizedDensity);
+  return static_cast<uint8_t>(minimum + (scaled + 8u) / 16u);
+}
 
 PhraseOccupancy structuralOccupancy(const RhythmPhrasePlan& plan) {
   PhraseOccupancy occupancy{};
@@ -1242,6 +1245,11 @@ RhythmRealizationResult realizeRhythmPhrase(
   const RhythmArchetype* archetype = nullptr;
   if (!requestValid(request, archetype)) return result;
 
+  const uint8_t structuralTarget =
+      request.structuralDensityTarget == kNoStructuralDensityTarget
+          ? archetype->density.structuralPreferred
+          : request.structuralDensityTarget;
+
   if (request.reuseIdentity) {
     if (!identityValidForArchetype(*archetype,
                                    *request.reuseIdentity)) {
@@ -1252,6 +1260,7 @@ RhythmRealizationResult realizeRhythmPhrase(
     if (!establishIdentity(*archetype,
                            request.generation,
                            request.phraseBars,
+                           structuralTarget,
                            result.identity)) {
       return result;
     }
