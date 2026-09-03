@@ -248,6 +248,10 @@ uint16_t respondDeficit(const LaneRelationship& relation,
   constexpr uint8_t kCoordinateCount = kMaxPhraseBars * kStepsPerBar;
   uint8_t responseCount[kCoordinateCount]{};
 
+  // Assign every target to exactly one source using the same deterministic
+  // nearest-source / earlier-coordinate tie break as RelationshipResolver,
+  // but index by absolute phrase coordinate instead of storing coordinate
+  // tables on the stack.
   for (uint8_t targetBar = 0; targetBar < occupancy.barCount; ++targetBar) {
     const StepMask targetMask = occupancy.roleMasks[
         targetBar][static_cast<uint8_t>(relation.target)];
@@ -272,6 +276,8 @@ uint16_t respondDeficit(const LaneRelationship& relation,
           const int sourceAbsolute = sourceBar * kStepsPerBar + sourceStep;
           const int delta = targetAbsolute - sourceAbsolute;
           const int distance = delta < 0 ? -delta : delta;
+          // Scanning bar/step in ascending order preserves the normative
+          // earlier-coordinate winner when distances tie.
           if (distance < bestDistance) {
             bestDistance = distance;
             bestSourceAbsolute = sourceAbsolute;
@@ -999,6 +1005,10 @@ uint8_t ghostBudgetFor(const RhythmArchetype& archetype,
     return direct;
   }
 
+  // P3 is cumulative by contract: transformation keeps the P2 ornament layer
+  // unless the catalog later supplies an explicit P3 ghost budget. This turns
+  // P1/P2/P3 into canonical -> subtle -> transformed rather than replacing
+  // the P2 ghost class with a different P3 secondary class.
   const MutationBudget& p2 = archetype.mutation.level[
       static_cast<uint8_t>(RealizationLevel::P2Variation)];
   return p2.maxGhostAdds != 0 ? p2.maxGhostAdds : legacyGhostBudget(p2);
@@ -1061,6 +1071,10 @@ void addVariation(const RhythmArchetype& archetype,
   const uint8_t secondaryAdds = secondaryBudgetFor(budget);
   const uint8_t ghostAdds = ghostBudgetFor(archetype, plan.level);
 
+  // Preserve legacy deterministic output for the variation class that already
+  // existed at this level. P2 remains bit-for-bit on its old unsalted ghost
+  // path; P3 keeps the old unsalted secondary path. Only the new second pass
+  // receives a disjoint salt.
   if (secondaryAdds != 0) {
     addVariationPass(archetype, seed,
                      plan, occupancy, secondaryAdds, true);
