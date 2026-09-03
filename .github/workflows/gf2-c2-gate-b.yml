@@ -7,8 +7,10 @@ on:
   pull_request:
     paths:
       - 'tools/gf2_gate_b.py'
+      - 'tools/gf2/gf2_gate_b_finalize.py'
       - 'tools/gf2/gf2_gate_b_dump.cpp'
       - 'tests/test_gf2_gate_b_analysis.py'
+      - 'tests/test_gf2_gate_b_finalize.py'
       - 'tests/run_gf2_gate_b_tests.sh'
       - 'tests/run_gf2_gate_b_dump_tests.sh'
       - 'tests/support/gf2_gate_b_*'
@@ -23,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Final reporting semantics regression
+        run: python3 tests/test_gf2_gate_b_finalize.py
       - name: Gate B bootstrap proof
         env:
           GF2_GATE_B_ALLOW_UNFROZEN: '1'
