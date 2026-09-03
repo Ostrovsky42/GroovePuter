@@ -42,5 +42,7 @@ private:
     bool toolsLayerVisible_{false};
     PerformanceToolContext selectedContext_{PerformanceToolContext::Key};
     uint8_t selectedRow_{0};
+    bool toolsFullRedraw_{true};
+    bool toolsSelectionDirty_{true};
     std::string title_{"PERFORM"};
 };
