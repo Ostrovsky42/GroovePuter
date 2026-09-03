@@ -98,12 +98,24 @@ Measurement measure(const GenreSettings& settings,
   context.rootPitchClass = 0;
   context.scaleTypeValue = kScaleDorian;
 
+  // GF2-I4 adds a new upstream density axis. This census is the frozen I2A
+  // owner-specific evidence set, so keep its pre-I4 structuralPreferred
+  // material while still using real production selection and FEEL arbitration.
+  // The I4 gate separately measures the production density path and its causal
+  // interaction with phrase law.
+  StrongRhythmFrozenSelection selection{};
+  const StrongRhythmMigrationResult resolved =
+      resolveStrongRhythmFrozenSelection(
+          settings, context, static_cast<uint16_t>(kPatternAddress), selection);
+  if (resolved.status != StrongRhythmMigrationStatus::Applied) return {};
+  selection.structuralDensityTarget = kNoStructuralDensityTarget;
+
   DrumPatternSet drums{};
   SynthPattern synthA{};
   SynthPattern synthB{};
   Measurement m{};
-  const StrongRhythmMigrationResult result =
-      migrateStrongRhythmMaterial(settings, context, drums, synthA, synthB);
+  const StrongRhythmMigrationResult result = migrateStrongRhythmFrozenMaterial(
+      settings, selection, context, drums, synthA, synthB);
   if (result.status != StrongRhythmMigrationStatus::Applied) return m;
   m.applied = true;
 

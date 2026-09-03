@@ -707,11 +707,11 @@ bool fillLaneMinimums(const RhythmArchetype& archetype,
 
 void fillPreferredDensity(const RhythmArchetype& archetype,
                           PhraseOccupancy& occupancy,
+                          uint8_t structuralTarget,
                           uint32_t seed) {
   for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
     uint8_t guard = 0;
-    while (totalStructural(occupancy, bar) <
-               archetype.density.structuralPreferred &&
+    while (totalStructural(occupancy, bar) < structuralTarget &&
            guard++ < kRhythmRoleCount * kStepsPerBar) {
       int bestLane = -1;
       int bestStep = -1;
@@ -786,6 +786,7 @@ bool occupancyRespectsBaseBounds(const RhythmArchetype& archetype,
 bool establishIdentity(const RhythmArchetype& archetype,
                        const GenerationContext& context,
                        uint8_t phraseBars,
+                       uint8_t structuralTarget,
                        PhraseRhythmIdentity& identity) {
   identity = {};
   identity.archetypeId = archetype.id;
@@ -817,7 +818,7 @@ bool establishIdentity(const RhythmArchetype& archetype,
                                identitySeed ^ 0x52454C31u)) {
     return false;
   }
-  fillPreferredDensity(archetype, occupancy,
+  fillPreferredDensity(archetype, occupancy, structuralTarget,
                        identitySeed ^ 0x44454E31u);
   if (!repairHardRelationships(archetype, occupancy,
                                identitySeed ^ 0x52454C32u)) {
@@ -1103,6 +1104,11 @@ bool requestValid(const RhythmRealizationRequest& request,
         phraseBarsBit(request.phraseBars))) {
     return false;
   }
+  if (request.structuralDensityTarget != kNoStructuralDensityTarget &&
+      (request.structuralDensityTarget < archetype->density.structuralMin ||
+       request.structuralDensityTarget > archetype->density.structuralMax)) {
+    return false;
+  }
   if (request.reuseIdentity &&
       (request.reuseIdentity->phraseBars != request.phraseBars ||
        request.reuseIdentity->archetypeId != request.archetypeId)) {
@@ -1122,6 +1128,17 @@ bool rolePlanIsEmpty(const RoleRhythmPlan& plan) {
 }
 
 }  // namespace
+
+uint8_t projectStructuralDensityTarget(const RhythmArchetype& archetype,
+                                       uint8_t normalizedDensity) {
+  if (normalizedDensity > 16u) return kNoStructuralDensityTarget;
+  const uint8_t minimum = archetype.density.structuralMin;
+  const uint8_t maximum = archetype.density.structuralMax;
+  if (maximum <= minimum) return minimum;
+  const uint16_t range = static_cast<uint16_t>(maximum - minimum);
+  const uint16_t scaled = static_cast<uint16_t>(range * normalizedDensity);
+  return static_cast<uint8_t>(minimum + (scaled + 8u) / 16u);
+}
 
 PhraseOccupancy structuralOccupancy(const RhythmPhrasePlan& plan) {
   PhraseOccupancy occupancy{};
@@ -1242,6 +1259,11 @@ RhythmRealizationResult realizeRhythmPhrase(
   const RhythmArchetype* archetype = nullptr;
   if (!requestValid(request, archetype)) return result;
 
+  const uint8_t structuralTarget =
+      request.structuralDensityTarget == kNoStructuralDensityTarget
+          ? archetype->density.structuralPreferred
+          : request.structuralDensityTarget;
+
   if (request.reuseIdentity) {
     if (!identityValidForArchetype(*archetype,
                                    *request.reuseIdentity)) {
@@ -1252,6 +1274,7 @@ RhythmRealizationResult realizeRhythmPhrase(
     if (!establishIdentity(*archetype,
                            request.generation,
                            request.phraseBars,
+                           structuralTarget,
                            result.identity)) {
       return result;
     }

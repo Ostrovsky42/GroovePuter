@@ -38,6 +38,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ steps.exact.outputs.sha }}
+          fetch-depth: 0
 
       - name: Verify exact checkout
         shell: bash
@@ -48,6 +49,9 @@ jobs:
           echo "GF2 expected SHA: ${EXPECTED_SHA}"
           echo "GF2 actual SHA:   ${actual}"
           test "${actual}" = "${EXPECTED_SHA}"
+
+      - name: Witness GF2-I4 focused contract
+        run: bash tests/run_gf2_i4_tests.sh
 
       - name: Prepare SDL build dependencies
         id: sdl_setup

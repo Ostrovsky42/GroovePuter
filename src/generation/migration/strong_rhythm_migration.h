@@ -152,6 +152,10 @@ struct StrongRhythmMigrationContext {
 // second composition model. It is caller-owned and ephemeral.
 struct StrongRhythmFrozenSelection {
   StrongRhythmRoute route = StrongRhythmRoute::Legacy;
+  // GF2-I4: projected exactly once from the profile corridor against the
+  // selected archetype. Phrase/bar execution only forwards this value. Keep
+  // it beside the byte-sized route so it occupies existing aggregate padding.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   GenerationCompositionResult composition{};
   GenerationContext selectionGeneration{};
   GenerationContext realizationGeneration{};

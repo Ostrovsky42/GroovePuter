@@ -255,6 +255,25 @@ bool stage14BaseGenre(GenerativeMode mode) {
   }
 }
 
+uint8_t profileDensityIntentCenter(const GenerationCorridor& corridor) {
+  return static_cast<uint8_t>(
+      (static_cast<uint16_t>(corridor.densityMin) +
+       static_cast<uint16_t>(corridor.densityMax) + 1u) /
+      2u);
+}
+
+bool freezeStructuralDensityIntent(
+    const GenerationCompositionResult& composition,
+    const ReferenceVocabulary::Definition& definition,
+    StrongRhythmFrozenSelection& destination) {
+  const RhythmArchetype* archetype =
+      ReferenceVocabulary::archetypeFor(definition.key);
+  if (archetype == nullptr) return false;
+  destination.structuralDensityTarget = projectStructuralDensityTarget(
+      *archetype, profileDensityIntentCenter(composition.corridor));
+  return destination.structuralDensityTarget != kNoStructuralDensityTarget;
+}
+
 void copyCompositionToResult(const GenerationCompositionResult& composition,
                              StrongRhythmMigrationResult& result) {
   result.compositionStatus = composition.status;
@@ -416,7 +435,9 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
-  if (definition == nullptr) {
+  if (definition == nullptr ||
+      !freezeStructuralDensityIntent(
+          destination.composition, *definition, destination)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -471,7 +492,9 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
-  if (definition == nullptr) {
+  if (definition == nullptr ||
+      !freezeStructuralDensityIntent(
+          destination.composition, *definition, destination)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -527,6 +550,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   request.phraseBars = 1;
   request.level = context.level;
   request.generation = selection->realizationGeneration;
+  request.structuralDensityTarget = selection->structuralDensityTarget;
 
   const RhythmRealizationResult realization = realizeRhythmPhrase(request);
   result.realizationStatus = realization.status;

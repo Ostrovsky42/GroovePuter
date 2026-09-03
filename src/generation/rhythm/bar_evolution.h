@@ -24,6 +24,10 @@ struct BarEvolutionRequest {
   RealizationLevel level = RealizationLevel::P1Canonical;
   GenerationContext generation{};
 
+  // GF2-I4: already-resolved profile activity intent. BarEvolution never
+  // recomputes it per bar; it only forwards it to the base RhythmRealizer.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
+
   // Optional deterministic override used by tests/tools and future callers.
   // kNoTrajectoryId selects from the archetype's eligible weighted refs.
   TrajectoryId requestedTrajectoryId = kNoTrajectoryId;
