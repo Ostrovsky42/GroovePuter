@@ -1,0 +1,31 @@
+name: GF2 Semantic Analysis
+
+on:
+  push:
+    branches:
+      - "main"
+      - "dev_0.9.9"
+      - "agent/20260901-06-0.9.10-gf2-analysis-orchestration"
+  pull_request:
+
+jobs:
+  semantic-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run semantic orchestration contracts
+        run: |
+          SOURCE_REF="${GITHUB_SHA}" \
+            bash tests/run_gf2_semantic_orchestration_tests.sh
+      - name: Run frozen predecessor contracts
+        run: bash tests/run_gf2_c1df_final_distinctness_dependency.sh
+      - name: Upload semantic analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-semantic-analysis-${{ github.sha }}
+          path: build/gf2-semantic-analysis-test/
+          if-no-files-found: error
