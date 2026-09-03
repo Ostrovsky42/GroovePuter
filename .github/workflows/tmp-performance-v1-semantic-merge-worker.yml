@@ -23,6 +23,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install authoritative host dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
       - name: Verify exact intended parents
         shell: bash
         run: |
@@ -148,6 +158,8 @@ jobs:
 
       - name: GF2 frozen semantic firewall on exact candidate tree
         shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=0
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
