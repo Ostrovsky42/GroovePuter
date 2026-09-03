@@ -494,8 +494,24 @@ def test_performance_workflow_boundaries() -> None:
 
     live_start = engine.index("void MiniAcid::liveNoteOn")
     live_end = engine.index("void MiniAcid::liveNoteOff", live_start)
-    require("if (playing) return;" in engine[live_start:live_end],
-            "PatternPlayer must exclusively own Synth A while transport runs")
+    live_block = engine[live_start:live_end]
+    engine_header = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
+    internal_header = (ROOT / "src/input/internal_synth_output.h").read_text(encoding="utf-8")
+    internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(encoding="utf-8")
+    require("if (playing) return;" not in live_block,
+            "transport-wide live lock must stay removed; Pattern ownership is arbitrated per voice")
+    require("bool patternOwnsInternalSynth(int synthIndex) const;" in engine_header and
+            "void suspendLiveNoteProjection(int synthIndex);" in engine_header,
+            "MiniAcid must expose only the minimal Pattern ownership/projection bridge")
+    require("struct MonoArbitrationState" in internal_header and
+            "bool patternOwned" in internal_header and
+            "generatedCandidate" in internal_header and
+            "directCandidate" in internal_header and
+            "otherLiveCandidate" in internal_header,
+            "InternalSynthOutput must retain the fixed-size PATTERN > GENERATED > DIRECT > OTHER LIVE arbiter")
+    require("void InternalSynthOutput::syncPatternOwnership()" in internal and
+            "engine_.patternOwnsInternalSynth" in internal,
+            "Pattern ownership must reach the internal arbiter without routing Pattern playback through the live event path")
     require("performance_keyboard_.keyDown" in display,
             "display input policy must route unhandled page keys through PerformanceKeyboard")
     require("g_performanceKeyboard.keyDown" not in sketch,

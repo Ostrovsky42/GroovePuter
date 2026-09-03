@@ -1,0 +1,79 @@
+name: 0.9.10 Performance V1 integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - integration/20260903-07-0.9.10-performance-v1
+
+permissions:
+  contents: read
+
+jobs:
+  gf2-p1c-firewalls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: GF2 I1
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i1_tests.sh
+
+      - name: GF2 I2
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i2_tests.sh
+
+      - name: GF2 I2A
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i2a_tests.sh
+
+      - name: GF2 I3
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i3_tests.sh
+
+      - name: GF2 I4
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i4_tests.sh
+
+      - name: GF2 I5
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_gf2_i5_tests.sh
+
+      - name: P1C runtime-event foundation
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p1c_tests.sh
+
+  performance-focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Performance V1 closure
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          if [[ ! -f tests/run_performance_closure_tests.sh ]]; then
+            echo "RED: Performance V1 closure suite is not present on the pre-integration baseline" >&2
+            exit 1
+          fi
+          bash tests/run_performance_closure_tests.sh

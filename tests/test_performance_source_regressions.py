@@ -52,30 +52,32 @@ def test_transport_note_mode_keys_remain_live() -> None:
     transport_block = keyboard[transport_start:transport_end]
     base.require("if (playing) panic();" not in transport_block,
                  "transport start must not panic held performance keys")
-    base.require("stopGeneratedOutput();" in transport_block and
-                 "resetStepClock();" in transport_block,
-                 "clock-domain changes must clean generated notes before re-anchoring")
+    cleanup_pos = transport_block.index("stopGeneratedOutput();")
+    state_pos = transport_block.index("transportPlaying_ = playing;")
+    reset_pos = transport_block.index("resetPulseClock(true);")
+    base.require(cleanup_pos < state_pos < reset_pos,
+                 "transport epoch changes must close generated obligations before state update and pulse re-anchor")
 
     service_start = keyboard.index("void PerformanceKeyboard::service(uint32_t")
     service_end = keyboard.index(
-        "void PerformanceKeyboard::triggerDirectTransformed", service_start)
+        "void PerformanceKeyboard::reconcileDirectPolyChord", service_start)
     service_block = keyboard[service_start:service_end]
     base.require("if (transportPlaying_)" in service_block and
-                 "serviceTransportStepClock(nowMicros)" in service_block,
-                 "running transport must select the project-timeline step clock")
+                 "serviceTransportPulseClock(nowMicros)" in service_block,
+                 "running transport must select the project-timeline pulse clock")
     base.require("projectTransportTimeline().trySnapshot(snapshot)" in keyboard and
                  "snapshot.absoluteSteps()" in keyboard,
-                 "step generation must read the coherent project transport phase")
+                 "pulse generation must read the coherent project transport phase")
     base.require("snapshotCardputerUsbMidiBlockAnchor" in keyboard and
                  "anchorPlaybackMicros" in keyboard,
                  "hardware timing must use the dispatcher playback anchor")
-    base.require("const uint64_t nextOrdinal = currentOrdinal + 1u;" in keyboard and
-                 "nextOrdinal % static_cast<uint64_t>(kEuclideanSteps)" in keyboard,
-                 "Euclidean phase must derive from the next absolute sixteenth")
-    base.require("kTransportScheduleLeadSteps = 0.5" in keyboard and
+    base.require("euclideanPulseActive(musicalPulseOrdinal_)" in keyboard and
+                 "musicalPulseOrdinal_" in header,
+                 "Euclidean phase must derive from the monotonic musical pulse ordinal")
+    base.require("kTransportScheduleLeadPulses = 0.5" in keyboard and
                  "transportAnchorBlockSequence_" in header and
                  "transportAnchorMicros_" in header,
-                 "transport steps must be prepared ahead from a stable block anchor")
+                 "transport pulses must be prepared ahead from a stable block anchor")
     base.require("kGeneratedNoteOnStaleMicros = 12000u" in keyboard and
                  "lateness > kGeneratedNoteOnStaleMicros" in keyboard and
                  "leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)" in keyboard,
@@ -84,7 +86,7 @@ def test_transport_note_mode_keys_remain_live() -> None:
                  "dense 8-note x4 ratchet scheduling needs overlap headroom")
     base.require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
                  'stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "MONO EXT")' in page,
-                 "PERFORM must show live external input instead of the old lock")
+                 "PERFORM must show live-input state instead of the old transport lock")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
@@ -108,6 +110,9 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
         encoding="utf-8"
     )
     keyboard_cpp = (ROOT / "src/input/performance_keyboard.cpp").read_text(
+        encoding="utf-8"
+    )
+    internal_h = (ROOT / "src/input/internal_synth_output.h").read_text(
         encoding="utf-8"
     )
     internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(
@@ -136,7 +141,7 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
                  "plain manual POLY must remain separate from transformed playback")
     base.require("bool PerformanceKeyboard::polyChordSustainEnabled() const" in keyboard_cpp and
                  "chordMode_ != PerformanceChordMode::Off" in keyboard_cpp and
-                 "!stepEngineEnabled()" in keyboard_cpp,
+                 "!activeStepEngineEnabled()" in keyboard_cpp,
                  "direct POLY+CHORD sustain must not replace step-generated ownership")
 
     key_up = keyboard_cpp[
@@ -155,35 +160,37 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
 
     poly_chord = keyboard_cpp[
         keyboard_cpp.index("void PerformanceKeyboard::reconcileDirectPolyChord"):
-        keyboard_cpp.index("uint8_t PerformanceKeyboard::selectArpNote")
+        keyboard_cpp.index("void PerformanceKeyboard::triggerDirectTransformed")
     ]
-    base.require("buildArpPool(\n        desired, kMaxPolyChordNotes)" in poly_chord and
+    base.require("buildChord(" in poly_chord and
                  "routeGenerated(MusicalEventType::NoteOff, note, 0);" in poly_chord and
-                 "if (alreadyActive) continue;" in poly_chord and
+                 "if (desiredContains(note))" in poly_chord and
                  "routeGenerated(MusicalEventType::NoteOn, desired[i], velocity);" in poly_chord,
                  "POLY+CHORD must keep unchanged notes sounding and change only the set difference")
-    base.require("stopGeneratedOutput();\n        if (heldCount_ > 0) triggerDirectTransformed" in key_up,
+    base.require("stopGeneratedOutput();\n            if (heldCount_ > 0) triggerDirectTransformed" in key_up,
                  "MONO transformed last-root restoration must remain available separately")
 
     reconcile = keyboard_cpp[
         keyboard_cpp.index("void PerformanceKeyboard::releaseMissingKeys"):
         keyboard_cpp.index("void PerformanceKeyboard::setEnabled")
     ]
-    base.require("if (directPolyphonyEnabled())" in reconcile and
-                 "emitPolyNoteOff(held_[read].note);" in reconcile,
-                 "matrix reconciliation must independently clean missing POLY notes")
-    base.require("polyChordSustainEnabled()" in reconcile and
-                 "reconcileDirectPolyChord(lastServiceMicros_);" in reconcile,
-                 "matrix reconciliation must preserve POLY+CHORD sustained set ownership")
-    base.require("emitNoteOff(held_[read].note);" in reconcile and
-                 "oldActiveKey" not in reconcile and
-                 "oldActiveNote" not in reconcile,
-                 "MONO matrix reconciliation must emit exact missing-key NoteOffs without restoration")
+    base.require("keyUp(missing[i])" in reconcile,
+                 "matrix reconciliation must delegate missing physical keys through exact key-up ownership")
 
-    base.require("event.source == MusicalEventSource::PerformanceKeyboard" in internal and
-                 "event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal and
-                 "event.source == MusicalEventSource::Arpeggiator" in internal,
-                 "all PERFORM keyboard paths must be external-MIDI-only")
+    base.require("struct MonoArbitrationState" in internal_h and
+                 "generatedCandidate" in internal_h and
+                 "directCandidate" in internal_h and
+                 "otherLiveCandidate" in internal_h,
+                 "internal Synth A/B must use the fixed-size mono arbitration owner")
+    base.require("case MusicalEventSource::Arpeggiator:" in internal_h and
+                 "return &generatedCandidate;" in internal_h and
+                 "case MusicalEventSource::PerformanceKeyboard:" in internal_h and
+                 "return &directCandidate;" in internal_h,
+                 "generated and direct PERFORM sources must participate in deterministic internal mono arbitration")
+    base.require("case MusicalEventSource::PerformanceKeyboardPoly:" in internal_h and
+                 "return nullptr;" in internal_h and
+                 "if (event.source == MusicalEventSource::PerformanceKeyboardPoly) return;" in internal,
+                 "manual POLY must remain external-MIDI-only while internal Synth A/B stays mono")
 
     base.require("kSeqtrakMonoPolyController = 26" in usb_h and
                  "kSeqtrakMonoValue = 0" in usb_h and
@@ -220,19 +227,19 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("bool PerformanceKeyboard::adjustVelocity" in keyboard_cpp and
                  "if (velocity == 0) velocity = keyVelocity_;" in keyboard_cpp,
                  "future Cardputer keyDown events must use the configurable fixed velocity")
-    base.require("case '-':" in page and
-                 "keyboard_.adjustVelocity(-1);" in page and
-                 "keyboard_.adjustVelocity(1);" in page and
-                 '"VEL %u  -/+"' in page and
-                 '"9 VOICE | -/+ VELOCITY"' in page,
-                 "PERFORMANCE TOOLS must expose velocity in 10-point steps without Shift")
+    base.require("VELOCITY" in page and
+                 "case 3: keyboard_.adjustVelocity(direction); break;" in page and
+                 '"-/+ VALUE  ENTER ALT  9 VOICE"' in page,
+                 "KEY context must expose velocity through the contextual -/+ dispatcher")
 
     base.require("case '9':" in page and
                  "keyboard_.toggleVoiceMode();" in page and
-                 "VOICE: POLY / RECEIVER" in page and
-                 "VOICE: MONO / RECEIVER" in page and
+                 '"VOICE: %s / RECEIVER"' in page and
                  "INT+USB" not in page,
-                 "PERFORM UI must describe MONO/POLY as receiver voice modes")
+                 "PERFORM UI must keep the compatibility receiver voice-mode command authoritative")
+    base.require("HeldPerformanceSnapshot" not in page and
+                 "restoreHeldPerformanceKeys" not in page,
+                 "receiver-mode compatibility must not revive cleared physical key ownership")
 
 
 base.test_manual_polyphony_is_external_and_bounded = (
