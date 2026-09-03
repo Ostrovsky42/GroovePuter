@@ -1,0 +1,25 @@
+name: GF2-I5 DEPTH role hierarchy
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/composition/**"
+      - "src/generation/migration/**"
+      - "src/generation/rhythm/**"
+      - "tests/test_gf2_i5_depth_role_hierarchy.cpp"
+      - "tests/run_gf2_i5_tests.sh"
+      - "docs/gf2/GF2_I5_DEPTH_ROLE_HIERARCHY.md"
+      - ".github/workflows/gf2-i5-depth-role-hierarchy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  depth-role-hierarchy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run GF2-I5 focused host gate
+        run: bash tests/run_gf2_i5_tests.sh
