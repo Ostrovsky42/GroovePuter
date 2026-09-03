@@ -102,14 +102,34 @@ def test_performance_all_notes_off_is_target_scoped() -> None:
     sink = (ROOT / "src/input/internal_synth_output.cpp").read_text(
         encoding="utf-8"
     )
-    start = sink.index("case MusicalEventType::AllNotesOff")
-    block = sink[start:]
+    header = (ROOT / "src/input/internal_synth_output.h").read_text(
+        encoding="utf-8"
+    )
 
-    require("engine_.liveNote(voice)" in block,
-            "AllNotesOff must inspect only the event target voice")
-    require("engine_.liveNoteOff(voice" in block,
-            "AllNotesOff must release only the live-owned target voice")
-    require("engine_.allLiveNotesOff()" not in block,
+    handle_start = sink.index("void InternalSynthOutput::handleMusicalEvent")
+    handle_block = sink[handle_start:]
+    require("const int voice = synthIndex(event.target);" in handle_block and
+            "MonoArbitrationState& state = monoState_[voice];" in handle_block,
+            "AllNotesOff must select only the event target arbitration state")
+    require("state.applyLiveEvent(event);" in handle_block and
+            "reconcileLiveProjectionLocked(voice);" in handle_block,
+            "target cleanup must clear authoritative state before reconciling its projection")
+
+    reconcile_start = sink.index(
+        "void InternalSynthOutput::reconcileLiveProjectionLocked")
+    reconcile_end = sink.index(
+        "void InternalSynthOutput::applyPatternOwnershipLocked", reconcile_start)
+    reconcile_block = sink[reconcile_start:reconcile_end]
+    require("engine_.liveNoteOff(voice" in reconcile_block,
+            "target cleanup must physically release the projected target voice")
+
+    require("if (event.type == MusicalEventType::AllNotesOff)" in header and
+            "panic();" in header and
+            "generatedCandidate = Candidate{};" in header and
+            "directCandidate = Candidate{};" in header and
+            "otherLiveCandidate = Candidate{};" in header,
+            "AllNotesOff must kill authoritative live candidates, including suppressed ones")
+    require("engine_.allLiveNotesOff()" not in sink,
             "performance AllNotesOff must not become a global voice release")
 
 

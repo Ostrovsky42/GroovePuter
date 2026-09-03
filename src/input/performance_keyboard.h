@@ -25,6 +25,7 @@ public:
     static constexpr uint8_t kMaxVelocity = 120;
     static constexpr uint8_t kVelocityStep = 10;
     static constexpr uint8_t kDefaultVelocity = 100;
+    static_assert(kMaxNote < 128, "held-note ownership reserves MIDI bit 7");
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {
@@ -171,9 +172,22 @@ private:
     static constexpr std::size_t kMaxChordMemoryNotes = 8;
     static constexpr std::size_t kMaxLatchedNotes = kMaxHeldNotes;
 
+    struct HeldPitch {
+        uint8_t encoded{0};
+
+        operator uint8_t() const { return static_cast<uint8_t>(encoded & 0x7fu); }
+        HeldPitch& operator=(uint8_t value) {
+            encoded = static_cast<uint8_t>(value & 0x7fu);
+            return *this;
+        }
+        bool directActive() const { return (encoded & 0x80u) != 0; }
+        void setDirectActive(bool active) {
+            encoded = static_cast<uint8_t>((encoded & 0x7fu) | (active ? 0x80u : 0u));
+        }
+    };
     struct HeldNote {
         char physicalKey{0};
-        uint8_t note{0};
+        HeldPitch note{};
         uint8_t velocity{0};
         uint8_t channel{0};
     };
@@ -201,6 +215,27 @@ private:
                         uint8_t note,
                         uint8_t velocity,
                         uint8_t channel = 0);
+
+    void emitNoteOn(HeldNote& held) {
+        held.note.setDirectActive(true);
+        emitNoteOn(static_cast<const HeldNote&>(held));
+    }
+    void emitNoteOff(HeldPitch& note, uint8_t channel = 0) {
+        if (!note.directActive()) return;
+        const uint8_t pitch = note;
+        note.setDirectActive(false);
+        emitNoteOff(pitch, channel);
+    }
+    void emitPolyNoteOn(HeldNote& held) {
+        held.note.setDirectActive(true);
+        emitPolyNoteOn(static_cast<const HeldNote&>(held));
+    }
+    void emitPolyNoteOff(HeldPitch& note) {
+        if (!note.directActive()) return;
+        const uint8_t pitch = note;
+        note.setDirectActive(false);
+        emitPolyNoteOff(pitch);
+    }
 
     void serviceHardwareClock();
     void processScheduled(uint32_t nowMicros);

@@ -14,7 +14,8 @@ def main() -> None:
     queue = (ROOT / "src/midi/scheduled_midi_transport_event_queue.h").read_text(encoding="utf-8")
     publisher = (ROOT / "src/midi/midi_transport_clock_publisher.h").read_text(encoding="utf-8")
     facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
-    transport_api = (ROOT / "src/midi/usb_midi_transport.h").read_text(encoding="utf-8")
+    transport_api = (ROOT / "src/midi/midi_transport.h").read_text(encoding="utf-8")
+    usb_transport_alias = (ROOT / "src/midi/usb_midi_transport.h").read_text(encoding="utf-8")
     capabilities = (ROOT / "src/midi/midi_transport_capabilities.h").read_text(encoding="utf-8")
     profile_runtime = (ROOT / "src/midi/midi_device_profile_runtime.h").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
@@ -92,6 +93,9 @@ def main() -> None:
             "sendStop()" in transport_api and
             "sendSongPositionPointer(uint16_t midiBeats)" in transport_api,
             "platform-neutral transport API needs optional Continue and SPP surfaces")
+    require("#include \"midi_transport.h\"" in usb_transport_alias and
+            "using IUsbMidiTransport = IMidiTransport;" in usb_transport_alias,
+            "historical USB transport boundary must remain a compatibility alias")
     require("struct MidiTransportCapabilities" in capabilities and
             "MidiContinueBehavior" in capabilities and
             "songPositionTx" in capabilities,
@@ -192,7 +196,8 @@ def main() -> None:
             "live controls must be bounded so they cannot starve Clock deadlines")
 
     combined_transport = "\n".join((event_header, queue, publisher, facade,
-                                     transport_api, capabilities, transport_h, transport))
+                                     transport_api, usb_transport_alias, capabilities,
+                                     transport_h, transport))
     require("Preferences" not in combined_transport and "NVS" not in combined_transport,
             "transport sync must not depend on settings persistence")
     require("MidiTransport" not in scenes_h and "MidiTransport" not in scenes_cpp and

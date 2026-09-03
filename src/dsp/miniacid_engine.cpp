@@ -569,7 +569,6 @@ void MiniAcid::continueTransport() {
 }
 
 void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
-  if (playing) return;
   const int idx = clamp303Voice(synthIndex);
   const int note = clamp303Note(static_cast<int>(midiNote));
   if (!synthVoices_[idx]) return;
@@ -598,6 +597,16 @@ void MiniAcid::allLiveNotesOff() {
   gateCountdownB_ = 0;
 }
 
+void MiniAcid::suspendLiveNoteProjection(int synthIndex) {
+  liveNotes_[clamp303Voice(synthIndex)] = -1;
+}
+
+bool MiniAcid::patternOwnsInternalSynth(int synthIndex) const {
+  const int idx = clamp303Voice(synthIndex);
+  const uint8_t mask = static_cast<uint8_t>(1u << idx);
+  return (patternOwnedMask_.load(std::memory_order_acquire) & mask) != 0u;
+}
+
 void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
   patternEventQueue_ = queue;
   patternMidiNotes_[0] = -1;
@@ -608,6 +617,8 @@ void MiniAcid::publishPatternNoteOn_(int synthIdx,
                                      uint8_t note,
                                      uint8_t velocity) {
   const int idx = clamp303Voice(synthIdx);
+  patternOwnedMask_.fetch_or(
+      static_cast<uint8_t>(1u << idx), std::memory_order_release);
   if (!patternEventQueue_) return;
   if (velocity < 1) velocity = 1;
   if (velocity > 127) velocity = 127;
@@ -629,6 +640,9 @@ void MiniAcid::publishPatternNoteOn_(int synthIdx,
 
 void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {
   const int idx = clamp303Voice(synthIdx);
+  const uint8_t clearMask =
+      static_cast<uint8_t>(~static_cast<uint8_t>(1u << idx));
+  patternOwnedMask_.fetch_and(clearMask, std::memory_order_release);
   const int16_t note = patternMidiNotes_[idx];
   if (note < 0) return;
   if (patternEventQueue_) {
@@ -649,6 +663,7 @@ void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {
 }
 
 void MiniAcid::publishPatternAllNotesOff_() {
+  patternOwnedMask_.store(0u, std::memory_order_release);
   for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
     if (patternEventQueue_) {
       patternEventQueue_->tryPush(MusicalEvent{

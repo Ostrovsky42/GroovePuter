@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <atomic>
 #include <memory>
 #include <vector>
 #include <string>
@@ -112,6 +113,8 @@ public:
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
+  void suspendLiveNoteProjection(int synthIndex);
+  bool patternOwnsInternalSynth(int synthIndex) const;
   void setPatternEventQueue(MusicalEventQueue* queue);
   int liveNote(int synthIndex) const;
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
@@ -442,6 +445,7 @@ private:
   ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
+  std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
   bool songMode_;
   int drumCycleIndex_;

@@ -478,8 +478,6 @@ std::size_t PerformanceKeyboard::buildScaleChord(uint8_t baseNote,
     if (!notes || capacity == 0) return 0;
     uint8_t degree = 0;
     if (!noteBelongsToScale(baseNote, rootPitchClass_, scale_, degree)) {
-        // Frozen fallback: a grandfathered resolved pitch outside the CURRENT
-        // scale has no invented degree. SCALE harmony becomes root-only.
         notes[0] = baseNote;
         return 1;
     }
@@ -499,9 +497,6 @@ std::size_t PerformanceKeyboard::buildScaleChord(uint8_t baseNote,
 void PerformanceKeyboard::applyInversionAndSpread(uint8_t* notes,
                                                    std::size_t count) const {
     if (!notes || count < 2) return;
-    // Close/root position preserves Memory's authored order when no transform
-    // is requested. Any inversion/spread is explicitly a voicing transform and
-    // may reorder pitches.
     if (chordInversion_ == 0 && chordSpread_ == PerformanceSpread::Close) return;
     std::sort(notes, notes + count);
     const uint8_t inversions = static_cast<uint8_t>(
@@ -858,8 +853,6 @@ bool PerformanceKeyboard::serviceTransportPulseClock(uint32_t nowMicros) {
 
     double stepsUntilBoundary = nextTransportPulseProjectStep_ - absoluteSteps;
     if (stepsUntilBoundary < -kTransportStepEpsilon) {
-        // Never catch up with a burst. Advance one rational pulse at a time
-        // until the next useful boundary is in the future.
         const double pulseSteps = performancePulseSteps(activeClocked_.rate);
         while (nextTransportPulseProjectStep_ <= absoluteSteps + kTransportStepEpsilon) {
             nextTransportPulseProjectStep_ += pulseSteps;
@@ -1071,9 +1064,9 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
         pendingLatchCapture_ = true;
     }
 
-    if (activeStepEngineEnabled()) {
-        // The current pulse is immutable; the new resolved pitch becomes input
-        // to the next materialized pulse without resetting ARP/Euclid phase.
+    if (activeStepEngineEnabled() || requestedStepEngineEnabled()) {
+        // Active or pending step-engine ownership suppresses an immediate direct
+        // attack. Pending activation materializes on the boundary in service().
     } else if (chordMode_ != PerformanceChordMode::Off) {
         triggerDirectTransformed(lastServiceMicros_);
     } else if (directPolyphonyEnabled()) {
@@ -1151,6 +1144,7 @@ void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
 void PerformanceKeyboard::setTransportPlaying(bool playing) {
     serviceHardwareClock();
     if (transportPlaying_ == playing) return;
+    stopGeneratedOutput();
     transportPlaying_ = playing;
     if (activeStepEngineEnabled() || requestedStepEngineEnabled()) resetPulseClock(true);
 }
@@ -1236,7 +1230,7 @@ void PerformanceKeyboard::panic() {
 
 void PerformanceKeyboard::setScale(PerformanceScale scale) {
     if (scale >= PerformanceScale::Count) return;
-    scale_ = scale;  // KEEP: held notes are already resolved.
+    scale_ = scale;
 }
 void PerformanceKeyboard::cycleScale(int direction) {
     int next = static_cast<int>(scale_) + direction;
@@ -1251,7 +1245,7 @@ const char* PerformanceKeyboard::scaleName() const {
         ? kPerformanceScales[index].name : "UNKNOWN";
 }
 void PerformanceKeyboard::setRootPitchClass(uint8_t pitchClass) {
-    rootPitchClass_ = static_cast<uint8_t>(pitchClass % 12u);  // KEEP.
+    rootPitchClass_ = static_cast<uint8_t>(pitchClass % 12u);
 }
 void PerformanceKeyboard::cycleRoot(int direction) {
     int next = static_cast<int>(rootPitchClass_) + (direction >= 0 ? 1 : -1);
@@ -1264,7 +1258,7 @@ bool PerformanceKeyboard::shiftOctave(int direction) {
     int next = octaveShift_ + direction;
     next = std::max<int>(kMinOctaveShift, std::min<int>(kMaxOctaveShift, next));
     if (next == octaveShift_) return false;
-    octaveShift_ = static_cast<int8_t>(next);  // KEEP.
+    octaveShift_ = static_cast<int8_t>(next);
     return true;
 }
 
