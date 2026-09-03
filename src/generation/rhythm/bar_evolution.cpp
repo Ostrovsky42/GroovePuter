@@ -101,6 +101,7 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
   baseRequest.phraseBars = request.phraseBars;
   baseRequest.level = request.level;
   baseRequest.generation = request.generation;
+  baseRequest.structuralDensityTarget = request.structuralDensityTarget;
   baseRequest.reuseIdentity = request.reuseIdentity;
 
   const RhythmRealizationResult base = realizeRhythmPhrase(baseRequest);
