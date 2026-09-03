@@ -18,6 +18,7 @@
 #include "scenes.h"
 #include "src/generation/composition/generation_profile.h"
 #include "src/generation/migration/phrase_execution.h"
+#include "src/generation/rhythm/bar_evolution.h"
 #include "src/generation/rhythm/reference_phrase_vocabulary.h"
 #include "src/generation/rhythm/reference_vocabulary.h"
 
