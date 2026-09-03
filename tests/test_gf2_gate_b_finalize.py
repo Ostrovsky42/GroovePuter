@@ -155,6 +155,14 @@ def test_phrase_summary_counts_selected_weighted_law_per_realization() -> None:
     assert result.changed["LOOP"] == 0, result
 
 
+def test_source_firewall_uses_pr_head_not_synthetic_merge_ref() -> None:
+    script = (ROOT / "tests" / "run_gf2_gate_b_tests.sh").read_text(encoding="utf-8")
+    assert "GITHUB_HEAD_REF" in script, "pull_request head ref is not inspected"
+    assert "SOURCE_FIREWALL_HEAD" in script, "source firewall has no explicit comparison head"
+    assert 'refs/remotes/origin/${GITHUB_HEAD_REF}' in script, "PR head is not resolved from origin"
+    assert 'git diff --name-only "${BASE}...${SOURCE_FIREWALL_HEAD}" -- src/' in script
+
+
 def main() -> None:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:
