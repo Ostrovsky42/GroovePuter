@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdlib>
 #include <sstream>
 #include <string>
 
@@ -45,8 +44,10 @@ struct NeutralMaterialObservation {
   std::string synthBContour;
 };
 
-inline uint16_t stepBit(int step) {
-  return static_cast<uint16_t>(1u << static_cast<unsigned>(step));
+inline uint16_t physicalStepBit(int step) {
+  return step >= 0 && step < static_cast<int>(kStepsPerBar)
+      ? static_cast<uint16_t>(1u << (kStepsPerBar - 1u - static_cast<unsigned>(step)))
+      : 0u;
 }
 
 inline int drumRoleBucket(int voice) {
@@ -90,7 +91,7 @@ inline void observeSynth(const SynthPattern& pattern,
   for (int step = 0; step < SynthPattern::kSteps; ++step) {
     const SynthStep& event = pattern.steps[step];
     if (event.note < 0) continue;
-    const uint16_t bit = stepBit(step);
+    const uint16_t bit = physicalStepBit(step);
     onsetMask = static_cast<uint16_t>(onsetMask | bit);
     if (event.accent) accentMask = static_cast<uint16_t>(accentMask | bit);
     if (event.ghost) ghostMask = static_cast<uint16_t>(ghostMask | bit);
@@ -131,7 +132,7 @@ inline NeutralMaterialObservation observeNeutralMaterial(
     for (int step = 0; step < DrumPattern::kSteps; ++step) {
       const DrumStep& event = drums.voices[voice].steps[step];
       if (!event.hit) continue;
-      const uint16_t bit = stepBit(step);
+      const uint16_t bit = physicalStepBit(step);
       uint16_t* onsetMask = nullptr;
       uint16_t* accentMask = nullptr;
       switch (bucket) {
