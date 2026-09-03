@@ -234,20 +234,38 @@ void testTransportCleanup() {
         f.keyboard.service(4000000u);
         assert(f.keyboard.keyDown('a', 100));
         f.keyboard.service(4000000u);
-        f.keyboard.service(4093750u);
+
+        // Advance the authoritative PROJECT timeline into the scheduler's
+        // half-pulse preparation window. Advancing wall time alone does not
+        // advance musical phase and therefore cannot materialize an ARP pulse.
+        timeline.publishBlock(41u, 512u, 3.55f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4023219u);
+        assert(f.keyboard.scheduledDepth() > 0u);
+
+        // Service after the predicted 4.0-step boundary while the first x2
+        // ratchet hit is active. This is a real generated NoteOn produced by
+        // the production ARP path, not a synthetic event injected by the test.
+        f.keyboard.service(4080000u);
         assert(countEvents(f.sink.events, MusicalEventType::NoteOn,
                            MusicalEventSource::Arpeggiator) >= 1u);
 
         f.keyboard.setTransportPlaying(false);
         assert(f.keyboard.scheduledDepth() == 0u);
+        assert(f.keyboard.heldCount() == 1u);
+        assert(countEvents(f.sink.events, MusicalEventType::NoteOff,
+                           MusicalEventSource::Arpeggiator) >= 1u);
+
+        // Remove live source material only after transport cleanup has been
+        // observed. Otherwise later service() calls are allowed to start a new
+        // standalone ARP pulse, which is fresh material rather than stale
+        // transport work.
+        assert(f.keyboard.keyUp('a'));
         const std::size_t afterStop = countEvents(
             f.sink.events, MusicalEventType::NoteOn,
             MusicalEventSource::Arpeggiator);
         f.keyboard.service(4300000u);
         assert(countEvents(f.sink.events, MusicalEventType::NoteOn,
                            MusicalEventSource::Arpeggiator) == afterStop);
-        assert(countEvents(f.sink.events, MusicalEventType::NoteOff,
-                           MusicalEventSource::Arpeggiator) >= 1u);
     }
 
     // T5: repeated transitions with no newly accepted generated notes must not
