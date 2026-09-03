@@ -222,7 +222,7 @@ struct StrongRhythmMigrationResult {
   MelodicMotifStatus melodicMotifStatus =
       MelodicMotifStatus::InvalidRequest;
   MelodicRhythmId melodicRhythmId = MelodicRhythmId::Auto;
-  MotifShapeId motifShape = MotifShapeId::Auto;
+  MotifShapeId motifShapeId = MotifShapeId::Auto;
   MelodicPitchIntentStatus melodicPitchIntentStatus =
       MelodicPitchIntentStatus::InvalidRequest;
   MelodicContourId melodicPitchContour = MelodicContourId::Auto;
