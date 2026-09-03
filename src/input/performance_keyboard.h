@@ -175,9 +175,6 @@ private:
     struct HeldPitch {
         uint8_t encoded{0};
 
-        HeldPitch() = default;
-        HeldPitch(uint8_t value) : encoded(static_cast<uint8_t>(value & 0x7fu)) {}
-
         operator uint8_t() const { return static_cast<uint8_t>(encoded & 0x7fu); }
         HeldPitch& operator=(uint8_t value) {
             encoded = static_cast<uint8_t>(value & 0x7fu);
