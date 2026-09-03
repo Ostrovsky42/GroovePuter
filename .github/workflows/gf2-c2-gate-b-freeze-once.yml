@@ -1,0 +1,40 @@
+name: GF2-C2 Gate B deliberate snapshot freeze
+
+on:
+  push:
+    branches:
+      - research/20260903-05-0.9.10-gf2-c2-gate-b-materialized-capacity
+
+permissions:
+  contents: write
+
+jobs:
+  freeze:
+    if: github.event.head_commit.message == 'chore(gf2-c2): deliberate snapshot freeze trigger'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: research/20260903-05-0.9.10-gf2-c2-gate-b-materialized-capacity
+      - name: Reproduce corrected Gate B bundle
+        env:
+          GF2_GATE_B_ALLOW_UNFROZEN: '1'
+        run: bash tests/run_gf2_gate_b_tests.sh
+      - name: Freeze exactly four authoritative snapshots
+        run: |
+          cp build/host-tests/gf2-gate-b/generated/GF2_GATE_B_MATERIALIZED_CORPUS.tsv docs/research/
+          cp build/host-tests/gf2-gate-b/generated/GF2_GATE_B_PROFILE_SIGNATURES.tsv docs/research/
+          cp build/host-tests/gf2-gate-b/generated/GF2_GATE_B_PAIRWISE_DISTINCTNESS.tsv docs/research/
+          cp build/host-tests/gf2-gate-b/generated/GF2_GATE_B_FINDINGS.md docs/research/
+          git diff --check
+          git status --short
+          test "$(git status --short docs/research/GF2_GATE_B_* | wc -l)" -eq 4
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/research/GF2_GATE_B_MATERIALIZED_CORPUS.tsv \
+                  docs/research/GF2_GATE_B_PROFILE_SIGNATURES.tsv \
+                  docs/research/GF2_GATE_B_PAIRWISE_DISTINCTNESS.tsv \
+                  docs/research/GF2_GATE_B_FINDINGS.md
+          git commit -m 'research(gf2-c2): freeze corrected Gate B artifacts'
+          git push origin HEAD:research/20260903-05-0.9.10-gf2-c2-gate-b-materialized-capacity
