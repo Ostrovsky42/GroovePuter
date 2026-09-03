@@ -60,6 +60,36 @@ def brace_is_empty(source: str, brace: int) -> bool:
     return after < len(source) and source[after] == "}"
 
 
+def matching_brace(source: str, opening: int) -> int:
+    depth = 0
+    for offset in range(opening, len(source)):
+        char = source[offset]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return offset
+    return -1
+
+
+def struct_body(source: str, type_name: str) -> str:
+    sanitized = sanitize(source)
+    start = sanitized.find(f"struct {type_name}")
+    if start < 0:
+        raise AssertionError(f"{type_name}: struct definition missing")
+    opening = sanitized.find("{", start)
+    if opening < 0:
+        raise AssertionError(f"{type_name}: struct opening brace missing")
+    closing = matching_brace(sanitized, opening)
+    if closing < 0:
+        raise AssertionError(f"{type_name}: struct closing brace missing")
+    terminator = skip_space(sanitized, closing + 1)
+    if terminator >= len(sanitized) or sanitized[terminator] != ";":
+        raise AssertionError(f"{type_name}: struct terminator missing")
+    return source[opening + 1 : closing]
+
+
 def classify_file(path: Path) -> tuple[list[str], list[str]]:
     original = path.read_text(encoding="utf-8")
     source = sanitize(original)
@@ -108,9 +138,7 @@ def classify_file(path: Path) -> tuple[list[str], list[str]]:
 
         line = line_for(source, match.start())
         variable = identifier.group(0)
-        label = (
-            f"{path.relative_to(ROOT)}:{line} {type_name} {variable}"
-        )
+        label = f"{path.relative_to(ROOT)}:{line} {type_name} {variable}"
         if brace_is_empty(source, brace):
             safe.append(label)
         else:
@@ -133,13 +161,7 @@ def code_files() -> list[Path]:
 
 def require_default_sentinel(path: str, type_name: str) -> None:
     source = (ROOT / path).read_text(encoding="utf-8")
-    start = source.find(f"struct {type_name}")
-    if start < 0:
-        raise AssertionError(f"{type_name}: struct definition missing")
-    end = source.find("};", start)
-    if end < 0:
-        raise AssertionError(f"{type_name}: struct terminator missing")
-    body = source[start:end]
+    body = struct_body(source, type_name)
     expected = "uint8_t structuralDensityTarget = kNoStructuralDensityTarget;"
     if expected not in body:
         raise AssertionError(
