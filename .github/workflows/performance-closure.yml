@@ -1,0 +1,22 @@
+name: Performance Instrument V1 closure
+
+on:
+  push:
+    branches:
+      - feature/20260903-03-0.9.9-performance-instrument-v1-closure
+  pull_request:
+    paths:
+      - "src/input/internal_synth_output.*"
+      - "src/input/performance_keyboard.*"
+      - "tests/test_performance_closure.cpp"
+      - "tests/test_performance_source_regressions.py"
+      - "tests/run_performance_closure_tests.sh"
+      - ".github/workflows/performance-closure.yml"
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Performance Instrument closure tests
+        run: bash tests/run_performance_closure_tests.sh
