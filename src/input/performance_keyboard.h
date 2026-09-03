@@ -20,7 +20,7 @@ public:
     static constexpr int8_t kMaxOctaveShift = 2;
     static constexpr uint8_t kSeqtrakDrumNote = 60;
     static constexpr uint8_t kSeqtrakDrumChannelCount = 7;
-    static constexpr uint8_t kEuclideanSteps = 16;  // V1 maximum / compatibility name.
+    static constexpr uint8_t kEuclideanSteps = 16;
     static constexpr uint8_t kMinVelocity = 10;
     static constexpr uint8_t kMaxVelocity = 120;
     static constexpr uint8_t kVelocityStep = 10;
@@ -66,8 +66,6 @@ public:
     uint8_t velocity() const { return keyVelocity_; }
     void panic();
 
-    // KEY: resolution happens exactly once at keyDown. Changes here have KEEP
-    // semantics for already held ResolvedHeldNote values.
     void setScale(PerformanceScale scale);
     PerformanceScale scale() const { return scale_; }
     void cycleScale(int direction);
@@ -79,7 +77,6 @@ public:
     bool shiftOctave(int direction);
     int8_t octaveShift() const { return octaveShift_; }
 
-    // HARMONY.
     void setChordMode(PerformanceChordMode mode);
     PerformanceChordMode chordMode() const { return chordMode_; }
     void cycleChordMode(int direction = 1);
@@ -101,7 +98,6 @@ public:
     std::size_t chordMemorySize() const { return chordMemoryCount_; }
     bool formatDetectedChord(char* out, std::size_t capacity) const;
 
-    // MOTION/RHYTHM: all setters below stage one immutable NEXT_STEP snapshot.
     void setArpeggiatorEnabled(bool enabled);
     void toggleArpeggiator() { setArpeggiatorEnabled(!arpeggiatorEnabled()); }
     bool arpeggiatorEnabled() const { return pendingClocked_.arpEnabled; }
@@ -160,8 +156,6 @@ public:
     static bool isPerformanceKey(char physicalKey);
     static bool scaleDegreeForKey(char physicalKey, uint8_t& degree);
 
-    // A0 observability. Capacity stays fixed; high-water proves the density
-    // model against real material instead of inferring it from formulas.
     std::size_t scheduledDepth() const;
     std::size_t scheduledHighWater() const { return scheduledHighWater_; }
     uint32_t scheduledOverflowCount() const { return scheduledOverflowCount_; }
@@ -179,7 +173,7 @@ private:
 
     struct HeldNote {
         char physicalKey{0};
-        uint8_t note{0};          // resolved exactly once at keyDown
+        uint8_t note{0};
         uint8_t velocity{0};
         uint8_t channel{0};
     };
@@ -265,7 +259,7 @@ private:
     void captureLatchNow();
     void commitLatchAtBoundary(const PerformanceClockedConfig& oldConfig,
                                const PerformanceClockedConfig& newConfig);
-    const LatchedNote* activeInputPool(std::size_t& count) const;
+    std::size_t collectInputPool(LatchedNote* out, std::size_t capacity) const;
 
     MusicalEventRouter& router_;
     HeldNote held_[kMaxHeldNotes]{};
