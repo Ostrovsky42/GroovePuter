@@ -170,12 +170,47 @@ timing / FEEL             unchanged (GF2-I2)
 tempo                     unchanged (GF2-I1)
 ```
 
-## Hardware A/B
+## Hardware A/B — RUN, ACCEPTED
 
-Not run — needs the device. Use a phrase-enabled recipe with a non-Loop law and
-listen across four bars for arrival rather than detail: bar 3 should go
-somewhere and bar 4 should come back. The named acceptance is that "after half a
-minute you already know everything" is measurably weaker.
+```text
+flashed SHA   a81e3f7968bfb67ec6b41a2823aebd05100a22ff
+remote CI     59/59 checks pass on that exact SHA
+image         1 315 008 B written, hash verified
+DRAM globals  183 976 B, unchanged (budget 191 488)
+port          /dev/ttyACM0
+```
+
+Fixture: Breaks / UK Garage, DevelopReturn at P2, trajectory 6. The four bars
+as materialized:
+
+```text
+bar 1   KICK   x..x......x...x.     SNARE  ....x.......x...   C-HAT  ..x...x...xx..x.
+bar 2   identical to bar 1
+bar 3   KICK   x..x............     SNARE  ....x.......x...   C-HAT  ..x...x...x...x.
+bar 4   identical to bar 1
+```
+
+Bar 3 is the Reduction: two of the four kicks and one hat drop out, so the
+second half of the bar loses its low end, and bar 4 restores it. At 132 BPM the
+phrase breathes on a roughly seven-second cycle.
+
+The user played it on the device and accepted the checkpoint. Per-case
+observations were not transcribed; the acceptance recorded here is the user's
+direct judgement, not a measured listening log.
+
+Unlike GF2-I2A, whose acceptance failed on amplitude, this effect is structural
+and at phrase scale — the difference is a missing kick, not a displaced one.
+
+## Status
+
+```text
+GF2-I3   PASS
+```
+
+Closed on: RED/GREEN host evidence with the bar-by-bar numbers matching the
+declared programme, the Stage 12 ownership boundary intact, unchanged DRAM and
+byte-identical one-bar GENRE generation, GF2 target matrix GREEN, remote CI
+59/59, and hardware accepted on the device.
 
 ## What I3 does not close
 
