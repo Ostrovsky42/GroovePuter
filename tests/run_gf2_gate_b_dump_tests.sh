@@ -106,9 +106,56 @@ accepted = [r for r in rows if r["migration_status"] == "APPLIED"]
 assert accepted, "production corpus produced no accepted material"
 assert all(r["v0r_requested_result_effective"] == "YES" for r in accepted)
 
+failed = [r for r in rows if r["migration_status"] != "APPLIED"]
+assert failed, "Gate B missing-observation regression requires failed/non-applied production witnesses"
+physical_fields = (
+    "kick_onsets",
+    "backbeat_onsets",
+    "hat_onsets",
+    "support_onsets",
+    "kick_accents",
+    "backbeat_accents",
+    "hat_accents",
+    "support_accents",
+    "drum_timing",
+    "synth_a_onsets",
+    "synth_b_onsets",
+    "synth_a_accents",
+    "synth_b_accents",
+    "synth_a_ghosts",
+    "synth_b_ghosts",
+    "synth_a_timing",
+    "synth_b_timing",
+    "synth_a_pitch_class",
+    "synth_b_pitch_class",
+    "synth_a_contour",
+    "synth_b_contour",
+    "harmonic_event_onsets",
+    "harmonic_event_count",
+    "chord_onsets",
+    "melodic_fill_onsets",
+    "chord_applied",
+    "melodic_applied",
+    "synth_b_role",
+    "physical_event_count",
+    "silence_mask",
+)
+for row in failed:
+    for field in physical_fields:
+        assert row[field] == "NOT_OBSERVED", (
+            "failed/non-applied materialization serialized physical evidence",
+            row["profile_id"],
+            row["seed"],
+            row["depth"],
+            row["migration_status"],
+            field,
+            row[field],
+        )
+
 print(f"Gate B profiles: {meta['profile_count']}")
 print(f"Gate B seeds: {meta['seed_count']}")
 print(f"Gate B deterministic realizations: {len(rows)}")
+print(f"Gate B failed/non-applied realizations: {len(failed)}")
 print(f"Gate B phrase laws observed: {','.join(sorted(laws))}")
 print(f"Gate B phrase admission: YES={admission['YES']} NO={admission['NO']}")
 PY
