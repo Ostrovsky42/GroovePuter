@@ -6,7 +6,9 @@
 //   2. the prepared BarEvolution plan receives that exact target;
 //   3. DevelopReturn, RepeatReply and SparseDrift still create temporal
 //      bar-function/topology differences rather than being flattened by density;
-//   4. at least one shipped phrase fixture is observably different from the
+//   4. the shipped eight-bar SparseDrift request keeps the existing four-bar
+//      BarEvolution vocabulary seam and repeats/maps it through I3 execution;
+//   5. at least one shipped phrase fixture is observably different from the
 //      same evolution request with no explicit density intent.
 
 #include <cstdint>
@@ -23,7 +25,8 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
-constexpr uint8_t kPhraseBars = 4;
+constexpr uint8_t kFourBarPhraseBars = 4;
+constexpr uint8_t kSparseDriftPhraseBars = 8;
 constexpr uint16_t kMaxFixtureOrdinal = 96;
 
 int g_failures = 0;
@@ -80,6 +83,7 @@ struct PhraseFixture {
   bool found = false;
   GenreSettings settings{};
   uint16_t phraseIdentity = 0;
+  uint8_t requestedPhraseBars = 0;
   PreparedPhraseExecution prepared{};
 };
 
@@ -88,6 +92,7 @@ bool lawMatches(PhraseEvolutionLawId actual, PhraseEvolutionLawId wanted) {
 }
 
 PhraseFixture findFixture(PhraseEvolutionLawId wanted,
+                          uint8_t requestedPhraseBars,
                           bool requireDensityDifferentFromPreferred) {
   static PhraseExecutionScratch scratch{};
   static PreparedPhraseExecution prepared{};
@@ -114,10 +119,11 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
         scratch = PhraseExecutionScratch{};
         prepared = PreparedPhraseExecution{};
         const PhraseExecutionStatus status = preparePhraseExecution(
-            settings, materializationSettings(), identity, kPhraseBars,
+            settings, materializationSettings(), identity, requestedPhraseBars,
             scratch, prepared);
         if (status != PhraseExecutionStatus::Ready ||
             prepared.phraseTrajectory == kNoTrajectoryId ||
+            prepared.selection.composition.phraseBars != requestedPhraseBars ||
             !lawMatches(prepared.selection.composition.phraseLaw, wanted) ||
             prepared.selection.structuralDensityTarget ==
                 kNoStructuralDensityTarget) {
@@ -141,6 +147,7 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
         fixture.found = true;
         fixture.settings = settings;
         fixture.phraseIdentity = identity;
+        fixture.requestedPhraseBars = requestedPhraseBars;
         fixture.prepared = prepared;
         return fixture;
       }
@@ -149,18 +156,31 @@ PhraseFixture findFixture(PhraseEvolutionLawId wanted,
   return PhraseFixture{};
 }
 
-void testLawRemainsCausal(PhraseEvolutionLawId law, const char* lawName) {
-  const PhraseFixture fixture = findFixture(law, false);
+void testLawRemainsCausal(PhraseEvolutionLawId law,
+                          const char* lawName,
+                          uint8_t requestedPhraseBars) {
+  const PhraseFixture fixture = findFixture(law, requestedPhraseBars, false);
   char label[128]{};
   std::snprintf(label, sizeof(label),
-                "shipped %s fixture prepares with authoritative phrase trajectory",
-                lawName);
+                "shipped %s/%u-bar fixture prepares with phrase trajectory",
+                lawName, static_cast<unsigned>(requestedPhraseBars));
   expect(label, fixture.found);
   if (!fixture.found) return;
 
   expect("phrase fixture carries one frozen explicit profile density target",
          fixture.prepared.selection.structuralDensityTarget !=
              kNoStructuralDensityTarget);
+  expect("requested shipped phrase length is preserved by preparation",
+         fixture.prepared.length.effectivePhraseBars == requestedPhraseBars);
+  expect("I3 BarEvolution vocabulary remains bounded to the existing seam",
+         fixture.prepared.phrasePlan.barCount > 0 &&
+             fixture.prepared.phrasePlan.barCount <= kFourBarPhraseBars);
+  if (law == PhraseEvolutionLawId::SparseDrift) {
+    expect("SparseDrift uses the shipped eight-bar request",
+           requestedPhraseBars == kSparseDriftPhraseBars);
+    expect("eight-bar SparseDrift retains the four-bar evolution vocabulary",
+           fixture.prepared.phrasePlan.barCount == kFourBarPhraseBars);
+  }
 
   DrumPatternSet first{};
   SynthPattern firstA{};
@@ -169,11 +189,14 @@ void testLawRemainsCausal(PhraseEvolutionLawId law, const char* lawName) {
       fixture.prepared, 0, 24, first, firstA, firstB);
   expect("prepared phrase statement bar materializes",
          firstResult.status == StrongRhythmMigrationStatus::Applied);
-  if (firstResult.status != StrongRhythmMigrationStatus::Applied) return;
+  if (firstResult.status != StrongRhythmMigrationStatus::Applied ||
+      fixture.prepared.phrasePlan.barCount == 0) {
+    return;
+  }
 
   uint16_t maxDifference = 0;
   bool functionChanged = false;
-  for (uint8_t bar = 1; bar < kPhraseBars; ++bar) {
+  for (uint8_t bar = 1; bar < fixture.requestedPhraseBars; ++bar) {
     DrumPatternSet drums{};
     SynthPattern synthA{};
     SynthPattern synthB{};
@@ -183,18 +206,24 @@ void testLawRemainsCausal(PhraseEvolutionLawId law, const char* lawName) {
     if (result.status != StrongRhythmMigrationStatus::Applied) continue;
     const uint16_t difference = topologyDifference(first, drums);
     if (difference > maxDifference) maxDifference = difference;
-    if (fixture.prepared.phrasePlan.bars[bar].function !=
+    const uint8_t planBar = static_cast<uint8_t>(
+        bar % fixture.prepared.phrasePlan.barCount);
+    if (fixture.prepared.phrasePlan.bars[planBar].function !=
         fixture.prepared.phrasePlan.bars[0].function) {
       functionChanged = true;
     }
   }
 
-  std::printf("  law=%s target=%u trajectory=%u max_bar_difference=%u\n",
-              lawName,
-              static_cast<unsigned>(
-                  fixture.prepared.selection.structuralDensityTarget),
-              static_cast<unsigned>(fixture.prepared.phraseTrajectory),
-              static_cast<unsigned>(maxDifference));
+  std::printf(
+      "  law=%s requested_bars=%u plan_bars=%u target=%u trajectory=%u "
+      "max_bar_difference=%u\n",
+      lawName,
+      static_cast<unsigned>(fixture.requestedPhraseBars),
+      static_cast<unsigned>(fixture.prepared.phrasePlan.barCount),
+      static_cast<unsigned>(
+          fixture.prepared.selection.structuralDensityTarget),
+      static_cast<unsigned>(fixture.prepared.phraseTrajectory),
+      static_cast<unsigned>(maxDifference));
   expect("phrase law still owns a non-Statement temporal bar function",
          functionChanged);
   expect("phrase law still produces a materialized bar-topology difference",
@@ -202,13 +231,15 @@ void testLawRemainsCausal(PhraseEvolutionLawId law, const char* lawName) {
 }
 
 void testDensityIsCausalInsidePhrasePrepare() {
-  PhraseFixture fixture =
-      findFixture(PhraseEvolutionLawId::DevelopReturn, true);
+  PhraseFixture fixture = findFixture(
+      PhraseEvolutionLawId::DevelopReturn, kFourBarPhraseBars, true);
   if (!fixture.found) {
-    fixture = findFixture(PhraseEvolutionLawId::RepeatReply, true);
+    fixture = findFixture(
+        PhraseEvolutionLawId::RepeatReply, kFourBarPhraseBars, true);
   }
   if (!fixture.found) {
-    fixture = findFixture(PhraseEvolutionLawId::SparseDrift, true);
+    fixture = findFixture(
+        PhraseEvolutionLawId::SparseDrift, kSparseDriftPhraseBars, true);
   }
   expect("a shipped phrase fixture has target distinct from archetype preferred",
          fixture.found);
@@ -219,12 +250,12 @@ void testDensityIsCausalInsidePhrasePrepare() {
           fixture.prepared.selection.composition.rhythmArchetypeId);
   expect("density-sensitive phrase fixture resolves an archetype definition",
          definition != nullptr);
-  if (definition == nullptr) return;
+  if (definition == nullptr || fixture.prepared.phrasePlan.barCount == 0) return;
 
   BarEvolutionRequest explicitRequest{};
   explicitRequest.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
   explicitRequest.archetypeId = definition->archetypeId;
-  explicitRequest.phraseBars = kPhraseBars;
+  explicitRequest.phraseBars = fixture.prepared.phrasePlan.barCount;
   explicitRequest.level = fixture.prepared.materialization.level;
   explicitRequest.generation =
       fixture.prepared.selection.realizationGeneration;
@@ -257,9 +288,12 @@ void testDensityIsCausalInsidePhrasePrepare() {
 }  // namespace
 
 int main() {
-  testLawRemainsCausal(PhraseEvolutionLawId::DevelopReturn, "DevelopReturn");
-  testLawRemainsCausal(PhraseEvolutionLawId::RepeatReply, "RepeatReply");
-  testLawRemainsCausal(PhraseEvolutionLawId::SparseDrift, "SparseDrift");
+  testLawRemainsCausal(
+      PhraseEvolutionLawId::DevelopReturn, "DevelopReturn", kFourBarPhraseBars);
+  testLawRemainsCausal(
+      PhraseEvolutionLawId::RepeatReply, "RepeatReply", kFourBarPhraseBars);
+  testLawRemainsCausal(
+      PhraseEvolutionLawId::SparseDrift, "SparseDrift", kSparseDriftPhraseBars);
   testDensityIsCausalInsidePhrasePrepare();
 
   if (g_failures != 0) {
