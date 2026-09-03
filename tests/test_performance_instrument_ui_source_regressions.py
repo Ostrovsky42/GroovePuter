@@ -19,6 +19,7 @@ def main() -> None:
     header = (ROOT / "src/ui/pages/perform_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
     keyboard_header = (ROOT / "src/input/performance_keyboard.h").read_text(encoding="utf-8")
+    keyboard_source = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
     pulse = (ROOT / "src/input/performance_pulse.h").read_text(encoding="utf-8")
 
     require("enum class PerformanceToolContext" in header,
@@ -43,25 +44,47 @@ def main() -> None:
             "PERFORM UI must never synthesize physical keyDown ownership")
 
     tools = block(page, "void PerformPage::drawToolsLayer", "bool PerformPage::handleEvent")
-    for label in ('"KEY"', '"CHORD"', '"ARP"', '"RHYTHM"'):
-        require(label in tools, f"Tab layer must visibly render {label}")
+    require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM"' in page,
+            "Tab layer must declare the four musician-facing context labels")
+    for marker in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]"):
+        require(marker in tools,
+                f"active context must have a structural non-color marker: {marker}")
+
     for getter in (
         "keyboard_.rootName()", "keyboard_.scaleName()", "keyboard_.octaveShift()",
         "keyboard_.velocity()", "keyboard_.chordModeName()", "keyboard_.chordInversion()",
-        "keyboard_.chordSpreadName()", "keyboard_.voiceLeadingName()",
-        "keyboard_.chordMemorySize()", "keyboard_.arpDirectionName()",
+        "keyboard_.chordSpreadName()", "keyboard_.voiceLeading()",
+        "keyboard_.chordMemorySize()", "keyboard_.arpDirection()",
         "keyboard_.arpRateName()", "keyboard_.arpOctaves()", "keyboard_.gatePercent()",
         "keyboard_.latchEnabled()", "keyboard_.ratchetCount()",
         "keyboard_.euclideanLength()", "keyboard_.euclideanPulses()",
-        "keyboard_.euclideanRotation()", "keyboard_.strumDirectionName()",
+        "keyboard_.euclideanRotation()", "keyboard_.strumDirection()",
         "keyboard_.strumMs()",
     ):
         require(getter in tools, f"UI projection must read authoritative value via {getter}")
 
-    require("SCALE3" in page and "SCALE7" in page,
-            "scale-degree chord labels must remain distinct from fixed chord shapes")
+    chord_labels = {
+        "Off": "OFF",
+        "Major": "MAJ",
+        "Minor": "MIN",
+        "Fifth": "5TH",
+        "Sus2": "SUS2",
+        "Sus4": "SUS4",
+        "Dominant7": "7",
+        "Major7": "MAJ7",
+        "Minor7": "MIN7",
+        "ScaleTriad": "SCALE3",
+        "ScaleSeventh": "SCALE7",
+        "Memory": "MEM",
+    }
+    for mode, label in chord_labels.items():
+        require(f"PerformanceChordMode::{mode}: return \"{label}\"" in keyboard_source,
+                f"chord mode {mode} must have stable musician-facing label {label}")
+
     for rate in ('"1/4"', '"1/8"', '"1/8T"', '"1/16"', '"1/16T"', '"1/32"'):
         require(rate in pulse, f"Performance rate identity must remain musician-facing: {rate}")
+    require('PerformanceArpDirection::AsPlayed: return "AS PLAYED"' in page,
+            "AS PLAYED must remain visibly distinct and must not be sorted by the UI")
 
     require('"N/A"' in page,
             "dependency-disabled controls must render deterministic N/A states")
@@ -92,8 +115,9 @@ def main() -> None:
         require(command in page,
                 f"UI edits must call existing PerformanceKeyboard command path: {command}")
 
-    require("keyboard_.panic()" not in block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer"),
-            "local tool edits must not introduce global panic")
+    tool_handler = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
+    require("keyboard_.panic()" not in tool_handler,
+            "local tool edits must not directly introduce global panic")
     require("emitAllNotesOff" not in page and "AllNotesOff" not in page,
             "PERFORM UI must not own MIDI cleanup")
 
@@ -101,9 +125,14 @@ def main() -> None:
             "context layer must stay inside the existing bounded PERFORM renderer")
     require("new " not in page and "std::vector" not in page,
             "Performance Instrument UI must remain fixed-allocation")
+    require(page.count("LayoutManager::clearContent(gfx);") == 1,
+            "context navigation must not introduce additional full-content clears")
 
     require("activeRate() const" in keyboard_header and "arpRate() const" in keyboard_header,
             "clocked owner must retain distinct active and pending rate observability")
+    require('"%s NEXT"' in tools and
+            "keyboard_.activeRate() != keyboard_.arpRate()" in tools,
+            "RATE must visibly distinguish a pending NEXT_STEP value")
 
     print("Performance Instrument UI source regressions: PASS")
 
