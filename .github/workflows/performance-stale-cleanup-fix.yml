@@ -87,9 +87,9 @@ jobs:
           bash tests/run_performance_closure_tests.sh
       - name: Commit test-only correction
         run: |
-          test -z "$(git diff --name-only -- src ':!tests/_performance_source_regressions_base.py')"
+          test -z "$(git diff --name-only -- src)"
           git config user.name "Ostrovsky42"
           git config user.email "tootoo9723@gmail.com"
-          git add tests/_performance_source_regressions_base.py .github/workflows/performance-stale-cleanup-fix.yml
+          git add tests/_performance_source_regressions_base.py
           git commit -m "test: observe authoritative performance cleanup owner"
           git push origin HEAD:feature/20260903-03-0.9.9-performance-instrument-v1-closure
