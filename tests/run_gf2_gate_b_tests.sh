@@ -22,6 +22,7 @@ fi
 echo "GF2-C2 Gate B source firewall: src/ DELTA = NONE"
 
 python3 tests/test_gf2_gate_b_analysis.py
+python3 tests/test_gf2_gate_b_finalize.py
 bash tests/run_gf2_gate_b_dump_tests.sh
 
 rm -rf "${GENERATED}" "${REPLAY}"
@@ -30,11 +31,17 @@ python3 tools/gf2_gate_b.py \
   --seeds tests/support/gf2_gate_b_seeds.tsv \
   --contract tests/support/gf2_gate_b_contract.json \
   --output-dir "${GENERATED}"
+python3 tools/gf2_gate_b_finalize.py \
+  --raw "${BUILD_DIR}/raw.tsv" \
+  --generated-dir "${GENERATED}"
 python3 tools/gf2_gate_b.py \
   --raw "${BUILD_DIR}/raw.tsv" \
   --seeds tests/support/gf2_gate_b_seeds.tsv \
   --contract tests/support/gf2_gate_b_contract.json \
   --output-dir "${REPLAY}"
+python3 tools/gf2_gate_b_finalize.py \
+  --raw "${BUILD_DIR}/raw.tsv" \
+  --generated-dir "${REPLAY}"
 
 for name in \
   GF2_GATE_B_MATERIALIZED_CORPUS.tsv \
@@ -43,7 +50,7 @@ for name in \
   GF2_GATE_B_FINDINGS.md; do
   cmp "${GENERATED}/${name}" "${REPLAY}/${name}"
 done
-echo "Gate B analyzer replay: BYTE-IDENTICAL"
+echo "Gate B analyzer/finalizer replay: BYTE-IDENTICAL"
 
 python3 - "${BUILD_DIR}/raw.tsv" "${GENERATED}" tests/support/gf2_gate_b_contract.json <<'PY'
 import csv
@@ -128,8 +135,17 @@ assert any(
 
 assert all(row["physical_duration"] == "NOT_OBSERVED" for row in raw)
 assert all(row["physical_duration"] == "NOT_OBSERVED" for row in corpus)
+assert all(row["depth_role_identity_stable"] == "YES" for row in corpus)
+assert sum(row["depth_supporting_activity_stable"] == "NO" for row in corpus) == 45
+assert sum(int(row["depth_role_change_triplets"]) for row in profiles) == 0
+assert sum(int(row["depth_supporting_activity_change_triplets"]) for row in profiles) == 15
 
 classification_counts = Counter(row["classification"] for row in pairs)
+assert classification_counts["STRUCTURALLY DISTINCT"] == 381
+assert classification_counts["PARTIALLY DISTINCT"] == 147
+assert classification_counts["TIMBRE-DEPENDENT"] == 0
+assert classification_counts["STRUCTURALLY REDUNDANT"] == 0
+assert classification_counts["INSUFFICIENT EVIDENCE"] == 0
 print(f"Gate B profiles: {len(profile_ids)}")
 print(f"Gate B seeds: {len(seeds)}")
 print(f"Gate B realizations: {len(corpus)}")
@@ -138,6 +154,8 @@ for classification in sorted(classes):
     print(f"Gate B pair {classification}: {classification_counts[classification]}")
 print(f"Gate B phrase laws: {','.join(sorted(laws))}")
 print(f"Gate B observed Synth-B role ordinals (provenance only): {','.join(sorted(roles))}")
+print("Gate B DEPTH secondaryRole identity changes: 0 / 1815")
+print("Gate B DEPTH supporting Synth-B activity changes: 15 / 1815")
 PY
 
 FINDINGS="${GENERATED}/GF2_GATE_B_FINDINGS.md"
@@ -157,7 +175,8 @@ for heading in \
 done
 
 grep -Fq 'GRID 8/32' "${FINDINGS}"
-grep -Fq 'ROLE HIERARCHY VIA DEPTH' "${FINDINGS}"
+grep -Fq 'ROLE IDENTITY VIA DEPTH' "${FINDINGS}"
+grep -Fq '15 / 1815' "${FINDINGS}"
 grep -Fq 'TIMBRE-DEPENDENT' "${FINDINGS}"
 grep -Fq 'NOT_OBSERVED' "${FINDINGS}"
 
