@@ -91,17 +91,22 @@ def main() -> None:
     require("rotationIsAudible" in page and "strumIsAudible" in page,
             "N/A dependency predicates must remain explicit and deterministic")
 
-    handler = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    tool_handler = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     for scancode in (
         "GROOVEPUTER_LEFT", "GROOVEPUTER_RIGHT",
         "GROOVEPUTER_UP", "GROOVEPUTER_DOWN",
     ):
-        require(scancode in handler,
+        require(scancode in tool_handler,
                 f"local Performance Instrument navigation must consume {scancode}")
-    require("adjustSelectedValue" in handler and "toggleSelectedValue" in handler,
+    require("adjustSelectedValue" in tool_handler and "toggleSelectedValue" in tool_handler,
             "local edits must dispatch through one bounded command path")
-    require("toolsLayerVisible_" in handler and "return true;" in handler,
-            "local navigation must be consumed and never fall through to legacy commands")
+    require("keyboard_.panic()" not in tool_handler,
+            "local tool edits must not directly introduce global panic")
+
+    handler = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    require("toolsLayerVisible_ && handleToolKey(event)" in handler and
+            "GROOVEPUTER_ESCAPE" in handler and "return true;" in handler,
+            "local navigation must be consumed before unrelated PERFORM commands")
 
     for command in (
         "cycleRoot", "cycleScale", "shiftOctave", "adjustVelocity",
@@ -115,9 +120,6 @@ def main() -> None:
         require(command in page,
                 f"UI edits must call existing PerformanceKeyboard command path: {command}")
 
-    tool_handler = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
-    require("keyboard_.panic()" not in tool_handler,
-            "local tool edits must not directly introduce global panic")
     require("emitAllNotesOff" not in page and "AllNotesOff" not in page,
             "PERFORM UI must not own MIDI cleanup")
 
