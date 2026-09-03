@@ -29,6 +29,8 @@ def main() -> None:
                 f"PERFORM tools must expose the {context} navigation context")
     require("selectedContext_" in header and "selectedRow_" in header,
             "PERFORM may store only local context/row navigation state")
+    require("toolsFullRedraw_" in header and "toolsSelectionDirty_" in header,
+            "PERFORM may keep bounded rendering dirtiness without caching musical values")
     for forbidden in (
         "PerformanceUiState", "root_", "scale_", "arpRate_", "chordMode_",
         "euclideanPulses_", "ratchetCount_",
@@ -122,13 +124,19 @@ def main() -> None:
 
     require("emitAllNotesOff" not in page and "AllNotesOff" not in page,
             "PERFORM UI must not own MIDI cleanup")
-
-    require("drawToolsLayer" in page and "LayoutManager::clearContent(gfx);" in page,
-            "context layer must stay inside the existing bounded PERFORM renderer")
     require("new " not in page and "std::vector" not in page,
             "Performance Instrument UI must remain fixed-allocation")
-    require(page.count("LayoutManager::clearContent(gfx);") == 1,
-            "context navigation must not introduce additional full-content clears")
+
+    require("const bool fullRedraw = toolsFullRedraw_;" in tools and
+            "if (fullRedraw) {\n        LayoutManager::clearContent(gfx);" in tools and
+            "gfx.fillRect(valueX - 2, firstRowY" in tools and
+            "toolsSelectionDirty_" in tools,
+            "tools surface must use full clear only for context invalidation and partial value/selection repaint otherwise")
+    draw_content = block(page, "void PerformPage::drawContent", "void PerformPage::drawFooter")
+    tools_pos = draw_content.index("if (toolsLayerVisible_)")
+    normal_clear_pos = draw_content.index("LayoutManager::clearContent(gfx);")
+    require(tools_pos < normal_clear_pos,
+            "tools surface must return before the legacy live-PERFORM full content clear")
 
     require("activeRate() const" in keyboard_header and "arpRate() const" in keyboard_header,
             "clocked owner must retain distinct active and pending rate observability")
