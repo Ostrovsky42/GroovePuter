@@ -85,6 +85,11 @@ expected_pre_f13_consumers = {
 expected_f13_consumers = {
     ".github/workflows/stage15-tonal-baseline.yml",
     "tests/test_stage15_tonal_fixture_roles.py",
+    # The GF2 semantic gate tests assert the frozen F13 corpus is still present,
+    # because their research scope is pinned against it. They read the fixture's
+    # existence only and never regenerate it.
+    "tests/test_gf2_c1f_final_static_semantic_census.py",
+    "tests/test_gf2_c1rf_final_semantic_reachability.py",
 }
 
 assert current_consumers == expected_current_consumers, (
