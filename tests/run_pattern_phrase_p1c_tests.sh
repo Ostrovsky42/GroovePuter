@@ -41,7 +41,7 @@ if [[ -z "$SDL_GFX_CFLAGS" ]]; then
   SDL_GFX_LIBS="-lSDL2_gfx"
 fi
 
-P0_FLAGS="-std=c++17 -I.. -I. -include bits/stdc++.h -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME"
+P0_FLAGS="-std=c++20 -I.. -I. -include bits/stdc++.h -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME"
 (
   cd "$SDL_DIR"
   g++ $P0_FLAGS -O1 $SDL_CFLAGS $SDL_GFX_CFLAGS \
