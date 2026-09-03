@@ -104,6 +104,10 @@ struct StrongRhythmPhraseExecutionOverride {
   const HarmonicRhythmPlan* harmonicRhythm = nullptr;
   const ChordProgressionSource* progressionSource = nullptr;
   uint16_t firstGlobalHarmonicOrdinal = 0;
+  // GF2-I3: the already-evolved rhythm plan for this bar of the phrase. The
+  // phrase owner realizes the whole bar-function programme; the shared
+  // migration only materializes the bar it is handed.
+  const RhythmBarPlan* barPlan = nullptr;
 };
 
 struct StrongRhythmMigrationContext {
@@ -175,8 +179,9 @@ struct StrongRhythmMigrationResult {
   // used. They differ whenever the musician selected a concrete FEEL.
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
   FeelProfileId resolvedFeel = FeelProfileId::Straight;
-  // Planning metadata only until Stage 12's physical reachability gate clears.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
+  // GF2-I3: which bar function this bar of the phrase played.
+  BarFunction phraseBarFunction = BarFunction::Statement;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
@@ -251,6 +256,14 @@ void setStrongRhythmMelodicRequestProbe(
 #endif
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
+
+// GF2-I3: the declared phrase law expressed as a bar-function programme the
+// rhythm layer can execute. A trajectory already *is* such a programme, so a
+// law resolves to one rather than introducing a parallel axis. The stronger
+// development shapes are P3-only in the shipped vocabulary, so the mapping is
+// level-dependent; returns kNoTrajectoryId when the law wants no evolution.
+TrajectoryId phraseTrajectoryForLaw(PhraseEvolutionLawId law,
+                                    RealizationLevel level);
 
 StrongRhythmMigrationResult migrateStrongRhythmDrums(
     const GenreSettings& settings,

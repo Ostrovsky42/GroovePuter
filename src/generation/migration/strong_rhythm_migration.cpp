@@ -282,6 +282,30 @@ bool validMigrationContext(const StrongRhythmMigrationContext& context) {
 
 }  // namespace
 
+TrajectoryId phraseTrajectoryForLaw(PhraseEvolutionLawId law,
+                                    RealizationLevel level) {
+  // Shipped bar-function programmes, from reference_phrase_vocabulary.cpp:
+  //   1  Statement x4
+  //   5  Statement . Response . Repeat . Return
+  //   6  Statement . Repeat . Reduction . Return          P2/P3
+  //   7  Statement . Build . RepeatWithGhosts . Turnaround   P3
+  //   8  Statement . RepeatWithGhosts . Break . Return       P3
+  const bool transformation = level == RealizationLevel::P3Transformation;
+  switch (law) {
+    case PhraseEvolutionLawId::Loop:
+      // Loop is the neutral: one statement repeated, i.e. today's behaviour.
+      return kNoTrajectoryId;
+    case PhraseEvolutionLawId::RepeatReply:
+      return 5;
+    case PhraseEvolutionLawId::DevelopReturn:
+      return transformation ? 7 : 6;
+    case PhraseEvolutionLawId::SparseDrift:
+      return transformation ? 8 : 3;
+    default:
+      return kNoTrajectoryId;
+  }
+}
+
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
   if (settings.generativeMode >= kGenerativeModeCount)
     return StrongRhythmRoute::Legacy;
@@ -512,22 +536,39 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     return result;
   }
 
+  // GF2-I3: the phrase owner evolves the whole bar-function programme once at
+  // PREPARE and hands this bar's plan down through the existing execution
+  // override. The shared migration keeps its one-bar contract and never owns
+  // multi-bar vocabulary: it only accepts a plan someone else already realized.
+  RhythmPhrasePlan plan = realization.plan;
+  if (context.phraseExecutionOverride != nullptr &&
+      context.phraseExecutionOverride->barPlan != nullptr) {
+    // BarEvolution has already applied the bar function to the masks, so the
+    // tag is normalized to Statement for the one-bar physical materializer,
+    // exactly as the audition path does.
+    result.phraseBarFunction = context.phraseExecutionOverride->barPlan->function;
+    plan = RhythmPhrasePlan{};
+    plan.barCount = 1;
+    plan.level = realization.plan.level;
+    plan.bars[0] = *context.phraseExecutionOverride->barPlan;
+    plan.bars[0].function = BarFunction::Statement;
+  }
+
   result.chordOnsets = roleOnsets(
-      realization.plan.bars[0].roles[
-          static_cast<uint8_t>(RhythmRole::ChordRhythm)]);
+      plan.bars[0].roles[static_cast<uint8_t>(RhythmRole::ChordRhythm)]);
 
   MaterializedPatterns candidate{};
   PatternMaterializationDiagnostics diagnostics{};
   const PatternMaterializerBinding binding =
       standardDrumPatternBinding(deferredSynthRoles());
   result.materializationStatus = materializeRhythmPattern(
-      realization.plan, binding, candidate, &diagnostics);
+      plan, binding, candidate, &diagnostics);
   if (result.materializationStatus != PatternMaterializeStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::MaterializationFailed;
     return result;
   }
   result.feelStatus = applyFeelToMaterializedPattern(
-      realization.plan, binding, result.resolvedFeel, context.feelAmount,
+      plan, binding, result.resolvedFeel, context.feelAmount,
       request.generation, candidate);
   if (result.feelStatus != FeelPatternApplyStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::FeelApplyFailed;

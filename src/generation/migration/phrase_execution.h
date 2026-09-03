@@ -52,6 +52,11 @@ struct PreparedPhraseExecution {
   ChordProgressionSource progressionSource{};
   PhraseHarmonicClockProjection harmonicClock{};
   PhraseSemanticResult semantic{};
+  // GF2-I3: the declared phrase law realized as a bar-function programme, once
+  // for the whole phrase. kNoTrajectoryId means the law, level or archetype
+  // admits no evolution and every bar keeps its established realization.
+  TrajectoryId phraseTrajectory = kNoTrajectoryId;
+  RhythmPhrasePlan phrasePlan{};
 };
 
 PhraseExecutionStatus preparePhraseExecution(
