@@ -32,6 +32,7 @@ namespace {
 
 constexpr uint8_t kRootPitchClass = 0;
 constexpr uint8_t kFeelAmount = 20;
+constexpr const char* kNotObserved = "NOT_OBSERVED";
 
 struct ProfileCase {
   uint16_t ordinal = 0;
@@ -137,6 +138,71 @@ std::string hex16(uint16_t value) {
   return stream.str();
 }
 
+std::string physicalText(bool accepted, const std::string& value) {
+  return accepted ? value : kNotObserved;
+}
+
+std::string physicalMask(bool accepted, uint16_t value) {
+  return accepted ? hex16(value) : kNotObserved;
+}
+
+std::string physicalBool(bool accepted, bool value) {
+  return accepted ? (value ? "YES" : "NO") : kNotObserved;
+}
+
+std::string physicalUnsigned(bool accepted, unsigned value) {
+  return accepted ? std::to_string(value) : kNotObserved;
+}
+
+void printPhysicalHeader(std::ostream& output) {
+  output
+      << "physical_duration\t"
+      << "kick_onsets\tbackbeat_onsets\that_onsets\tsupport_onsets\t"
+      << "kick_accents\tbackbeat_accents\that_accents\tsupport_accents\tdrum_timing\t"
+      << "synth_a_onsets\tsynth_b_onsets\tsynth_a_accents\tsynth_b_accents\t"
+      << "synth_a_ghosts\tsynth_b_ghosts\tsynth_a_timing\tsynth_b_timing\t"
+      << "synth_a_pitch_class\tsynth_b_pitch_class\tsynth_a_contour\tsynth_b_contour\t"
+      << "harmonic_event_onsets\tharmonic_event_count\tchord_onsets\tmelodic_fill_onsets\t"
+      << "chord_applied\tmelodic_applied\tsynth_b_role\tphysical_event_count\tsilence_mask";
+}
+
+void printPhysicalObservation(std::ostream& output,
+                              const GF2GateB::NeutralMaterialObservation& neutral,
+                              bool accepted) {
+  output
+      << kNotObserved << '\t'
+      << physicalMask(accepted, neutral.kickOnsets) << '\t'
+      << physicalMask(accepted, neutral.backbeatOnsets) << '\t'
+      << physicalMask(accepted, neutral.hatOnsets) << '\t'
+      << physicalMask(accepted, neutral.supportOnsets) << '\t'
+      << physicalMask(accepted, neutral.kickAccents) << '\t'
+      << physicalMask(accepted, neutral.backbeatAccents) << '\t'
+      << physicalMask(accepted, neutral.hatAccents) << '\t'
+      << physicalMask(accepted, neutral.supportAccents) << '\t'
+      << physicalText(accepted, neutral.drumTiming) << '\t'
+      << physicalMask(accepted, neutral.synthAOnsets) << '\t'
+      << physicalMask(accepted, neutral.synthBOnsets) << '\t'
+      << physicalMask(accepted, neutral.synthAAccents) << '\t'
+      << physicalMask(accepted, neutral.synthBAccents) << '\t'
+      << physicalMask(accepted, neutral.synthAGhosts) << '\t'
+      << physicalMask(accepted, neutral.synthBGhosts) << '\t'
+      << physicalText(accepted, neutral.synthATiming) << '\t'
+      << physicalText(accepted, neutral.synthBTiming) << '\t'
+      << physicalText(accepted, neutral.synthAPitchClass) << '\t'
+      << physicalText(accepted, neutral.synthBPitchClass) << '\t'
+      << physicalText(accepted, neutral.synthAContour) << '\t'
+      << physicalText(accepted, neutral.synthBContour) << '\t'
+      << physicalMask(accepted, neutral.harmonicEventOnsets) << '\t'
+      << physicalUnsigned(accepted, static_cast<unsigned>(neutral.harmonicEventCount)) << '\t'
+      << physicalMask(accepted, neutral.chordOnsets) << '\t'
+      << physicalMask(accepted, neutral.melodicFillOnsets) << '\t'
+      << physicalBool(accepted, neutral.chordApplied) << '\t'
+      << physicalBool(accepted, neutral.melodicApplied) << '\t'
+      << physicalUnsigned(accepted, static_cast<unsigned>(neutral.synthBRole)) << '\t'
+      << physicalUnsigned(accepted, static_cast<unsigned>(neutral.physicalEventCount)) << '\t'
+      << physicalMask(accepted, neutral.silenceMask);
+}
+
 SynthPattern pitchSource(int baseNote) {
   SynthPattern pattern{};
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
@@ -240,14 +306,14 @@ std::string phraseFallback(const PreparedPhraseExecution& prepared) {
 }
 
 struct PhraseObservation {
-  std::string executionStatus = "NOT_OBSERVED";
-  std::string lengthStatus = "NOT_OBSERVED";
-  std::string rejectReason = "NOT_OBSERVED";
-  std::string trajectory = "NOT_OBSERVED";
+  std::string executionStatus = kNotObserved;
+  std::string lengthStatus = kNotObserved;
+  std::string rejectReason = kNotObserved;
+  std::string trajectory = kNotObserved;
   std::string admitted = "NO";
-  std::string actualPlanBars = "NOT_OBSERVED";
-  std::string fallback = "NOT_OBSERVED";
-  std::string materializationStatus = "NOT_OBSERVED";
+  std::string actualPlanBars = kNotObserved;
+  std::string fallback = kNotObserved;
+  std::string materializationStatus = kNotObserved;
   std::string material;
 };
 
@@ -288,7 +354,8 @@ PhraseObservation observePhrase(const ProfileCase& profile,
     const StrongRhythmMigrationResult result = materializePreparedPhraseBar(
         prepared, bar, physicalAddress, drums, synthA, synthB);
     if (bar != 0) material << '|';
-    material << static_cast<unsigned>(bar) << '@' << barFunctionName(result.phraseBarFunction) << '@';
+    material << static_cast<unsigned>(bar) << '@'
+             << barFunctionName(result.phraseBarFunction) << '@';
     if (result.status != StrongRhythmMigrationStatus::Applied) {
       allApplied = false;
       material << "FAILED:" << migrationStatusName(result.status);
@@ -313,14 +380,9 @@ void printHeader() {
       << "phrase_reject_reason\tresolved_trajectory\tphrase_admitted\tactual_plan_bars\tfallback\t"
       << "phrase_materialization_status\tphrase_material\t"
       << "requested_density_intent\tdensity_min\tdensity_max\tresolved_density\tgrid_steps\t"
-      << "requested_feel\tresolved_feel\tphysical_duration\t"
-      << "kick_onsets\tbackbeat_onsets\that_onsets\tsupport_onsets\t"
-      << "kick_accents\tbackbeat_accents\that_accents\tsupport_accents\tdrum_timing\t"
-      << "synth_a_onsets\tsynth_b_onsets\tsynth_a_accents\tsynth_b_accents\t"
-      << "synth_a_ghosts\tsynth_b_ghosts\tsynth_a_timing\tsynth_b_timing\t"
-      << "synth_a_pitch_class\tsynth_b_pitch_class\tsynth_a_contour\tsynth_b_contour\t"
-      << "harmonic_event_onsets\tharmonic_event_count\tchord_onsets\tmelodic_fill_onsets\t"
-      << "chord_applied\tmelodic_applied\tsynth_b_role\tphysical_event_count\tsilence_mask\n";
+      << "requested_feel\tresolved_feel\t";
+  printPhysicalHeader(std::cout);
+  std::cout << '\n';
 }
 
 void printRealization(const ProfileCase& profile,
@@ -356,8 +418,8 @@ void printRealization(const ProfileCase& profile,
         drums, synthA, synthB, result, kRootPitchClass);
   }
 
-  std::string declaredLaw = "NOT_OBSERVED";
-  std::string requestedBars = "NOT_OBSERVED";
+  std::string declaredLaw = kNotObserved;
+  std::string requestedBars = kNotObserved;
   PhraseObservation phrase{};
   if (selectionResult.status == StrongRhythmMigrationStatus::Applied && selection.resolved) {
     declaredLaw = phraseEvolutionLawName(selection.composition.phraseLaw);
@@ -390,37 +452,43 @@ void printRealization(const ProfileCase& profile,
       << phrase.fallback << '\t' << phrase.materializationStatus << '\t'
       << phrase.material << '\t'
       << "PROFILE_CORRIDOR_AUTO" << '\t'
-      << (selection.resolved ? std::to_string(static_cast<unsigned>(corridor.densityMin)) : "NOT_OBSERVED") << '\t'
-      << (selection.resolved ? std::to_string(static_cast<unsigned>(corridor.densityMax)) : "NOT_OBSERVED") << '\t'
-      << (selection.resolved ? std::to_string(static_cast<unsigned>(selection.structuralDensityTarget)) : "NOT_OBSERVED") << '\t'
-      << (selection.resolved ? std::to_string(static_cast<unsigned>(corridor.gridSteps)) : "NOT_OBSERVED") << '\t'
+      << (selection.resolved
+              ? std::to_string(static_cast<unsigned>(corridor.densityMin))
+              : kNotObserved)
+      << '\t'
+      << (selection.resolved
+              ? std::to_string(static_cast<unsigned>(corridor.densityMax))
+              : kNotObserved)
+      << '\t'
+      << (selection.resolved
+              ? std::to_string(static_cast<unsigned>(selection.structuralDensityTarget))
+              : kNotObserved)
+      << '\t'
+      << (selection.resolved
+              ? std::to_string(static_cast<unsigned>(corridor.gridSteps))
+              : kNotObserved)
+      << '\t'
       << "AUTO" << '\t'
-      << (selection.resolved ? std::to_string(static_cast<unsigned>(selection.resolvedFeel)) : "NOT_OBSERVED") << '\t'
-      << "NOT_OBSERVED" << '\t'
-      << hex16(neutral.kickOnsets) << '\t' << hex16(neutral.backbeatOnsets) << '\t'
-      << hex16(neutral.hatOnsets) << '\t' << hex16(neutral.supportOnsets) << '\t'
-      << hex16(neutral.kickAccents) << '\t' << hex16(neutral.backbeatAccents) << '\t'
-      << hex16(neutral.hatAccents) << '\t' << hex16(neutral.supportAccents) << '\t'
-      << neutral.drumTiming << '\t'
-      << hex16(neutral.synthAOnsets) << '\t' << hex16(neutral.synthBOnsets) << '\t'
-      << hex16(neutral.synthAAccents) << '\t' << hex16(neutral.synthBAccents) << '\t'
-      << hex16(neutral.synthAGhosts) << '\t' << hex16(neutral.synthBGhosts) << '\t'
-      << neutral.synthATiming << '\t' << neutral.synthBTiming << '\t'
-      << neutral.synthAPitchClass << '\t' << neutral.synthBPitchClass << '\t'
-      << neutral.synthAContour << '\t' << neutral.synthBContour << '\t'
-      << hex16(neutral.harmonicEventOnsets) << '\t'
-      << static_cast<unsigned>(neutral.harmonicEventCount) << '\t'
-      << hex16(neutral.chordOnsets) << '\t' << hex16(neutral.melodicFillOnsets) << '\t'
-      << (neutral.chordApplied ? "YES" : "NO") << '\t'
-      << (neutral.melodicApplied ? "YES" : "NO") << '\t'
-      << (accepted ? std::to_string(static_cast<unsigned>(neutral.synthBRole)) : "NOT_OBSERVED") << '\t'
-      << (accepted ? std::to_string(static_cast<unsigned>(neutral.physicalEventCount)) : "NOT_OBSERVED") << '\t'
-      << (accepted ? hex16(neutral.silenceMask) : "NOT_OBSERVED") << '\n';
+      << (selection.resolved
+              ? std::to_string(static_cast<unsigned>(selection.resolvedFeel))
+              : kNotObserved)
+      << '\t';
+  printPhysicalObservation(std::cout, neutral, accepted);
+  std::cout << '\n';
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string(argv[1]) == "--self-test-missing-observation") {
+    GF2GateB::NeutralMaterialObservation neutral{};
+    printPhysicalHeader(std::cout);
+    std::cout << '\n';
+    printPhysicalObservation(std::cout, neutral, false);
+    std::cout << '\n';
+    return 0;
+  }
+
   if (argc != 2) {
     std::fprintf(stderr, "usage: %s tests/support/gf2_gate_b_seeds.tsv\n", argv[0]);
     return 2;
