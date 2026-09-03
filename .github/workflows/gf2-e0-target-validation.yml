@@ -49,6 +49,9 @@ jobs:
           echo "GF2 actual SHA:   ${actual}"
           test "${actual}" = "${EXPECTED_SHA}"
 
+      - name: Witness GF2-I4 focused contract
+        run: bash tests/run_gf2_i4_tests.sh
+
       - name: Prepare SDL build dependencies
         id: sdl_setup
         continue-on-error: true
