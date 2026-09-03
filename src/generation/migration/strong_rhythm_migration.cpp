@@ -312,6 +312,7 @@ TrajectoryId phraseTrajectoryForLaw(PhraseEvolutionLawId law,
   const bool transformation = level == RealizationLevel::P3Transformation;
   switch (law) {
     case PhraseEvolutionLawId::Loop:
+      // Loop is the neutral: one statement repeated, i.e. today's behaviour.
       return kNoTrajectoryId;
     case PhraseEvolutionLawId::RepeatReply:
       return 5;
