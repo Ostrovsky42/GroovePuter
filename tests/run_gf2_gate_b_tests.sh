@@ -7,19 +7,29 @@ BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 GENERATED="${BUILD_DIR}/generated"
 REPLAY="${BUILD_DIR}/generated-replay"
 COMMITTED="${ROOT}/docs/research"
-ALLOW_UNFROZEN="${GF2_GATE_B_ALLOW_UNFROZEN:-0}"
 
 cd "${ROOT}"
 
 echo "GF2-C2 Gate B exact base: ${BASE}"
 git cat-file -e "${BASE}^{commit}"
-git diff --check "${BASE}...HEAD"
-if [[ -n "$(git diff --name-only "${BASE}...HEAD" -- src/)" ]]; then
-  echo "GF2-C2 Gate B source firewall FAILED: src/ delta is non-empty" >&2
-  git diff --name-status "${BASE}...HEAD" -- src/ >&2
+
+SOURCE_FIREWALL_HEAD="HEAD"
+if [[ -n "${GITHUB_HEAD_REF:-}" ]]; then
+  SOURCE_FIREWALL_HEAD="refs/remotes/origin/${GITHUB_HEAD_REF}"
+  if ! git show-ref --verify --quiet "${SOURCE_FIREWALL_HEAD}"; then
+    echo "GF2-C2 Gate B source firewall FAILED: cannot resolve PR head ${SOURCE_FIREWALL_HEAD}" >&2
+    exit 1
+  fi
+fi
+
+echo "GF2-C2 Gate B source firewall head: ${SOURCE_FIREWALL_HEAD}"
+git diff --check "${BASE}...${SOURCE_FIREWALL_HEAD}"
+if [[ -n "$(git diff --name-only "${BASE}...${SOURCE_FIREWALL_HEAD}" -- src/)" ]]; then
+  echo "GF2-C2 Gate B source firewall FAILED: Gate B branch src/ delta is non-empty" >&2
+  git diff --name-status "${BASE}...${SOURCE_FIREWALL_HEAD}" -- src/ >&2
   exit 1
 fi
-echo "GF2-C2 Gate B source firewall: src/ DELTA = NONE"
+echo "GF2-C2 Gate B source firewall: Gate B branch src/ DELTA = NONE"
 
 python3 tests/test_gf2_gate_b_analysis.py
 python3 tests/test_gf2_gate_b_finalize.py
@@ -180,18 +190,14 @@ grep -Fq '15 / 1815' "${FINDINGS}"
 grep -Fq 'TIMBRE-DEPENDENT' "${FINDINGS}"
 grep -Fq 'NOT_OBSERVED' "${FINDINGS}"
 
-if [[ "${ALLOW_UNFROZEN}" == "1" ]]; then
-  echo "Gate B bootstrap mode: generated artifacts validated; committed snapshot equality intentionally deferred"
-else
-  for name in \
-    GF2_GATE_B_MATERIALIZED_CORPUS.tsv \
-    GF2_GATE_B_PROFILE_SIGNATURES.tsv \
-    GF2_GATE_B_PAIRWISE_DISTINCTNESS.tsv \
-    GF2_GATE_B_FINDINGS.md; do
-    test -f "${COMMITTED}/${name}"
-    cmp "${GENERATED}/${name}" "${COMMITTED}/${name}"
-  done
-  echo "Gate B committed artifacts: BYTE-IDENTICAL"
-fi
+for name in \
+  GF2_GATE_B_MATERIALIZED_CORPUS.tsv \
+  GF2_GATE_B_PROFILE_SIGNATURES.tsv \
+  GF2_GATE_B_PAIRWISE_DISTINCTNESS.tsv \
+  GF2_GATE_B_FINDINGS.md; do
+  test -f "${COMMITTED}/${name}"
+  cmp "${GENERATED}/${name}" "${COMMITTED}/${name}"
+done
+echo "Gate B committed artifacts: BYTE-IDENTICAL"
 
 echo "GF2-C2 Gate B focused proof: OK"
