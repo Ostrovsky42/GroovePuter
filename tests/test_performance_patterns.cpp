@@ -95,9 +95,10 @@ int main() {
     {
         Fixture f;
         f.keyboard.cycleRatchet(1);          // 2 hits per sixteenth
-        f.keyboard.cycleEuclideanPulses(1);  // 3 of 16
+        assert(f.keyboard.euclideanPulses() == 0);
+        f.keyboard.cycleEuclideanPulses(1);  // 1 of 16
         assert(f.keyboard.ratchetCount() == 2);
-        assert(f.keyboard.euclideanPulses() == 3);
+        assert(f.keyboard.euclideanPulses() == 1);
         f.sink.clear();
         f.keyboard.service(2000000u);
         assert(f.keyboard.keyDown('a', 100));
