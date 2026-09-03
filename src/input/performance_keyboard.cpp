@@ -1151,6 +1151,7 @@ void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
 void PerformanceKeyboard::setTransportPlaying(bool playing) {
     serviceHardwareClock();
     if (transportPlaying_ == playing) return;
+    stopGeneratedOutput();
     transportPlaying_ = playing;
     if (activeStepEngineEnabled() || requestedStepEngineEnabled()) resetPulseClock(true);
 }

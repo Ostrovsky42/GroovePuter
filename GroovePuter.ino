@@ -502,6 +502,7 @@ void loop() {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
+    g_internalSynthOutput.syncPatternOwnership();
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {
       g_performanceKeyboard.panic();
