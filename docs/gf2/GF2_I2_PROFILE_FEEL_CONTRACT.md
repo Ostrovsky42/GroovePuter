@@ -145,9 +145,59 @@ RESOLVED                 YES   composition.suggestedFeel
 SELECTED                 YES   AUTO / manual arbitration
 PROPAGATED               YES   frozenSelection.resolvedFeel
 CONSUMED                 YES   applyFeelToMaterializedPattern / interpretFeelPhrase
-MATERIALIZATION-CAPABLE  YES   12 displaced events vs 0 for STRAIGHT
-EXECUTION-CAPABLE        YES   SynthStep.timing / DrumStep.timing
+MATERIALIZATION-CAPABLE  YES   12 displaced events vs 0 for STRAIGHT, at FEEL AMOUNT 100
+EXECUTION-CAPABLE        YES   MiniAcid::processSequencerEvents() shifts the trigger
+                               tick by steps[s].timing for synth A/B and all eight
+                               drum voices (miniacid_engine.cpp)
+PERCEPTIBLE AT DEFAULTS  NO    see "Audibility" below — this is an amplitude
+                               question, not a causality one, and is deliberately
+                               out of I2 scope
 ```
+
+## Audibility — measured, and the honest limit of I2
+
+The reachability numbers above are taken at `FEEL AMOUNT = 100`. Production
+defaults are far lower. Minimal Space at 86 BPM, where one tick is 7.3 ms:
+
+| FEEL AMOUNT | displaced events | max offset | max ms |
+|---|---|---|---|
+| 2% (TIGHT preset) | 0 | 0 ticks | 0.0 |
+| 10% | 1 | 1 tick | 7.3 |
+| 22% (LOOSE preset) | 1 | 1 tick | 7.3 |
+| 40% | 7 | 2 ticks | 14.5 |
+| 60% | 10 | 3 ticks | 21.8 |
+| 80% | 12 | 4 ticks | 29.1 |
+| 100% | 12 | 5 ticks | 36.3 |
+
+`GeneratorParams::microTimingAmount` defaults to 0.2, and the FEEL page moves it
+in 0.01 steps. At the default the entire profile character is one event moved by
+7 ms, which is below the perceptual threshold for this material.
+
+The fixture compounds it. Under LAID BACK on Minimal Space the kick does not
+move at all (`KICK 8:+0`), and the bar contains exactly one kick — so the
+displaced events have almost no steady reference to be late against.
+
+Profile displacement also varies sharply by recipe. At `FEEL AMOUNT = 100`:
+
+| recipe | AUTO resolves | onsets | displaced | max ticks |
+|---|---|---|---|---|
+| Classic 2-Step | PUSH/PULL | 20 | 18 | 4 |
+| Drum&Bass | PUSH/PULL | 19 | 16 | 3 |
+| Minimal Space | LAID BACK | 16 | 12 | 5 |
+| Dub Techno | PUSH/PULL | 12 | 9 | 3 |
+| Deep Chord | PUSH/PULL | 15 | 9 | 3 |
+| Dark Skippy | SwingCompatible | 22 | 7 | 2 |
+| Chicago Jack | STRAIGHT | 16 | 0 | 0 |
+| Rolling Acid | STRAIGHT | 18 | 0 | 0 |
+| Rave 4 | STRAIGHT | 19 | 0 | 0 |
+
+Three of nine profiles resolve to STRAIGHT, where AUTO is by definition
+inaudible against a manual STRAIGHT.
+
+I2 deliberately did not retune any `kFeel*` weight, the profile coefficients or
+the default amount: making the declared policy causal and deciding how loud that
+policy should be are two different decisions. The second one is deferred to its
+own checkpoint.
 
 ## Atlas swing audit
 
@@ -288,6 +338,27 @@ RHYTHM           fixed MANUAL archetype if practical
 
 Record observed values, not only the subjective impression.
 
+### Result — RUN, inconclusive on audibility
+
+```text
+flashed SHA   6fa2e0375b773527d3eff4168122cf23615a0b45
+remote CI     56/56 checks pass on that exact SHA
+image         1 314 400 B written, hash verified
+DRAM globals  183 976 B (budget 191 488)
+port          /dev/ttyACM0
+```
+
+The user flashed the build and reported hearing no difference when changing
+PROFILE. Investigation found no defect in the I2 chain: playback does consume
+`steps[s].timing`, and the resolution is correct. The cause is the amplitude
+recorded above — at the default FEEL AMOUNT the profile moves one event by 7 ms.
+
+So the hardware pass confirms the build runs and confirms no regression, but it
+does **not** demonstrate an audible profile character. That demonstration needs
+the amplitude checkpoint, a denser fixture (Classic 2-Step), and a
+STRAIGHT vs PUSH/PULL comparison at high FEEL AMOUNT rather than
+STRAIGHT vs AUTO on Minimal Space.
+
 ## Semantic delta
 
 ```text
@@ -299,9 +370,26 @@ profile weight delta        NONE
 Atlas generated file delta  NONE
 ```
 
+## Status
+
+```text
+GF2-I2   PASS on its own contract
+```
+
+Closed on: RED/GREEN host evidence for AUTO resolution, manual override,
+single-resolution-per-decision, amount-0 neutrality, same-topology/different-
+timing, Atlas swing ownership and append-only persistence; GF2 target matrix
+GREEN; remote CI 56/56; hardware flashed and running with no regression.
+
+Explicitly **not** claimed: that the profile character is audible at production
+defaults. It is not, and the measurements above say why.
+
 ## What I2 does not close
 
 ```text
+GF2-I2A  FEEL amplitude as a product decision — default microTimingAmount,
+         FEEL AMOUNT control resolution, profile coefficient spread, and the
+         three profiles that resolve to STRAIGHT
 GF2-I3   phrase-law execution
 GF2-I4   other corridor field consumers
 GF2-I5   synth-role DEPTH
