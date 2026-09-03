@@ -98,7 +98,9 @@ void FeelPage::adjustFocused(int delta, bool fast) {
         break;
       }
       case FocusRow::TimingHumanize: {
-        const float step = 0.01f * static_cast<float>(multiplier);
+        // GF2-I2A: the musically useful range is roughly 0.15..1.0, so a 0.01
+        // step made the control take about eighty presses to cross.
+        const float step = 0.05f * static_cast<float>(multiplier);
         const float next = std::clamp(
             scene.generatorParams.microTimingAmount + delta * step,
             0.0f, 1.0f);
@@ -149,21 +151,21 @@ void FeelPage::applyPreset(int index) {
       nextProfile = static_cast<uint8_t>(
           GroovePuterRhythm::FeelProfileId::Straight);
       nextSwing = 50;
-      nextTiming = 0.02f;
+      nextTiming = 0.15f;
       nextVelocity = 0.10f;
       break;
     case 1:
       nextProfile = static_cast<uint8_t>(
           GroovePuterRhythm::FeelProfileId::SwingCompatible);
       nextSwing = 58;
-      nextTiming = 0.12f;
+      nextTiming = 0.50f;
       nextVelocity = 0.30f;
       break;
     case 2:
       nextProfile = static_cast<uint8_t>(
           GroovePuterRhythm::FeelProfileId::LaidBack);
       nextSwing = 64;
-      nextTiming = 0.22f;
+      nextTiming = 0.80f;
       nextVelocity = 0.45f;
       break;
   }

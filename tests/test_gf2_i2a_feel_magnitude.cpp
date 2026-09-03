@@ -39,30 +39,21 @@ constexpr int kMinOffsetTicks = 2;
 
 constexpr int16_t kPatternAddress = 3;
 
-// The named reference corpus. Every production genre/recipe is classified, so
-// an intentional zero stays distinguishable from a broken one.
-struct CorpusEntry {
-  GenerativeMode genre;
-  uint8_t recipe;
-  bool expectedActive;
-};
-
-// Expected-absent by design: these vocabularies weight STRAIGHT strongly enough
-// that AUTO resolves to it. Acid, techno, house, drum & bass and rave really are
-// played straight; the profile prior is not missing, it is a statement.
-constexpr CorpusEntry kExpectedAbsent[] = {
-    {GenerativeMode::Acid, kBaseRecipeId, false},
-    {GenerativeMode::Acid, 6, false},
-    {GenerativeMode::Acid, 7, false},
-    {GenerativeMode::Chip, kBaseRecipeId, false},
-    {GenerativeMode::Darksynth, kBaseRecipeId, false},
-    {GenerativeMode::DrumAndBass, kBaseRecipeId, false},
-    {GenerativeMode::House, kBaseRecipeId, false},
-    {GenerativeMode::Rave, kBaseRecipeId, false},
-    {GenerativeMode::Rave, 4, false},
-    {GenerativeMode::Outrun, kBaseRecipeId, false},
-    {GenerativeMode::Techno, kBaseRecipeId, false},
-};
+// The named reference corpus is the whole production catalog, classified by
+// what the vocabulary actually draws for AUTO rather than by a guessed list.
+//
+//   AUTO draws LaidBack or PushPull   the recipe is expected-active
+//   AUTO draws Straight               expected-inert: acid, techno, house,
+//                                     drum & bass and rave are played straight
+//   AUTO draws SwingCompatible        expected-inert for the same reason
+//                                     SwingCompatible itself is: it defers to
+//                                     the independently applied swingPct
+//
+// The counts are pinned so a vocabulary edit that silently flips a recipe
+// between classes has to be acknowledged.
+constexpr int kExpectedActiveRecipes = 16;
+constexpr int kExpectedStraightRecipes = 11;
+constexpr int kExpectedSwingCompatibleRecipes = 6;
 
 int g_failures = 0;
 
@@ -73,13 +64,6 @@ void fail(const char* label, const char* genre, const char* recipe,
 }
 
 void ok(const char* label) { std::printf("%-58s OK\n", label); }
-
-bool expectedActive(GenerativeMode genre, uint8_t recipe) {
-  for (const CorpusEntry& entry : kExpectedAbsent) {
-    if (entry.genre == genre && entry.recipe == recipe) return false;
-  }
-  return true;
-}
 
 // Production converts the Scene float to the migration context the same way in
 // every context builder; mirror it exactly so the contract tracks the shipped
@@ -96,6 +80,7 @@ struct Material {
   int displaced = 0;
   int maxTicks = 0;
   uint32_t fingerprint = 2166136261u;
+  FeelProfileId resolvedFeel = FeelProfileId::Straight;
 };
 
 Material materialize(const GenreSettings& settings, FeelProfileId profile,
@@ -113,11 +98,11 @@ Material materialize(const GenreSettings& settings, FeelProfileId profile,
   SynthPattern synthA{};
   SynthPattern synthB{};
   Material material{};
-  if (migrateStrongRhythmMaterial(settings, context, drums, synthA, synthB)
-          .status != StrongRhythmMigrationStatus::Applied) {
-    return material;
-  }
+  const StrongRhythmMigrationResult result =
+      migrateStrongRhythmMaterial(settings, context, drums, synthA, synthB);
+  if (result.status != StrongRhythmMigrationStatus::Applied) return material;
   material.applied = true;
+  material.resolvedFeel = result.resolvedFeel;
 
   auto account = [&material](int timing) {
     material.fingerprint ^= static_cast<uint32_t>(static_cast<uint8_t>(timing));
@@ -158,7 +143,8 @@ void testProfilesAreAudibleAtTheShippedDefault() {
               kMinOffsetTicks);
 
   int active = 0;
-  int absent = 0;
+  int straightDraw = 0;
+  int swingDraw = 0;
   for (int genreIndex = 0; genreIndex < kGenerativeModeCount; ++genreIndex) {
     const auto genre = static_cast<GenerativeMode>(genreIndex);
     const char* genreName = GenreCatalog::generativeModeName(genre);
@@ -195,27 +181,19 @@ void testProfilesAreAudibleAtTheShippedDefault() {
           materialize(settings, FeelProfileId::PushPullControlled, amount);
       const Material automatic = materialize(settings, FeelProfileId::Auto, amount);
 
-      if (!expectedActive(genre, static_cast<uint8_t>(recipe))) {
-        ++absent;
-        if (automatic.fingerprint != straight.fingerprint) {
-          fail("expected-absent recipe stays straight", genreName, recipeName,
-               "AUTO no longer resolves to STRAIGHT - update the corpus table");
-        }
-        continue;
-      }
-
-      ++active;
+      // A manually selected profile must be audible on every recipe, whatever
+      // the vocabulary would have drawn on its own.
       char detail[96];
       if (laid.displaced < kMinDisplacedEvents || laid.maxTicks < kMinOffsetTicks) {
         std::snprintf(detail, sizeof(detail), "LAID BACK %d events, %d ticks",
                       laid.displaced, laid.maxTicks);
-        fail("LAID BACK reaches the magnitude threshold", genreName, recipeName,
+        fail("manual LAID BACK reaches the threshold", genreName, recipeName,
              detail);
       }
       if (push.displaced < kMinDisplacedEvents || push.maxTicks < kMinOffsetTicks) {
         std::snprintf(detail, sizeof(detail), "PUSH/PULL %d events, %d ticks",
                       push.displaced, push.maxTicks);
-        fail("PUSH/PULL reaches the magnitude threshold", genreName, recipeName,
+        fail("manual PUSH/PULL reaches the threshold", genreName, recipeName,
              detail);
       }
       if (laid.fingerprint == push.fingerprint ||
@@ -224,16 +202,50 @@ void testProfilesAreAudibleAtTheShippedDefault() {
         fail("profiles stay mutually distinct", genreName, recipeName,
              "two profiles produce identical timing");
       }
-      if (automatic.fingerprint == straight.fingerprint) {
-        fail("active recipe resolves AUTO to a real profile", genreName,
-             recipeName, "AUTO is a no-op here - update the corpus table");
+
+      // AUTO inherits the audibility of whatever the vocabulary drew.
+      switch (automatic.resolvedFeel) {
+        case FeelProfileId::LaidBack:
+        case FeelProfileId::PushPullControlled:
+          ++active;
+          if (automatic.displaced < kMinDisplacedEvents ||
+              automatic.maxTicks < kMinOffsetTicks) {
+            std::snprintf(detail, sizeof(detail), "AUTO %d events, %d ticks",
+                          automatic.displaced, automatic.maxTicks);
+            fail("AUTO reaches the threshold where it draws a moving profile",
+                 genreName, recipeName, detail);
+          }
+          break;
+        case FeelProfileId::Straight:
+          ++straightDraw;
+          if (automatic.fingerprint != straight.fingerprint) {
+            fail("AUTO drawing STRAIGHT stays identical to STRAIGHT", genreName,
+                 recipeName, "unexpected displacement");
+          }
+          break;
+        case FeelProfileId::SwingCompatible:
+          ++swingDraw;
+          if (automatic.displaced != 0) {
+            fail("AUTO drawing SWING COMPAT stays an expected zero", genreName,
+                 recipeName, "unexpected displacement");
+          }
+          break;
+        default:
+          fail("AUTO resolves to a concrete profile", genreName, recipeName,
+               "unresolved selection mode reached materialization");
+          break;
       }
     }
   }
-  std::printf("corpus: %d expected-active, %d expected-absent\n", active, absent);
-  if (active == 0 || absent == 0) {
+  std::printf("corpus: %d active, %d draw STRAIGHT, %d draw SWING COMPAT\n",
+              active, straightDraw, swingDraw);
+  if (active != kExpectedActiveRecipes ||
+      straightDraw != kExpectedStraightRecipes ||
+      swingDraw != kExpectedSwingCompatibleRecipes) {
     std::fprintf(stderr,
-                 "FAIL corpus must contain both active and absent cases\n");
+                 "FAIL corpus classification drifted: expected %d/%d/%d\n",
+                 kExpectedActiveRecipes, kExpectedStraightRecipes,
+                 kExpectedSwingCompatibleRecipes);
     ++g_failures;
   }
   if (g_failures == 0) ok("every active recipe is audible at the default");

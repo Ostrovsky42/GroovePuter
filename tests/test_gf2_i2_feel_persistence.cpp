@@ -109,6 +109,32 @@ int main() {
                    static_cast<uint8_t>(FeelProfileId::Straight));
   }
 
+  // GF2-I2A raised the shipped FEEL AMOUNT default. A project that stored its
+  // own amount must keep it; only a document that never carried the field
+  // inherits the new default.
+  manager.loadDefaultScene();
+  manager.currentScene().generatorParams.microTimingAmount = 0.22f;
+  const std::string stored = manager.dumpCurrentScene();
+  manager.currentScene().generatorParams = GeneratorParams();
+  expectTrue("scene with an explicit amount loads", manager.loadScene(stored));
+  expectTrue("an explicitly stored FEEL AMOUNT survives the new default",
+             manager.currentScene().generatorParams.microTimingAmount == 0.22f);
+
+  const std::string field = ",\"microTimingAmount\":0.22";
+  const size_t amountPos = stored.find(field);
+  expectTrue("the amount field is present to remove",
+             amountPos != std::string::npos);
+  if (amountPos != std::string::npos) {
+    std::string legacyNoAmount = stored;
+    legacyNoAmount.erase(amountPos, field.size());
+    manager.currentScene().generatorParams = GeneratorParams();
+    expectTrue("document without the amount field loads",
+               manager.loadScene(legacyNoAmount));
+    expectTrue("a missing amount field inherits the shipped default",
+               manager.currentScene().generatorParams.microTimingAmount ==
+                   GeneratorParams().microTimingAmount);
+  }
+
   if (g_failures != 0) {
     std::fprintf(stderr, "GF2-I2 feel persistence: %d failure(s)\n", g_failures);
     return 1;

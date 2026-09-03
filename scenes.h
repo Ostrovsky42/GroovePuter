@@ -317,7 +317,11 @@ struct GeneratorParams {
     float swingAmount = 0.0f;        // 0-0.66 (0% - 66% swing)
     float velocityRange = 0.3f;      // 0-1 (variation amount)
     float ghostNoteProbability = 0.1f;// 0-1
-    float microTimingAmount = 0.2f;  // 0-1
+    // GF2-I2A: the FEEL profile character only exists above roughly a third
+    // of this range. At the previous 0.2 default two of the three profiles
+    // were byte-identical to STRAIGHT and the third moved two events by
+    // 5 ms. Measured in docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv.
+    float microTimingAmount = 0.5f;  // 0-1
     
     // Musicality
     bool preferDownbeats = false;     
