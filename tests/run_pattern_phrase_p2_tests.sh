@@ -18,14 +18,24 @@ printf '%s\n' 'P2 authoritative Gate-B base ancestry: PASS'
 python3 tests/test_pattern_phrase_p2_source_contract.py
 python3 tests/test_pattern_phrase_p2_executor_contract.py
 
-# RED/GREEN #2 intentionally runs behavioral and structural evidence even when
-# one fails so the CI log shows the complete STOP/PAUSE ownership boundary.
+# STOP/PAUSE ownership closure.
 transport_status=0
 bash tests/run_pattern_phrase_p2_transport_barrier.sh || transport_status=$?
 owner_contract_status=0
 python3 tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py || owner_contract_status=$?
 if (( transport_status != 0 || owner_contract_status != 0 )); then
   echo "P2 STOP/PAUSE ownership cutover is not GREEN" >&2
+  exit 1
+fi
+
+# Task 7 remaining lifecycle/source barriers. Run both structural and observable
+# evidence so a RED distinguishes architecture from backend behavior.
+lifecycle_behavior_status=0
+bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh || lifecycle_behavior_status=$?
+lifecycle_contract_status=0
+python3 tests/test_pattern_phrase_p2_lifecycle_barrier_contract.py || lifecycle_contract_status=$?
+if (( lifecycle_behavior_status != 0 || lifecycle_contract_status != 0 )); then
+  echo "P2 lifecycle/source barrier closure is not GREEN" >&2
   exit 1
 fi
 
