@@ -372,6 +372,8 @@ private:
   void consumePatternPlaybackActions_(
       int synthIdx,
       const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
+  void hardBarrierPatternPlayback_();
+  void cleanupLiveNotesForTransportBarrier_(uint8_t patternAuthorityAtEntry);
   uint32_t currentAbsoluteSubtick_() const;
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);

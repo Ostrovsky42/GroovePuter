@@ -511,6 +511,8 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
+  const uint8_t patternAuthorityAtEntry =
+      patternOwnedMask_.load(std::memory_order_acquire);
   // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
   // settle that exact pending destination immediately instead of discarding the
   // activation and leaving the next START on the old runtime row. Ordinary C
@@ -528,7 +530,7 @@ void MiniAcid::stop() {
         synchronizeCommittedGenerationRuntime(*this);
   }
   LOG_PRINTLN("[DSP] STOP command received");
-  publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   playing = false;
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
@@ -539,10 +541,7 @@ void MiniAcid::stop() {
   retrigA_ = {};
   retrigB_ = {};
   for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
-  if (synthVoices_[0]) synthVoices_[0]->release();
-  if (synthVoices_[1]) synthVoices_[1]->release();
-  liveNotes_[0] = -1;
-  liveNotes_[1] = -1;
+  cleanupLiveNotesForTransportBarrier_(patternAuthorityAtEntry);
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
@@ -551,8 +550,10 @@ void MiniAcid::stop() {
 
 void MiniAcid::pauseTransport() {
   if (!playing) return;
+  const uint8_t patternAuthorityAtEntry =
+      patternOwnedMask_.load(std::memory_order_acquire);
   LOG_PRINTLN("[DSP] PAUSE command received");
-  publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   playing = false;
   currentStepIndex = -1;
   gateCountdownA_ = 0;
@@ -560,10 +561,7 @@ void MiniAcid::pauseTransport() {
   retrigA_ = {};
   retrigB_ = {};
   for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
-  if (synthVoices_[0]) synthVoices_[0]->release();
-  if (synthVoices_[1]) synthVoices_[1]->release();
-  liveNotes_[0] = -1;
-  liveNotes_[1] = -1;
+  cleanupLiveNotesForTransportBarrier_(patternAuthorityAtEntry);
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
@@ -3617,6 +3615,27 @@ MiniAcid::activePatternRuntimeEvents(int synthIndex) const {
 
 void MiniAcid::updateDrumReverbDecay(float value) {
   drumReverb.setDecay(value);
+}
+
+void MiniAcid::hardBarrierPatternPlayback_() {
+  for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
+    const auto actions = patternPlaybackState_[synth].hardBarrier();
+    consumePatternPlaybackActions_(synth, actions);
+  }
+}
+
+void MiniAcid::cleanupLiveNotesForTransportBarrier_(
+    uint8_t patternAuthorityAtEntry) {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const uint8_t targetMask = static_cast<uint8_t>(1u << idx);
+    const bool patternOwnedBackendAtEntry =
+        (patternAuthorityAtEntry & targetMask) != 0u;
+    if (!patternOwnedBackendAtEntry && liveNotes_[idx] >= 0 &&
+        synthVoices_[idx]) {
+      synthVoices_[idx]->release();
+    }
+    liveNotes_[idx] = -1;
+  }
 }
 
 void MiniAcid::consumePatternPlaybackActions_(
