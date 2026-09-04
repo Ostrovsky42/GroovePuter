@@ -361,6 +361,18 @@ public:
   const VoiceCache& voiceCache() const { return voiceCache_; }
   bool speakCached(const char* text);
 
+  // P3: Bounded Phrase Source
+  enum class SequencedSource : uint8_t {
+    Pattern = 0,
+    Phrase = 1,
+  };
+
+  void setSequencedSource(SequencedSource source);
+  SequencedSource currentSequencedSource() const;
+  bool setPhraseLength(uint8_t barCount);
+  const PhraseRuntime::RuntimeSynthEventBuffer& currentSequencedMaterial() const;
+  PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer();
+
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
@@ -467,6 +479,11 @@ private:
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
+
+  // P3: Bounded Phrase Source
+  SequencedSource currentSequencedSource_ = SequencedSource::Pattern;
+  PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_{};
+
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;

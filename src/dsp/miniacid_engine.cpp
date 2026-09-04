@@ -3851,3 +3851,37 @@ void MiniAcid::advanceSongBar_() {
     }
   }
 }
+
+// P3: Bounded Phrase Source
+
+void MiniAcid::setSequencedSource(SequencedSource source) {
+  currentSequencedSource_ = source;
+}
+
+MiniAcid::SequencedSource MiniAcid::currentSequencedSource() const {
+  return currentSequencedSource_;
+}
+
+bool MiniAcid::setPhraseLength(uint8_t barCount) {
+  // Validate: accept exactly 1, 2, 4, or 8 bars
+  if (barCount != 1 && barCount != 2 && barCount != 4 && barCount != 8) {
+    return false;
+  }
+
+  // Set phrase length in ticks
+  currentPhrase_.lengthTicks = barCount * PhraseRuntime::kTicksPerBar;
+  return true;
+}
+
+const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentSequencedMaterial() const {
+  if (currentSequencedSource_ == SequencedSource::Phrase) {
+    return currentPhrase_;
+  }
+  // For Pattern, would return pattern material
+  // For now, return phrase buffer as placeholder
+  return currentPhrase_;
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() {
+  return currentPhrase_;
+}
