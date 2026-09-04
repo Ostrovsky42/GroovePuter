@@ -58,6 +58,7 @@ struct PendingGeneration {
   uint8_t swingPct = 0;
   QuantizedGenerationScope scope = QuantizedGenerationScope::Full;
   SynthPattern synth[2]{};
+  PhraseRuntime::RuntimePatternEventBuffer synthRuntime[2]{};
   DrumPatternSet drums{};
   uint32_t committedRevision = 0;
 };

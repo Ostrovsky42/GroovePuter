@@ -22,6 +22,7 @@
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
 #include "../phrase/runtime_pattern_event_bank.h"
+#include "../phrase/runtime_synth_playback.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
 #include "tape_fx.h"
@@ -365,7 +366,13 @@ private:
   void updateTickIncrement();
   void advanceTick();
   void processSequencerEvents(uint32_t absoluteTick);
-  void triggerSynthStep_(int synthIdx, int stepIdx);
+  void triggerSynthStep_(int synthIdx,
+                         const PhraseRuntime::RuntimeSynthEvent& event,
+                         uint32_t absoluteStartSubtick);
+  void consumePatternPlaybackActions_(
+      int synthIdx,
+      const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
+  uint32_t currentAbsoluteSubtick_() const;
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_();
@@ -444,10 +451,14 @@ private:
   uint32_t currentTick_ = 0;
   float samplesPerStep_ = 10000.0f;
 
+  // P2 compatibility fields remain physically present for this cutover
+  // commit, but they no longer own Pattern backend lifetime decisions.
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
   PhraseRuntime::RuntimePatternEventBank patternRuntimeBank_;
+  PhraseRuntime::RuntimeSynthPlaybackState patternPlaybackState_[NUM_303_VOICES]{};
+  PhraseRuntime::RuntimeSynthEvent patternRetrigEvent_[NUM_303_VOICES]{};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};

@@ -161,10 +161,13 @@ void foldLegacyLifetime(const SynthPattern& pattern,
 
 }  // namespace
 
-PatternProjectionStatus projectPatternToRuntimeEvents(
+namespace {
+
+PatternProjectionStatus projectPatternToRuntimeEventsImpl(
     const SynthPattern& pattern,
     const PatternProjectionSettings& settings,
-    RuntimeSynthEventBuffer& destination) {
+    RuntimeSynthEventBuffer& destination,
+    uint8_t* sourceSteps) {
   if (settings.synthIndex >= 2) {
     return PatternProjectionStatus::InvalidSynthIndex;
   }
@@ -192,6 +195,9 @@ PatternProjectionStatus projectPatternToRuntimeEvents(
     event.fx = step.fx;
     event.fxParam = step.fxParam;
     eventTokenIndices[candidate.count] = tokenIndex;
+    if (sourceSteps != nullptr && candidate.count < SynthPattern::kSteps) {
+      sourceSteps[candidate.count] = token.stepIndex;
+    }
     ++candidate.count;
   }
 
@@ -206,6 +212,28 @@ PatternProjectionStatus projectPatternToRuntimeEvents(
 
   destination = candidate;
   return PatternProjectionStatus::Ready;
+}
+
+}  // namespace
+
+PatternProjectionStatus projectPatternToRuntimeEvents(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination) {
+  return projectPatternToRuntimeEventsImpl(
+      pattern, settings, destination, nullptr);
+}
+
+PatternProjectionStatus projectPatternToRuntimeEventsWithSourceSteps(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination,
+    uint8_t (&sourceSteps)[SynthPattern::kSteps]) {
+  for (uint8_t& sourceStep : sourceSteps) {
+    sourceStep = 0xFFu;
+  }
+  return projectPatternToRuntimeEventsImpl(
+      pattern, settings, destination, sourceSteps);
 }
 
 }  // namespace PhraseRuntime

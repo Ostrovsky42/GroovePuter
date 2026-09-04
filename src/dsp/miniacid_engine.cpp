@@ -366,6 +366,17 @@ void MiniAcid::init() {
   AudioDiagnostics::instance().enable(false);
   LOG_PRINTLN("  - MiniAcid::init: applySceneStateFromManager()...");
   applySceneStateFromManager();
+  // P2 startup publication is a playback precondition. Playback is still
+  // stopped here: publish a complete resident bank and only then mirror
+  // the actual paging identity into MiniAcid runtime selection.
+  const int residentPage = PatternPagingService::activePageIndex();
+  if (rebuildPatternRuntimeEventBank() &&
+      patternRuntimeBank_.pageIdentity() == residentPage) {
+    setCurrentPage(static_cast<int8_t>(residentPage));
+  } else {
+    patternRuntimeBank_.invalidatePageIdentity();
+    LOG_PRINTLN("  - MiniAcid::init: Pattern runtime bank publication failed");
+  }
   LOG_PRINTLN("  - MiniAcid::init: Done");
 }
 
@@ -468,6 +479,10 @@ void MiniAcid::reset() {
   // Reset Retrig States
   retrigA_ = {};
   retrigB_ = {};
+  patternPlaybackState_[0] = {};
+  patternPlaybackState_[1] = {};
+  patternRetrigEvent_[0] = {};
+  patternRetrigEvent_[1] = {};
   for(int i=0; i<NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
 
   LOG_PRINTLN("    - MiniAcid::reset: Done");
@@ -2048,15 +2063,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
-    // 0.9.9-D2: ACTIVATE the already-committed pending mutation before Song
-    // row advancement. Phrase live arrangement changes persistent Song refs and
-    // feel.patternBars during COMMIT, while the current bar keeps the old C
-    // audible overlay. Activating first makes the normal advanceSongBar_() turn
-    // the new destination's pre-first-bar phase into bar zero without exposing
-    // a transient next-row Voice/Pattern selection or stretching bar one.
-    // The hook remains the single 0.9.9-C pending owner and returns false; no
-    // generation, Scene write, allocation, filesystem work or second Undo is
-    // allowed on this audio-thread boundary.
+    // Keep the accepted BAR_START pending owner and Song ordering intact.
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
     }
@@ -2066,8 +2073,15 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   }
 
-  // Timing constants. During C pending activation the Scene already holds
-  // committed truth, while the old swing remains the audible truth until BAR_START.
+  // P2 changes the Synth material/lifetime source, not legacy trigger/RNG
+  // ordering. Keep the physical source-step scan and A -> B -> drums order.
+  const uint32_t absoluteStartSubtick =
+      absoluteTick * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick);
+  const PhraseRuntime::RuntimePatternEventBuffer& synthAEvents =
+      activePatternRuntimeEvents(0);
+  const PhraseRuntime::RuntimePatternEventBuffer& synthBEvents =
+      activePatternRuntimeEvents(1);
+
   int swingPct = GroovePuterRhythm::QuantizedGenerationDetail::audibleGenerationSwingPct(
       *this, sceneManager_.currentScene().feel.swingPct);
   if (swingPct < 50) swingPct = 50;
@@ -2075,41 +2089,34 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   int swingDelay = (int)std::round((swingPct - 50.0f) * 24.0f / 50.0f);
   uint16_t swingMask = sceneManager_.currentScene().feel.swingMask;
 
-  // For efficiency, we only check steps that could logically trigger at this tick.
-  // Microtiming is typically ±12 ticks, so Step S can trigger in [(S-1)*24+12, (S+1)*24+12]
-  // We'll check nominal, previous, and next step slots.
   int nominalStep = barTick / 24;
   for (int sIdx = nominalStep - 1; sIdx <= nominalStep + 1; ++sIdx) {
     int s = (sIdx + 16) % 16;
     uint32_t nominalT = s * 24;
-    
-    // Synth A
-    int swingA = (s % 2 != 0 && (swingMask & (1 << (int)VoiceId::SynthA))) ? swingDelay : 0;
-    int microA = activeSynthPattern(0).steps[s].timing;
-    if ((nominalT + swingA + microA + 384) % 384 == barTick) {
-       triggerSynthStep_(0, s);
+
+    if (const PhraseRuntime::RuntimeSynthEvent* eventA =
+            synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
+        eventA != nullptr && eventA->startTick == barTick) {
+      triggerSynthStep_(0, *eventA, absoluteStartSubtick);
+    }
+    if (const PhraseRuntime::RuntimeSynthEvent* eventB =
+            synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
+        eventB != nullptr && eventB->startTick == barTick) {
+      triggerSynthStep_(1, *eventB, absoluteStartSubtick);
     }
 
-    // Synth B
-    int swingB = (s % 2 != 0 && (swingMask & (1 << (int)VoiceId::SynthB))) ? swingDelay : 0;
-    int microB = activeSynthPattern(1).steps[s].timing;
-    if ((nominalT + swingB + microB + 384) % 384 == barTick) {
-       triggerSynthStep_(1, s);
-    }
-
-    // Drums
     const DrumPatternSet* pendingDrums =
         GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
     const DrumPatternSet& dSet = pendingDrums
         ? *pendingDrums
         : sceneManager_.getCurrentDrumPattern();
     for (int v = 0; v < 8; ++v) {
-        VoiceId vId = (VoiceId)((int)VoiceId::DrumKick + v);
-        int swingD = (s % 2 != 0 && (swingMask & (1 << (int)vId))) ? swingDelay : 0;
-        int microD = dSet.voices[v].steps[s].timing;
-        if ((nominalT + swingD + microD + 384) % 384 == barTick) {
-           triggerDrumVoice_(v, s);
-        }
+      VoiceId vId = (VoiceId)((int)VoiceId::DrumKick + v);
+      int swingD = (s % 2 != 0 && (swingMask & (1 << (int)vId))) ? swingDelay : 0;
+      int microD = dSet.voices[v].steps[s].timing;
+      if ((nominalT + swingD + microD + 384) % 384 == barTick) {
+        triggerDrumVoice_(v, s);
+      }
     }
   }
 }
@@ -2243,13 +2250,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
           advanceTick();
         }
       }
-      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) {
-        if (synthVoices_[0]) synthVoices_[0]->release();
-        publishPatternNoteOff_(0);
-      }
-      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) {
-        if (synthVoices_[1]) synthVoices_[1]->release();
-        publishPatternNoteOff_(1);
+      const uint32_t absoluteSubtick = currentAbsoluteSubtick_();
+      for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
+        consumePatternPlaybackActions_(
+            synth, patternPlaybackState_[synth].releaseDue(absoluteSubtick));
       }
     }
 
@@ -2258,33 +2262,26 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     float drumsMix = 0.0f;
     float samplerSample = 0.0f;
 
-    // Retrig Logic (omitted for brevity in this view? No, I must keep it!)
-    // [Keeping retrig logic as it was in the file]
-    if (playing && currentStepIndex >= 0 && retrigA_.active) {
-        if (--retrigA_.counter <= 0 && retrigA_.countRemaining > 0) {
-            const SynthStep& step = activeSynthPattern(0).steps[currentStepIndex];
-            if (synthVoices_[0]) {
-                synthVoices_[0]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
-            }
-            publishPatternNoteOn_(0, static_cast<uint8_t>(step.note), step.velocity);
-            LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
-            retrigA_.counter = retrigA_.interval;
-            retrigA_.countRemaining--;
-            if (retrigA_.countRemaining <= 0) retrigA_.active = false;
-        }
+    // Retrig Logic. Legacy sample counters keep only timing authority;
+    // RuntimeSynthPlaybackState owns the logical Release/Start decision and
+    // the common consumer fans it to both internal synth and Pattern MIDI.
+    if (playing && retrigA_.active) {
+      if (--retrigA_.counter <= 0 && retrigA_.countRemaining > 0) {
+        consumePatternPlaybackActions_(
+            0, patternPlaybackState_[0].acceptRetrigger(patternRetrigEvent_[0]));
+        retrigA_.counter = retrigA_.interval;
+        retrigA_.countRemaining--;
+        if (retrigA_.countRemaining <= 0) retrigA_.active = false;
+      }
     }
-    if (playing && currentStepIndex >= 0 && retrigB_.active) {
-        if (--retrigB_.counter <= 0 && retrigB_.countRemaining > 0) {
-            const SynthStep& step = activeSynthPattern(1).steps[currentStepIndex];
-            if (synthVoices_[1]) {
-                synthVoices_[1]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
-            }
-            publishPatternNoteOn_(1, static_cast<uint8_t>(step.note), step.velocity);
-            LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
-            retrigB_.counter = retrigB_.interval;
-            retrigB_.countRemaining--;
-            if (retrigB_.countRemaining <= 0) retrigB_.active = false;
-        }
+    if (playing && retrigB_.active) {
+      if (--retrigB_.counter <= 0 && retrigB_.countRemaining > 0) {
+        consumePatternPlaybackActions_(
+            1, patternPlaybackState_[1].acceptRetrigger(patternRetrigEvent_[1]));
+        retrigB_.counter = retrigB_.interval;
+        retrigB_.countRemaining--;
+        if (retrigB_.countRemaining <= 0) retrigB_.active = false;
+      }
     }
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         if (!playing || currentStepIndex < 0) continue;
@@ -2748,6 +2745,14 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
+  const int residentPage = PatternPagingService::activePageIndex();
+  if (!rebuildPatternRuntimeEventBank() ||
+      patternRuntimeBank_.pageIdentity() != residentPage) {
+    patternRuntimeBank_.invalidatePageIdentity();
+    Serial.println("[LoadScene] runtime Pattern bank publication failed");
+    return false;
+  }
+  setCurrentPage(static_cast<int8_t>(residentPage));
   Serial.println("[LoadScene] SUCCESS");
   return true;
 }
@@ -2769,6 +2774,14 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 
   sceneManager_.wipeToZero();
   applySceneStateFromManager();
+  const int residentPage = PatternPagingService::activePageIndex();
+  if (!rebuildPatternRuntimeEventBank() ||
+      patternRuntimeBank_.pageIdentity() != residentPage) {
+    patternRuntimeBank_.invalidatePageIdentity();
+    sceneStorage_->setCurrentSceneName(previousName);
+    return false;
+  }
+  setCurrentPage(static_cast<int8_t>(residentPage));
   if (saveSceneToStorage()) return true;
 
   sceneStorage_->setCurrentSceneName(previousName);
@@ -3579,10 +3592,20 @@ MiniAcid::activePatternRuntimeEvents(int synthIndex) const {
   if (synthIndex < 0 || synthIndex >= NUM_303_VOICES) {
     return patternRuntimeBank_.empty();
   }
+  if (const PhraseRuntime::RuntimePatternEventBuffer* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthRuntime(
+              *this, synthIndex)) {
+    return *pending;
+  }
+  // Keep the accepted SONG/PATTERN source gate. In SONG mode an empty synth
+  // track is authoritative silence; it must not fall back to the Scene's
+  // current PATTERN-mode index merely because that resident slot exists.
+  const SongTrack track = synthIndex == 0 ? SongTrack::SynthA : SongTrack::SynthB;
+  const int patternIndex = songPatternIndexForTrack(track);
+  if (patternIndex < 0) return patternRuntimeBank_.empty();
   const int bankIndex = current303BankIndex(synthIndex);
-  const int patternIndex = current303PatternIndex(synthIndex);
   if (bankIndex < 0 || bankIndex >= kBankCount ||
-      patternIndex < 0 || patternIndex >= Bank<SynthPattern>::kPatterns) {
+      patternIndex >= Bank<SynthPattern>::kPatterns) {
     return patternRuntimeBank_.empty();
   }
   return patternRuntimeBank_.selectForPage(
@@ -3596,56 +3619,102 @@ void MiniAcid::updateDrumReverbDecay(float value) {
   drumReverb.setDecay(value);
 }
 
-void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
-  int songPattern = songPatternIndexForTrack(synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
+void MiniAcid::consumePatternPlaybackActions_(
+    int synthIdx,
+    const PhraseRuntime::RuntimeSynthPlaybackActions& actions) {
+  const int idx = clamp303Voice(synthIdx);
+  for (uint8_t i = 0; i < actions.count; ++i) {
+    const PhraseRuntime::RuntimeSynthPlaybackAction& action = actions.values[i];
+    const PhraseRuntime::RuntimeSynthEvent& event = action.event;
+    const bool accent = (event.flags & PhraseRuntime::kEventAccent) != 0;
+    const bool slide = (event.flags & PhraseRuntime::kEventSlide) != 0;
+
+    // RuntimeSynthPlaybackState owns the logical replacement as Release ->
+    // Start. TB303's accepted legacy slide, however, is legato only while the
+    // internal gate remains high. Translate a slide replacement without an
+    // internal gate-off while still closing/reopening external MIDI ownership.
+    const bool slideReplacement =
+        action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Release &&
+        i + 1u < actions.count &&
+        actions.values[i + 1u].type ==
+            PhraseRuntime::RuntimeSynthPlaybackActionType::Start &&
+        (actions.values[i + 1u].event.flags & PhraseRuntime::kEventSlide) != 0;
+    const bool skipInternalRelease = slideReplacement;
+
+    switch (action.type) {
+      case PhraseRuntime::RuntimeSynthPlaybackActionType::Release:
+        if (!skipInternalRelease && synthVoices_[idx]) {
+          synthVoices_[idx]->release();
+        }
+        publishPatternNoteOff_(idx);
+        break;
+
+      case PhraseRuntime::RuntimeSynthPlaybackActionType::Start:
+        if (synthVoices_[idx]) {
+          synthVoices_[idx]->startNote(
+              noteToFreq(event.note), accent, slide, event.velocity);
+        }
+        publishPatternNoteOn_(idx, event.note, event.velocity);
+        LedManager::instance().onVoiceTriggered(
+            idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+            sceneManager_.currentScene().led);
+        break;
+
+      case PhraseRuntime::RuntimeSynthPlaybackActionType::Retrigger:
+        if (synthVoices_[idx]) synthVoices_[idx]->release();
+        publishPatternNoteOff_(idx);
+        if (synthVoices_[idx]) {
+          synthVoices_[idx]->startNote(
+              noteToFreq(event.note), accent, slide, event.velocity);
+        }
+        publishPatternNoteOn_(idx, event.note, event.velocity);
+        LedManager::instance().onVoiceTriggered(
+            idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+            sceneManager_.currentScene().led);
+        break;
+
+      default:
+        break;
+    }
+  }
+}
+
+uint32_t MiniAcid::currentAbsoluteSubtick_() const {
+  const uint32_t fractionalSubtick = static_cast<uint32_t>(
+      (tickPhaseAccum_ & 0xFFFFFFFFULL) >> 28);
+  return currentTick_ * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick) +
+         fractionalSubtick;
+}
+
+void MiniAcid::triggerSynthStep_(
+    int synthIdx,
+    const PhraseRuntime::RuntimeSynthEvent& event,
+    uint32_t absoluteStartSubtick) {
+  const int songPattern = songPatternIndexForTrack(
+      synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
   if (songPattern < 0) return;
   if (synthIdx == 0 && mute303) return;
   if (synthIdx == 1 && mute303_2) return;
 
-  const SynthPattern& pattern = activeSynthPattern(synthIdx);
-  const SynthStep& step = pattern.steps[stepIdx];
+  // Preserve legacy RNG consumption exactly: ghost first, probability only
+  // after ghost accepts. Projection is deterministic and never consumes RNG.
+  const bool ghost = (event.flags & PhraseRuntime::kEventGhost) != 0;
+  if (ghost && (rand() % 100 >= 80)) return;
+  if (event.probability < 100 && (rand() % 100 >= event.probability)) return;
 
-  const GenreSettings* audibleGenre =
-      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleGenreSettings(*this);
-  const auto recipe = audibleGenre
-      ? GenreCatalog::grooveRecipe(*audibleGenre)
-      : genreManager_.getGrooveRecipe();
-  float gateMult = recipe.gateLengthRatio;
-  if (gateMult < 0.1f) gateMult = 0.5f;
-  float vMult = (synthIdx == 0) ? 0.85f : 1.05f;
-  float effectiveGateMult = gateMult * vMult;
-  if (synthIdx == 0 && effectiveGateMult < 0.15f) effectiveGateMult = 0.15f;
-  if (synthIdx == 1 && effectiveGateMult > 0.98f) effectiveGateMult = 0.98f;
+  consumePatternPlaybackActions_(
+      synthIdx,
+      patternPlaybackState_[synthIdx].acceptOnset(event, absoluteStartSubtick));
 
-  if (step.note == -2) { // TIE
-    if (synthIdx == 0 && gateCountdownA_ > 0) gateCountdownA_ += (long)(samplesPerStep_ * effectiveGateMult);
-    else if (synthIdx == 1 && gateCountdownB_ > 0) gateCountdownB_ += (long)(samplesPerStep_ * effectiveGateMult);
-  } else if (step.note >= 0 && (!step.ghost || (rand() % 100 < 80))) {
-    if (step.probability >= 100 || (rand() % 100 < step.probability)) {
-        if (synthVoices_[synthIdx]) synthVoices_[synthIdx]->startNote(noteToFreq(step.note), step.accent, step.slide, (uint8_t)step.velocity);
-        publishPatternNoteOn_(synthIdx, static_cast<uint8_t>(step.note), static_cast<uint8_t>(step.velocity));
-        long dur = (long)(samplesPerStep_ * effectiveGateMult);
-        if (synthIdx == 0) {
-            gateCountdownA_ = dur;
-            retrigA_.active = false;
-            if (step.fx == (uint8_t)StepFx::Retrig && step.fxParam > 0) {
-                retrigA_.countRemaining = step.fxParam;
-                retrigA_.interval = (int)(samplesPerStep_ / (step.fxParam + 1));
-                retrigA_.counter = retrigA_.interval;
-                retrigA_.active = true;
-            }
-        } else {
-            gateCountdownB_ = dur;
-            retrigB_.active = false;
-            if (step.fx == (uint8_t)StepFx::Retrig && step.fxParam > 0) {
-                retrigB_.countRemaining = step.fxParam;
-                retrigB_.interval = (int)(samplesPerStep_ / (step.fxParam + 1));
-                retrigB_.counter = retrigB_.interval;
-                retrigB_.active = true;
-            }
-        }
-        LedManager::instance().onVoiceTriggered(synthIdx == 0 ? VoiceId::SynthA : VoiceId::SynthB, sceneManager_.currentScene().led);
-    }
+  RetrigState& retrig = synthIdx == 0 ? retrigA_ : retrigB_;
+  retrig.active = false;
+  patternRetrigEvent_[synthIdx] = event;
+  if (event.fx == static_cast<uint8_t>(StepFx::Retrig) && event.fxParam > 0) {
+    retrig.countRemaining = event.fxParam;
+    retrig.interval = static_cast<int>(samplesPerStep_ / (event.fxParam + 1));
+    if (retrig.interval < 1) retrig.interval = 1;
+    retrig.counter = retrig.interval;
+    retrig.active = true;
   }
 }
 

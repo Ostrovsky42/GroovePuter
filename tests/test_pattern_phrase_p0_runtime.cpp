@@ -11,6 +11,7 @@
 #include "src/dsp/miniacid_engine.h"
 #undef private
 
+#include "src/audio/pattern_paging.h"
 #include "src/input/musical_event_queue.h"
 #include "src/midi/tee_midi_transport.h"
 #include "src/midi/usb_midi_output.h"
@@ -152,6 +153,8 @@ struct RuntimeFixture {
   RuntimeFixture() {
     tee.setSecondaryEnabled(true);
     engine.setBpm(120.0f);
+    assert(engine.rebuildPatternRuntimeEventBank());
+    engine.setCurrentPage(static_cast<int8_t>(PatternPagingService::activePageIndex()));
     engine.setPatternEventQueue(&queue);
     queue.setPhaseReader(readEnginePhase, &engine);
     assert(midi.begin());
@@ -169,8 +172,12 @@ struct RuntimeFixture {
     return current && current->noteHeld_;
   }
 
-  long gateCountdown(int synth) const {
-    return synth == 0 ? engine.gateCountdownA_ : engine.gateCountdownB_;
+  bool runtimeActive(int synth) const {
+    return engine.patternPlaybackState_[synth].active();
+  }
+
+  uint32_t runtimeDeadline(int synth) const {
+    return engine.patternPlaybackState_[synth].releaseAtSubtick();
   }
 
   void beginRender(uint16_t frames = 512) {
@@ -264,6 +271,8 @@ void editPattern(RuntimeFixture& f,
         : timings[static_cast<std::size_t>(step)];
     setStep(pattern, step, note, 100, timing);
   }
+  assert(f.engine.refreshPatternRuntimeEvents(
+      synth, f.engine.current303BankIndex(synth), patternIndex));
 }
 
 MusicalEventTarget targetForSynth(int synth) {
@@ -380,13 +389,14 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
 
   f.engine.playing = true;
   f.beginRender();
-  f.engine.triggerSynthStep_(synth, 15);
+  processTick(f, 360);
   f.endRender();
   f.dispatchLikeProduction();
 
   assert(f.noteHeld(synth));
-  const long gateBefore = f.gateCountdown(synth);
-  assert(gateBefore > 0);
+  assert(f.runtimeActive(synth));
+  const uint32_t deadlineBefore = f.runtimeDeadline(synth);
+  assert(deadlineBefore > 360u * PhraseRuntime::kSubticksPerTick);
   assert(f.midi.activeGateCount(
              MusicalEventSource::PatternPlayer,
              targetForSynth(synth), 0) == 1);
@@ -403,7 +413,8 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
   // publishes PatternPlayer MIDI cleanup, but direct internal voice lifetime is
   // not synchronously released by applySongPositionSelection().
   assert(f.noteHeld(synth));
-  assert(f.gateCountdown(synth) == gateBefore);
+  assert(f.runtimeActive(synth));
+  assert(f.runtimeDeadline(synth) == deadlineBefore);
   assert(f.midi.activeGateCount(
              MusicalEventSource::PatternPlayer,
              targetForSynth(synth), 0) == 0);
@@ -432,16 +443,18 @@ void testLegacyTieCanExtendAnActiveGateAcrossBoundaryForSynth(int synth) {
 
   f.beginRender();
   processTick(f, 383);  // step15 onset shifted +23 ticks
-  const long gateBeforeTie = f.gateCountdown(synth);
-  assert(gateBeforeTie > 0);
+  assert(f.runtimeActive(synth));
+  const uint32_t deadline = f.runtimeDeadline(synth);
+  assert(deadline > 384u * PhraseRuntime::kSubticksPerTick);
   processTick(f, 384);  // exact physical boundary
-  assert(f.gateCountdown(synth) == gateBeforeTie);
-  processTick(f, 385);  // step0 TIE shifted to barTick 1
-  const long gateAfterTie = f.gateCountdown(synth);
+  assert(f.runtimeActive(synth));
+  assert(f.runtimeDeadline(synth) == deadline);
+  processTick(f, 385);  // folded TIE token itself emits no onset
+  assert(f.runtimeActive(synth));
   f.endRender();
   f.dispatchLikeProduction();
 
-  assert(gateAfterTie > gateBeforeTie);
+  assert(f.runtimeDeadline(synth) == deadline);
   assert(f.engine.patternMidiNotes_[synth] == 60);
   assert(countWire(f.usb.packets, WireType::NoteOn, channelForSynth(synth)) == 1);
   assert(countWire(f.usb.packets, WireType::NoteOff, channelForSynth(synth)) == 0);
@@ -459,6 +472,7 @@ void configureSwing(RuntimeFixture& f, int synth, uint8_t swingPct) {
   scene.feel.swingPct = swingPct;
   scene.feel.swingMask = static_cast<uint16_t>(
       1u << static_cast<int>(synth == 0 ? VoiceId::SynthA : VoiceId::SynthB));
+  assert(f.engine.rebuildPatternRuntimeEventBank());
 }
 
 void testSwingAndMicrotimingModuloForSynth(int synth) {
@@ -474,9 +488,9 @@ void testSwingAndMicrotimingModuloForSynth(int synth) {
 
     f.beginRender();
     processTick(f, 371);
-    assert(f.gateCountdown(synth) == 0);
+    assert(!f.runtimeActive(synth));
     processTick(f, 372);  // 360 + max swing delay 12
-    assert(f.gateCountdown(synth) > 0);
+    assert(f.runtimeActive(synth));
     f.endRender();
     f.dispatchLikeProduction();
     f.assertEndpointParity();
@@ -496,9 +510,9 @@ void testSwingAndMicrotimingModuloForSynth(int synth) {
 
     f.beginRender();
     processTick(f, 10);
-    assert(f.gateCountdown(synth) == 0);
+    assert(!f.runtimeActive(synth));
     processTick(f, 11);  // (360 + 12 + 23) % 384
-    assert(f.gateCountdown(synth) > 0);
+    assert(f.runtimeActive(synth));
     f.endRender();
     f.dispatchLikeProduction();
     f.assertEndpointParity();
@@ -524,9 +538,9 @@ void testNegativeMicrotimingWrapsStepZeroForSynth(int synth) {
 
   f.beginRender();
   processTick(f, 360);
-  assert(f.gateCountdown(synth) == 0);
+  assert(!f.runtimeActive(synth));
   processTick(f, 361);  // (0 - 23 + 384) % 384
-  assert(f.gateCountdown(synth) > 0);
+  assert(f.runtimeActive(synth));
   f.endRender();
   f.dispatchLikeProduction();
   f.assertEndpointParity();
