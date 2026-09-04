@@ -155,6 +155,8 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
                 const auto exchange = [&]() {
                   GroovePuterUndo::exchangeSynthPatternUndo(
                       mini_acid_.sceneManager(), receipt);
+                  (void)mini_acid_.refreshPatternRuntimeEvents(
+                      receipt.synthIndex, receipt.bankIndex, receipt.patternIndex);
                 };
                 if (audio_guard_) audio_guard_(exchange);
                 else exchange();

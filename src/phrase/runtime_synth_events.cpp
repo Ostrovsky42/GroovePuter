@@ -95,7 +95,17 @@ uint32_t absoluteTokenSubtick(const TriggerTokenBuffer& tokens,
   return tick * kSubticksPerTick;
 }
 
-void foldLegacyLifetime(const TriggerTokenBuffer& tokens,
+bool isGuaranteedOnset(const SynthPattern& pattern,
+                       const TriggerToken& token) {
+  if (token.note < 0) return false;
+  const SynthStep& step = pattern.steps[token.stepIndex];
+  // Keep projection pure. Legacy runtime considers the onset unconditional only
+  // when ghost cannot reject it and probability cannot consume an RNG draw.
+  return !step.ghost && step.probability >= 100;
+}
+
+void foldLegacyLifetime(const SynthPattern& pattern,
+                        const TriggerTokenBuffer& tokens,
                         uint8_t originIndex,
                         uint16_t baseDuration,
                         RuntimeSynthEvent& event) {
@@ -116,11 +126,28 @@ void foldLegacyLifetime(const TriggerTokenBuffer& tokens,
         absoluteTokenSubtick(tokens, originIndex, tokenIndex);
 
     if (token.note >= 0) {
-      if (tokenTime < end) end = tokenTime;
-      break;
+      // A note token is not necessarily a sounding onset. Ghost/probability are
+      // resolved later by the runtime executor in their legacy RNG order. If
+      // this lifetime has already expired, nothing later may resurrect it.
+      if (tokenTime >= end) break;
+
+      if (isGuaranteedOnset(pattern, token)) {
+        // Guaranteed future onset will definitely replace the old monophonic
+        // lifetime, so deterministic pre-clipping is behavior-equivalent.
+        end = tokenTime;
+        break;
+      }
+
+      // Conditional onset may be rejected at runtime. Keep the old lifetime
+      // alive and continue scanning so a later TIE can still extend it. If the
+      // onset is accepted, the common P2 owner performs Release -> Start there.
+      continue;
     }
 
-    if (token.note == -2 && tokenTime <= end) {
+    if (token.note == -2) {
+      // Preserve legacy TIE-at-deadline behavior, but once the tie lies after
+      // natural expiry no later token may revive the old note.
+      if (tokenTime > end) break;
       end += baseDuration;
     }
   }
@@ -134,10 +161,13 @@ void foldLegacyLifetime(const TriggerTokenBuffer& tokens,
 
 }  // namespace
 
-PatternProjectionStatus projectPatternToRuntimeEvents(
+namespace {
+
+PatternProjectionStatus projectPatternToRuntimeEventsImpl(
     const SynthPattern& pattern,
     const PatternProjectionSettings& settings,
-    RuntimeSynthEventBuffer& destination) {
+    RuntimeSynthEventBuffer& destination,
+    uint8_t* sourceSteps) {
   if (settings.synthIndex >= 2) {
     return PatternProjectionStatus::InvalidSynthIndex;
   }
@@ -165,11 +195,15 @@ PatternProjectionStatus projectPatternToRuntimeEvents(
     event.fx = step.fx;
     event.fxParam = step.fxParam;
     eventTokenIndices[candidate.count] = tokenIndex;
+    if (sourceSteps != nullptr && candidate.count < SynthPattern::kSteps) {
+      sourceSteps[candidate.count] = token.stepIndex;
+    }
     ++candidate.count;
   }
 
   for (uint16_t eventIndex = 0; eventIndex < candidate.count; ++eventIndex) {
     foldLegacyLifetime(
+        pattern,
         tokens,
         eventTokenIndices[eventIndex],
         baseDuration,
@@ -178,6 +212,28 @@ PatternProjectionStatus projectPatternToRuntimeEvents(
 
   destination = candidate;
   return PatternProjectionStatus::Ready;
+}
+
+}  // namespace
+
+PatternProjectionStatus projectPatternToRuntimeEvents(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination) {
+  return projectPatternToRuntimeEventsImpl(
+      pattern, settings, destination, nullptr);
+}
+
+PatternProjectionStatus projectPatternToRuntimeEventsWithSourceSteps(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination,
+    uint8_t (&sourceSteps)[SynthPattern::kSteps]) {
+  for (uint8_t& sourceStep : sourceSteps) {
+    sourceStep = 0xFFu;
+  }
+  return projectPatternToRuntimeEventsImpl(
+      pattern, settings, destination, sourceSteps);
 }
 
 }  // namespace PhraseRuntime

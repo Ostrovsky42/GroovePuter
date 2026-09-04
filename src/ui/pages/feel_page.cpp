@@ -93,6 +93,7 @@ void FeelPage::adjustFocused(int delta, bool fast) {
         if (next != scene.feel.swingPct) {
           scene.feel.swingPct = next;
           mini_acid_.applyFeelTimingFromScene_();
+          (void)mini_acid_.rebuildPatternRuntimeEventBank();
           changed = true;
         }
         break;
@@ -181,6 +182,7 @@ void FeelPage::applyPreset(int index) {
       scene.generatorParams.microTimingAmount = nextTiming;
       scene.generatorParams.velocityRange = nextVelocity;
       mini_acid_.applyFeelTimingFromScene_();
+      (void)mini_acid_.rebuildPatternRuntimeEventBank();
     });
     GroovePuterState::markSceneMutated();
   }

@@ -67,6 +67,10 @@ inline void applyPreparedGenerationPersistent(
     // old audible truth until ACTIVATE when transport is playing.
     scenes.setMode(pending.mode);
     scenes.setBpm(pending.bpm);
+    // Swing is projection input for every resident Synth Pattern, therefore a
+    // FULL generation commit must settle the complete derived bank, not only
+    // the two target slots. Old audible target events remain in PendingGeneration.
+    (void)engine.rebuildPatternRuntimeEventBank();
     return;
   }
 
@@ -75,6 +79,8 @@ inline void applyPreparedGenerationPersistent(
       ? scene.synthABanks[pending.target.synthBank[0]]
       : scene.synthBBanks[pending.target.synthBank[1]];
   bank.patterns[pending.target.synthSlot[voice]] = pending.synth[voice];
+  (void)engine.refreshPatternRuntimeEvents(
+      voice, pending.target.synthBank[voice], pending.target.synthSlot[voice]);
 }
 
 inline void activatePreparedGenerationRuntime(
@@ -130,6 +136,10 @@ inline void fillAudibleActivationSnapshot(
   activation.swingPct = before.swingPct;
   activation.synth[0] = before.synth[0];
   activation.synth[1] = before.synth[1];
+  // Capture the exact currently audible prepared events before persistent
+  // COMMIT changes resident Scene truth. This extends the existing owner.
+  activation.synthRuntime[0] = engine.activePatternRuntimeEvents(0);
+  activation.synthRuntime[1] = engine.activePatternRuntimeEvents(1);
   activation.drums = before.drums;
   // These two values are the NEW committed runtime controls to publish only
   // when the old audible overlay is released at BAR_START.
@@ -194,6 +204,18 @@ inline const SynthPattern* pendingAudibleSynthPattern(
   if (!included ||
       !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
   return &pending->synth[voice];
+}
+
+inline const PhraseRuntime::RuntimePatternEventBuffer*
+pendingAudibleSynthRuntime(const MiniAcid& engine, int voice) {
+  const PendingGeneration* pending = pendingAudibleActivation(engine);
+  if (pending == nullptr || voice < 0 || voice > 1) return nullptr;
+  const bool included = pending->scope == QuantizedGenerationScope::Full ||
+      (voice == 0 && pending->scope == QuantizedGenerationScope::SynthA) ||
+      (voice == 1 && pending->scope == QuantizedGenerationScope::SynthB);
+  if (!included ||
+      !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
+  return &pending->synthRuntime[voice];
 }
 
 inline const DrumPatternSet* pendingAudibleDrumPatternSet(
@@ -311,6 +333,7 @@ inline int armCompactSynthActivation(
       ? QuantizedGenerationScope::SynthA
       : QuantizedGenerationScope::SynthB;
   activation.synth[voice] = audibleBefore;
+  activation.synthRuntime[voice] = engine.activePatternRuntimeEvents(voice);
   activation.genre = engine.sceneManager().currentScene().genre;
   activation.swingPct = engine.sceneManager().currentScene().feel.swingPct;
   activation.mode = engine.grooveboxMode();

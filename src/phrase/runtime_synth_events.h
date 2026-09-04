@@ -53,6 +53,15 @@ PatternProjectionStatus projectPatternToRuntimeEvents(
     const PatternProjectionSettings& settings,
     RuntimeSynthEventBuffer& destination);
 
+// P2 companion projection metadata. The existing RuntimeSynthEvent ABI and
+// chronological RuntimeSynthEventBuffer order remain unchanged; this helper
+// only exposes which physical Pattern step produced each projected onset.
+PatternProjectionStatus projectPatternToRuntimeEventsWithSourceSteps(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination,
+    uint8_t (&sourceSteps)[SynthPattern::kSteps]);
+
 static_assert(kMaxSynthEvents == 128,
               "P1 future Phrase capacity must remain 16 onsets x 8 bars");
 static_assert(sizeof(RuntimeSynthEvent) == 10,

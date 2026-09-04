@@ -187,6 +187,8 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
         GroovePuterUndo::UndoKind::Pattern, before, [&]() {
           const auto apply = [&]() {
             GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                prepared.synthIndex, prepared.bankIndex, prepared.patternIndex);
           };
           if (audio_guard_) audio_guard_(apply);
           else apply();

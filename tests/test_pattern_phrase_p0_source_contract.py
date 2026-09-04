@@ -37,12 +37,15 @@ require(
     "gridSteps unexpectedly entered the synth scheduler before PHRASE work",
 )
 require(
-    "(nominalT + swingA + microA + 384) % 384 == barTick" in sequencer,
-    "Synth A swing/microtiming modulo scheduling changed",
+    "activePatternRuntimeEvents" in sequencer
+    and "eventForSourceStep" in sequencer
+    and "->startTick" in sequencer,
+    "P2 Synth scheduling is not driven by prepared runtime source-step events",
 )
 require(
-    "(nominalT + swingB + microB + 384) % 384 == barTick" in sequencer,
-    "Synth B swing/microtiming modulo scheduling changed",
+    "activeSynthPattern(0).steps" not in sequencer
+    and "activeSynthPattern(1).steps" not in sequencer,
+    "mutable SynthPattern timing re-entered the P2 executor",
 )
 
 selection = between(
