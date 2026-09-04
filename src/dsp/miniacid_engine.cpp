@@ -16,6 +16,7 @@
 #include <string>
 
 #include "../audio/audio_diagnostics.h"
+#include "../audio/pattern_paging.h"
 #include "../input/musical_event_queue.h"
 #include "../generation/migration/quantized_generation_commit.h"
 
@@ -3495,6 +3496,100 @@ void MiniAcid::updateDrumTransientSustain(float value) {
 
 void MiniAcid::updateDrumReverbMix(float value) {
   drumReverb.setMix(value);
+}
+
+bool MiniAcid::rebuildPatternRuntimeEventBank() {
+  const int residentPage = PatternPagingService::activePageIndex();
+  if (residentPage < 0 || residentPage >= kMaxPages) return false;
+
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  const int swingPct = std::clamp(
+      static_cast<int>(scene.feel.swingPct), 50, 75);
+
+  PhraseRuntime::RuntimePatternEventBank candidate{};
+  for (uint8_t synth = 0; synth < NUM_303_VOICES; ++synth) {
+    PhraseRuntime::PatternProjectionSettings settings{};
+    settings.synthIndex = synth;
+    settings.gateLengthRatio = recipe.gateLengthRatio;
+    settings.swingPercent = static_cast<uint8_t>(swingPct);
+    const VoiceId voice = synth == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+    settings.swingEnabled =
+        (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+    for (uint8_t bank = 0; bank < kBankCount; ++bank) {
+      for (uint8_t pattern = 0;
+           pattern < Bank<SynthPattern>::kPatterns;
+           ++pattern) {
+        const SynthPattern& source = synth == 0
+            ? scene.synthABanks[bank].patterns[pattern]
+            : scene.synthBBanks[bank].patterns[pattern];
+        if (candidate.refresh(synth, bank, pattern, source, settings) !=
+            PhraseRuntime::PatternBankRefreshStatus::Ready) {
+          return false;
+        }
+      }
+    }
+  }
+
+  if (!candidate.publishPageIdentity(residentPage)) return false;
+  patternRuntimeBank_ = candidate;
+  return true;
+}
+
+bool MiniAcid::refreshPatternRuntimeEvents(int synthIndex,
+                                           int bankIndex,
+                                           int patternIndex) {
+  if (synthIndex < 0 || synthIndex >= NUM_303_VOICES ||
+      bankIndex < 0 || bankIndex >= kBankCount ||
+      patternIndex < 0 || patternIndex >= Bank<SynthPattern>::kPatterns) {
+    return false;
+  }
+
+  const int residentPage = PatternPagingService::activePageIndex();
+  if (residentPage != currentPageIndex() ||
+      patternRuntimeBank_.pageIdentity() != residentPage) {
+    return false;
+  }
+
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(synthIndex);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(std::clamp(
+      static_cast<int>(scene.feel.swingPct), 50, 75));
+  const VoiceId voice = synthIndex == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  const SynthPattern& source = synthIndex == 0
+      ? scene.synthABanks[bankIndex].patterns[patternIndex]
+      : scene.synthBBanks[bankIndex].patterns[patternIndex];
+  return patternRuntimeBank_.refresh(
+             static_cast<uint8_t>(synthIndex),
+             static_cast<uint8_t>(bankIndex),
+             static_cast<uint8_t>(patternIndex),
+             source,
+             settings) == PhraseRuntime::PatternBankRefreshStatus::Ready;
+}
+
+const PhraseRuntime::RuntimePatternEventBuffer&
+MiniAcid::activePatternRuntimeEvents(int synthIndex) const {
+  if (synthIndex < 0 || synthIndex >= NUM_303_VOICES) {
+    return patternRuntimeBank_.empty();
+  }
+  const int bankIndex = current303BankIndex(synthIndex);
+  const int patternIndex = current303PatternIndex(synthIndex);
+  if (bankIndex < 0 || bankIndex >= kBankCount ||
+      patternIndex < 0 || patternIndex >= Bank<SynthPattern>::kPatterns) {
+    return patternRuntimeBank_.empty();
+  }
+  return patternRuntimeBank_.selectForPage(
+      currentPageIndex(),
+      static_cast<uint8_t>(synthIndex),
+      static_cast<uint8_t>(bankIndex),
+      static_cast<uint8_t>(patternIndex));
 }
 
 void MiniAcid::updateDrumReverbDecay(float value) {
