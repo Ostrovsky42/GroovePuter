@@ -34,14 +34,17 @@ jobs:
           python3 tools/p2_fix_executor_order.py
           python3 tools/p2_fix_source_step_mapping.py
           python3 tools/p2_fix_slide_compatibility.py
+          python3 tools/p2_fix_song_source_selection.py
           python3 tools/p2_fix_compact_budget_test.py
 
-      - name: Verify P2 and P1C before commit
+      - name: Verify P2, P1C, P0 compatibility, and full SDL before commit
         env:
           ASAN_OPTIONS: detect_leaks=0
         run: |
           bash tests/run_pattern_phrase_p2_tests.sh
           bash tests/run_pattern_phrase_p1c_tests.sh
+          bash tests/run_pattern_phrase_p2_p0_compatibility.sh
+          make -C platform_sdl clean all
           git diff --check
 
       - name: Commit verified executor slice
