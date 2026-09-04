@@ -55,6 +55,12 @@ build_suite() {
     tests/test_pattern_phrase_p2_page_identity.cpp \
     -o "$TMP/p2-page-$suffix"
   "$TMP/p2-page-$suffix"
+
+  "$cxx" "${CXXFLAGS[@]}" "${extra[@]}" \
+    "${COMMON_SRC[@]}" "${PATTERN_BANK_SRC[@]}" \
+    tests/test_pattern_phrase_p2_step_order.cpp \
+    -o "$TMP/p2-step-order-$suffix"
+  "$TMP/p2-step-order-$suffix"
 }
 
 build_suite g++ gcc | tee "$TMP/p2-gcc.out"
