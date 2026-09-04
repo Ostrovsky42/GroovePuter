@@ -21,6 +21,7 @@
 #include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
+#include "../phrase/runtime_pattern_event_bank.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
 #include "tape_fx.h"
@@ -187,6 +188,9 @@ public:
   void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
   void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
   void setCurrentPage(int8_t page) { currentPage_.store(page, std::memory_order_release); }
+  bool rebuildPatternRuntimeEventBank();
+  bool refreshPatternRuntimeEvents(int synthIndex, int bankIndex, int patternIndex);
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(int synthIndex) const;
   void requestPageSwitch(int pageIndex);
   int songLength() const;
   void setSongLength(int length);
@@ -443,6 +447,7 @@ private:
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
+  PhraseRuntime::RuntimePatternEventBank patternRuntimeBank_;
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};

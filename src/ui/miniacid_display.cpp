@@ -881,16 +881,28 @@ void MiniAcidDisplay::handlePaging_() {
             result = PageSwitchResult::SaveCurrentFailed;
         } else if (PatternPagingService::pageExists(target)) {
             if (PatternPagingService::loadPage(target, scene)) {
-                mini_acid_.setCurrentPage(target);
-                result = PageSwitchResult::Switched;
+                if (mini_acid_.rebuildPatternRuntimeEventBank()) {
+                    mini_acid_.setCurrentPage(target);
+                    result = PageSwitchResult::Switched;
+                } else if (PatternPagingService::loadPage(current, scene)) {
+                    result = PageSwitchResult::LoadTargetFailed;
+                } else {
+                    result = PageSwitchResult::RollbackFailed;
+                }
             } else {
                 result = PageSwitchResult::LoadTargetFailed;
             }
         } else {
             PatternPagingService::initializeEmptyPage(scene);
             if (PatternPagingService::savePage(target, scene)) {
-                mini_acid_.setCurrentPage(target);
-                result = PageSwitchResult::Created;
+                if (mini_acid_.rebuildPatternRuntimeEventBank()) {
+                    mini_acid_.setCurrentPage(target);
+                    result = PageSwitchResult::Created;
+                } else if (PatternPagingService::loadPage(current, scene)) {
+                    result = PageSwitchResult::CreateTargetFailed;
+                } else {
+                    result = PageSwitchResult::RollbackFailed;
+                }
             } else if (PatternPagingService::loadPage(current, scene)) {
                 result = PageSwitchResult::CreateTargetFailed;
             } else {
