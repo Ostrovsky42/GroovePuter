@@ -13,6 +13,20 @@ jobs:
         with:
           ref: tmp/p2-prepared-source-materialize-20260904
           fetch-depth: 0
+      - name: Wire SDL projector source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("platform_sdl/Makefile")
+          text = path.read_text(encoding="utf-8")
+          needle = "\t../src/dsp/advanced_pattern_generator.cpp \\\n"
+          replacement = needle + "\t../src/phrase/runtime_synth_events.cpp \\\n"
+          if needle not in text:
+              raise SystemExit("SDL source anchor missing")
+          if "../src/phrase/runtime_synth_events.cpp" in text:
+              raise SystemExit("SDL projector source already present")
+          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          PY
       - name: Apply patch
         run: python3 tools/p2_apply_prepared_source.py
       - name: Install focused-test dependencies
@@ -30,6 +44,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp src/ui/pages/pattern_edit_page.h src/ui/pages/pattern_edit_page_legacy.h src/ui/pages/pattern_edit_page.cpp src/ui/pages/synth_sequencer_page.cpp src/ui/pages/feel_page.cpp src/ui/miniacid_display.cpp
+          git add platform_sdl/Makefile src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp src/ui/pages/pattern_edit_page.h src/ui/pages/pattern_edit_page_legacy.h src/ui/pages/pattern_edit_page.cpp src/ui/pages/synth_sequencer_page.cpp src/ui/pages/feel_page.cpp src/ui/miniacid_display.cpp
           git commit -m "feat: publish resident P2 prepared Pattern bank"
           git push origin HEAD:tmp/p2-prepared-source-materialize-20260904
