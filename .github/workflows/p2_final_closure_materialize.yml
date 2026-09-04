@@ -22,6 +22,16 @@ jobs:
           ref: feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
           fetch-depth: 0
 
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
       - name: Normalize temporary candidate patcher
         run: |
           python3 - <<'PY'
