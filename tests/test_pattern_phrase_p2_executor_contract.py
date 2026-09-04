@@ -15,7 +15,7 @@ def read(path: str) -> str:
 
 def between(text: str, start: str, end: str) -> str:
     begin = text.index(start)
-    finish = text.index(end, begin)
+    finish = text.index(end, begin + len(start))
     return text[begin:finish]
 
 
@@ -62,8 +62,10 @@ require("activePatternRuntimeEvents" in fill_snapshot,
 apply_persistent = between(generation_owner,
                            "inline void applyPreparedGenerationPersistent",
                            "inline void activatePreparedGenerationRuntime")
+require("rebuildPatternRuntimeEventBank" in apply_persistent,
+        "FULL generation COMMIT does not rebuild resident projections after swing change")
 require("refreshPatternRuntimeEvents" in apply_persistent,
-        "generation persistent COMMIT does not refresh newly committed resident runtime slots")
+        "synth-only generation COMMIT does not refresh its resident runtime slot")
 
 require("pendingAudibleSynthRuntime" in generation_owner,
         "existing pending owner lacks a prepared runtime-event accessor")
@@ -123,7 +125,7 @@ require("activeSynthPattern" not in trigger,
 # One action consumer fans a single owner decision out to both backends.
 consumer = between(engine,
                    "void MiniAcid::consumePatternPlaybackActions_",
-                   "void MiniAcid::")
+                   "uint32_t MiniAcid::currentAbsoluteSubtick_")
 for required in (
     "RuntimeSynthPlaybackActionType::Start",
     "RuntimeSynthPlaybackActionType::Release",
@@ -172,6 +174,20 @@ for forbidden in (
 ):
     require(forbidden not in trigger,
             "legacy gate countdown still owns onset/TIE lifetime after P2 cutover")
+
+# Natural expiry is evaluated from the existing Q32.32 transport phase at
+# runtime-event subtick precision; P2 must not introduce another scheduler.
+for required in (
+    "currentAbsoluteSubtick_",
+    "releaseDue",
+    "consumePatternPlaybackActions_",
+):
+    require(required in audio,
+            f"audio loop does not consume common runtime expiry: {required}")
+require("tickPhaseAccum_" in between(engine,
+                                     "uint32_t MiniAcid::currentAbsoluteSubtick_",
+                                     "void MiniAcid::triggerSynthStep_"),
+        "subtick lifetime clock is not derived from the existing transport phase")
 
 # Legacy RETRIG counters may still schedule the boundary during this first
 # executor commit, but they must route through RuntimeSynthPlaybackState and the
