@@ -143,9 +143,8 @@ jobs:
               "  }\n"
               "}\n",
               "void MiniAcid::hardBarrierPatternPlayback_(int synthIdx) {\n"
-              "  const int idx = clamp303Voice(synthIdx);\n"
-              "  const auto actions = patternPlaybackState_[idx].hardBarrier();\n"
-              "  consumePatternPlaybackActions_(idx, actions);\n"
+              "  const auto actions = patternPlaybackState_[synthIdx].hardBarrier();\n"
+              "  consumePatternPlaybackActions_(synthIdx, actions);\n"
               "}\n\n"
               "void MiniAcid::hardBarrierPatternPlayback_() {\n"
               "  for (int synth = 0; synth < NUM_303_VOICES; ++synth) {\n"
@@ -183,6 +182,71 @@ jobs:
               "  owner->barrierPatternRuntimeSourceTransition();\n"
               "  activatePreparedGenerationRuntime(*owner, pending);\n",
           )
+
+          stale_fixture = "tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py"
+          old_fixture = '''barrier = between(
+              ENGINE,
+              "void MiniAcid::hardBarrierPatternPlayback_()",
+              "void MiniAcid::cleanupLiveNotesForTransportBarrier_(",
+          )
+          require(
+              "patternPlaybackState_[synth].hardBarrier()" in barrier,
+              "RED #2: Pattern hard barrier does not ask RuntimeSynthPlaybackState for Release",
+          )
+          require(
+              "consumePatternPlaybackActions_" in barrier,
+              "RED #2: Pattern hard barrier bypasses common target-scoped action translation",
+          )
+          for forbidden in (
+              "publishPatternAllNotesOff_()",
+              "publishPatternNoteOff_(",
+              "synthVoices_[",
+              "gateCountdownA_",
+              "gateCountdownB_",
+              "patternOwnedMask_",
+          ):
+              require(
+                  forbidden not in barrier,
+                  f"RED #2: Pattern hard barrier retained a parallel backend/lifetime decision: {forbidden}",
+              )
+          '''
+          new_fixture = '''target_barrier = between(
+              ENGINE,
+              "void MiniAcid::hardBarrierPatternPlayback_(int synthIdx)",
+              "void MiniAcid::hardBarrierPatternPlayback_()",
+          )
+          require(
+              "patternPlaybackState_[synthIdx].hardBarrier()" in target_barrier,
+              "RED #2: target Pattern hard barrier does not ask RuntimeSynthPlaybackState for Release",
+          )
+          require(
+              "consumePatternPlaybackActions_(synthIdx" in target_barrier,
+              "RED #2: target Pattern hard barrier bypasses common action translation",
+          )
+
+          barrier = between(
+              ENGINE,
+              "void MiniAcid::hardBarrierPatternPlayback_()",
+              "void MiniAcid::cleanupLiveNotesForTransportBarrier_(",
+          )
+          require(
+              "hardBarrierPatternPlayback_(synth)" in barrier,
+              "RED #2: all-target Pattern hard barrier does not delegate to target owner barrier",
+          )
+          for forbidden in (
+              "publishPatternAllNotesOff_()",
+              "publishPatternNoteOff_(",
+              "synthVoices_[",
+              "gateCountdownA_",
+              "gateCountdownB_",
+              "patternOwnedMask_",
+          ):
+              require(
+                  forbidden not in target_barrier + barrier,
+                  f"RED #2: Pattern hard barrier retained a parallel backend/lifetime decision: {forbidden}",
+              )
+          '''
+          replace(stale_fixture, old_fixture, new_fixture)
           PY
           git diff --check
 
@@ -211,7 +275,8 @@ jobs:
           git add src/dsp/miniacid_engine.h \
                   src/dsp/miniacid_engine.cpp \
                   src/generation/migration/quantized_generation_undo_owner_impl.h \
+                  tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py \
                   .github/workflows/p3_lifecycle_materializer.yml
           git diff --cached --check
-          git commit -m "fix(p2): route lifecycle transitions through playback owner"
+          git commit -m "fix(p2): close lifecycle transitions through playback owner"
           git push origin HEAD:"${GITHUB_REF_NAME}"
