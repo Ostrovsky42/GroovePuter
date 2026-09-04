@@ -6,6 +6,7 @@ on:
       - feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
     paths:
       - 'tests/apply_p2_green2_patch.py'
+      - 'tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py'
       - '.github/workflows/p2_green2_candidate.yml'
   workflow_dispatch:
 
