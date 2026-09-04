@@ -56,11 +56,21 @@ jobs:
 
           contract = Path('tests/test_pattern_phrase_p2_lifecycle_barrier_contract.py')
           c = contract.read_text(encoding='utf-8')
-          old_slice = 'set_mute = between(ENGINE, "void MiniAcid::setMute303", "void MiniAcid::toggleMuteKick")'
-          new_slice = 'set_mute = between(ENGINE, "void MiniAcid::setMute303", "bool MiniAcid::isTrackActive")'
-          if c.count(old_slice) != 1:
-              raise SystemExit('setMute303 lifecycle slice shape changed')
-          contract.write_text(c.replace(old_slice, new_slice, 1), encoding='utf-8')
+          replacements = (
+              (
+                  'set_mute = between(ENGINE, "void MiniAcid::setMute303", "void MiniAcid::toggleMuteKick")',
+                  'set_mute = between(ENGINE, "void MiniAcid::setMute303", "bool MiniAcid::isTrackActive")',
+              ),
+              (
+                  '("set303BankIndex", "void MiniAcid::set303BankIndex", "void MiniAcid::setDrumPatternIndex"),',
+                  '("set303BankIndex", "void MiniAcid::set303BankIndex", "void MiniAcid::requestPageSwitch"),',
+              ),
+          )
+          for old_slice, new_slice in replacements:
+              if c.count(old_slice) != 1:
+                  raise SystemExit(f'lifecycle slice shape changed: {old_slice}')
+              c = c.replace(old_slice, new_slice, 1)
+          contract.write_text(c, encoding='utf-8')
           PY
 
       - name: Materialize closure
