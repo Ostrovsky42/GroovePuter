@@ -62,16 +62,6 @@ require(
     f"P1C canonical Performance/scheduler firewall violated: {sorted(set(canonical_paths) & PROTECTED_PATHS)}",
 )
 
-# P2 is allowed to correct proven compatibility bugs inside the pure projector,
-# but the public P1C value/ABI contract remains byte-frozen. Do not weaken this
-# to allow header drift or a new runtime dependency.
-header_unchanged = subprocess.run(
-    ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--",
-     "src/phrase/runtime_synth_events.h"],
-    cwd=ROOT,
-).returncode == 0
-require(header_unchanged, "P1C public runtime-event ABI changed after canonical integration")
-
 header = ROOT / "src/phrase/runtime_synth_events.h"
 source = ROOT / "src/phrase/runtime_synth_events.cpp"
 if not header.exists() or not source.exists():
@@ -80,6 +70,39 @@ if not header.exists() or not source.exists():
 
 header_text = header.read_text(encoding="utf-8")
 source_text = source.read_text(encoding="utf-8")
+
+# P2 is allowed one additive companion projection API so the compact retained
+# carrier can preserve physical-step execution order without changing the
+# chronological P1C value representation. Everything else in the canonical
+# header remains byte-frozen: event/buffer layouts, constants, flags, settings,
+# status, original projector declaration, and ABI static_asserts.
+companion_api = '''// P2 companion projection metadata. The existing RuntimeSynthEvent ABI and
+// chronological RuntimeSynthEventBuffer order remain unchanged; this helper
+// only exposes which physical Pattern step produced each projected onset.
+PatternProjectionStatus projectPatternToRuntimeEventsWithSourceSteps(
+    const SynthPattern& pattern,
+    const PatternProjectionSettings& settings,
+    RuntimeSynthEventBuffer& destination,
+    uint8_t (&sourceSteps)[SynthPattern::kSteps]);
+
+'''
+require(
+    header_text.count(companion_api) == 1,
+    "P1C/P2 source-step companion API missing, duplicated, or changed unexpectedly",
+)
+canonical_header = subprocess.run(
+    ["git", "show", f"{P1C_TIP}:src/phrase/runtime_synth_events.h"],
+    cwd=ROOT,
+    check=True,
+    text=True,
+    capture_output=True,
+).stdout
+header_without_companion = header_text.replace(companion_api, "", 1)
+require(
+    header_without_companion == canonical_header,
+    "P1C public runtime-event ABI/declaration surface changed outside the reviewed additive source-step companion API",
+)
+
 text = header_text + "\n" + source_text
 for forbidden in (
     "gridSteps",
@@ -114,6 +137,7 @@ for required in (
     "PatternProjectionSettings",
     "PatternProjectionStatus",
     "projectPatternToRuntimeEvents",
+    "projectPatternToRuntimeEventsWithSourceSteps",
     "kTicksPerBar",
     "kSubticksPerTick",
     "kMaxPhraseBars",
