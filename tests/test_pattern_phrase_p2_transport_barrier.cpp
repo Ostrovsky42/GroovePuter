@@ -26,6 +26,10 @@ void expect(bool condition, const char* caseName, const char* message) {
   ++g_failures;
 }
 
+float readEnginePhase(void* context) {
+  return static_cast<MiniAcid*>(context)->transportPhaseSteps();
+}
+
 MusicalEventTarget targetForSynth(int synth) {
   return synth == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB;
 }
@@ -63,6 +67,7 @@ struct Fixture {
     engine.setCurrentPage(
         static_cast<int8_t>(PatternPagingService::activePageIndex()));
     engine.setPatternEventQueue(&queue);
+    queue.setPhaseReader(readEnginePhase, &engine);
   }
 
   bool noteHeld(int synth) const {
@@ -139,16 +144,17 @@ void startPattern(Fixture& f, int synth, uint8_t note) {
   if (onset.count(MusicalEventType::NoteOn, target) != 1 ||
       !f.engine.patternPlaybackState_[synth].active() ||
       !f.engine.patternOwnsInternalSynth(synth) || !f.noteHeld(synth)) {
-    std::fprintf(stderr, "fixture setup failed: Pattern onset\n");
+    std::fprintf(stderr,
+                 "fixture setup failed: Pattern onset noteOn=%zu active=%d owner=%d held=%d\n",
+                 onset.count(MusicalEventType::NoteOn, target),
+                 f.engine.patternPlaybackState_[synth].active() ? 1 : 0,
+                 f.engine.patternOwnsInternalSynth(synth) ? 1 : 0,
+                 f.noteHeld(synth) ? 1 : 0);
     std::abort();
   }
 }
 
 enum class BarrierKind : uint8_t { Stop, Pause };
-
-const char* barrierName(BarrierKind kind) {
-  return kind == BarrierKind::Stop ? "STOP" : "PAUSE";
-}
 
 BarrierTrace invokeBarrier(Fixture& f, BarrierKind kind) {
   f.beginBlock();
@@ -244,8 +250,6 @@ void casePatternSuppressesLive(BarrierKind kind, int synth) {
   expect(trace.count(MusicalEventType::AllNotesOff, target) == 0, name,
          "Pattern Release used panic/global cleanup");
 
-  // A late physical key-up for the already-cleared candidate must remain a
-  // no-op and must never recreate the suppressed note.
   f.engine.liveNoteOff(synth, liveNote);
   expect(f.engine.liveNote(synth) == -1 && !f.noteHeld(synth), name,
          "released suppressed live candidate resurrected after late NoteOff");
