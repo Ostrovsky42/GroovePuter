@@ -94,9 +94,8 @@ require("refreshPatternRuntimeEvents" in stopped_generate,
 
 # Physical page publication is failure-atomic: a loaded/created resident Scene
 # must have its whole compact bank prepared before currentPage identity changes.
-paging = between(display,
-                 "void MiniAcidDisplay::handlePaging_",
-                 "void MiniAcidDisplay::handleEvent")
+paging_start = display.index("void MiniAcidDisplay::handlePaging_")
+paging = display[paging_start:]
 require(paging.count("rebuildPatternRuntimeEventBank(target)") >= 2,
         "page switch/create paths must rebuild prepared bank before publication")
 for marker in ("PageSwitchResult::Switched", "PageSwitchResult::Created"):
