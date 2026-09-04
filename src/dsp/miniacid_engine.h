@@ -188,7 +188,8 @@ public:
   bool isPageLoading() const { return pageLoading_.load(std::memory_order_acquire); }
   void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
   void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
-  void setCurrentPage(int8_t page) { currentPage_.store(page, std::memory_order_release); }
+  void setCurrentPage(int8_t page);
+  void barrierPatternRuntimeSourceTransition();
   bool rebuildPatternRuntimeEventBank();
   bool refreshPatternRuntimeEvents(int synthIndex, int bankIndex, int patternIndex);
   const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(int synthIndex) const;
@@ -372,6 +373,7 @@ private:
   void consumePatternPlaybackActions_(
       int synthIdx,
       const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
+  void hardBarrierPatternPlayback_(int synthIdx);
   void hardBarrierPatternPlayback_();
   void cleanupLiveNotesForTransportBarrier_(uint8_t patternAuthorityAtEntry);
   uint32_t currentAbsoluteSubtick_() const;

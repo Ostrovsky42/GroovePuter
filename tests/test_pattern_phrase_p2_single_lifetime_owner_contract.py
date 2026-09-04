@@ -102,18 +102,28 @@ require(
     "RED #2: barrier-local live cleanup is declared but not implemented",
 )
 
+target_barrier = between(
+    ENGINE,
+    "void MiniAcid::hardBarrierPatternPlayback_(int synthIdx)",
+    "void MiniAcid::hardBarrierPatternPlayback_()",
+)
+require(
+    "patternPlaybackState_[synthIdx].hardBarrier()" in target_barrier,
+    "RED #2: target Pattern hard barrier does not ask RuntimeSynthPlaybackState for Release",
+)
+require(
+    "consumePatternPlaybackActions_(synthIdx" in target_barrier,
+    "RED #2: target Pattern hard barrier bypasses common action translation",
+)
+
 barrier = between(
     ENGINE,
     "void MiniAcid::hardBarrierPatternPlayback_()",
     "void MiniAcid::cleanupLiveNotesForTransportBarrier_(",
 )
 require(
-    "patternPlaybackState_[synth].hardBarrier()" in barrier,
-    "RED #2: Pattern hard barrier does not ask RuntimeSynthPlaybackState for Release",
-)
-require(
-    "consumePatternPlaybackActions_" in barrier,
-    "RED #2: Pattern hard barrier bypasses common target-scoped action translation",
+    "hardBarrierPatternPlayback_(synth)" in barrier,
+    "RED #2: all-target Pattern hard barrier does not delegate to target owner barrier",
 )
 for forbidden in (
     "publishPatternAllNotesOff_()",
@@ -124,7 +134,7 @@ for forbidden in (
     "patternOwnedMask_",
 ):
     require(
-        forbidden not in barrier,
+        forbidden not in target_barrier + barrier,
         f"RED #2: Pattern hard barrier retained a parallel backend/lifetime decision: {forbidden}",
     )
 

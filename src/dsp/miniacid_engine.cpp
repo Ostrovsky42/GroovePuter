@@ -916,7 +916,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
   songBarIndex_ = -1;
-  if (playing) publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   if (enabled) {
     patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
     patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
@@ -1167,8 +1167,13 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
     return;
   }
 
-  if (playing) publishPatternNoteOff_(idx);
-  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  const uint8_t patternAuthorityAtEntry =
+      patternOwnedMask_.load(std::memory_order_acquire);
+  if ((patternAuthorityAtEntry & static_cast<uint8_t>(1u << idx)) != 0u) {
+    hardBarrierPatternPlayback_(idx);
+  } else if (synthVoices_[idx]) {
+    synthVoices_[idx]->release();
+  }
   liveNotes_[idx] = -1;
   ++liveInputEpoch_;
 
@@ -1275,7 +1280,7 @@ void MiniAcid::toggleMute303(int voiceIndex) {
     mute303_2 = !mute303_2;
     muted = mute303_2;
   }
-  if (muted) publishPatternNoteOff_(idx);
+  if (muted) hardBarrierPatternPlayback_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 void MiniAcid::toggleMuteKick() {
@@ -1315,7 +1320,7 @@ void MiniAcid::setMute303(int voiceIndex, bool muted) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) mute303 = muted;
   else mute303_2 = muted;
-  if (muted) publishPatternNoteOff_(idx);
+  if (muted) hardBarrierPatternPlayback_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 
@@ -1416,12 +1421,12 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
   if (next < 0) next = Bank<SynthPattern>::kPatterns - 1;
@@ -1431,8 +1436,13 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
+}
+
+void MiniAcid::setCurrentPage(int8_t page) {
+  hardBarrierPatternPlayback_();
+  currentPage_.store(page, std::memory_order_release);
 }
 
 void MiniAcid::requestPageSwitch(int pageIndex) {
@@ -1709,7 +1719,7 @@ int MiniAcid::clampSongPosition(int position) const {
 
 void MiniAcid::applySongPositionSelection() {
   if (!songMode_) return;
-  if (playing) publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   songPlayheadPosition_ = pos;
@@ -2466,7 +2476,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   // Use the complete compiled genre profile. GrooveRecipe is a compact legacy
   // view and cannot represent pitch, articulation or microtiming parameters.
   const GenerativeParams& genreParams =
@@ -3617,11 +3627,19 @@ void MiniAcid::updateDrumReverbDecay(float value) {
   drumReverb.setDecay(value);
 }
 
+void MiniAcid::hardBarrierPatternPlayback_(int synthIdx) {
+  const auto actions = patternPlaybackState_[synthIdx].hardBarrier();
+  consumePatternPlaybackActions_(synthIdx, actions);
+}
+
 void MiniAcid::hardBarrierPatternPlayback_() {
   for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
-    const auto actions = patternPlaybackState_[synth].hardBarrier();
-    consumePatternPlaybackActions_(synth, actions);
+    hardBarrierPatternPlayback_(synth);
   }
+}
+
+void MiniAcid::barrierPatternRuntimeSourceTransition() {
+  hardBarrierPatternPlayback_();
 }
 
 void MiniAcid::cleanupLiveNotesForTransportBarrier_(

@@ -275,6 +275,7 @@ inline bool cancelPendingGenerationActivationForRevision(
           std::memory_order_acquire)) {
     return false;
   }
+  engine.barrierPatternRuntimeSourceTransition();
   int8_t expectedSlot = static_cast<int8_t>(slot);
   g_publishedSlot.compare_exchange_strong(
       expectedSlot, -1, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -302,6 +303,7 @@ inline bool cancelPendingGenerationActivation(MiniAcid& engine) {
           std::memory_order_acquire)) {
     return false;
   }
+  engine.barrierPatternRuntimeSourceTransition();
   int8_t expectedSlot = static_cast<int8_t>(slot);
   g_publishedSlot.compare_exchange_strong(
       expectedSlot, -1, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -491,6 +493,7 @@ inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
   // ACTIVATE is runtime-only: release the old audible overlay and synchronize
   // deferred mode/BPM. No Scene write, revision, Undo publication, allocation,
   // filesystem access or generation occurs at BAR_START.
+  owner->barrierPatternRuntimeSourceTransition();
   activatePreparedGenerationRuntime(*owner, pending);
   g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
