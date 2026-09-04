@@ -24,15 +24,21 @@ def replace_once(path: Path, old: str, new: str) -> None:
 subprocess.run(["python3", "tests/apply_p2_task7_lifecycle_green.py"], cwd=ROOT, check=True)
 
 # 2. Retire the compatibility countdowns only after proving every remaining cpp use
-# is a plain assignment/reset. No reads, branches, decrements or scheduling logic may
-# be silently removed by this closure.
+# is a plain assignment/reset. Conditional prefixes are allowed, but the countdown
+# token itself must occur exactly once on the line and be the assignment target.
+# Reads, branches on the countdown, decrements, arithmetic or self-references fail closed.
 cpp = CPP.read_text(encoding="utf-8")
 for name in ("gateCountdownA_", "gateCountdownB_"):
     occurrences = [line for line in cpp.splitlines() if name in line]
     if not occurrences:
         raise SystemExit(f"expected remaining compatibility references for {name}")
+    assignment = re.compile(
+        r"\s*(?:(?:if\s*\([^;{}]*\)\s*)|(?:else\s+))?"
+        + re.escape(name)
+        + r"\s*=\s*[^;]+;\s*"
+    )
     for line in occurrences:
-        if re.fullmatch(r"\s*" + re.escape(name) + r"\s*=\s*[^;]+;\s*", line) is None:
+        if line.count(name) != 1 or assignment.fullmatch(line) is None:
             raise SystemExit(f"refusing to remove semantic {name} use: {line!r}")
     cpp = "\n".join(line for line in cpp.splitlines() if name not in line) + "\n"
 CPP.write_text(cpp, encoding="utf-8")
