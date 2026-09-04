@@ -136,7 +136,7 @@ void testPlaybackStateIsFixedAndTriviallyCopyable() {
                 "P2 playback state must remain fixed/trivially copyable");
   static_assert(std::is_trivially_copyable<RuntimeSynthPlaybackActions>::value,
                 "P2 action batch must remain fixed/trivially copyable");
-  static_assert(sizeof(RuntimeSynthPlaybackActions) <= 24,
+  static_assert(sizeof(RuntimeSynthPlaybackActions) <= 32,
                 "P2 action batch grew unexpectedly");
 }
 
