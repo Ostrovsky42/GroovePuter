@@ -36,6 +36,7 @@ jobs:
           python3 tools/p2_fix_slide_compatibility.py
           python3 tools/p2_fix_song_source_selection.py
           python3 tools/p2_fix_compact_budget_test.py
+          python3 tools/p2_fix_p0_fixture_include.py
 
       - name: Verify P2, P1C, P0 compatibility, and full SDL before commit
         env:
