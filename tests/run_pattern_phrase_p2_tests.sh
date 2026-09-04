@@ -16,6 +16,7 @@ fi
 printf '%s\n' 'P2 authoritative Gate-B base ancestry: PASS'
 
 python3 tests/test_pattern_phrase_p2_source_contract.py
+python3 tests/test_pattern_phrase_p2_executor_contract.py
 
 CXXFLAGS=(-std=c++20 -Wall -Wextra -Werror -I.)
 COMMON_SRC=(src/phrase/runtime_synth_events.cpp)
