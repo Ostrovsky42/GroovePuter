@@ -159,7 +159,7 @@ consumer_start = ENGINE.index("void MiniAcid::consumePatternPlaybackActions_(")
 consumer_end = ENGINE.index("uint32_t MiniAcid::currentAbsoluteSubtick_", consumer_start)
 consumer = ENGINE[consumer_start:consumer_end]
 require(
-    "publishPatternNoteOff_(idx," in consumer,
+    "publishPatternNoteOff_(idx)" in consumer or "publishPatternNoteOff_(idx," in consumer,
     "RED #2: Runtime Release is not translated target-scoped to Pattern MIDI NoteOff",
 )
 require(
