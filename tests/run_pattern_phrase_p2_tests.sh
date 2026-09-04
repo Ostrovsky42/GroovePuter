@@ -17,7 +17,17 @@ printf '%s\n' 'P2 authoritative Gate-B base ancestry: PASS'
 
 python3 tests/test_pattern_phrase_p2_source_contract.py
 python3 tests/test_pattern_phrase_p2_executor_contract.py
-python3 tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py
+
+# RED/GREEN #2 intentionally runs behavioral and structural evidence even when
+# one fails so the CI log shows the complete STOP/PAUSE ownership boundary.
+transport_status=0
+bash tests/run_pattern_phrase_p2_transport_barrier.sh || transport_status=$?
+owner_contract_status=0
+python3 tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py || owner_contract_status=$?
+if (( transport_status != 0 || owner_contract_status != 0 )); then
+  echo "P2 STOP/PAUSE ownership cutover is not GREEN" >&2
+  exit 1
+fi
 
 CXXFLAGS=(-std=c++20 -Wall -Wextra -Werror -I.)
 COMMON_SRC=(src/phrase/runtime_synth_events.cpp)

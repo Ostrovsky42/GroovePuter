@@ -15,7 +15,7 @@ on:
       - 'src/generation/**'
       - 'src/ui/**'
       - 'tests/test_pattern_phrase_p2_*'
-      - 'tests/run_pattern_phrase_p2_tests.sh'
+      - 'tests/run_pattern_phrase_p2_*'
       - 'docs/contracts/0_9_10_PATTERN_PHRASE_P2_COMMON_RUNTIME_PLAYBACK.md'
       - 'docs/superpowers/plans/2026-09-04-pattern-phrase-p2-common-runtime-playback.md'
       - '.github/workflows/0_9_10_pattern_phrase_p2_common_runtime_playback.yml'
@@ -38,7 +38,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            clang
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
 
       - name: Run P2 focused gate
         env:
