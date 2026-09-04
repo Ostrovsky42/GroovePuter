@@ -31,12 +31,34 @@ fi
 
 BASE_FLAGS="-std=c++17 -I.. -I. -include bits/stdc++.h -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME"
 BIN="${BUILD_DIR}/pattern_phrase_p2_transport_barrier"
+OUT="${BUILD_DIR}/behavior.out"
 
 (
   cd "${SDL_DIR}"
   g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
     ${RUNTIME_SOURCES} ${SDL_LIBS} ${SDL_GFX_LIBS} -o "${BIN}"
-  "${BIN}"
 )
+
+set +e
+"${BIN}" >"${OUT}" 2>&1
+status=$?
+set -e
+cat "${OUT}"
+
+if (( status != 0 )); then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      printf '%s\n' '### P2 STOP/PAUSE behavioral RED'
+      printf '%s\n' '```text'
+      cat "${OUT}"
+      printf '%s\n' '```'
+    } >> "${GITHUB_STEP_SUMMARY}"
+  fi
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] || continue
+    printf '::error title=P2 STOP/PAUSE behavioral RED::%s\n' "${line}"
+  done < "${OUT}"
+  exit "${status}"
+fi
 
 printf '%s\n' 'PATTERN/PHRASE P2 STOP/PAUSE transport barrier behavior: PASS'
