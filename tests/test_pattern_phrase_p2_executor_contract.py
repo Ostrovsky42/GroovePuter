@@ -95,12 +95,30 @@ sequencer = between(engine,
                     "void MiniAcid::generateAudioBuffer")
 require("activePatternRuntimeEvents" in sequencer,
         "sequencer does not consume prepared immutable Pattern events")
+require("eventForSourceStep" in sequencer,
+        "sequencer lost physical source-step identity needed for legacy RNG order")
 for forbidden in (
     "activeSynthPattern(0).steps",
     "activeSynthPattern(1).steps",
 ):
     require(forbidden not in sequencer,
             f"sequencer still schedules Synth PATTERN from mutable steps: {forbidden}")
+
+# Cross-role RNG order is part of accepted PATTERN behavior. Keep the existing
+# physical-step scan and A -> B -> drums trigger order while replacing only the
+# material/lifetime source. Do not batch all A events before B/drums.
+for required in (
+    "for (int sIdx = nominalStep - 1; sIdx <= nominalStep + 1; ++sIdx)",
+    "triggerSynthStep_(0",
+    "triggerSynthStep_(1",
+    "triggerDrumVoice_",
+):
+    require(required in sequencer,
+            f"legacy source-step trigger ordering token missing: {required}")
+require(sequencer.index("triggerSynthStep_(0") <
+        sequencer.index("triggerSynthStep_(1") <
+        sequencer.index("triggerDrumVoice_"),
+        "PATTERN executor changed legacy A -> B -> drums trigger/RNG ordering")
 
 # Onset acceptance keeps the legacy RNG order: ghost first, then probability.
 # Projection remains deterministic; only runtime can call rand().
@@ -110,14 +128,14 @@ trigger = between(engine,
 for required in (
     "RuntimeSynthEvent",
     "kEventGhost",
-    "probability",
+    "event.probability",
     "rand()",
     "acceptOnset",
     "consumePatternPlaybackActions_",
 ):
     require(required in trigger,
             f"executor onset path missing runtime-event ownership token: {required}")
-require(trigger.index("kEventGhost") < trigger.index("probability"),
+require(trigger.index("kEventGhost") < trigger.index("event.probability"),
         "runtime onset decision must preserve ghost -> probability order")
 require("activeSynthPattern" not in trigger,
         "executor onset still reads mutable SynthPattern material")
