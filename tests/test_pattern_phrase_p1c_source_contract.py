@@ -62,12 +62,15 @@ require(
     f"P1C canonical Performance/scheduler firewall violated: {sorted(set(canonical_paths) & PROTECTED_PATHS)}",
 )
 
-for path in sorted(ALLOWED_PRODUCTION):
-    unchanged = subprocess.run(
-        ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--", path],
-        cwd=ROOT,
-    ).returncode == 0
-    require(unchanged, f"P1C representation changed after canonical integration: {path}")
+# P2 is allowed to correct proven compatibility bugs inside the pure projector,
+# but the public P1C value/ABI contract remains byte-frozen. Do not weaken this
+# to allow header drift or a new runtime dependency.
+header_unchanged = subprocess.run(
+    ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--",
+     "src/phrase/runtime_synth_events.h"],
+    cwd=ROOT,
+).returncode == 0
+require(header_unchanged, "P1C public runtime-event ABI changed after canonical integration")
 
 header = ROOT / "src/phrase/runtime_synth_events.h"
 source = ROOT / "src/phrase/runtime_synth_events.cpp"
@@ -75,7 +78,9 @@ if not header.exists() or not source.exists():
     print("P1C source contract: pre-implementation RED (runtime files absent)")
     raise SystemExit(0)
 
-text = header.read_text(encoding="utf-8") + "\n" + source.read_text(encoding="utf-8")
+header_text = header.read_text(encoding="utf-8")
+source_text = source.read_text(encoding="utf-8")
+text = header_text + "\n" + source_text
 for forbidden in (
     "gridSteps",
     "AudioMutationGate",
@@ -93,6 +98,16 @@ for forbidden in (
 ):
     require(forbidden not in text, f"forbidden P1C dependency/token: {forbidden}")
 
+# Projection remains deterministic/pure. Runtime owns ghost/probability RNG;
+# the projector may only classify whether a future onset is guaranteed.
+for forbidden in (
+    "rand(",
+    "random(",
+    "esp_random",
+):
+    require(forbidden not in source_text,
+            f"P1C/P2 projector must not consume runtime RNG: {forbidden}")
+
 for required in (
     "RuntimeSynthEvent",
     "RuntimeSynthEventBuffer",
@@ -105,5 +120,23 @@ for required in (
     "kMaxSynthEvents",
 ):
     require(required in text, f"missing P1C contract token: {required}")
+
+# If P2 has changed the canonical projector implementation, pin the reviewed
+# compatibility rule rather than allowing arbitrary implementation drift.
+source_changed = subprocess.run(
+    ["git", "diff", "--quiet", P1C_TIP, "HEAD", "--",
+     "src/phrase/runtime_synth_events.cpp"],
+    cwd=ROOT,
+).returncode != 0
+if source_changed:
+    for required in (
+        "isGuaranteedOnset",
+        "!step.ghost",
+        "step.probability >= 100",
+        "if (tokenTime >= end) break;",
+        "if (tokenTime > end) break;",
+    ):
+        require(required in source_text,
+                f"missing reviewed P2 conditional-lifetime compatibility rule: {required}")
 
 print("P1C source contract: OK")
