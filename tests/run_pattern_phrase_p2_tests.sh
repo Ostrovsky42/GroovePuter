@@ -15,38 +15,49 @@ if [[ "$(git merge-base HEAD "$BASE_SHA")" != "$BASE_SHA" ]]; then
 fi
 printf '%s\n' 'P2 authoritative Gate-B base ancestry: PASS'
 
-TEST_SRC="tests/test_pattern_phrase_p2_runtime_playback.cpp"
-OWNER_SRC=()
-if [[ -f src/phrase/runtime_synth_playback.cpp ]]; then
-  OWNER_SRC+=(src/phrase/runtime_synth_playback.cpp)
-fi
-OWNER_SRC+=(src/phrase/runtime_synth_events.cpp)
 CXXFLAGS=(-std=c++20 -Wall -Wextra -Werror -I.)
+COMMON_SRC=(src/phrase/runtime_synth_events.cpp)
+PLAYBACK_SRC=(src/phrase/runtime_synth_playback.cpp)
+PATTERN_BANK_SRC=()
+if [[ -f src/phrase/runtime_pattern_event_bank.cpp ]]; then
+  PATTERN_BANK_SRC+=(src/phrase/runtime_pattern_event_bank.cpp)
+fi
 
-build_and_run() {
+build_suite() {
   local cxx="$1"
-  local output="$2"
+  local suffix="$2"
   shift 2
-  "$cxx" "${CXXFLAGS[@]}" "$@" "${OWNER_SRC[@]}" "$TEST_SRC" -o "$output"
-  "$output"
+  local extra=("$@")
+
+  "$cxx" "${CXXFLAGS[@]}" "${extra[@]}" \
+    "${COMMON_SRC[@]}" "${PLAYBACK_SRC[@]}" \
+    tests/test_pattern_phrase_p2_runtime_playback.cpp \
+    -o "$TMP/p2-playback-$suffix"
+  "$TMP/p2-playback-$suffix"
+
+  "$cxx" "${CXXFLAGS[@]}" "${extra[@]}" \
+    "${COMMON_SRC[@]}" "${PATTERN_BANK_SRC[@]}" \
+    tests/test_pattern_phrase_p2_pattern_bank.cpp \
+    -o "$TMP/p2-bank-$suffix"
+  "$TMP/p2-bank-$suffix"
 }
 
-build_and_run g++ "$TMP/p2-gcc" | tee "$TMP/p2-gcc.out"
-"$TMP/p2-gcc" > "$TMP/p2-gcc-repeat.out"
+build_suite g++ gcc | tee "$TMP/p2-gcc.out"
+build_suite g++ gcc-repeat > "$TMP/p2-gcc-repeat.out"
 diff -u "$TMP/p2-gcc.out" "$TMP/p2-gcc-repeat.out"
 printf '%s\n' 'P2 deterministic GCC repeat: PASS'
 
 if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ "$TMP/p2-clang" > "$TMP/p2-clang.out"
+  build_suite clang++ clang > "$TMP/p2-clang.out"
   diff -u "$TMP/p2-gcc.out" "$TMP/p2-clang.out"
   printf '%s\n' 'P2 Clang parity: PASS'
 fi
 
-ASAN_OPTIONS=detect_leaks=0 build_and_run g++ "$TMP/p2-asan" \
+ASAN_OPTIONS=detect_leaks=0 build_suite g++ asan \
   -fsanitize=address -fno-omit-frame-pointer > /dev/null
 printf '%s\n' 'P2 ASan: PASS'
 
-build_and_run g++ "$TMP/p2-ubsan" \
+build_suite g++ ubsan \
   -fsanitize=undefined -fno-sanitize-recover=undefined > /dev/null
 printf '%s\n' 'P2 UBSan: PASS'
 
