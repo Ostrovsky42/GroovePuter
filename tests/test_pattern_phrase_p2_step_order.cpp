@@ -41,6 +41,8 @@ void testSourceStepLookupSurvivesTimingProjection() {
          PatternBankRefreshStatus::Ready);
   const RuntimePatternEventBuffer& compact = bank.select(0, 0, 0);
   assert(compact.count == 3);
+  assert(compact.onsetMask == static_cast<uint16_t>(
+      (1u << 0u) | (1u << 3u) | (1u << 15u)));
 
   const RuntimeSynthEvent* step0 = compact.eventForSourceStep(0);
   const RuntimeSynthEvent* step3 = compact.eventForSourceStep(3);
@@ -73,6 +75,7 @@ void testAllSixteenPhysicalOnsetsRemainAddressable() {
          PatternBankRefreshStatus::Ready);
 
   const RuntimePatternEventBuffer& compact = bank.select(0, 0, 1);
+  assert(compact.onsetMask == 0xFFFFu);
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
     const RuntimeSynthEvent* event = compact.eventForSourceStep(step);
     assert(event != nullptr);
@@ -81,6 +84,9 @@ void testAllSixteenPhysicalOnsetsRemainAddressable() {
 }
 
 void testOrderingMetadataKeepsCompactBudget() {
+  static_assert(sizeof(decltype(RuntimePatternEventBuffer{}.onsetMask)) ==
+                    sizeof(uint16_t),
+                "physical onset identity must remain exactly 16 bits");
   static_assert(sizeof(RuntimePatternEventBuffer) <= 164,
                 "source-step ordering metadata grew Pattern carrier too far");
   static_assert(sizeof(RuntimePatternEventBank) <= 5500,

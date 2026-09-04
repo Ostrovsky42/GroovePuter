@@ -52,7 +52,7 @@ void testCompactCarrierBudgetAndAbi() {
                 "retained Pattern bank must remain trivially copyable");
   static_assert(kPatternRuntimeMaxEvents == SynthPattern::kSteps,
                 "physical Pattern retained capacity must stay at 16 events");
-  static_assert(sizeof(RuntimePatternEventBuffer) <= 162,
+  static_assert(sizeof(RuntimePatternEventBuffer) <= 164,
                 "compact Pattern carrier unexpectedly grew");
   static_assert(sizeof(RuntimePatternEventBank) <= 5500,
                 "retained Pattern bank exceeds P2 fixed-memory budget");

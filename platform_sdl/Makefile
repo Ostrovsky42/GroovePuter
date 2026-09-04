@@ -47,7 +47,7 @@ SOURCES := \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
-	../src/phrase/runtime_synth_events.cpp \
+	../src/phrase/runtime_synth_events.cpp ../src/phrase/runtime_synth_playback.cpp \
 	../src/generation/generation_context.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \

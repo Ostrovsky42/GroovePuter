@@ -14,8 +14,25 @@ constexpr int8_t kInvalidPatternRuntimePage = -1;
 struct RuntimePatternEventBuffer {
   RuntimeSynthEvent events[kPatternRuntimeMaxEvents]{};
   uint8_t count = 0;
+  uint16_t onsetMask = 0;
 
   constexpr uint16_t lengthTicks() const { return kTicksPerBar; }
+
+  const RuntimeSynthEvent* eventForSourceStep(uint8_t sourceStep) const {
+    if (sourceStep >= SynthPattern::kSteps ||
+        (onsetMask & static_cast<uint16_t>(1u << sourceStep)) == 0) {
+      return nullptr;
+    }
+    uint16_t preceding = sourceStep == 0
+        ? 0
+        : static_cast<uint16_t>(onsetMask & ((1u << sourceStep) - 1u));
+    uint8_t eventIndex = 0;
+    while (preceding != 0) {
+      eventIndex = static_cast<uint8_t>(eventIndex + (preceding & 1u));
+      preceding = static_cast<uint16_t>(preceding >> 1u);
+    }
+    return eventIndex < count ? &events[eventIndex] : nullptr;
+  }
 };
 
 enum class PatternBankRefreshStatus : uint8_t {
@@ -41,7 +58,9 @@ class RuntimePatternEventBank {
     }
 
     RuntimeSynthEventBuffer projected{};
-    if (projectPatternToRuntimeEvents(pattern, settings, projected) !=
+    uint8_t projectedSourceSteps[SynthPattern::kSteps]{};
+    if (projectPatternToRuntimeEventsWithSourceSteps(
+            pattern, settings, projected, projectedSourceSteps) !=
         PatternProjectionStatus::Ready) {
       return PatternBankRefreshStatus::ProjectionFailed;
     }
@@ -49,10 +68,27 @@ class RuntimePatternEventBank {
       return PatternBankRefreshStatus::ProjectionFailed;
     }
 
+    // P1C keeps chronological projected order. P2 compact retention needs
+    // physical source-step order so the executor can preserve legacy
+    // step -> Synth A -> Synth B -> drums RNG ordering without reading
+    // mutable SynthPattern material in AudioTask.
     RuntimePatternEventBuffer candidate{};
-    candidate.count = static_cast<uint8_t>(projected.count);
-    for (uint8_t i = 0; i < candidate.count; ++i) {
-      candidate.events[i] = projected.events[i];
+    for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
+      for (uint8_t projectedIndex = 0;
+           projectedIndex < projected.count;
+           ++projectedIndex) {
+        if (projectedSourceSteps[projectedIndex] != step) continue;
+        if (candidate.count >= kPatternRuntimeMaxEvents) {
+          return PatternBankRefreshStatus::ProjectionFailed;
+        }
+        candidate.onsetMask = static_cast<uint16_t>(
+            candidate.onsetMask | static_cast<uint16_t>(1u << step));
+        candidate.events[candidate.count++] = projected.events[projectedIndex];
+        break;
+      }
+    }
+    if (candidate.count != projected.count) {
+      return PatternBankRefreshStatus::ProjectionFailed;
     }
 
     buffers_[synthIndex][bankIndex][patternIndex] = candidate;
@@ -115,7 +151,7 @@ static_assert(std::is_trivially_copyable<RuntimePatternEventBuffer>::value,
               "retained Pattern event buffer must remain trivially copyable");
 static_assert(std::is_trivially_copyable<RuntimePatternEventBank>::value,
               "retained Pattern event bank must remain trivially copyable");
-static_assert(sizeof(RuntimePatternEventBuffer) <= 162,
+static_assert(sizeof(RuntimePatternEventBuffer) <= 164,
               "retained Pattern event buffer exceeded its fixed budget");
 static_assert(sizeof(RuntimePatternEventBank) <= 5500,
               "retained Pattern event bank exceeded its fixed budget");
