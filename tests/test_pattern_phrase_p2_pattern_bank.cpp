@@ -34,15 +34,26 @@ void assertMatchesP1CProjection(const SynthPattern& pattern,
                                 const PatternProjectionSettings& settings,
                                 const RuntimePatternEventBuffer& compact) {
   RuntimeSynthEventBuffer reference{};
-  assert(projectPatternToRuntimeEvents(pattern, settings, reference) ==
+  uint8_t referenceSourceSteps[SynthPattern::kSteps]{};
+  assert(projectPatternToRuntimeEventsWithSourceSteps(
+             pattern, settings, reference, referenceSourceSteps) ==
          PatternProjectionStatus::Ready);
   assert(reference.count <= SynthPattern::kSteps);
   assert(compact.count == reference.count);
   assert(compact.lengthTicks() == kTicksPerBar);
-  for (uint8_t i = 0; i < compact.count; ++i) {
-    assert(std::memcmp(&compact.events[i], &reference.events[i],
+
+  uint16_t expectedMask = 0;
+  for (uint8_t i = 0; i < reference.count; ++i) {
+    const uint8_t sourceStep = referenceSourceSteps[i];
+    assert(sourceStep < SynthPattern::kSteps);
+    expectedMask = static_cast<uint16_t>(
+        expectedMask | static_cast<uint16_t>(1u << sourceStep));
+    const RuntimeSynthEvent* retained = compact.eventForSourceStep(sourceStep);
+    assert(retained != nullptr);
+    assert(std::memcmp(retained, &reference.events[i],
                        sizeof(RuntimeSynthEvent)) == 0);
   }
+  assert(compact.onsetMask == expectedMask);
 }
 
 void testCompactCarrierBudgetAndAbi() {
