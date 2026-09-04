@@ -1,0 +1,39 @@
+name: GF2-C2 Gate B materialized capacity
+
+on:
+  push:
+    branches:
+      - research/20260903-05-0.9.10-gf2-c2-gate-b-materialized-capacity
+  pull_request:
+    paths:
+      - 'tools/gf2_gate_b.py'
+      - 'tools/gf2/gf2_gate_b_finalize.py'
+      - 'tools/gf2/gf2_gate_b_dump.cpp'
+      - 'tests/test_gf2_gate_b_analysis.py'
+      - 'tests/test_gf2_gate_b_finalize.py'
+      - 'tests/run_gf2_gate_b_tests.sh'
+      - 'tests/run_gf2_gate_b_dump_tests.sh'
+      - 'tests/support/gf2_gate_b_*'
+      - 'docs/research/GF2_GATE_B_*'
+      - '.github/workflows/gf2-c2-gate-b.yml'
+  workflow_dispatch:
+
+jobs:
+  gate-b:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Final reporting semantics regression
+        run: python3 tests/test_gf2_gate_b_finalize.py
+      - name: Gate B strict artifact proof
+        run: bash tests/run_gf2_gate_b_tests.sh
+      - name: Upload strict proof artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-gate-b-generated
+          path: |
+            build/host-tests/gf2-gate-b/generated
+            build/host-tests/gf2-gate-b/raw.tsv
+          if-no-files-found: error
