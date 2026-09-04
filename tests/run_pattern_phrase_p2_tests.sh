@@ -36,6 +36,12 @@ build_suite() {
   "$TMP/p2-playback-$suffix"
 
   "$cxx" "${CXXFLAGS[@]}" "${extra[@]}" \
+    "${COMMON_SRC[@]}" \
+    tests/test_pattern_phrase_p2_conditional_expiry.cpp \
+    -o "$TMP/p2-expiry-$suffix"
+  "$TMP/p2-expiry-$suffix"
+
+  "$cxx" "${CXXFLAGS[@]}" "${extra[@]}" \
     "${COMMON_SRC[@]}" "${PATTERN_BANK_SRC[@]}" \
     tests/test_pattern_phrase_p2_pattern_bank.cpp \
     -o "$TMP/p2-bank-$suffix"
