@@ -17,16 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Verify exact parent
+      - name: Verify isolated materializer lineage
         shell: bash
         run: |
           set -euo pipefail
-          expected=026c5ab5a912c050a8e9205ad6faf3837d5e43ff
-          actual="$(git rev-parse HEAD^)"
-          test "$actual" = "$expected" || {
-            echo "Unexpected materializer parent: $actual" >&2
+          base=026c5ab5a912c050a8e9205ad6faf3837d5e43ff
+          git merge-base --is-ancestor "$base" HEAD
+          changed="$(git diff --name-only "$base"...HEAD)"
+          test "$changed" = ".github/workflows/p3_lifecycle_materializer.yml" || {
+            echo "Unexpected pre-materialization delta:" >&2
+            printf '%s\n' "$changed" >&2
             exit 1
           }
 
@@ -104,9 +106,10 @@ jobs:
               if nxt < 0:
                   nxt = len(text)
               body = text[start:nxt]
-              if body.count(old) != 1:
+              actual = body.count(old)
+              if actual != 1:
                   raise SystemExit(
-                      f"{signature}: expected one method-local occurrence, found {body.count(old)}"
+                      f"{signature}: expected one method-local occurrence, found {actual}"
                   )
               body = body.replace(old, new, 1)
               p.write_text(text[:start] + body + text[nxt:], encoding="utf-8")
@@ -182,6 +185,16 @@ jobs:
           )
           PY
           git diff --check
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
 
       - name: Verify inherited P2 focused gate
         env:
