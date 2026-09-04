@@ -52,8 +52,15 @@ jobs:
           if s.count(old_helper) != 1:
               raise SystemExit('target barrier candidate shape changed')
           s = s.replace(old_helper, new_helper, 1)
-
           p.write_text(s, encoding='utf-8')
+
+          contract = Path('tests/test_pattern_phrase_p2_lifecycle_barrier_contract.py')
+          c = contract.read_text(encoding='utf-8')
+          old_slice = 'set_mute = between(ENGINE, "void MiniAcid::setMute303", "void MiniAcid::toggleMuteKick")'
+          new_slice = 'set_mute = between(ENGINE, "void MiniAcid::setMute303", "bool MiniAcid::isTrackActive")'
+          if c.count(old_slice) != 1:
+              raise SystemExit('setMute303 lifecycle slice shape changed')
+          contract.write_text(c.replace(old_slice, new_slice, 1), encoding='utf-8')
           PY
 
       - name: Materialize closure
