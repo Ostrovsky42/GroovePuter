@@ -23,6 +23,7 @@ header = read("src/dsp/miniacid_engine.h")
 engine = read("src/dsp/miniacid_engine.cpp")
 generation_impl = read("src/generation/migration/quantized_generation_commit_impl.h")
 generation_owner = read("src/generation/migration/quantized_generation_undo_owner_impl.h")
+tb303 = read("src/dsp/mini_tb303.cpp")
 
 # EXEC-0: startup publication is a playback precondition, not a lazy repair.
 # Resident Scene truth is applied first, then the complete compact bank is
@@ -155,6 +156,23 @@ for required in (
 ):
     require(required in consumer,
             f"common action consumer missing backend fanout token: {required}")
+
+# TB303 slide is an existing musical contract, not an implementation detail.
+# Its legato decision is literally slideFlag && gate && isVoiceActive(). A
+# logical owner replacement still requires MIDI NoteOff -> NoteOn, but the
+# internal TB303 translation MUST NOT clear gate before startNote(slide=true).
+tb303_start = between(tb303,
+                      "void TB303Voice::startNote",
+                      "void TB303Voice::release")
+require("slideFlag && gate && isVoiceActive()" in tb303_start,
+        "TB303 legato-slide characterization changed unexpectedly")
+require("slideReplacement" in consumer,
+        "common consumer has no explicit legato-slide replacement translation")
+require("skipInternalRelease" in consumer,
+        "common consumer does not preserve internal gate for slide replacement")
+require("publishPatternNoteOff_" in consumer and
+        "publishPatternNoteOn_" in consumer,
+        "slide replacement must still close/reopen Pattern MIDI ownership")
 
 # RETRIG is one owner decision but must be observed by BOTH backends as the same
 # logical Release -> Start boundary. It must not extend the final lifetime.
