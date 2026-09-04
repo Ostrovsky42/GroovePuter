@@ -119,6 +119,57 @@ void testOrdinaryBarWrapIsNotABarrier() {
   assert(state.releaseDue(start + 32).count == 1);
 }
 
+void testRejectedConditionalOnsetDoesNotPreclipTiedLifetime() {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+  pattern.steps[0].note = 60;
+  pattern.steps[0].probability = 100;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = 64;
+  pattern.steps[2].probability = 0;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 2.0f;
+
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(pattern, settings, projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  assert(first.startTick == 0);
+  assert(conditional.startTick == 48);
+
+  const uint32_t conditionalStartSubtick =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+
+  // Legacy PATTERN semantics: the TIE extends the active gate. A later onset
+  // terminates it only after ghost/probability accepts that onset. Therefore a
+  // projected duration must not be pre-clipped merely because a conditional
+  // onset token exists at tick 48.
+  assert(first.durationSubticks > conditionalStartSubtick);
+
+  RuntimeSynthPlaybackState rejected{};
+  (void)rejected.acceptOnset(first, 0);
+  assert(rejected.releaseDue(conditionalStartSubtick).count == 0);
+  assert(rejected.active());
+
+  RuntimeSynthPlaybackState accepted{};
+  (void)accepted.acceptOnset(first, 0);
+  const auto replacement =
+      accepted.acceptOnset(conditional, conditionalStartSubtick);
+  assert(replacement.count == 2);
+  requireAction(replacement, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(replacement, 1, RuntimeSynthPlaybackActionType::Start, 64);
+}
+
 void testHardBarrierReleasesExactlyOnce() {
   RuntimeSynthPlaybackState state{};
   (void)state.acceptOnset(event(76, 512), 3000);
@@ -150,6 +201,7 @@ int main() {
   testRetriggerDoesNotExtendLifetime();
   testRetriggerWithoutActiveLifetimeIsIgnored();
   testOrdinaryBarWrapIsNotABarrier();
+  testRejectedConditionalOnsetDoesNotPreclipTiedLifetime();
   testHardBarrierReleasesExactlyOnce();
   testPlaybackStateIsFixedAndTriviallyCopyable();
   std::puts("PATTERN/PHRASE P2 runtime lifetime owner: PASS");
