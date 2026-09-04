@@ -29,7 +29,9 @@ jobs:
             pkg-config
 
       - name: Apply executor cutover patch
-        run: python3 tools/p2_apply_executor_cutover.py
+        run: |
+          python3 tools/p2_apply_executor_cutover.py
+          python3 tools/p2_fix_executor_order.py
 
       - name: Verify P2 and P1C before commit
         env:
@@ -44,6 +46,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
+            src/phrase/runtime_pattern_event_bank.h \
             src/dsp/miniacid_engine.h \
             src/dsp/miniacid_engine.cpp \
             src/generation/migration/quantized_generation_commit_impl.h \
