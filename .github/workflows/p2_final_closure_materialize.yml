@@ -22,23 +22,38 @@ jobs:
           ref: feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
           fetch-depth: 0
 
-      - name: Install host dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
-
-      - name: Normalize temporary candidate matcher
+      - name: Normalize temporary candidate patcher
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('tests/apply_p2_task7_lifecycle_green.py')
           s = p.read_text(encoding='utf-8')
-          old = '    if count != 1:\n        raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")\n'
-          new = '    if count < 1:\n        raise SystemExit(f"{path}: expected at least one match, found {count}: {old[:120]!r}")\n'
-          if s.count(old) != 1:
+
+          old_matcher = '    if count != 1:\n        raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")\n'
+          new_matcher = '    if count < 1:\n        raise SystemExit(f"{path}: expected at least one match, found {count}: {old[:120]!r}")\n'
+          if s.count(old_matcher) != 1:
               raise SystemExit('candidate matcher shape changed')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          s = s.replace(old_matcher, new_matcher, 1)
+
+          old_helper = (
+              '    "void MiniAcid::hardBarrierPatternPlayback_(int synthIdx) {\\n"\n'
+              '    "  const int idx = clamp303Voice(synthIdx);\\n"\n'
+              '    "  const auto actions = patternPlaybackState_[idx].hardBarrier();\\n"\n'
+              '    "  consumePatternPlaybackActions_(idx, actions);\\n"\n'
+              '    "}\\n\\n"\n'
+          )
+          new_helper = (
+              '    "void MiniAcid::hardBarrierPatternPlayback_(int synthIdx) {\\n"\n'
+              '    "  if (synthIdx < 0 || synthIdx >= NUM_303_VOICES) return;\\n"\n'
+              '    "  const auto actions = patternPlaybackState_[synthIdx].hardBarrier();\\n"\n'
+              '    "  consumePatternPlaybackActions_(synthIdx, actions);\\n"\n'
+              '    "}\\n\\n"\n'
+          )
+          if s.count(old_helper) != 1:
+              raise SystemExit('target barrier candidate shape changed')
+          s = s.replace(old_helper, new_helper, 1)
+
+          p.write_text(s, encoding='utf-8')
           PY
 
       - name: Materialize closure
