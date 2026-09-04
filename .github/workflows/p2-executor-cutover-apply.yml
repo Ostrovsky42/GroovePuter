@@ -1,0 +1,55 @@
+name: P2 executor cutover apply
+
+on:
+  push:
+    branches:
+      - tmp/p2-executor-cutover-20260904
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Apply executor cutover patch
+        run: python3 tools/p2_apply_executor_cutover.py
+
+      - name: Verify P2 and P1C before commit
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          bash tests/run_pattern_phrase_p2_tests.sh
+          bash tests/run_pattern_phrase_p1c_tests.sh
+          git diff --check
+
+      - name: Commit verified executor slice
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/dsp/miniacid_engine.h \
+            src/dsp/miniacid_engine.cpp \
+            src/generation/migration/quantized_generation_commit_impl.h \
+            src/generation/migration/quantized_generation_undo_owner_impl.h \
+            platform_sdl/Makefile \
+            tests/test_pattern_phrase_p0_source_contract.py \
+            tests/test_pattern_phrase_p0_runtime.cpp
+          git commit -m "feat: cut over Pattern playback to common runtime owner"
+          git push origin HEAD:tmp/p2-executor-cutover-20260904
