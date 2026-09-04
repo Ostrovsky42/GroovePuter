@@ -220,7 +220,7 @@ void caseLiveOnly(BarrierKind kind, int synth) {
 
 void casePatternSuppressesLive(BarrierKind kind, int synth) {
   Fixture f;
-  const uint8_t liveNote = static_cast<uint8_t>(72 + synth);
+  const uint8_t liveNote = static_cast<uint8_t>(68 + synth);
   const uint8_t patternNote = static_cast<uint8_t>(58 + synth);
   f.engine.liveNoteOn(synth, liveNote, 100);
   startPattern(f, synth, patternNote);
