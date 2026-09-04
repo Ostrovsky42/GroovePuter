@@ -1,8 +1,8 @@
-name: P2 prepared source apply
+name: P2 prepared source materialize temp
 on:
   push:
     branches:
-      - feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+      - tmp/p2-prepared-source-materialize-20260904
 permissions:
   contents: write
 jobs:
@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+          ref: tmp/p2-prepared-source-materialize-20260904
           fetch-depth: 0
       - name: Apply patch
         run: python3 tools/p2_apply_prepared_source.py
@@ -32,4 +32,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp src/ui/pages/pattern_edit_page.h src/ui/pages/pattern_edit_page_legacy.h src/ui/pages/pattern_edit_page.cpp src/ui/pages/synth_sequencer_page.cpp src/ui/pages/feel_page.cpp src/ui/miniacid_display.cpp
           git commit -m "feat: publish resident P2 prepared Pattern bank"
-          git push origin HEAD:feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+          git push origin HEAD:tmp/p2-prepared-source-materialize-20260904
