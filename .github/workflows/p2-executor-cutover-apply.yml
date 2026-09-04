@@ -32,6 +32,7 @@ jobs:
         run: |
           python3 tools/p2_apply_executor_cutover.py
           python3 tools/p2_fix_executor_order.py
+          python3 tools/p2_fix_compact_budget_test.py
 
       - name: Verify P2 and P1C before commit
         env:
