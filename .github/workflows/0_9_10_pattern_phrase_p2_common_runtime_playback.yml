@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+      - feature/20260904-02-0.9.10-pattern-phrase-p3-phrase-lifetime
   pull_request:
     paths:
       - 'src/phrase/runtime_synth_events.h'
