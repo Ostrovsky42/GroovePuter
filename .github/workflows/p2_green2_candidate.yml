@@ -1,0 +1,56 @@
+name: P2 GREEN2 candidate artifact
+
+on:
+  push:
+    branches:
+      - feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+    paths:
+      - 'tests/apply_p2_green2_patch.py'
+      - '.github/workflows/p2_green2_candidate.yml'
+  workflow_dispatch:
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply frozen GREEN #2 patch
+        run: |
+          set -euo pipefail
+          python3 tests/apply_p2_green2_patch.py
+          git diff --check
+          git status --short src/dsp/miniacid_engine.cpp src/dsp/miniacid_engine.h
+
+      - name: Install focused host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Prove bounded GREEN #2 candidate
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -euo pipefail
+          python3 tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py
+          bash tests/run_pattern_phrase_p2_transport_barrier.sh
+
+      - name: Stage candidate files
+        run: |
+          mkdir -p candidate/src/dsp
+          cp src/dsp/miniacid_engine.cpp candidate/src/dsp/
+          cp src/dsp/miniacid_engine.h candidate/src/dsp/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-green2-source-candidate
+          path: candidate/
+          if-no-files-found: error
