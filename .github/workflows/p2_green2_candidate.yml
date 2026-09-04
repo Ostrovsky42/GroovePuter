@@ -10,6 +10,9 @@ on:
       - '.github/workflows/p2_green2_candidate.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   candidate:
     runs-on: ubuntu-latest
@@ -44,14 +47,22 @@ jobs:
           python3 tests/test_pattern_phrase_p2_single_lifetime_owner_contract.py
           bash tests/run_pattern_phrase_p2_transport_barrier.sh
 
-      - name: Stage candidate files
+      - name: Publish proven GREEN #2 and remove candidate tooling
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
         run: |
-          mkdir -p candidate/src/dsp
-          cp src/dsp/miniacid_engine.cpp candidate/src/dsp/
-          cp src/dsp/miniacid_engine.h candidate/src/dsp/
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          if [ "${remote_head}" != "${EXPECTED_HEAD}" ]; then
+            echo "branch moved: expected ${EXPECTED_HEAD}, found ${remote_head}" >&2
+            exit 1
+          fi
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: p2-green2-source-candidate
-          path: candidate/
-          if-no-files-found: error
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add src/dsp/miniacid_engine.cpp src/dsp/miniacid_engine.h
+          git rm tests/apply_p2_green2_patch.py .github/workflows/p2_green2_candidate.yml
+          git diff --cached --check
+          git commit -m "fix: route STOP PAUSE through Pattern runtime owner"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
