@@ -21,7 +21,9 @@ def between(text: str, start: str, end: str) -> str:
 
 header = read("src/dsp/miniacid_engine.h")
 engine = read("src/dsp/miniacid_engine.cpp")
-pattern_page = read("src/ui/pages/pattern_edit_page.h")
+pattern_header = read("src/ui/pages/pattern_edit_page.h")
+pattern_page = read("src/ui/pages/pattern_edit_page.cpp")
+pattern_legacy = read("src/ui/pages/pattern_edit_page_legacy.h")
 synth_page = read("src/ui/pages/synth_sequencer_page.cpp")
 display = read("src/ui/miniacid_display.cpp")
 feel = read("src/ui/pages/feel_page.cpp")
@@ -69,7 +71,7 @@ for block_name, block in (("sequencer", sequencer), ("audio", audio)):
 # Manual Pattern COMMIT already has one bounded audio-guarded assignment. The
 # derived runtime slot must settle inside that same owner, not through per-key
 # hooks or a second publication queue.
-manual_commit = between(pattern_page,
+manual_commit = between(pattern_header,
                         "PatternMutationResult commitPatternMutation",
                         "template <typename PrepareFn>\n  bool commitSongMutation")
 require("restoreSynthPatternUndo(manager, prepared)" in manual_commit,
@@ -81,6 +83,29 @@ require(manual_commit.index("restoreSynthPatternUndo(manager, prepared)") <
         "runtime projection must be refreshed from committed Pattern truth")
 require("audio_guard_(apply)" in manual_commit,
         "manual Pattern settlement must stay inside existing audio guard")
+
+# Undo/Redo is another persistent Pattern mutation. Both the canonical Pattern
+# receipt and compact legacy Generation receipt must refresh the same derived
+# slot after exchange and inside the existing audio guard.
+pattern_undo = between(pattern_legacy,
+                       "case GROOVEPUTER_APP_EVENT_UNDO",
+                       "default:\n        return false;")
+require("exchangeSynthPatternUndo" in pattern_undo,
+        "canonical Pattern Undo exchange disappeared")
+require("refreshPatternRuntimeEvents" in pattern_undo,
+        "Pattern Undo/Redo leaves prepared runtime data stale")
+require(pattern_undo.index("exchangeSynthPatternUndo") <
+        pattern_undo.index("refreshPatternRuntimeEvents"),
+        "Pattern Undo must refresh from exchanged persistent truth")
+
+compact_generation_undo = between(
+    pattern_page,
+    "if (owner.kind() == UndoKind::Generation &&\n        owner.payloadSize() == sizeof(SynthPatternUndoPayload))",
+    "using GroovePuterUndo::PatternEdit::adjustFxParam")
+require("exchangeSynthPatternUndo" in compact_generation_undo,
+        "compact Generation Undo exchange disappeared")
+require("refreshPatternRuntimeEvents" in compact_generation_undo,
+        "compact Generation Undo leaves prepared runtime data stale")
 
 # The stopped Synth-page generate path is another canonical Pattern receipt
 # owner and must settle derived runtime data in the same guarded assignment.
