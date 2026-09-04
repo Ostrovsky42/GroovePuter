@@ -1,0 +1,60 @@
+name: P2 final closure materializer
+
+on:
+  push:
+    branches:
+      - feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+    paths:
+      - 'tests/finalize_p2_closure.py'
+      - '.github/workflows/p2_final_closure_materialize.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Materialize closure
+        run: python3 tests/finalize_p2_closure.py
+
+      - name: Verify focused closure before commit
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          python3 tests/test_pattern_phrase_p2_lifecycle_barrier_contract.py
+          python3 tests/test_pattern_phrase_p2_dead_legacy_release_contract.py
+          bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh
+          bash tests/run_pattern_phrase_p2_tests.sh
+          python3 tests/test_source_regressions.py
+          bash tests/run_gf2_i1_tests.sh
+          bash tests/run_pattern_phrase_p1c_tests.sh
+          git diff --check
+
+      - name: Publish production and firewall closure only
+        run: |
+          rm -f tests/finalize_p2_closure.py
+          rm -f .github/workflows/p2_final_closure_materialize.yml
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No closure delta to publish" >&2
+            exit 1
+          fi
+          git commit -m "fix: close P2 runtime lifetime ownership"
+          git push origin HEAD:feature/20260904-01-0.9.10-pattern-phrase-p2-common-runtime-playback
