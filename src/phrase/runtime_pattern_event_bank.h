@@ -9,6 +9,7 @@ namespace PhraseRuntime {
 
 constexpr uint8_t kPatternRuntimeSynthCount = 2;
 constexpr uint8_t kPatternRuntimeMaxEvents = SynthPattern::kSteps;
+constexpr int8_t kInvalidPatternRuntimePage = -1;
 
 struct RuntimePatternEventBuffer {
   RuntimeSynthEvent events[kPatternRuntimeMaxEvents]{};
@@ -38,6 +39,30 @@ class RuntimePatternEventBank {
       uint8_t bankIndex,
       uint8_t patternIndex) const;
 
+  const RuntimePatternEventBuffer& selectForPage(
+      int pageIdentity,
+      uint8_t synthIndex,
+      uint8_t bankIndex,
+      uint8_t patternIndex) const {
+    if (pageIdentity_ == kInvalidPatternRuntimePage ||
+        pageIdentity != pageIdentity_) {
+      return empty_;
+    }
+    return select(synthIndex, bankIndex, patternIndex);
+  }
+
+  int pageIdentity() const { return static_cast<int>(pageIdentity_); }
+
+  bool publishPageIdentity(int pageIdentity) {
+    if (pageIdentity < 0 || pageIdentity >= kMaxPages) return false;
+    pageIdentity_ = static_cast<int8_t>(pageIdentity);
+    return true;
+  }
+
+  void invalidatePageIdentity() {
+    pageIdentity_ = kInvalidPatternRuntimePage;
+  }
+
   const RuntimePatternEventBuffer& empty() const { return empty_; }
 
  private:
@@ -45,6 +70,7 @@ class RuntimePatternEventBank {
                                     [kBankCount]
                                     [Bank<SynthPattern>::kPatterns]{};
   RuntimePatternEventBuffer empty_{};
+  int8_t pageIdentity_ = kInvalidPatternRuntimePage;
 };
 
 static_assert(kPatternRuntimeMaxEvents == SynthPattern::kSteps,
