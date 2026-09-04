@@ -26,9 +26,6 @@ generation_owner = read("src/generation/migration/quantized_generation_undo_owne
 tb303 = read("src/dsp/mini_tb303.cpp")
 
 # EXEC-0: startup publication is a playback precondition, not a lazy repair.
-# Resident Scene truth is applied first, then the complete compact bank is
-# rebuilt/published for PatternPagingService::activePageIndex(), and only then
-# MiniAcid publishes the runtime page identity that AudioTask may select.
 init = between(engine, "void MiniAcid::init()", "void MiniAcid::reset()")
 for required in (
     "applySceneStateFromManager()",
@@ -43,9 +40,7 @@ require(init.index("applySceneStateFromManager()") <
         init.index("setCurrentPage"),
         "startup publication order must be Scene -> compact bank -> runtime page")
 
-# EXEC-0B: playing generation already has one pending audible owner. P2 must
-# extend that SAME fixed owner with prepared old-audible compact events instead
-# of switching to newly committed resident Scene material before BAR_START.
+# EXEC-0B: playing generation already has one pending audible owner.
 pending_struct = between(generation_impl,
                          "struct PendingGeneration",
                          "enum class SlotState")
@@ -89,8 +84,6 @@ for required in (
     require(required in header or required in engine,
             f"missing common P2 executor ownership token: {required}")
 
-# The sequencer must consume immutable prepared events, not mutable SynthStep
-# material, for Synth A/B onset scheduling.
 sequencer = between(engine,
                     "void MiniAcid::processSequencerEvents",
                     "void MiniAcid::generateAudioBuffer")
@@ -105,9 +98,6 @@ for forbidden in (
     require(forbidden not in sequencer,
             f"sequencer still schedules Synth PATTERN from mutable steps: {forbidden}")
 
-# Cross-role RNG order is part of accepted PATTERN behavior. Keep the existing
-# physical-step scan and A -> B -> drums trigger order while replacing only the
-# material/lifetime source. Do not batch all A events before B/drums.
 for required in (
     "for (int sIdx = nominalStep - 1; sIdx <= nominalStep + 1; ++sIdx)",
     "triggerSynthStep_(0",
@@ -121,8 +111,6 @@ require(sequencer.index("triggerSynthStep_(0") <
         sequencer.index("triggerDrumVoice_"),
         "PATTERN executor changed legacy A -> B -> drums trigger/RNG ordering")
 
-# Onset acceptance keeps the legacy RNG order: ghost first, then probability.
-# Projection remains deterministic; only runtime can call rand().
 trigger = between(engine,
                   "void MiniAcid::triggerSynthStep_",
                   "void MiniAcid::triggerDrumVoice_")
@@ -141,7 +129,6 @@ require(trigger.index("kEventGhost") < trigger.index("event.probability"),
 require("activeSynthPattern" not in trigger,
         "executor onset still reads mutable SynthPattern material")
 
-# One action consumer fans a single owner decision out to both backends.
 consumer = between(engine,
                    "void MiniAcid::consumePatternPlaybackActions_",
                    "uint32_t MiniAcid::currentAbsoluteSubtick_")
@@ -158,9 +145,6 @@ for required in (
             f"common action consumer missing backend fanout token: {required}")
 
 # TB303 slide is an existing musical contract, not an implementation detail.
-# Its legato decision is literally slideFlag && gate && isVoiceActive(). A
-# logical owner replacement still requires MIDI NoteOff -> NoteOn, but the
-# internal TB303 translation MUST NOT clear gate before startNote(slide=true).
 tb303_start = between(tb303,
                       "void TB303Voice::startNote",
                       "void TB303Voice::release")
@@ -174,8 +158,14 @@ require("publishPatternNoteOff_" in consumer and
         "publishPatternNoteOn_" in consumer,
         "slide replacement must still close/reopen Pattern MIDI ownership")
 
-# RETRIG is one owner decision but must be observed by BOTH backends as the same
-# logical Release -> Start boundary. It must not extend the final lifetime.
+# SONG empty-track silence is also existing behavior. songPatternIndexForTrack()
+# is the authoritative gate: in SONG mode a -1 track must not fall back to the
+# current PATTERN selection just because the Scene still retains that index.
+require("songPatternIndexForTrack" in active_runtime,
+        "runtime selector bypasses authoritative SONG/PATTERN source gating")
+require("if (patternIndex < 0) return patternRuntimeBank_.empty();" in active_runtime,
+        "empty SONG synth track can resurrect the PATTERN-mode fallback")
+
 retrigger_case = between(consumer,
                          "RuntimeSynthPlaybackActionType::Retrigger",
                          "default:")
@@ -191,8 +181,6 @@ require(retrigger_case.index("publishPatternNoteOff_") <
         retrigger_case.index("publishPatternNoteOn_"),
         "RETRIG MIDI trace must be NoteOff -> NoteOn")
 
-# Legacy sample countdown fields may temporarily remain for compatibility, but
-# after cutover they are dead state: no backend authority and no lifetime writes.
 audio = between(engine,
                 "void MiniAcid::generateAudioBuffer",
                 "void MiniAcid::randomize303Pattern")
@@ -211,8 +199,6 @@ for forbidden in (
     require(forbidden not in trigger,
             "legacy gate countdown still owns onset/TIE lifetime after P2 cutover")
 
-# Natural expiry is evaluated from the existing Q32.32 transport phase at
-# runtime-event subtick precision; P2 must not introduce another scheduler.
 for required in (
     "currentAbsoluteSubtick_",
     "releaseDue",
@@ -225,9 +211,6 @@ require("tickPhaseAccum_" in between(engine,
                                      "void MiniAcid::triggerSynthStep_"),
         "subtick lifetime clock is not derived from the existing transport phase")
 
-# Legacy RETRIG counters may still schedule the boundary during this first
-# executor commit, but they must route through RuntimeSynthPlaybackState and the
-# common consumer instead of touching either backend directly.
 retrigger_audio = between(audio,
                           "// Retrig Logic",
                           "for (int v = 0; v < NUM_DRUM_VOICES; ++v)")
