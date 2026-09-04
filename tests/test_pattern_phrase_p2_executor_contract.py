@@ -21,6 +21,8 @@ def between(text: str, start: str, end: str) -> str:
 
 header = read("src/dsp/miniacid_engine.h")
 engine = read("src/dsp/miniacid_engine.cpp")
+generation_impl = read("src/generation/migration/quantized_generation_commit_impl.h")
+generation_owner = read("src/generation/migration/quantized_generation_undo_owner_impl.h")
 
 # EXEC-0: startup publication is a playback precondition, not a lazy repair.
 # Resident Scene truth is applied first, then the complete compact bank is
@@ -39,6 +41,41 @@ require(init.index("applySceneStateFromManager()") <
         init.index("rebuildPatternRuntimeEventBank()") <
         init.index("setCurrentPage"),
         "startup publication order must be Scene -> compact bank -> runtime page")
+
+# EXEC-0B: playing generation already has one pending audible owner. P2 must
+# extend that SAME fixed owner with prepared old-audible compact events instead
+# of switching to newly committed resident Scene material before BAR_START.
+pending_struct = between(generation_impl,
+                         "struct PendingGeneration",
+                         "enum class SlotState")
+require("RuntimePatternEventBuffer" in pending_struct,
+        "pending generation does not retain prepared old-audible Pattern events")
+require("runtime" in pending_struct.lower(),
+        "pending generation compact event snapshot lacks an explicit runtime role")
+
+fill_snapshot = between(generation_owner,
+                        "inline void fillAudibleActivationSnapshot",
+                        "inline void armActivationSlot")
+require("activePatternRuntimeEvents" in fill_snapshot,
+        "audible activation snapshot does not capture old prepared runtime material")
+
+apply_persistent = between(generation_owner,
+                           "inline void applyPreparedGenerationPersistent",
+                           "inline void activatePreparedGenerationRuntime")
+require("refreshPatternRuntimeEvents" in apply_persistent,
+        "generation persistent COMMIT does not refresh newly committed resident runtime slots")
+
+require("pendingAudibleSynthRuntime" in generation_owner,
+        "existing pending owner lacks a prepared runtime-event accessor")
+
+active_runtime = between(engine,
+                         "MiniAcid::activePatternRuntimeEvents",
+                         "void MiniAcid::")
+require("pendingAudibleSynthRuntime" in active_runtime,
+        "runtime Pattern selector ignores old-audible pending generation events")
+require(active_runtime.index("pendingAudibleSynthRuntime") <
+        active_runtime.index("selectForPage"),
+        "pending audible runtime overlay must win before resident bank selection")
 
 # EXEC-1: RuntimeSynthPlaybackState is the sole Pattern lifetime decision owner.
 for required in (
