@@ -1,4 +1,5 @@
 #include "../scenes.h"
+#include "../src/phrase/runtime_synth_events.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/state/generation_request_state.h"
 #include "../src/state/scene_revision.h"
@@ -84,6 +85,13 @@ class MiniAcid {
   const TestGenreManager& genreManager() const { return genreManager_; }
 
   void regeneratePatternsWithGenre() {}
+  bool rebuildPatternRuntimeEventBank() { return true; }
+  bool refreshPatternRuntimeEvents(int, int, int) { return true; }
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(
+      int synthIndex) const {
+    return runtimeEvents_[synthIndex == 1 ? 1 : 0];
+  }
+  void barrierPatternRuntimeSourceTransition() {}
 
  private:
   TestSceneManager scenes_{};
@@ -92,6 +100,7 @@ class MiniAcid {
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   GrooveboxModeManager modeManager_;
   TestGenreManager genreManager_{};
+  PhraseRuntime::RuntimePatternEventBuffer runtimeEvents_[2]{};
 };
 
 struct AtlasRuntimeMetadata {
