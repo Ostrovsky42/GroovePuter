@@ -32,6 +32,42 @@ void requireAction(const RuntimeSynthPlaybackActions& actions,
   assert(actions.values[index].event.note == note);
 }
 
+PhraseRuntime::PatternProjectionSettings longGateSettings() {
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 2.0f;
+  return settings;
+}
+
+SynthPattern conditionalLifetimePattern(uint8_t probability,
+                                        bool ghost,
+                                        bool tieAfterConditional) {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+  pattern.steps[0].note = 60;
+  pattern.steps[0].probability = 100;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = 64;
+  pattern.steps[2].probability = probability;
+  pattern.steps[2].ghost = ghost;
+  if (tieAfterConditional) pattern.steps[3].note = -2;
+  return pattern;
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer project(
+    const SynthPattern& pattern) {
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, longGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  return projected;
+}
+
 void testFirstOnsetStartsAndOwnsDeadline() {
   RuntimeSynthPlaybackState state{};
   const RuntimeSynthEvent note = event(60, 160);
@@ -119,55 +155,76 @@ void testOrdinaryBarWrapIsNotABarrier() {
   assert(state.releaseDue(start + 32).count == 1);
 }
 
-void testRejectedConditionalOnsetDoesNotPreclipTiedLifetime() {
-  SynthPattern pattern{};
-  for (int step = 0; step < SynthPattern::kSteps; ++step) {
-    pattern.steps[step] = SynthStep{};
-    pattern.steps[step].note = -1;
-  }
-  pattern.steps[0].note = 60;
-  pattern.steps[0].probability = 100;
-  pattern.steps[1].note = -2;
-  pattern.steps[2].note = 64;
-  pattern.steps[2].probability = 0;
+void testGuaranteedOnsetMayPreclipTiedLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(100, false, false));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& guaranteed = projected.events[1];
+  const uint32_t guaranteedStart =
+      static_cast<uint32_t>(guaranteed.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  assert(guaranteed.probability == 100);
+  assert((guaranteed.flags & PhraseRuntime::kEventGhost) == 0);
+  assert(first.durationSubticks == guaranteedStart);
+}
 
-  PhraseRuntime::PatternProjectionSettings settings{};
-  settings.synthIndex = 0;
-  settings.swingPercent = 50;
-  settings.swingEnabled = false;
-  settings.gateLengthRatio = 2.0f;
-
-  PhraseRuntime::RuntimeSynthEventBuffer projected{};
-  assert(PhraseRuntime::projectPatternToRuntimeEvents(pattern, settings, projected) ==
-         PhraseRuntime::PatternProjectionStatus::Ready);
+void testProbabilityZeroOnsetMustNotPreclipTiedLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(0, false, false));
   assert(projected.count == 2);
   const RuntimeSynthEvent& first = projected.events[0];
   const RuntimeSynthEvent& conditional = projected.events[1];
-  assert(first.startTick == 0);
-  assert(conditional.startTick == 48);
-
-  const uint32_t conditionalStartSubtick =
+  const uint32_t conditionalStart =
       static_cast<uint32_t>(conditional.startTick) *
       PhraseRuntime::kSubticksPerTick;
+  assert(conditional.probability == 0);
+  assert(first.durationSubticks > conditionalStart);
+}
 
-  // Legacy PATTERN semantics: the TIE extends the active gate. A later onset
-  // terminates it only after ghost/probability accepts that onset. Therefore a
-  // projected duration must not be pre-clipped merely because a conditional
-  // onset token exists at tick 48.
-  assert(first.durationSubticks > conditionalStartSubtick);
+void testAcceptedConditionalOnsetReleasesThenStarts() {
+  const auto projected = project(
+      conditionalLifetimePattern(63, true, false));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  const uint32_t conditionalStart =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  assert(conditional.probability < 100);
+  assert((conditional.flags & PhraseRuntime::kEventGhost) != 0);
+  assert(first.durationSubticks > conditionalStart);
 
-  RuntimeSynthPlaybackState rejected{};
-  (void)rejected.acceptOnset(first, 0);
-  assert(rejected.releaseDue(conditionalStartSubtick).count == 0);
-  assert(rejected.active());
-
-  RuntimeSynthPlaybackState accepted{};
-  (void)accepted.acceptOnset(first, 0);
-  const auto replacement =
-      accepted.acceptOnset(conditional, conditionalStartSubtick);
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(first, 0);
+  const auto replacement = state.acceptOnset(conditional, conditionalStart);
   assert(replacement.count == 2);
   requireAction(replacement, 0, RuntimeSynthPlaybackActionType::Release, 60);
   requireAction(replacement, 1, RuntimeSynthPlaybackActionType::Start, 64);
+}
+
+void testRejectedConditionalOnsetLetsLaterTieExtendOldLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(100, true, true));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  const uint32_t conditionalStart =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  const uint32_t laterTieStart = 72u * PhraseRuntime::kSubticksPerTick;
+  assert((conditional.flags & PhraseRuntime::kEventGhost) != 0);
+  assert(first.durationSubticks > conditionalStart);
+  assert(first.durationSubticks > laterTieStart);
+
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(first, 0);
+  // Runtime ghost/probability rejected the conditional token, so no
+  // acceptOnset() call occurs here. The sounding note must remain alive.
+  assert(state.releaseDue(conditionalStart).count == 0);
+  assert(state.active());
+  assert(state.releaseDue(laterTieStart).count == 0);
+  assert(state.active());
 }
 
 void testHardBarrierReleasesExactlyOnce() {
@@ -201,7 +258,10 @@ int main() {
   testRetriggerDoesNotExtendLifetime();
   testRetriggerWithoutActiveLifetimeIsIgnored();
   testOrdinaryBarWrapIsNotABarrier();
-  testRejectedConditionalOnsetDoesNotPreclipTiedLifetime();
+  testGuaranteedOnsetMayPreclipTiedLifetime();
+  testProbabilityZeroOnsetMustNotPreclipTiedLifetime();
+  testAcceptedConditionalOnsetReleasesThenStarts();
+  testRejectedConditionalOnsetLetsLaterTieExtendOldLifetime();
   testHardBarrierReleasesExactlyOnce();
   testPlaybackStateIsFixedAndTriviallyCopyable();
   std::puts("PATTERN/PHRASE P2 runtime lifetime owner: PASS");
