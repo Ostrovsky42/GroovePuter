@@ -1,0 +1,25 @@
+name: MIDI panic CC123 recovery
+
+on:
+  push:
+    branches:
+      - fix/20260905-midi-panic-cc123-recovery
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build focused panic recovery test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_midi_panic_cc123.cpp \
+            src/midi/usb_midi_output.cpp \
+            -o build/host-tests/test_midi_panic_cc123
+      - name: Run focused panic recovery test
+        run: build/host-tests/test_midi_panic_cc123
