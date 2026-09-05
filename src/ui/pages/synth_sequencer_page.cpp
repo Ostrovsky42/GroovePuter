@@ -130,7 +130,7 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
 }
 
 void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
-  const Rect& bounds = Layout::CONTENT;
+  const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
   gfx.drawText(bounds.x + 4, bounds.y + 4, "SOURCE: PHRASE");
