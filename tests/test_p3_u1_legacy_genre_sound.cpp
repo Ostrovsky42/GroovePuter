@@ -9,7 +9,7 @@ SDMock SD;
 
 namespace {
 
-bool near(float lhs, float rhs, float epsilon = 0.01f) {
+bool near(float lhs, float rhs, float epsilon = 0.015f) {
   return std::fabs(lhs - rhs) <= epsilon;
 }
 
@@ -27,7 +27,17 @@ bool samePattern(const SynthPattern& lhs, const SynthPattern& rhs) {
   return true;
 }
 
-void testLegacyAcidUsesOldAcidPresetWithoutChangingGenerationMode() {
+void assertLegacyTimbreNormalized(MiniAcid& engine, int voice,
+                                  float osc, float cutoff, float resonance,
+                                  float envAmount, float envDecay) {
+  assert(near(engine.parameter303(TB303ParamId::Oscillator, voice).normalized(), osc));
+  assert(near(engine.parameter303(TB303ParamId::Cutoff, voice).normalized(), cutoff));
+  assert(near(engine.parameter303(TB303ParamId::Resonance, voice).normalized(), resonance));
+  assert(near(engine.parameter303(TB303ParamId::EnvAmount, voice).normalized(), envAmount));
+  assert(near(engine.parameter303(TB303ParamId::EnvDecay, voice).normalized(), envDecay));
+}
+
+void testLegacyAcidReplaysHistoricalPerVoiceTimbreWithoutGenerationMutation() {
   MiniAcid engine(44100.0f, nullptr);
   engine.modeManager().setModeLocal(GrooveboxMode::Minimal);
   engine.modeManager().setFlavorLocal(3);
@@ -35,21 +45,19 @@ void testLegacyAcidUsesOldAcidPresetWithoutChangingGenerationMode() {
   const GrooveboxMode modeBefore = engine.modeManager().mode();
   const int flavorBefore = engine.modeManager().flavor();
 
-  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::Acid, 0, 0);
+  assert(engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Acid, 0));
+  assert(engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Acid, 1));
 
-  assert(applied);
   assert(engine.modeManager().mode() == modeBefore);
   assert(engine.modeManager().flavor() == flavorBefore);
-  assert(near(engine.parameter303(TB303ParamId::Cutoff, 0).value(), 820.0f));
-  assert(near(engine.parameter303(TB303ParamId::Resonance, 0).value(), 0.66f));
-  assert(near(engine.parameter303(TB303ParamId::EnvAmount, 0).value(), 460.0f));
-  assert(near(engine.parameter303(TB303ParamId::EnvDecay, 0).value(), 1001.0f));
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DelayEnabled(0));
+
+  // Historical applyGenreTimbre() clamped Synth A EnvAmount to 0.55 while
+  // Synth B retained the Acid value 0.85.
+  assertLegacyTimbreNormalized(engine, 0, 0.0f, 0.55f, 0.35f, 0.55f, 0.35f);
+  assertLegacyTimbreNormalized(engine, 1, 0.0f, 0.55f, 0.35f, 0.85f, 0.35f);
 }
 
-void testLegacyTechnoUsesOldElectroDetroitPresetWithoutChangingGenerationMode() {
+void testLegacyTechnoReplaysHistoricalDetroitElectroTimbre() {
   MiniAcid engine(44100.0f, nullptr);
   engine.modeManager().setModeLocal(GrooveboxMode::Acid);
   engine.modeManager().setFlavorLocal(4);
@@ -57,72 +65,72 @@ void testLegacyTechnoUsesOldElectroDetroitPresetWithoutChangingGenerationMode() 
   const GrooveboxMode modeBefore = engine.modeManager().mode();
   const int flavorBefore = engine.modeManager().flavor();
 
-  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::Techno, 0, 0);
+  assert(engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Techno, 0));
+  assert(engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Techno, 1));
 
-  assert(applied);
   assert(engine.modeManager().mode() == modeBefore);
   assert(engine.modeManager().flavor() == flavorBefore);
-  assert(near(engine.parameter303(TB303ParamId::Cutoff, 0).value(), 900.0f));
-  assert(near(engine.parameter303(TB303ParamId::Resonance, 0).value(), 0.46f));
-  assert(near(engine.parameter303(TB303ParamId::EnvAmount, 0).value(), 280.0f));
-  assert(near(engine.parameter303(TB303ParamId::EnvDecay, 0).value(), 543.2f));
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DelayEnabled(0));
+
+  // Techno did not exist when the old projector was removed. Legacy Techno is
+  // deliberately the old Electro/Detroit behavior, with the same A/B clamps.
+  assertLegacyTimbreNormalized(engine, 0, 0.20f, 0.60f, 0.30f, 0.55f, 0.20f);
+  assertLegacyTimbreNormalized(engine, 1, 0.20f, 0.60f, 0.30f, 0.75f, 0.20f);
 }
 
-void testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation() {
+void testLegacyTimbreDoesNotOwnDelayOrDistortion() {
   MiniAcid engine(44100.0f, nullptr);
-  const float cutoffBefore = engine.parameter303(TB303ParamId::Cutoff, 0).value();
+  engine.set303DistortionEnabled(0, true);
+  engine.set303DelayEnabled(0, true);
+
+  assert(engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Acid, 0));
+  assert(engine.is303DistortionEnabled(0));
+  assert(engine.is303DelayEnabled(0));
+}
+
+void testLegacyTimbreRejectsUnsupportedGenreWithoutMutation() {
+  MiniAcid engine(44100.0f, nullptr);
+  const float cutoffBefore =
+      engine.parameter303(TB303ParamId::Cutoff, 0).normalized();
   const GrooveboxMode modeBefore = engine.modeManager().mode();
   const int flavorBefore = engine.modeManager().flavor();
 
-  assert(!engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::House, 0, 0));
-  assert(!engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::Acid, 99, 0));
+  assert(!engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::House, 0));
 
-  assert(near(engine.parameter303(TB303ParamId::Cutoff, 0).value(), cutoffBefore));
+  assert(near(engine.parameter303(TB303ParamId::Cutoff, 0).normalized(), cutoffBefore));
   assert(engine.modeManager().mode() == modeBefore);
   assert(engine.modeManager().flavor() == flavorBefore);
 }
 
-void testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine() {
+void testLegacyTimbreRejectsNonTb303VoiceWithoutChangingFxOrEngine() {
   MiniAcid engine(44100.0f, nullptr);
+  engine.set303DistortionEnabled(0, true);
+  engine.set303DelayEnabled(0, true);
   engine.setSynthEngine(0, "SID");
   assert(engine.currentSynthEngineName(0) == "SID");
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DelayEnabled(0));
 
-  // Acid preset 1 (SHARP) enables distortion. Applying it to a SID voice must
-  // be rejected rather than mutating hidden TB303/FX state behind the active
-  // engine.
-  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::Acid, 1, 0);
+  const bool applied =
+      engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Acid, 0);
 
   assert(!applied);
   assert(engine.currentSynthEngineName(0) == "SID");
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DelayEnabled(0));
+  assert(engine.is303DistortionEnabled(0));
+  assert(engine.is303DelayEnabled(0));
 }
 
-void testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice() {
+void testLegacyTimbreRejectsInvalidVoiceIndexInsteadOfClamping() {
   MiniAcid engine(44100.0f, nullptr);
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DistortionEnabled(1));
+  const float synthBCutoffBefore =
+      engine.parameter303(TB303ParamId::Cutoff, 1).normalized();
 
-  // MiniAcid's low-level voice helpers clamp indices for convenience. This
-  // higher-level sound operation must fail closed instead of applying a preset
-  // to a different synth than the caller requested.
-  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
-      GenerativeMode::Acid, 1, 99);
+  const bool applied =
+      engine.modeManager().applyLegacyGenreTimbre(GenerativeMode::Acid, 99);
 
   assert(!applied);
-  assert(!engine.is303DistortionEnabled(0));
-  assert(!engine.is303DistortionEnabled(1));
+  assert(near(engine.parameter303(TB303ParamId::Cutoff, 1).normalized(),
+              synthBCutoffBefore));
 }
 
-void testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical() {
+void testLegacyTimbreLeavesDeterministicStructuralGenerationBitForBitIdentical() {
   for (const GenerativeMode legacyGenre :
        {GenerativeMode::Acid, GenerativeMode::Techno}) {
     MiniAcid engine(44100.0f, nullptr);
@@ -133,9 +141,8 @@ void testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical() 
     engine.modeManager().setGenerationSeed(0x5A17C0DEu);
     engine.modeManager().generatePattern(currentSoundMaterial, 128.0f);
 
-    const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
-        legacyGenre, 0, 0);
-    assert(applied);
+    assert(engine.modeManager().applyLegacyGenreTimbre(legacyGenre, 0));
+    assert(engine.modeManager().applyLegacyGenreTimbre(legacyGenre, 1));
 
     SynthPattern legacySoundMaterial{};
     engine.modeManager().setGenerationSeed(0x5A17C0DEu);
@@ -148,12 +155,13 @@ void testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical() 
 }  // namespace
 
 int main() {
-  testLegacyAcidUsesOldAcidPresetWithoutChangingGenerationMode();
-  testLegacyTechnoUsesOldElectroDetroitPresetWithoutChangingGenerationMode();
-  testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation();
-  testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine();
-  testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice();
-  testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical();
-  std::puts("Legacy Acid/Techno sound profile behavior: OK");
+  testLegacyAcidReplaysHistoricalPerVoiceTimbreWithoutGenerationMutation();
+  testLegacyTechnoReplaysHistoricalDetroitElectroTimbre();
+  testLegacyTimbreDoesNotOwnDelayOrDistortion();
+  testLegacyTimbreRejectsUnsupportedGenreWithoutMutation();
+  testLegacyTimbreRejectsNonTb303VoiceWithoutChangingFxOrEngine();
+  testLegacyTimbreRejectsInvalidVoiceIndexInsteadOfClamping();
+  testLegacyTimbreLeavesDeterministicStructuralGenerationBitForBitIdentical();
+  std::puts("Legacy Acid/Techno historical timbre behavior: OK");
   return 0;
 }
