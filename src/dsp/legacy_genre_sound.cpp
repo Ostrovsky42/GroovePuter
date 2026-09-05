@@ -3,6 +3,7 @@
 
 bool GrooveboxModeManager::applyLegacyGenreSoundPreset(
         GenerativeMode genre, int presetIndex, int voiceIndex) {
+    if (voiceIndex < 0 || voiceIndex > 1) return false;
     if (engine_.currentSynthEngineName(voiceIndex) != "TB303") return false;
 
     const TB303ModePreset* presets = nullptr;
