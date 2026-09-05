@@ -334,25 +334,36 @@ loop_injection = '''void loop() {
   M5Cardputer.update();
   pollCardputerMemoryBaseline();'''
 
-# P3 DRAM characterization. The product graph never reaches the PHRASE
-# sequenced source, so the diagnostic image has to drive it explicitly for the
-# runtime measurement to mean anything. These anchors match what the three
-# replacements above produce, so they must stay after them in this tuple.
+# P3 diagnostic scenario. The product graph never reaches the PHRASE sequenced
+# source, so the diagnostic image has to drive it explicitly for either the
+# runtime measurement or the audible comparison to mean anything.
+#
+# Two scenarios exist and only one is compiled in. Swap the three names below to
+# choose:
+#   src/diag/p3_audible_ab.h            P3_AUDIBLE_AB / P3AudibleAB
+#     sparse two-bar phrase, alternates PATTERN and PHRASE every eight bars so
+#     the cross-bar note and the two-bar cycle are audible.
+#   src/diag/p3_dram_characterization.h P3_DRAM_CHARACTERIZATION / P3DramCharacterization
+#     phrase buffer filled to kMaxSynthEvents, three play/stop cycles, for heap
+#     and fragmentation measurement.
+#
+# These anchors match what the three replacements above produce, so they must
+# stay after them in this tuple.
 p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
 p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 
-#define P3_DRAM_CHARACTERIZATION 1
-#include "src/diag/p3_dram_characterization.h"
+#define P3_AUDIBLE_AB 1
+#include "src/diag/p3_audible_ab.h"
 """
 
 p3_setup_anchor = "  startCardputerMemoryBaseline();\n"
 p3_setup_injection = """  startCardputerMemoryBaseline();
-  P3DramCharacterization::begin(g_miniAcidInstance);
+  P3AudibleAB::begin(g_miniAcidInstance);
 """
 
 p3_loop_anchor = "  pollCardputerMemoryBaseline();\n"
 p3_loop_injection = """  pollCardputerMemoryBaseline();
-  if (const char* p3Phase = P3DramCharacterization::poll(g_miniAcidInstance)) {
+  if (const char* p3Phase = P3AudibleAB::poll(g_miniAcidInstance)) {
     logCardputerMemoryBaseline(p3Phase);
   }
 """
