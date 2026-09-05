@@ -3873,15 +3873,10 @@ bool MiniAcid::setPhraseLength(uint8_t barCount) {
   return true;
 }
 
-const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentSequencedMaterial() const {
-  if (currentSequencedSource_ == SequencedSource::Phrase) {
-    return currentPhrase_;
-  }
-  // For Pattern, would return pattern material
-  // For now, return phrase buffer as placeholder
+PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() {
   return currentPhrase_;
 }
 
-PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() {
+const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() const {
   return currentPhrase_;
 }

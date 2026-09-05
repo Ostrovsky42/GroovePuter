@@ -370,8 +370,8 @@ public:
   void setSequencedSource(SequencedSource source);
   SequencedSource currentSequencedSource() const;
   bool setPhraseLength(uint8_t barCount);
-  const PhraseRuntime::RuntimeSynthEventBuffer& currentSequencedMaterial() const;
   PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer();
+  const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer() const;
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
