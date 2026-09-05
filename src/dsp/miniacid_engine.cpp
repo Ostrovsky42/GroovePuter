@@ -2102,14 +2102,31 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     int s = (sIdx + 16) % 16;
     uint32_t nominalT = s * 24;
 
-    if (const PhraseRuntime::RuntimeSynthEvent* eventA =
-            synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
-        eventA != nullptr && eventA->startTick == barTick) {
+    // PHRASE addresses onsets in phrase-relative time and resolves once per
+    // tick, at the nominal step, so the per-step A -> B -> drums draw order is
+    // untouched. PATTERN keeps its bar-local source-step scan verbatim.
+    if (sequencedSource_[0] == SequencedSource::Phrase) {
+      if (s == nominalStep) {
+        if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
+                phraseEventAt_(0, absoluteTick)) {
+          triggerSynthStep_(0, *phraseA, absoluteStartSubtick);
+        }
+      }
+    } else if (const PhraseRuntime::RuntimeSynthEvent* eventA =
+                   synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
+               eventA != nullptr && eventA->startTick == barTick) {
       triggerSynthStep_(0, *eventA, absoluteStartSubtick);
     }
-    if (const PhraseRuntime::RuntimeSynthEvent* eventB =
-            synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
-        eventB != nullptr && eventB->startTick == barTick) {
+    if (sequencedSource_[1] == SequencedSource::Phrase) {
+      if (s == nominalStep) {
+        if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
+                phraseEventAt_(1, absoluteTick)) {
+          triggerSynthStep_(1, *phraseB, absoluteStartSubtick);
+        }
+      }
+    } else if (const PhraseRuntime::RuntimeSynthEvent* eventB =
+                   synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
+               eventB != nullptr && eventB->startTick == barTick) {
       triggerSynthStep_(1, *eventB, absoluteStartSubtick);
     }
 
@@ -3721,6 +3738,30 @@ uint32_t MiniAcid::currentAbsoluteSubtick_() const {
       (tickPhaseAccum_ & 0xFFFFFFFFULL) >> 28);
   return currentTick_ * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick) +
          fractionalSubtick;
+}
+
+uint16_t MiniAcid::phraseRelativeTick_(int voiceIndex,
+                                      uint32_t absoluteTick) const {
+  const uint16_t length = currentPhrase_[clamp303Voice(voiceIndex)].lengthTicks;
+  if (length == 0) return 0;
+  return static_cast<uint16_t>(absoluteTick % length);
+}
+
+const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
+    int voiceIndex,
+    uint32_t absoluteTick) const {
+  const int idx = clamp303Voice(voiceIndex);
+  const PhraseRuntime::RuntimeSynthEventBuffer& phrase = currentPhrase_[idx];
+  if (phrase.lengthTicks == 0) return nullptr;
+  const uint16_t phraseTick = phraseRelativeTick_(idx, absoluteTick);
+  // First match wins. RuntimeSynthPlaybackState is monophonic, so several events
+  // sharing a startTick would collapse to the last one while still spending a
+  // set of RNG draws each; taking one keeps both the note and the draw count
+  // determinate.
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (phrase.events[i].startTick == phraseTick) return &phrase.events[i];
+  }
+  return nullptr;
 }
 
 void MiniAcid::triggerSynthStep_(

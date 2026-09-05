@@ -385,6 +385,12 @@ private:
   void triggerSynthStep_(int synthIdx,
                          const PhraseRuntime::RuntimeSynthEvent& event,
                          uint32_t absoluteStartSubtick);
+  // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
+  // one place leaves room for a per-voice cycle origin later without touching
+  // the sequencer scan.
+  uint16_t phraseRelativeTick_(int voiceIndex, uint32_t absoluteTick) const;
+  const PhraseRuntime::RuntimeSynthEvent* phraseEventAt_(
+      int voiceIndex, uint32_t absoluteTick) const;
   void consumePatternPlaybackActions_(
       int synthIdx,
       const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
