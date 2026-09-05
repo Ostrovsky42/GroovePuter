@@ -35,6 +35,12 @@ enum class EventEditResult : uint8_t {
   Rejected,
 };
 
+enum class LengthEditResult : uint8_t {
+  Changed = 0,
+  NoChange,
+  Rejected,
+};
+
 enum class Grid : uint8_t {
   Eighth = 0,
   Sixteenth,
@@ -53,11 +59,26 @@ inline uint16_t gridTicks(Grid grid) {
   return 0;
 }
 
+inline uint16_t lengthTicksForBars(uint8_t bars) {
+  switch (bars) {
+    case 1:
+      return PhraseRuntime::kTicksPerBar;
+    case 2:
+      return 2u * PhraseRuntime::kTicksPerBar;
+    case 4:
+      return 4u * PhraseRuntime::kTicksPerBar;
+    case 8:
+      return 8u * PhraseRuntime::kTicksPerBar;
+    default:
+      return 0;
+  }
+}
+
 inline bool validLengthTicks(uint16_t lengthTicks) {
-  return lengthTicks == PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 2u * PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 4u * PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 8u * PhraseRuntime::kTicksPerBar;
+  return lengthTicks == lengthTicksForBars(1) ||
+         lengthTicks == lengthTicksForBars(2) ||
+         lengthTicks == lengthTicksForBars(4) ||
+         lengthTicks == lengthTicksForBars(8);
 }
 
 inline bool validGridTicks(uint16_t gridTicksValue) {
@@ -112,6 +133,32 @@ inline bool commit(Buffer& live, const Buffer& prepared) {
   if (!validate(prepared)) return false;
   live = prepared;
   return true;
+}
+
+inline LengthEditResult setLengthBars(Buffer& phrase, uint8_t bars) {
+  if (!validate(phrase)) return LengthEditResult::Rejected;
+
+  const uint16_t nextLengthTicks = lengthTicksForBars(bars);
+  if (nextLengthTicks == 0) return LengthEditResult::Rejected;
+  if (nextLengthTicks == phrase.lengthTicks) return LengthEditResult::NoChange;
+
+  const uint32_t nextEndSubtick =
+      static_cast<uint32_t>(nextLengthTicks) *
+      PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const PhraseRuntime::RuntimeSynthEvent& event = phrase.events[i];
+    if (event.startTick >= nextLengthTicks) return LengthEditResult::Rejected;
+
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t endSubtick =
+        startSubtick + static_cast<uint32_t>(event.durationSubticks);
+    if (endSubtick > nextEndSubtick) return LengthEditResult::Rejected;
+  }
+
+  phrase.lengthTicks = nextLengthTicks;
+  return LengthEditResult::Changed;
 }
 
 inline EventEditResult insertSnapped(Buffer& phrase,
