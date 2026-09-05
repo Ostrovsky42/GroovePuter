@@ -1,0 +1,24 @@
+name: SMF panic — honest no-file-loaded toast
+
+on:
+  push:
+    branches:
+      - fix/20260905-smf-panic-no-file-loaded-toast
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build focused panic toast policy test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_smf_panic_toast_policy.cpp \
+            -o build/host-tests/test_smf_panic_toast_policy
+      - name: Run focused panic toast policy test
+        run: build/host-tests/test_smf_panic_toast_policy
