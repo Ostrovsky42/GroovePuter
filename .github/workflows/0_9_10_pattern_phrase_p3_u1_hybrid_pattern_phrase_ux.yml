@@ -1,0 +1,41 @@
+name: 0.9.10 P3-U1 Hybrid Pattern Phrase UX
+
+on:
+  push:
+    branches:
+      - feature/20260905-01-0.9.10-p3-u1-hybrid-pattern-phrase-ux
+  pull_request:
+    paths:
+      - 'src/dsp/**'
+      - 'src/phrase/**'
+      - 'src/state/**'
+      - 'src/ui/**'
+      - 'tests/test_p3_u1_*'
+      - 'tests/run_pattern_phrase_p3_u1_tests.sh'
+      - '.github/workflows/0_9_10_pattern_phrase_p3_u1_hybrid_pattern_phrase_ux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p3-u1-hybrid-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run P3-U1 focused gate
+        run: bash tests/run_pattern_phrase_p3_u1_tests.sh
