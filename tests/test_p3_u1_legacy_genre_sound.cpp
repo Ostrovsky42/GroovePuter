@@ -92,6 +92,22 @@ void testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine() {
   assert(!engine.is303DelayEnabled(0));
 }
 
+void testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice() {
+  MiniAcid engine(44100.0f, nullptr);
+  assert(!engine.is303DistortionEnabled(0));
+  assert(!engine.is303DistortionEnabled(1));
+
+  // MiniAcid's low-level voice helpers clamp indices for convenience. This
+  // higher-level sound operation must fail closed instead of applying a preset
+  // to a different synth than the caller requested.
+  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
+      GenerativeMode::Acid, 1, 99);
+
+  assert(!applied);
+  assert(!engine.is303DistortionEnabled(0));
+  assert(!engine.is303DistortionEnabled(1));
+}
+
 }  // namespace
 
 int main() {
@@ -99,6 +115,7 @@ int main() {
   testLegacyTechnoUsesOldElectroDetroitPresetWithoutChangingGenerationMode();
   testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation();
   testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine();
+  testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice();
   std::puts("Legacy Acid/Techno sound profile behavior: OK");
   return 0;
 }
