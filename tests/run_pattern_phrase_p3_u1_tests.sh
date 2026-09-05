@@ -51,13 +51,16 @@ g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_mutation"
 
 # Same musical/runtime material; only the explicitly requested legacy TB303
-# patch family may differ. legacy_genre_sound.cpp is part of the production SDL
-# SOURCES archive, so a missing build-manifest wire now fails this link.
+# timbre may differ. legacy_genre_sound.cpp is part of the production SDL
+# SOURCES archive, so a missing build-manifest wire fails this link.
 # shellcheck disable=SC2086
 g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
   "../tests/test_p3_u1_legacy_genre_sound.cpp" "${ARCHIVE}" \
   ${SDL_LIBS} ${SDL_GFX_LIBS} \
   -o "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
 "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
+
+cd "${ROOT_DIR}"
+python3 tests/test_legacy_genre_sound_ui_contract.py
 
 printf '%s\n' 'PATTERN/PHRASE P3-U1 focused gate: PASS'
