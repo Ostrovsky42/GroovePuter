@@ -22,6 +22,10 @@ float clamp01(float value) {
     return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
 }
 
+bool supportsLegacyGenreSound(GenerativeMode genre) {
+    return genre == GenerativeMode::Acid || genre == GenerativeMode::Techno;
+}
+
 }  // namespace
 
 bool GrooveboxModeManager::applyLegacyGenreTimbre(
@@ -43,8 +47,12 @@ bool GrooveboxModeManager::applyLegacyGenreTimbre(
             return false;
     }
 
-    engine_.set303ParameterNormalized(
-        TB303ParamId::Oscillator, timbre->osc, voiceIndex);
+    // Historical truth: the old Genre projector attempted to write Oscillator
+    // through MiniAcid::set303ParameterNormalized(). TB303's generic uint8_t
+    // parameter seam handled only Cutoff/Resonance/EnvAmount/EnvDecay (0..3),
+    // so Oscillator(index 4) was an audible no-op. Preserve that actual behavior
+    // rather than "fixing" the old intent during restoration.
+    (void)timbre->osc;
 
     float cutoff = timbre->cutoff;
     float resonance = timbre->resonance;
@@ -84,4 +92,89 @@ bool GrooveboxModeManager::applyLegacyGenreTimbre(
     engine_.set303ParameterNormalized(
         TB303ParamId::EnvDecay, clamp01(envDecay), voiceIndex);
     return true;
+}
+
+bool GrooveboxModeManager::setLegacyGenreSoundEnabled(
+        bool enabled, GenerativeMode genre) {
+    if (!enabled) {
+        if (!legacyGenreSoundEnabled_) return true;
+
+        const TB303ParamId ids[4] = {
+            TB303ParamId::Cutoff,
+            TB303ParamId::Resonance,
+            TB303ParamId::EnvAmount,
+            TB303ParamId::EnvDecay,
+        };
+
+        for (int voice = 0; voice < 2; ++voice) {
+            LegacyTimbreSnapshot& snapshot = legacyTimbreSnapshot_[voice];
+            if (!snapshot.valid) continue;
+
+            // If the voice engine changed while the transient override was on,
+            // do not write a stale TB303 snapshot into a different engine.
+            if (engine_.currentSynthEngineName(voice) == "TB303") {
+                const float values[4] = {
+                    snapshot.cutoff,
+                    snapshot.resonance,
+                    snapshot.envAmount,
+                    snapshot.envDecay,
+                };
+                for (int param = 0; param < 4; ++param) {
+                    engine_.set303ParameterNormalized(ids[param], values[param], voice);
+                }
+            }
+            snapshot = LegacyTimbreSnapshot{};
+        }
+
+        legacyGenreSoundEnabled_ = false;
+        return true;
+    }
+
+    if (!supportsLegacyGenreSound(genre)) return false;
+
+    if (legacyGenreSoundEnabled_) {
+        if (legacyGenreSoundGenre_ == genre) return true;
+        if (!setLegacyGenreSoundEnabled(false, legacyGenreSoundGenre_)) return false;
+    }
+
+    bool appliedAny = false;
+    for (int voice = 0; voice < 2; ++voice) {
+        LegacyTimbreSnapshot& snapshot = legacyTimbreSnapshot_[voice];
+        snapshot = LegacyTimbreSnapshot{};
+        if (engine_.currentSynthEngineName(voice) != "TB303") continue;
+
+        snapshot.valid = true;
+        snapshot.cutoff =
+            engine_.parameter303(TB303ParamId::Cutoff, voice).normalized();
+        snapshot.resonance =
+            engine_.parameter303(TB303ParamId::Resonance, voice).normalized();
+        snapshot.envAmount =
+            engine_.parameter303(TB303ParamId::EnvAmount, voice).normalized();
+        snapshot.envDecay =
+            engine_.parameter303(TB303ParamId::EnvDecay, voice).normalized();
+
+        if (applyLegacyGenreTimbre(genre, voice)) {
+            appliedAny = true;
+        } else {
+            snapshot = LegacyTimbreSnapshot{};
+        }
+    }
+
+    if (!appliedAny) {
+        for (auto& snapshot : legacyTimbreSnapshot_) {
+            snapshot = LegacyTimbreSnapshot{};
+        }
+        return false;
+    }
+
+    legacyGenreSoundGenre_ = genre;
+    legacyGenreSoundEnabled_ = true;
+    return true;
+}
+
+bool GrooveboxModeManager::toggleLegacyGenreSound(GenerativeMode genre) {
+    if (legacyGenreSoundEnabled_) {
+        return setLegacyGenreSoundEnabled(false, legacyGenreSoundGenre_);
+    }
+    return setLegacyGenreSoundEnabled(true, genre);
 }

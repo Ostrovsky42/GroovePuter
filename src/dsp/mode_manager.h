@@ -77,6 +77,15 @@ public:
     // sequenced material. Techno intentionally maps to the old Electro/Detroit
     // timbre because Techno was added after the legacy projection was removed.
     bool applyLegacyGenreTimbre(GenerativeMode genre, int voiceIndex);
+
+    // Transient A/B override used by the user-facing sound shortcut. Enabling
+    // snapshots only the parameters touched by the old Genre timbre projection;
+    // disabling restores that exact pre-override patch. It is intentionally not
+    // scene-persisted and does not own generation or note lifetime.
+    bool setLegacyGenreSoundEnabled(bool enabled, GenerativeMode genre);
+    bool toggleLegacyGenreSound(GenerativeMode genre);
+    bool legacyGenreSoundEnabled() const { return legacyGenreSoundEnabled_; }
+    GenerativeMode legacyGenreSoundGenre() const { return legacyGenreSoundGenre_; }
     
     // Pattern generation (Legacy Mode-based)
     void generatePattern(SynthPattern& pattern, float bpm) const;
@@ -105,6 +114,14 @@ private:
         DrumVoiceBase = 0xD0000000u,
     };
 
+    struct LegacyTimbreSnapshot {
+        bool valid = false;
+        float cutoff = 0.0f;
+        float resonance = 0.0f;
+        float envAmount = 0.0f;
+        float envDecay = 0.0f;
+    };
+
     static constexpr uint32_t kFallbackGenerationSeed = 0x6D2B79F5u;
     uint32_t ensureGenerationSeed() const;
     DeterministicRng makeGenerationRng(GenerationDomain domain,
@@ -114,6 +131,9 @@ private:
     GrooveboxMode currentMode_;
     int currentFlavor_;
     mutable uint32_t generationSeed_;
+    LegacyTimbreSnapshot legacyTimbreSnapshot_[2]{};
+    bool legacyGenreSoundEnabled_ = false;
+    GenerativeMode legacyGenreSoundGenre_ = GenerativeMode::Acid;
 };
 
 #endif  // GROOVEPUTER_DSP_MODE_MANAGER_H

@@ -7,6 +7,32 @@
 
 #include <cstdio>
 
+namespace GlobalHelpDetail {
+
+inline bool hasLegacySoundLine(int pageIndex) {
+    return WorkflowPages::normalizeLegacyPage(pageIndex) == WorkflowPages::kGenre;
+}
+
+inline int totalLines(int pageIndex) {
+    return HelpContent::getTotalLines(pageIndex) +
+           (hasLegacySoundLine(pageIndex) ? 1 : 0);
+}
+
+inline const char* line(int pageIndex, int index) {
+    if (!hasLegacySoundLine(pageIndex)) {
+        return HelpContent::getLine(pageIndex, index);
+    }
+
+    const int pageCount = HelpContent::getPageLineCount(pageIndex);
+    if (index < pageCount) return HelpContent::getLine(pageIndex, index);
+    if (index == pageCount) return "Fn+L        Legacy sound A/B";
+
+    // The extra Genre-only line is inserted before the shared GLOBAL section.
+    return HelpContent::getLine(pageIndex, index - 1);
+}
+
+}  // namespace GlobalHelpDetail
+
 class GlobalHelpOverlay {
 public:
     GlobalHelpOverlay() = default;
@@ -48,7 +74,7 @@ public:
         if (line_h < 10) line_h = 10;
         
         int visible_lines = content_h / line_h;
-        int total_lines = HelpContent::getTotalLines(page_index_);
+        int total_lines = GlobalHelpDetail::totalLines(page_index_);
         
         // Clamp scroll
         int max_scroll = total_lines - visible_lines;
@@ -59,7 +85,7 @@ public:
         // Draw lines
         int y = content_y;
         for (int i = 0; i < visible_lines && (scroll_line_ + i) < total_lines; i++) {
-            const char* line = HelpContent::getLine(page_index_, scroll_line_ + i);
+            const char* line = GlobalHelpDetail::line(page_index_, scroll_line_ + i);
             if (!line) continue;
             
             // Section headers in accent color
@@ -122,7 +148,7 @@ public:
                 return true;
                 
             case GROOVEPUTER_RIGHT:
-                scroll_line_ = HelpContent::getTotalLines(page_index_);  // Go to bottom
+                scroll_line_ = GlobalHelpDetail::totalLines(page_index_);  // Go to bottom
                 return true;
                 
             default:
