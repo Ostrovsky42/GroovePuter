@@ -38,4 +38,15 @@ jobs:
             pkg-config
 
       - name: Run P3-U1 focused gate
-        run: bash tests/run_pattern_phrase_p3_u1_tests.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_pattern_phrase_p3_u1_tests.sh 2>&1 | tee p3-u1-focused.log
+
+      - name: Upload focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-u1-focused-log
+          path: p3-u1-focused.log
+          if-no-files-found: error
