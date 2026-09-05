@@ -14,12 +14,16 @@ Opening the MIDI PLAYER page triggers a mount attempt that fails:
 [MIDI-FILES] unavailable stage=mount path=/midi dirs=0 files=0 shown=0 errno=0
 ```
 
-`type=0` is `CARD_NONE` from `SD.cardType()`, so the card is not identified at
-initialisation. `errno=0`: this is not a filesystem error.
+`type=0` is `CARD_NONE` from `SD.cardType()`. **Correction from source review:**
+this does not identify the failing initialization layer. The installed Arduino
+`SDFS::begin()` clears `_pdrv` after any failed mount, including FAT/VFS errors,
+so `cardType()` then returns `CARD_NONE`. The browser's `errno=0` does not carry
+the driver's FatFs/ESP error code and does not exclude a filesystem failure.
 
-Mounting is lazy — `ensureCardputerSdMounted()` runs on first use, not at boot —
-so logs from sessions that never opened an SD-backed page contain no `[SD]`
-lines at all and say nothing either way.
+Mounting was lazy in some older captures. The current sketch explicitly calls
+storage initialization at boot stage 82, then again inside `MiniAcid::init()`.
+Use the source and boot identity associated with each capture when interpreting
+the absence of `[SD]` lines.
 
 ## Timeline from the recorded logs
 
@@ -137,3 +141,11 @@ So two things are open again, not one:
 Neither the warm-reset explanation nor "no regression" should be treated as
 established until a session captures a clean, uninterrupted boot (no reboot
 loop) with an explicit, deliberate SD check on that exact boot.
+
+## Source review and controlled USB capture
+
+See [the recovery review](CARDPUTER_RECOVERY_REVIEW_2026-09-05.md). Unchanged SD
+source and disjoint MIDI pins do not rule out changes to memory, dependencies,
+or initialization state. The new capture still shows failed SD mounting after
+POWERON. The cause remains open pending SPI/SD driver errors from an identified
+recovery image. A successful mount has not been demonstrated by this review.

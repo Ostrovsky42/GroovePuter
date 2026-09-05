@@ -53,9 +53,9 @@ compile_one() {
   local src="$1"
   local obj
   obj="$(object_for "${src}")"
-  if [[ -f "${obj}" && "${obj}" -nt "${src}" ]]; then
-    return 0
-  fi
+  # Rebuild every translation unit for this gate. Comparing only the .cpp
+  # timestamp misses header and compiler-flag changes and can even link tests
+  # against a stale MiniAcid layout. The archive is shared within this run.
   # shellcheck disable=SC2086
   g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} -c "${src}" -o "${obj}"
 }
