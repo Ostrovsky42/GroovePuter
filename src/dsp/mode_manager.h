@@ -72,9 +72,11 @@ public:
     // Apply a mode-specific preset to a voice
     void apply303Preset(int voiceIndex, int presetIndex);
 
-    // Apply an opt-in legacy sound preset without changing the generation
-    // mode/flavor. Only Acid and Techno have legacy sound families.
-    bool applyLegacyGenreSoundPreset(GenerativeMode genre, int presetIndex, int voiceIndex);
+    // Reapply the historical Genre->TB303 timbre projection as an explicit,
+    // opt-in sound operation. This never changes generation mode/flavor or
+    // sequenced material. Techno intentionally maps to the old Electro/Detroit
+    // timbre because Techno was added after the legacy projection was removed.
+    bool applyLegacyGenreTimbre(GenerativeMode genre, int voiceIndex);
     
     // Pattern generation (Legacy Mode-based)
     void generatePattern(SynthPattern& pattern, float bpm) const;
