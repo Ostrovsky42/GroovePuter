@@ -89,3 +89,22 @@ at `c63f64f1`, before any of this line's work.
 `docs/audits/SMF_STABILITY_REGRESSION_AUDIT_2026-08-02.md` records something that
 looked like an SD dropout in August, but there mount and `SD.open()` both kept
 succeeding. Different failure.
+
+## Resolved
+
+Run: full USB power disconnect, wait, reconnect, no reflash, open MIDI PLAYER
+on firmware already at `a87623c7` (SeqTrak MIDI-only build). Files appeared.
+
+That is the discriminating result this document asked for. The card survives a
+real cold boot; it only failed to reinitialise after `esptool`'s warm reset,
+which resets the controller without cycling power to the card. Every failing
+observation in this document followed such a reset.
+
+So: no regression between `db4e0f49` and `48762854`. The bisect this document
+kept open is cancelled — it would have been searching for a commit that does
+not exist. `SPI.begin()`/`SD.begin()` and the pin assignment remain exactly as
+checked above; nothing about them needed to change.
+
+Practical consequence for this session's own workflow: after flashing via
+`esptool`, mounting the card again requires a real power cycle, not just the
+reset the upload already performs.
