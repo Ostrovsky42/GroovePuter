@@ -34,6 +34,12 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void drawTabIndicator(IGfx& gfx) const;
   const char* activeTabName() const;
 
+  // P3-U1 source-aware NOTES controller. Pattern remains the retained child
+  // page; PHRASE gets an independent presentation/controller branch without a
+  // second source flag. MiniAcid::SequencedSource is the sole source owner.
+  void drawPhraseNotes(IGfx& gfx);
+  bool handlePhraseNotesEvent(UIEvent& ui_event);
+
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int voice_index_ = 0;
@@ -42,4 +48,5 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;
+  std::string phrase_title_;
 };
