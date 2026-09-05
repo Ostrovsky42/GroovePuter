@@ -82,16 +82,16 @@ void testPrepareNeverTouchesLiveState() {
   assert(samePhrase(live, before));
 }
 
-void testEngineCommitIsCompleteBufferOrNothing() {
+void testOwnerCommitIsCompleteBufferOrNothing() {
   MiniAcid engine(44100.0f, nullptr);
   auto prepared = makePhrase();
   prepared.events[0].note = 67;
 
-  const auto beforeA = engine.currentPhraseBuffer(0);
   const auto beforeB = engine.currentPhraseBuffer(1);
   const auto sourceA = engine.currentSequencedSource(0);
 
-  assert(engine.commitPreparedPhrase(0, prepared));
+  auto& liveA = engine.currentPhraseBuffer(0);
+  assert(RuntimePhraseEdit::commit(liveA, prepared));
   assert(samePhrase(engine.currentPhraseBuffer(0), prepared));
   assert(samePhrase(engine.currentPhraseBuffer(1), beforeB));
   assert(engine.currentSequencedSource(0) == sourceA);
@@ -99,15 +99,10 @@ void testEngineCommitIsCompleteBufferOrNothing() {
   auto invalid = prepared;
   invalid.events[0].durationSubticks = 0;
   const auto committedA = engine.currentPhraseBuffer(0);
-  assert(!engine.commitPreparedPhrase(0, invalid));
-  assert(samePhrase(engine.currentPhraseBuffer(0), committedA));
-
-  assert(!engine.commitPreparedPhrase(-1, prepared));
-  assert(!engine.commitPreparedPhrase(NUM_303_VOICES, prepared));
+  assert(!RuntimePhraseEdit::commit(liveA, invalid));
   assert(samePhrase(engine.currentPhraseBuffer(0), committedA));
   assert(samePhrase(engine.currentPhraseBuffer(1), beforeB));
-
-  (void)beforeA;
+  assert(engine.currentSequencedSource(0) == sourceA);
 }
 
 }  // namespace
@@ -115,7 +110,7 @@ void testEngineCommitIsCompleteBufferOrNothing() {
 int main() {
   testValidationRejectsEveryUnsafeShape();
   testPrepareNeverTouchesLiveState();
-  testEngineCommitIsCompleteBufferOrNothing();
+  testOwnerCommitIsCompleteBufferOrNothing();
   std::puts("P3-U1 bounded phrase prepare/validate/commit: OK");
   return 0;
 }
