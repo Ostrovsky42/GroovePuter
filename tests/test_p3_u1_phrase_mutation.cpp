@@ -56,6 +56,26 @@ void testValidationRejectsEveryUnsafeShape() {
   assert(!RuntimePhraseEdit::validate(beyondEnd));
 }
 
+void testValidationRejectsOutOfRangeEventValues() {
+  auto valid = makePhrase();
+
+  auto invalidNote = valid;
+  invalidNote.events[0].note = 128;
+  assert(!RuntimePhraseEdit::validate(invalidNote));
+
+  auto zeroVelocity = valid;
+  zeroVelocity.events[0].velocity = 0;
+  assert(!RuntimePhraseEdit::validate(zeroVelocity));
+
+  auto invalidVelocity = valid;
+  invalidVelocity.events[0].velocity = 128;
+  assert(!RuntimePhraseEdit::validate(invalidVelocity));
+
+  auto invalidProbability = valid;
+  invalidProbability.events[0].probability = 101;
+  assert(!RuntimePhraseEdit::validate(invalidProbability));
+}
+
 void testPrepareNeverTouchesLiveState() {
   auto live = makePhrase();
   const auto before = live;
@@ -121,6 +141,24 @@ void testSnappedInsertCreatesExactlyOneEvent() {
   assert(phrase.events[0].velocity == 100);
   assert(phrase.events[0].probability == 100);
   assert(RuntimePhraseEdit::validate(phrase));
+}
+
+void testSnappedInsertRejectsInvalidMidiValuesWithoutMutation() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
+  const auto before = phrase;
+
+  assert(RuntimePhraseEdit::insertSnapped(phrase, 120, 24, 128, 100) ==
+         RuntimePhraseEdit::EventEditResult::Rejected);
+  assert(samePhrase(phrase, before));
+
+  assert(RuntimePhraseEdit::insertSnapped(phrase, 120, 24, 64, 0) ==
+         RuntimePhraseEdit::EventEditResult::Rejected);
+  assert(samePhrase(phrase, before));
+
+  assert(RuntimePhraseEdit::insertSnapped(phrase, 120, 24, 64, 128) ==
+         RuntimePhraseEdit::EventEditResult::Rejected);
+  assert(samePhrase(phrase, before));
 }
 
 void testCapacityRejectsWithoutChangingCandidate() {
@@ -204,9 +242,11 @@ void testCoverageUsesLatestOnsetThenLowestIndex() {
 
 int main() {
   testValidationRejectsEveryUnsafeShape();
+  testValidationRejectsOutOfRangeEventValues();
   testPrepareNeverTouchesLiveState();
   testOwnerCommitIsCompleteBufferOrNothing();
   testSnappedInsertCreatesExactlyOneEvent();
+  testSnappedInsertRejectsInvalidMidiValuesWithoutMutation();
   testCapacityRejectsWithoutChangingCandidate();
   testDeleteIsBoundedAndDeterministic();
   testCoverageUsesLatestOnsetThenLowestIndex();
