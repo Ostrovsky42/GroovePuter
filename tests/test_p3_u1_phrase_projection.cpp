@@ -17,11 +17,9 @@ void testCrossBarLongNoteIsOneVisualSpan() {
   event.velocity = 100;
   event.probability = 100;
 
-  PhraseNotesProjection::Projection projection{};
-  assert(PhraseNotesProjection::project(phrase, projection));
-  assert(projection.count == 1);
-
-  const auto& span = projection.spans[0];
+  assert(PhraseNotesProjection::validate(phrase));
+  PhraseNotesProjection::NoteSpan span{};
+  assert(PhraseNotesProjection::project(phrase, 0, span));
   assert(span.eventIndex == 0);
   assert(span.startSubtick == 360u * PhraseRuntime::kSubticksPerTick);
   assert(span.endSubtick == 456u * PhraseRuntime::kSubticksPerTick);
@@ -32,7 +30,6 @@ void testCrossBarLongNoteIsOneVisualSpan() {
 
   // Continuation is presentation data, never another musical event.
   assert(phrase.count == 1);
-  assert(projection.count == phrase.count);
 }
 
 void testProjectionRejectsInvalidLiveShapeWithoutMutation() {
@@ -44,8 +41,9 @@ void testProjectionRejectsInvalidLiveShapeWithoutMutation() {
   phrase.events[0].note = 64;
 
   const auto before = phrase;
-  PhraseNotesProjection::Projection projection{};
-  assert(!PhraseNotesProjection::project(phrase, projection));
+  assert(!PhraseNotesProjection::validate(phrase));
+  PhraseNotesProjection::NoteSpan span{};
+  assert(!PhraseNotesProjection::project(phrase, 0, span));
   assert(phrase.count == before.count);
   assert(phrase.lengthTicks == before.lengthTicks);
   assert(phrase.events[0].startTick == before.events[0].startTick);
