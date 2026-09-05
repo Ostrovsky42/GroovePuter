@@ -68,6 +68,9 @@ SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
       audio_guard_(audio_guard),
       voice_index_(voice_index) {
   fallback_title_ = (voice_index_ == 0) ? "SYNTH A" : "SYNTH B";
+  phrase_title_ = (voice_index_ == 0)
+      ? "SYNTH A NOTES PHRASE"
+      : "SYNTH B NOTES PHRASE";
 
   pattern_page_ = std::make_shared<PatternEditPage>(gfx, mini_acid, audio_guard, voice_index_);
   params_page_ = std::make_shared<TB303ParamsPage>(gfx, mini_acid, audio_guard, voice_index_);
@@ -126,13 +129,43 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
                label);
 }
 
+void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
+  const Rect& bounds = Layout::CONTENT;
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+  gfx.setTextColor(synthTabColor(voice_index_));
+  gfx.drawText(bounds.x + 4, bounds.y + 4, "SOURCE: PHRASE");
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(bounds.x + 4, bounds.y + 20, "P3 PHRASE");
+  gfx.drawText(bounds.x + 4, bounds.y + 34, "READ ONLY");
+}
+
+bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
+  (void)ui_event;
+  // Slice 1 is intentionally presentation-only. Phrase mutation is added only
+  // after the bounded PREPARE -> VALIDATE -> COMMIT owner is characterized.
+  return false;
+}
+
 void SynthSequencerPage::draw(IGfx& gfx) {
+  if (synth_tab_ == SynthTab::Notes &&
+      mini_acid_.currentSequencedSource(voice_index_) ==
+          MiniAcid::SequencedSource::Phrase) {
+    drawPhraseNotes(gfx);
+    drawTabIndicator(gfx);
+    return;
+  }
   MultiPage::draw(gfx);
   drawTabIndicator(gfx);
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
-  if (GroovePuterUndoUx::isUndoEvent(ui_event) &&
+  const bool phraseNotes =
+      synth_tab_ == SynthTab::Notes &&
+      mini_acid_.currentSequencedSource(voice_index_) ==
+          MiniAcid::SequencedSource::Phrase;
+  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;
+
+  if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event) &&
       synth_tab_ == SynthTab::Notes) {
     auto& owner = GroovePuterUndo::undoOwner();
     if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
@@ -147,8 +180,8 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  if (synth_tab_ == SynthTab::Notes && isSynthGenerateKey(ui_event) &&
-      !mini_acid_.isPlaying()) {
+  if (!phraseNotes && synth_tab_ == SynthTab::Notes &&
+      isSynthGenerateKey(ui_event) && !mini_acid_.isPlaying()) {
     SceneManager& manager = mini_acid_.sceneManager();
     GroovePuterUndo::SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
@@ -241,10 +274,19 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // PHRASE must never fall through into the Pattern child and invisibly edit
+  // Pattern material. Unhandled PHRASE commands remain unhandled until their
+  // own bounded mutation slices are added.
+  if (phraseNotes) return false;
   return MultiPage::handleEvent(ui_event);
 }
 
 const std::string& SynthSequencerPage::getTitle() const {
+  if (synth_tab_ == SynthTab::Notes &&
+      mini_acid_.currentSequencedSource(voice_index_) ==
+          MiniAcid::SequencedSource::Phrase) {
+    return phrase_title_;
+  }
   if (synth_tab_ == SynthTab::Notes && pattern_page_) {
     return pattern_page_->getTitle();
   }
@@ -263,7 +305,9 @@ void SynthSequencerPage::setVisualStyle(VisualStyle style) {
 }
 
 void SynthSequencerPage::tick() {
-  if (synth_tab_ == SynthTab::Notes && pattern_page_) {
+  if (synth_tab_ == SynthTab::Notes && pattern_page_ &&
+      mini_acid_.currentSequencedSource(voice_index_) ==
+          MiniAcid::SequencedSource::Pattern) {
     pattern_page_->syncSongPatternContext();
     pattern_page_->tick();
   }
