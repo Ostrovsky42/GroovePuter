@@ -13,6 +13,10 @@ g++ -std=c++17 -I. tests/test_p3_u1_phrase_projection.cpp \
   -o "${FAST_BUILD_DIR}/test_p3_u1_phrase_projection"
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_projection"
 
+g++ -std=c++17 -I. tests/test_p3_u1_phrase_duration.cpp \
+  -o "${FAST_BUILD_DIR}/test_p3_u1_phrase_duration"
+"${FAST_BUILD_DIR}/test_p3_u1_phrase_duration"
+
 # Build the inherited real MiniAcid archive first. The mutation characterization
 # then links against the same host engine objects instead of using a test double.
 bash tests/run_pattern_phrase_p3_tests.sh
