@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "../phrase/runtime_synth_events.h"
+#include "../phrase/runtime_phrase_edit.h"
 
 namespace PhraseNotesProjection {
 
@@ -16,29 +16,8 @@ struct NoteSpan {
   bool crossesBarBoundary = false;
 };
 
-inline bool validPhraseLengthTicks(uint16_t lengthTicks) {
-  return lengthTicks == PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 2 * PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 4 * PhraseRuntime::kTicksPerBar ||
-         lengthTicks == 8 * PhraseRuntime::kTicksPerBar;
-}
-
 inline bool validate(const PhraseRuntime::RuntimeSynthEventBuffer& phrase) {
-  if (!validPhraseLengthTicks(phrase.lengthTicks)) return false;
-  if (phrase.count > PhraseRuntime::kMaxSynthEvents) return false;
-
-  const uint32_t phraseEndSubtick =
-      static_cast<uint32_t>(phrase.lengthTicks) * PhraseRuntime::kSubticksPerTick;
-  for (uint16_t i = 0; i < phrase.count; ++i) {
-    const auto& event = phrase.events[i];
-    if (event.durationSubticks == 0) return false;
-    if (event.startTick >= phrase.lengthTicks) return false;
-    const uint32_t startSubtick =
-        static_cast<uint32_t>(event.startTick) * PhraseRuntime::kSubticksPerTick;
-    const uint32_t endSubtick = startSubtick + event.durationSubticks;
-    if (endSubtick > phraseEndSubtick) return false;
-  }
-  return true;
+  return RuntimePhraseEdit::validate(phrase);
 }
 
 inline bool project(const PhraseRuntime::RuntimeSynthEventBuffer& phrase,
