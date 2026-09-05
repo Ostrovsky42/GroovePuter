@@ -108,3 +108,32 @@ checked above; nothing about them needed to change.
 Practical consequence for this session's own workflow: after flashing via
 `esptool`, mounting the card again requires a real power cycle, not just the
 reset the upload already performs.
+
+
+## Reopened
+
+The "Resolved" verdict above was premature. A later capture on this same
+firmware (`118aa489`, plain composite build) shows `Reset Reason: 1`
+(`ESP_RST_POWERON`, confirmed against the installed SDK's
+`esp_system.h` — not a warm esptool reset) followed immediately by
+`[SD] mount result=0 type=0` on the early-init attempt and again during
+`MiniAcid::init`. A genuine cold power-on still fails to see the card.
+
+The same capture also shows two `Reset Reason: 4` (`ESP_RST_PANIC`) events and
+a burst of four reboots within about a second, three of them dying before
+`M5Cardputer.begin()` even completed. No panic backtrace reached the serial
+log in either the live capture or the raw persisted file, which is consistent
+with the crash disrupting the same USB-CDC/JTAG peripheral that carries the
+console — the reboot symptom ("port disappeared: No such file or directory")
+is what a panic-driven USB reset looks like from the host side, not
+necessarily proof of a manual unplug.
+
+So two things are open again, not one:
+- SD: still not proven to survive a genuine power-on; the "files appeared"
+  observation that closed this before may have been a one-off, or the card's
+  physical seating may have changed since.
+- A real, uninvestigated panic loop, with no captured cause.
+
+Neither the warm-reset explanation nor "no regression" should be treated as
+established until a session captures a clean, uninterrupted boot (no reboot
+loop) with an explicit, deliberate SD check on that exact boot.
