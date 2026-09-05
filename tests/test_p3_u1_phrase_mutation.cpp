@@ -3,12 +3,13 @@
 #include <cstring>
 #include <cstdio>
 
-#include "src/state/runtime_phrase_edit.h"
+#include "src/dsp/miniacid_engine.h"
+#include "src/phrase/runtime_phrase_edit.h"
+
+SerialMock Serial;
+SDMock SD;
 
 namespace {
-
-using GroovePuterPhraseEdit::MutationResult;
-using GroovePuterPhraseEdit::RuntimePhraseUndoPayload;
 
 PhraseRuntime::RuntimeSynthEventBuffer makePhrase(uint8_t bars = 2) {
   PhraseRuntime::RuntimeSynthEventBuffer phrase{};
@@ -28,121 +29,93 @@ bool samePhrase(const PhraseRuntime::RuntimeSynthEventBuffer& lhs,
   return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
 
-void resetOwners() {
-  GroovePuterUndo::undoOwner().clear();
-  GroovePuterState::restoreSceneRevision({17u, 17u});
+void testValidationRejectsEveryUnsafeShape() {
+  auto valid = makePhrase();
+  assert(RuntimePhraseEdit::validate(valid));
+
+  auto invalidCount = valid;
+  invalidCount.count = PhraseRuntime::kMaxSynthEvents + 1;
+  assert(!RuntimePhraseEdit::validate(invalidCount));
+
+  auto invalidLength = valid;
+  invalidLength.lengthTicks = 3 * PhraseRuntime::kTicksPerBar;
+  assert(!RuntimePhraseEdit::validate(invalidLength));
+
+  auto zeroDuration = valid;
+  zeroDuration.events[0].durationSubticks = 0;
+  assert(!RuntimePhraseEdit::validate(zeroDuration));
+
+  auto outsideStart = valid;
+  outsideStart.events[0].startTick = outsideStart.lengthTicks;
+  assert(!RuntimePhraseEdit::validate(outsideStart));
+
+  auto beyondEnd = makePhrase(1);
+  beyondEnd.events[0].startTick = 360;
+  beyondEnd.events[0].durationSubticks =
+      48 * PhraseRuntime::kSubticksPerTick;
+  assert(!RuntimePhraseEdit::validate(beyondEnd));
 }
 
-void testCommitUndoRedoIsAtomicAndSessionOnly() {
-  resetOwners();
+void testPrepareNeverTouchesLiveState() {
   auto live = makePhrase();
   const auto before = live;
-  const auto sceneBefore = GroovePuterState::sceneRevisionSnapshot();
+  PhraseRuntime::RuntimeSynthEventBuffer prepared{};
 
-  const MutationResult result = GroovePuterPhraseEdit::commit(
-      0, live, [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+  const auto result = RuntimePhraseEdit::prepare(
+      live, prepared, [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
         candidate.events[0].durationSubticks =
             120 * PhraseRuntime::kSubticksPerTick;
       });
 
-  assert(result == MutationResult::Committed);
-  assert(live.events[0].durationSubticks ==
+  assert(result == RuntimePhraseEdit::PrepareResult::Ready);
+  assert(samePhrase(live, before));
+  assert(prepared.events[0].durationSubticks ==
          120 * PhraseRuntime::kSubticksPerTick);
-  assert(GroovePuterUndo::undoOwner().hasUndo());
-  assert(GroovePuterUndo::undoOwner().kind() ==
-         GroovePuterUndo::UndoKind::RuntimePhrase);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision ==
-         sceneBefore.currentRevision);
-  assert(GroovePuterState::sceneRevisionSnapshot().persistedRevision ==
-         sceneBefore.persistedRevision);
+  assert(RuntimePhraseEdit::validate(prepared));
 
-  const auto changed = live;
-  assert(GroovePuterPhraseEdit::toggleUndo(0, live) ==
-         GroovePuterUndo::UndoResult::Restored);
-  assert(samePhrase(live, before));
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision ==
-         sceneBefore.currentRevision);
-  assert(GroovePuterState::sceneRevisionSnapshot().persistedRevision ==
-         sceneBefore.persistedRevision);
-
-  assert(GroovePuterPhraseEdit::toggleUndo(0, live) ==
-         GroovePuterUndo::UndoResult::Restored);
-  assert(samePhrase(live, changed));
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision ==
-         sceneBefore.currentRevision);
-  assert(GroovePuterState::sceneRevisionSnapshot().persistedRevision ==
-         sceneBefore.persistedRevision);
-}
-
-void testRejectedMutationPreservesLiveAndPreviousUndo() {
-  resetOwners();
-
-  auto retainedTarget = makePhrase();
-  assert(GroovePuterPhraseEdit::commit(
-             0, retainedTarget,
-             [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
-               candidate.events[0].note = 61;
-             }) == MutationResult::Committed);
-
-  RuntimePhraseUndoPayload retained{};
-  assert(GroovePuterUndo::undoOwner().read(
-      GroovePuterUndo::UndoKind::RuntimePhrase, retained));
-  assert(retained.synthIndex == 0);
-
-  auto live = makePhrase(1);
-  live.events[0].startTick = 360;
-  live.events[0].durationSubticks =
-      12 * PhraseRuntime::kSubticksPerTick;
-  const auto before = live;
-
-  const MutationResult rejected = GroovePuterPhraseEdit::commit(
-      1, live, [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
-        candidate.events[0].durationSubticks =
-            48 * PhraseRuntime::kSubticksPerTick;
+  PhraseRuntime::RuntimeSynthEventBuffer rejected{};
+  const auto rejectedResult = RuntimePhraseEdit::prepare(
+      live, rejected, [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+        candidate.lengthTicks = PhraseRuntime::kTicksPerBar;
       });
-
-  assert(rejected == MutationResult::Rejected);
+  assert(rejectedResult == RuntimePhraseEdit::PrepareResult::Rejected);
   assert(samePhrase(live, before));
-
-  RuntimePhraseUndoPayload afterRejected{};
-  assert(GroovePuterUndo::undoOwner().read(
-      GroovePuterUndo::UndoKind::RuntimePhrase, afterRejected));
-  assert(afterRejected.synthIndex == 0);
 }
 
-void testNoOpDoesNotConsumePreviousUndo() {
-  resetOwners();
-  auto first = makePhrase();
-  assert(GroovePuterPhraseEdit::commit(
-             0, first,
-             [](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
-               candidate.events[0].velocity = 99;
-             }) == MutationResult::Committed);
+void testEngineCommitIsCompleteBufferOrNothing() {
+  MiniAcid engine(44100.0f, nullptr);
+  auto prepared = makePhrase();
+  prepared.events[0].note = 67;
 
-  RuntimePhraseUndoPayload retained{};
-  assert(GroovePuterUndo::undoOwner().read(
-      GroovePuterUndo::UndoKind::RuntimePhrase, retained));
+  const auto beforeA = engine.currentPhraseBuffer(0);
+  const auto beforeB = engine.currentPhraseBuffer(1);
+  const auto sourceA = engine.currentSequencedSource(0);
 
-  auto second = makePhrase();
-  const MutationResult noChange = GroovePuterPhraseEdit::commit(
-      1, second, [](PhraseRuntime::RuntimeSynthEventBuffer&) {});
-  assert(noChange == MutationResult::NoChange);
+  assert(engine.commitPreparedPhrase(0, prepared));
+  assert(samePhrase(engine.currentPhraseBuffer(0), prepared));
+  assert(samePhrase(engine.currentPhraseBuffer(1), beforeB));
+  assert(engine.currentSequencedSource(0) == sourceA);
 
-  RuntimePhraseUndoPayload stillRetained{};
-  assert(GroovePuterUndo::undoOwner().read(
-      GroovePuterUndo::UndoKind::RuntimePhrase, stillRetained));
-  assert(stillRetained.synthIndex == retained.synthIndex);
+  auto invalid = prepared;
+  invalid.events[0].durationSubticks = 0;
+  const auto committedA = engine.currentPhraseBuffer(0);
+  assert(!engine.commitPreparedPhrase(0, invalid));
+  assert(samePhrase(engine.currentPhraseBuffer(0), committedA));
+
+  assert(!engine.commitPreparedPhrase(-1, prepared));
+  assert(!engine.commitPreparedPhrase(NUM_303_VOICES, prepared));
+  assert(samePhrase(engine.currentPhraseBuffer(0), committedA));
+  assert(samePhrase(engine.currentPhraseBuffer(1), beforeB));
+
+  (void)beforeA;
 }
 
 }  // namespace
 
 int main() {
-  static_assert(sizeof(RuntimePhraseUndoPayload) <=
-                    GroovePuterUndo::UndoOwner::payloadCapacity(),
-                "runtime Phrase before-image must fit the measured Undo slot");
-  testCommitUndoRedoIsAtomicAndSessionOnly();
-  testRejectedMutationPreservesLiveAndPreviousUndo();
-  testNoOpDoesNotConsumePreviousUndo();
-  std::puts("P3-U1 bounded runtime phrase mutation: OK");
+  testValidationRejectsEveryUnsafeShape();
+  testPrepareNeverTouchesLiveState();
+  testEngineCommitIsCompleteBufferOrNothing();
+  std::puts("P3-U1 bounded phrase prepare/validate/commit: OK");
   return 0;
 }
