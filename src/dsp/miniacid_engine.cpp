@@ -3854,29 +3854,29 @@ void MiniAcid::advanceSongBar_() {
 
 // P3: Bounded Phrase Source
 
-void MiniAcid::setSequencedSource(SequencedSource source) {
-  currentSequencedSource_ = source;
+void MiniAcid::setSequencedSource(int voiceIndex, SequencedSource source) {
+  sequencedSource_[clamp303Voice(voiceIndex)] = source;
 }
 
-MiniAcid::SequencedSource MiniAcid::currentSequencedSource() const {
-  return currentSequencedSource_;
+MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const {
+  return sequencedSource_[clamp303Voice(voiceIndex)];
 }
 
-bool MiniAcid::setPhraseLength(uint8_t barCount) {
-  // Validate: accept exactly 1, 2, 4, or 8 bars
+bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
   if (barCount != 1 && barCount != 2 && barCount != 4 && barCount != 8) {
     return false;
   }
-
-  // Set phrase length in ticks
-  currentPhrase_.lengthTicks = barCount * PhraseRuntime::kTicksPerBar;
+  currentPhrase_[clamp303Voice(voiceIndex)].lengthTicks =
+      static_cast<uint16_t>(barCount * PhraseRuntime::kTicksPerBar);
   return true;
 }
 
-PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() {
-  return currentPhrase_;
+PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
+    int voiceIndex) {
+  return currentPhrase_[clamp303Voice(voiceIndex)];
 }
 
-const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer() const {
-  return currentPhrase_;
+const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
+    int voiceIndex) const {
+  return currentPhrase_[clamp303Voice(voiceIndex)];
 }

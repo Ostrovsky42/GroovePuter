@@ -28,38 +28,38 @@ int main() {
   MiniAcid engine{44100.0f, nullptr};
 
   // 1. Default sequenced source is Pattern.
-  expect(engine.currentSequencedSource() == MiniAcid::SequencedSource::Pattern,
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
          "default sequenced source is not Pattern");
 
   // 2. Pattern -> Phrase -> Pattern round-trip.
-  engine.setSequencedSource(MiniAcid::SequencedSource::Phrase);
-  expect(engine.currentSequencedSource() == MiniAcid::SequencedSource::Phrase,
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase,
          "selecting Phrase did not take effect");
-  engine.setSequencedSource(MiniAcid::SequencedSource::Pattern);
-  expect(engine.currentSequencedSource() == MiniAcid::SequencedSource::Pattern,
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
          "returning to Pattern did not take effect");
 
   // 3. Valid lengths map to bar multiples of kTicksPerBar.
   for (const uint8_t bars : {1, 2, 4, 8}) {
     const uint16_t expected =
         static_cast<uint16_t>(bars * PhraseRuntime::kTicksPerBar);
-    expect(engine.setPhraseLength(bars), "valid phrase length was rejected");
-    expect(engine.currentPhraseBuffer().lengthTicks == expected,
+    expect(engine.setPhraseLength(0, bars), "valid phrase length was rejected");
+    expect(engine.currentPhraseBuffer(0).lengthTicks == expected,
            "valid phrase length produced the wrong tick span");
   }
 
   // 4. Invalid lengths are rejected without mutating the last valid state.
-  expect(engine.setPhraseLength(4), "setup length 4 was rejected");
-  const uint16_t retained = engine.currentPhraseBuffer().lengthTicks;
+  expect(engine.setPhraseLength(0, 4), "setup length 4 was rejected");
+  const uint16_t retained = engine.currentPhraseBuffer(0).lengthTicks;
   for (const uint8_t bars : {0, 3, 5, 6, 7, 9, 16}) {
-    expect(!engine.setPhraseLength(bars), "invalid phrase length was accepted");
-    expect(engine.currentPhraseBuffer().lengthTicks == retained,
+    expect(!engine.setPhraseLength(0, bars), "invalid phrase length was accepted");
+    expect(engine.currentPhraseBuffer(0).lengthTicks == retained,
            "invalid phrase length mutated retained state");
   }
 
   // 5. Phrase material can be stored and read back.
   {
-    PhraseRuntime::RuntimeSynthEventBuffer& phrase = engine.currentPhraseBuffer();
+    PhraseRuntime::RuntimeSynthEventBuffer& phrase = engine.currentPhraseBuffer(0);
     phrase.events[0].note = 60;
     phrase.events[0].startTick = 360;
     phrase.events[0].durationSubticks =
@@ -69,7 +69,7 @@ int main() {
   {
     const MiniAcid& constEngine = engine;
     const PhraseRuntime::RuntimeSynthEventBuffer& phrase =
-        constEngine.currentPhraseBuffer();
+        constEngine.currentPhraseBuffer(0);
     expect(phrase.count == 1, "phrase event count did not persist");
     expect(phrase.events[0].note == 60, "phrase event note did not persist");
     expect(phrase.events[0].startTick == 360,
@@ -83,17 +83,17 @@ int main() {
                 "phrase capacity must remain the existing bound");
   static_assert(PhraseRuntime::kMaxPhraseBars == 8,
                 "phrase bar bound must remain the existing bound");
-  expect(engine.setPhraseLength(PhraseRuntime::kMaxPhraseBars),
+  expect(engine.setPhraseLength(0, PhraseRuntime::kMaxPhraseBars),
          "maximum bar count was rejected");
-  expect(engine.currentPhraseBuffer().lengthTicks == 3072,
+  expect(engine.currentPhraseBuffer(0).lengthTicks == 3072,
          "maximum phrase span is not 8 bars");
 
   // 7. Source selection is one-valued: selecting one deselects the other.
-  engine.setSequencedSource(MiniAcid::SequencedSource::Phrase);
-  expect(engine.currentSequencedSource() != MiniAcid::SequencedSource::Pattern,
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+  expect(engine.currentSequencedSource(0) != MiniAcid::SequencedSource::Pattern,
          "Phrase and Pattern were simultaneously selected");
-  engine.setSequencedSource(MiniAcid::SequencedSource::Pattern);
-  expect(engine.currentSequencedSource() != MiniAcid::SequencedSource::Phrase,
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+  expect(engine.currentSequencedSource(0) != MiniAcid::SequencedSource::Phrase,
          "Pattern and Phrase were simultaneously selected");
 
   if (g_failures != 0) {

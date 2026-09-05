@@ -367,11 +367,14 @@ public:
     Phrase = 1,
   };
 
-  void setSequencedSource(SequencedSource source);
-  SequencedSource currentSequencedSource() const;
-  bool setPhraseLength(uint8_t barCount);
-  PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer();
-  const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer() const;
+  // Routing lives in the container: phrase[voice] selects the synth, so
+  // RuntimeSynthEvent stays free of any target field.
+  void setSequencedSource(int voiceIndex, SequencedSource source);
+  SequencedSource currentSequencedSource(int voiceIndex) const;
+  bool setPhraseLength(int voiceIndex, uint8_t barCount);
+  PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
+  const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(
+      int voiceIndex) const;
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -480,9 +483,9 @@ private:
   std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
 
-  // P3: Bounded Phrase Source
-  SequencedSource currentSequencedSource_ = SequencedSource::Pattern;
-  PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_{};
+  // P3: Bounded Phrase Source, owned per synth voice.
+  SequencedSource sequencedSource_[NUM_303_VOICES]{};
+  PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_[NUM_303_VOICES]{};
 
   bool songMode_;
   int drumCycleIndex_;
