@@ -334,10 +334,36 @@ loop_injection = '''void loop() {
   M5Cardputer.update();
   pollCardputerMemoryBaseline();'''
 
+# P3 DRAM characterization. The product graph never reaches the PHRASE
+# sequenced source, so the diagnostic image has to drive it explicitly for the
+# runtime measurement to mean anything. These anchors match what the three
+# replacements above produce, so they must stay after them in this tuple.
+p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
+p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
+
+#define P3_DRAM_CHARACTERIZATION 1
+#include "src/diag/p3_dram_characterization.h"
+"""
+
+p3_setup_anchor = "  startCardputerMemoryBaseline();\n"
+p3_setup_injection = """  startCardputerMemoryBaseline();
+  P3DramCharacterization::begin(g_miniAcidInstance);
+"""
+
+p3_loop_anchor = "  pollCardputerMemoryBaseline();\n"
+p3_loop_injection = """  pollCardputerMemoryBaseline();
+  if (const char* p3Phase = P3DramCharacterization::poll(g_miniAcidInstance)) {
+    logCardputerMemoryBaseline(p3Phase);
+  }
+"""
+
 for anchor, replacement, label in (
     (state_anchor, state_injection, "state"),
     (setup_anchor, setup_injection, "setup"),
     (loop_anchor, loop_injection, "loop"),
+    (p3_include_anchor, p3_include_injection, "p3-include"),
+    (p3_setup_anchor, p3_setup_injection, "p3-setup"),
+    (p3_loop_anchor, p3_loop_injection, "p3-loop"),
 ):
     count = text.count(anchor)
     if count != 1:
