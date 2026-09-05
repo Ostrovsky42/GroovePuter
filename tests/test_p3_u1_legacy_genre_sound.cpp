@@ -27,10 +27,11 @@ bool samePattern(const SynthPattern& lhs, const SynthPattern& rhs) {
   return true;
 }
 
-void assertLegacyTimbreNormalized(MiniAcid& engine, int voice,
-                                  float osc, float cutoff, float resonance,
-                                  float envAmount, float envDecay) {
-  assert(near(engine.parameter303(TB303ParamId::Oscillator, voice).normalized(), osc));
+void assertLegacyTimbre(MiniAcid& engine, int voice, int oscillatorIndex,
+                        float cutoff, float resonance,
+                        float envAmount, float envDecay) {
+  assert(engine.parameter303(TB303ParamId::Oscillator, voice).optionIndex() ==
+         oscillatorIndex);
   assert(near(engine.parameter303(TB303ParamId::Cutoff, voice).normalized(), cutoff));
   assert(near(engine.parameter303(TB303ParamId::Resonance, voice).normalized(), resonance));
   assert(near(engine.parameter303(TB303ParamId::EnvAmount, voice).normalized(), envAmount));
@@ -53,8 +54,8 @@ void testLegacyAcidReplaysHistoricalPerVoiceTimbreWithoutGenerationMutation() {
 
   // Historical applyGenreTimbre() clamped Synth A EnvAmount to 0.55 while
   // Synth B retained the Acid value 0.85.
-  assertLegacyTimbreNormalized(engine, 0, 0.0f, 0.55f, 0.35f, 0.55f, 0.35f);
-  assertLegacyTimbreNormalized(engine, 1, 0.0f, 0.55f, 0.35f, 0.85f, 0.35f);
+  assertLegacyTimbre(engine, 0, 0, 0.55f, 0.35f, 0.55f, 0.35f);
+  assertLegacyTimbre(engine, 1, 0, 0.55f, 0.35f, 0.85f, 0.35f);
 }
 
 void testLegacyTechnoReplaysHistoricalDetroitElectroTimbre() {
@@ -73,8 +74,10 @@ void testLegacyTechnoReplaysHistoricalDetroitElectroTimbre() {
 
   // Techno did not exist when the old projector was removed. Legacy Techno is
   // deliberately the old Electro/Detroit behavior, with the same A/B clamps.
-  assertLegacyTimbreNormalized(engine, 0, 0.20f, 0.60f, 0.30f, 0.55f, 0.20f);
-  assertLegacyTimbreNormalized(engine, 1, 0.20f, 0.60f, 0.30f, 0.75f, 0.20f);
+  // Historical osc=0.20 goes through the 5-option Parameter quantizer and
+  // therefore selects oscillator index 1, exactly as the old code did.
+  assertLegacyTimbre(engine, 0, 1, 0.60f, 0.30f, 0.55f, 0.20f);
+  assertLegacyTimbre(engine, 1, 1, 0.60f, 0.30f, 0.75f, 0.20f);
 }
 
 void testLegacyTimbreDoesNotOwnDelayOrDistortion() {
