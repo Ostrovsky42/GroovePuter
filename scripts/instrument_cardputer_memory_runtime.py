@@ -349,6 +349,19 @@ loop_injection = '''void loop() {
 #
 # These anchors match what the three replacements above produce, so they must
 # stay after them in this tuple.
+# Raw keyboard-scan trace, independent of the phrase scenarios above.
+keyscan_include_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
+keyscan_include_injection = """static uint32_t g_peakUiDrawUs = 0;
+
+#define P3_KEY_SCAN_TRACE 1
+#include "src/diag/p3_key_scan_trace.h"
+"""
+
+keyscan_call_anchor = "  reconcilePerformanceKeys(currentKeysState);\n"
+keyscan_call_injection = """  reconcilePerformanceKeys(currentKeysState);
+  P3KeyScanTrace::observe(currentKeysState);
+"""
+
 p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
 p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 
@@ -375,6 +388,8 @@ for anchor, replacement, label in (
     (p3_include_anchor, p3_include_injection, "p3-include"),
     (p3_setup_anchor, p3_setup_injection, "p3-setup"),
     (p3_loop_anchor, p3_loop_injection, "p3-loop"),
+    (keyscan_include_anchor, keyscan_include_injection, "keyscan-include"),
+    (keyscan_call_anchor, keyscan_call_injection, "keyscan-call"),
 ):
     count = text.count(anchor)
     if count != 1:
