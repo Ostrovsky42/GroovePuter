@@ -100,6 +100,20 @@ void testPrepareNeverTouchesLiveState() {
       });
   assert(rejectedResult == RuntimePhraseEdit::PrepareResult::Rejected);
   assert(samePhrase(live, before));
+  assert(samePhrase(rejected, live));
+
+  auto invalidLive = live;
+  invalidLive.events[0].velocity = 0;
+  auto stalePrepared = makePhrase();
+  stalePrepared.events[0].note = 72;
+  assert(!samePhrase(stalePrepared, invalidLive));
+
+  const auto invalidLiveResult = RuntimePhraseEdit::prepare(
+      invalidLive,
+      stalePrepared,
+      [](PhraseRuntime::RuntimeSynthEventBuffer&) {});
+  assert(invalidLiveResult == RuntimePhraseEdit::PrepareResult::Rejected);
+  assert(samePhrase(stalePrepared, invalidLive));
 }
 
 void testOwnerCommitIsCompleteBufferOrNothing() {
