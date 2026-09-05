@@ -189,6 +189,12 @@ inline EventEditResult insertSnapped(Buffer& phrase,
       (cursorTick / gridTicksValue) * gridTicksValue);
   if (startTick >= phrase.lengthTicks) return EventEditResult::Rejected;
 
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (phrase.events[i].startTick == startTick) {
+      return EventEditResult::Rejected;
+    }
+  }
+
   const uint32_t durationSubticks =
       static_cast<uint32_t>(gridTicksValue) * PhraseRuntime::kSubticksPerTick;
   const uint32_t startSubtick =
