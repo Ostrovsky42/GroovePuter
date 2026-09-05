@@ -6,6 +6,7 @@
 #include "../../../platform_sdl/arduino_compat.h"
 #endif
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 
@@ -13,6 +14,7 @@
 #include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
+#include "../phrase_notes_projection.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -132,17 +134,69 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
 void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
   gfx.setTextColor(synthTabColor(voice_index_));
   gfx.drawText(bounds.x + 4, bounds.y + 4, "SOURCE: PHRASE");
+
+  if (!PhraseNotesProjection::validate(phrase)) {
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(bounds.x + 4, bounds.y + 20, "PHRASE INVALID");
+    return;
+  }
+
+  char status[32];
+  const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;
+  std::snprintf(status, sizeof(status), "LENGTH:%u  EVENTS:%u",
+                bars, static_cast<unsigned>(phrase.count));
   gfx.setTextColor(COLOR_WHITE);
-  gfx.drawText(bounds.x + 4, bounds.y + 20, "P3 PHRASE");
-  gfx.drawText(bounds.x + 4, bounds.y + 34, "READ ONLY");
+  gfx.drawText(bounds.x + 4, bounds.y + 18, status);
+
+  const int timelineX = bounds.x + 4;
+  const int timelineY = bounds.y + 34;
+  const int timelineW = std::max(16, bounds.w - 8);
+  const int rowH = 8;
+  const int maxRows = std::max(1, (bounds.h - 38) / rowH);
+  const uint16_t visibleTicks = std::min<uint16_t>(
+      phrase.lengthTicks, 2 * PhraseRuntime::kTicksPerBar);
+  const uint32_t visibleSubticks =
+      static_cast<uint32_t>(visibleTicks) * PhraseRuntime::kSubticksPerTick;
+
+  gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
+  if (visibleTicks > PhraseRuntime::kTicksPerBar) {
+    const int barX = timelineX +
+        static_cast<int>((static_cast<uint32_t>(PhraseRuntime::kTicksPerBar) *
+                          timelineW) / visibleTicks);
+    gfx.fillRect(barX, timelineY, 1, maxRows * rowH, COLOR_LABEL);
+  }
+
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    PhraseNotesProjection::NoteSpan span{};
+    if (!PhraseNotesProjection::project(phrase, i, span)) continue;
+    if (span.startSubtick >= visibleSubticks) continue;
+
+    const uint32_t clippedEnd = std::min<uint32_t>(span.endSubtick, visibleSubticks);
+    const int startX = timelineX + static_cast<int>(
+        (span.startSubtick * static_cast<uint32_t>(timelineW)) / visibleSubticks);
+    int endX = timelineX + static_cast<int>(
+        (clippedEnd * static_cast<uint32_t>(timelineW)) / visibleSubticks);
+    if (endX <= startX) endX = startX + 1;
+
+    const int row = i % maxRows;
+    const int y = timelineY + row * rowH + 2;
+    const IGfxColor noteColor = synthTabColor(voice_index_);
+    gfx.fillRect(startX, y, 2, 5, noteColor);  // onset
+    const int continuationX = startX + 2;
+    if (endX > continuationX) {
+      gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);
+    }
+  }
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   (void)ui_event;
-  // Slice 1 is intentionally presentation-only. Phrase mutation is added only
-  // after the bounded PREPARE -> VALIDATE -> COMMIT owner is characterized.
+  // Slice 2 remains presentation-only. Phrase mutation is added only after the
+  // bounded PREPARE -> VALIDATE -> COMMIT owner is characterized.
   return false;
 }
 
@@ -274,9 +328,6 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // PHRASE must never fall through into the Pattern child and invisibly edit
-  // Pattern material. Unhandled PHRASE commands remain unhandled until their
-  // own bounded mutation slices are added.
   if (phraseNotes) return false;
   return MultiPage::handleEvent(ui_event);
 }
