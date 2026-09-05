@@ -53,9 +53,12 @@ g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
 # Same musical/runtime material; only the explicitly requested legacy TB303
 # patch family may differ. This test also pins that applying a sound preset does
 # not mutate GrooveboxModeManager generation mode/flavor state.
+# The new translation unit is linked explicitly until the full SDL/Cardputer
+# build manifests are updated in the runtime-wiring slice.
 # shellcheck disable=SC2086
 g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
-  "../tests/test_p3_u1_legacy_genre_sound.cpp" "${ARCHIVE}" \
+  "../tests/test_p3_u1_legacy_genre_sound.cpp" \
+  "../src/dsp/legacy_genre_sound.cpp" "${ARCHIVE}" \
   ${SDL_LIBS} ${SDL_GFX_LIBS} \
   -o "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
 "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
