@@ -125,12 +125,15 @@ inline bool same(const Buffer& lhs, const Buffer& rhs) {
 
 template <typename Mutator>
 PrepareResult prepare(const Buffer& live, Buffer& prepared, Mutator&& mutator) {
+  prepared = live;
   if (!validate(live)) return PrepareResult::Rejected;
 
-  prepared = live;
   std::forward<Mutator>(mutator)(prepared);
 
-  if (!validate(prepared)) return PrepareResult::Rejected;
+  if (!validate(prepared)) {
+    prepared = live;
+    return PrepareResult::Rejected;
+  }
   if (same(prepared, live)) return PrepareResult::NoChange;
   return PrepareResult::Ready;
 }
