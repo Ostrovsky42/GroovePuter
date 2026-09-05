@@ -22,7 +22,8 @@ g++ -std=c++17 -I. tests/test_p3_u1_phrase_length.cpp \
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_length"
 
 # Build the inherited real MiniAcid archive first. The mutation characterization
-# then links against the same host engine objects instead of using a test double.
+# and legacy-sound characterization then link against the same host engine
+# objects instead of using a test double.
 bash tests/run_pattern_phrase_p3_tests.sh
 
 SDL_CFLAGS="$(sdl2-config --cflags 2>/dev/null || true)"
@@ -48,5 +49,15 @@ g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
   ${SDL_LIBS} ${SDL_GFX_LIBS} \
   -o "${FAST_BUILD_DIR}/test_p3_u1_phrase_mutation"
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_mutation"
+
+# Same musical/runtime material; only the explicitly requested legacy TB303
+# patch family may differ. This test also pins that applying a sound preset does
+# not mutate GrooveboxModeManager generation mode/flavor state.
+# shellcheck disable=SC2086
+g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
+  "../tests/test_p3_u1_legacy_genre_sound.cpp" "${ARCHIVE}" \
+  ${SDL_LIBS} ${SDL_GFX_LIBS} \
+  -o "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
+"${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
 
 printf '%s\n' 'PATTERN/PHRASE P3-U1 focused gate: PASS'
