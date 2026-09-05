@@ -175,6 +175,24 @@ void testSnappedInsertRejectsInvalidMidiValuesWithoutMutation() {
   assert(samePhrase(phrase, before));
 }
 
+void testSnappedInsertRejectsDuplicateOnsetWithoutMutation() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
+  phrase.count = 1;
+  phrase.events[0].startTick = 120;
+  phrase.events[0].durationSubticks =
+      24 * PhraseRuntime::kSubticksPerTick;
+  phrase.events[0].note = 60;
+  phrase.events[0].velocity = 100;
+  phrase.events[0].probability = 100;
+  assert(RuntimePhraseEdit::validate(phrase));
+
+  const auto before = phrase;
+  assert(RuntimePhraseEdit::insertSnapped(phrase, 131, 24, 67, 100) ==
+         RuntimePhraseEdit::EventEditResult::Rejected);
+  assert(samePhrase(phrase, before));
+}
+
 void testCapacityRejectsWithoutChangingCandidate() {
   PhraseRuntime::RuntimeSynthEventBuffer phrase{};
   phrase.lengthTicks = 8 * PhraseRuntime::kTicksPerBar;
@@ -261,6 +279,7 @@ int main() {
   testOwnerCommitIsCompleteBufferOrNothing();
   testSnappedInsertCreatesExactlyOneEvent();
   testSnappedInsertRejectsInvalidMidiValuesWithoutMutation();
+  testSnappedInsertRejectsDuplicateOnsetWithoutMutation();
   testCapacityRejectsWithoutChangingCandidate();
   testDeleteIsBoundedAndDeterministic();
   testCoverageUsesLatestOnsetThenLowestIndex();
