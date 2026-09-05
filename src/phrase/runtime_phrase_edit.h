@@ -35,6 +35,24 @@ enum class EventEditResult : uint8_t {
   Rejected,
 };
 
+enum class Grid : uint8_t {
+  Eighth = 0,
+  Sixteenth,
+  ThirtySecond,
+};
+
+inline uint16_t gridTicks(Grid grid) {
+  switch (grid) {
+    case Grid::Eighth:
+      return PhraseRuntime::kTicksPerBar / 8u;
+    case Grid::Sixteenth:
+      return PhraseRuntime::kTicksPerBar / 16u;
+    case Grid::ThirtySecond:
+      return PhraseRuntime::kTicksPerBar / 32u;
+  }
+  return 0;
+}
+
 inline bool validLengthTicks(uint16_t lengthTicks) {
   return lengthTicks == PhraseRuntime::kTicksPerBar ||
          lengthTicks == 2u * PhraseRuntime::kTicksPerBar ||
@@ -42,10 +60,10 @@ inline bool validLengthTicks(uint16_t lengthTicks) {
          lengthTicks == 8u * PhraseRuntime::kTicksPerBar;
 }
 
-inline bool validGridTicks(uint16_t gridTicks) {
-  return gridTicks == PhraseRuntime::kTicksPerBar / 8u ||
-         gridTicks == PhraseRuntime::kTicksPerBar / 16u ||
-         gridTicks == PhraseRuntime::kTicksPerBar / 32u;
+inline bool validGridTicks(uint16_t gridTicksValue) {
+  return gridTicksValue == gridTicks(Grid::Eighth) ||
+         gridTicksValue == gridTicks(Grid::Sixteenth) ||
+         gridTicksValue == gridTicks(Grid::ThirtySecond);
 }
 
 inline bool validate(const Buffer& phrase) {
@@ -98,22 +116,22 @@ inline bool commit(Buffer& live, const Buffer& prepared) {
 
 inline EventEditResult insertSnapped(Buffer& phrase,
                                      uint16_t cursorTick,
-                                     uint16_t gridTicks,
+                                     uint16_t gridTicksValue,
                                      uint8_t note,
                                      uint8_t velocity) {
-  if (!validate(phrase) || !validGridTicks(gridTicks)) {
+  if (!validate(phrase) || !validGridTicks(gridTicksValue)) {
     return EventEditResult::Rejected;
   }
   if (phrase.count >= PhraseRuntime::kMaxSynthEvents) {
     return EventEditResult::CapacityFull;
   }
 
-  const uint16_t startTick =
-      static_cast<uint16_t>((cursorTick / gridTicks) * gridTicks);
+  const uint16_t startTick = static_cast<uint16_t>(
+      (cursorTick / gridTicksValue) * gridTicksValue);
   if (startTick >= phrase.lengthTicks) return EventEditResult::Rejected;
 
   const uint32_t durationSubticks =
-      static_cast<uint32_t>(gridTicks) * PhraseRuntime::kSubticksPerTick;
+      static_cast<uint32_t>(gridTicksValue) * PhraseRuntime::kSubticksPerTick;
   const uint32_t startSubtick =
       static_cast<uint32_t>(startTick) * PhraseRuntime::kSubticksPerTick;
   const uint32_t phraseEndSubtick =
@@ -144,6 +162,44 @@ inline EventEditResult deleteEvent(Buffer& phrase, uint16_t eventIndex) {
   }
   phrase.events[phrase.count - 1u] = PhraseRuntime::RuntimeSynthEvent{};
   --phrase.count;
+  return EventEditResult::Changed;
+}
+
+inline EventEditResult resizeEventByGrid(Buffer& phrase,
+                                         uint16_t eventIndex,
+                                         int direction,
+                                         Grid grid) {
+  if (!validate(phrase)) return EventEditResult::Rejected;
+  if (eventIndex >= phrase.count) return EventEditResult::NoTarget;
+  if (direction != -1 && direction != 1) return EventEditResult::Rejected;
+
+  const uint16_t quantumTicks = gridTicks(grid);
+  if (!validGridTicks(quantumTicks)) return EventEditResult::Rejected;
+  const uint32_t quantumSubticks =
+      static_cast<uint32_t>(quantumTicks) * PhraseRuntime::kSubticksPerTick;
+
+  const PhraseRuntime::RuntimeSynthEvent& current = phrase.events[eventIndex];
+  uint32_t nextDuration = current.durationSubticks;
+  if (direction > 0) {
+    nextDuration += quantumSubticks;
+  } else {
+    if (nextDuration <= quantumSubticks) return EventEditResult::Rejected;
+    nextDuration -= quantumSubticks;
+  }
+
+  const uint32_t startSubtick =
+      static_cast<uint32_t>(current.startTick) * PhraseRuntime::kSubticksPerTick;
+  const uint32_t phraseEndSubtick =
+      static_cast<uint32_t>(phrase.lengthTicks) *
+      PhraseRuntime::kSubticksPerTick;
+  if (nextDuration == 0 ||
+      nextDuration > UINT16_MAX ||
+      startSubtick + nextDuration > phraseEndSubtick) {
+    return EventEditResult::Rejected;
+  }
+
+  phrase.events[eventIndex].durationSubticks =
+      static_cast<uint16_t>(nextDuration);
   return EventEditResult::Changed;
 }
 
