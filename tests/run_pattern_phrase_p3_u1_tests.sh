@@ -21,8 +21,9 @@ g++ -std=c++17 -I. tests/test_p3_u1_phrase_length.cpp \
   -o "${FAST_BUILD_DIR}/test_p3_u1_phrase_length"
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_length"
 
-# Build the inherited real MiniAcid archive first. The mutation characterization
-# then links against the same host engine objects instead of using a test double.
+# Build the inherited real MiniAcid archive first. The mutation and legacy-sound
+# characterizations then link against the same host production engine objects
+# instead of using a test double.
 bash tests/run_pattern_phrase_p3_tests.sh
 
 SDL_CFLAGS="$(sdl2-config --cflags 2>/dev/null || true)"
@@ -48,5 +49,18 @@ g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
   ${SDL_LIBS} ${SDL_GFX_LIBS} \
   -o "${FAST_BUILD_DIR}/test_p3_u1_phrase_mutation"
 "${FAST_BUILD_DIR}/test_p3_u1_phrase_mutation"
+
+# Same musical/runtime material; only the explicitly requested legacy TB303
+# timbre may differ. legacy_genre_sound.cpp is part of the production SDL
+# SOURCES archive, so a missing build-manifest wire fails this link.
+# shellcheck disable=SC2086
+g++ ${BASE_FLAGS} -O1 ${SDL_CFLAGS} ${SDL_GFX_CFLAGS} \
+  "../tests/test_p3_u1_legacy_genre_sound.cpp" "${ARCHIVE}" \
+  ${SDL_LIBS} ${SDL_GFX_LIBS} \
+  -o "${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
+"${FAST_BUILD_DIR}/test_p3_u1_legacy_genre_sound"
+
+cd "${ROOT_DIR}"
+python3 tests/test_legacy_genre_sound_ui_contract.py
 
 printf '%s\n' 'PATTERN/PHRASE P3-U1 focused gate: PASS'

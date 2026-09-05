@@ -185,6 +185,13 @@ void GenrePage::cycleApplyMode(int delta) {
 }
 
 void GenrePage::applyCurrent(bool forceRegenerate) {
+  if (mini_acid_.modeManager().legacyGenreSoundEnabled()) {
+    withAudioGuard([&]() {
+      (void)mini_acid_.modeManager().setLegacyGenreSoundEnabled(
+          false, mini_acid_.modeManager().legacyGenreSoundGenre());
+    });
+  }
+
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
   const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;
@@ -415,6 +422,28 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
   const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
   const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
+  const bool keyL = key == 'l' || event.scancode == GROOVEPUTER_L;
+
+  if (keyL && event.meta && !event.ctrl && !event.alt) {
+    const GenerativeMode activeGenre = mini_acid_.genreManager().generativeMode();
+    bool toggled = false;
+    withAudioGuard([&]() {
+      toggled = mini_acid_.modeManager().toggleLegacyGenreSound(activeGenre);
+    });
+    if (!toggled) {
+      UI::showToast("LEGACY: ACID/TECHNO + TB303", 1400);
+      return true;
+    }
+    if (mini_acid_.modeManager().legacyGenreSoundEnabled()) {
+      char toast[48];
+      std::snprintf(toast, sizeof(toast), "SOUND: LEGACY %s",
+                    GenreCatalog::generativeModeName(activeGenre));
+      UI::showToast(toast, 1200);
+    } else {
+      UI::showToast("SOUND: CURRENT", 1200);
+    }
+    return true;
+  }
 
   // ENTER follows the APPLY selector. Plain G is always the explicit full
   // Stage 15 materialization command. Repeated accepted G requests advance the
