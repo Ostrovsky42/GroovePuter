@@ -87,6 +87,13 @@ inline bool validGridTicks(uint16_t gridTicksValue) {
          gridTicksValue == gridTicks(Grid::ThirtySecond);
 }
 
+inline bool validEventValues(const PhraseRuntime::RuntimeSynthEvent& event) {
+  return event.note <= 127u &&
+         event.velocity >= 1u &&
+         event.velocity <= 127u &&
+         event.probability <= 100u;
+}
+
 inline bool validate(const Buffer& phrase) {
   if (!validLengthTicks(phrase.lengthTicks)) return false;
   if (phrase.count > PhraseRuntime::kMaxSynthEvents) return false;
@@ -97,6 +104,7 @@ inline bool validate(const Buffer& phrase) {
 
   for (uint16_t i = 0; i < phrase.count; ++i) {
     const PhraseRuntime::RuntimeSynthEvent& event = phrase.events[i];
+    if (!validEventValues(event)) return false;
     if (event.durationSubticks == 0) return false;
     if (event.startTick >= phrase.lengthTicks) return false;
 
@@ -166,7 +174,8 @@ inline EventEditResult insertSnapped(Buffer& phrase,
                                      uint16_t gridTicksValue,
                                      uint8_t note,
                                      uint8_t velocity) {
-  if (!validate(phrase) || !validGridTicks(gridTicksValue)) {
+  if (!validate(phrase) || !validGridTicks(gridTicksValue) ||
+      note > 127u || velocity == 0u || velocity > 127u) {
     return EventEditResult::Rejected;
   }
   if (phrase.count >= PhraseRuntime::kMaxSynthEvents) {
