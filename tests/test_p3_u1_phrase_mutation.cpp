@@ -105,12 +105,111 @@ void testOwnerCommitIsCompleteBufferOrNothing() {
   assert(engine.currentSequencedSource(0) == sourceA);
 }
 
+void testSnappedInsertCreatesExactlyOneEvent() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
+  phrase.count = 0;
+
+  const auto result = RuntimePhraseEdit::insertSnapped(
+      phrase, 371, 24, 64, 100);
+  assert(result == RuntimePhraseEdit::EventEditResult::Changed);
+  assert(phrase.count == 1);
+  assert(phrase.events[0].startTick == 360);
+  assert(phrase.events[0].durationSubticks ==
+         24 * PhraseRuntime::kSubticksPerTick);
+  assert(phrase.events[0].note == 64);
+  assert(phrase.events[0].velocity == 100);
+  assert(phrase.events[0].probability == 100);
+  assert(RuntimePhraseEdit::validate(phrase));
+}
+
+void testCapacityRejectsWithoutChangingCandidate() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 8 * PhraseRuntime::kTicksPerBar;
+  phrase.count = PhraseRuntime::kMaxSynthEvents;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    phrase.events[i].startTick = static_cast<uint16_t>(i * 12u);
+    phrase.events[i].durationSubticks =
+        12 * PhraseRuntime::kSubticksPerTick;
+    phrase.events[i].note = static_cast<uint8_t>(48 + (i % 24));
+    phrase.events[i].velocity = 100;
+    phrase.events[i].probability = 100;
+  }
+  assert(RuntimePhraseEdit::validate(phrase));
+  const auto before = phrase;
+
+  const auto result = RuntimePhraseEdit::insertSnapped(
+      phrase, 2000, 12, 72, 100);
+  assert(result == RuntimePhraseEdit::EventEditResult::CapacityFull);
+  assert(samePhrase(phrase, before));
+}
+
+void testDeleteIsBoundedAndDeterministic() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
+  phrase.count = 3;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    phrase.events[i].startTick = static_cast<uint16_t>(100 + i * 100);
+    phrase.events[i].durationSubticks =
+        24 * PhraseRuntime::kSubticksPerTick;
+    phrase.events[i].note = static_cast<uint8_t>(60 + i);
+    phrase.events[i].velocity = 100;
+    phrase.events[i].probability = 100;
+  }
+  const auto before = phrase;
+
+  assert(RuntimePhraseEdit::deleteEvent(phrase, 1) ==
+         RuntimePhraseEdit::EventEditResult::Changed);
+  assert(phrase.count == 2);
+  assert(phrase.events[0].note == before.events[0].note);
+  assert(phrase.events[1].note == before.events[2].note);
+  assert(phrase.events[2].startTick == 0);
+  assert(phrase.events[2].durationSubticks == 0);
+  assert(RuntimePhraseEdit::validate(phrase));
+
+  const auto afterDelete = phrase;
+  assert(RuntimePhraseEdit::deleteEvent(phrase, 7) ==
+         RuntimePhraseEdit::EventEditResult::NoTarget);
+  assert(samePhrase(phrase, afterDelete));
+}
+
+void testCoverageUsesLatestOnsetThenLowestIndex() {
+  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
+  phrase.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
+  phrase.count = 4;
+
+  phrase.events[0].startTick = 300;
+  phrase.events[0].durationSubticks = 100 * PhraseRuntime::kSubticksPerTick;
+  phrase.events[1].startTick = 340;
+  phrase.events[1].durationSubticks = 80 * PhraseRuntime::kSubticksPerTick;
+  phrase.events[2].startTick = 340;
+  phrase.events[2].durationSubticks = 60 * PhraseRuntime::kSubticksPerTick;
+  phrase.events[3].startTick = 360;
+  phrase.events[3].durationSubticks = 24 * PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    phrase.events[i].note = static_cast<uint8_t>(60 + i);
+    phrase.events[i].velocity = 100;
+    phrase.events[i].probability = 100;
+  }
+  assert(RuntimePhraseEdit::validate(phrase));
+
+  assert(RuntimePhraseEdit::eventCoveringTick(phrase, 350) == 1);
+  assert(RuntimePhraseEdit::eventCoveringTick(phrase, 370) == 3);
+  assert(RuntimePhraseEdit::eventCoveringTick(phrase, 410) == 1);
+  assert(RuntimePhraseEdit::eventCoveringTick(phrase, 420) == -1);
+  assert(RuntimePhraseEdit::eventCoveringTick(phrase, 500) == -1);
+}
+
 }  // namespace
 
 int main() {
   testValidationRejectsEveryUnsafeShape();
   testPrepareNeverTouchesLiveState();
   testOwnerCommitIsCompleteBufferOrNothing();
-  std::puts("P3-U1 bounded phrase prepare/validate/commit: OK");
+  testSnappedInsertCreatesExactlyOneEvent();
+  testCapacityRejectsWithoutChangingCandidate();
+  testDeleteIsBoundedAndDeterministic();
+  testCoverageUsesLatestOnsetThenLowestIndex();
+  std::puts("P3-U1 bounded phrase mutation: OK");
   return 0;
 }
