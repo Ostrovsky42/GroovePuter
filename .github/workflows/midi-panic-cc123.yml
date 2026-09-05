@@ -1,57 +1,25 @@
 name: MIDI panic CC123 recovery
 
 on:
+  push:
+    branches:
+      - fix/20260905-midi-panic-cc123-recovery
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  materialize-green:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  focused:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Apply exact owner-safe panic patch when needed
-        shell: bash
-        run: |
-          if grep -q 'abandonedSmfChannels_' src/midi/usb_midi_output.h; then
-            python3 tools/materialize_midi_panic_cc123.py
-          fi
-
-      - name: Build and run focused panic recovery test
+      - name: Build focused panic recovery test
         run: |
           mkdir -p build/host-tests
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_midi_panic_cc123.cpp \
             src/midi/usb_midi_output.cpp \
             -o build/host-tests/test_midi_panic_cc123
-          build/host-tests/test_midi_panic_cc123
-
-      - name: Publish production GREEN only after focused PASS
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # The materializer intentionally edits/removes its own CI plumbing.
-          # Restore those paths before staging so the bot commit contains only
-          # the production MIDI implementation proved by the focused test.
-          git checkout -- \
-            .github/workflows/midi-panic-cc123.yml \
-            .github/workflows/midi-panic-materialize.yml \
-            tools/materialize_midi_panic_cc123.py
-
-          git add src/midi/usb_midi_output.cpp src/midi/usb_midi_output.h
-          git diff --cached --check
-          if git diff --cached --quiet; then
-            echo 'Production GREEN is already materialized.'
-            exit 0
-          fi
-
-          git commit -m "fix(midi): add owner-safe channel panic recovery"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: Run focused panic recovery test
+        run: build/host-tests/test_midi_panic_cc123
