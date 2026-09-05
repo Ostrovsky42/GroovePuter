@@ -73,12 +73,32 @@ void testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation() {
   assert(engine.modeManager().flavor() == flavorBefore);
 }
 
+void testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine() {
+  MiniAcid engine(44100.0f, nullptr);
+  engine.setSynthEngine(0, "SID");
+  assert(engine.currentSynthEngineName(0) == "SID");
+  assert(!engine.is303DistortionEnabled(0));
+  assert(!engine.is303DelayEnabled(0));
+
+  // Acid preset 1 (SHARP) enables distortion. Applying it to a SID voice must
+  // be rejected rather than mutating hidden TB303/FX state behind the active
+  // engine.
+  const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
+      GenerativeMode::Acid, 1, 0);
+
+  assert(!applied);
+  assert(engine.currentSynthEngineName(0) == "SID");
+  assert(!engine.is303DistortionEnabled(0));
+  assert(!engine.is303DelayEnabled(0));
+}
+
 }  // namespace
 
 int main() {
   testLegacyAcidUsesOldAcidPresetWithoutChangingGenerationMode();
   testLegacyTechnoUsesOldElectroDetroitPresetWithoutChangingGenerationMode();
   testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation();
+  testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine();
   std::puts("Legacy Acid/Techno sound profile behavior: OK");
   return 0;
 }
