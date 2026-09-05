@@ -75,6 +75,7 @@ inline void fillPhrase(PhraseRuntime::RuntimeSynthEventBuffer& phrase) {
 
 enum class Stage : uint8_t {
   Idle,
+  Waiting,
   Loaded,
   PlaybackStart,
   CrossBar,
@@ -85,7 +86,7 @@ enum class Stage : uint8_t {
 };
 
 struct State {
-  Stage stage = Stage::Idle;
+  Stage stage = Stage::Waiting;
   uint32_t stageStartedMs = 0;
   uint8_t cycle = 0;
 };
@@ -99,12 +100,25 @@ inline State& state() {
 constexpr uint32_t kSpanMs = 16000;
 constexpr uint8_t kCycles = 3;
 
-inline void begin(MiniAcid& engine) {
-  fillPhrase(engine.currentPhraseBuffer(0));
-  engine.setPhraseLength(0, kBars);
-  engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+// A window before the scenario runs, so it can be measured after the instrument
+// has been used rather than straight out of setup.
+//
+// It buys less than expected. Fifteen minutes of real use moved free internal
+// heap only from 26144 to 26616 bytes; ordinary play, drums and UI navigation
+// barely touch the heap on this build. A much lower floor does exist in the
+// logs, around 4316 bytes with a 2292-byte largest block, but that belongs to
+// firmware from before the PMB-P1 staging array was removed, not to a warmed
+// state of this one. Keep the window for measuring after use, not in the belief
+// that it reaches some hidden floor.
+//
+// Time, not a key: the sketch already calls keysState() once per loop pass, and
+// a second scan from here returns garbage that fired an earlier key trigger with
+// nothing held.
+constexpr uint32_t kWarmupMs = 300000;  // 5 minutes
+
+inline void begin(MiniAcid&) {
   State& s = state();
-  s.stage = Stage::Loaded;
+  s.stage = Stage::Waiting;
   s.stageStartedMs = millis();
   s.cycle = 0;
 }
@@ -118,6 +132,15 @@ inline const char* poll(MiniAcid& engine) {
   const uint32_t elapsed = now - s.stageStartedMs;
 
   switch (s.stage) {
+    case Stage::Waiting:
+      if (elapsed < kWarmupMs) return nullptr;
+      fillPhrase(engine.currentPhraseBuffer(0));
+      engine.setPhraseLength(0, kBars);
+      engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+      s.stage = Stage::Loaded;
+      s.stageStartedMs = now;
+      return "p3-phrase-loaded";
+
     case Stage::Loaded:
       engine.start();
       s.stage = Stage::PlaybackStart;

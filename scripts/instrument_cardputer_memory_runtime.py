@@ -352,18 +352,18 @@ loop_injection = '''void loop() {
 p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
 p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 
-#define P3_AUDIBLE_AB 1
-#include "src/diag/p3_audible_ab.h"
+#define P3_DRAM_CHARACTERIZATION 1
+#include "src/diag/p3_dram_characterization.h"
 """
 
 p3_setup_anchor = "  startCardputerMemoryBaseline();\n"
 p3_setup_injection = """  startCardputerMemoryBaseline();
-  P3AudibleAB::begin(g_miniAcidInstance);
+  P3DramCharacterization::begin(g_miniAcidInstance);
 """
 
 p3_loop_anchor = "  pollCardputerMemoryBaseline();\n"
 p3_loop_injection = """  pollCardputerMemoryBaseline();
-  if (const char* p3Phase = P3AudibleAB::poll(g_miniAcidInstance)) {
+  if (const char* p3Phase = P3DramCharacterization::poll(g_miniAcidInstance)) {
     logCardputerMemoryBaseline(p3Phase);
   }
 """

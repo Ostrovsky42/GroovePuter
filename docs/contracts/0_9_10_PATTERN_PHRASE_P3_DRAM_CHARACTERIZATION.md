@@ -118,6 +118,26 @@ static ceiling           FAIL    -1416 / -1360
 P3 phrase runtime is not a source of memory instability. The static excess and
 the runtime behaviour are separate problems, and only the first is open.
 
+## The measurements are representative, and a retraction
+
+During the hardware session the product firmware was seen running at about 4316
+bytes free internal with a 2292-byte largest block, far below the ~26000 the P3
+runs reported. That was read as evidence that these measurements had been taken
+in a lightly-warmed state and did not describe the device under real use.
+
+That reading was wrong. The 4316/2292 figures belong to the firmware that
+happened to be on the device before this work started, not to a warmed state of
+this build. The largest free block separates the two cleanly: 62 samples of the
+earlier firmware all read 2292, 195 samples across the P3 runs all read 16372,
+and reflashing the 2026-08-31 build reproduced 2292 immediately. Fifteen minutes
+of deliberate use on this build moved free heap only from 26144 to 26616.
+
+So this build genuinely has around 26 KB free and a 16372-byte largest block,
+and the runtime figures above describe it. Somewhere between 2026-08-31 and
+`48762854` the heap gained roughly 21 KB and the largest block grew sevenfold;
+`df3a71b7`, which removes an 11.4 KB staging array, is the obvious candidate but
+was not confirmed here.
+
 ## Not established here
 
 - **Reserve policy: MISSING.** How many bytes must remain below the ceiling is
