@@ -16,8 +16,12 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply exact owner-safe panic patch
-        run: python3 tools/materialize_midi_panic_cc123.py
+      - name: Apply exact owner-safe panic patch when needed
+        shell: bash
+        run: |
+          if grep -q 'abandonedSmfChannels_' src/midi/usb_midi_output.h; then
+            python3 tools/materialize_midi_panic_cc123.py
+          fi
 
       - name: Build and run focused panic recovery test
         run: |
@@ -33,7 +37,21 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+
+          # The materializer intentionally edits/removes its own CI plumbing.
+          # Restore those paths before staging so the bot commit contains only
+          # the production MIDI implementation proved by the focused test.
+          git checkout -- \
+            .github/workflows/midi-panic-cc123.yml \
+            .github/workflows/midi-panic-materialize.yml \
+            tools/materialize_midi_panic_cc123.py
+
+          git add src/midi/usb_midi_output.cpp src/midi/usb_midi_output.h
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'Production GREEN is already materialized.'
+            exit 0
+          fi
+
           git commit -m "fix(midi): add owner-safe channel panic recovery"
           git push origin HEAD:${{ github.head_ref }}
