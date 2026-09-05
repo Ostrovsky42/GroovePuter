@@ -13,6 +13,20 @@ bool near(float lhs, float rhs, float epsilon = 0.01f) {
   return std::fabs(lhs - rhs) <= epsilon;
 }
 
+bool samePattern(const SynthPattern& lhs, const SynthPattern& rhs) {
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& a = lhs.steps[step];
+    const SynthStep& b = rhs.steps[step];
+    if (a.note != b.note || a.slide != b.slide || a.accent != b.accent ||
+        a.ghost != b.ghost || a.velocity != b.velocity ||
+        a.timing != b.timing || a.fx != b.fx || a.fxParam != b.fxParam ||
+        a.probability != b.probability) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void testLegacyAcidUsesOldAcidPresetWithoutChangingGenerationMode() {
   MiniAcid engine(44100.0f, nullptr);
   engine.modeManager().setModeLocal(GrooveboxMode::Minimal);
@@ -108,6 +122,29 @@ void testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice() {
   assert(!engine.is303DistortionEnabled(1));
 }
 
+void testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical() {
+  for (const GenerativeMode legacyGenre :
+       {GenerativeMode::Acid, GenerativeMode::Techno}) {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.modeManager().setModeLocal(GrooveboxMode::Minimal);
+    engine.modeManager().setFlavorLocal(2);
+
+    SynthPattern currentSoundMaterial{};
+    engine.modeManager().setGenerationSeed(0x5A17C0DEu);
+    engine.modeManager().generatePattern(currentSoundMaterial, 128.0f);
+
+    const bool applied = engine.modeManager().applyLegacyGenreSoundPreset(
+        legacyGenre, 0, 0);
+    assert(applied);
+
+    SynthPattern legacySoundMaterial{};
+    engine.modeManager().setGenerationSeed(0x5A17C0DEu);
+    engine.modeManager().generatePattern(legacySoundMaterial, 128.0f);
+
+    assert(samePattern(currentSoundMaterial, legacySoundMaterial));
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -116,6 +153,7 @@ int main() {
   testLegacySoundRejectsUnsupportedGenreAndInvalidPresetWithoutMutation();
   testLegacySoundRejectsNonTb303VoiceWithoutChangingFxOrEngine();
   testLegacySoundRejectsInvalidVoiceIndexInsteadOfClampingToAnotherVoice();
+  testLegacySoundLeavesDeterministicStructuralGenerationBitForBitIdentical();
   std::puts("Legacy Acid/Techno sound profile behavior: OK");
   return 0;
 }
