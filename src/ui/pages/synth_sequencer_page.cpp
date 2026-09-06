@@ -16,6 +16,7 @@
 #include "../key_normalize.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
+#include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_lane_layout.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
@@ -245,17 +246,58 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     }
   }
 
-  UI::drawStandardFooter(gfx, "L/R:CUR", "U/D:GRID");
+  UI::drawStandardFooter(gfx, "L/R:CUR U/D:GRID", "A+L/R:LEN");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
-      ui_event.ctrl || ui_event.alt || ui_event.meta) {
+      ui_event.ctrl || ui_event.meta) {
     return false;
   }
 
   const int nav = UIInput::navCode(ui_event);
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+
+  if (ui_event.alt) {
+    if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) {
+      return false;
+    }
+
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+    PhraseNotesDurationEdit::Prepared prepared{};
+    const int direction = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+    const auto result = PhraseNotesDurationEdit::prepare(
+        phrase,
+        PhraseNotesCursor::tick(phrase_cursor_),
+        phrase_cursor_.grid,
+        direction,
+        prepared);
+    if (result != PhraseNotesDurationEdit::Result::Ready) {
+      UI::showToast(
+          result == PhraseNotesDurationEdit::Result::NoTarget
+              ? "NO NOTE"
+              : "LEN LIMIT",
+          900);
+      return true;
+    }
+
+    bool committed = false;
+    const auto apply = [&]() {
+      auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
+      committed = PhraseNotesDurationEdit::commitIfUnchanged(live, prepared);
+    };
+    if (audio_guard_) audio_guard_(apply);
+    else apply();
+
+    UI::showToast(
+        committed
+            ? (direction > 0 ? "NOTE LONGER" : "NOTE SHORTER")
+            : "EDIT STALE",
+        900);
+    return true;
+  }
+
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
@@ -268,7 +310,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
   return false;
 }
-
 void SynthSequencerPage::draw(IGfx& gfx) {
   if (synth_tab_ == SynthTab::Notes &&
       mini_acid_.currentSequencedSource(voice_index_) ==
