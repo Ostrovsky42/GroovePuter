@@ -174,11 +174,15 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
-            if (!keep && pages_[i]) pages_[i].reset();
+            if (!keep && pages_[i]) {
+                pages_[i]->captureViewContinuity(ui_view_continuity_);
+                pages_[i].reset();
+            }
         }
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
+            pages_[index]->restoreViewContinuity(ui_view_continuity_);
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
             pages_[index]->setVisualStyle(UI::currentStyle);
         }
