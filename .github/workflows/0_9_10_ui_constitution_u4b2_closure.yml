@@ -1,0 +1,66 @@
+name: 0.9.10 UI Constitution U4B2 Closure
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - '.github/workflows/0_9_10_ui_constitution_u4b2_closure.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install inherited P3-U1 host dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run exact-head UI Constitution closure matrix
+        shell: bash
+        run: |
+          set -o pipefail
+          run_gate() {
+            local name="$1"
+            shift
+            printf '\n===== %s =====\n' "$name"
+            "$@"
+          }
+
+          (
+            run_gate U1A bash tests/run_ui_constitution_u1a_tests.sh
+            run_gate U1B bash tests/run_ui_constitution_u1b_tests.sh
+            run_gate U1C bash tests/run_ui_constitution_u1c_tests.sh
+            run_gate U1D bash tests/run_ui_constitution_u1d_tests.sh
+            run_gate U1E bash tests/run_ui_constitution_u1e_tests.sh
+            run_gate U1F bash tests/run_ui_constitution_u1f_tests.sh
+            run_gate U1G bash tests/run_ui_constitution_u1g_tests.sh
+            run_gate U2A bash tests/run_ui_constitution_u2a_tests.sh
+            run_gate U4A bash tests/run_ui_constitution_u4a_tests.sh
+            run_gate U4B1 bash tests/run_ui_constitution_u4b1_tests.sh
+            run_gate U4B2 bash tests/run_ui_constitution_u4b2_tests.sh
+            run_gate P3-U1 bash tests/run_pattern_phrase_p3_u1_tests.sh
+          ) 2>&1 | tee ui-constitution-u4b2-closure.log
+
+      - name: Upload closure log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u4b2-closure-log
+          path: ui-constitution-u4b2-closure.log
+          if-no-files-found: error
