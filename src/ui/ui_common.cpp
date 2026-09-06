@@ -199,6 +199,11 @@ namespace UI {
         }
     }
 
+    UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
+                                             UiStatusContext context) {
+        return buildUiStatusSnapshot(mini_acid, context);
+    }
+
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
         char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
@@ -207,9 +212,7 @@ namespace UI {
                                  title, mini_acid.isRecording());
     }
 
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid,
-                          UiStatusContext context) {
-        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid, context);
+    void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status) {
         if (!gStatusInitialized || status != gStatusSnapshot) {
             gStatusSnapshot = status;
             formatUiStatusLine(status, gStatusLine, sizeof(gStatusLine));
@@ -229,9 +232,9 @@ namespace UI {
             divider = IGfxColor(AmberTheme::TEXT_DIM);
         }
 
-        // The current renderer redraws every page each UI frame. Keep the
-        // expensive status derivation and formatting change-driven, then paint
-        // only the already-reserved 16-pixel header over the page header.
+        // The current renderer redraws every page each UI frame. Keep status
+        // derivation outside the draw path, then paint only the already-
+        // reserved 16-pixel header from the captured frame snapshot.
         gfx.fillRect(Layout::HEADER.x,
                      Layout::HEADER.y,
                      Layout::HEADER.w,
@@ -250,12 +253,11 @@ namespace UI {
                                  gStatusLine);
     }
 
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid,
-                              UiStatusContext context) {
+    void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status) {
         // Compatibility hook: MiniAcidDisplay already invokes this once after
-        // every page. U1A only changes semantic ownership; U2 removes the
-        // competing page/global header ownership itself.
-        drawStatusChrome(gfx, mini_acid, context);
+        // every page. U1C makes that call render-only; U2 removes the competing
+        // page/global header ownership itself.
+        drawStatusChrome(gfx, status);
     }
 
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
