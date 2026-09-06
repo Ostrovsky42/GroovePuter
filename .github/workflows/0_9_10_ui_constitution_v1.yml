@@ -10,7 +10,9 @@ on:
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
+      - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   pull_request:
     paths:
@@ -18,6 +20,10 @@ on:
       - 'tests/test_ui_constitution_u1a_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
+      - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
+      - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   workflow_dispatch:
 
