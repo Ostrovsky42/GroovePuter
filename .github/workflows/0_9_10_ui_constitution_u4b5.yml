@@ -3,7 +3,15 @@ name: 0.9.10 UI Constitution U4B5
 on:
   push:
     branches:
-      - tmp/20260906-ui-u4b5-runtime-phrase-undo
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/state/bounded_undo_slot.h'
+      - 'src/state/undo_owner.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/run_ui_constitution_u4b5_tests.sh'
+      - 'tests/test_ui_constitution_u4b5_*'
+      - '.github/workflows/0_9_10_ui_constitution_u4b5.yml'
 
 permissions:
   contents: read
@@ -15,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run U4B5 focused gate
         run: |
-          set -o pipefail
+          set -euo pipefail
           bash tests/run_ui_constitution_u4b5_tests.sh 2>&1 | tee ui-constitution-u4b5.log
       - name: Upload U4B5 log
         if: always()
