@@ -357,7 +357,7 @@ void GenrePage::draw(IGfx& gfx) {
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
+  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -390,10 +390,6 @@ bool GenrePage::handleEvent(UIEvent& event) {
   }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  if (UIInput::isTab(event)) {
-    moveFocus(1);
-    return true;
-  }
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
     moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);
