@@ -1,0 +1,135 @@
+name: TEMP U4B2 Green Builder
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u4b2-green-builder
+
+permissions:
+  contents: write
+
+jobs:
+  build-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: tmp/20260906-ui-u4b2-green-builder
+
+      - name: Apply guarded U4B2 wiring patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_one(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label} anchor count={count}')
+              return text.replace(old, new, 1)
+
+          p = Path('src/ui/ui_view_continuity.h')
+          s = p.read_text()
+          s = replace_one(
+              s,
+              '  uint8_t phraseFocusBar[2]{0, 0};\n',
+              '  uint8_t phraseCursorCell[2]{0, 0};\n'
+              '  uint8_t phraseGrid[2]{1, 1};\n',
+              'continuity')
+          p.write_text(s)
+
+          p = Path('src/ui/pages/synth_sequencer_page.h')
+          s = p.read_text()
+          if 'phrase_notes_cursor.h' not in s:
+              s = replace_one(
+                  s,
+                  '#include "../ui_view_continuity.h"\n',
+                  '#include "../ui_view_continuity.h"\n#include "../phrase_notes_cursor.h"\n',
+                  'cursor include')
+          s = replace_one(
+              s,
+              '''    state.synthTab[voice_index_] = static_cast<uint8_t>(synth_tab_);\n    state.phraseFocusBar[voice_index_] = phrase_focus_bar_;\n''',
+              '''    state.synthTab[voice_index_] = static_cast<uint8_t>(synth_tab_);\n    state.phraseCursorCell[voice_index_] = phrase_cursor_.cell;\n    state.phraseGrid[voice_index_] = static_cast<uint8_t>(phrase_cursor_.grid);\n''',
+              'capture')
+          s = replace_one(
+              s,
+              '''    setSynthTab(static_cast<SynthTab>(value));\n    phrase_focus_bar_ = state.phraseFocusBar[voice_index_];\n''',
+              '''    setSynthTab(static_cast<SynthTab>(value));\n    phrase_cursor_.cell = state.phraseCursorCell[voice_index_];\n    uint8_t grid = state.phraseGrid[voice_index_];\n    if (grid > static_cast<uint8_t>(RuntimePhraseEdit::Grid::ThirtySecond)) {\n      grid = static_cast<uint8_t>(RuntimePhraseEdit::Grid::Sixteenth);\n    }\n    phrase_cursor_.grid = static_cast<RuntimePhraseEdit::Grid>(grid);\n''',
+              'restore')
+          s = replace_one(
+              s,
+              '  uint8_t phrase_focus_bar_ = 0;\n',
+              '  PhraseNotesCursor::State phrase_cursor_{};\n',
+              'member')
+          p.write_text(s)
+
+          p = Path('src/ui/pages/synth_sequencer_page.cpp')
+          s = p.read_text()
+          if 'phrase_notes_selection.h' not in s:
+              s = replace_one(
+                  s,
+                  '#include "../phrase_notes_projection.h"\n',
+                  '#include "../phrase_notes_projection.h"\n#include "../phrase_notes_selection.h"\n',
+                  'selection include')
+
+          s = replace_one(
+              s,
+              '''  const PhraseNotesViewport::Window viewport =\n      PhraseNotesViewport::resolve(phrase.lengthTicks, phrase_focus_bar_);\n  phrase_focus_bar_ = viewport.focusBar;\n\n  char status[32];\n  const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;\n  std::snprintf(status, sizeof(status), "LENGTH:%u  EVENTS:%u",\n                bars, static_cast<unsigned>(phrase.count));\n''',
+              '''  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);\n  const uint16_t cursorTick = PhraseNotesCursor::tick(phrase_cursor_);\n  const uint8_t focusBar = PhraseNotesCursor::focusBar(phrase_cursor_);\n  const PhraseNotesViewport::Window viewport =\n      PhraseNotesViewport::resolve(phrase.lengthTicks, focusBar);\n  const PhraseNotesSelection::Selection selection =\n      PhraseNotesSelection::derive(phrase, cursorTick);\n\n  char status[40];\n  const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;\n  std::snprintf(status, sizeof(status), "L:%u G:%s E:%u",\n                bars, PhraseNotesCursor::gridLabel(phrase_cursor_.grid),\n                static_cast<unsigned>(phrase.count));\n''',
+              'cursor viewport status')
+
+          s = replace_one(
+              s,
+              '''  gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);\n  if (viewport.barCount == 2u) {\n''',
+              '''  gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);\n  const uint32_t cursorSubtick =\n      static_cast<uint32_t>(cursorTick) * PhraseRuntime::kSubticksPerTick;\n  if (cursorSubtick >= windowStartSubtick && cursorSubtick < windowEndSubtick) {\n    const int cursorX = timelineX + static_cast<int>(\n        ((cursorSubtick - windowStartSubtick) * static_cast<uint32_t>(timelineW)) /\n        windowSubticks);\n    gfx.fillRect(cursorX, timelineY, 1, maxRows * rowH, COLOR_WHITE);\n  }\n  if (viewport.barCount == 2u) {\n''',
+              'cursor draw')
+
+          s = replace_one(
+              s,
+              '''    const int y = timelineY + row * rowH + 2;\n    const bool onsetVisible = span.startSubtick >= windowStartSubtick;\n''',
+              '''    const int y = timelineY + row * rowH + 2;\n    const bool selected = selection.active && selection.eventIndex == i;\n    const bool onsetVisible = span.startSubtick >= windowStartSubtick;\n''',
+              'selected flag')
+
+          s = replace_one(
+              s,
+              '''    if (endX > continuationX) {\n      gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);\n    }\n  }\n\n  UI::drawStandardFooter(gfx, "L/R:BAR", "TAB:VIEW");\n''',
+              '''    if (endX > continuationX) {\n      gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);\n    }\n    if (selected) {\n      gfx.drawRect(startX, y - 1, std::max(2, endX - startX), 7, COLOR_WHITE);\n    }\n  }\n\n  UI::drawStandardFooter(gfx, "L/R:CUR", "U/D:GRID");\n''',
+              'selected draw footer')
+
+          start = s.index('bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {')
+          end = s.index('void SynthSequencerPage::draw(IGfx& gfx) {', start)
+          old = s[start:end]
+          new = '''bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {\n  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||\n      ui_event.ctrl || ui_event.alt || ui_event.meta) {\n    return false;\n  }\n\n  const int nav = UIInput::navCode(ui_event);\n  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);\n  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {\n    phrase_cursor_ = PhraseNotesCursor::move(\n        phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);\n    return true;\n  }\n  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {\n    phrase_cursor_ = PhraseNotesCursor::changeGrid(\n        phrase_cursor_, nav == GROOVEPUTER_UP ? 1 : -1, phrase.lengthTicks);\n    return true;\n  }\n  return false;\n}\n\n'''
+          if 'PhraseNotesViewport::moveFocus' not in old:
+              raise SystemExit('handler does not contain expected U4A coarse focus path')
+          s = s[:start] + new + s[end:]
+          p.write_text(s)
+          PY
+
+      - name: Verify focused U4B2 gate
+        shell: bash
+        run: bash tests/run_ui_constitution_u4b2_tests.sh
+
+      - name: Verify diff scope
+        shell: bash
+        run: |
+          git diff --check
+          printf '%s\n' \
+            src/ui/pages/synth_sequencer_page.cpp \
+            src/ui/pages/synth_sequencer_page.h \
+            src/ui/ui_view_continuity.h | sort > /tmp/expected
+          git diff --name-only | sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+
+      - name: Commit GREEN
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/ui/pages/synth_sequencer_page.cpp \
+                  src/ui/pages/synth_sequencer_page.h \
+                  src/ui/ui_view_continuity.h
+          git commit -m 'feat(ui): add Phrase GRID cursor navigation'
+          git push origin HEAD:tmp/20260906-ui-u4b2-green-builder
