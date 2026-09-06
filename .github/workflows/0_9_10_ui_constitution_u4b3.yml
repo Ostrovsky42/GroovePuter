@@ -1,0 +1,44 @@
+name: 0.9.10 UI Constitution U4B3
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u4b3-red
+      - tmp/20260906-ui-u4b3-green
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/phrase_notes_duration_edit.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u4b3_*'
+      - 'tests/run_ui_constitution_u4b3_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b3.yml'
+  pull_request:
+    paths:
+      - 'src/ui/phrase_notes_duration_edit.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u4b3_*'
+      - 'tests/run_ui_constitution_u4b3_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u4b3-phrase-duration-edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run U4B3 focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u4b3_tests.sh 2>&1 | tee ui-constitution-u4b3.log
+      - name: Upload U4B3 focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u4b3-log
+          path: ui-constitution-u4b3.log
+          if-no-files-found: error
