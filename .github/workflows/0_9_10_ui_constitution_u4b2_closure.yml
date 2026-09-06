@@ -1,4 +1,4 @@
-name: 0.9.10 UI Constitution U4B3 Closure
+name: 0.9.10 UI Constitution U4B4 Closure
 
 on:
   push:
@@ -56,14 +56,15 @@ jobs:
             run_gate U4B1 bash tests/run_ui_constitution_u4b1_tests.sh
             run_gate U4B2 bash tests/run_ui_constitution_u4b2_tests.sh
             run_gate U4B3 bash tests/run_ui_constitution_u4b3_tests.sh
+            run_gate U4B4 bash tests/run_ui_constitution_u4b4_tests.sh
             run_gate SDL-COMPILE make -C platform_sdl -j2
             run_gate P3-U1 bash tests/run_pattern_phrase_p3_u1_tests.sh
-          ) 2>&1 | tee ui-constitution-u4b3-closure.log
+          ) 2>&1 | tee ui-constitution-u4b4-closure.log
 
       - name: Upload closure log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-constitution-u4b3-closure-log
-          path: ui-constitution-u4b3-closure.log
+          name: ui-constitution-u4b4-closure-log
+          path: ui-constitution-u4b4-closure.log
           if-no-files-found: error
