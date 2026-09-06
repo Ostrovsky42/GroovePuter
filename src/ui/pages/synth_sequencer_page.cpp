@@ -15,6 +15,7 @@
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
 #include "../phrase_notes_projection.h"
+#include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -140,6 +141,10 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     return;
   }
 
+  const PhraseNotesViewport::Window viewport =
+      PhraseNotesViewport::resolve(phrase.lengthTicks, phrase_focus_bar_);
+  phrase_focus_bar_ = viewport.focusBar;
+
   char status[32];
   const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;
   std::snprintf(status, sizeof(status), "LENGTH:%u  EVENTS:%u",
@@ -147,52 +152,91 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(bounds.x + 4, bounds.y + 18, status);
 
+  const int overviewX = bounds.x + 4;
+  const int overviewY = bounds.y + 30;
+  const int overviewW = std::max(16, bounds.w - 8);
+  const int overviewH = 6;
+  const IGfxColor noteColor = synthTabColor(voice_index_);
+  for (uint8_t bar = 0; bar < viewport.totalBars; ++bar) {
+    const int x0 = overviewX + static_cast<int>(
+        (static_cast<uint32_t>(bar) * overviewW) / viewport.totalBars);
+    const int x1 = overviewX + static_cast<int>(
+        (static_cast<uint32_t>(bar + 1u) * overviewW) / viewport.totalBars);
+    const int cellW = std::max(1, x1 - x0 - 1);
+    gfx.drawRect(x0, overviewY, cellW, overviewH, COLOR_LABEL);
+    if (bar == viewport.focusBar) {
+      gfx.fillRect(x0 + 1, overviewY + 1, std::max(1, cellW - 2),
+                   overviewH - 2, noteColor);
+    }
+  }
+
   const int timelineX = bounds.x + 4;
-  const int timelineY = bounds.y + 34;
+  const int timelineY = bounds.y + 42;
   const int timelineW = std::max(16, bounds.w - 8);
   const int rowH = 8;
-  const int maxRows = std::max(1, (bounds.h - 38) / rowH);
-  const uint16_t visibleTicks = std::min<uint16_t>(
-      phrase.lengthTicks, 2 * PhraseRuntime::kTicksPerBar);
-  const uint32_t visibleSubticks =
-      static_cast<uint32_t>(visibleTicks) * PhraseRuntime::kSubticksPerTick;
+  const int maxRows = std::max(1, (bounds.h - 46) / rowH);
+  const uint16_t windowStartTick = static_cast<uint16_t>(
+      static_cast<uint16_t>(viewport.startBar) * PhraseRuntime::kTicksPerBar);
+  const uint16_t windowTicks = static_cast<uint16_t>(
+      static_cast<uint16_t>(viewport.barCount) * PhraseRuntime::kTicksPerBar);
+  const uint32_t windowStartSubtick =
+      static_cast<uint32_t>(windowStartTick) * PhraseRuntime::kSubticksPerTick;
+  const uint32_t windowSubticks =
+      static_cast<uint32_t>(windowTicks) * PhraseRuntime::kSubticksPerTick;
+  const uint32_t windowEndSubtick = windowStartSubtick + windowSubticks;
 
   gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
-  if (visibleTicks > PhraseRuntime::kTicksPerBar) {
-    const int barX = timelineX +
-        static_cast<int>((static_cast<uint32_t>(PhraseRuntime::kTicksPerBar) *
-                          timelineW) / visibleTicks);
-    gfx.fillRect(barX, timelineY, 1, maxRows * rowH, COLOR_LABEL);
+  if (viewport.barCount == 2u) {
+    gfx.fillRect(timelineX + timelineW / 2, timelineY,
+                 1, maxRows * rowH, COLOR_LABEL);
   }
 
   for (uint16_t i = 0; i < phrase.count; ++i) {
     PhraseNotesProjection::NoteSpan span{};
     if (!PhraseNotesProjection::project(phrase, i, span)) continue;
-    if (span.startSubtick >= visibleSubticks) continue;
+    if (span.endSubtick <= windowStartSubtick ||
+        span.startSubtick >= windowEndSubtick) continue;
 
-    const uint32_t clippedEnd = std::min<uint32_t>(span.endSubtick, visibleSubticks);
+    const uint32_t clippedStart =
+        std::max<uint32_t>(span.startSubtick, windowStartSubtick);
+    const uint32_t clippedEnd =
+        std::min<uint32_t>(span.endSubtick, windowEndSubtick);
     const int startX = timelineX + static_cast<int>(
-        (span.startSubtick * static_cast<uint32_t>(timelineW)) / visibleSubticks);
+        ((clippedStart - windowStartSubtick) *
+         static_cast<uint32_t>(timelineW)) / windowSubticks);
     int endX = timelineX + static_cast<int>(
-        (clippedEnd * static_cast<uint32_t>(timelineW)) / visibleSubticks);
+        ((clippedEnd - windowStartSubtick) *
+         static_cast<uint32_t>(timelineW)) / windowSubticks);
     if (endX <= startX) endX = startX + 1;
 
     const int row = i % maxRows;
     const int y = timelineY + row * rowH + 2;
-    const IGfxColor noteColor = synthTabColor(voice_index_);
-    gfx.fillRect(startX, y, 2, 5, noteColor);  // onset
-    const int continuationX = startX + 2;
+    const bool onsetVisible = span.startSubtick >= windowStartSubtick;
+    if (onsetVisible) {
+      gfx.fillRect(startX, y, 2, 5, noteColor);
+    }
+    const int continuationX = onsetVisible ? startX + 2 : startX;
     if (endX > continuationX) {
       gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);
     }
   }
+
+  UI::drawStandardFooter(gfx, "L/R:BAR", "TAB:VIEW");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
-  (void)ui_event;
-  // Slice 2 remains presentation-only. Phrase mutation is added only after the
-  // bounded PREPARE -> VALIDATE -> COMMIT owner is characterized.
-  return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
+      ui_event.ctrl || ui_event.alt || ui_event.meta) {
+    return false;
+  }
+
+  const int nav = UIInput::navCode(ui_event);
+  if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
+
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_focus_bar_ = PhraseNotesViewport::moveFocus(
+      phrase_focus_bar_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
+  return true;
 }
 
 void SynthSequencerPage::draw(IGfx& gfx) {
