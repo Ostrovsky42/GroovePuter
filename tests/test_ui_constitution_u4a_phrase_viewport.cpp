@@ -1,11 +1,13 @@
 #include <cassert>
 #include <cstdint>
 
+#include "src/ui/phrase_notes_cursor.h"
 #include "src/ui/phrase_notes_viewport.h"
 #include "src/ui/ui_view_continuity.h"
 
 int main() {
   using PhraseNotesViewport::Window;
+  using RuntimePhraseEdit::Grid;
 
   {
     const Window w = PhraseNotesViewport::resolve(384, 0);
@@ -36,32 +38,41 @@ int main() {
   }
 
   {
-    const Window w = PhraseNotesViewport::resolve(4 * 384, 2);
+    PhraseNotesCursor::State cursor{};
+    cursor.grid = Grid::ThirtySecond;
+    cursor.cell = 64;  // bar 3, tick 768
+    assert(PhraseNotesCursor::focusBar(cursor) == 2);
+    const Window w = PhraseNotesViewport::resolve(
+        4 * PhraseRuntime::kTicksPerBar,
+        PhraseNotesCursor::focusBar(cursor));
     assert(w.startBar == 1);
     assert(w.focusBar == 2);
   }
   {
-    const Window w = PhraseNotesViewport::resolve(8 * 384, 7);
+    PhraseNotesCursor::State cursor{};
+    cursor.grid = Grid::ThirtySecond;
+    cursor.cell = 224;  // bar 8, tick 2688
+    assert(PhraseNotesCursor::focusBar(cursor) == 7);
+    const Window w = PhraseNotesViewport::resolve(
+        8 * PhraseRuntime::kTicksPerBar,
+        PhraseNotesCursor::focusBar(cursor));
     assert(w.startBar == 6);
     assert(w.focusBar == 7);
   }
-
-  assert(PhraseNotesViewport::moveFocus(0, -1, 8 * 384) == 0);
-  assert(PhraseNotesViewport::moveFocus(0, +1, 8 * 384) == 1);
-  assert(PhraseNotesViewport::moveFocus(7, +1, 8 * 384) == 7);
-  assert(PhraseNotesViewport::moveFocus(7, -1, 8 * 384) == 6);
 
   const Window invalid = PhraseNotesViewport::resolve(3 * 384, 0);
   assert(invalid.totalBars == 0);
   assert(invalid.barCount == 0);
 
   UI::UiViewContinuityState continuity{};
-  continuity.phraseFocusBar[0] = 3;
-  continuity.phraseFocusBar[1] = 7;
-  assert(continuity.phraseFocusBar[0] == 3);
-  assert(continuity.phraseFocusBar[1] == 7);
+  continuity.phraseCursorCell[0] = 64;
+  continuity.phraseCursorCell[1] = 224;
+  continuity.phraseGrid[0] = static_cast<uint8_t>(Grid::ThirtySecond);
+  continuity.phraseGrid[1] = static_cast<uint8_t>(Grid::ThirtySecond);
+  assert(continuity.phraseCursorCell[0] == 64);
+  assert(continuity.phraseCursorCell[1] == 224);
   static_assert(sizeof(UI::UiViewContinuityState) <= 16,
-                "Phrase focus continuity must stay inside the tiny UI budget");
+                "Phrase cursor continuity must stay inside the tiny UI budget");
 
   return 0;
 }

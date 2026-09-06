@@ -38,8 +38,7 @@ def main() -> None:
     require("FocusRow focus_ = FocusRow::Genre" in GENRE_H,
             "GENRE focus must remain an explicit continuity concern")
 
-    # GREEN architecture: one tiny runtime-only shell owner. This file is
-    # intentionally absent at RED.
+    # GREEN architecture: one tiny runtime-only shell owner.
     require(CONTINUITY.exists(),
             "U1D needs a fixed-size runtime view-continuity value outside page residency")
     continuity = CONTINUITY.read_text(encoding="utf-8")
@@ -48,11 +47,19 @@ def main() -> None:
     require("static_assert(sizeof(UiViewContinuityState) <= 16" in continuity,
             "U1D continuity payload must remain <= 16 bytes")
 
-    # U4A adds only a coarse Phrase *view* focus. It is valid residency
-    # continuity, not Phrase material or mutation-sensitive event selection.
-    require("uint8_t phraseFocusBar[2]{0, 0};" in continuity,
-            "Phrase bar focus must survive Synth renderer eviction per voice")
-    material_free_continuity = continuity.replace("phraseFocusBar[2]", "viewFocus[2]")
+    # U4B2 retains only per-synth GRID cursor view state. Viewport focus and
+    # selected musical objects are derived from that cursor and the live Phrase.
+    require("uint8_t phraseCursorCell[2]{0, 0};" in continuity,
+            "Phrase cursor position must survive Synth renderer eviction per voice")
+    require("uint8_t phraseGrid[2]{1, 1};" in continuity,
+            "Phrase cursor GRID must survive Synth renderer eviction per voice")
+    require("phraseFocusBar" not in continuity,
+            "Phrase bar focus must be derived from cursor rather than persisted")
+    for forbidden in ("selectedEvent", "eventIndex", "RuntimeSynthEvent", "PhraseRuntime", "Buffer"):
+        require(forbidden not in continuity,
+                f"continuity must not persist Phrase material/selection identity: {forbidden}")
+    material_free_continuity = continuity.replace("phraseCursorCell", "viewCursor")
+    material_free_continuity = material_free_continuity.replace("phraseGrid", "viewGrid")
     require("pattern" not in material_free_continuity.lower() and
             "phrase" not in material_free_continuity.lower(),
             "continuity must not copy Pattern/Phrase material or editor selection")
@@ -96,8 +103,7 @@ def main() -> None:
         require("captureViewContinuity" in source and "restoreViewContinuity" in source,
                 f"{name} must implement both continuity directions")
 
-    # Mutation-sensitive editor state is characterized but intentionally not
-    # moved in U1D. A later checkpoint needs a validity rule before restoring it.
+    # Mutation-sensitive Pattern editor state remains a separate deferred debt.
     require("pattern_edit_cursor_" in PATTERN_H and "has_selection_" in PATTERN_H,
             "Pattern editor residency-sensitive state must remain visible as deferred debt")
 
