@@ -127,3 +127,65 @@ The census separated two quantities that were previously conflated:
 Whether these must be coupled at all is the question for shared-cache /
 `FF_FS_TINY` characterization. That is now a well-posed investigation with a
 justified premise, rather than "the default looks too big".
+
+## 6. FS0C — deferred
+
+```
+Observed:
+copyFile() is not transactional: it deletes the destination before opening
+the file whose failure it must survive.
+
+Current call-site semantics:
+- copyProjectPages() intentionally clears the whole destination project first,
+  and clears it again on failure; replacing the destination is the requested
+  operation.
+- legacy migration writes into a freshly created destination.
+
+Therefore:
+no current user-visible durability violation is proven. An earlier claim in
+this investigation that a page copy "can destroy the destination today" was
+made by reading copyFile in isolation and is retracted.
+
+Future invariant:
+a caller requiring preserve-on-failure semantics must not use the current
+destructive copy primitive without transactional wrapping. The sequence to
+use is the one scene storage already implements: write temp, verify,
+main -> backup, temp -> main, roll back on promotion failure.
+```
+
+Deferred deliberately: making this change now would put a production edit
+inside a memory investigation and blur the evidence for FS1.
+
+## 7. FS1 entry condition — and its blocker
+
+The premise is well-posed:
+
+```
+PRODUCT REQUIREMENT      5 simultaneous logical File handles
+CURRENT IMPLEMENTATION   5 logical handles -> 5 private ~4 KiB sector caches
+                         ~16.4 KiB above the one-slot mount
+QUESTION                 must one logical file session own one 4 KiB cache?
+```
+
+But the lever is **not reachable by configuration in this toolchain**, established
+before spending effort on it:
+
+```
+libfatfs.a   present in esp32-arduino-libs
+ff.c         absent from the core entirely
+```
+
+FatFs ships precompiled. `FF_FS_TINY` is baked into `libfatfs.a`, and the slot
+allocation happens inside `esp_vfs_fat_register`, i.e. inside that binary. Editing
+`ffconf.h` in the core tree cannot change the library; it can only desynchronise
+this project's view of `FIL` from the library's, which is worse than ineffective.
+
+Reaching this lever therefore requires rebuilding `libfatfs.a` against ESP-IDF
+`v5.4-858a988d` with `CONFIG_FATFS_PER_FILE_CACHE=n` and substituting it into the
+core — a maintained build line, not a build flag, that must be re-done on every
+core update.
+
+That cost is now a decision to take deliberately, with the ~16.4 KiB prize and
+the 7-point acceptance matrix (firewall, mount residency, five-handle
+concurrency, filesystem correctness, I/O behaviour, realtime impact, runtime
+memory) both known in advance.
