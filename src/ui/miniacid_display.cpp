@@ -235,23 +235,25 @@ void MiniAcidDisplay::update() {
     const UI::UiStatusSnapshot frameStatus =
         UI::captureUiStatusSnapshot(mini_acid_, statusContext);
     
+    UI::UiShellFrameModel shellFrame{};
+    UI::beginShellFrameModel(shellFrame);
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
         currentPage->tick();
         currentPage->draw(gfx_);
     } else {
-        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
         char buf[32];
         snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
-        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
+        UI::publishShellFooter("[ ] workspaces", "Fn+M menu");
     }
-    
-    UI::drawLiveMixLockBadge(gfx_, frameStatus);
+    UI::endShellFrameModel();
+    UI::drawStatusChrome(gfx_, frameStatus);
+    UI::drawShellFooter(gfx_, shellFrame.footer);
 
     updateCyclePulse_();
     UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
