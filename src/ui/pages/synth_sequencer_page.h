@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
+#include "../ui_view_continuity.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
@@ -29,6 +30,18 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
     Knobs,
     More,
   };
+
+  void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+    if (voice_index_ < 0 || voice_index_ >= 2) return;
+    state.synthTab[voice_index_] = static_cast<uint8_t>(synth_tab_);
+  }
+
+  void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+    if (voice_index_ < 0 || voice_index_ >= 2) return;
+    uint8_t value = state.synthTab[voice_index_];
+    if (value > static_cast<uint8_t>(SynthTab::More)) value = 0;
+    setSynthTab(static_cast<SynthTab>(value));
+  }
 
   void setSynthTab(SynthTab tab);
   void drawTabIndicator(IGfx& gfx) const;

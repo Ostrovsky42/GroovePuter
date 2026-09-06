@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../ui_common.h"
+#include "../ui_view_continuity.h"
 #include "../workflow_mode.h"
 #include "src/input/performance_keyboard.h"
 
@@ -28,6 +29,27 @@ public:
     void drawFooter(IGfx& gfx) override;
 
 private:
+    void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+        state.performToolsVisible = toolsLayerVisible_ ? 1 : 0;
+        state.performContext = static_cast<uint8_t>(selectedContext_);
+        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+            state.performRows[i] = selectedRow_[i];
+        }
+    }
+
+    void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+        toolsLayerVisible_ = state.performToolsVisible != 0;
+        uint8_t context = state.performContext;
+        if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
+        selectedContext_ = static_cast<PerformanceToolContext>(context);
+        constexpr uint8_t kMaxRowByContext[4] = {5, 4, 3, 5};
+        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+            selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
+                ? state.performRows[i]
+                : 0;
+        }
+    }
+
     static const char* noteName(int midiNote);
     bool handleToolKey(const UIEvent& event);
     void moveContext(int direction);
