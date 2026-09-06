@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
 CORE = (ROOT / "src/ui/ui_core.h").read_text(encoding="utf-8")
+DISPLAY = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 SONG = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
 PATTERN_EDITOR = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(encoding="utf-8")
 
@@ -14,16 +15,30 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> None:
-    require("statusContextForTitle" in SOURCE,
-            "status chrome must derive context from the active UI page title")
-    require("gStatusContext = statusContextForTitle(title);" in SOURCE,
-            "drawStandardHeader must publish the active UI context")
-    require("publishActivePageTitle(getTitle().c_str())" in CORE,
-            "top-level pages must publish their current title in every visual style")
-    require("statusContextForTitle(UI::activePageTitle())" in SOURCE,
-            "status chrome must refresh context from the top-level page title")
-    require("status.context = statusContextForTitle" not in SOURCE,
-            "pattern-page storage index must never replace the UI page context")
+    # UI Constitution U1A: presentation text and geometry are not semantic APIs.
+    require("statusContextForTitle" not in SOURCE,
+            "status chrome must not derive semantic context from display titles")
+    require("titleContains(" not in SOURCE,
+            "display-title substring parsing must not be a semantic dependency")
+    require("statusContextForTitle(UI::activePageTitle())" not in SOURCE,
+            "global chrome must not reconstruct context from active-page text")
+    require("publishActivePageTitle(getTitle().c_str())" not in CORE,
+            "IPage::setBoundaries must be geometry-only")
+
+    # The top-level navigation owner projects canonical page identity into a
+    # typed UI location and passes the resulting context explicitly to chrome.
+    require("tryUiLocationForPage(page_index_" in DISPLAY,
+            "MiniAcidDisplay must project canonical navigation into typed UI location")
+    require("uiStatusContextForLocation(" in DISPLAY,
+            "status context must be derived from typed UI location")
+    require("drawLiveMixLockBadge(gfx_, mini_acid_, statusContext)" in DISPLAY,
+            "global status rendering must receive explicit typed context")
+    require("status.context = context;" in SOURCE,
+            "status snapshot must receive the explicit semantic context")
+    require("drawStatusChrome(gfx, mini_acid, context);" in SOURCE,
+            "the compatibility overlay hook must forward typed context")
+
+    # Existing unrelated pattern-address and Song invariants remain preserved.
     require("patternAddressFromParts(" in SOURCE and
             "miniAcid.currentPageIndex(), bank, slot" in SOURCE,
             "currentPageIndex is allowed only as the page part of a pattern address")
@@ -31,8 +46,6 @@ def main() -> None:
             "drum status address must use a local slot, never a global pattern ID")
     require("status.context == UiStatusContext::Player" in SOURCE,
             "stopped SMF visibility must depend on the real MIDI Player context")
-    require("drawStatusChrome(gfx, mini_acid);" in SOURCE,
-            "the existing global overlay hook must render the status chrome")
     require("UI::songPatternPageShortcut(" in SONG,
             "Song must use the canonical 16-page shortcut mapper")
     require("songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx)" in SONG,
