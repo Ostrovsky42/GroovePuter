@@ -1,0 +1,30 @@
+name: 0.9.10 UI + FS1 Dynamic FatFs Integration
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'scripts/build_fatfs_dynbuffers_candidate.sh'
+      - 'scripts/build_cardputer_dynbuffers.sh'
+      - 'scripts/upload_cardputer_dynbuffers.sh'
+      - 'tests/test_ui_sd_dynbuffers_build_profile.py'
+      - '.github/workflows/0_9_10_ui_sd_dynbuffers_integration.yml'
+      - 'docs/audits/UI_SD_DYNBUFFERS_INTEGRATION_2026-09-07.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate wrapper shell syntax
+        run: |
+          bash -n scripts/build_fatfs_dynbuffers_candidate.sh
+          bash -n scripts/build_cardputer_dynbuffers.sh
+          bash -n scripts/upload_cardputer_dynbuffers.sh
+      - name: Validate isolated dynamic-buffer build contract
+        run: python3 tests/test_ui_sd_dynbuffers_build_profile.py
