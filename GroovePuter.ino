@@ -256,6 +256,53 @@ static void logHeapCaps(const char* tag) {
                 (unsigned)free8, (unsigned)larg8);
 }
 
+// Diagnostic-only phase accounting. Compiled out of the product build entirely:
+// without GROOVEPUTER_MEMORY_PHASE_TRACE both macros expand to (void)0, so no
+// call, no string literal and no static storage reach the product image.
+// Limitation, stated rather than faked: these are before/after snapshots around
+// a synchronous phase. They do not observe a transient peak inside the phase --
+// no localMin is reported, because measuring one would need a sampler task that
+// would itself perturb what it measures.
+#if defined(GROOVEPUTER_MEMORY_PHASE_TRACE)
+namespace {
+struct MemPhaseFrame { uint32_t freeBytes; uint32_t largestBytes; };
+MemPhaseFrame g_memPhaseStack[8];
+uint8_t g_memPhaseDepth = 0;
+inline uint32_t memPhaseFree() {
+  return (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+inline uint32_t memPhaseLargest() {
+  return (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+}  // namespace
+
+static void memPhaseBegin(const char* tag) {
+  const uint32_t f = memPhaseFree();
+  const uint32_t l = memPhaseLargest();
+  if (g_memPhaseDepth < 8) g_memPhaseStack[g_memPhaseDepth++] = MemPhaseFrame{f, l};
+  Serial.printf("[MEM] %s begin free=%u largest=%u\n",
+                tag, (unsigned)f, (unsigned)l);
+}
+
+static void memPhaseEnd(const char* tag) {
+  const uint32_t f = memPhaseFree();
+  const uint32_t l = memPhaseLargest();
+  long df = 0, dl = 0;
+  if (g_memPhaseDepth > 0) {
+    const MemPhaseFrame fr = g_memPhaseStack[--g_memPhaseDepth];
+    df = (long)f - (long)fr.freeBytes;
+    dl = (long)l - (long)fr.largestBytes;
+  }
+  Serial.printf("[MEM] %s end free=%u largest=%u delta=%ld largestDelta=%ld\n",
+                tag, (unsigned)f, (unsigned)l, df, dl);
+}
+#define MEM_PHASE_BEGIN(tag) memPhaseBegin(tag)
+#define MEM_PHASE_END(tag)   memPhaseEnd(tag)
+#else
+#define MEM_PHASE_BEGIN(tag) ((void)0)
+#define MEM_PHASE_END(tag)   ((void)0)
+#endif
+
 static void startAudioTask() {
   // Reserve the realtime stack before allocating lazy UI pages. Reducing this
   // stack masks the allocation failure but risks an audio-task overflow.
@@ -413,17 +460,21 @@ void setup() {
   // an idempotent readiness check instead of remounting the shared SD object.
   screenLog("4b. SD Init...");
   markBootStage(82, "before early SD init");
+  MEM_PHASE_BEGIN("SD_INIT");
   g_sceneStorage.initializeStorage();
+  MEM_PHASE_END("SD_INIT");
   markBootStage(83, "after early SD init");
 
   // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
   // UI allocations fragment the DRAM-only Cardputer ADV heap.
   screenLog("4c. SMF Runtime...");
   markBootStage(84, "before SMF runtime init");
+  MEM_PHASE_BEGIN("SMF_RUNTIME");
   if (!beginCardputerSmfPlayerService()) {
     Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
   }
   CardputerRuntimeDiagnostics::sampleFromControlTask();
+  MEM_PHASE_END("SMF_RUNTIME");
   markBootStage(85, "after SMF runtime init");
 
   // Global MIDI settings must be restored before the dispatcher starts. The
@@ -437,6 +488,7 @@ void setup() {
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   screenLog("4d. USB MIDI Runtime...");
   markBootStage(52, "before USB MIDI sink");
+  MEM_PHASE_BEGIN("USB_MIDI");
   if (!registerCardputerUsbMidiSink(
           g_musicalEventRouter,
           g_patternMusicalEventQueue,
@@ -447,37 +499,44 @@ void setup() {
     markBootStage(53, "after USB MIDI sink");
   }
 
+  MEM_PHASE_END("USB_MIDI");
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
+  MEM_PHASE_BEGIN("ENCODER8");
   g_encoder8 = new (std::nothrow) Encoder8Miniacid(g_miniAcidInstance);
   if (!g_encoder8) {
     Serial.println("[FATAL] Encoder8 allocation failed");
     markBootStage(900, "fatal-encoder8-alloc");
     while (true) { delay(1000); }
   }
+  MEM_PHASE_END("ENCODER8");
   markBootStage(41, "after Encoder8 alloc");
 
   screenLog("6. Engine Init...");
   // Link sample store before init
   g_miniAcidInstance.sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
+  MEM_PHASE_BEGIN("MINIACID_INIT");
   g_miniAcidInstance.init();
   g_miniAcid = &g_miniAcidInstance;
   g_patternMusicalEventQueue.setPhaseReader(
       readPatternSequencerPhase, g_miniAcid);
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
+  MEM_PHASE_END("MINIACID_INIT");
   markBootStage(51, "after MiniAcid::init");
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
   markBootStage(60, "before sample scan");
+  MEM_PHASE_BEGIN("SAMPLE_SCAN");
   g_miniAcid->sampleIndex.scanDirectory("/sd/samples");
   
   if (g_miniAcid->sampleIndex.getFiles().empty()) {
      // Fallback: try different path if /sd/samples is not right
      g_miniAcid->sampleIndex.scanDirectory("/samples");
   }
+  MEM_PHASE_END("SAMPLE_SCAN");
   markBootStage(61, "after sample scan");
 
   for (const auto& file : g_miniAcid->sampleIndex.getFiles()) {
@@ -490,6 +549,7 @@ void setup() {
   
   Serial.println("7a. UI Instance Created");
   markBootStage(70, "before MiniAcidDisplay alloc");
+  MEM_PHASE_BEGIN("DISPLAY_ALLOC");
   g_miniDisplay = new (std::nothrow) MiniAcidDisplay(
       g_display, *g_miniAcid, g_performanceKeyboard);
   if (!g_miniDisplay) {
@@ -497,6 +557,7 @@ void setup() {
     markBootStage(901, "fatal-display-alloc");
     while (true) { delay(1000); }
   }
+  MEM_PHASE_END("DISPLAY_ALLOC");
   markBootStage(71, "after MiniAcidDisplay alloc");
   Serial.println("7b. UI setAudioGuard");
   
@@ -528,8 +589,10 @@ void setup() {
 
   Serial.println("10. First drawUI...");
   markBootStage(94, "before first drawUI");
+  MEM_PHASE_BEGIN("FIRST_DRAW");
   drawUI();
   CardputerRuntimeDiagnostics::sampleFromControlTask();
+  MEM_PHASE_END("FIRST_DRAW");
   markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
   markBootStage(100, "setup-complete");
