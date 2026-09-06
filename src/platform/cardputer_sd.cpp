@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 
 #include "cardputer_adv_hardware.h"
+#include "cardputer_runtime_diagnostics.h"
 
 namespace GroovePuterPlatform {
 namespace {
@@ -33,7 +34,13 @@ bool cardputerSdMounted() {
 
 bool ensureCardputerSdMounted() {
     if (cardputerSdMounted()) {
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Loop,
+            CardputerRuntimeDiagnostics::Phase::BeforeSdReadyHook);
         notifySdReadyOnce();
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Loop,
+            CardputerRuntimeDiagnostics::Phase::AfterSdReadyHook);
         return true;
     }
 
@@ -45,10 +52,16 @@ bool ensureCardputerSdMounted() {
                   static_cast<unsigned>(freeBefore),
                   static_cast<unsigned>(largestBefore));
 
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforeSpi);
     const bool spiReady = SPI.begin(GroovePuterHardware::kSdClockPin,
               GroovePuterHardware::kSdMisoPin,
               GroovePuterHardware::kSdMosiPin,
               GroovePuterHardware::kSdChipSelectPin);
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::AfterSpi);
     if (!spiReady) {
         // Diagnostic only: SDFS::begin() also calls spi.begin() with no
         // arguments, but SPIClass::begin() returns immediately once the bus
@@ -63,9 +76,15 @@ bool ensureCardputerSdMounted() {
                       GroovePuterHardware::kSdChipSelectPin);
         return false;
     }
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforeSd);
     const bool began = SD.begin(GroovePuterHardware::kSdChipSelectPin,
                                 SPI,
                                 GroovePuterHardware::kSdFrequencyHz);
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::AfterSd);
     const bool mounted = began && cardputerSdMounted();
 
     const size_t freeAfter =
@@ -85,7 +104,16 @@ bool ensureCardputerSdMounted() {
                       "CARD_NONE does not identify the failure cause\n",
                       static_cast<int>(began));
     }
-    if (mounted) notifySdReadyOnce();
+    CardputerRuntimeDiagnostics::sampleFromControlTask();
+    if (mounted) {
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Loop,
+            CardputerRuntimeDiagnostics::Phase::BeforeSdReadyHook);
+        notifySdReadyOnce();
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Loop,
+            CardputerRuntimeDiagnostics::Phase::AfterSdReadyHook);
+    }
     return mounted;
 }
 

@@ -18,6 +18,7 @@ ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
 # generator has over 7 KiB of nested frames before the Arduino loop/UI frames,
 # so reserve 32 KiB for the control/UI task. Keep the audio task unchanged.
 ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-32768}"
+GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-}"
 
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
@@ -50,7 +51,7 @@ rsync -a --delete \
 # Arduino CLI may compile nested sketch sources from generated build paths.
 # Keep the staged page directory on the include search path so quoted
 # implementation fragments remain visible without compiling them separately.
-ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages"
+ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS}"
 
 "${ARDUINO_CLI}" compile \
   --clean \

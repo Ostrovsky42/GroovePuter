@@ -25,6 +25,7 @@
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/tee_midi_transport.h"
 #include "src/platform/cardputer_uart_midi_transport.h"
+#include "src/platform/cardputer_runtime_diagnostics.h"
 #include "src/midi/smf_dispatch_policy.h"
 #include "src/midi/smf_late_policy.h"
 #include "src/midi/smf_track_mute.h"
@@ -815,6 +816,8 @@ enum class PendingKind : uint8_t {
 };
 
 void midiDispatchTask(void*) {
+    CardputerRuntimeDiagnostics::registerCurrentTask(
+        CardputerRuntimeDiagnostics::Task::Midi);
     // Enabled at start-up for the first hardware slice: there is no UI toggle
     // yet, so this is the only way the DIN wire can be heard. Note that with
     // DIN on, mounted() is true even with no USB host, so SMF no longer parks
@@ -842,6 +845,9 @@ void midiDispatchTask(void*) {
     };
 
     while (true) {
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Midi,
+            CardputerRuntimeDiagnostics::Phase::MidiService);
         g_output.pollConnection();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
