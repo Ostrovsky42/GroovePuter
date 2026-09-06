@@ -442,3 +442,89 @@ versions and therefore innocent of the regression, but it sets the ceiling under
 which everything else competes for the last hundreds of bytes. A search for tens
 of kilobytes of reserve should start there, not at the 8 KB that merely provided
 the occasion.
+
+---
+
+# Addendum 3: FATFS file-slot residency census (R1-A)
+
+Measured on hardware with `scripts/build_cardputer_sd_slot_census.sh`: the same
+card mounted at `max_files` 5..1 within a single boot, each mount bracketed.
+Reproduced identically across 15 boots. No SDK fork, no production argument
+changed.
+
+| `max_files` | delta free | largest after | step per slot |
+|---|---|---|---|
+| 5 | −30140 | 7668 | |
+| 4 | −26012 | 7668 | 4128 |
+| 3 | −21916 | 10228 | 4096 |
+| 2 | −17820 | 14324 | 4096 |
+| 1 | −13708 | 18420 | 4112 |
+
+## PROVEN
+
+```
+1. SD.begin(max_files=N) costs almost linearly:
+   ~4096-4128 B per additional file slot.
+
+2. At max_files=5, total mount residency = 30140 B, of which
+     minimum one-slot mount   13708 B
+     the four extra slots     16432 B
+
+3. Total free and largest contiguous block do NOT move together.
+   max_files 5 -> 4 returns ~4.1 KB of total free while largest
+   stays at 7668 B, unchanged.
+```
+
+Point 3 is direct hardware proof of why the release contract must measure both
+total free and largest block. A change can return kilobytes and still not make a
+single additional contiguous allocation possible.
+
+## OBSERVED
+
+```
+max_files=5   largest =  7668
+max_files=4   largest =  7668
+max_files=3   largest = 10228
+max_files=2   largest = 14324
+max_files=1   largest = 18420
+```
+
+## INFERRED
+
+```
+5 -> 4 is not a useful fix for the observed failure class: the failure is a
+contiguous-block failure, and largest does not move at all.
+
+5 -> 3 and lower materially improve both total reserve and contiguous
+allocation capacity.
+```
+
+## Explicitly NOT established
+
+This census says what a slot costs. It does **not** say how many slots the
+product needs. Neither `max_files=3 is safe` nor `max_files=2 is the fix` is
+claimed or implied here.
+
+## Next checkpoint: SD file handle concurrency contract
+
+Not `FF_FS_TINY`, not the framebuffer. The next question is the maximum
+simultaneous open-file count across admissible product workflows, established as
+an ownership table — which subsystem holds how many handles and for how long —
+and then, crucially, **not summed mechanically**. Handles of architecturally
+mutually exclusive operations must not be added into one worst case, and any
+combination the product genuinely permits must enter the contract.
+
+Decision gate agreed in advance:
+
+```
+max legitimate simultaneous files <= 3  -> max_files=3 a strong candidate
+                                           (~8.2 KB total, +2.56 KB largest)
+max legitimate simultaneous files <= 2  -> max_files=2 stronger still
+                                           (~12.3 KB total, +6.66 KB largest)
+honest contract requires 5             -> max_files is not a production lever;
+                                           only then consider shared cache /
+                                           FF_FS_TINY or larger residency work
+```
+
+Either way, hardware acceptance must exercise the worst-case file concurrency,
+not a typical session.
