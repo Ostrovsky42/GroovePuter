@@ -15,6 +15,7 @@
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
 #include "../phrase_notes_projection.h"
+#include "../phrase_notes_lane_layout.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
@@ -184,6 +185,9 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const uint32_t windowSubticks =
       static_cast<uint32_t>(windowTicks) * PhraseRuntime::kSubticksPerTick;
   const uint32_t windowEndSubtick = windowStartSubtick + windowSubticks;
+  const PhraseNotesLaneLayout::Layout laneLayout = PhraseNotesLaneLayout::build(
+      phrase, windowStartSubtick, windowSubticks,
+      static_cast<uint8_t>(maxRows));
 
   gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
   if (viewport.barCount == 2u) {
@@ -209,7 +213,9 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
          static_cast<uint32_t>(timelineW)) / windowSubticks);
     if (endX <= startX) endX = startX + 1;
 
-    const int row = i % maxRows;
+    const uint8_t lane = laneLayout.laneByEvent[i];
+    if (lane == PhraseNotesLaneLayout::kOverflowLane) continue;
+    const int row = static_cast<int>(lane);
     const int y = timelineY + row * rowH + 2;
     const bool onsetVisible = span.startSubtick >= windowStartSubtick;
     if (onsetVisible) {
