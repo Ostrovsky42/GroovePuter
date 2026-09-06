@@ -47,8 +47,15 @@ def main() -> None:
             "U1D continuity must be an explicit typed value")
     require("static_assert(sizeof(UiViewContinuityState) <= 16" in continuity,
             "U1D continuity payload must remain <= 16 bytes")
-    require("pattern" not in continuity.lower() and "phrase" not in continuity.lower(),
-            "U1D continuity must not copy Pattern/Phrase material or editor selection")
+
+    # U4A adds only a coarse Phrase *view* focus. It is valid residency
+    # continuity, not Phrase material or mutation-sensitive event selection.
+    require("uint8_t phraseFocusBar[2]{0, 0};" in continuity,
+            "Phrase bar focus must survive Synth renderer eviction per voice")
+    material_free_continuity = continuity.replace("phraseFocusBar[2]", "viewFocus[2]")
+    require("pattern" not in material_free_continuity.lower() and
+            "phrase" not in material_free_continuity.lower(),
+            "continuity must not copy Pattern/Phrase material or editor selection")
 
     require('#include "ui_view_continuity.h"' in DISPLAY_H,
             "MiniAcidDisplay must see the runtime continuity type directly")
