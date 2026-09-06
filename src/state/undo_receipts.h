@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "../../scenes.h"
+#include "../phrase/runtime_synth_events.h"
 #include "undo_owner.h"
 
 namespace GroovePuterUndo {
@@ -167,6 +168,32 @@ inline bool phraseUndoTargetAvailable(const SceneManager& manager,
 inline void restorePhraseUndo(SceneManager& manager,
                               const PhraseUndoPayload& receipt) {
   manager.currentScene().phraseBank = receipt.before;
+}
+
+// P3 Runtime Phrase is session-only and is not represented by the Scene codec.
+// It therefore gets a distinct receipt in the same canonical Undo slot instead
+// of aliasing the persisted PhraseCore bank kind. Source is kept as its bounded
+// enum byte so the receipt layer stays independent from MiniAcid headers.
+struct RuntimePhraseUndoPayload {
+  uint8_t voiceIndex{0};
+  uint8_t source{0};
+  PhraseRuntime::RuntimeSynthEventBuffer before{};
+};
+
+static_assert(std::is_trivially_copyable<RuntimePhraseUndoPayload>::value,
+              "runtime Phrase Undo receipt must remain a fixed value");
+static_assert(sizeof(RuntimePhraseUndoPayload) <= kUndoPayloadBytes,
+              "runtime Phrase Undo receipt exceeds canonical owner capacity");
+
+inline bool validRuntimePhraseUndoPayload(
+    const RuntimePhraseUndoPayload& receipt) {
+  return receipt.voiceIndex < 2 && receipt.source <= 1;
+}
+
+inline bool sameRuntimePhraseBuffer(
+    const PhraseRuntime::RuntimeSynthEventBuffer& lhs,
+    const PhraseRuntime::RuntimeSynthEventBuffer& rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
 
 struct DrumPatternUndoPayload {
