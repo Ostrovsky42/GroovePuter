@@ -32,7 +32,7 @@ bool cardputerSdMounted() {
     return SD.cardType() != CARD_NONE;
 }
 
-#if defined(GROOVEPUTER_SD_SLOT_CENSUS)
+#if defined(GROOVEPUTER_SD_SLOT_CENSUS) || defined(GROOVEPUTER_SD_HANDLE_CENSUS)
 // Diagnostic only. Measures what one FatFs file slot actually costs, by
 // mounting the same card at max_files 5..1 and reporting each delta. Runs
 // once, before anything else has fragmented the heap, and leaves the card
@@ -48,6 +48,7 @@ uint32_t censusLargest() {
 }
 }  // namespace
 
+#if defined(GROOVEPUTER_SD_SLOT_CENSUS)
 void runCardputerSdSlotCensus() {
     static bool done = false;
     if (done) return;
@@ -73,6 +74,64 @@ void runCardputerSdSlotCensus() {
     }
     SD.end();
     Serial.printf("[SDCENSUS] done free=%u largest=%u\n",
+                  (unsigned)censusFree(), (unsigned)censusLargest());
+}
+#endif
+#endif
+
+#if defined(GROOVEPUTER_SD_HANDLE_CENSUS)
+// Diagnostic only, acceptance item G. With dynamic FatFs buffers each file
+// buffer is allocated at f_open() rather than reserved at mount, so the cost of
+// concurrency moved from mount time to open time. This proves the contract the
+// workstream established -- five simultaneous logical handles -- still holds,
+// and prices each one. Files are created, held open together, then closed and
+// removed.
+void runCardputerSdHandleCensus() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+
+    constexpr int kHandles = 5;
+    File handles[kHandles];
+    char paths[kHandles][24];
+
+    Serial.printf("[SDHANDLE] baseline free=%u largest=%u\n",
+                  (unsigned)censusFree(), (unsigned)censusLargest());
+
+    int opened = 0;
+    for (int i = 0; i < kHandles; ++i) {
+        snprintf(paths[i], sizeof(paths[i]), "/hcensus%d.tmp", i);
+        const uint32_t f0 = censusFree();
+        const uint32_t l0 = censusLargest();
+        handles[i] = SD.open(paths[i], FILE_WRITE);
+        const bool ok = static_cast<bool>(handles[i]);
+        if (ok) ++opened;
+        const uint32_t f1 = censusFree();
+        const uint32_t l1 = censusLargest();
+        Serial.printf("[SDHANDLE] open#%d ok=%d free=%u->%u delta=%ld "
+                      "largest=%u->%u largestDelta=%ld\n",
+                      i + 1, (int)ok,
+                      (unsigned)f0, (unsigned)f1, (long)f1 - (long)f0,
+                      (unsigned)l0, (unsigned)l1, (long)l1 - (long)l0);
+    }
+
+    Serial.printf("[SDHANDLE] simultaneous=%d/%d free=%u largest=%u\n",
+                  opened, kHandles,
+                  (unsigned)censusFree(), (unsigned)censusLargest());
+
+    // Prove they are genuinely usable, not merely non-null.
+    int wrote = 0;
+    for (int i = 0; i < kHandles; ++i) {
+        if (!handles[i]) continue;
+        if (handles[i].write((const uint8_t*)"g", 1) == 1) ++wrote;
+    }
+    Serial.printf("[SDHANDLE] writable=%d/%d\n", wrote, opened);
+
+    for (int i = 0; i < kHandles; ++i) {
+        if (handles[i]) handles[i].close();
+        SD.remove(paths[i]);
+    }
+    Serial.printf("[SDHANDLE] after-close free=%u largest=%u\n",
                   (unsigned)censusFree(), (unsigned)censusLargest());
 }
 #endif
@@ -162,6 +221,9 @@ bool ensureCardputerSdMounted() {
             CardputerRuntimeDiagnostics::Task::Loop,
             CardputerRuntimeDiagnostics::Phase::AfterSdReadyHook);
     }
+#if defined(GROOVEPUTER_SD_HANDLE_CENSUS)
+    if (mounted) runCardputerSdHandleCensus();
+#endif
     return mounted;
 }
 

@@ -390,3 +390,67 @@ but logical file concurrency must not decrease.
 Recovering 24 KB while silently losing the fifth handle would be trading memory
 for a hidden capability regression — the opposite of the contract this workstream
 spent the day establishing.
+
+## 11. Item G — five simultaneous handles, PASS
+
+Diagnostic `scripts/build_cardputer_sd_handle_census.sh`, run on the candidate
+image with the card inserted. Files are created, held open together, written to,
+then closed and removed.
+
+```
+[SDHANDLE] baseline   free=38456 largest=26612
+  open#1  ok=1  free -5524   largest -4096
+  open#2  ok=1  free -5664   largest -5120
+  open#3  ok=1  free -5200   largest -3584
+  open#4  ok=1  free -5200   largest -5120
+  open#5  ok=1  free -5200   largest -1024
+[SDHANDLE] simultaneous=5/5   free=11668 largest=7668
+[SDHANDLE] writable=5/5
+[SDHANDLE] after-close free=37680 largest=26612
+```
+
+The invariant holds: dynamic residency followed file lifetime, and logical file
+concurrency did not decrease. `writable=5/5` matters as much as `simultaneous`
+— a handle that opens but cannot write would satisfy the count and fail the
+contract.
+
+Correction to an expectation stated earlier in this document: a handle costs
+about **5200 B**, not 512. The FatFs sector buffer is the small part; the rest is
+the Arduino `File`/VFS wrapper, which existed before this change too. Candidate B
+did not make opens expensive — opens were always expensive; B removed the
+permanent reservation at mount.
+
+This implies something worth checking separately: the previous build had only
+14592 B free after mount, while five simultaneous opens need roughly 26 KB. The
+old firmware may not have been able to honour the five-handle contract at all.
+Not asserted — the old build's per-open cost was never measured.
+
+Memory returned on close: 37680 vs 38456 baseline, 776 B difference, consistent
+with directory metadata for created-and-removed files rather than a leak.
+
+## 12. Soak, 205 s under real use
+
+Product image with the candidate library, card inserted, 59 key presses, page
+navigation, SMF playback exercised by the operator.
+
+```
+panics 0    underruns 0 (the only value seen in the whole capture)
+free    23664 -> 21980     minimum over the run 21656
+largest 14836 -> 13300     minimum 13300
+audio peak 76.8% with no underrun
+```
+
+No downward trend. The per-cycle leak risk flagged when the allocation model
+changed did not materialise over 205 s of open/close activity.
+
+For contrast, the same product code before this change: `free 1824 / largest
+1012`, 11 panics in 11 boots.
+
+## 13. Evidence files — correction
+
+Two earlier commit messages in this workstream claimed raw captures were
+committed alongside the audits. **They were not.** `*.log` is excluded by
+`.gitignore:11`, so `git add docs/audits/evidence/` silently added nothing. The
+documents landed; the logs never did. The captures exist only in the working
+tree under `build/memory-matrix/` and `docs/audits/evidence/`, and will be lost
+on a clean checkout unless deliberately preserved.
