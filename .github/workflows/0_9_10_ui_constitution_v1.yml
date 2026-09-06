@@ -1,0 +1,48 @@
+name: 0.9.10 UI Constitution V1
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/**'
+      - 'tests/test_ui_constitution_u1a_*'
+      - 'tests/test_ui_status_chrome_source_regressions.py'
+      - 'tests/run_ui_constitution_u1a_tests.sh'
+      - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
+      - '.github/workflows/0_9_10_ui_constitution_v1.yml'
+  pull_request:
+    paths:
+      - 'src/ui/**'
+      - 'tests/test_ui_constitution_u1a_*'
+      - 'tests/test_ui_status_chrome_source_regressions.py'
+      - 'tests/run_ui_constitution_u1a_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u1a-semantic-location:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run U1A focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u1a_tests.sh 2>&1 | tee ui-constitution-u1a.log
+
+      - name: Upload focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u1a-log
+          path: ui-constitution-u1a.log
+          if-no-files-found: error
