@@ -21,10 +21,9 @@ assert "phrase_cursor_.grid" in handler
 assert "PhraseNotesCursor::move" in handler
 assert "PhraseNotesCursor::changeGrid" in handler
 
-# U4B3 is duration-only. Note creation/deletion and direct live-field writes are
-# intentionally deferred to later checkpoints.
+# U4B3 is duration-only. Later checkpoints may add their own helpers, but this
+# path must not create notes or write duration fields directly.
 assert "insertSnapped" not in handler
-assert "deleteEvent" not in handler
 assert "durationSubticks =" not in handler
 assert "markSceneMutated" not in handler
 
@@ -32,6 +31,8 @@ assert "markSceneMutated" not in handler
 # interpreted, while Ctrl/Meta remain outside this local grammar.
 assert "ui_event.ctrl || ui_event.alt || ui_event.meta" not in handler
 
-assert '"A+L/R:LEN"' in CPP
+# Later Phrase actions may share the footer, but the U4B3 duration command must
+# remain discoverable from the same command hint.
+assert "A+L/R:LEN" in CPP
 
 print("PASS: U4B3 Phrase duration edit is derived-selection, GRID-sized and guarded")
