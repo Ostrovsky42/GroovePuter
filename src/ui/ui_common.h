@@ -4,6 +4,7 @@
 #include "ui_widgets.h"
 #include "ui_config.h"
 #include "ui_status_chrome.h"
+#include "ui_shell_frame.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
 #include "src/dsp/miniacid_engine.h"
@@ -35,14 +36,26 @@ namespace UI {
     };
 
     /**
-     * Draws standard header with scene number, BPM, and recording status.
+     * Legacy page call-site retained during U1F migration. Global header pixels
+     * are shell-owned, so this helper performs no drawing and no live reads.
      */
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title);
 
     /**
-     * Draws standard footer with left and optional right text.
+     * Publishes the effective page footer into the active shell-frame model.
+     * The shell owns the actual footer pixels after page composition completes.
      */
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right = nullptr);
+
+    /**
+     * Binds one stack-local frame model while the active page composes. Page
+     * helpers may only publish presentation data into this value; they do not
+     * own shell pixels.
+     */
+    void beginShellFrameModel(UiShellFrameModel& model);
+    void endShellFrameModel();
+    void publishShellFooter(const char* left, const char* right = nullptr);
+    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer);
 
     /**
      * Draws a vertical list of items with selection and focus highlighting.
@@ -115,8 +128,8 @@ namespace UI {
     void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status);
 
     /**
-     * Compatibility hook used by MiniAcidDisplay. The implementation draws
-     * the full status chrome and preserves LiveMix as the trailing LM token.
+     * Compatibility hook retained for external callers. MiniAcidDisplay uses
+     * drawStatusChrome directly once U1F gives the shell sole header ownership.
      */
     void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status);
 

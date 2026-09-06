@@ -32,6 +32,7 @@ namespace UI {
         UiStatusSnapshot gStatusSnapshot{};
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
+        UiShellFrameModel* gShellFrameModel = nullptr;
 
         uint16_t statusCount(uint32_t value) {
             if (value == 0) return 1;
@@ -206,11 +207,11 @@ namespace UI {
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
-        char sceneStr[16];
-        snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
-        
-        LayoutManager::drawHeader(gfx, sceneStr, (int)mini_acid.bpm(), 
-                                 title, mini_acid.isRecording());
+        // U1F: pages no longer own global header pixels or re-read live
+        // status truth while composing their body.
+        (void)gfx;
+        (void)mini_acid;
+        (void)title;
     }
 
     void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status) {
@@ -261,8 +262,29 @@ namespace UI {
         drawStatusChrome(gfx, status);
     }
 
+    void beginShellFrameModel(UiShellFrameModel& model) {
+        model.clear();
+        gShellFrameModel = &model;
+    }
+
+    void endShellFrameModel() {
+        gShellFrameModel = nullptr;
+    }
+
+    void publishShellFooter(const char* left, const char* right) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->setFooter(left, right);
+    }
+
+    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
+        LayoutManager::drawFooter(gfx,
+                                  footer.valid ? footer.left : "",
+                                  footer.valid ? footer.right : "");
+    }
+
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
-        LayoutManager::drawFooter(gfx, left, right);
+        (void)gfx;
+        publishShellFooter(left, right);
     }
 
     void drawVerticalList(IGfx& gfx, int x, int y, int width,
