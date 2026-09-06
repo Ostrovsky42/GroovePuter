@@ -1,0 +1,34 @@
+name: tmp U4B4 materializer
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u4b4-green
+    paths:
+      - scripts/tmp_u4b4_apply.py
+      - .github/workflows/tmp_u4b4_materialize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply guarded U4B4 patch
+        run: python3 scripts/tmp_u4b4_apply.py
+      - name: Verify exact diff scope
+        run: |
+          test "$(git diff --name-only)" = "src/ui/pages/synth_sequencer_page.cpp"
+      - name: Run focused U4B4 gate
+        run: bash tests/run_ui_constitution_u4b4_tests.sh
+      - name: Commit GREEN
+        run: |
+          git config user.name "Ostrovsky42"
+          git config user.email "tootoo9723@gmail.com"
+          git add src/ui/pages/synth_sequencer_page.cpp
+          git commit -m "feat(ui): wire guarded Phrase note deletion"
+          git push origin HEAD:tmp/20260906-ui-u4b4-green
