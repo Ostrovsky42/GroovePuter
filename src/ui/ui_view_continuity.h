@@ -8,6 +8,7 @@ namespace UI {
 // their existing engine, scene and performance controllers.
 struct UiViewContinuityState {
   uint8_t synthTab[2]{0, 0};
+  uint8_t phraseFocusBar[2]{0, 0};
   uint8_t performToolsVisible{0};
   uint8_t performContext{0};
   uint8_t performRows[4]{0, 0, 0, 0};
