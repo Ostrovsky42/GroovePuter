@@ -11,6 +11,7 @@ on:
       - 'src/state/undo_receipts.h'
       - 'src/ui/pages/synth_sequencer_page.cpp'
       - 'tests/test_ui_constitution_u4a_phrase_viewport_integration.py'
+      - 'tests/test_ui_constitution_u4b2_phrase_cursor_integration.py'
       - 'tests/test_ui_constitution_u4b4_*'
       - 'tests/run_ui_constitution_u4b4_tests.sh'
       - '.github/workflows/0_9_10_ui_constitution_u4b2_closure.yml'
