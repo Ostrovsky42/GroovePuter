@@ -26,17 +26,20 @@ def main() -> None:
             "IPage::setBoundaries must be geometry-only")
 
     # The top-level navigation owner projects canonical page identity into a
-    # typed UI location and passes the resulting context explicitly to chrome.
+    # typed UI location and uses the resulting context when it captures the
+    # bounded frame-status projection. Rendering receives only that snapshot.
     require("tryUiLocationForPage(page_index_" in DISPLAY,
             "MiniAcidDisplay must project canonical navigation into typed UI location")
     require("uiStatusContextForLocation(" in DISPLAY,
             "status context must be derived from typed UI location")
-    require("drawLiveMixLockBadge(gfx_, mini_acid_, statusContext)" in DISPLAY,
-            "global status rendering must receive explicit typed context")
+    require("captureUiStatusSnapshot(mini_acid_, statusContext)" in DISPLAY,
+            "global status capture must receive explicit typed context")
+    require("drawLiveMixLockBadge(gfx_, frameStatus)" in DISPLAY,
+            "global status rendering must consume the captured frame snapshot")
     require("status.context = context;" in SOURCE,
             "status snapshot must receive the explicit semantic context")
-    require("drawStatusChrome(gfx, mini_acid, context);" in SOURCE,
-            "the compatibility overlay hook must forward typed context")
+    require("drawStatusChrome(gfx, status);" in SOURCE,
+            "the compatibility overlay hook must render the captured snapshot")
 
     # Existing unrelated pattern-address and Song invariants remain preserved.
     require("patternAddressFromParts(" in SOURCE and
