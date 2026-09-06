@@ -100,18 +100,24 @@ namespace UI {
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
 
     /**
-     * Draws the one-line global context/status chrome inside the existing
-     * 16-pixel header. Semantic context is supplied explicitly by the
-     * top-level navigation owner; presentation text is not an input.
+     * Captures the bounded status projection once from authoritative runtime
+     * state. The returned snapshot is independent of renderer residency and is
+     * small enough to live on the stack for one frame.
      */
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid,
-                          UiStatusContext context);
+    UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
+                                             UiStatusContext context);
+
+    /**
+     * Draws the one-line global context/status chrome inside the existing
+     * 16-pixel header from an already captured snapshot. Rendering is pure with
+     * respect to MiniAcid: no second live runtime read is performed here.
+     */
+    void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status);
 
     /**
      * Compatibility hook used by MiniAcidDisplay. The implementation draws
      * the full status chrome and preserves LiveMix as the trailing LM token.
      */
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid,
-                              UiStatusContext context);
+    void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status);
 
 }
