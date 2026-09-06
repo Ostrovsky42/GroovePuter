@@ -39,6 +39,16 @@ def main() -> None:
     require(capture < page_draw < chrome_draw,
             "frame status must be captured once before body draw and reused after it")
 
+    # One semantic value = one authority. Capture now happens before page draw,
+    # so BPM cannot depend on LayoutManager::drawHeader() first publishing a
+    # presentation-side global. The captured status must read tempo directly
+    # from MiniAcid in the same authoritative capture step as the other fields.
+    require(
+        "status.bpm = normalizeUiStatusBpm(static_cast<int>(miniAcid.bpm()));"
+        in COMMON_CPP,
+        "frame status BPM must be captured directly from MiniAcid, not page-header state",
+    )
+
     # Resource Law: the new coherent semantic view must remain tiny. U1C must
     # not introduce full Pattern/Phrase/framebuffer copies into MiniAcidDisplay.
     require("currentPhraseBuffer" not in DISPLAY,
