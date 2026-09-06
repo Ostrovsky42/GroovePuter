@@ -15,6 +15,7 @@
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
 #include "../phrase_notes_projection.h"
+#include "../phrase_notes_selection.h"
 #include "../phrase_notes_lane_layout.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
@@ -142,14 +143,19 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     return;
   }
 
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  const uint16_t cursorTick = PhraseNotesCursor::tick(phrase_cursor_);
+  const uint8_t focusBar = PhraseNotesCursor::focusBar(phrase_cursor_);
   const PhraseNotesViewport::Window viewport =
-      PhraseNotesViewport::resolve(phrase.lengthTicks, phrase_focus_bar_);
-  phrase_focus_bar_ = viewport.focusBar;
+      PhraseNotesViewport::resolve(phrase.lengthTicks, focusBar);
+  const PhraseNotesSelection::Selection selection =
+      PhraseNotesSelection::derive(phrase, cursorTick);
 
-  char status[32];
+  char status[40];
   const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;
-  std::snprintf(status, sizeof(status), "LENGTH:%u  EVENTS:%u",
-                bars, static_cast<unsigned>(phrase.count));
+  std::snprintf(status, sizeof(status), "L:%u G:%s E:%u",
+                bars, PhraseNotesCursor::gridLabel(phrase_cursor_.grid),
+                static_cast<unsigned>(phrase.count));
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(bounds.x + 4, bounds.y + 18, status);
 
@@ -190,6 +196,14 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
       static_cast<uint8_t>(maxRows));
 
   gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
+  const uint32_t cursorSubtick =
+      static_cast<uint32_t>(cursorTick) * PhraseRuntime::kSubticksPerTick;
+  if (cursorSubtick >= windowStartSubtick && cursorSubtick < windowEndSubtick) {
+    const int cursorX = timelineX + static_cast<int>(
+        ((cursorSubtick - windowStartSubtick) * static_cast<uint32_t>(timelineW)) /
+        windowSubticks);
+    gfx.fillRect(cursorX, timelineY, 1, maxRows * rowH, COLOR_WHITE);
+  }
   if (viewport.barCount == 2u) {
     gfx.fillRect(timelineX + timelineW / 2, timelineY,
                  1, maxRows * rowH, COLOR_LABEL);
@@ -217,6 +231,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     if (lane == PhraseNotesLaneLayout::kOverflowLane) continue;
     const int row = static_cast<int>(lane);
     const int y = timelineY + row * rowH + 2;
+    const bool selected = selection.active && selection.eventIndex == i;
     const bool onsetVisible = span.startSubtick >= windowStartSubtick;
     if (onsetVisible) {
       gfx.fillRect(startX, y, 2, 5, noteColor);
@@ -225,9 +240,12 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     if (endX > continuationX) {
       gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);
     }
+    if (selected) {
+      gfx.drawRect(startX, y - 1, std::max(2, endX - startX), 7, COLOR_WHITE);
+    }
   }
 
-  UI::drawStandardFooter(gfx, "L/R:BAR", "TAB:VIEW");
+  UI::drawStandardFooter(gfx, "L/R:CUR", "U/D:GRID");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
@@ -237,12 +255,18 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   const int nav = UIInput::navCode(ui_event);
-  if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
-
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
-  phrase_focus_bar_ = PhraseNotesViewport::moveFocus(
-      phrase_focus_bar_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
-  return true;
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    phrase_cursor_ = PhraseNotesCursor::move(
+        phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
+    return true;
+  }
+  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    phrase_cursor_ = PhraseNotesCursor::changeGrid(
+        phrase_cursor_, nav == GROOVEPUTER_UP ? 1 : -1, phrase.lengthTicks);
+    return true;
+  }
+  return false;
 }
 
 void SynthSequencerPage::draw(IGfx& gfx) {
