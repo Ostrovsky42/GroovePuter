@@ -24,28 +24,26 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: Path, old: str, new: str) -> None:
-              text = path.read_text(encoding='utf-8')
+          def replace_once_text(text: str, old: str, new: str, label: str) -> str:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
 
           common = Path('src/ui/ui_common.cpp')
-          display = Path('src/ui/miniacid_display.cpp')
-
-          replace_once(
-              common,
+          text = common.read_text(encoding='utf-8')
+          text = replace_once_text(
+              text,
               '        UiStatusSnapshot gStatusSnapshot{};\n'
               '        char gStatusLine[48] = {0};\n'
               '        bool gStatusInitialized = false;\n',
               '        UiStatusSnapshot gStatusSnapshot{};\n'
               '        char gStatusLine[48] = {0};\n'
               '        bool gStatusInitialized = false;\n'
-              '        UiShellFrameModel* gShellFrameModel = nullptr;\n')
-
-          replace_once(
-              common,
+              '        UiShellFrameModel* gShellFrameModel = nullptr;\n',
+              'ui_common status globals')
+          text = replace_once_text(
+              text,
               '    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {\n'
               '        char sceneStr[16];\n'
               '        snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);\n'
@@ -55,15 +53,14 @@ jobs:
               '    }\n',
               '    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {\n'
               '        // U1F: pages no longer own global header pixels or re-read live\n'
-              '        // status truth while composing their body. Keep the established\n'
-              '        // call-site as a no-op until page APIs are migrated separately.\n'
+              '        // status truth while composing their body.\n'
               '        (void)gfx;\n'
               '        (void)mini_acid;\n'
               '        (void)title;\n'
-              '    }\n')
-
-          replace_once(
-              common,
+              '    }\n',
+              'ui_common standard header')
+          text = replace_once_text(
+              text,
               '    void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {\n'
               '        LayoutManager::drawFooter(gfx, left, right);\n'
               '    }\n\n',
@@ -83,24 +80,29 @@ jobs:
               '        publishShellFooter(left, right);\n'
               '    }\n\n'
               '    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {\n'
-              '        if (!footer.valid) {\n'
-              '            LayoutManager::drawFooter(gfx, "", "");\n'
-              '            return;\n'
-              '        }\n'
-              '        LayoutManager::drawFooter(gfx, footer.left, footer.right);\n'
-              '    }\n\n')
+              '        LayoutManager::drawFooter(gfx,\n'
+              '                                  footer.valid ? footer.left : "",\n'
+              '                                  footer.valid ? footer.right : "");\n'
+              '    }\n\n',
+              'ui_common standard footer')
+          common.write_text(text, encoding='utf-8')
 
-          replace_once(
-              display,
+          display = Path('src/ui/miniacid_display.cpp')
+          whole = display.read_text(encoding='utf-8')
+          start = whole.index('void MiniAcidDisplay::update() {')
+          end = whole.index('\nvoid MiniAcidDisplay::captureUiSession_()', start)
+          body = whole[start:end]
+          body = replace_once_text(
+              body,
               '    IPage* currentPage = getPage_(page_index_);\n'
               '    if (currentPage) {\n',
               '    UI::UiShellFrameModel shellFrame{};\n'
               '    UI::beginShellFrameModel(shellFrame);\n'
               '    IPage* currentPage = getPage_(page_index_);\n'
-              '    if (currentPage) {\n')
-
-          replace_once(
-              display,
+              '    if (currentPage) {\n',
+              'MiniAcidDisplay::update current page')
+          body = replace_once_text(
+              body,
               '    } else {\n'
               '        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);\n'
               '        LayoutManager::clearContent(gfx_);\n'
@@ -126,15 +128,19 @@ jobs:
               '    UI::endShellFrameModel();\n'
               '    UI::drawStatusChrome(gfx_, frameStatus);\n'
               '    UI::drawShellFooter(gfx_, shellFrame.footer);\n\n'
-              '    updateCyclePulse_();\n')
+              '    updateCyclePulse_();\n',
+              'MiniAcidDisplay::update shell render')
+          display.write_text(whole[:start] + body + whole[end:], encoding='utf-8')
           PY
 
-      - name: Commit builder result
+      - name: Verify and commit builder result
         shell: bash
         run: |
+          set -euo pipefail
+          bash tests/run_ui_constitution_u1f_tests.sh
+          git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/ui/ui_common.cpp src/ui/miniacid_display.cpp
-          git diff --cached --check
           git commit -m "refactor(ui): give shell sole header footer pixel ownership"
           git push origin HEAD:tmp/20260906-ui-u1f-green-builder
