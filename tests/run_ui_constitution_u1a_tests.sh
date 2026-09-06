@@ -43,6 +43,11 @@ if ! python3 "${ROOT_DIR}/tests/test_ui_status_chrome_source_regressions.py"; th
   FAILED=1
 fi
 
+echo "== test_ui_constitution_u1a_source_regressions.py =="
+if ! python3 "${ROOT_DIR}/tests/test_ui_constitution_u1a_source_regressions.py"; then
+  FAILED=1
+fi
+
 if [[ "${FAILED}" -ne 0 ]]; then
   echo "UI Constitution U1A focused gate: FAIL"
   exit 1
