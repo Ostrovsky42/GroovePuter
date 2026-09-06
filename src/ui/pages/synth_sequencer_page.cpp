@@ -285,7 +285,21 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     bool committed = false;
     const auto apply = [&]() {
       auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
-      committed = PhraseNotesDurationEdit::commitIfUnchanged(live, prepared);
+      if (!RuntimePhraseEdit::same(live, prepared.before) ||
+          !RuntimePhraseEdit::validate(prepared.after)) {
+        return;
+      }
+
+      GroovePuterUndo::RuntimePhraseUndoPayload before{};
+      before.voiceIndex = static_cast<uint8_t>(voice_index_);
+      before.source = static_cast<uint8_t>(
+          mini_acid_.currentSequencedSource(voice_index_));
+      before.before = prepared.before;
+
+      committed = GroovePuterUndo::undoOwner().commitRuntimePrepared(
+          GroovePuterUndo::UndoKind::RuntimePhrase, before, [&]() {
+            (void)RuntimePhraseEdit::commit(live, prepared.after);
+          });
     };
     if (audio_guard_) audio_guard_(apply);
     else apply();
@@ -328,6 +342,45 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       mini_acid_.currentSequencedSource(voice_index_) ==
           MiniAcid::SequencedSource::Phrase;
   if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;
+
+  if (GroovePuterUndoUx::isUndoEvent(ui_event) &&
+      synth_tab_ == SynthTab::Notes) {
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.hasUndo() &&
+        owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
+      const bool redo = owner.nextIsRedo();
+      const auto result =
+          owner.toggleRuntimePrepared<GroovePuterUndo::RuntimePhraseUndoPayload>(
+              GroovePuterUndo::UndoKind::RuntimePhrase,
+              [&](const GroovePuterUndo::RuntimePhraseUndoPayload& retained) {
+                return GroovePuterUndo::validRuntimePhraseUndoPayload(retained) &&
+                       retained.voiceIndex == static_cast<uint8_t>(voice_index_);
+              },
+              [&](GroovePuterUndo::RuntimePhraseUndoPayload& retained) {
+                const auto exchange = [&]() {
+                  auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
+                  GroovePuterUndo::exchangeFixedValue(live, retained.before);
+                  const auto currentSource =
+                      mini_acid_.currentSequencedSource(voice_index_);
+                  mini_acid_.setSequencedSource(
+                      voice_index_,
+                      static_cast<MiniAcid::SequencedSource>(retained.source));
+                  retained.source = static_cast<uint8_t>(currentSource);
+                };
+                if (audio_guard_) audio_guard_(exchange);
+                else exchange();
+              });
+
+      if (result == GroovePuterUndo::UndoResult::Restored) {
+        UI::showToast(redo ? "REDO: PHRASE" : "UNDO: PHRASE", 900);
+      } else if (result == GroovePuterUndo::UndoResult::Expired) {
+        UI::showToast(redo ? "REDO: EXPIRED" : "UNDO: EXPIRED", 900);
+      } else {
+        UI::showToast(GroovePuterUndoUx::fallbackToast(owner.hasUndo()), 900);
+      }
+      return true;
+    }
+  }
 
   if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event) &&
       synth_tab_ == SynthTab::Notes) {
