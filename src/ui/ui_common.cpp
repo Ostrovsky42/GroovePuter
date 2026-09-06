@@ -2,7 +2,6 @@
 #include "ui_utils.h"
 #include "ui_widgets.h"
 #include "ui_theme.h"
-#include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -31,75 +30,8 @@ namespace UI {
         unsigned long gToastEndMs = 0;
 
         UiStatusSnapshot gStatusSnapshot{};
-        UiStatusContext gStatusContext = UiStatusContext::Unknown;
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
-
-        bool titleContains(const char* title, const char* token) {
-            return title != nullptr && token != nullptr &&
-                   std::strstr(title, token) != nullptr;
-        }
-
-        UiStatusContext statusContextForTitle(const char* title) {
-            if (titleContains(title, "MIDI PLAYER")) {
-                return UiStatusContext::Player;
-            }
-            if (titleContains(title, "MIDI KEYBOARD") ||
-                titleContains(title, "PERFORM")) {
-                return UiStatusContext::Perform;
-            }
-            if (titleContains(title, "SYNTH A SOUND") ||
-                titleContains(title, "SYNTH A PARAM") ||
-                titleContains(title, "303A PARAM")) {
-                return UiStatusContext::SoundA;
-            }
-            if (titleContains(title, "SYNTH B SOUND") ||
-                titleContains(title, "SYNTH B PARAM") ||
-                titleContains(title, "303B PARAM")) {
-                return UiStatusContext::SoundB;
-            }
-            if (titleContains(title, "SYNTH A") ||
-                titleContains(title, "303A")) {
-                return UiStatusContext::SynthA;
-            }
-            if (titleContains(title, "SYNTH B") ||
-                titleContains(title, "303B")) {
-                return UiStatusContext::SynthB;
-            }
-            if (titleContains(title, "FEEL") ||
-                titleContains(title, "TEXTURE")) {
-                return UiStatusContext::Feel;
-            }
-            if (titleContains(title, "MODE") ||
-                titleContains(title, "FLAVOR") ||
-                titleContains(title, "GROOVE LAB")) {
-                return UiStatusContext::Mode;
-            }
-            if (titleContains(title, "GENRE")) {
-                return UiStatusContext::Genre;
-            }
-            if (titleContains(title, "DRUM")) {
-                return UiStatusContext::Drums;
-            }
-            if (titleContains(title, "SONG") ||
-                titleContains(title, "ARRANGE")) {
-                return UiStatusContext::Song;
-            }
-            if (titleContains(title, "PROJECT") ||
-                titleContains(title, "SETUP")) {
-                return UiStatusContext::Project;
-            }
-            if (titleContains(title, "ADV") ||
-                titleContains(title, "GENERATOR")) {
-                return UiStatusContext::Generator;
-            }
-            if (titleContains(title, "OVERVIEW") ||
-                titleContains(title, "PATTERN") ||
-                titleContains(title, "SEQUENCER HUB")) {
-                return UiStatusContext::Overview;
-            }
-            return UiStatusContext::Unknown;
-        }
 
         uint16_t statusCount(uint32_t value) {
             if (value == 0) return 1;
@@ -167,9 +99,10 @@ namespace UI {
             status.patternSlot = static_cast<uint8_t>(address.slot);
         }
 
-        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
+        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid,
+                                               UiStatusContext context) {
             UiStatusSnapshot status{};
-            status.context = gStatusContext;
+            status.context = context;
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
 
             const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
@@ -201,6 +134,8 @@ namespace UI {
                 }
             }
 
+            // U1A deliberately preserves the existing source policy. U1B will
+            // separate per-Synth PAT/PHR source from Song/SMF transport truth.
             status.source = miniAcid.songModeEnabled()
                 ? UiStatusSource::Song
                 : UiStatusSource::Pattern;
@@ -228,8 +163,6 @@ namespace UI {
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
-        gStatusContext = statusContextForTitle(title);
-
         char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
         
@@ -237,9 +170,9 @@ namespace UI {
                                  title, mini_acid.isRecording());
     }
 
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid) {
-        gStatusContext = statusContextForTitle(UI::activePageTitle());
-        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid);
+    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid,
+                          UiStatusContext context) {
+        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid, context);
         if (!gStatusInitialized || status != gStatusSnapshot) {
             gStatusSnapshot = status;
             formatUiStatusLine(status, gStatusLine, sizeof(gStatusLine));
@@ -280,11 +213,12 @@ namespace UI {
                                  gStatusLine);
     }
 
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
+    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid,
+                              UiStatusContext context) {
         // Compatibility hook: MiniAcidDisplay already invokes this once after
-        // every page. Keeping the call site avoids touching page bounds or the
-        // global input/transport flow in Wave 1 A1.
-        drawStatusChrome(gfx, mini_acid);
+        // every page. U1A only changes semantic ownership; U2 removes the
+        // competing page/global header ownership itself.
+        drawStatusChrome(gfx, mini_acid, context);
     }
 
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
