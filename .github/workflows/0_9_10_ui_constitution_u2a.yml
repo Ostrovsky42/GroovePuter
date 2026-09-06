@@ -1,0 +1,40 @@
+name: 0.9.10 UI Constitution U2A
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u2a_*'
+      - 'tests/run_ui_constitution_u2a_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u2a.yml'
+  pull_request:
+    paths:
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u2a_*'
+      - 'tests/run_ui_constitution_u2a_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u2a.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u2a-theme-observability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run U2A focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u2a_tests.sh 2>&1 | tee ui-constitution-u2a.log
+      - name: Upload U2A focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u2a-log
+          path: ui-constitution-u2a.log
+          if-no-files-found: error
