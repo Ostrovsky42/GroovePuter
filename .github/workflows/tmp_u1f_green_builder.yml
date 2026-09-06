@@ -1,4 +1,4 @@
-# retry after explicit 64-byte footer declaration
+# retry after separating shell renderer from page footer publisher
 name: TEMP U1F Green Builder
 
 on:
@@ -76,14 +76,14 @@ jobs:
               '        if (gShellFrameModel == nullptr) return;\n'
               '        gShellFrameModel->setFooter(left, right);\n'
               '    }\n\n'
-              '    void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {\n'
-              '        (void)gfx;\n'
-              '        publishShellFooter(left, right);\n'
-              '    }\n\n'
               '    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {\n'
               '        LayoutManager::drawFooter(gfx,\n'
               '                                  footer.valid ? footer.left : "",\n'
               '                                  footer.valid ? footer.right : "");\n'
+              '    }\n\n'
+              '    void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {\n'
+              '        (void)gfx;\n'
+              '        publishShellFooter(left, right);\n'
               '    }\n\n',
               'ui_common standard footer')
           common.write_text(text, encoding='utf-8')
