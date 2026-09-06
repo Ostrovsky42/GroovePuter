@@ -28,14 +28,20 @@ def main() -> None:
             "MiniAcidDisplay does not own one bounded status snapshot per frame")
     require("UI::captureUiStatusSnapshot(mini_acid_, statusContext)" in DISPLAY,
             "MiniAcidDisplay does not capture status from authoritative state")
-    require("UI::drawLiveMixLockBadge(gfx_, frameStatus)" in DISPLAY,
+    # U1F gives the shell sole header ownership, so MiniAcidDisplay now calls
+    # the canonical pure chrome renderer directly rather than going through the
+    # legacy drawLiveMixLockBadge compatibility wrapper. The U1C invariant is
+    # unchanged: the exact captured frameStatus value must be the render input.
+    require("UI::drawStatusChrome(gfx_, frameStatus)" in DISPLAY,
             "global chrome does not render the captured frame snapshot")
     require("drawLiveMixLockBadge(gfx_, mini_acid_" not in DISPLAY,
             "MiniAcidDisplay still asks chrome to re-read live engine state")
+    require("UI::drawLiveMixLockBadge(gfx_, frameStatus)" not in DISPLAY,
+            "MiniAcidDisplay must use the canonical shell chrome renderer after U1F")
 
     capture = DISPLAY.index("UI::captureUiStatusSnapshot(mini_acid_, statusContext)")
     page_draw = DISPLAY.index("currentPage->draw(gfx_)")
-    chrome_draw = DISPLAY.index("UI::drawLiveMixLockBadge(gfx_, frameStatus)")
+    chrome_draw = DISPLAY.index("UI::drawStatusChrome(gfx_, frameStatus)")
     require(capture < page_draw < chrome_draw,
             "frame status must be captured once before body draw and reused after it")
 
