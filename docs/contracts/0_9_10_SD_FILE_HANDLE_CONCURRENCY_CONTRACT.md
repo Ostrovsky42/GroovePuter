@@ -189,3 +189,78 @@ That cost is now a decision to take deliberately, with the ~16.4 KiB prize and
 the 7-point acceptance matrix (firewall, mount residency, five-handle
 concurrency, filesystem correctness, I/O behaviour, realtime impact, runtime
 memory) both known in advance.
+
+## 8. R1-FS1A — ABI / rebuild radius census
+
+Read-only against the exact source the core was built from, ESP-IDF `858a988d`,
+inspected without checking it out. No byte of production changed.
+
+### Radius
+
+| Component / archive | Uses FIL/FATFS | By value | sizeof-dependent | Must rebuild |
+|---|---|---|---|---|
+| `components/fatfs` -> `libfatfs.a` | yes (28 files) | yes | yes, `vfs/vfs_fat.c` | **yes** |
+| `components/vfs` | 3 hits | no | no | no |
+| Arduino `SD` / `FS` (compiled per sketch) | yes | **no — pointers only** | no | no |
+| all other prebuilt archives | none | — | — | no |
+| `wear_levelling` | not linked at all | — | — | no |
+
+Evidence:
+
+- Every `sizeof(FIL)` / `sizeof(FATFS)` in the tree is in
+  `components/fatfs/vfs/vfs_fat.c`, the same component as `src/ff.c`. The context
+  allocator is `vfs_fat.c:198`,
+  `sizeof(vfs_fat_ctx_t) + max_files * sizeof(FIL)`.
+- The three `components/vfs` hits are in `test_apps/` and are only the string
+  "FATFS" inside test-case names. They compile into nothing shipped.
+- The Arduino SD library touches these types by pointer only:
+  `FATFS *fsinfo` (`SD.cpp:95,111`), `FATFS *fs` (`sd_diskio.cpp:748`). No
+  by-value use, no `sizeof`. A layout change cannot reach it.
+- Of every prebuilt archive in the core's `lib/`, only `libfatfs.a` has
+  undefined references to `f_open` / `f_mount` / `esp_vfs_fat_register`.
+
+### Production image has no wear-levelling user
+
+Stronger than "not used in our code" — checked in the linked product ELF:
+
+```
+wl_mount / wl_unmount / wl_read / wl_write        0 symbols
+esp_vfs_fat_spiflash_mount / _rw_wl               0 symbols
+esp_vfs_fat_register / f_mount / f_open           present
+```
+
+The 4096-byte logical sector is imposed by a subsystem that is not linked into
+the firmware at all. `FF_SS_SDCARD` is 512; the SD card's physical sector is 512.
+Espressif documents per-file cache combined with `CONFIG_WL_SECTOR_SIZE_512` as a
+supported way to reduce RAM, so this is a provided configuration, not a hack.
+
+### Conclusion
+
+```
+REBUILD RADIUS = libfatfs.a only
+
+Change:      CONFIG_WL_SECTOR_SIZE 4096 -> 512
+             CONFIG_FATFS_PER_FILE_CACHE stays y
+Effect:      FF_MAX_SS 4096 -> 512
+             each FIL  4136 -> ~552      (x5)
+             FATFS     4152 -> ~568
+Expected:    ~21.5 KiB internal RAM recovered
+Preserved:   5 logical handles, 5 private caches, no shared-cache contention,
+             no realtime cache-ownership change, musical semantics untouched
+```
+
+This is preferable to `FF_FS_TINY`: it recovers more (~21.5 vs ~16.4 KiB) and,
+unlike a shared cache, introduces no new contention between concurrent file
+sessions and therefore no new realtime risk.
+
+### Residual risk, stated rather than hidden
+
+The archive scan checked **undefined references**. If some other prebuilt library
+had included `ff.h` and inlined a sizeof-dependent constant, that would not appear
+as an undefined symbol. Given that no archive other than `libfatfs.a` references
+FatFs symbols at all, this is unlikely, but it is the one hole in this census and
+should be closed by comparing symbol sets after the rebuild.
+
+The local ESP-IDF working tree is v5.5.2; commit `858a988d` is present as an
+object, so a build requires a worktree at that commit plus the core's own
+toolchain (`esp-x32/2411`), both available.
