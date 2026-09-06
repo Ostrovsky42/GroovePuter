@@ -7,8 +7,8 @@ namespace UI {
 struct UiFooterModel {
   static constexpr std::size_t kTextBytes = 64;
 
-  char left[kTextBytes]{};
-  char right[kTextBytes]{};
+  char left[64]{};
+  char right[64]{};
   bool valid = false;
 
   void clear() {
