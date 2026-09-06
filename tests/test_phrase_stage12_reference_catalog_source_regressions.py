@@ -7,6 +7,9 @@ HEADER = (
 SOURCE = (
     ROOT / "src/generation/rhythm/reference_phrase_vocabulary.cpp"
 ).read_text(encoding="utf-8")
+SOURCE += (
+    ROOT / "src/generation/rhythm/reference_phrase_catalog_data.h"
+).read_text(encoding="utf-8")
 BASE = (
     ROOT / "src/generation/rhythm/reference_vocabulary.cpp"
 ).read_text(encoding="utf-8")

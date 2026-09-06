@@ -225,6 +225,20 @@ bash scripts/check_cardputer_dram_budget.sh \
   build/cardputer-adv-current/GroovePuter.ino.elf
 ```
 
+`bash scripts/upload.sh /dev/ttyACM0` builds the current sources with the selected
+FQBN, checks the static DRAM budget, then uploads. A failed build or budget check
+stops the upload even if an older binary exists. `--prebuilt` explicitly selects
+`release_bins/miniacid.ino.bin` and fails if it is missing. Boot logs print the
+firmware ELF SHA-256 and reset reason before hardware initialization; keep this
+identity with hardware acceptance logs. A successful build is not hardware
+acceptance.
+
+For SD/boot investigation, `bash scripts/build_cardputer_recovery_diagnostics.sh`
+builds a separate CDC image with error-level driver logs. This keeps the normal
+startup and playback paths and runs the same DRAM gate. USB MIDI testing on a
+computer also needs a MIDI consumer: `bash scripts/midi_sink.sh -q` drains MIDI
+without producing audio. A serial monitor alone does not consume MIDI packets.
+
 SEQTRAK MIDI-only builds on branches that provide that profile use:
 
 ```bash

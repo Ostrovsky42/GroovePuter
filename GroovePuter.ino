@@ -5,6 +5,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
@@ -23,6 +24,7 @@
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
+#include "src/platform/retained_boot_stage.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
@@ -68,13 +70,13 @@ MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
 #if defined(ESP32) || defined(ESP_PLATFORM)
-RTC_DATA_ATTR static uint32_t g_bootStage = 0;
+RTC_NOINIT_ATTR static RetainedBootStage g_bootStage;
 #else
-static uint32_t g_bootStage = 0;
+static RetainedBootStage g_bootStage{};
 #endif
 
 static void markBootStage(uint32_t stage, const char* msg = nullptr) {
-  g_bootStage = stage;
+  g_bootStage.record(stage);
   if (msg) {
     Serial.printf("[BOOT-STAGE] %u %s\n", (unsigned)stage, msg);
   } else {
@@ -267,14 +269,30 @@ void setup() {
   
 #if ARDUINO_USB_CDC_ON_BOOT
   Serial.begin(115200);
+#if CORE_DEBUG_LEVEL > 0
+  // Recovery builds expose the SD/SPI driver's actual error on the console.
+  Serial.setDebugOutput(true);
+#endif
 #endif
   // Keep diagnostics off by default on hardware; detailed profiling can exceed
   // the real-time audio budget and cause underruns.
   AudioDiagnostics::instance().enable(false);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
-  uint32_t prevBootStage = g_bootStage;
+  // Print reset evidence before M5 initialization: a failure there used to
+  // prevent even the reset reason from reaching the next boot's log.
+  const esp_reset_reason_t reason = esp_reset_reason();
+  Serial.printf("Reset Reason: %d\n", (int)reason);
+  const bool retainedReset = reason != ESP_RST_POWERON &&
+      reason != ESP_RST_BROWNOUT && reason != ESP_RST_UNKNOWN;
+  uint32_t prevBootStage = g_bootStage.previous(retainedReset);
   Serial.printf("[BOOT] Previous stage retained: %u\n", (unsigned)prevBootStage);
+  const esp_app_desc_t* app = esp_app_get_description();
+  Serial.printf("[FIRMWARE] built=%s %s idf=%s elf-sha256=",
+                app->date, app->time, app->idf_ver);
+  for (uint8_t byte : app->app_elf_sha256) Serial.printf("%02x", byte);
+  Serial.println();
+  printAndClearCardputerWdtDiagnostic();
   markBootStage(1, "setup-entry");
   auto cfg = M5.config();
   // GroovePuter owns the ES8311 I2S bus. Keep M5Unified from creating either
@@ -314,10 +332,7 @@ void setup() {
   
   logHeapCaps("after-m5-begin");
   
-  esp_reset_reason_t reason = esp_reset_reason();
   Serial.println("\n\n=== MiniAcid STARTUP DIAGNOSTICS ===");
-  Serial.printf("Reset Reason: %d\n", (int)reason);
-  printAndClearCardputerWdtDiagnostic();
 
   Serial.println("Creating Display...");
   logHeapCaps("before-display");

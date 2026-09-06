@@ -14,12 +14,16 @@ Opening the MIDI PLAYER page triggers a mount attempt that fails:
 [MIDI-FILES] unavailable stage=mount path=/midi dirs=0 files=0 shown=0 errno=0
 ```
 
-`type=0` is `CARD_NONE` from `SD.cardType()`, so the card is not identified at
-initialisation. `errno=0`: this is not a filesystem error.
+`type=0` is `CARD_NONE` from `SD.cardType()`. **Correction from source review:**
+this does not identify the failing initialization layer. The installed Arduino
+`SDFS::begin()` clears `_pdrv` after any failed mount, including FAT/VFS errors,
+so `cardType()` then returns `CARD_NONE`. The browser's `errno=0` does not carry
+the driver's FatFs/ESP error code and does not exclude a filesystem failure.
 
-Mounting is lazy — `ensureCardputerSdMounted()` runs on first use, not at boot —
-so logs from sessions that never opened an SD-backed page contain no `[SD]`
-lines at all and say nothing either way.
+Mounting was lazy in some older captures. The current sketch explicitly calls
+storage initialization at boot stage 82, then again inside `MiniAcid::init()`.
+Use the source and boot identity associated with each capture when interpreting
+the absence of `[SD]` lines.
 
 ## Timeline from the recorded logs
 
@@ -89,3 +93,59 @@ at `c63f64f1`, before any of this line's work.
 `docs/audits/SMF_STABILITY_REGRESSION_AUDIT_2026-08-02.md` records something that
 looked like an SD dropout in August, but there mount and `SD.open()` both kept
 succeeding. Different failure.
+
+## Resolved
+
+Run: full USB power disconnect, wait, reconnect, no reflash, open MIDI PLAYER
+on firmware already at `a87623c7` (SeqTrak MIDI-only build). Files appeared.
+
+That is the discriminating result this document asked for. The card survives a
+real cold boot; it only failed to reinitialise after `esptool`'s warm reset,
+which resets the controller without cycling power to the card. Every failing
+observation in this document followed such a reset.
+
+So: no regression between `db4e0f49` and `48762854`. The bisect this document
+kept open is cancelled — it would have been searching for a commit that does
+not exist. `SPI.begin()`/`SD.begin()` and the pin assignment remain exactly as
+checked above; nothing about them needed to change.
+
+Practical consequence for this session's own workflow: after flashing via
+`esptool`, mounting the card again requires a real power cycle, not just the
+reset the upload already performs.
+
+
+## Reopened
+
+The "Resolved" verdict above was premature. A later capture on this same
+firmware (`118aa489`, plain composite build) shows `Reset Reason: 1`
+(`ESP_RST_POWERON`, confirmed against the installed SDK's
+`esp_system.h` — not a warm esptool reset) followed immediately by
+`[SD] mount result=0 type=0` on the early-init attempt and again during
+`MiniAcid::init`. A genuine cold power-on still fails to see the card.
+
+The same capture also shows two `Reset Reason: 4` (`ESP_RST_PANIC`) events and
+a burst of four reboots within about a second, three of them dying before
+`M5Cardputer.begin()` even completed. No panic backtrace reached the serial
+log in either the live capture or the raw persisted file, which is consistent
+with the crash disrupting the same USB-CDC/JTAG peripheral that carries the
+console — the reboot symptom ("port disappeared: No such file or directory")
+is what a panic-driven USB reset looks like from the host side, not
+necessarily proof of a manual unplug.
+
+So two things are open again, not one:
+- SD: still not proven to survive a genuine power-on; the "files appeared"
+  observation that closed this before may have been a one-off, or the card's
+  physical seating may have changed since.
+- A real, uninvestigated panic loop, with no captured cause.
+
+Neither the warm-reset explanation nor "no regression" should be treated as
+established until a session captures a clean, uninterrupted boot (no reboot
+loop) with an explicit, deliberate SD check on that exact boot.
+
+## Source review and controlled USB capture
+
+See [the recovery review](CARDPUTER_RECOVERY_REVIEW_2026-09-05.md). Unchanged SD
+source and disjoint MIDI pins do not rule out changes to memory, dependencies,
+or initialization state. The new capture still shows failed SD mounting after
+POWERON. The cause remains open pending SPI/SD driver errors from an identified
+recovery image. A successful mount has not been demonstrated by this review.
