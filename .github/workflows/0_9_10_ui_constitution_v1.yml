@@ -8,9 +8,11 @@ on:
       - 'src/ui/**'
       - 'tests/test_ui_constitution_u1a_*'
       - 'tests/test_ui_constitution_u1b_*'
+      - 'tests/test_ui_constitution_u1c_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
+      - 'tests/run_ui_constitution_u1c_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
@@ -22,9 +24,11 @@ on:
       - 'src/ui/**'
       - 'tests/test_ui_constitution_u1a_*'
       - 'tests/test_ui_constitution_u1b_*'
+      - 'tests/test_ui_constitution_u1c_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
+      - 'tests/run_ui_constitution_u1c_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
@@ -79,6 +83,28 @@ jobs:
         with:
           name: ui-constitution-u1b-log
           path: ui-constitution-u1b.log
+          if-no-files-found: error
+
+  u1c-coherent-frame-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run U1C focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u1c_tests.sh 2>&1 | tee ui-constitution-u1c.log
+
+      - name: Upload U1C focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u1c-log
+          path: ui-constitution-u1c.log
           if-no-files-found: error
 
   preserve-p3-u1-semantics:
