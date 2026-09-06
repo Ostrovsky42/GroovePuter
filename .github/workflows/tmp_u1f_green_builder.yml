@@ -1,3 +1,4 @@
+# retry after explicit 64-byte footer declaration
 name: TEMP U1F Green Builder
 
 on:
