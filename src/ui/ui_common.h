@@ -101,14 +101,17 @@ namespace UI {
 
     /**
      * Draws the one-line global context/status chrome inside the existing
-     * 16-pixel header. It never changes page bounds or audio state.
+     * 16-pixel header. Semantic context is supplied explicitly by the
+     * top-level navigation owner; presentation text is not an input.
      */
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid);
+    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid,
+                          UiStatusContext context);
 
     /**
-     * Compatibility hook used by MiniAcidDisplay. The implementation now draws
+     * Compatibility hook used by MiniAcidDisplay. The implementation draws
      * the full status chrome and preserves LiveMix as the trailing LM token.
      */
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid);
+    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid,
+                              UiStatusContext context);
 
 }
