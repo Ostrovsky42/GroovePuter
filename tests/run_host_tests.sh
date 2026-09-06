@@ -7,6 +7,13 @@ CXX="${CXX:-g++}"
 
 mkdir -p "${BUILD_DIR}"
 
+python3 "${ROOT_DIR}/tests/test_upload_workflow.py"
+python3 "${ROOT_DIR}/tests/test_cardputer_sd_mount.py"
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_retained_boot_stage.cpp" \
+  -o "${BUILD_DIR}/test_retained_boot_stage"
+"${BUILD_DIR}/test_retained_boot_stage"
+
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_preflash_build_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"

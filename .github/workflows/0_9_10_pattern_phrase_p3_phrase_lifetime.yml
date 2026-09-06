@@ -9,6 +9,14 @@ on:
       - 'src/dsp/miniacid_engine.h'
       - 'src/dsp/miniacid_engine.cpp'
       - 'src/phrase/**'
+      - 'src/generation/rhythm/reference*'
+      - 'src/platform/cardputer_sd.cpp'
+      - 'src/platform/retained_boot_stage.h'
+      - 'GroovePuter.ino'
+      - 'scripts/upload.sh'
+      - 'tests/test_upload_workflow.py'
+      - 'tests/test_cardputer_sd_mount.py'
+      - 'tests/test_retained_boot_stage.cpp'
       - 'tests/test_p3_*'
       - 'tests/run_pattern_phrase_p3_*'
       - '.github/workflows/0_9_10_pattern_phrase_p3_phrase_lifetime.yml'
@@ -38,3 +46,11 @@ jobs:
 
       - name: Run P3 focused gate
         run: bash tests/run_pattern_phrase_p3_tests.sh
+
+      - name: Check upload failures, SD initialization and retained boot evidence
+        run: |
+          python3 tests/test_upload_workflow.py
+          python3 tests/test_cardputer_sd_mount.py
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_retained_boot_stage.cpp -o build/test_retained_boot_stage
+          build/test_retained_boot_stage

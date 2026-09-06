@@ -45,10 +45,24 @@ bool ensureCardputerSdMounted() {
                   static_cast<unsigned>(freeBefore),
                   static_cast<unsigned>(largestBefore));
 
-    SPI.begin(GroovePuterHardware::kSdClockPin,
+    const bool spiReady = SPI.begin(GroovePuterHardware::kSdClockPin,
               GroovePuterHardware::kSdMisoPin,
               GroovePuterHardware::kSdMosiPin,
               GroovePuterHardware::kSdChipSelectPin);
+    if (!spiReady) {
+        // Diagnostic only: SDFS::begin() also calls spi.begin() with no
+        // arguments, but SPIClass::begin() returns immediately once the bus
+        // is already started (`if (_spi) return true;`), so it cannot
+        // re-clobber these pins with ESP32 defaults. This early return only
+        // distinguishes "our explicit custom-pin init failed" from "SD.begin()
+        // itself failed" in the log, one stage earlier than before.
+        Serial.printf("[SD] unavailable stage=spi sck=%d miso=%d mosi=%d cs=%d\n",
+                      GroovePuterHardware::kSdClockPin,
+                      GroovePuterHardware::kSdMisoPin,
+                      GroovePuterHardware::kSdMosiPin,
+                      GroovePuterHardware::kSdChipSelectPin);
+        return false;
+    }
     const bool began = SD.begin(GroovePuterHardware::kSdChipSelectPin,
                                 SPI,
                                 GroovePuterHardware::kSdFrequencyHz);
@@ -64,6 +78,13 @@ bool ensureCardputerSdMounted() {
                   static_cast<unsigned>(freeAfter),
                   static_cast<unsigned>(largestAfter));
 
+    // Arduino clears the card handle on every failed begin, including FAT/VFS
+    // failures. CARD_NONE here cannot distinguish those from an absent card.
+    if (!mounted) {
+        Serial.printf("[SD] unavailable stage=mount began=%d; "
+                      "CARD_NONE does not identify the failure cause\n",
+                      static_cast<int>(began));
+    }
     if (mounted) notifySdReadyOnce();
     return mounted;
 }

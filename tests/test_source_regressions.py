@@ -15,7 +15,9 @@ def require(condition: bool, message: str) -> None:
 def test_ppqn_dispatch_is_not_step_gated() -> None:
     source = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     loop_start = source.index("while (ticksToAdvance--)")
-    loop_end = source.index("if (gateCountdownA_", loop_start)
+    # Sample synthesis bounds the tick-dispatch phase regardless of which
+    # playback owner currently schedules NoteOffs.
+    loop_end = source.index("float sample = 0.0f;", loop_start)
     dispatch_block = source[loop_start:loop_end]
 
     require("advanceTick();" in dispatch_block,
