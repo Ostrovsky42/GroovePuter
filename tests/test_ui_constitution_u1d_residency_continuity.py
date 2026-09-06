@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTINUITY = ROOT / "src/ui/ui_view_continuity.h"
+CORE = (ROOT / "src/ui/ui_core.h").read_text(encoding="utf-8")
 DISPLAY_H = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
 DISPLAY_CPP = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 SYNTH_H = (ROOT / "src/ui/pages/synth_sequencer_page.h").read_text(encoding="utf-8")
@@ -53,6 +54,8 @@ def main() -> None:
             "MiniAcidDisplay must see the runtime continuity type directly")
     require("UI::UiViewContinuityState ui_view_continuity_" in DISPLAY_H,
             "MiniAcidDisplay must own the runtime continuity value")
+    require("captureViewContinuity" in CORE and "restoreViewContinuity" in CORE,
+            "IPage must expose bounded capture/restore hooks without shell RTTI")
 
     # Persistence and renderer continuity are deliberately different lifetime
     # domains. The existing tiny persisted schema must not absorb U1D fields.
@@ -61,9 +64,20 @@ def main() -> None:
     require("static_assert(sizeof(UiSessionState) <= 12" in SESSION,
             "existing UI persistence budget must remain unchanged")
 
+    # The lifetime boundary is the behavior: snapshot immediately before object
+    # destruction, then restore immediately after recreation.
+    capture = DISPLAY_CPP.find("pages_[i]->captureViewContinuity(ui_view_continuity_)")
+    reset = DISPLAY_CPP.find("pages_[i].reset()")
+    create = DISPLAY_CPP.find("pages_[index] = createPage_(index)")
+    restore = DISPLAY_CPP.find("pages_[index]->restoreViewContinuity(ui_view_continuity_)")
+    require(capture >= 0 and reset >= 0 and capture < reset,
+            "eviction must capture view continuity before destroying the page")
+    require(create >= 0 and restore >= 0 and create < restore,
+            "page recreation must restore view continuity after construction")
+    require("dynamic_cast" not in DISPLAY_CPP,
+            "shell continuity must not depend on concrete page RTTI")
+
     # Production wiring must be explicit, not a hidden global singleton.
-    require("ui_view_continuity_" in DISPLAY_CPP,
-            "page construction must receive shell-owned continuity explicitly")
     for name, source in (
         ("SynthSequencerPage", SYNTH_H),
         ("PerformPage", PERFORM_H),
@@ -72,6 +86,8 @@ def main() -> None:
     ):
         require("UiViewContinuityState" in source,
                 f"{name} must restore/update shell-owned continuity explicitly")
+        require("captureViewContinuity" in source and "restoreViewContinuity" in source,
+                f"{name} must implement both continuity directions")
 
     # Mutation-sensitive editor state is characterized but intentionally not
     # moved in U1D. A later checkpoint needs a validity rule before restoring it.
