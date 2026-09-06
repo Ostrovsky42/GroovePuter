@@ -16,6 +16,7 @@
 #include "../key_normalize.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
+#include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_lane_layout.h"
 #include "../phrase_notes_viewport.h"
@@ -246,7 +247,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     }
   }
 
-  UI::drawStandardFooter(gfx, "L/R:CUR U/D:GRID", "A+L/R:LEN");
+  UI::drawStandardFooter(gfx, "L/R:CUR U/D:GRID", "BS:DEL A+L/R:LEN");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
@@ -257,6 +258,34 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
   const int nav = UIInput::navCode(ui_event);
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
+
+  if (isBackspace && !ui_event.alt) {
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+    PhraseNotesDeleteEdit::Prepared prepared{};
+    const auto result = PhraseNotesDeleteEdit::prepare(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
+    if (result != PhraseNotesDeleteEdit::Result::Ready) {
+      UI::showToast(
+          result == PhraseNotesDeleteEdit::Result::NoTarget
+              ? "NO NOTE"
+              : "DELETE FAILED",
+          900);
+      return true;
+    }
+
+    bool committed = false;
+    const auto apply = [&]() {
+      auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
+      committed = PhraseNotesDeleteEdit::commitIfUnchanged(live, prepared);
+    };
+    if (audio_guard_) audio_guard_(apply);
+    else apply();
+
+    UI::showToast(committed ? "NOTE DELETED" : "EDIT STALE", 900);
+    return true;
+  }
 
   if (ui_event.alt) {
     if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) {
