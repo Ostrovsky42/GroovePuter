@@ -29,6 +29,7 @@
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
+#include "ui_location.h"
 #include "ui_theme.h"
 #include "screen_geometry.h"
 #if defined(ESP32) || defined(ESP_PLATFORM)
@@ -221,6 +222,12 @@ void MiniAcidDisplay::update() {
     } else {
         gfx_.clear(COLOR_BLACK);
     }
+
+    UI::UiStatusContext statusContext = UI::UiStatusContext::Unknown;
+    UI::UiLocation statusLocation{};
+    if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
+        statusContext = UI::uiStatusContextForLocation(statusLocation);
+    }
     
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
@@ -238,7 +245,7 @@ void MiniAcidDisplay::update() {
         LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
     }
     
-    UI::drawLiveMixLockBadge(gfx_, mini_acid_);
+    UI::drawLiveMixLockBadge(gfx_, mini_acid_, statusContext);
 
     updateCyclePulse_();
     UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
