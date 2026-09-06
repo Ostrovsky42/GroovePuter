@@ -28,7 +28,17 @@ handler = CPP[handler_start:handler_end]
 assert "GROOVEPUTER_LEFT" in handler and "GROOVEPUTER_RIGHT" in handler
 assert "PhraseNotesCursor::move" in handler
 assert "PhraseNotesViewport::moveFocus" not in handler
-assert "RuntimePhraseEdit::commit" not in handler
-assert "commitPreparedPhrase" not in handler
 
-print("PASS: U4A Phrase viewport remains bounded and now follows the GRID cursor")
+# U4A's lasting invariant is that ordinary viewport/cursor navigation is
+# navigation-only. Later checkpoints may add explicit guarded edit gestures in
+# earlier branches of this handler; those must not turn plain L/R or U/D into a
+# musical mutation.
+plain_nav_start = handler.index(
+    "if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)"
+)
+plain_navigation = handler[plain_nav_start:]
+assert "RuntimePhraseEdit::commit" not in plain_navigation
+assert "commitPreparedPhrase" not in plain_navigation
+assert "commitRuntimePrepared" not in plain_navigation
+
+print("PASS: U4A Phrase viewport remains bounded and plain navigation stays mutation-free")
