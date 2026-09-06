@@ -17,6 +17,7 @@ run_cpp_test() {
       -Wall \
       -Wextra \
       -Werror \
+      -Wno-error=c++20-extensions \
       -I"${ROOT_DIR}" \
       "$@" \
       -o "${BUILD_DIR}/${name}"; then
