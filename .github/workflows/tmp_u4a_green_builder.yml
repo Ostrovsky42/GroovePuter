@@ -1,0 +1,266 @@
+name: TEMP U4A Green Builder
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u4a-green-builder
+
+permissions:
+  contents: write
+
+jobs:
+  build-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: tmp/20260906-ui-u4a-green-builder
+
+      - name: Apply guarded U4A patch
+        shell: bash
+        run: |
+          cat > src/ui/phrase_notes_viewport.h <<'EOF'
+          #pragma once
+
+          #include <cstdint>
+
+          #include "../phrase/runtime_synth_events.h"
+
+          namespace PhraseNotesViewport {
+
+          struct Window {
+            uint8_t totalBars = 0;
+            uint8_t focusBar = 0;
+            uint8_t startBar = 0;
+            uint8_t barCount = 0;
+          };
+
+          inline uint8_t barsForLength(uint16_t lengthTicks) {
+            const uint16_t bar = PhraseRuntime::kTicksPerBar;
+            if (lengthTicks == bar) return 1;
+            if (lengthTicks == static_cast<uint16_t>(2u * bar)) return 2;
+            if (lengthTicks == static_cast<uint16_t>(4u * bar)) return 4;
+            if (lengthTicks == static_cast<uint16_t>(8u * bar)) return 8;
+            return 0;
+          }
+
+          inline Window resolve(uint16_t lengthTicks, uint8_t requestedFocusBar) {
+            Window out{};
+            out.totalBars = barsForLength(lengthTicks);
+            if (out.totalBars == 0) return out;
+
+            out.focusBar = requestedFocusBar < out.totalBars
+                ? requestedFocusBar
+                : static_cast<uint8_t>(out.totalBars - 1u);
+            if (out.totalBars <= 2u) {
+              out.startBar = 0;
+              out.barCount = out.totalBars;
+              return out;
+            }
+
+            out.barCount = 2;
+            out.startBar = out.focusBar == 0
+                ? 0
+                : static_cast<uint8_t>(out.focusBar - 1u);
+            const uint8_t latestStart = static_cast<uint8_t>(out.totalBars - out.barCount);
+            if (out.startBar > latestStart) out.startBar = latestStart;
+            return out;
+          }
+
+          inline uint8_t moveFocus(uint8_t currentFocusBar,
+                                   int delta,
+                                   uint16_t lengthTicks) {
+            const Window current = resolve(lengthTicks, currentFocusBar);
+            if (current.totalBars == 0) return 0;
+            int next = static_cast<int>(current.focusBar) + delta;
+            if (next < 0) next = 0;
+            const int last = static_cast<int>(current.totalBars) - 1;
+            if (next > last) next = last;
+            return static_cast<uint8_t>(next);
+          }
+
+          }  // namespace PhraseNotesViewport
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          continuity = Path('src/ui/ui_view_continuity.h')
+          s = continuity.read_text()
+          old = '  uint8_t synthTab[2]{0, 0};\n'
+          new = old + '  uint8_t phraseFocusBar[2]{0, 0};\n'
+          if s.count(old) != 1 or 'phraseFocusBar' in s:
+              raise SystemExit('continuity anchor mismatch')
+          continuity.write_text(s.replace(old, new, 1))
+
+          hdr = Path('src/ui/pages/synth_sequencer_page.h')
+          s = hdr.read_text()
+          old = '''    state.synthTab[voice_index_] = static_cast<uint8_t>(synth_tab_);\n'''
+          new = old + '''    state.phraseFocusBar[voice_index_] = phrase_focus_bar_;\n'''
+          if s.count(old) != 1 or 'phrase_focus_bar_' in s:
+              raise SystemExit('capture anchor mismatch')
+          s = s.replace(old, new, 1)
+          old = '''    setSynthTab(static_cast<SynthTab>(value));\n'''
+          new = old + '''    phrase_focus_bar_ = state.phraseFocusBar[voice_index_];\n'''
+          if s.count(old) != 1:
+              raise SystemExit('restore anchor mismatch')
+          s = s.replace(old, new, 1)
+          old = '''  SynthTab synth_tab_ = SynthTab::Notes;\n'''
+          new = old + '''  uint8_t phrase_focus_bar_ = 0;\n'''
+          if s.count(old) != 1:
+              raise SystemExit('member anchor mismatch')
+          hdr.write_text(s.replace(old, new, 1))
+
+          cpp = Path('src/ui/pages/synth_sequencer_page.cpp')
+          s = cpp.read_text()
+          include_anchor = '#include "../phrase_notes_projection.h"\n'
+          if s.count(include_anchor) != 1 or 'phrase_notes_viewport.h' in s:
+              raise SystemExit('viewport include anchor mismatch')
+          s = s.replace(include_anchor, include_anchor + '#include "../phrase_notes_viewport.h"\n', 1)
+
+          start = s.index('void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {')
+          end = s.index('bool SynthSequencerPage::handlePhraseNotesEvent', start)
+          new_draw = r'''void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
+            const auto& bounds = Layout::CONTENT;
+            gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+
+            const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+            gfx.setTextColor(synthTabColor(voice_index_));
+            gfx.drawText(bounds.x + 4, bounds.y + 4, "SOURCE: PHRASE");
+
+            if (!PhraseNotesProjection::validate(phrase)) {
+              gfx.setTextColor(COLOR_WHITE);
+              gfx.drawText(bounds.x + 4, bounds.y + 20, "PHRASE INVALID");
+              UI::drawStandardFooter(gfx, "", "TAB:VIEW");
+              return;
+            }
+
+            const PhraseNotesViewport::Window viewport =
+                PhraseNotesViewport::resolve(phrase.lengthTicks, phrase_focus_bar_);
+            phrase_focus_bar_ = viewport.focusBar;
+
+            char status[32];
+            const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;
+            std::snprintf(status, sizeof(status), "LENGTH:%u  EVENTS:%u",
+                          bars, static_cast<unsigned>(phrase.count));
+            gfx.setTextColor(COLOR_WHITE);
+            gfx.drawText(bounds.x + 4, bounds.y + 18, status);
+
+            const int overviewX = bounds.x + 4;
+            const int overviewY = bounds.y + 30;
+            const int overviewW = std::max(16, bounds.w - 8);
+            const int overviewH = 6;
+            const IGfxColor noteColor = synthTabColor(voice_index_);
+            for (uint8_t bar = 0; bar < viewport.totalBars; ++bar) {
+              const int x0 = overviewX +
+                  static_cast<int>((static_cast<uint32_t>(bar) * overviewW) /
+                                   viewport.totalBars);
+              const int x1 = overviewX +
+                  static_cast<int>((static_cast<uint32_t>(bar + 1u) * overviewW) /
+                                   viewport.totalBars);
+              const int cellW = std::max(1, x1 - x0 - 1);
+              gfx.drawRect(x0, overviewY, cellW, overviewH, COLOR_LABEL);
+              if (bar == viewport.focusBar) {
+                gfx.fillRect(x0 + 1, overviewY + 1,
+                             std::max(1, cellW - 2), overviewH - 2,
+                             noteColor);
+              }
+            }
+
+            const int timelineX = bounds.x + 4;
+            const int timelineY = bounds.y + 42;
+            const int timelineW = std::max(16, bounds.w - 8);
+            const int rowH = 8;
+            const int maxRows = std::max(1, (bounds.h - 46) / rowH);
+            const uint16_t windowStartTick = static_cast<uint16_t>(
+                static_cast<uint16_t>(viewport.startBar) * PhraseRuntime::kTicksPerBar);
+            const uint16_t windowTicks = static_cast<uint16_t>(
+                static_cast<uint16_t>(viewport.barCount) * PhraseRuntime::kTicksPerBar);
+            const uint32_t windowStartSubtick =
+                static_cast<uint32_t>(windowStartTick) * PhraseRuntime::kSubticksPerTick;
+            const uint32_t windowSubticks =
+                static_cast<uint32_t>(windowTicks) * PhraseRuntime::kSubticksPerTick;
+            const uint32_t windowEndSubtick = windowStartSubtick + windowSubticks;
+
+            gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
+            if (viewport.barCount == 2u) {
+              gfx.fillRect(timelineX + timelineW / 2, timelineY,
+                           1, maxRows * rowH, COLOR_LABEL);
+            }
+
+            for (uint16_t i = 0; i < phrase.count; ++i) {
+              PhraseNotesProjection::NoteSpan span{};
+              if (!PhraseNotesProjection::project(phrase, i, span)) continue;
+              if (span.endSubtick <= windowStartSubtick ||
+                  span.startSubtick >= windowEndSubtick) {
+                continue;
+              }
+
+              const uint32_t clippedStart =
+                  std::max<uint32_t>(span.startSubtick, windowStartSubtick);
+              const uint32_t clippedEnd =
+                  std::min<uint32_t>(span.endSubtick, windowEndSubtick);
+              const int startX = timelineX + static_cast<int>(
+                  ((clippedStart - windowStartSubtick) *
+                   static_cast<uint32_t>(timelineW)) / windowSubticks);
+              int endX = timelineX + static_cast<int>(
+                  ((clippedEnd - windowStartSubtick) *
+                   static_cast<uint32_t>(timelineW)) / windowSubticks);
+              if (endX <= startX) endX = startX + 1;
+
+              const int row = i % maxRows;
+              const int y = timelineY + row * rowH + 2;
+              const bool onsetVisible = span.startSubtick >= windowStartSubtick;
+              if (onsetVisible) {
+                gfx.fillRect(startX, y, 2, 5, noteColor);
+              }
+              const int continuationX = onsetVisible ? startX + 2 : startX;
+              if (endX > continuationX) {
+                gfx.fillRect(continuationX, y + 1,
+                             endX - continuationX, 3, noteColor);
+              }
+            }
+
+            UI::drawStandardFooter(gfx, "L/R:BAR", "TAB:VIEW");
+          }
+
+          '''
+          s = s[:start] + new_draw + s[end:]
+
+          old_handler = '''bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {\n  (void)ui_event;\n  // Slice 2 remains presentation-only. Phrase mutation is added only after the\n  // bounded PREPARE -> VALIDATE -> COMMIT owner is characterized.\n  return false;\n}\n'''
+          new_handler = '''bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {\n  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||\n      ui_event.ctrl || ui_event.alt || ui_event.meta) {\n    return false;\n  }\n\n  const int nav = UIInput::navCode(ui_event);\n  if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;\n\n  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);\n  phrase_focus_bar_ = PhraseNotesViewport::moveFocus(\n      phrase_focus_bar_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);\n  return true;\n}\n'''
+          if s.count(old_handler) != 1:
+              raise SystemExit('Phrase handler anchor mismatch')
+          cpp.write_text(s.replace(old_handler, new_handler, 1))
+          PY
+
+      - name: Verify focused U4A gate
+        shell: bash
+        run: bash tests/run_ui_constitution_u4a_tests.sh
+
+      - name: Verify diff scope
+        shell: bash
+        run: |
+          git diff --check
+          printf '%s\n' \
+            src/ui/phrase_notes_viewport.h \
+            src/ui/ui_view_continuity.h \
+            src/ui/pages/synth_sequencer_page.cpp \
+            src/ui/pages/synth_sequencer_page.h > /tmp/expected
+          git diff --name-only | sort > /tmp/actual
+          sort /tmp/expected -o /tmp/expected
+          diff -u /tmp/expected /tmp/actual
+
+      - name: Commit GREEN
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/ui/phrase_notes_viewport.h \
+                  src/ui/ui_view_continuity.h \
+                  src/ui/pages/synth_sequencer_page.cpp \
+                  src/ui/pages/synth_sequencer_page.h
+          git commit -m 'feat(ui): add bounded Phrase focus viewport'
+          git push origin HEAD:tmp/20260906-ui-u4a-green-builder
