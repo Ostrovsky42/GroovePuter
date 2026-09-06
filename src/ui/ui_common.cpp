@@ -68,9 +68,36 @@ namespace UI {
             return UiStatusState::Stop;
         }
 
+        UiSequencedSource uiSequencedSourceForEngine(
+            MiniAcid::SequencedSource source) {
+            return source == MiniAcid::SequencedSource::Phrase
+                ? UiSequencedSource::Phrase
+                : UiSequencedSource::Pattern;
+        }
+
+        UiSequencedSource sequencedSourceForContext(
+            MiniAcid& miniAcid,
+            UiStatusContext context) {
+            switch (context) {
+                case UiStatusContext::SynthA:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(0));
+                case UiStatusContext::SynthB:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(1));
+                case UiStatusContext::Drums:
+                    return UiSequencedSource::Pattern;
+                default:
+                    return UiSequencedSource::NotApplicable;
+            }
+        }
+
         void populatePatternAddress(UiStatusSnapshot& status,
                                     MiniAcid& miniAcid) {
-            if (status.source != UiStatusSource::Pattern) return;
+            if (status.routing.sequencedSource() !=
+                UiSequencedSource::Pattern) {
+                return;
+            }
 
             int bank = -1;
             int slot = -1;
@@ -105,6 +132,17 @@ namespace UI {
             status.context = context;
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
 
+            const UiSequencedSource sequencedSource =
+                sequencedSourceForContext(miniAcid, context);
+            const UiTransportOwner defaultTransportOwner =
+                miniAcid.songModeEnabled()
+                    ? UiTransportOwner::Song
+                    : UiTransportOwner::Cycle;
+            status.routing = UiStatusRouting{
+                sequencedSource,
+                defaultTransportOwner,
+            };
+
             const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
                 GroovePuterMidi::transportClockRuntime().snapshot();
             status.clock =
@@ -122,11 +160,15 @@ namespace UI {
                     playerPageSelected &&
                     smf.state != GroovePuterMidi::SmfPlayerState::Unloaded;
                 if (smfStateOwnsStatus(smf.state) || loadedPlayerSelected) {
-                    status.source = UiStatusSource::Smf;
+                    status.routing = UiStatusRouting{
+                        sequencedSource,
+                        UiTransportOwner::Smf,
+                    };
                     status.state = uiStateForSmf(smf.state);
                     status.bar = statusCount(smf.bar);
                     status.totalBars = statusCount(smf.totalBars);
                     status.output = UiStatusOutput::Midi;
+                    populatePatternAddress(status, miniAcid);
                     if (smf.tempoMode == GroovePuterMidi::SmfTempoMode::Original) {
                         status.clock = UiStatusClock::File;
                     }
@@ -134,18 +176,13 @@ namespace UI {
                 }
             }
 
-            // U1A deliberately preserves the existing source policy. U1B will
-            // separate per-Synth PAT/PHR source from Song/SMF transport truth.
-            status.source = miniAcid.songModeEnabled()
-                ? UiStatusSource::Song
-                : UiStatusSource::Pattern;
             status.state = miniAcid.isPlaying()
                 ? UiStatusState::Play
                 : UiStatusState::Stop;
             status.output = UiStatusOutput::InternalAudio;
             populatePatternAddress(status, miniAcid);
 
-            if (status.source == UiStatusSource::Song) {
+            if (defaultTransportOwner == UiTransportOwner::Song) {
                 status.bar = statusOneBasedIndex(miniAcid.songPlayheadPosition());
                 status.totalBars = statusCount(
                     static_cast<uint32_t>(miniAcid.songLength() > 0
