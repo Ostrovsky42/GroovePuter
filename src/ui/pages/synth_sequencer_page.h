@@ -2,6 +2,7 @@
 
 #include "../ui_core.h"
 #include "../ui_view_continuity.h"
+#include "../phrase_notes_cursor.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
@@ -34,7 +35,8 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void captureViewContinuity(UI::UiViewContinuityState& state) const override {
     if (voice_index_ < 0 || voice_index_ >= 2) return;
     state.synthTab[voice_index_] = static_cast<uint8_t>(synth_tab_);
-    state.phraseFocusBar[voice_index_] = phrase_focus_bar_;
+    state.phraseCursorCell[voice_index_] = phrase_cursor_.cell;
+    state.phraseGrid[voice_index_] = static_cast<uint8_t>(phrase_cursor_.grid);
   }
 
   void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
@@ -42,7 +44,12 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
     uint8_t value = state.synthTab[voice_index_];
     if (value > static_cast<uint8_t>(SynthTab::More)) value = 0;
     setSynthTab(static_cast<SynthTab>(value));
-    phrase_focus_bar_ = state.phraseFocusBar[voice_index_];
+    phrase_cursor_.cell = state.phraseCursorCell[voice_index_];
+    uint8_t grid = state.phraseGrid[voice_index_];
+    if (grid > static_cast<uint8_t>(RuntimePhraseEdit::Grid::ThirtySecond)) {
+      grid = static_cast<uint8_t>(RuntimePhraseEdit::Grid::Sixteenth);
+    }
+    phrase_cursor_.grid = static_cast<RuntimePhraseEdit::Grid>(grid);
   }
 
   void setSynthTab(SynthTab tab);
@@ -60,7 +67,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int voice_index_ = 0;
   uint32_t last_tab_switch_ms_ = 0;
   SynthTab synth_tab_ = SynthTab::Notes;
-  uint8_t phrase_focus_bar_ = 0;
+  PhraseNotesCursor::State phrase_cursor_{};
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;
