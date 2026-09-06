@@ -6,6 +6,13 @@ on:
       - feature/20260906-04-0.9.10-ui-constitution-v1
     paths:
       - '.github/workflows/0_9_10_ui_constitution_u4b2_closure.yml'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/phrase_notes_duration_edit.h'
+      - 'src/ui/phrase_notes_delete_edit.h'
+      - 'tests/run_ui_constitution_u4b3_tests.sh'
+      - 'tests/run_ui_constitution_u4b4_tests.sh'
+      - 'tests/test_ui_constitution_u4b3_*'
+      - 'tests/test_ui_constitution_u4b4_*'
   workflow_dispatch:
 
 permissions:
