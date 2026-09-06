@@ -1,0 +1,140 @@
+name: TEMP U1F Green Builder
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u1f-green-builder
+    paths:
+      - '.github/workflows/tmp_u1f_green_builder.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact U1F production patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          common = Path('src/ui/ui_common.cpp')
+          display = Path('src/ui/miniacid_display.cpp')
+
+          replace_once(
+              common,
+              '        UiStatusSnapshot gStatusSnapshot{};\n'
+              '        char gStatusLine[48] = {0};\n'
+              '        bool gStatusInitialized = false;\n',
+              '        UiStatusSnapshot gStatusSnapshot{};\n'
+              '        char gStatusLine[48] = {0};\n'
+              '        bool gStatusInitialized = false;\n'
+              '        UiShellFrameModel* gShellFrameModel = nullptr;\n')
+
+          replace_once(
+              common,
+              '    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {\n'
+              '        char sceneStr[16];\n'
+              '        snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);\n'
+              '        \n'
+              '        LayoutManager::drawHeader(gfx, sceneStr, (int)mini_acid.bpm(), \n'
+              '                                 title, mini_acid.isRecording());\n'
+              '    }\n',
+              '    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {\n'
+              '        // U1F: pages no longer own global header pixels or re-read live\n'
+              '        // status truth while composing their body. Keep the established\n'
+              '        // call-site as a no-op until page APIs are migrated separately.\n'
+              '        (void)gfx;\n'
+              '        (void)mini_acid;\n'
+              '        (void)title;\n'
+              '    }\n')
+
+          replace_once(
+              common,
+              '    void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {\n'
+              '        LayoutManager::drawFooter(gfx, left, right);\n'
+              '    }\n\n',
+              '    void beginShellFrameModel(UiShellFrameModel& model) {\n'
+              '        model.clear();\n'
+              '        gShellFrameModel = &model;\n'
+              '    }\n\n'
+              '    void endShellFrameModel() {\n'
+              '        gShellFrameModel = nullptr;\n'
+              '    }\n\n'
+              '    void publishShellFooter(const char* left, const char* right) {\n'
+              '        if (gShellFrameModel == nullptr) return;\n'
+              '        gShellFrameModel->setFooter(left, right);\n'
+              '    }\n\n'
+              '    void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {\n'
+              '        (void)gfx;\n'
+              '        publishShellFooter(left, right);\n'
+              '    }\n\n'
+              '    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {\n'
+              '        if (!footer.valid) {\n'
+              '            LayoutManager::drawFooter(gfx, "", "");\n'
+              '            return;\n'
+              '        }\n'
+              '        LayoutManager::drawFooter(gfx, footer.left, footer.right);\n'
+              '    }\n\n')
+
+          replace_once(
+              display,
+              '    IPage* currentPage = getPage_(page_index_);\n'
+              '    if (currentPage) {\n',
+              '    UI::UiShellFrameModel shellFrame{};\n'
+              '    UI::beginShellFrameModel(shellFrame);\n'
+              '    IPage* currentPage = getPage_(page_index_);\n'
+              '    if (currentPage) {\n')
+
+          replace_once(
+              display,
+              '    } else {\n'
+              '        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);\n'
+              '        LayoutManager::clearContent(gfx_);\n'
+              '        gfx_.setTextColor(COLOR_WHITE);\n'
+              '        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");\n'
+              '        char buf[32];\n'
+              '        snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);\n'
+              '        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);\n'
+              '        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");\n'
+              '    }\n'
+              '    \n'
+              '    UI::drawLiveMixLockBadge(gfx_, frameStatus);\n\n'
+              '    updateCyclePulse_();\n',
+              '    } else {\n'
+              '        LayoutManager::clearContent(gfx_);\n'
+              '        gfx_.setTextColor(COLOR_WHITE);\n'
+              '        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");\n'
+              '        char buf[32];\n'
+              '        snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);\n'
+              '        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);\n'
+              '        UI::publishShellFooter("[ ] workspaces", "Fn+M menu");\n'
+              '    }\n'
+              '    UI::endShellFrameModel();\n'
+              '    UI::drawStatusChrome(gfx_, frameStatus);\n'
+              '    UI::drawShellFooter(gfx_, shellFrame.footer);\n\n'
+              '    updateCyclePulse_();\n')
+          PY
+
+      - name: Commit builder result
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/ui_common.cpp src/ui/miniacid_display.cpp
+          git diff --cached --check
+          git commit -m "refactor(ui): give shell sole header footer pixel ownership"
+          git push origin HEAD:tmp/20260906-ui-u1f-green-builder
