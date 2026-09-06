@@ -1,0 +1,80 @@
+name: TEMP U1G Green Builder
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u1g-green-builder
+    paths:
+      - '.github/workflows/tmp_u1g_green_builder.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact U1G production patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          feel = Path('src/ui/pages/feel_page.cpp')
+          genre = Path('src/ui/pages/genre_page.cpp')
+
+          replace_once(
+              feel,
+              '  UI::drawStandardFooter(gfx,\n'
+              '                         "TAB/U/D:FIELD L/R:CHANGE",\n'
+              '                         "HOLD L/R:ACCEL P:LEVEL");\n',
+              '  UI::drawStandardFooter(gfx,\n'
+              '                         "U/D:FIELD L/R:CHANGE",\n'
+              '                         "HOLD L/R:ACCEL P:LEVEL");\n',
+              'FEEL footer')
+          replace_once(
+              feel,
+              '  if (UIInput::isTab(event)) {\n'
+              '    moveFocus(1);\n'
+              '    return true;\n'
+              '  }\n\n',
+              '',
+              'FEEL plain Tab')
+
+          replace_once(
+              genre,
+              '  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");\n',
+              '  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");\n',
+              'GENRE footer')
+          replace_once(
+              genre,
+              '  if (UIInput::isTab(event)) {\n'
+              '    moveFocus(1);\n'
+              '    return true;\n'
+              '  }\n',
+              '',
+              'GENRE plain Tab')
+          PY
+
+      - name: Verify and commit builder result
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/run_ui_constitution_u1g_tests.sh
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/feel_page.cpp src/ui/pages/genre_page.cpp
+          git commit -m "fix(ui): reserve Tab for peer representations"
+          git push origin HEAD:tmp/20260906-ui-u1g-green-builder
