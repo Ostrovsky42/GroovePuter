@@ -332,3 +332,113 @@ PROVEN      ~512 B of the residual is .dram0.dummy growth, i.e. link-time.
 NOT PROVEN  The member-level composition of the +8040 B inside g_miniAcidInstance.
 NOT PROVEN  That v0.9.9 executes the same 1281 B call site; it was not instrumented there.
 ```
+
+---
+
+# Addendum 2: member-level closure of the +8040 B
+
+Measured with a temporary translation unit compiled by the **target** toolchain
+(xtensa ESP32-S3 ABI, not host alignment), values extracted from incomplete
+template diagnostics so no build artefact retains them. The TU was deleted after
+reading; nothing about it remains in the tree.
+
+```
+sizeof(MiniAcid)                        16888     (matches nm exactly)
+sizeof(RuntimePatternEventBank)          5414
+sizeof(RuntimePatternEventBuffer)         164
+sizeof(RuntimeSynthEventBuffer)          1284
+sizeof(RuntimeSynthPlaybackState)          16
+sizeof(RuntimeSynthEvent)                  10
+
+offsetof(MiniAcid, patternRuntimeBank_)    876
+offsetof(MiniAcid, patternPlaybackState_) 6292
+offsetof(MiniAcid, patternRetrigEvent_)   6324
+offsetof(MiniAcid, patternOwnedMask_)     6352
+offsetof(MiniAcid, sequencedSource_)      6360
+offsetof(MiniAcid, currentPhrase_)        6362
+```
+
+| Member | Bytes | Line |
+|---|---|---|
+| `RuntimePatternEventBank` | **5414** | P1C/P2 |
+| `currentPhrase_[2]` | **2568** | P3 |
+| `patternPlaybackState_[2]` | 32 | P2 |
+| `patternRetrigEvent_[2]` | 20 | P2 |
+| `sequencedSource_[2]` | 2 | P3 |
+| `patternOwnedMask_` | 1 | P2 |
+| alignment / padding | 3 | |
+| **total** | **8040** | = the observed symbol delta |
+
+The attribution closes to within 3 bytes. `g_miniAcidInstance` +8040 is
+**entirely** the P1C/P2/P3 runtime-event architecture; it is not an accumulation
+of unrelated features.
+
+## Correcting a share that matters
+
+```
+P1C/P2  bank + playback + retrig + mask   5467 B   68 %
+P3      phrase buffers + source selector  2570 B   32 %
+```
+
+Saying "P3 consumed the memory" is wrong. Two thirds of the growth belongs to the
+Pattern runtime projection, and P3's bounded phrase buffers are the minority
+share — a deliberate, priced cost for a new musical capability.
+
+## The residency question, now with a number
+
+`RuntimePatternEventBank` = 2 synths x 2 banks x 8 patterns = 32 projections:
+
+```
+32 x 164 B = 5248 B held permanently
+     166 B   bank overhead
+    ------
+    5414 B
+```
+
+The runtime executes **two** projections at any instant (current Synth A pattern,
+current Synth B pattern). So **4920 B holds projections that are not being
+executed** — the precise form of `CAPABILITY != SIMULTANEOUS RESIDENCY`.
+
+This is not a verdict against the bank. The invariant it buys is real: `AudioTask`
+must not read mutable `SynthPattern`, and must not materialize a projection in
+realtime at a Song or page transition. Any change here has to preserve that, or
+it trades a memory defect for a race in the audio path — a strictly worse bug.
+The question for MEMORY-R1 is whether the same invariant can hold with a smaller
+simultaneous working set, not whether the buffers can be deleted.
+
+## Historical regression: closed
+
+```
+MiniAcid runtime architecture      +8040     (attributed to 3 B, above)
+other product changes              -4247
+                                   -----
+.data/.bss net                     +3793     (linker reports +3800)
+
+.dram0.dummy (IRAM overlap)         +512
+alignment / residual                 ~64
+                                   -----
+observed initial heap displacement ~4376
+```
+
+Downstream costs are unchanged between versions: display ~65.5 KB, DSP ~18.7 KB,
+SD mount ~30.1 KB, SMF ~9.3 KB. 0.9.10 simply starts ~4.3 KB lower and crosses the
+runtime cliff that 0.9.9 sat just above.
+
+**The historical cause of the regression is considered closed.** What remains open
+is the panic mechanism's final decode (no backtrace has ever been captured on this
+transport) and every R1 architecture question, which is explicitly out of scope
+here.
+
+## Scale note for R1 prioritisation
+
+```
+display representation   ~64.8 KB
+SD mounted residency     ~30.0 KB
+Pattern/Phrase runtime     ~8.0 KB
+```
+
+The display is larger than the other two combined. It is identical in both
+versions and therefore innocent of the regression, but it sets the ceiling under
+which everything else competes for the last hundreds of bytes. A search for tens
+of kilobytes of reserve should start there, not at the 8 KB that merely provided
+the occasion.
