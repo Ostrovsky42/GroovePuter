@@ -289,17 +289,12 @@ void FeelPage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, explanation);
 
   UI::drawStandardFooter(gfx,
-                         "TAB/U/D:FIELD L/R:CHANGE",
+                         "U/D:FIELD L/R:CHANGE",
                          "HOLD L/R:ACCEL P:LEVEL");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-
-  if (UIInput::isTab(event)) {
-    moveFocus(1);
-    return true;
-  }
 
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP) {
