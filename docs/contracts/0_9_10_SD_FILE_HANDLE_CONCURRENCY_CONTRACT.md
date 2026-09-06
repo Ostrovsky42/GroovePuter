@@ -264,3 +264,37 @@ should be closed by comparing symbol sets after the rebuild.
 The local ESP-IDF working tree is v5.5.2; commit `858a988d` is present as an
 object, so a build requires a worktree at that commit plus the core's own
 toolchain (`esp-x32/2411`), both available.
+
+## 9. FS1A measurement — the saving is confirmed, not estimated
+
+Compiled with the core's own toolchain (`esp-x32/2411`) against the core's own
+headers and include flags, differing only in `sdkconfig.h`.
+
+| | WL=4096 (as shipped) | WL=512 | saving |
+|---|---|---|---|
+| `sizeof(FIL)` | **4136** | **552** | 3584 x 5 slots = **17920** |
+| `sizeof(FATFS)` | **4152** | **564** | **3588** |
+| `FF_MAX_SS` | 4096 | 512 | |
+| | | | **21508 B** |
+
+The baseline column reproduces the earlier on-target census byte for byte
+(4136 / 4152 / 4096), which confirms the probe compiles in the same
+configuration the shipped library was built with and is therefore measuring the
+real layout rather than a hypothetical one.
+
+Projected effect on the failing state:
+
+```
+now:       free 1824 B    largest 1012 B    11/11 boots panic
+projected: free ~23.3 KB
+```
+
+Preserved: five logical handles, five private caches, no shared-cache
+contention, unchanged realtime cache ownership, sector size brought to what the
+SD card physically uses.
+
+Remaining to do, in order: rebuild `libfatfs.a` at `858a988d` with
+`CONFIG_WL_SECTOR_SIZE=512`, compare its exported symbol set against the shipped
+archive (this also closes the inlined-constant hole recorded in §8), substitute
+it, then run the 7-point acceptance on hardware. No production byte has been
+changed to reach this point.
