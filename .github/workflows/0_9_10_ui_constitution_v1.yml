@@ -18,6 +18,8 @@ on:
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1B_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   pull_request:
     paths:
@@ -34,6 +36,8 @@ on:
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1B_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   workflow_dispatch:
 
