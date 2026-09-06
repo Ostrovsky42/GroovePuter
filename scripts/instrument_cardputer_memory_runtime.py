@@ -2,12 +2,22 @@
 from pathlib import Path
 import sys
 
-if len(sys.argv) != 2:
-    raise SystemExit("usage: instrument_cardputer_memory_runtime.py <source-root>")
 
-root = Path(sys.argv[1])
+def parse_args() -> tuple[str, Path]:
+    args = sys.argv[1:]
+    if len(args) == 1:
+        return "legacy", Path(args[0])
+    if len(args) == 3 and args[0] == "--mode" and args[1] in ("legacy", "r0"):
+        return args[1], Path(args[2])
+    raise SystemExit(
+        "usage: instrument_cardputer_memory_runtime.py "
+        "[--mode legacy|r0] <source-root>")
+
+
+mode, root = parse_args()
 ino_path = root / "GroovePuter.ino"
 smf_header_path = root / "src/platform/cardputer_smf_player.h"
+smf_cpp_path = root / "src/platform/cardputer_smf_player.cpp"
 registry_header_path = root / "src/platform/cardputer_smf_player_registry.h"
 registry_cpp_path = root / "src/platform/cardputer_smf_player_registry.cpp"
 transport_header_path = root / "src/platform/cardputer_usb_midi_transport.h"
@@ -23,6 +33,15 @@ def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
             f"memory baseline instrumentation: expected one {label} anchor "
             f"in {path}, found {count}")
     path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+
+
+def replace_text_once(text: str, anchor: str, replacement: str, label: str) -> str:
+    count = text.count(anchor)
+    if count != 1:
+        raise SystemExit(
+            f"memory baseline instrumentation: expected one {label} anchor, "
+            f"found {count}")
+    return text.replace(anchor, replacement, 1)
 
 
 # Runtime-only direct accessors avoid optional task-name lookup. None of these
@@ -97,37 +116,37 @@ transport_cpp_path.write_text(
     encoding="utf-8",
 )
 
-# PHRASE probe hooks are declared locally so this file needs no diagnostic
-# header. Both edits apply to the temporary runtime tree only.
-replace_once(
-    phrase_page_path,
-    '#include "src/state/scene_revision.h"\n',
-    '#include "src/state/scene_revision.h"\n'
-    "\n"
-    "// GF2-M0R diagnostic hooks, defined in the instrumented sketch.\n"
-    "void beginPhraseMemoryProbe();\n"
-    "void endPhraseMemoryProbe(int resultStatus);\n",
-    "PHRASE probe declarations",
-)
+# The historical runtime profile keeps the PHRASE operation probe exactly as it
+# existed before MEMORY-R0. R0 deliberately does not patch this call path: its
+# first hardware image observes product startup/idle behavior only.
+if mode == "legacy":
+    replace_once(
+        phrase_page_path,
+        '#include "src/state/scene_revision.h"\n',
+        '#include "src/state/scene_revision.h"\n'
+        "\n"
+        "// GF2-M0R diagnostic hooks, defined in the instrumented sketch.\n"
+        "void beginPhraseMemoryProbe();\n"
+        "void endPhraseMemoryProbe(int resultStatus);\n",
+        "PHRASE probe declarations",
+    )
 
-replace_once(
-    phrase_page_path,
-    "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
-    "  beginPhraseMemoryProbe();\n"
-    "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
-    "PHRASE probe begin hook",
-)
+    replace_once(
+        phrase_page_path,
+        "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
+        "  beginPhraseMemoryProbe();\n"
+        "  const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(\n",
+        "PHRASE probe begin hook",
+    )
 
-# The generation call is a single initialising statement with one exit, so the
-# end hook needs no change to existing error handling.
-replace_once(
-    phrase_page_path,
-    "      });\n\n  if (!result) {\n",
-    "      });\n"
-    "  endPhraseMemoryProbe(static_cast<int>(result.status));\n"
-    "\n  if (!result) {\n",
-    "PHRASE probe end hook",
-)
+    replace_once(
+        phrase_page_path,
+        "      });\n\n  if (!result) {\n",
+        "      });\n"
+        "  endPhraseMemoryProbe(static_cast<int>(result.status));\n"
+        "\n  if (!result) {\n",
+        "PHRASE probe end hook",
+    )
 
 text = ino_path.read_text(encoding="utf-8")
 
@@ -237,8 +256,7 @@ static void logCardputerMemoryBaseline(const char* phase) {
 }
 
 // The first heap_caps_monitor_local_minimum_free_size_start() may allocate
-// its own bookkeeping. Prewarm once here so that allocation lands before the
-// runtime baseline and can never be charged to a PHRASE measurement window.
+// its own bookkeeping. Legacy PHRASE diagnostics prewarm it before use.
 static void prewarmCardputerMemoryLocalMinimumMonitor() {
   (void)heap_caps_monitor_local_minimum_free_size_start();
   (void)heap_caps_monitor_local_minimum_free_size_stop();
@@ -263,12 +281,7 @@ static void pollCardputerMemoryBaseline() {
   }
 }
 
-// GF2-M0R operation-scoped PHRASE probe.
-//
-// GeneratedPhraseSong::generate() runs synchronously on the loop task, so the
-// 10 ms poller above cannot sample anything while it executes. These hooks
-// bracket the operation instead. External linkage: phrase_page.cpp calls them
-// from another translation unit.
+// GF2-M0R operation-scoped PHRASE probe retained for legacy mode.
 static uint32_t g_phraseProbeSeq = 0;
 static uint32_t g_phraseProbePreFreeInternal8 = 0;
 static uint32_t g_phraseProbePreLargestInternal8 = 0;
@@ -285,26 +298,16 @@ void beginPhraseMemoryProbe() {
 }
 
 void endPhraseMemoryProbe(int resultStatus) {
-  // Read the minimum while the local monitor is still active: after stop()
-  // heap_caps_get_minimum_free_size() reverts to its since-startup meaning.
   const uint32_t localMinFreeInternal8 = heap_caps_get_minimum_free_size(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t postFreeInternal8 = heap_caps_get_free_size(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t postLargestInternal8 = heap_caps_get_largest_free_block(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  // Captured before any Serial.printf so logging cannot move the mark.
   const uint32_t postLoopStackFreeBytes =
       (uint32_t)uxTaskGetStackHighWaterMark(nullptr);
   (void)heap_caps_monitor_local_minimum_free_size_stop();
 
-  // localMinFreeInternal8 is the PHRASE-scoped system minimum free
-  // INTERNAL|8BIT heap. Other tasks run during the window, so it is an
-  // operation-window safety figure, not bytes allocated by PHRASE.
-  //
-  // The largest-block values are plain before/after readings. ESP-IDF has no
-  // operation-local monitor for the largest free block, so neither one is an
-  // operation peak; fragmentation drift is read across repeated operations.
   Serial.printf(
       "[MEM-PHRASE] seq=%u result=%d preFreeInternal8=%u "
       "localMinFreeInternal8=%u postFreeInternal8=%u preLargestInternal8=%u "
@@ -322,79 +325,345 @@ void endPhraseMemoryProbe(int resultStatus) {
 }
 '''
 
-setup_anchor = '''  Serial.println("setup() complete");
+if mode == "r0":
+    # The local-minimum monitor may allocate bookkeeping on first use. R0's
+    # untouched-idle image must not introduce that allocation merely by starting
+    # telemetry, so only legacy mode prewarms it.
+    state_injection = state_injection.replace(
+        "  prewarmCardputerMemoryLocalMinimumMonitor();\n", "", 1)
+
+text = replace_text_once(text, state_anchor, state_injection, "state")
+
+if mode == "legacy":
+    setup_anchor = '''  Serial.println("setup() complete");
   markBootStage(100, "setup-complete");'''
-setup_injection = '''  Serial.println("setup() complete");
+    setup_injection = '''  Serial.println("setup() complete");
   startCardputerMemoryBaseline();
   markBootStage(100, "setup-complete");'''
 
-loop_anchor = '''void loop() {
+    loop_anchor = '''void loop() {
   M5Cardputer.update();'''
-loop_injection = '''void loop() {
+    loop_injection = '''void loop() {
   M5Cardputer.update();
   pollCardputerMemoryBaseline();'''
 
-# P3 diagnostic scenario. The product graph never reaches the PHRASE sequenced
-# source, so the diagnostic image has to drive it explicitly for either the
-# runtime measurement or the audible comparison to mean anything.
-#
-# Two scenarios exist and only one is compiled in. Swap the three names below to
-# choose:
-#   src/diag/p3_audible_ab.h            P3_AUDIBLE_AB / P3AudibleAB
-#     sparse two-bar phrase, alternates PATTERN and PHRASE every eight bars so
-#     the cross-bar note and the two-bar cycle are audible.
-#   src/diag/p3_dram_characterization.h P3_DRAM_CHARACTERIZATION / P3DramCharacterization
-#     phrase buffer filled to kMaxSynthEvents, three play/stop cycles, for heap
-#     and fragmentation measurement.
-#
-# These anchors match what the three replacements above produce, so they must
-# stay after them in this tuple.
-# Raw keyboard-scan trace, independent of the phrase scenarios above.
-keyscan_include_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
-keyscan_include_injection = """static uint32_t g_peakUiDrawUs = 0;
+    text = replace_text_once(text, setup_anchor, setup_injection, "setup")
+    text = replace_text_once(text, loop_anchor, loop_injection, "loop")
+
+    # Historical P3 diagnostic scenario remains the default/legacy runtime
+    # profile. MEMORY-R0 does not compile or execute this synthetic workload.
+    keyscan_include_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
+    keyscan_include_injection = """static uint32_t g_peakUiDrawUs = 0;
 
 #define P3_KEY_SCAN_TRACE 1
 #include "src/diag/p3_key_scan_trace.h"
 """
 
-keyscan_call_anchor = "  reconcilePerformanceKeys(currentKeysState);\n"
-keyscan_call_injection = """  reconcilePerformanceKeys(currentKeysState);
+    keyscan_call_anchor = "  reconcilePerformanceKeys(currentKeysState);\n"
+    keyscan_call_injection = """  reconcilePerformanceKeys(currentKeysState);
   P3KeyScanTrace::observe(currentKeysState);
 """
 
-p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
-p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
+    p3_include_anchor = "static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);\n"
+    p3_include_injection = """static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 
 #define P3_DRAM_CHARACTERIZATION 1
 #include "src/diag/p3_dram_characterization.h"
 """
 
-p3_setup_anchor = "  startCardputerMemoryBaseline();\n"
-p3_setup_injection = """  startCardputerMemoryBaseline();
+    p3_setup_anchor = "  startCardputerMemoryBaseline();\n"
+    p3_setup_injection = """  startCardputerMemoryBaseline();
   P3DramCharacterization::begin(g_miniAcidInstance);
 """
 
-p3_loop_anchor = "  pollCardputerMemoryBaseline();\n"
-p3_loop_injection = """  pollCardputerMemoryBaseline();
+    p3_loop_anchor = "  pollCardputerMemoryBaseline();\n"
+    p3_loop_injection = """  pollCardputerMemoryBaseline();
   if (const char* p3Phase = P3DramCharacterization::poll(g_miniAcidInstance)) {
     logCardputerMemoryBaseline(p3Phase);
   }
 """
 
-for anchor, replacement, label in (
-    (state_anchor, state_injection, "state"),
-    (setup_anchor, setup_injection, "setup"),
-    (loop_anchor, loop_injection, "loop"),
-    (p3_include_anchor, p3_include_injection, "p3-include"),
-    (p3_setup_anchor, p3_setup_injection, "p3-setup"),
-    (p3_loop_anchor, p3_loop_injection, "p3-loop"),
-    (keyscan_include_anchor, keyscan_include_injection, "keyscan-include"),
-    (keyscan_call_anchor, keyscan_call_injection, "keyscan-call"),
-):
-    count = text.count(anchor)
-    if count != 1:
-        raise SystemExit(
-            f"memory baseline instrumentation: expected one {label} anchor, found {count}")
-    text = text.replace(anchor, replacement, 1)
+    for anchor, replacement, label in (
+        (p3_include_anchor, p3_include_injection, "p3-include"),
+        (p3_setup_anchor, p3_setup_injection, "p3-setup"),
+        (p3_loop_anchor, p3_loop_injection, "p3-loop"),
+        (keyscan_include_anchor, keyscan_include_injection, "keyscan-include"),
+        (keyscan_call_anchor, keyscan_call_injection, "keyscan-call"),
+    ):
+        text = replace_text_once(text, anchor, replacement, label)
+else:
+    # R0 SMF phase checkpoints split timing-vector residency from the task stack
+    # without changing begin() order or ownership.
+    replace_once(
+        smf_cpp_path,
+        '#include "src/platform/cardputer_usb_midi_service.h"\n',
+        '#include "src/platform/cardputer_usb_midi_service.h"\n\n'
+        'void logCardputerMemoryR0Checkpoint(const char* phase);\n',
+        "R0 SMF checkpoint declaration",
+    )
+    replace_once(
+        smf_cpp_path,
+        "bool CardputerSmfPlayerService::begin() {\n"
+        "    if (taskHandle_ != nullptr) return true;\n\n"
+        "    const uint32_t freeBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);",
+        "bool CardputerSmfPlayerService::begin() {\n"
+        "    if (taskHandle_ != nullptr) return true;\n\n"
+        "    logCardputerMemoryR0Checkpoint(\"r0-smf-begin\");\n"
+        "    const uint32_t freeBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);",
+        "R0 SMF begin",
+    )
+    replace_once(
+        smf_cpp_path,
+        "    if (!timing_.reserveForEvents(kMaxTimingEvents)) {",
+        "    logCardputerMemoryR0Checkpoint(\"r0-after-smf-timing-document\");\n"
+        "    if (!timing_.reserveForEvents(kMaxTimingEvents)) {",
+        "R0 SMF timing document",
+    )
+    replace_once(
+        smf_cpp_path,
+        "        return false;\n"
+        "    }\n\n"
+        "    commandQueue_ = xQueueCreateStatic(\n",
+        "        return false;\n"
+        "    }\n"
+        "    logCardputerMemoryR0Checkpoint(\"r0-after-smf-timing-map\");\n\n"
+        "    commandQueue_ = xQueueCreateStatic(\n",
+        "R0 SMF timing map",
+    )
+    replace_once(
+        smf_cpp_path,
+        "        return false;\n"
+        "    }\n\n"
+        "    const BaseType_t result = xTaskCreatePinnedToCore(\n",
+        "        return false;\n"
+        "    }\n"
+        "    logCardputerMemoryR0Checkpoint(\"r0-after-smf-command-queue\");\n\n"
+        "    const BaseType_t result = xTaskCreatePinnedToCore(\n",
+        "R0 SMF command queue",
+    )
+    replace_once(
+        smf_cpp_path,
+        "    Serial.printf(\"[SMF-INIT] ready freeInt=%u largest=%u\\n\",",
+        "    logCardputerMemoryR0Checkpoint(\"r0-after-smf-task\");\n"
+        "    Serial.printf(\"[SMF-INIT] ready freeInt=%u largest=%u\\n\",",
+        "R0 SMF task",
+    )
+
+    boot_helper_anchor = '''static void markBootStage(uint32_t stage, const char* msg = nullptr) {
+  g_bootStage.record(stage);
+  if (msg) {
+    Serial.printf("[BOOT-STAGE] %u %s\\n", (unsigned)stage, msg);
+  } else {
+    Serial.printf("[BOOT-STAGE] %u\\n", (unsigned)stage);
+  }
+}
+'''
+    boot_helper_injection = boot_helper_anchor + '''
+// R0 retained markers intentionally do not call markBootStage(): that helper
+// writes serial text and would turn the loop into a tracer.
+static void recordCardputerMemoryR0Stage(uint32_t stage) {
+  g_bootStage.record(stage);
+}
+
+// External linkage lets the diagnostic-only SMF translation unit report its
+// internal begin() boundaries through the same telemetry implementation.
+void logCardputerMemoryR0Checkpoint(const char* phase) {
+  logCardputerMemoryBaseline(phase);
+}
+'''
+    text = replace_text_once(
+        text, boot_helper_anchor, boot_helper_injection, "R0 retained helper")
+
+    r0_replacements = (
+        (
+            '''  logHeapCaps("before-audio-task");
+  startAudioTask();
+  logHeapCaps("after-audio-task");''',
+            '''  logHeapCaps("before-audio-task");
+  logCardputerMemoryBaseline("r0-before-audio-task");
+  startAudioTask();
+  logCardputerMemoryBaseline("r0-after-audio-task");
+  logHeapCaps("after-audio-task");''',
+            "R0 AudioTask phase",
+        ),
+        (
+            '''  markBootStage(86, "before critical DSP buffers");
+  g_miniAcidInstance.preallocateConstrainedDelayBuffers();
+  markBootStage(87, "after critical DSP buffers");''',
+            '''  logCardputerMemoryBaseline("r0-before-dsp-buffers");
+  markBootStage(86, "before critical DSP buffers");
+  g_miniAcidInstance.preallocateConstrainedDelayBuffers();
+  markBootStage(87, "after critical DSP buffers");
+  logCardputerMemoryBaseline("r0-after-dsp-buffers");''',
+            "R0 DSP phase",
+        ),
+        (
+            '''  markBootStage(82, "before early SD init");
+  g_sceneStorage.initializeStorage();
+  markBootStage(83, "after early SD init");''',
+            '''  logCardputerMemoryBaseline("r0-before-sd");
+  markBootStage(82, "before early SD init");
+  g_sceneStorage.initializeStorage();
+  markBootStage(83, "after early SD init");
+  logCardputerMemoryBaseline("r0-after-sd");''',
+            "R0 SD phase",
+        ),
+        (
+            '''  screenLog("4c. SMF Runtime...");
+  markBootStage(84, "before SMF runtime init");''',
+            '''  screenLog("4c. SMF Runtime...");
+  logCardputerMemoryBaseline("r0-before-smf");
+  markBootStage(84, "before SMF runtime init");''',
+            "R0 SMF before",
+        ),
+        (
+            '''  markBootStage(85, "after SMF runtime init");
+
+  // Global MIDI settings must be restored before the dispatcher starts.''',
+            '''  markBootStage(85, "after SMF runtime init");
+  logCardputerMemoryBaseline("r0-after-smf");
+
+  // Global MIDI settings must be restored before the dispatcher starts.''',
+            "R0 SMF after",
+        ),
+        (
+            '''  screenLog("4d. USB MIDI Runtime...");
+  markBootStage(52, "before USB MIDI sink");''',
+            '''  screenLog("4d. USB MIDI Runtime...");
+  logCardputerMemoryBaseline("r0-before-midi-dispatch");
+  markBootStage(52, "before USB MIDI sink");''',
+            "R0 MIDI before",
+        ),
+        (
+            '''  }
+
+  screenLog("5. Creating Encoder8");''',
+            '''  }
+  logCardputerMemoryBaseline("r0-after-midi-dispatch");
+
+  screenLog("5. Creating Encoder8");''',
+            "R0 MIDI after",
+        ),
+        (
+            '''  markBootStage(50, "before MiniAcid::init");
+  g_miniAcidInstance.init();''',
+            '''  logCardputerMemoryBaseline("r0-before-miniacid");
+  markBootStage(50, "before MiniAcid::init");
+  g_miniAcidInstance.init();''',
+            "R0 MiniAcid before",
+        ),
+        (
+            '''  markBootStage(51, "after MiniAcid::init");
+
+  // Scan samples from SD card''',
+            '''  markBootStage(51, "after MiniAcid::init");
+  logCardputerMemoryBaseline("r0-after-miniacid");
+
+  // Scan samples from SD card''',
+            "R0 MiniAcid after",
+        ),
+        (
+            '''  markBootStage(60, "before sample scan");
+  g_miniAcid->sampleIndex.scanDirectory("/sd/samples");''',
+            '''  logCardputerMemoryBaseline("r0-before-samples");
+  markBootStage(60, "before sample scan");
+  g_miniAcid->sampleIndex.scanDirectory("/sd/samples");''',
+            "R0 samples before",
+        ),
+        (
+            '''  Serial.println("7a. UI Instance Created");
+  markBootStage(70, "before MiniAcidDisplay alloc");''',
+            '''  logCardputerMemoryBaseline("r0-after-samples");
+  Serial.println("7a. UI Instance Created");
+  logCardputerMemoryBaseline("r0-before-ui-root");
+  markBootStage(70, "before MiniAcidDisplay alloc");''',
+            "R0 samples/UI before",
+        ),
+        (
+            '''  markBootStage(71, "after MiniAcidDisplay alloc");
+  Serial.println("7b. UI setAudioGuard");''',
+            '''  markBootStage(71, "after MiniAcidDisplay alloc");
+  logCardputerMemoryBaseline("r0-after-ui-root");
+  Serial.println("7b. UI setAudioGuard");''',
+            "R0 UI after",
+        ),
+        (
+            '''  drawUI();
+  markBootStage(95, "after first drawUI");
+  Serial.println("setup() complete");''',
+            '''  drawUI();
+  markBootStage(95, "after first drawUI");
+  logCardputerMemoryBaseline("r0-after-first-draw");
+  Serial.println("setup() complete");''',
+            "R0 first draw",
+        ),
+        (
+            '''  Serial.println("setup() complete");
+  markBootStage(100, "setup-complete");''',
+            '''  Serial.println("setup() complete");
+  logCardputerMemoryBaseline("r0-setup-complete");
+  startCardputerMemoryBaseline();
+  markBootStage(100, "setup-complete");''',
+            "R0 setup complete",
+        ),
+        (
+            '''void loop() {
+  M5Cardputer.update();
+  LedManager::instance().update();''',
+            '''void loop() {
+  recordCardputerMemoryR0Stage(110);
+  M5Cardputer.update();
+  LedManager::instance().update();
+  recordCardputerMemoryR0Stage(112);''',
+            "R0 loop enter/hardware",
+        ),
+        (
+            '''  }
+
+  if (g_encoder8) g_encoder8->update();''',
+            '''  }
+  recordCardputerMemoryR0Stage(114);
+
+  if (g_encoder8) g_encoder8->update();''',
+            "R0 control sync",
+        ),
+        (
+            '''  previousKeysState = currentKeysState;
+  hasPreviousKeysState = true;
+
+  static unsigned long lastUIUpdate = 0;''',
+            '''  previousKeysState = currentKeysState;
+  hasPreviousKeysState = true;
+  recordCardputerMemoryR0Stage(116);
+
+  static unsigned long lastUIUpdate = 0;
+  recordCardputerMemoryR0Stage(118);''',
+            "R0 input/UI begin",
+        ),
+        (
+            '''  static unsigned long lastMemLog = 0;''',
+            '''  recordCardputerMemoryR0Stage(120);
+  recordCardputerMemoryR0Stage(122);
+  static unsigned long lastMemLog = 0;''',
+            "R0 UI/service boundary",
+        ),
+        (
+            '''  }
+
+  delay(5);
+}''',
+            '''  }
+  pollCardputerMemoryBaseline();
+  recordCardputerMemoryR0Stage(124);
+  recordCardputerMemoryR0Stage(126);
+
+  delay(5);
+}''',
+            "R0 service/loop exit",
+        ),
+    )
+
+    for anchor, replacement, label in r0_replacements:
+        text = replace_text_once(text, anchor, replacement, label)
 
 ino_path.write_text(text, encoding="utf-8")
