@@ -918,7 +918,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
         publishSnapshot(SmfPlayerState::Error, "Route profile failed");
         source_.close();
         portENTER_CRITICAL(&snapshotMux_);
-        loadedPath_[0] = ' ';
+        loadedPath_[0] = '\0';
         portEXIT_CRITICAL(&snapshotMux_);
         return false;
     }
