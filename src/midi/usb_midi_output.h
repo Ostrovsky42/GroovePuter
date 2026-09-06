@@ -165,7 +165,8 @@ private:
     void releaseTargetAllNotes(MusicalEventSource source,
                                MusicalEventTarget target);
     void releaseAllActiveNotes();
-    bool releaseAbandonedSmfChannels();
+    void requestChannelPanic(uint8_t channel);
+    bool releasePendingChannelPanics();
     void clearActiveState();
 
     IUsbMidiTransport& transport_;
@@ -180,7 +181,7 @@ private:
     GroovePuterMidi::MidiEndpointOwnershipTable owners_;
     uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
     uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
-    uint16_t abandonedSmfChannels_;
+    uint16_t pendingChannelPanics_;
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;
