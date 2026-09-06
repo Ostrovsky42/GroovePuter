@@ -46,3 +46,35 @@ jobs:
           name: ui-constitution-u1a-log
           path: ui-constitution-u1a.log
           if-no-files-found: error
+
+  preserve-p3-u1-semantics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run inherited P3-U1 focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_pattern_phrase_p3_u1_tests.sh 2>&1 | tee p3-u1-preservation.log
+
+      - name: Upload preservation gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-u1-preservation-log
+          path: p3-u1-preservation.log
+          if-no-files-found: error
