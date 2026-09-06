@@ -19,6 +19,9 @@ enum class UndoKind : uint8_t {
   Song,
   Phrase,
   Generation,
+  // Session-only P3 Runtime Phrase. Keep this distinct from the persisted
+  // PhraseCore bank receipt and append it so existing enum values do not move.
+  RuntimePhrase,
 };
 
 // Fixed-capacity one-level storage primitive for 0.9.8 Undo receipts.
