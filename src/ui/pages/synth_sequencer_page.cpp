@@ -117,11 +117,6 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
   }
 
   const bool notesTab = synth_tab_ == SynthTab::Notes;
-  if (notesTab &&
-      UI::currentStyle != VisualStyle::RETRO_CLASSIC &&
-      UI::currentStyle != VisualStyle::AMBER) {
-    return;
-  }
   const int x = notesTab ? kNotesTabStripX : kParamsTabStripX;
   const int y = Layout::CONTENT.y;
   gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
