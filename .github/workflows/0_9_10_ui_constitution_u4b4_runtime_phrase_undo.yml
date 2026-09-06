@@ -1,0 +1,48 @@
+name: 0.9.10 UI Constitution U4B4 Runtime Phrase Undo
+
+on:
+  push:
+    branches:
+      - tmp/20260906-ui-u4b4-runtime-phrase-undo-red
+      - tmp/20260906-ui-u4b4-runtime-phrase-undo-green
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/state/bounded_undo_slot.h'
+      - 'src/state/undo_owner.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u4b4_*'
+      - 'tests/run_ui_constitution_u4b4_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b4_runtime_phrase_undo.yml'
+  pull_request:
+    paths:
+      - 'src/state/bounded_undo_slot.h'
+      - 'src/state/undo_owner.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u4b4_*'
+      - 'tests/run_ui_constitution_u4b4_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b4_runtime_phrase_undo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u4b4-runtime-phrase-undo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run U4B4 focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u4b4_tests.sh 2>&1 | tee ui-constitution-u4b4.log
+      - name: Upload U4B4 focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u4b4-log
+          path: ui-constitution-u4b4.log
+          if-no-files-found: error
