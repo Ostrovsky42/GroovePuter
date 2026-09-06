@@ -12,7 +12,8 @@ handler = CPP[start:end]
 assert "ui_event.alt" in handler
 assert "GROOVEPUTER_LEFT" in handler and "GROOVEPUTER_RIGHT" in handler
 assert "PhraseNotesDurationEdit::prepare" in handler
-assert "PhraseNotesDurationEdit::commitIfUnchanged" in handler
+assert "commitRuntimePhraseEditWithUndo" in handler
+assert "PhraseNotesDurationEdit::commitIfUnchanged" not in handler
 assert "audio_guard_" in handler
 assert "PhraseNotesCursor::tick" in handler
 assert "phrase_cursor_.grid" in handler
@@ -21,8 +22,8 @@ assert "phrase_cursor_.grid" in handler
 assert "PhraseNotesCursor::move" in handler
 assert "PhraseNotesCursor::changeGrid" in handler
 
-# U4B3 is duration-only. Later checkpoints may add their own helpers, but this
-# path must not create notes or write duration fields directly.
+# U4B3 remains duration-only. Later checkpoints may add their own helpers, but
+# this gesture must not create notes or write duration fields directly.
 assert "insertSnapped" not in handler
 assert "durationSubticks =" not in handler
 assert "markSceneMutated" not in handler
@@ -35,4 +36,4 @@ assert "ui_event.ctrl || ui_event.alt || ui_event.meta" not in handler
 # remain discoverable from the same command hint.
 assert "A+L/R:LEN" in CPP
 
-print("PASS: U4B3 Phrase duration edit is derived-selection, GRID-sized and guarded")
+print("PASS: U4B3 Phrase duration edit is derived-selection, GRID-sized and Undo-guarded")
