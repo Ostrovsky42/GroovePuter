@@ -130,6 +130,7 @@ namespace UI {
                                                UiStatusContext context) {
             UiStatusSnapshot status{};
             status.context = context;
+            status.bpm = normalizeUiStatusBpm(static_cast<int>(miniAcid.bpm()));
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
 
             const UiSequencedSource sequencedSource =
