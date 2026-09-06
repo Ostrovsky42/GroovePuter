@@ -24,6 +24,7 @@
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
+#include "src/platform/cardputer_runtime_diagnostics.h"
 #include "src/platform/retained_boot_stage.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
@@ -90,6 +91,8 @@ static float readPatternSequencerPhase(void* context) {
 }
 
 void audioTask(void *param) {
+  CardputerRuntimeDiagnostics::registerCurrentTask(
+      CardputerRuntimeDiagnostics::Task::Audio);
   Serial.println("AudioTask: Starting...");
 
   if (!g_audioOutputReady) {
@@ -99,6 +102,9 @@ void audioTask(void *param) {
   Serial.println("AudioTask: Loop start");
   
   while (true) {
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Audio,
+        CardputerRuntimeDiagnostics::Phase::AudioRender);
     g_audioMutationGate.waitAtAudioBoundary();
     uint32_t now = micros();
     uint32_t start = now;
@@ -206,6 +212,9 @@ void audioTask(void *param) {
 
     // Write to I2S. Failed writes are real output underruns and must be
     // visible to diagnostics and the adaptive FX safety path.
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Audio,
+        CardputerRuntimeDiagnostics::Phase::AudioWrite);
     if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
       if (g_miniAcid) {
         g_miniAcid->perfStats.audioUnderruns.fetch_add(
@@ -218,10 +227,16 @@ void audioTask(void *param) {
       }
       taskYIELD();
     }
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Audio,
+        CardputerRuntimeDiagnostics::Phase::Idle);
   }
 }
 
 void drawUI() {
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::Ui);
   const uint32_t startedAt = micros();
   if (g_miniDisplay) g_miniDisplay->update();
   g_lastUiDrawUs = micros() - startedAt;
@@ -292,6 +307,16 @@ void setup() {
                 app->date, app->time, app->idf_ver);
   for (uint8_t byte : app->app_elf_sha256) Serial.printf("%02x", byte);
   Serial.println();
+#if defined(GROOVEPUTER_RUNTIME_DIAGNOSTICS)
+  uint32_t diagnosticBuildSignature = 2166136261u;
+  for (uint8_t byte : app->app_elf_sha256) {
+    diagnosticBuildSignature =
+        (diagnosticBuildSignature ^ byte) * 16777619u;
+  }
+  CardputerRuntimeDiagnostics::begin(diagnosticBuildSignature, retainedReset);
+  CardputerRuntimeDiagnostics::registerCurrentTask(
+      CardputerRuntimeDiagnostics::Task::Loop);
+#endif
   printAndClearCardputerWdtDiagnostic();
   markBootStage(1, "setup-entry");
   auto cfg = M5.config();
@@ -398,6 +423,7 @@ void setup() {
   if (!beginCardputerSmfPlayerService()) {
     Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
   }
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
   markBootStage(85, "after SMF runtime init");
 
   // Global MIDI settings must be restored before the dispatcher starts. The
@@ -503,6 +529,7 @@ void setup() {
   Serial.println("10. First drawUI...");
   markBootStage(94, "before first drawUI");
   drawUI();
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
   markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
   markBootStage(100, "setup-complete");
@@ -511,6 +538,9 @@ void setup() {
 
 void loop() {
   M5Cardputer.update();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::Keyboard);
   LedManager::instance().update();
 
   if (g_miniAcid && g_miniDisplay) {
@@ -526,6 +556,10 @@ void loop() {
   }
 
   if (g_encoder8) g_encoder8->update();
+
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::Control);
 
   if (M5Cardputer.BtnA.wasClicked()) {
     if (GroovePuterMidi::transportClockRuntime().source() ==
@@ -933,6 +967,23 @@ void loop() {
        g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }
+
+#if defined(GROOVEPUTER_RUNTIME_DIAGNOSTICS)
+  static unsigned long lastRuntimeDiagnosticSample = 0;
+  static unsigned long lastRuntimeDiagnosticReport = 0;
+  if (millis() - lastRuntimeDiagnosticSample > 1000) {
+    lastRuntimeDiagnosticSample = millis();
+    CardputerRuntimeDiagnostics::sampleFromControlTask();
+  }
+  if (millis() - lastRuntimeDiagnosticReport > 5000) {
+    lastRuntimeDiagnosticReport = millis();
+    CardputerRuntimeDiagnostics::reportFromControlTask();
+  }
+#endif
+
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::Idle);
 
   delay(5);
 }

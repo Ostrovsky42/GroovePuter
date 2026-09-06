@@ -12,6 +12,7 @@
 #include "src/midi/midi_transport_capabilities.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/platform/cardputer_usb_midi_service.h"
+#include "src/platform/cardputer_runtime_diagnostics.h"
 
 using namespace GroovePuterMidi;
 
@@ -253,11 +254,16 @@ bool CardputerSmfPlayerService::SdByteSource::readAt(
 }
 
 void CardputerSmfPlayerService::taskEntry(void* context) {
+    CardputerRuntimeDiagnostics::registerCurrentTask(
+        CardputerRuntimeDiagnostics::Task::Smf);
     static_cast<CardputerSmfPlayerService*>(context)->taskLoop();
 }
 
 void CardputerSmfPlayerService::taskLoop() {
     while (true) {
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Smf,
+            CardputerRuntimeDiagnostics::Phase::SmfService);
         handleTransportFailure();
 
         Command command{};
@@ -283,6 +289,9 @@ void CardputerSmfPlayerService::taskLoop() {
             updatePlaybackSnapshot();
         }
         vTaskDelay(kIdleDelay);
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Smf,
+            CardputerRuntimeDiagnostics::Phase::Idle);
     }
 }
 
