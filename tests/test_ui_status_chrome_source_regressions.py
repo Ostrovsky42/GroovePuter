@@ -27,15 +27,19 @@ def main() -> None:
 
     # The top-level navigation owner projects canonical page identity into a
     # typed UI location and uses the resulting context when it captures the
-    # bounded frame-status projection. Rendering receives only that snapshot.
+    # bounded frame-status projection. U1F gives the shell sole header-pixel
+    # ownership, so rendering consumes the snapshot through the canonical pure
+    # renderer directly rather than the legacy compatibility wrapper.
     require("tryUiLocationForPage(page_index_" in DISPLAY,
             "MiniAcidDisplay must project canonical navigation into typed UI location")
     require("uiStatusContextForLocation(" in DISPLAY,
             "status context must be derived from typed UI location")
     require("captureUiStatusSnapshot(mini_acid_, statusContext)" in DISPLAY,
             "global status capture must receive explicit typed context")
-    require("drawLiveMixLockBadge(gfx_, frameStatus)" in DISPLAY,
+    require("drawStatusChrome(gfx_, frameStatus)" in DISPLAY,
             "global status rendering must consume the captured frame snapshot")
+    require("drawLiveMixLockBadge(gfx_, frameStatus)" not in DISPLAY,
+            "shell must not route canonical chrome through the legacy compatibility wrapper")
     require("status.context = context;" in SOURCE,
             "status snapshot must receive the explicit semantic context")
     require("drawStatusChrome(gfx, status);" in SOURCE,
