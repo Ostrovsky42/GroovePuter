@@ -11,12 +11,14 @@ on:
       - 'tests/test_ui_constitution_u1c_*'
       - 'tests/test_ui_constitution_u1d_*'
       - 'tests/test_ui_constitution_u1e_*'
+      - 'tests/test_ui_constitution_u1f_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
       - 'tests/run_ui_constitution_u1c_tests.sh'
       - 'tests/run_ui_constitution_u1d_tests.sh'
       - 'tests/run_ui_constitution_u1e_tests.sh'
+      - 'tests/run_ui_constitution_u1f_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
@@ -25,9 +27,11 @@ on:
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1D_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1E_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1F_EVIDENCE.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1d-renderer-residency-continuity.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1e-pixel-zone-geometry.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1f-shell-pixel-ownership.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   pull_request:
     paths:
@@ -37,12 +41,14 @@ on:
       - 'tests/test_ui_constitution_u1c_*'
       - 'tests/test_ui_constitution_u1d_*'
       - 'tests/test_ui_constitution_u1e_*'
+      - 'tests/test_ui_constitution_u1f_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
       - 'tests/run_ui_constitution_u1c_tests.sh'
       - 'tests/run_ui_constitution_u1d_tests.sh'
       - 'tests/run_ui_constitution_u1e_tests.sh'
+      - 'tests/run_ui_constitution_u1f_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
@@ -51,9 +57,11 @@ on:
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1D_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1E_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1F_EVIDENCE.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1d-renderer-residency-continuity.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1e-pixel-zone-geometry.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1f-shell-pixel-ownership.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   workflow_dispatch:
 
@@ -68,13 +76,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run U1A focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_ui_constitution_u1a_tests.sh 2>&1 | tee ui-constitution-u1a.log
-
       - name: Upload focused gate log
         if: always()
         uses: actions/upload-artifact@v4
@@ -90,13 +96,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run U1B focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_ui_constitution_u1b_tests.sh 2>&1 | tee ui-constitution-u1b.log
-
       - name: Upload U1B focused gate log
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,13 +116,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run U1C focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_ui_constitution_u1c_tests.sh 2>&1 | tee ui-constitution-u1c.log
-
       - name: Upload U1C focused gate log
         if: always()
         uses: actions/upload-artifact@v4
@@ -134,13 +136,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run U1D focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_ui_constitution_u1d_tests.sh 2>&1 | tee ui-constitution-u1d.log
-
       - name: Upload U1D focused gate log
         if: always()
         uses: actions/upload-artifact@v4
@@ -156,19 +156,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run U1E focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_ui_constitution_u1e_tests.sh 2>&1 | tee ui-constitution-u1e.log
-
       - name: Upload U1E focused gate log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ui-constitution-u1e-log
           path: ui-constitution-u1e.log
+          if-no-files-found: error
+
+  u1f-shell-pixel-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run U1F focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u1f_tests.sh 2>&1 | tee ui-constitution-u1f.log
+      - name: Upload U1F focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u1f-log
+          path: ui-constitution-u1f.log
           if-no-files-found: error
 
   preserve-p3-u1-semantics:
@@ -178,7 +196,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Install host dependencies
         run: |
           sudo apt-get update
@@ -188,13 +205,11 @@ jobs:
             libsdl2-dev \
             libsdl2-gfx-dev \
             pkg-config
-
       - name: Run inherited P3-U1 focused gate
         shell: bash
         run: |
           set -o pipefail
           bash tests/run_pattern_phrase_p3_u1_tests.sh 2>&1 | tee p3-u1-preservation.log
-
       - name: Upload preservation gate log
         if: always()
         uses: actions/upload-artifact@v4
