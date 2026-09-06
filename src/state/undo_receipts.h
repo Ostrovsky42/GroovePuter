@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "../../scenes.h"
+#include "../phrase/runtime_synth_events.h"
 #include "undo_owner.h"
 
 namespace GroovePuterUndo {
@@ -87,9 +88,6 @@ inline bool isCanonicalClearedSynthPattern(const SynthPattern& pattern) {
   return true;
 }
 
-// R4 owns committed Song arrangement edits only. Transport position/mode/loop
-// and playback-slot switching are runtime/TIME. This receipt does not describe
-// Phrase->Song generation; that domain has its own Generation receipt.
 struct SongUndoPayload {
   uint8_t pageIndex{0};
   uint8_t songSlot{0};
@@ -138,9 +136,6 @@ inline void restoreSongUndo(SceneManager& manager,
   manager.currentScene().songs[receipt.songSlot] = receipt.before;
 }
 
-// Phrase capture/derive/clear can change nextPhraseId as well as one slot. The
-// whole fixed 244-byte bank is still a bounded domain receipt, not a Scene
-// snapshot, and provides exact rollback for every current Phrase command.
 struct PhraseUndoPayload {
   uint8_t pageIndex{0};
   PhraseCore::PhraseBank before{};
@@ -167,6 +162,32 @@ inline bool phraseUndoTargetAvailable(const SceneManager& manager,
 inline void restorePhraseUndo(SceneManager& manager,
                               const PhraseUndoPayload& receipt) {
   manager.currentScene().phraseBank = receipt.before;
+}
+
+// P3 Runtime Phrase is session-only and is not represented by the Scene codec.
+// It therefore gets a distinct receipt in the same canonical Undo slot instead
+// of aliasing the persisted PhraseCore bank kind. Source is kept as its bounded
+// enum byte so the receipt layer stays independent from MiniAcid headers.
+struct RuntimePhraseUndoPayload {
+  uint8_t voiceIndex{0};
+  uint8_t source{0};
+  PhraseRuntime::RuntimeSynthEventBuffer before{};
+};
+
+static_assert(std::is_trivially_copyable<RuntimePhraseUndoPayload>::value,
+              "runtime Phrase Undo receipt must remain a fixed value");
+static_assert(sizeof(RuntimePhraseUndoPayload) <= kUndoPayloadBytes,
+              "runtime Phrase Undo receipt exceeds canonical owner capacity");
+
+inline bool validRuntimePhraseUndoPayload(
+    const RuntimePhraseUndoPayload& receipt) {
+  return receipt.voiceIndex < 2 && receipt.source <= 1;
+}
+
+inline bool sameRuntimePhraseBuffer(
+    const PhraseRuntime::RuntimeSynthEventBuffer& lhs,
+    const PhraseRuntime::RuntimeSynthEventBuffer& rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
 
 struct DrumPatternUndoPayload {
