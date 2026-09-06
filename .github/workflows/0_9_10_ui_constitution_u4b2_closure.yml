@@ -34,7 +34,7 @@ jobs:
       - name: Run exact-head UI Constitution closure matrix
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           run_gate() {
             local name="$1"
             shift
@@ -43,6 +43,7 @@ jobs:
           }
 
           (
+            set -euo pipefail
             run_gate U1A bash tests/run_ui_constitution_u1a_tests.sh
             run_gate U1B bash tests/run_ui_constitution_u1b_tests.sh
             run_gate U1C bash tests/run_ui_constitution_u1c_tests.sh
