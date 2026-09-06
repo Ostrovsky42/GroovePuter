@@ -19,6 +19,15 @@ case "${IMAGE_KIND}" in
     ;;
 esac
 
+MEMORY_RUNTIME_MODE="${MEMORY_RUNTIME_MODE:-legacy}"
+case "${MEMORY_RUNTIME_MODE}" in
+  legacy|r0) ;;
+  *)
+    echo "unsupported MEMORY_RUNTIME_MODE=${MEMORY_RUNTIME_MODE}; expected legacy or r0" >&2
+    exit 2
+    ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
@@ -40,6 +49,7 @@ rsync -a --delete \
 
 if [[ "${IMAGE_KIND}" == "runtime" ]]; then
   python3 "${SOURCE_ROOT}/scripts/instrument_cardputer_memory_runtime.py" \
+    --mode "${MEMORY_RUNTIME_MODE}" \
     "${SOURCE_ROOT}"
 fi
 
@@ -55,6 +65,7 @@ export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-memory-baseline
 
 printf 'Memory baseline profile: %s\n' "${PROFILE}"
 printf 'Memory baseline image: %s\n' "${IMAGE_KIND}"
+printf 'Memory runtime instrumentation mode: %s\n' "${MEMORY_RUNTIME_MODE}"
 printf 'Source commit: %s\n' "${SOURCE_COMMIT}"
 printf 'Source dirty entries: %s\n' "${SOURCE_DIRTY}"
 printf 'FQBN: %s\n' "${FQBN}"
