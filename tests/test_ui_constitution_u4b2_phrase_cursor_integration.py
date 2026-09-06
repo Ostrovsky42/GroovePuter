@@ -45,9 +45,18 @@ def main() -> None:
             "plain Left/Right must move the cursor by one current GRID cell")
     require('PhraseNotesCursor::changeGrid' in handler,
             "plain Up/Down must change only the cursor GRID/zoom")
-    require('RuntimePhraseEdit::commit' not in handler and
-            'commitPreparedPhrase' not in handler,
-            "U4B2 navigation must remain mutation-free")
+
+    # U4B2 owns the lasting navigation law, not a permanent ban on later edit
+    # commands. U4B3+ may add explicit guarded mutations before these branches;
+    # plain L/R and U/D must remain navigation-only.
+    plain_nav_start = handler.index(
+        'if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)'
+    )
+    plain_navigation = handler[plain_nav_start:]
+    require('RuntimePhraseEdit::commit' not in plain_navigation and
+            'commitPreparedPhrase' not in plain_navigation and
+            'commitRuntimePrepared' not in plain_navigation,
+            "U4B2 plain cursor/grid navigation must remain mutation-free")
 
     require('gridLabel' in CPP,
             "U4B2 must make the active GRID observable")
