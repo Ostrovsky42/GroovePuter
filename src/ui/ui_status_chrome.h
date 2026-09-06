@@ -6,6 +6,7 @@
 #include "src/output/output_ownership.h"
 #include "src/pattern/pattern_address.h"
 #include "src/state/scene_revision.h"
+#include "ui_location.h"
 
 namespace UI {
 
@@ -24,6 +25,8 @@ enum class UiStatusContext : uint8_t {
     Song,
     Project,
     Generator,
+    Phrase,
+    PhraseCore,
     Unknown,
 };
 
@@ -59,6 +62,36 @@ enum class UiStatusOutput : uint8_t {
     Legacy = 5,
     TrackMidi = 6,
 };
+
+inline UiStatusContext uiStatusContextForLocation(const UiLocation& location) {
+    switch (location.target) {
+        case UiTarget::Performance:
+            return UiStatusContext::Perform;
+        case UiTarget::MidiPlayer:
+            return UiStatusContext::Player;
+        case UiTarget::Generation:
+            return location.surface == UiSurface::Feel
+                ? UiStatusContext::Feel
+                : UiStatusContext::Genre;
+        case UiTarget::Overview:
+            return UiStatusContext::Overview;
+        case UiTarget::SynthA:
+            return UiStatusContext::SynthA;
+        case UiTarget::SynthB:
+            return UiStatusContext::SynthB;
+        case UiTarget::Drums:
+            return UiStatusContext::Drums;
+        case UiTarget::Song:
+            return UiStatusContext::Song;
+        case UiTarget::Phrase:
+            return UiStatusContext::Phrase;
+        case UiTarget::PhraseCore:
+            return UiStatusContext::PhraseCore;
+        case UiTarget::Project:
+            return UiStatusContext::Project;
+    }
+    return UiStatusContext::Unknown;
+}
 
 inline uint16_t normalizeUiStatusBpm(int bpm) {
     if (bpm < 1) return 1;
@@ -176,6 +209,8 @@ inline const char* uiStatusContextToken(UiStatusContext context) {
         case UiStatusContext::Song: return "SONG";
         case UiStatusContext::Project: return "PROJ";
         case UiStatusContext::Generator: return "ADV";
+        case UiStatusContext::Phrase: return "PHR";
+        case UiStatusContext::PhraseCore: return "PCOR";
         case UiStatusContext::Unknown: return "PAGE";
     }
     return "PAGE";
