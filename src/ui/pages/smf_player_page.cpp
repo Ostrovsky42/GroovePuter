@@ -10,6 +10,7 @@
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
+#include "smf_panic_toast_policy.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 
 #ifdef ARDUINO
@@ -587,8 +588,10 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
-        const bool queued = player_->panic();
-        UI::showToast(queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY", 900);
+        const bool loaded =
+            player_->snapshot().state != SmfPlayerState::Unloaded;
+        const bool queued = loaded && player_->panic();
+        UI::showToast(smfPanicToastMessage(loaded, queued), 900);
         return true;
     }
     if (event.key == 'b' || event.key == 'B' ||
