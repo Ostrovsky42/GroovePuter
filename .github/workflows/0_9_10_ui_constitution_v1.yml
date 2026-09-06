@@ -9,17 +9,21 @@ on:
       - 'tests/test_ui_constitution_u1a_*'
       - 'tests/test_ui_constitution_u1b_*'
       - 'tests/test_ui_constitution_u1c_*'
+      - 'tests/test_ui_constitution_u1d_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
       - 'tests/run_ui_constitution_u1c_tests.sh'
+      - 'tests/run_ui_constitution_u1d_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1B_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1D_EVIDENCE.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1d-renderer-residency-continuity.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   pull_request:
     paths:
@@ -27,17 +31,21 @@ on:
       - 'tests/test_ui_constitution_u1a_*'
       - 'tests/test_ui_constitution_u1b_*'
       - 'tests/test_ui_constitution_u1c_*'
+      - 'tests/test_ui_constitution_u1d_*'
       - 'tests/test_ui_status_chrome_source_regressions.py'
       - 'tests/run_ui_constitution_u1a_tests.sh'
       - 'tests/run_ui_constitution_u1b_tests.sh'
       - 'tests/run_ui_constitution_u1c_tests.sh'
+      - 'tests/run_ui_constitution_u1d_tests.sh'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1.md'
       - 'docs/contracts/0_9_10_UI_CONSTITUTION_V1_RESOURCE_LAW.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U0_BASELINE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1A_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1B_EVIDENCE.md'
       - 'docs/audits/0_9_10_UI_CONSTITUTION_U1C_EVIDENCE.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1D_EVIDENCE.md'
       - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1c-frame-status-snapshot.md'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1d-renderer-residency-continuity.md'
       - '.github/workflows/0_9_10_ui_constitution_v1.yml'
   workflow_dispatch:
 
@@ -109,6 +117,28 @@ jobs:
         with:
           name: ui-constitution-u1c-log
           path: ui-constitution-u1c.log
+          if-no-files-found: error
+
+  u1d-renderer-residency-continuity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run U1D focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u1d_tests.sh 2>&1 | tee ui-constitution-u1d.log
+
+      - name: Upload U1D focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u1d-log
+          path: ui-constitution-u1d.log
           if-no-files-found: error
 
   preserve-p3-u1-semantics:
