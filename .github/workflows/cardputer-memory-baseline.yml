@@ -13,6 +13,7 @@ on:
       - "scripts/report_cardputer_memory_baseline.sh"
       - "scripts/report_cardputer_tinyusb_class_buffers.sh"
       - "tests/test_cardputer_memory_baseline_source_regressions.py"
+      - "tests/test_cardputer_memory_r0_instrumentation.py"
 
 permissions:
   contents: read
@@ -25,7 +26,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Guard baseline boundaries
-        run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
+        run: |
+          python3 tests/test_cardputer_memory_baseline_source_regressions.py
+          python3 tests/test_cardputer_memory_r0_instrumentation.py
 
   baseline-build:
     runs-on: ubuntu-latest
