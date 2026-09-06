@@ -59,6 +59,8 @@ struct MemorySnapshot {
     uint32_t sequence;
     uint32_t freeInternal8;
     uint32_t largestInternal8;
+    uint32_t freeInternalDefault;
+    uint32_t largestInternalDefault;
     uint32_t integrityDurationUs;
     uint8_t integrityOk;
     uint8_t reserved[3];

@@ -69,12 +69,14 @@ Task currentTaskTag() {
 }
 
 void printRecord(const char* prefix, const Record& record) {
-    Serial.printf("[%s] boot=%u checkpoints=%u memory=%u/%u integrity=%u/%uus\n",
+    Serial.printf("[%s] boot=%u checkpoints=%u internal8=%u/%u internalDefault=%u/%u integrity=%u/%uus\n",
                   prefix,
                   static_cast<unsigned>(record.bootSequence),
                   static_cast<unsigned>(record.checkpointSequence),
                   static_cast<unsigned>(record.snapshot.freeInternal8),
                   static_cast<unsigned>(record.snapshot.largestInternal8),
+                  static_cast<unsigned>(record.snapshot.freeInternalDefault),
+                  static_cast<unsigned>(record.snapshot.largestInternalDefault),
                   static_cast<unsigned>(record.snapshot.integrityOk),
                   static_cast<unsigned>(record.snapshot.integrityDurationUs));
     for (uint8_t index = 0; index < static_cast<uint8_t>(Task::Count); ++index) {
@@ -150,6 +152,10 @@ void sampleFromControlTask() {
         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     snapshot.largestInternal8 = heap_caps_get_largest_free_block(
         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    snapshot.freeInternalDefault = heap_caps_get_free_size(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_DEFAULT);
+    snapshot.largestInternalDefault = heap_caps_get_largest_free_block(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_DEFAULT);
     const uint32_t startedAt = micros();
     snapshot.integrityOk = heap_caps_check_integrity_all(false) ? 1 : 0;
     snapshot.integrityDurationUs = micros() - startedAt;
