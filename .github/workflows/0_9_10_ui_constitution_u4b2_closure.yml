@@ -6,6 +6,13 @@ on:
       - feature/20260906-04-0.9.10-ui-constitution-v1
       - tmp/20260906-ui-u4b4-runtime-phrase-undo-green
     paths:
+      - 'src/state/bounded_undo_slot.h'
+      - 'src/state/undo_owner.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'tests/test_ui_constitution_u4a_phrase_viewport_integration.py'
+      - 'tests/test_ui_constitution_u4b4_*'
+      - 'tests/run_ui_constitution_u4b4_tests.sh'
       - '.github/workflows/0_9_10_ui_constitution_u4b2_closure.yml'
   workflow_dispatch:
 
