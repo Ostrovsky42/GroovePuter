@@ -298,3 +298,95 @@ Remaining to do, in order: rebuild `libfatfs.a` at `858a988d` with
 archive (this also closes the inlined-constant hole recorded in §8), substitute
 it, then run the 7-point acceptance on hardware. No production byte has been
 changed to reach this point.
+
+## 10. FS1-B hardware result — characterization STRONG PASS, acceptance OPEN
+
+The candidate is not the sector-size change of §9. Reading the exact IDF showed a
+better mechanism already present at `858a988d` and disabled by default:
+`CONFIG_FATFS_USE_DYN_BUFFERS`. It makes both buffers pointer-based and allocates
+them at the *actual* volume sector size, with the file buffer living only while
+the file is open:
+
+```c
+ff.c:3445   fs->win = ff_memalloc(SS(fs));     // at mount, 512 for SD
+ff.c:3885   fp->buf = ff_memalloc(SS(fs));     // at f_open, freed at f_close
+```
+
+### Identity
+
+```
+ESP-IDF source     858a988d (read-only archive export, no checkout)
+sdkconfig delta    + CONFIG_FATFS_USE_DYN_BUFFERS 1     (nothing else)
+max_files          5, unchanged
+toolchain          esp-x32/2411, the core's own
+stock  libfatfs.a  sha256 68b0c90d961705651ea723a24ee3afd5a8d219ec8a405e668ccfa8c8d269ce57
+candidate          sha256 9ea6cc771c33464f90df500727a4760254b5faad5f7f96a9ea76d739f228d1c5
+recipe             scripts/build_fatfs_dynbuffers_candidate.sh
+link proof         GroovePuter.ino.map references /tmp/fatfs-build/libfatfs.a only
+```
+
+The shared Arduino install was never modified. The candidate is placed ahead of
+the stock archive by search path for this build alone, because a dozen worktrees
+of this project share that install. Injecting via `build.extra_libs` was
+deliberately avoided: inside `-Wl,--start-group` some objects could resolve from
+one archive and some from the other, producing a program whose translation units
+disagree about `sizeof(FIL)` — worse than changing nothing.
+
+### ABI gate
+
+```
+archive member set     identical (10 of 10)
+defined global symbols identical
+undefined symbols      no difference
+ff_memalloc in ff.c.obj   stock 0  ->  candidate 1
+```
+
+Symbol-set equality also closes the residual hole recorded in §8: an inlined
+sizeof-dependent constant in another archive would have shown as a difference.
+
+### Hardware, one boot, SD inserted
+
+```
+boots 1    panics 0    uptime 105 s    Reset Reason: 1
+```
+
+| | before (A) | candidate (B) | change |
+|---|---|---|---|
+| SD mount, free | 44732 -> 14592 (**−30140**) | 44788 -> 38676 (**−6112**) | **+24028 B** |
+| SD mount, largest | 31732 -> 7668 (−24064) | 31732 -> 26612 (**−5120**) | **+18944 B** |
+| after SMF init | free 5284 / largest 2292 | free **29624** / largest **20468** | |
+| at UI page creation | DRAM 1932 | DRAM **26272** | |
+| after setup | free 1824 / largest 1012 | ~23800 | |
+| outcome | **11/11 boots panic** | **0 panics** | |
+
+The contiguous recovery matters more than the total. `largest` was the proximate
+cause of the cliff — a 1281 B request failing against a 1012 B block — and the
+mount now costs 5120 B of it instead of 24064 B.
+
+Static DRAM is essentially unchanged (190784 vs 190776, +8 B), exactly as
+expected: the `FIL` array lives in the heap-allocated `vfs_fat_ctx_t`, not in
+`.bss`, so the whole saving is runtime and could only be proven on hardware.
+
+### Status, deliberately not stronger
+
+```
+FS1-B CHARACTERIZATION   STRONG PASS
+PRODUCTION ACCEPTANCE    OPEN
+```
+
+One boot and 105 s. Of the A-G acceptance only A, part of B and part of D are
+exercised. Untested: 10+ min soak, SMF playback, scene save/load, sample load,
+MIDI import, pattern copy, and the mandatory item G.
+
+Item G is the one that could still invalidate this. Buffers now allocate at
+`f_open`, so a fifth handle could fail under heap pressure at an unlucky moment.
+The invariant to hold:
+
+```
+Dynamic residency may follow actual file lifetime,
+but logical file concurrency must not decrease.
+```
+
+Recovering 24 KB while silently losing the fifth handle would be trading memory
+for a hidden capability regression — the opposite of the contract this workstream
+spent the day establishing.
