@@ -43,8 +43,18 @@ assert "UNDO: PHRASE" in handle and "REDO: PHRASE" in handle, (
     "runtime Phrase Undo/Redo must remain visible to the musician"
 )
 
+# A duration receipt belongs to the Phrase NOTES editing context. Switching the
+# synth back to Pattern must not let Ctrl+Z silently navigate the source back to
+# Phrase; the global Undo layer should retain the receipt and report NOT HERE.
+assert "if (phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event)" in handle, (
+    "runtime Phrase Undo must be gated by the authoritative Phrase NOTES context"
+)
+assert "if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event)" in handle, (
+    "Pattern Undo must remain independently gated by Pattern NOTES context"
+)
+
 # U4B4 is undo ownership only. Do not smuggle insertion/deletion into this slice.
 assert "insertSnapped" not in phrase_handler
 assert "deleteEvent" not in phrase_handler
 
-print("PASS: U4B4 runtime Phrase Undo has one owner and no Scene-dirty alias")
+print("PASS: U4B4 runtime Phrase Undo has one owner, no Scene-dirty alias, and no source-navigation side effect")
