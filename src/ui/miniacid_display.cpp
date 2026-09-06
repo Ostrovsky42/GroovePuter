@@ -228,6 +228,8 @@ void MiniAcidDisplay::update() {
     if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
         statusContext = UI::uiStatusContextForLocation(statusLocation);
     }
+    const UI::UiStatusSnapshot frameStatus =
+        UI::captureUiStatusSnapshot(mini_acid_, statusContext);
     
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
@@ -245,7 +247,7 @@ void MiniAcidDisplay::update() {
         LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
     }
     
-    UI::drawLiveMixLockBadge(gfx_, mini_acid_, statusContext);
+    UI::drawLiveMixLockBadge(gfx_, frameStatus);
 
     updateCyclePulse_();
     UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
