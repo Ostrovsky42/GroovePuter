@@ -87,11 +87,46 @@ that, `SD.begin()` fails and the caller sees `CARD_NONE`. Intermittency,
 including a clean `ESP_RST_POWERON` that still failed, follows directly from
 whatever the heap happened to look like at that moment.
 
-Status: **strongly supported, not confirmed.** The size match, the co-occurrence
-with mount retries and `task=loop` are circumstantial; the allocator hook does
-not name the caller. Confirming this requires attributing the 29512 B request to
-the SD/FATFS path directly. Given how many times this investigation has closed
-early on less, it stays open until then.
+Status: **DOWNGRADED — insufficient.** Originally recorded as "strongly
+supported". The `MEMORY-R0-D0-01` run
+([MEMORY_R0_D0_01_2026-09-06.md](MEMORY_R0_D0_01_2026-09-06.md)) observed a mount
+attempt failing while `largest=31732`, i.e. with a contiguous block *larger* than
+the 29512 B request. A single-contiguous-block model does not explain that, so
+either the mount needs more than one large block, or a larger one, or that
+failure has another cause. Adopting the D0 protocol's §8 rule, which is stricter
+than the wording used here originally:
+
+```
+SD DIRECT CAUSALITY = CORRELATED ONLY
+```
+
+Proving direct causality requires a PC or symbol in the SD/FAT path, or an
+allocation attributed to it directly. The allocator hook names only the entry
+point (`heap_caps_malloc_prefer`), never the caller.
+
+## Independent field confirmation of the mechanism (operator, 2026-09-06)
+
+Reported from ordinary use, not from the logs this hypothesis was built on:
+
+1. MIDI does work — confirmed over USB type-C.
+2. The SD card is not seen.
+3. Booting with the card in causes a crash and reboot.
+
+Observations 2 and 3 look contradictory but are the two predicted branches of the
+same shortage: a mount that fails leaves the card invisible and the system
+healthy; a mount that succeeds takes ~30 KB it never returns and leaves ~1.5 KB,
+after which an ordinary small allocation in `Phase::Control` fails. This is
+corroboration from a source independent of the captures, which is why it is
+recorded separately.
+
+Scope limit on point 1: what is proven is the **USB lane** — `PerformanceKeyboard`
+→ `g_controlQueue` → dispatcher, with `dispatchedControl` incrementing per key
+press. The **DIN lane remains untested under load**, and one detail there is still
+unexplained: `dinSent` froze at 51 while `usbStallRej` climbed 21 → 34, with
+`dinDropOn`/`dinDropOff`/`dinTeeRej` all zero — DIN was not dropping, it simply
+stopped being asked. That is either correct routing behaviour for that traffic or
+a tee defect; the data does not distinguish them, so "DIN does not work" is not a
+supported claim.
 
 ## What this retires
 
