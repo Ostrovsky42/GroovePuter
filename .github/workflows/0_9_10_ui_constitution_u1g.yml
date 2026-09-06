@@ -1,0 +1,54 @@
+name: 0.9.10 UI Constitution U1G
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/pages/feel_page.cpp'
+      - 'src/ui/pages/genre_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/perform_page.cpp'
+      - 'src/ui/miniacid_display.cpp'
+      - 'tests/test_ui_constitution_u1g_*'
+      - 'tests/run_ui_constitution_u1g_tests.sh'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1g-tab-grammar.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1G_EVIDENCE.md'
+      - '.github/workflows/0_9_10_ui_constitution_u1g.yml'
+  pull_request:
+    paths:
+      - 'src/ui/pages/feel_page.cpp'
+      - 'src/ui/pages/genre_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/perform_page.cpp'
+      - 'src/ui/miniacid_display.cpp'
+      - 'tests/test_ui_constitution_u1g_*'
+      - 'tests/run_ui_constitution_u1g_tests.sh'
+      - 'docs/superpowers/plans/2026-09-06-ui-constitution-u1g-tab-grammar.md'
+      - 'docs/audits/0_9_10_UI_CONSTITUTION_U1G_EVIDENCE.md'
+      - '.github/workflows/0_9_10_ui_constitution_u1g.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u1g-tab-grammar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run U1G focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u1g_tests.sh 2>&1 | tee ui-constitution-u1g.log
+      - name: Upload U1G focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u1g-log
+          path: ui-constitution-u1g.log
+          if-no-files-found: error
