@@ -1,4 +1,6 @@
 #include "src/state/scene_revision.h"
+#include "src/state/undo_receipts.h"
+#include "src/state/undo_owner.h"
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
@@ -31,9 +33,9 @@ constexpr int kMainKeyHintY = 72;
 constexpr int kMainSummaryY = 81;
 constexpr int kMainSummaryH = 11;
 constexpr int kMoreRowY = 20;
-constexpr int kMoreRowHeight = 13;
+constexpr int kMoreRowHeight = 11;
 constexpr int kMoreRowGap = 1;
-constexpr int kMoreRowCount = 5;
+constexpr int kMoreRowCount = 6;
 
 static_assert(Layout::CONTENT.y + kMainSummaryY + kMainSummaryH <=
                   Layout::PERFORMANCE_HUD.y,
@@ -376,6 +378,7 @@ void TB303ParamsPage::initComponents() {
   filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
+  make_phrase_control_ = std::make_shared<LabelValueComponent>("PHRASE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -386,6 +389,7 @@ void TB303ParamsPage::initComponents() {
   addChild(filter_control_);
   addChild(distortion_control_);
   addChild(delay_control_);
+  addChild(make_phrase_control_);
 
   initialized_ = true;
 }
@@ -501,6 +505,15 @@ void TB303ParamsPage::layoutComponents() {
 
   // Both effects are per-voice post-engine stages in MiniAcid, so they are
   // available for every currently selectable synth engine.
+  // Engine truth, copied into the row rather than reconstructed from page
+  // state. Once a voice is on PHRASE the conversion is spent: the row goes
+  // read-only instead of offering an action that would refuse.
+  const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
+                        MiniAcid::SequencedSource::Phrase;
+  make_phrase_control_->setLabel("PHRASE");
+  make_phrase_control_->setValue(onPhrase ? "PHRASE" : "MAKE");
+  make_phrase_control_->setEnabled(!onPhrase);
+
   distortion_control_->setEnabled(true);
   delay_control_->setEnabled(true);
 
@@ -528,14 +541,15 @@ void TB303ParamsPage::layoutComponents() {
                                         kMainKnobRadius * 2,
                                         kMainKnobRadius * 2});
   } else {
-    LabelValueComponent* rows[5] = {
+    LabelValueComponent* rows[kMoreRowCount] = {
         engine_type_control_.get(),
         osc_control_.get(),
         filter_control_.get(),
         distortion_control_.get(),
         delay_control_.get(),
+        make_phrase_control_.get(),
     };
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < kMoreRowCount; ++i) {
       rows[i]->setBoundaries(Rect{x0 + 4,
                                   content.y + kMoreRowY + i * (kMoreRowHeight + kMoreRowGap),
                                   width - 8,
@@ -721,6 +735,31 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   }
   if (env_decay_knob_ && env_decay_knob_->isFocused()) {
     env_decay_knob_->setValue(direction * step);
+    return;
+  }
+  if (make_phrase_control_ && make_phrase_control_->isFocused()) {
+    // One-way and explicit. A voice already on PHRASE is a benign no-op, not a
+    // failure: makePhrase() refuses so that a stray arrow cannot re-project
+    // over edits made since the conversion.
+    if (mini_acid_.currentSequencedSource(voice_index_) ==
+        MiniAcid::SequencedSource::Phrase) {
+      return;
+    }
+    // The receipt carries the source as well as the material, so Ctrl+Z
+    // restores PATTERN/PHRASE truth and the buffer together rather than
+    // leaving the voice on PHRASE with Pattern-era content.
+    GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+    receipt.voiceIndex = static_cast<uint8_t>(voice_index_);
+    receipt.source = static_cast<uint8_t>(
+        mini_acid_.currentSequencedSource(voice_index_));
+    receipt.before = mini_acid_.currentPhraseBuffer(voice_index_);
+
+    withAudioGuard([&]() {
+      (void)GroovePuterUndo::undoOwner().commitRuntimePrepared(
+          GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+            (void)mini_acid_.makePhrase(voice_index_);
+          });
+    });
     return;
   }
   if (engine_type_control_ && engine_type_control_->isFocused()) {
