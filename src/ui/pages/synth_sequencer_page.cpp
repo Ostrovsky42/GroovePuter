@@ -18,6 +18,7 @@
 #include "../phrase_notes_selection.h"
 #include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
+#include "../phrase_notes_insert_edit.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
@@ -470,7 +471,8 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   // Kept dim and off the two primary hint rows: delete and undo must stay
   // discoverable without competing with the four keys a beginner needs first.
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4, bounds.y + 82, "BS DELETE  CTRL+Z UNDO");
+  gfx.drawText(bounds.x + 4, bounds.y + 82,
+               "ENTER ADD   BS DELETE   CTRL+Z UNDO");
 
   // "CUT" sat next to the length and read as a command. It is a consequence, so
   // it is spelled as one -- and it gets its own column, because sharing a line
@@ -496,6 +498,33 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   const int nav = UIInput::navCode(ui_event);
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
+
+  // Enter adds a sound where the cursor stands. Until now the editor could
+  // only change and remove, never create, so an emptied melody was a dead end.
+  if (ui_event.key == '\n' && !ui_event.alt) {
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+    PhraseNotesInsertEdit::Prepared prepared{};
+    const auto result = PhraseNotesInsertEdit::prepare(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_),
+        phrase_cursor_.grid, prepared);
+    if (result != PhraseNotesInsertEdit::Result::Ready) {
+      const char* why = "ADD FAILED";
+      if (result == PhraseNotesInsertEdit::Result::Occupied) {
+        why = "SOUND ALREADY HERE";
+      } else if (result == PhraseNotesInsertEdit::Result::Full) {
+        why = "MELODY FULL";
+      }
+      UI::showToast(why, 900);
+      return true;
+    }
+
+    const bool committed = commitRuntimePhraseEditWithUndo(
+        mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
+
+    UI::showToast(committed ? "SOUND ADDED" : "EDIT STALE", 900);
+    return true;
+  }
 
   if (isBackspace && !ui_event.alt) {
     phrase_cursor_ = PhraseNotesCursor::clamp(

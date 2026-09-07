@@ -26,10 +26,22 @@ assert "PhraseNotesCursor::changeGrid" in handler
 assert "PhraseNotesDurationEdit::prepare" in handler
 assert "PhraseNotesDurationEdit::commitIfUnchanged" not in handler
 
-# The U4B4 gesture itself remains deletion-only. Later Undo ownership must not
-# smuggle insertion, pitch entry, direct live writes or persistent Scene dirt
-# into this handler.
-assert "insertSnapped" not in handler
+# The U4B4 *gesture* remains deletion-only. The handler is no longer
+# insertion-free -- U4B8 deliberately added Enter, so the blanket ban on
+# insertion here is spent and pretending otherwise would let this gate pass on
+# a technicality (the adapter is called, not the primitive). What still holds:
+# the delete branch itself must not create anything, insertion must go through
+# its own policy adapter rather than the raw primitive, and nothing here may
+# write live state or dirty the Scene.
+backspace_branch = handler[handler.index("isBackspace &&"):]
+backspace_branch = backspace_branch[:backspace_branch.index("if (ui_event.alt)")]
+assert "insertSnapped" not in backspace_branch
+assert "PhraseNotesInsertEdit" not in backspace_branch
+
+assert "insertSnapped" not in handler, \
+    "insertion must go through PhraseNotesInsertEdit, not the raw primitive"
+assert "PhraseNotesInsertEdit::prepare" in handler, \
+    "U4B8 insertion must be reachable from this handler"
 assert "noteForEntryKey" not in handler
 assert "markSceneMutated" not in handler
 
