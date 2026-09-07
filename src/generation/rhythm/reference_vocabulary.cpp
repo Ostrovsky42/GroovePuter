@@ -1,4 +1,6 @@
 #include "reference_vocabulary.h"
+#include "reference_phrase_vocabulary.h"
+#include "reference_phrase_catalog_data.h"
 
 namespace GroovePuterRhythm {
 namespace ReferenceVocabulary {
@@ -1044,6 +1046,14 @@ static_assert(sizeof(kDefinitions) / sizeof(kDefinitions[0]) ==
 
 const RhythmCatalogView& catalog() {
   return kCatalog;
+}
+
+const RhythmCatalogView& phraseEvolutionCatalog() {
+  // Constant initialization places the immutable overlay in flash, instead
+  // of constructing a 2 KiB copy in DRAM on first use. constexpr makes a
+  // future accidental runtime dependency a compile error.
+  static constexpr PhraseCatalogDetail::PhraseCatalogStorage storage{kCatalog};
+  return storage.view;
 }
 
 uint8_t definitionCount() {
