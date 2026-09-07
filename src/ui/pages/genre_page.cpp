@@ -355,7 +355,7 @@ void GenrePage::draw(IGfx& gfx) {
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
-  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
+  gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), value);
 
   UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }

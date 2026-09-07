@@ -16,11 +16,24 @@ assert "phrase_focus_bar_" not in HDR
 old = "std::min<uint16_t>(\n      phrase.lengthTicks, 2 * PhraseRuntime::kTicksPerBar)"
 assert old not in CPP, "Phrase draw must not stay hard-wired to the first two bars"
 
-assert "windowStartSubtick" in CPP
-assert "windowEndSubtick" in CPP
+# The window is still derived rather than hard-wired -- the assertion above
+# guarantees that -- but it is no longer expressed in subticks. The single-lane
+# renderer resolves a bar window and a magnified detail window, both in ticks,
+# so the names to pin are those. windowStartSubtick/windowEndSubtick belonged
+# to the retired lane-packed renderer.
+assert "barStart" in CPP and "barEnd" in CPP, \
+    "the drawn bar window must still be derived from the viewport"
+assert "detailStart" in CPP and "detailEnd" in CPP, \
+    "the magnified window must be derived, not fixed"
+
 assert "UI::drawStandardFooter" in CPP or "UI::publishShellFooter" in CPP
-assert "L/R:CUR" in CPP
-assert "U/D:GRID" in CPP
+# Footer literals moved to plain words with the beginner redesign. Pinned as
+# the key plus the words for its effect, so further wording work does not
+# require editing this gate again.
+assert "L/R PICK" in CPP, "the cursor binding must stay advertised"
+assert "HIGHER LOWER" in CPP, "the pitch binding must stay advertised"
+assert "U/D:GRID" not in CPP, \
+    "Up/Down is bound to pitch now; advertising it as GRID would be false"
 
 handler_start = CPP.index("bool SynthSequencerPage::handlePhraseNotesEvent")
 handler_end = CPP.index("void SynthSequencerPage::draw", handler_start)

@@ -286,7 +286,7 @@ void FeelPage::draw(IGfx& gfx) {
       break;
   }
   gfx.setTextColor(palette.text);
-  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, explanation);
+  gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), explanation);
 
   UI::drawStandardFooter(gfx,
                          "U/D:FIELD L/R:CHANGE",
