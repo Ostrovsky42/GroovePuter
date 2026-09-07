@@ -49,21 +49,29 @@ enum class Error : uint8_t {
   VerifyFailed,
   PublishFailed,
 };
-
-// Addressed by what the melody already is -- voice and slot -- rather than by a
-// separate identifier. A second ID space would be another mapping able to drift
-// from the thing it names. The project dimension joins the path when scene
-// identity is available here; until then one project is addressed.
-inline std::string finalPath(int voice, int slot) {
-  char buffer[40];
-  std::snprintf(buffer, sizeof(buffer), "/melody/v%d_s%02d.gpml", voice, slot);
-  return buffer;
+// Addressed by what the melody already is -- project, voice and slot -- rather
+// than by a separate identifier. A second ID space would be another mapping
+// able to drift from what it names.
+//
+// The project name is passed in, and the caller passes
+// PatternPagingService::currentProjectName(): the same owner that already
+// decides which project's pattern pages are in play. Two owners of "which
+// project is this" would file a melody under one project and its pattern under
+// another -- the class of bug this design keeps removing.
+inline std::string slotPath(const std::string& project, int voice, int slot,
+                            const char* extension) {
+  char buffer[48];
+  std::snprintf(buffer, sizeof(buffer), "/melody/v%d_s%02d.%s", voice, slot,
+                extension);
+  return "/projects/" + project + buffer;
 }
 
-inline std::string tempPath(int voice, int slot) {
-  char buffer[40];
-  std::snprintf(buffer, sizeof(buffer), "/melody/v%d_s%02d.tmp", voice, slot);
-  return buffer;
+inline std::string finalPath(const std::string& project, int voice, int slot) {
+  return slotPath(project, voice, slot, "gpml");
+}
+
+inline std::string tempPath(const std::string& project, int voice, int slot) {
+  return slotPath(project, voice, slot, "tmp");
 }
 
 inline bool sameMelody(const Buffer& a, const Buffer& b) {
@@ -81,17 +89,18 @@ inline bool sameMelody(const Buffer& a, const Buffer& b) {
   return true;
 }
 
-inline bool loadResident(const FileSystem& fs, int voice, int slot,
-                         Buffer& out) {
+inline bool loadResident(const FileSystem& fs, const std::string& project,
+                         int voice, int slot, Buffer& out) {
   if (!fs.available()) return false;
-  const std::string path = finalPath(voice, slot);
+  const std::string path = finalPath(project, voice, slot);
   if (!fs.exists(path.c_str())) return false;
   std::vector<uint8_t> blob;
   if (!fs.read(path.c_str(), blob)) return false;
   return MelodyStore::decode(blob.data(), blob.size(), out);
 }
 
-inline Error promoteResident(FileSystem& fs, Scene& scene, int voice, int slot,
+inline Error promoteResident(FileSystem& fs, const std::string& project,
+                             Scene& scene, int voice, int slot,
                              const Buffer& candidate) {
   // Refused before the first mutation, so a missing card cannot leave the
   // project half-changed.
@@ -109,7 +118,7 @@ inline Error promoteResident(FileSystem& fs, Scene& scene, int voice, int slot,
   std::vector<uint8_t> blob;
   if (!MelodyStore::encode(candidate, blob)) return Error::EncodeFailed;
 
-  const std::string temp = tempPath(voice, slot);
+  const std::string temp = tempPath(project, voice, slot);
   if (!fs.write(temp.c_str(), blob.data(), blob.size())) {
     return Error::WriteFailed;
   }
@@ -125,7 +134,7 @@ inline Error promoteResident(FileSystem& fs, Scene& scene, int voice, int slot,
     return Error::VerifyFailed;
   }
 
-  const std::string final = finalPath(voice, slot);
+  const std::string final = finalPath(project, voice, slot);
   if (!fs.rename(temp.c_str(), final.c_str())) {
     fs.remove(temp.c_str());
     return Error::PublishFailed;

@@ -79,6 +79,7 @@ Buffer makeCandidate() {
   return melody;
 }
 
+const std::string kProject = "projectA";
 constexpr int kVoice = 0;
 constexpr int kSlot = 5;
 
@@ -92,7 +93,7 @@ int main() {
     FakeFs fs;
     Scene scene{};
     const Buffer candidate = makeCandidate();
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, candidate);
     expect(error == Error::None, "a valid promotion was refused");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -100,12 +101,12 @@ int main() {
            "the slot was not promoted");
 
     Buffer loaded{};
-    expect(MelodyPromotion::loadResident(fs, kVoice, kSlot, loaded),
+    expect(MelodyPromotion::loadResident(fs, kProject, kVoice, kSlot, loaded),
            "the promoted melody could not be read back");
     expect(loaded.count == candidate.count &&
                loaded.events[1].note == candidate.events[1].note,
            "the melody read back is not the one that was promoted");
-    expect(!fs.exists(MelodyPromotion::tempPath(kVoice, kSlot).c_str()),
+    expect(!fs.exists(MelodyPromotion::tempPath(kProject, kVoice, kSlot).c_str()),
            "the temporary file was left behind after success");
   }
 
@@ -116,7 +117,7 @@ int main() {
     FakeFs fs;
     fs.present = false;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, makeCandidate());
     expect(error == Error::NoStorage, "promotion without storage was allowed");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -130,13 +131,13 @@ int main() {
     FakeFs fs;
     fs.failWrite = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, makeCandidate());
     expect(error == Error::WriteFailed, "a failed write was not reported");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
                MaterialKind::Pattern,
            "a failed write still promoted the slot");
-    expect(!fs.exists(MelodyPromotion::finalPath(kVoice, kSlot).c_str()),
+    expect(!fs.exists(MelodyPromotion::finalPath(kProject, kVoice, kSlot).c_str()),
            "a failed write still published a payload");
   }
 
@@ -147,13 +148,13 @@ int main() {
     FakeFs fs;
     fs.corruptOnRead = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, makeCandidate());
     expect(error == Error::VerifyFailed, "a corrupted read-back was accepted");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
                MaterialKind::Pattern,
            "a slot was promoted against an unverified payload");
-    expect(!fs.exists(MelodyPromotion::finalPath(kVoice, kSlot).c_str()),
+    expect(!fs.exists(MelodyPromotion::finalPath(kProject, kVoice, kSlot).c_str()),
            "an unverified payload was published");
   }
 
@@ -164,13 +165,13 @@ int main() {
     FakeFs fs;
     fs.failRename = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, makeCandidate());
     expect(error == Error::PublishFailed, "a failed publish was not reported");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
                MaterialKind::Pattern,
            "a slot was promoted without a published payload");
-    expect(!fs.exists(MelodyPromotion::finalPath(kVoice, kSlot).c_str()),
+    expect(!fs.exists(MelodyPromotion::finalPath(kProject, kVoice, kSlot).c_str()),
            "a payload appeared at the final path despite the failure");
   }
 
@@ -179,17 +180,17 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, scene, kVoice, kSlot,
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, kVoice, kSlot,
                                            makeCandidate());
     Buffer edited = makeCandidate();
     edited.events[0].note = 71;
-    const Error error = MelodyPromotion::promoteResident(fs, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
                                                          kSlot, edited);
     expect(error == Error::AlreadyMelody,
            "an already promoted slot was promoted again");
 
     Buffer loaded{};
-    (void)MelodyPromotion::loadResident(fs, kVoice, kSlot, loaded);
+    (void)MelodyPromotion::loadResident(fs, kProject, kVoice, kSlot, loaded);
     expect(loaded.events[0].note == 60,
            "a repeated promotion overwrote the stored melody");
   }
@@ -198,14 +199,14 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, scene, 0, 1, makeCandidate());
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, 0, 1, makeCandidate());
     expect(GroovePuterMaterial::residentKind(scene, 1, 1) ==
                MaterialKind::Pattern,
            "promoting synth A promoted the same slot on synth B");
     expect(GroovePuterMaterial::residentKind(scene, 0, 2) ==
                MaterialKind::Pattern,
            "promoting one slot promoted its neighbour");
-    expect(MelodyPromotion::finalPath(0, 1) != MelodyPromotion::finalPath(1, 1),
+    expect(MelodyPromotion::finalPath(kProject, 0, 1) != MelodyPromotion::finalPath(kProject, 1, 1),
            "two voices share one payload path");
   }
 
@@ -215,12 +216,47 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, scene, kVoice, kSlot,
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, kVoice, kSlot,
                                            makeCandidate());
-    fs.remove(MelodyPromotion::finalPath(kVoice, kSlot).c_str());
+    fs.remove(MelodyPromotion::finalPath(kProject, kVoice, kSlot).c_str());
     Buffer loaded{};
-    expect(!MelodyPromotion::loadResident(fs, kVoice, kSlot, loaded),
+    expect(!MelodyPromotion::loadResident(fs, kProject, kVoice, kSlot, loaded),
            "a missing payload reported success");
+  }
+
+  // 9. Two projects, the same voice and slot, independent melodies. Without
+  //    the project in the path they would address one physical payload, and
+  //    editing project B would silently rewrite project A's music.
+  {
+    FakeFs fs;
+    Scene sceneA{};
+    Scene sceneB{};
+
+    Buffer melodyA = makeCandidate();
+    melodyA.events[0].note = 60;
+    Buffer melodyB = makeCandidate();
+    melodyB.events[0].note = 72;
+
+    expect(MelodyPromotion::promoteResident(fs, "projectA", sceneA, kVoice,
+                                            kSlot, melodyA) == Error::None,
+           "project A promotion failed");
+    expect(MelodyPromotion::promoteResident(fs, "projectB", sceneB, kVoice,
+                                            kSlot, melodyB) == Error::None,
+           "project B promotion failed, so the slot was already taken");
+
+    Buffer backA{};
+    Buffer backB{};
+    expect(MelodyPromotion::loadResident(fs, "projectA", kVoice, kSlot, backA),
+           "project A melody disappeared");
+    expect(MelodyPromotion::loadResident(fs, "projectB", kVoice, kSlot, backB),
+           "project B melody disappeared");
+    expect(backA.events[0].note == 60,
+           "project B overwrote project A at the same slot");
+    expect(backB.events[0].note == 72,
+           "project B did not keep its own melody");
+    expect(MelodyPromotion::finalPath("projectA", kVoice, kSlot) !=
+               MelodyPromotion::finalPath("projectB", kVoice, kSlot),
+           "two projects share one payload path");
   }
 
   if (g_failures == 0) {
