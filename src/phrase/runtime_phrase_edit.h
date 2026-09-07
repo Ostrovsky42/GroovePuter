@@ -220,6 +220,29 @@ inline EventEditResult insertSnapped(Buffer& phrase,
   return EventEditResult::Changed;
 }
 
+// U4B7 pitch primitive. Deliberately shaped like resizeEventByGrid: a single
+// step in one direction, so the caller cannot express an unbounded jump and the
+// key press maps one-to-one onto one musical step.
+//
+// Pitch is orthogonal to time. This never touches startTick, durationSubticks
+// or the buffer length, so it can never invalidate a phrase that was valid.
+// The MIDI range boundary is rejected rather than clamped: a silent clamp would
+// report success for a press that changed nothing.
+inline EventEditResult transposeEvent(Buffer& phrase,
+                                      uint16_t eventIndex,
+                                      int direction) {
+  if (!validate(phrase)) return EventEditResult::Rejected;
+  if (eventIndex >= phrase.count) return EventEditResult::NoTarget;
+  if (direction != -1 && direction != 1) return EventEditResult::Rejected;
+
+  const int nextNote =
+      static_cast<int>(phrase.events[eventIndex].note) + direction;
+  if (nextNote < 0 || nextNote > 127) return EventEditResult::Rejected;
+
+  phrase.events[eventIndex].note = static_cast<uint8_t>(nextNote);
+  return EventEditResult::Changed;
+}
+
 inline EventEditResult deleteEvent(Buffer& phrase, uint16_t eventIndex) {
   if (!validate(phrase)) return EventEditResult::Rejected;
   if (eventIndex >= phrase.count) return EventEditResult::NoTarget;
