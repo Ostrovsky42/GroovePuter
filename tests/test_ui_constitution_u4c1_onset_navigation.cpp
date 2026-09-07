@@ -1,14 +1,16 @@
-// U4C1: LEFT/RIGHT select the previous/next sound, not the next grid step.
+// U4C1: LEFT/RIGHT walk the grid, and every cell can hold a selection.
 //
-// Stepping by grid meant a beginner pressed RIGHT four times to reach the next
-// note on a 1/32 grid, landing on empty ticks in between with "NO SOUND HERE"
-// under the editor. Selecting sounds is what the screen is for.
+// This file first pinned the opposite rule -- one press jumps to the next
+// onset -- and that rule was wrong in use. It read well in dense material and
+// broke everything else: a gap in the middle of a melody was jumped over
+// entirely, so there was nowhere to stand to add a sound, and an emptied
+// melody trapped the cursor with nothing to jump to. Reported from the device,
+// not caught here, because the fixture only ever had sounds to jump between.
 //
-// This is deliberately NOT a change of selection identity. U4B2's law stands:
-// the selected object is derived from cursor coverage, and no buffer event
-// index is ever persisted. What moves is the cursor -- it lands on onsets
-// instead of on grid multiples -- so the derived selection, the continuity
-// state and the insertion position all keep working unchanged.
+// What survives from that work, and is the part that mattered, is selecting by
+// cell rather than by the tick at its left edge: onsets do not have to sit on
+// the grid -- swing and micro-timing move them off it by construction -- and a
+// cell that contains one selects it.
 
 #include <cstdint>
 #include <cstdio>
@@ -48,8 +50,9 @@ uint16_t tickAfterMove(const Buffer& phrase, uint16_t fromTick, int direction) {
   state.grid = RuntimePhraseEdit::Grid::ThirtySecond;
   state.cell = static_cast<uint8_t>(
       fromTick / PhraseNotesCursor::quantumTicks(state.grid));
+  (void)phrase;
   return PhraseNotesCursor::tick(
-      PhraseNotesCursor::moveToOnset(state, phrase, direction));
+      PhraseNotesCursor::move(state, direction, PhraseRuntime::kTicksPerBar));
 }
 
 }  // namespace
@@ -57,46 +60,49 @@ uint16_t tickAfterMove(const Buffer& phrase, uint16_t fromTick, int direction) {
 int main() {
   const Buffer phrase = makePhrase();
 
-  // 1. Forward lands on the next onset, however far away, in one press.
-  expect(tickAfterMove(phrase, 0, 1) == 96,
-         "RIGHT did not reach the next sound in one press");
-  expect(tickAfterMove(phrase, 96, 1) == 264,
-         "RIGHT did not cross the gap to the next sound");
+  // 1. One press, one cell. At a 1/32 grid (12 ticks) that is 12 ticks, and
+  //    the sound at 96 is not teleported to.
+  expect(tickAfterMove(phrase, 0, 1) == 12, "RIGHT moved more than one cell");
+  expect(tickAfterMove(phrase, 84, 1) == 96,
+         "RIGHT did not arrive on the cell holding the next sound");
 
   // 2. Backward is symmetric.
-  expect(tickAfterMove(phrase, 264, -1) == 96, "LEFT skipped a sound");
-  expect(tickAfterMove(phrase, 96, -1) == 0, "LEFT did not reach the first sound");
+  expect(tickAfterMove(phrase, 96, -1) == 84, "LEFT moved more than one cell");
+  expect(tickAfterMove(phrase, 12, -1) == 0, "LEFT did not reach the start");
 
-  // 3. From between two sounds, direction decides which one.
-  expect(tickAfterMove(phrase, 150, 1) == 264,
-         "RIGHT from empty time did not go forward");
-  expect(tickAfterMove(phrase, 150, -1) == 96,
-         "LEFT from empty time did not go back");
+  // 3. A gap is walked, not jumped. This is the case that made adding
+  //    impossible: between 96 and 264 there must be somewhere to stand.
+  {
+    uint16_t tick = 96;
+    int steps = 0;
+    while (tick < 264 && steps < 32) {
+      tick = tickAfterMove(phrase, tick, 1);
+      ++steps;
+    }
+    expect(steps > 1, "the gap was crossed in one press, leaving nowhere to add");
+    expect(tick == 264, "walking the gap did not arrive at the next sound");
+  }
 
-  // 4. The ends hold still rather than wrapping. Wrapping would make the last
-  //    press before the end of a melody jump to its beginning, which reads as
-  //    a glitch rather than a move.
-  expect(tickAfterMove(phrase, 264, 1) == 264, "RIGHT wrapped past the last sound");
-  expect(tickAfterMove(phrase, 0, -1) == 0, "LEFT wrapped before the first sound");
+  // 4. The ends hold rather than wrap.
+  expect(tickAfterMove(phrase, 0, -1) == 0, "LEFT wrapped before the start");
 
-  // 5. An empty melody has nothing to select and must not move or crash: the
-  //    cursor stays where it is so Enter still has a position to add at.
+  // 5. An empty melody is still navigable, so ENTER always has a position.
   {
     Buffer empty{};
     empty.lengthTicks = PhraseRuntime::kTicksPerBar;
-    expect(tickAfterMove(empty, 48, 1) == 48,
-           "moving in an empty melody displaced the insertion point");
-    expect(tickAfterMove(empty, 48, -1) == 48,
-           "moving back in an empty melody displaced the insertion point");
+    expect(tickAfterMove(empty, 48, 1) == 60,
+           "an emptied melody trapped the cursor");
+    expect(tickAfterMove(empty, 48, -1) == 36,
+           "an emptied melody trapped the cursor going back");
   }
 
-  // 6. Only +/-1 is a direction; anything else is a no-op rather than a guess.
+  // 6. Only +/-1 is a direction.
   {
     PhraseNotesCursor::State state{};
     state.grid = RuntimePhraseEdit::Grid::ThirtySecond;
     state.cell = 8;
     const PhraseNotesCursor::State unchanged =
-        PhraseNotesCursor::moveToOnset(state, phrase, 0);
+        PhraseNotesCursor::move(state, 0, phrase.lengthTicks);
     expect(PhraseNotesCursor::tick(unchanged) == PhraseNotesCursor::tick(state),
            "a zero direction moved the cursor");
   }
@@ -122,7 +128,7 @@ int main() {
 
     PhraseNotesCursor::State state{};
     state.grid = RuntimePhraseEdit::Grid::Sixteenth;
-    state = PhraseNotesCursor::moveToOnset(state, offGrid, 1);
+    state.cell = 4;   // cell [96,120) contains the onset at 100
     const uint16_t landed = PhraseNotesCursor::tick(state);
     const uint16_t quantum = PhraseNotesCursor::quantumTicks(state.grid);
     const auto selection =

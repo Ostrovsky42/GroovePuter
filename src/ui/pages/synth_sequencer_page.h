@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_view_continuity.h"
 #include "../phrase_notes_cursor.h"
+#include "../phrase_selection_state.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
@@ -60,6 +61,8 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // page; PHRASE gets an independent presentation/controller branch without a
   // second source flag. MiniAcid::SequencedSource is the sole source owner.
   void drawPhraseNotes(IGfx& gfx);
+  void drawPhraseRoll(IGfx& gfx);
+  void drawPhraseList(IGfx& gfx);
   bool handlePhraseNotesEvent(UIEvent& ui_event);
 
   MiniAcid& mini_acid_;
@@ -68,6 +71,15 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   uint32_t last_tab_switch_ms_ = 0;
   SynthTab synth_tab_ = SynthTab::Notes;
   PhraseNotesCursor::State phrase_cursor_{};
+  // The selected sound, shared by both views of the melody. The cursor above
+  // keeps the grid and the insert position; this keeps which sound is being
+  // edited, so switching view cannot change it.
+  PhraseSelectionState::State phrase_selection_{};
+  enum class PhraseView : uint8_t { Roll = 0, List };
+  PhraseView phrase_view_ = PhraseView::Roll;
+  // First visible row of the list. Its own scrolling, as the list and the roll
+  // share operations but not presentation.
+  uint16_t phrase_list_top_ = 0;
   // Browsing offset for the pitch window only. It is view state, never
   // musical state: it is clamped so the selected sound stays visible and
   // it is not persisted, so looking around can never be mistaken for an

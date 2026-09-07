@@ -80,8 +80,10 @@ def main() -> None:
             "the pitch window must have explicit, inspectable position state")
     require('phrase_pitch_lowest_' not in CONT,
             "the pitch window is view state and must not be persisted")
-    require('phrase_pitch_lowest_ = 0' not in
-            CPP[CPP.index('nav == GROOVEPUTER_RIGHT ? 1 : -1);'):],
+    # Anchored to the handler rather than to a line of code: the first version
+    # of this pinned a literal expression, which a refactor removed and broke
+    # the gate for no product reason.
+    require('phrase_pitch_lowest_ = 0' not in handler,
             "picking a sound must not reset the pitch window")
     require('U/D:GRID' not in CPP,
             "Up/Down is bound to pitch now; advertising it as GRID would lie")

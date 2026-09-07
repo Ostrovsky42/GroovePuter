@@ -326,6 +326,37 @@ int main() {
     checkRightBound("SynthSequencerPage(melody)", gfx);
   }
 
+  // The list is the second view of the same melody, with its own presentation
+  // and therefore its own chance to run off an edge. Leaving it out is how the
+  // roll's hints got clipped twice before anyone noticed.
+  {
+    MiniAcid engine(kTestSampleRate, nullptr);
+    RecordingGfx gfx;
+    SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
+    page.onEnter(0);
+    (void)engine.makePhrase(0);
+    UIEvent toList{};
+    toList.event_type = GROOVEPUTER_KEY_DOWN;
+    toList.key = 'v';
+    (void)page.handleEvent(toList);
+    page.draw(gfx);
+
+    bool drewList = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "SOUNDS") drewList = true;
+    }
+    if (!drewList) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the list view was never rendered, so "
+                   "this view was not actually under test\n");
+      ++g_failures;
+    }
+
+    checkBottomBound("SynthSequencerPage(list)", gfx);
+    checkTopBound("SynthSequencerPage(list)", gfx, headerRows);
+    checkRightBound("SynthSequencerPage(list)", gfx);
+  }
+
   {
     RecordingGfx gfx;
     checkStackedFooter(gfx);

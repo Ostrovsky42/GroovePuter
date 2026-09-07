@@ -20,6 +20,7 @@
 #include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_insert_edit.h"
 #include "../phrase_notes_join_edit.h"
+#include "../phrase_selection_state.h"
 #include "../phrase_source_toggle.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
@@ -248,6 +249,16 @@ void drawMutedTail(IGfx& gfx, int fromX, int toX, int y, int h, IGfxColor color)
 }  // namespace
 
 void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
+  // Two views of one melody. They share the selection and every operation;
+  // only presentation and scrolling are their own.
+  if (phrase_view_ == PhraseView::List) {
+    drawPhraseList(gfx);
+    return;
+  }
+  drawPhraseRoll(gfx);
+}
+
+void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
 
@@ -268,10 +279,15 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const uint8_t focusBar = PhraseNotesCursor::focusBar(phrase_cursor_);
   const PhraseNotesViewport::Window viewport =
       PhraseNotesViewport::resolve(phrase.lengthTicks, focusBar);
+  phrase_selection_ = PhraseSelectionState::resolve(phrase, phrase_selection_);
+  if (!phrase_selection_.active) {
+    phrase_selection_ = PhraseSelectionState::first(phrase);
+  }
   const PhraseNotesSelection::Selection selection =
-      PhraseNotesSelection::deriveInCell(
-          phrase, cursorTick,
-          PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+      phrase_selection_.active
+          ? PhraseNotesSelection::Selection{
+                true, phrase_selection_.eventIndex, {}}
+          : PhraseNotesSelection::Selection{};
   const IGfxColor voiceColor = synthTabColor(voice_index_);
 
   gfx.setTextColor(voiceColor);
@@ -413,9 +429,14 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     gfx.drawText(planeX + planeW - 8, planeTop + kPlaneH - 6, "v");
   }
 
-  // Time position, marked only in the margin so it never covers a block.
+  // Where a new sound would go. Drawn as a full-height caret so it is findable
+  // on an empty melody too, dim through the plane so it never hides a block,
+  // and bright in the margin where nothing else lives.
   const int cursorX = tickToX(cursorTick);
-  gfx.fillRect(cursorX, planeTop + kPlaneH + 1, 1, 3, COLOR_WHITE);
+  for (int y = planeTop; y < planeTop + kPlaneH; y += 2) {
+    gfx.fillRect(cursorX, y, 1, 1, COLOR_LABEL);
+  }
+  gfx.fillRect(cursorX - 1, planeTop + kPlaneH + 1, 3, 3, COLOR_WHITE);
 
   // Where the music is, distinct from where the cursor is.
   if (mini_acid_.isPlaying()) {
@@ -440,7 +461,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     std::snprintf(status, sizeof(status), "SELECTED %s   %s", name, length);
     gfx.setTextColor(COLOR_WHITE);
   } else {
-    std::snprintf(status, sizeof(status), "NO SOUND HERE");
+    std::snprintf(status, sizeof(status), "EMPTY HERE   ENTER ADDS A SOUND");
     gfx.setTextColor(COLOR_LABEL);
   }
   gfx.drawText(bounds.x + 4, statusY, status);
@@ -461,6 +482,152 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
                          "L/R PICK SOUND  ALT+L/R SHORTER LONGER");
 }
 
+void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
+  const auto& bounds = Layout::CONTENT;
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+  UI::publishShellFeelOverlay(false);
+
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  if (!PhraseNotesProjection::validate(phrase)) {
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(bounds.x + 4, bounds.y + 20, "MELODY UNREADABLE");
+    UI::drawStandardFooter(gfx, "CTRL+Z UNDO", "");
+    return;
+  }
+
+  phrase_selection_ = PhraseSelectionState::resolve(phrase, phrase_selection_);
+  if (!phrase_selection_.active) {
+    phrase_selection_ = PhraseSelectionState::first(phrase);
+  }
+  const IGfxColor voiceColor = synthTabColor(voice_index_);
+
+  gfx.setTextColor(voiceColor);
+  gfx.drawText(bounds.x + 4, bounds.y, "SOUNDS");
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(bounds.x + 4 + textWidth(gfx, "SOUNDS") + 10, bounds.y,
+               "V ROLL   ALT+R SRC");
+
+  // Row order: start time, ties by buffer index. Stable, so changing a length
+  // or a pitch never makes the rows jump around under the hand.
+  uint16_t order[PhraseRuntime::kMaxSynthEvents];
+  for (uint16_t i = 0; i < phrase.count; ++i) order[i] = i;
+  for (uint16_t i = 1; i < phrase.count; ++i) {
+    const uint16_t value = order[i];
+    uint16_t j = i;
+    while (j > 0 &&
+           PhraseSelectionState::precedes(phrase, value, order[j - 1])) {
+      order[j] = order[j - 1];
+      --j;
+    }
+    order[j] = value;
+  }
+
+  uint16_t selectedRow = 0;
+  for (uint16_t row = 0; row < phrase.count; ++row) {
+    if (order[row] == phrase_selection_.eventIndex) selectedRow = row;
+  }
+
+  constexpr int kRows = 5;
+  constexpr int kRowH = 11;
+  if (selectedRow < phrase_list_top_) phrase_list_top_ = selectedRow;
+  if (selectedRow >= phrase_list_top_ + kRows) {
+    phrase_list_top_ = static_cast<uint16_t>(selectedRow - (kRows - 1));
+  }
+  if (phrase.count <= kRows) phrase_list_top_ = 0;
+
+  // Left column: which sound and what it is. Right: the same shared timeline
+  // for every row, so start and length stay comparable between rows -- that is
+  // what a plain list of numbers cannot show.
+  const int laneX = bounds.x + 62;
+  const int laneW = bounds.w - 62 - 4;
+  const int listTop = bounds.y + 12;
+
+  for (int beat = 0; beat < 4; ++beat) {
+    const int beatX = laneX + (laneW * beat) / 4;
+    gfx.fillRect(beatX, listTop - 2, 1, kRows * kRowH + 2, COLOR_LABEL);
+  }
+
+  for (int row = 0; row < kRows; ++row) {
+    const uint16_t index = static_cast<uint16_t>(phrase_list_top_ + row);
+    if (index >= phrase.count) break;
+    const uint16_t eventIndex = order[index];
+    const auto& event = phrase.events[eventIndex];
+    const bool selected = eventIndex == phrase_selection_.eventIndex;
+    const int y = listTop + row * kRowH;
+
+    if (selected) {
+      gfx.fillRect(bounds.x + 2, y - 1, bounds.w - 4, kRowH - 1,
+                   IGfxColor(0x12233A));
+      gfx.drawRect(bounds.x + 2, y - 1, bounds.w - 4, kRowH - 1, COLOR_WHITE);
+    }
+
+    char label[16];
+    char name[8];
+    formatNoteName(event.note, name, sizeof(name));
+    std::snprintf(label, sizeof(label), "%02u %s",
+                  static_cast<unsigned>(index) + 1u, name);
+    gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
+    gfx.drawText(bounds.x + 5, y + 1, label);
+
+    // Position is the start, width is the stored length; the striped part is
+    // the length the next attack will silence, exactly as in the roll.
+    const uint32_t barTicks = PhraseRuntime::kTicksPerBar;
+    const uint32_t start = event.startTick % barTicks;
+    uint32_t audibleEnd = event.startTick +
+        event.durationSubticks / PhraseRuntime::kSubticksPerTick;
+    for (uint16_t i = 0; i < phrase.count; ++i) {
+      const uint16_t other = phrase.events[i].startTick;
+      if (other > event.startTick && other < audibleEnd) audibleEnd = other;
+    }
+    const uint32_t storedEnd = event.startTick +
+        event.durationSubticks / PhraseRuntime::kSubticksPerTick;
+
+    const auto toX = [&](uint32_t tick) -> int {
+      const uint32_t clamped = tick > barTicks ? barTicks : tick;
+      return laneX + static_cast<int>(
+          (clamped * static_cast<uint32_t>(laneW)) / barTicks);
+    };
+    const int x0 = toX(start);
+    const int xAudible = toX(audibleEnd % barTicks == 0 && audibleEnd >= barTicks
+                                 ? barTicks
+                                 : audibleEnd - (event.startTick - start));
+    const int xEnd = toX(storedEnd - (event.startTick - start));
+    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    if (xAudible > x0) gfx.fillRect(x0, y + 2, xAudible - x0, 5, fill);
+    drawMutedTail(gfx, xAudible, xEnd, y + 2, 5, fill);
+    if ((event.flags & PhraseRuntime::kEventAccent) != 0) {
+      gfx.fillRect(x0, y + 1, std::max(1, xEnd - x0), 1, voiceColor);
+    }
+  }
+
+  char status[48];
+  if (phrase_selection_.active) {
+    const auto& event = phrase.events[phrase_selection_.eventIndex];
+    char name[8];
+    formatNoteName(event.note, name, sizeof(name));
+    char length[24];
+    formatPhraseLength(
+        static_cast<uint16_t>(event.durationSubticks /
+                              PhraseRuntime::kSubticksPerTick),
+        length, sizeof(length));
+    std::snprintf(status, sizeof(status), "SOUND %u OF %u   %s   %s",
+                  static_cast<unsigned>(selectedRow) + 1u,
+                  static_cast<unsigned>(phrase.count), name, length);
+    gfx.setTextColor(COLOR_WHITE);
+  } else {
+    std::snprintf(status, sizeof(status), "NO SOUNDS YET");
+    gfx.setTextColor(COLOR_LABEL);
+  }
+  gfx.drawText(bounds.x + 4, bounds.y + 72, status);
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(bounds.x + 4, bounds.y + 82, "ENTER ADD  J JOIN  BS DEL");
+
+  UI::drawStandardFooter(gfx,
+                         "SPACE LISTEN/STOP  L/R HIGHER LOWER",
+                         "U/D PICK SOUND  ALT+L/R SHORTER LONGER");
+}
+
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
       ui_event.ctrl || ui_event.meta) {
@@ -476,10 +643,39 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.key == '\n' && !ui_event.alt) {
     phrase_cursor_ = PhraseNotesCursor::clamp(
         phrase_cursor_, phrase.lengthTicks);
+
+    // Where the new sound goes. Not "wherever the cursor happens to be": the
+    // Cardputer has no Shift, LEFT/RIGHT hop between sounds, and an emptied
+    // melody has nothing to hop between -- so requiring the user to navigate
+    // to a free position made adding unreachable in exactly the case where it
+    // matters most. It goes after the selected sound instead, on the first
+    // free step, which needs no positioning at all.
+    const uint16_t step = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
+    uint16_t target = PhraseNotesCursor::tick(phrase_cursor_);
+    const PhraseNotesSelection::Selection anchor =
+        PhraseNotesSelection::deriveInCell(phrase, target, step);
+    if (anchor.active && step > 0) {
+      target = static_cast<uint16_t>(
+          phrase.events[anchor.eventIndex].startTick + step);
+      while (target < phrase.lengthTicks) {
+        bool occupied = false;
+        for (uint16_t i = 0; i < phrase.count; ++i) {
+          if (phrase.events[i].startTick / step == target / step) {
+            occupied = true;
+            break;
+          }
+        }
+        if (!occupied) break;
+        target = static_cast<uint16_t>(target + step);
+      }
+      if (target >= phrase.lengthTicks) {
+        target = PhraseNotesCursor::tick(phrase_cursor_);
+      }
+    }
+
     PhraseNotesInsertEdit::Prepared prepared{};
     const auto result = PhraseNotesInsertEdit::prepare(
-        phrase, PhraseNotesCursor::tick(phrase_cursor_),
-        phrase_cursor_.grid, prepared);
+        phrase, target, phrase_cursor_.grid, prepared);
     if (result != PhraseNotesInsertEdit::Result::Ready) {
       const char* why = "ADD FAILED";
       if (result == PhraseNotesInsertEdit::Result::Occupied) {
@@ -494,6 +690,11 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     const bool committed = commitRuntimePhraseEditWithUndo(
         mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
 
+    if (committed && step > 0) {
+      phrase_cursor_.cell = static_cast<uint8_t>(target / step);
+      phrase_cursor_ = PhraseNotesCursor::clamp(
+          phrase_cursor_, phrase.lengthTicks);
+    }
     UI::showToast(committed ? "SOUND ADDED" : "EDIT STALE", 900);
     return true;
   }
@@ -587,24 +788,38 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Onset jumping made empty time unreachable, and with it ENTER: the cursor
-  // could only ever stand on a sound, so adding always reported the position
-  // occupied. SHIFT walks the grid one step at a time to put it back.
-  if (ui_event.shift &&
-      (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    // One grid cell per press. Jumping straight to the next onset read better
+    // in dense material but made a gap in the middle of a melody unreachable,
+    // so there was nowhere to stand to add a sound -- and an emptied melody
+    // trapped the cursor entirely. Every cell is reachable this way, and no
+    // sound is skipped because a cell holding one selects it.
+    //
+    // The pitch window is deliberately left alone: it moves only when the new
+    // selection falls outside it, so moving does not rearrange the picture.
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     return true;
   }
 
-  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
-    // Selecting sounds, not grid steps. On a 1/32 grid the old behaviour cost
-    // four presses to reach the next note, landing on empty ticks in between.
-    // The pitch window is deliberately left alone: it moves only when the new
-    // selection falls outside it, so picking a sound does not rearrange the
-    // picture around it.
-    phrase_cursor_ = PhraseNotesCursor::moveToOnset(
-        phrase_cursor_, phrase, nav == GROOVEPUTER_RIGHT ? 1 : -1);
+  // Switch view. Musical data is untouched and the selected sound comes along:
+  // that is the whole point of two views over one melody.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'v' || ui_event.key == 'V')) {
+    phrase_view_ = phrase_view_ == PhraseView::Roll ? PhraseView::List
+                                                    : PhraseView::Roll;
+    UI::showToast(phrase_view_ == PhraseView::List ? "VIEW: LIST"
+                                                   : "VIEW: PIANO ROLL",
+                  1000);
+    return true;
+  }
+
+  // Each view selects along the axis its presentation leaves free: rows in the
+  // list, time in the roll. The operation underneath is the same one.
+  if (phrase_view_ == PhraseView::List && !ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    phrase_selection_ = PhraseSelectionState::step(
+        phrase, phrase_selection_, nav == GROOVEPUTER_DOWN ? 1 : -1);
     return true;
   }
 
@@ -666,11 +881,20 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     UI::showToast(toast, 900);
     return true;
   }
-  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+  // Pitch: UP/DOWN in the roll, LEFT/RIGHT in the list, because each view has
+  // already spent the other axis on selection.
+  const bool pitchUp = phrase_view_ == PhraseView::List
+      ? nav == GROOVEPUTER_RIGHT
+      : nav == GROOVEPUTER_UP;
+  const bool pitchDown = phrase_view_ == PhraseView::List
+      ? nav == GROOVEPUTER_LEFT
+      : nav == GROOVEPUTER_DOWN;
+
+  if (pitchUp || pitchDown) {
     phrase_cursor_ = PhraseNotesCursor::clamp(
         phrase_cursor_, phrase.lengthTicks);
     PhraseNotesPitchEdit::Prepared prepared{};
-    const int direction = nav == GROOVEPUTER_UP ? 1 : -1;
+    const int direction = pitchUp ? 1 : -1;
     const auto result = PhraseNotesPitchEdit::prepare(
         phrase, PhraseNotesCursor::tick(phrase_cursor_), direction, prepared);
     if (result != PhraseNotesPitchEdit::Result::Ready) {
