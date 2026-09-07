@@ -264,6 +264,12 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion3032(),
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
+
+  // One allocation, at construction, for the NEXT preparation buffers. They do
+  // not fit the static budget, and a single fixed block is not the churn that
+  // brought this device down. Failure leaves NEXT unavailable rather than
+  // half-working.
+  (void)initPendingMaterial();
   
   // Initialize Drum FX
   drumReverb.setSampleRate(sampleRateValue);
@@ -3908,6 +3914,66 @@ MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const
                  GroovePuterMaterial::MaterialKind::Melody
              ? SequencedSource::Phrase
              : SequencedSource::Pattern;
+}
+
+bool MiniAcid::initPendingMaterial() {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (pendingMaterial_[voice].melody != nullptr) continue;
+    pendingMaterial_[voice].melody =
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer();
+    if (pendingMaterial_[voice].melody == nullptr) return false;
+  }
+  return true;
+}
+
+bool MiniAcid::pendingMaterialReady() const {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (pendingMaterial_[voice].melody == nullptr) return false;
+  }
+  return true;
+}
+
+const void* MiniAcid::pendingMaterialAddress(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  return pendingMaterial_[voiceIndex].melody;
+}
+
+bool MiniAcid::hasPendingMaterial(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return pendingMaterial_[voiceIndex].queued;
+}
+
+bool MiniAcid::stagePendingMaterial(
+    int voiceIndex, uint16_t slot, GroovePuterMaterial::MaterialKind kind,
+    const PhraseRuntime::RuntimeSynthEventBuffer* melody) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (pending.melody == nullptr) return false;
+
+  // A Melody request that arrives without prepared material is the failed-load
+  // case. Refusing it here is what keeps a half-prepared request from ever
+  // reaching a boundary; the voice simply keeps playing what it was.
+  if (kind == GroovePuterMaterial::MaterialKind::Melody) {
+    if (melody == nullptr) return false;
+    *pending.melody = *melody;
+  }
+  pending.slot = slot;
+  pending.kind = kind;
+  pending.queued = true;
+  return true;
+}
+
+void MiniAcid::activatePendingMaterial() {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    PendingMaterial& pending = pendingMaterial_[voice];
+    if (!pending.queued) continue;
+    if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
+        pending.melody != nullptr) {
+      currentPhrase_[voice] = *pending.melody;
+    }
+    publishActiveMaterial(voice, pending.slot, pending.kind);
+    pending.queued = false;
+  }
 }
 
 void MiniAcid::publishActiveMaterial(int voiceIndex, uint16_t slot,

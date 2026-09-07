@@ -148,6 +148,33 @@ public:
   void publishActiveMaterial(int voiceIndex, uint16_t slot,
                              GroovePuterMaterial::MaterialKind kind);
   const ActiveMaterial& activeMaterial(int voiceIndex) const;
+
+  // M4: what a voice will play next, prepared away from the audio path and
+  // swapped in on a musical boundary.
+  //
+  // The press is answered at once; the work it implies is not done where it
+  // would be heard. Preparation may read a file and takes 12-18 ms, against a
+  // 2000 ms bar at 120 BPM -- room to prepare properly instead of racing. What
+  // that margin buys is that nothing half-prepared ever becomes audible.
+  //
+  // The buffers are heap-allocated once at startup: 2 x 1284 bytes does not fit
+  // the static budget, and one fixed allocation is not the fragmentation that
+  // brought this device down before. If it fails, NEXT is simply unavailable.
+  bool initPendingMaterial();
+  bool pendingMaterialReady() const;
+  const void* pendingMaterialAddress(int voiceIndex) const;
+  bool hasPendingMaterial(int voiceIndex) const;
+
+  // Melody requests must arrive already prepared. A null melody for a Melody
+  // request is the failed-load case: refused here, so it can never reach a
+  // boundary and half-activate.
+  bool stagePendingMaterial(int voiceIndex, uint16_t slot,
+                            GroovePuterMaterial::MaterialKind kind,
+                            const PhraseRuntime::RuntimeSynthEventBuffer* melody);
+
+  // Called on a musical boundary. A value copy and two assignments: no
+  // allocation, no I/O, nothing that can fail halfway.
+  void activatePendingMaterial();
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -520,6 +547,15 @@ private:
   // an API into it until M5 retires the concept, rather than as a second copy
   // that could disagree with what is actually sounding.
   ActiveMaterial activeMaterial_[NUM_303_VOICES]{};
+
+  struct PendingMaterial {
+    PhraseRuntime::RuntimeSynthEventBuffer* melody = nullptr;
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+    bool queued = false;
+  };
+  PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_[NUM_303_VOICES]{};
 
   bool songMode_;
