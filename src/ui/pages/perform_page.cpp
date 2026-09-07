@@ -795,7 +795,7 @@ void PerformPage::drawContent(IGfx& gfx) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "EXT MONO | TAB PERFORMANCE TOOLS");
     }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
+    gfx.drawText(Layout::COL_1, LayoutManager::lastLineY(gfx), line);
 }
 
 void PerformPage::drawFooter(IGfx& gfx) {

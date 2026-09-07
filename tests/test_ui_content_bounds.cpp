@@ -30,7 +30,12 @@
 
 #include "src/ui/pages/feel_page.h"
 #include "src/ui/pages/genre_page.h"
+#include "src/input/musical_event_router.h"
+#include "src/input/performance_keyboard.h"
+#include "src/ui/pages/perform_page.h"
 #include "src/ui/pages/phrase_page.h"
+#include "src/ui/pages/song_page.h"
+#include "src/ui/layout_manager.h"
 #include "src/ui/screen_geometry.h"
 
 // The SDL production sources are linked without sdl_main.cpp, which is
@@ -82,6 +87,39 @@ class RecordingGfx : public IGfx {
 
 int g_failures = 0;
 
+// The y coordinates the shared header legitimately uses. Recorded from the
+// real header rather than guessed, so a page drawing above CONTENT.y can be
+// told apart from the header the page draws through UI::drawStandardHeader.
+std::vector<int> headerRowsY() {
+  MiniAcid engine(kTestSampleRate, nullptr);
+  RecordingGfx gfx;
+  UI::drawStandardHeader(gfx, engine, "TITLE");
+  std::vector<int> rows;
+  for (const auto& entry : gfx.texts) rows.push_back(entry.y);
+  return rows;
+}
+
+// Content drawn above CONTENT.y is sliced by the header rule -- on SONG the
+// "EDIT:A PLAY:A PAT:A ALL" line loses its top row of pixels, on DRUMS the
+// pattern row does.
+void checkTopBound(const char* pageName, const RecordingGfx& gfx,
+                   const std::vector<int>& headerRows) {
+  for (const auto& entry : gfx.texts) {
+    if (entry.y >= Layout::CONTENT.y) continue;
+    bool isHeader = false;
+    for (int y : headerRows) {
+      if (y == entry.y) { isHeader = true; break; }
+    }
+    if (isHeader) continue;
+
+    std::fprintf(stderr,
+                 "content bounds FAIL: %s drew \"%s\" at y=%d, above CONTENT "
+                 "top %d -- the header rule slices it\n",
+                 pageName, entry.text.c_str(), entry.y, Layout::CONTENT.y);
+    ++g_failures;
+  }
+}
+
 // One page's worth of drawing, checked against the region it owns.
 void checkBottomBound(const char* pageName, const RecordingGfx& gfx) {
   const int contentTop = Layout::CONTENT.y;
@@ -103,6 +141,63 @@ void checkBottomBound(const char* pageName, const RecordingGfx& gfx) {
   }
 }
 
+// The footer stacks into two full-width rows when either hint overflows its
+// half column. Both rows must land inside the 16 px band and must not share a
+// pixel row with each other -- on GENRE they did both, so the top row lost its
+// ascenders and the bottom row was cut by the edge of the screen.
+void checkStackedFooter(RecordingGfx& gfx) {
+  const int footerTop = Layout::FOOTER.y;
+  const int footerBottom = Layout::FOOTER.y + Layout::FOOTER.h;
+
+  // Long enough to force the stacked layout, which is the case that breaks.
+  LayoutManager::drawFooter(gfx, "U/D:FIELD L/R:CHANGE",
+                            "G:GEN P:DEPTH M:APPLY");
+
+  std::vector<RecordingGfx::TextEntry> rows;
+  for (const auto& entry : gfx.texts) {
+    if (entry.y >= footerTop - 4) rows.push_back(entry);
+  }
+
+  if (rows.size() != 2) {
+    std::fprintf(stderr,
+                 "footer FAIL: expected two stacked rows, recorded %zu\n",
+                 rows.size());
+    ++g_failures;
+    return;
+  }
+
+  // kFont5x7GlyphHeight is 7 px of ink plus 1 px of spacing. The bottom bound
+  // is about ink; the distance between rows is about the spacing the font
+  // design assumes, and losing it is what made the two rows illegible.
+  const int inkHeight = gfx.fontHeight() - 1;
+
+  for (const auto& row : rows) {
+    if (row.y < footerTop) {
+      std::fprintf(stderr,
+                   "footer FAIL: \"%s\" starts at y=%d, above the footer "
+                   "band top %d\n", row.text.c_str(), row.y, footerTop);
+      ++g_failures;
+    }
+    const int bottom = row.y + inkHeight;
+    if (bottom > footerBottom) {
+      std::fprintf(stderr,
+                   "footer FAIL: \"%s\" bottoms out at %d, past the footer "
+                   "band %d -- the screen edge cuts it\n",
+                   row.text.c_str(), bottom, footerBottom);
+      ++g_failures;
+    }
+  }
+
+  if (rows[1].y - rows[0].y < gfx.fontHeight()) {
+    std::fprintf(stderr,
+                 "footer FAIL: rows are %d px apart, less than the font's %d -- "
+                 "\"%s\" and \"%s\" touch\n",
+                 rows[1].y - rows[0].y, gfx.fontHeight(),
+                 rows[0].text.c_str(), rows[1].text.c_str());
+    ++g_failures;
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -112,6 +207,8 @@ int main() {
   static_assert(Layout::CONTENT.h == 93, "CONTENT height moved");
   static_assert(Layout::LINE_HEIGHT == 12, "line grid changed");
 
+  const std::vector<int> headerRows = headerRowsY();
+
   {
     MiniAcid engine(kTestSampleRate, nullptr);
     AudioGuard guard{};
@@ -120,6 +217,7 @@ int main() {
     page.onEnter(0);
     page.draw(gfx);
     checkBottomBound("FeelPage", gfx);
+    checkTopBound("FeelPage", gfx, headerRows);
   }
 
   {
@@ -129,6 +227,7 @@ int main() {
     page.onEnter(0);
     page.draw(gfx);
     checkBottomBound("GenrePage", gfx);
+    checkTopBound("GenrePage", gfx, headerRows);
   }
 
   {
@@ -138,6 +237,34 @@ int main() {
     page.onEnter(0);
     page.draw(gfx);
     checkBottomBound("PhrasePage", gfx);
+    checkTopBound("PhrasePage", gfx, headerRows);
+  }
+
+  {
+    MiniAcid engine(kTestSampleRate, nullptr);
+    RecordingGfx gfx;
+    SongPage page(gfx, engine, AudioGuard{});
+    page.onEnter(0);
+    page.draw(gfx);
+    checkBottomBound("SongPage", gfx);
+    checkTopBound("SongPage", gfx, headerRows);
+  }
+
+  {
+    MiniAcid engine(kTestSampleRate, nullptr);
+    MusicalEventRouter router;
+    PerformanceKeyboard keyboard(router);
+    RecordingGfx gfx;
+    PerformPage page(gfx, engine, keyboard);
+    page.onEnter(0);
+    page.draw(gfx);
+    checkBottomBound("PerformPage", gfx);
+    checkTopBound("PerformPage", gfx, headerRows);
+  }
+
+  {
+    RecordingGfx gfx;
+    checkStackedFooter(gfx);
   }
 
   if (g_failures == 0) {
