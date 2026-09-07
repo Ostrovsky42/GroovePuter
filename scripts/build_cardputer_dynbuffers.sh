@@ -60,6 +60,11 @@ if grep -Fq "${STOCK_PATH}" "${MAP}"; then
   exit 1
 fi
 
+# The FS1 profile must not be able to pass silently over the fixed-DRAM
+# ceiling. Recovering runtime heap does not repeal the static budget, and this
+# profile previously skipped the authoritative gate every other profile runs.
+bash "${SCRIPT_DIR}/check_cardputer_dram_budget.sh" "${BUILD_PATH}/GroovePuter.ino.elf"
+
 echo "=== FS1 dynamic-FatFs Cardputer build PASS ==="
 echo "candidate: ${FATFS_OUT}/libfatfs.a"
 echo "sdk overlay: ${SDK_OVERLAY}"
