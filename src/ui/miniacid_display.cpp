@@ -358,10 +358,12 @@ void MiniAcidDisplay::syncVisualStyle_() {
     }
 }
 
-void MiniAcidDisplay::nextPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::nextPage(bool workflowModifier) {
+    // Either source counts. The hardware query stays so the device keeps the
+    // exact behaviour it had; the argument is what makes the same gesture
+    // reachable where hardwareWorkflowModifierHeld() is compiled out to false.
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(1);
         return;
     }
@@ -369,10 +371,9 @@ void MiniAcidDisplay::nextPage() {
         ui_session_, page_index_, 1, false));
 }
 
-void MiniAcidDisplay::previousPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::previousPage(bool workflowModifier) {
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(-1);
         return;
     }
@@ -644,8 +645,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        if (event.key == ']') { nextPage(); return true; }
-        if (event.key == '[') { previousPage(); return true; }
+        if (event.key == ']') { nextPage(event.meta); return true; }
+        if (event.key == '[') { previousPage(event.meta); return true; }
 
         if (event.key == 'h') {
             showToast("[ ] workspaces  Fn+M menu  Alt+H help", 2200);

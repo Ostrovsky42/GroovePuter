@@ -36,8 +36,11 @@ public:
       else fn();
   }
 
-  void nextPage();
-  void previousPage();
+  // Fn arrives in the UIEvent as `meta` on the Cardputer, and the emulator
+  // has no hardware Fn to poll at all, so the modifier travels with the
+  // caller instead of being read from a global keyboard state.
+  void nextPage(bool workflowModifier = false);
+  void previousPage(bool workflowModifier = false);
   void goToPage(int index);
   void togglePreviousPage();
   void dismissSplash();

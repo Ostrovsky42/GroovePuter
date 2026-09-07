@@ -207,10 +207,10 @@ static void handleEvents(AppState& s) {
         }
         SDL_UnlockAudioDevice(s.audio.device);
       } else if (sc == SDL_SCANCODE_LEFTBRACKET) {
-        if (s.ui) s.ui->previousPage();
+        if (s.ui) s.ui->previousPage((SDL_GetModState() & KMOD_GUI) != 0);
         if (s.ui) s.ui->update();
       } else if (sc == SDL_SCANCODE_RIGHTBRACKET) {
-        if (s.ui) s.ui->nextPage();
+        if (s.ui) s.ui->nextPage((SDL_GetModState() & KMOD_GUI) != 0);
         if (s.ui) s.ui->update();
       } else if (sc == SDL_SCANCODE_I) {
         SDL_LockAudioDevice(s.audio.device);
