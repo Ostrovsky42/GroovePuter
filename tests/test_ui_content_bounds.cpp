@@ -35,6 +35,7 @@
 #include "src/ui/pages/perform_page.h"
 #include "src/ui/pages/phrase_page.h"
 #include "src/ui/pages/song_page.h"
+#include "src/ui/pages/synth_sequencer_page.h"
 #include "src/ui/layout_manager.h"
 #include "src/ui/screen_geometry.h"
 
@@ -295,6 +296,34 @@ int main() {
     checkBottomBound("PerformPage", gfx);
     checkTopBound("PerformPage", gfx, headerRows);
     checkRightBound("PerformPage", gfx);
+  }
+
+  // The melody editor, on the source it actually renders. It was missing from
+  // this gate while being the page under the heaviest change, so two of its
+  // hints were clipped on screen before anyone noticed.
+  {
+    MiniAcid engine(kTestSampleRate, nullptr);
+    RecordingGfx gfx;
+    SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
+    page.onEnter(0);
+    (void)engine.makePhrase(0);
+    page.draw(gfx);
+    // A gate that silently rendered the Pattern view would prove nothing, so
+    // check the melody path was the one exercised before believing its result.
+    bool drewMelody = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "MELODY") drewMelody = true;
+    }
+    if (!drewMelody) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the melody editor was never rendered, "
+                   "so this page was not actually under test\n");
+      ++g_failures;
+    }
+
+    checkBottomBound("SynthSequencerPage(melody)", gfx);
+    checkTopBound("SynthSequencerPage(melody)", gfx, headerRows);
+    checkRightBound("SynthSequencerPage(melody)", gfx);
   }
 
   {

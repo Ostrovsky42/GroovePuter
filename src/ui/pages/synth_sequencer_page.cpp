@@ -265,7 +265,9 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4 + textWidth(gfx, "MELODY") + 10, bounds.y, where);
+  const int whereX = bounds.x + 4 + textWidth(gfx, "MELODY") + 10;
+  gfx.drawText(whereX, bounds.y, where);
+  gfx.drawText(whereX + textWidth(gfx, where) + 10, bounds.y, "ALT+R SRC");
 
   // One editor. Horizontal is time, vertical is pitch -- the only two claims
   // the material actually makes. The overview strip and the magnified lane are
@@ -430,7 +432,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
 
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(bounds.x + 4, bounds.y + 84,
-               "ENTER ADD  J JOIN  BS DEL  ^Z UNDO  ALT+R SRC");
+               "ENTER ADD  J JOIN  BS DEL  ^Z UNDO");
 
   UI::drawStandardFooter(gfx,
                          "SPACE LISTEN/STOP  U/D HIGHER LOWER",
