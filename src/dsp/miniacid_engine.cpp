@@ -3903,6 +3903,41 @@ MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const
   return sequencedSource_[clamp303Voice(voiceIndex)];
 }
 
+bool MiniAcid::makePhrase(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  // One-way. A voice already on Phrase keeps what it has; re-projecting would
+  // silently discard every edit made since the conversion.
+  if (sequencedSource_[voiceIndex] == SequencedSource::Phrase) return false;
+
+  // Same projection inputs the runtime bank already uses, so converted material
+  // sounds like the Pattern it came from rather than a second interpretation.
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  const int swingPct = std::clamp(
+      static_cast<int>(scene.feel.swingPct), 50, 75);
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(voiceIndex);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = voiceIndex == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // Project into a candidate first. A failed projection must leave the voice
+  // exactly as it was, with neither half of the conversion committed.
+  PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+  if (PhraseRuntime::projectPatternToRuntimeEvents(
+          activeSynthPattern(voiceIndex), settings, candidate) !=
+      PhraseRuntime::PatternProjectionStatus::Ready) {
+    return false;
+  }
+
+  currentPhrase_[voiceIndex] = candidate;
+  sequencedSource_[voiceIndex] = SequencedSource::Phrase;
+  return true;
+}
+
 bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
   if (barCount != 1 && barCount != 2 && barCount != 4 && barCount != 8) {
     return false;

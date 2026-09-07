@@ -371,6 +371,11 @@ public:
   // RuntimeSynthEvent stays free of any target field.
   void setSequencedSource(int voiceIndex, SequencedSource source);
   SequencedSource currentSequencedSource(int voiceIndex) const;
+  // U4B6: the explicit, one-way entry into the Phrase source. Projects the
+  // voice's active Pattern into bounded Phrase material and moves the source,
+  // or changes nothing at all. A voice already on Phrase is left untouched:
+  // re-projecting would silently discard edits made since the conversion.
+  bool makePhrase(int voiceIndex);
   bool setPhraseLength(int voiceIndex, uint8_t barCount);
   PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
   const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(
