@@ -18,6 +18,11 @@ int main() {
     assert(recordMatches(record, 0x12345678u, true));
     assert(!recordMatches(record, 0x12345678u, false));
     assert(!recordMatches(record, 0x87654321u, true));
+    assert(record.snapshot.minimumInternal8 == 0);
+    assert(record.snapshot.minimumInternalDefault == 0);
+    assert(record.snapshot.freeInternalDma == 0);
+    assert(record.snapshot.minimumInternalDma == 0);
+    assert(record.snapshot.largestInternalDma == 0);
 
     // A torn RTC publication and a power-on reset are both rejected before
     // task phases are interpreted as prior-boot evidence.

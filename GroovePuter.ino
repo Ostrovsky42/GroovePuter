@@ -327,6 +327,7 @@ void setup() {
   markBootStage(10, "before M5Cardputer.begin");
   M5Cardputer.begin(cfg);
   markBootStage(11, "after M5Cardputer.begin");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-M5");
 
   // Configure ES8311 without creating a temporary M5Unified I2S channel.
   // These values match M5Unified's Cardputer ADV speaker callback.
@@ -351,6 +352,7 @@ void setup() {
   markBootStage(g_audioOutputReady ? 22 : 922,
                 g_audioOutputReady ? "after direct I2S init"
                                    : "direct I2S init failed");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-I2S");
   
   // Seed random number generator with hardware RNG
   srand(esp_random());
@@ -365,6 +367,7 @@ void setup() {
   g_display.setRotation(1);
   g_display.begin();
   markBootStage(31, "after display.begin");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-DISPLAY");
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
@@ -399,6 +402,7 @@ void setup() {
   logHeapCaps("before-audio-task");
   startAudioTask();
   logHeapCaps("after-audio-task");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-AUDIO-TASK");
 
   // Each TempoDelay needs one contiguous 8.6KB block. Reserve both before SD
   // and SMF runtime fragment the DRAM-only Cardputer ADV heap.
@@ -407,6 +411,7 @@ void setup() {
   g_miniAcidInstance.preallocateConstrainedDelayBuffers();
   markBootStage(87, "after critical DSP buffers");
   logHeapCaps("after-critical-dsp-buffers");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-DSP");
 
   // Mount SD while enough contiguous internal memory remains. MiniAcid::init()
   // calls initializeStorage() again, but SceneStorageCardputer treats that as
@@ -415,15 +420,22 @@ void setup() {
   markBootStage(82, "before early SD init");
   g_sceneStorage.initializeStorage();
   markBootStage(83, "after early SD init");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-SD");
 
-  // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
-  // UI allocations fragment the DRAM-only Cardputer ADV heap.
-  screenLog("4c. SMF Runtime...");
+  // LazyCardputerSmfPlayer (cardputer_smf_player_registry.cpp) already exists
+  // to defer this ~9 KB task/queue allocation until the player is actually
+  // used (requestLoad/play/etc. call ensureStarted()). Calling
+  // beginCardputerSmfPlayerService() here defeated that on every boot,
+  // spending the memory whether or not the user ever opens MIDI Player --
+  // exactly the M2 plan's open item
+  // (docs/superpowers/plans/2026-09-07-midi-memory.md). Dispatch code that
+  // reads the not-yet-registered SMF queue already null-checks
+  // (cardputer_usb_midi_transport.cpp: dispatchSmfPanic() returns before
+  // reaching the two unguarded g_smfQueue-> calls), so leaving it unstarted
+  // here is safe.
+  screenLog("4c. SMF Runtime (lazy)...");
   markBootStage(84, "before SMF runtime init");
-  if (!beginCardputerSmfPlayerService()) {
-    Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
-  }
-  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-SMF");
   markBootStage(85, "after SMF runtime init");
 
   // Global MIDI settings must be restored before the dispatcher starts. The
@@ -446,6 +458,7 @@ void setup() {
   } else {
     markBootStage(53, "after USB MIDI sink");
   }
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-USB-DEVICE");
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
@@ -468,6 +481,7 @@ void setup() {
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-ENGINE");
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
@@ -479,6 +493,7 @@ void setup() {
      g_miniAcid->sampleIndex.scanDirectory("/samples");
   }
   markBootStage(61, "after sample scan");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-SAMPLE-SCAN");
 
   for (const auto& file : g_miniAcid->sampleIndex.getFiles()) {
       Serial.printf("Found sample: %s (id=%u)\n", file.filename.c_str(), file.id.value);
@@ -498,6 +513,7 @@ void setup() {
     while (true) { delay(1000); }
   }
   markBootStage(71, "after MiniAcidDisplay alloc");
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-UI");
   Serial.println("7b. UI setAudioGuard");
   
   // Pause the renderer only at a block boundary while existing UI mutation
@@ -529,7 +545,7 @@ void setup() {
   Serial.println("10. First drawUI...");
   markBootStage(94, "before first drawUI");
   drawUI();
-  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::sampleAndReportFromControlTask("MEM-FIRST-DRAW");
   markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
   markBootStage(100, "setup-complete");

@@ -56,6 +56,35 @@ const char* visualStyleName(VisualStyle style) {
         default: return "CARBON";
     }
 }
+
+// Worst-case observed cost of createPage_() for this index: the actual
+// (freeBefore - freeAfter) delta createPage_() itself measures. Ported from
+// the P3 branch's docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md, where
+// sizeof(PageType) was tried first and rejected -- it only measures the page
+// object's own footprint, not memory its constructor separately heap-owns,
+// and undercounted the real cost enough to let an unsafe allocation through
+// anyway. Re-measure per branch if the page set or their constructors change;
+// these numbers are this codebase's, not a general ESP32 constant.
+size_t pageAllocationSize(int index) {
+    switch (index) {
+        case 0:  return 172;   // GenrePage
+        case 1:
+        case 2:  return 1036;  // SynthSequencerPage
+        case 5:  return 1528;  // DrumSequencerPage
+        case 6:  return 388;   // SongPage
+        case 7:  return 364;   // SequencerHubPage
+        case 8:  return 140;   // FeelTexturePage
+        case 9:  return 156;   // SettingsPage
+        case 10: return 2176;  // ProjectPage (scene/sample-list dependent)
+        case 11: return 164;   // ModePage
+        case 12: return 136;   // PerformPage
+        case WorkflowPages::kPhrase:     return 300;  // PhrasePage
+        case WorkflowPages::kPhraseCore: return 292;  // PhrasePage (core mode)
+        case WorkflowPages::kSampler:    return 196;  // SamplerPage
+        case kSmfPlayerPage:             return 484;  // SmfPlayerPage
+        default: return 0;
+    }
+}
 } // namespace
 
 MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
@@ -102,8 +131,15 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
     
     pages_.resize(kPageCount);
-    pages_[page_index_] = createPage_(page_index_);
-    
+    // Route through getPage_(), not createPage_() directly: the persisted
+    // session can restore any page as the startup page (including one whose
+    // construction cost doesn't fit in the free DRAM available this boot),
+    // and only getPage_() applies the low-memory guard. A page skipped here
+    // falls back to the existing "PAGE INDEX INVALID" render path. Ported
+    // from the P3 branch's docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md
+    // — this exact bypass reproduced a hard boot-loop there.
+    getPage_(page_index_);
+
     applyPageBounds_();
     applied_visual_style_ = UI::currentStyle;
     visual_style_initialized_ = true;
@@ -175,6 +211,37 @@ IPage* MiniAcidDisplay::getPage_(int index) {
             if (!aggressive && i == previous_page_index_) keep = true;
             if (!keep && pages_[i]) pages_[i].reset();
         }
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+        // Refuse the switch rather than attempt an allocation that could fail
+        // and crash (this build has no exceptions, so make_unique cannot fail
+        // gracefully on its own). pages_[index] stays null; the caller's
+        // existing "PAGE INDEX INVALID" fallback renders instead, and this
+        // retries on the next navigation attempt once heap recovers. Ported
+        // from the P3 branch's
+        // docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md.
+        const size_t neededBytes = pageAllocationSize(index);
+        // 512 B proved crash-free but blocked routine navigation almost
+        // unconditionally in P3; 70 B sits inside the confirmed gap there
+        // between an observed crash and an observed success for the same
+        // page. Re-validate this margin against this branch's own hardware
+        // measurements before trusting it further than "not obviously wrong".
+        constexpr size_t kSafetyMarginBytes = 70;
+        // INTERNAL|8BIT, not INTERNAL|DEFAULT: matching createPage_()'s own
+        // "DRAM: N bytes free" measurement above and every other free-heap
+        // print in this file. The two caps report different totals on this
+        // target; checking DEFAULT let a page through that 8BIT already knew
+        // didn't fit, and it crashed anyway.
+        const uint32_t freeForPage =
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (neededBytes > 0 && freeForPage < neededBytes + kSafetyMarginBytes) {
+            Serial.printf(
+                "[UI] Page %d creation skipped: low memory (free=%u need=%zu)\n",
+                index, (unsigned)freeForPage, neededBytes);
+            showToast("LOW MEMORY", 1200);
+            return pages_[index] ? pages_[index].get() : nullptr;
+        }
+#endif
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {

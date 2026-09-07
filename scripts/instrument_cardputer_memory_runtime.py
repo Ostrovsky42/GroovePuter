@@ -147,6 +147,10 @@ static uint32_t g_memoryBaselineMinFreeInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineMinLargestInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineLastSampleMs = 0;
 static uint32_t g_memoryBaselineLastLogMs = 0;
+// M0 proved that the normal image reaches a 528 B boot minimum. Repeated
+// printf/integrity scans are not admissible there; retain the end-of-setup
+// snapshot but do not perturb the runtime while checking its stability.
+static constexpr bool kMemoryBaselinePeriodicLogging = false;
 
 static void sampleCardputerMemoryBaseline() {
   const uint32_t free8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -246,12 +250,12 @@ static void prewarmCardputerMemoryLocalMinimumMonitor() {
 
 static void startCardputerMemoryBaseline() {
   g_memoryBaselineRuntimeStarted = true;
-  prewarmCardputerMemoryLocalMinimumMonitor();
   sampleCardputerMemoryBaseline();
   logCardputerMemoryBaseline("runtime-start");
 }
 
 static void pollCardputerMemoryBaseline() {
+  if (!kMemoryBaselinePeriodicLogging) return;
   const uint32_t nowMs = millis();
   if (static_cast<int32_t>(nowMs - g_memoryBaselineLastSampleMs) >= 10) {
     g_memoryBaselineLastSampleMs = nowMs;
@@ -334,6 +338,15 @@ loop_injection = '''void loop() {
   M5Cardputer.update();
   pollCardputerMemoryBaseline();'''
 
+# ESP-IDF allocates bookkeeping on the first local-minimum monitor use.  Doing
+# that after restored pages leave ~1.6 KiB can reset the diagnostic image and
+# hide the very baseline it is meant to capture.  Prewarm while the early heap
+# is still contiguous; later PHRASE probes reuse this bookkeeping.
+m5_prewarm_anchor = "  M5Cardputer.begin(cfg);\n"
+m5_prewarm_injection = """  M5Cardputer.begin(cfg);
+  prewarmCardputerMemoryLocalMinimumMonitor();
+"""
+
 # P3 diagnostic scenario. The product graph never reaches the PHRASE sequenced
 # source, so the diagnostic image has to drive it explicitly for either the
 # runtime measurement or the audible comparison to mean anything.
@@ -383,6 +396,7 @@ p3_loop_injection = """  pollCardputerMemoryBaseline();
 
 for anchor, replacement, label in (
     (state_anchor, state_injection, "state"),
+    (m5_prewarm_anchor, m5_prewarm_injection, "m5-prewarm"),
     (setup_anchor, setup_injection, "setup"),
     (loop_anchor, loop_injection, "loop"),
     (p3_include_anchor, p3_include_injection, "p3-include"),

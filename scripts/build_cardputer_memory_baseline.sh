@@ -41,6 +41,11 @@ rsync -a --delete \
 if [[ "${IMAGE_KIND}" == "runtime" ]]; then
   python3 "${SOURCE_ROOT}/scripts/instrument_cardputer_memory_runtime.py" \
     "${SOURCE_ROOT}"
+  # GroovePuter.ino's CardputerRuntimeDiagnostics::sampleAndReportFromControlTask()
+  # calls compile to no-ops without this macro (see
+  # src/platform/cardputer_runtime_diagnostics.h), which silently drops every
+  # [MEM-*] boot-stage snapshot this script exists to capture.
+  export GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-} -DGROOVEPUTER_RUNTIME_DIAGNOSTICS=1"
 fi
 
 case "${PROFILE}" in

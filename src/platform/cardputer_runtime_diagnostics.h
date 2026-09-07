@@ -58,9 +58,14 @@ struct AllocationFailure {
 struct MemorySnapshot {
     uint32_t sequence;
     uint32_t freeInternal8;
+    uint32_t minimumInternal8;
     uint32_t largestInternal8;
     uint32_t freeInternalDefault;
+    uint32_t minimumInternalDefault;
     uint32_t largestInternalDefault;
+    uint32_t freeInternalDma;
+    uint32_t minimumInternalDma;
+    uint32_t largestInternalDma;
     uint32_t integrityDurationUs;
     uint8_t integrityOk;
     uint8_t reserved[3];
@@ -155,12 +160,14 @@ void begin(uint32_t buildSignature, bool retainedReset);
 void registerCurrentTask(Task task);
 void checkpoint(Task task, Phase phase);
 void sampleFromControlTask();
+void sampleAndReportFromControlTask(const char* label);
 void reportFromControlTask();
 #else
 inline void begin(uint32_t, bool) {}
 inline void registerCurrentTask(Task) {}
 inline void checkpoint(Task, Phase) {}
 inline void sampleFromControlTask() {}
+inline void sampleAndReportFromControlTask(const char*) {}
 inline void reportFromControlTask() {}
 #endif
 

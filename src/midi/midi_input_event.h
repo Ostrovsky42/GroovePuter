@@ -20,6 +20,20 @@ enum class InputKind : uint8_t {
     AllSoundOff,
 };
 
+enum class ResetReason : uint8_t {
+    Detach,
+    InputDisabled,
+    FilterChanged,
+    Overflow,
+    SourcePanic,
+    TargetChanged,
+};
+
+struct InputSession {
+    InputSource source{InputSource::Qwerty};
+    uint32_t generation{0};
+};
+
 struct InputKey {
     InputSource source{InputSource::Qwerty};
     uint32_t generation{0};

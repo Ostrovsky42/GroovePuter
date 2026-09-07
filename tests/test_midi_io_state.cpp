@@ -42,7 +42,7 @@ void staleInputIsRejectedAfterDetach() {
     state.boot();
     state.usbAttached();
     state.usbReady(true, false);
-    const uint32_t session = state.usbSessionGeneration();
+    const uint32_t session = state.usbInputGeneration();
 
     assert(state.acceptsInput(noteOn(session, 60)));
     state.usbDetached();
@@ -77,7 +77,8 @@ void uartRouteIsIndependentOfUsbLifecycle() {
     state.usbFault();
 
     assert(state.acceptsInput(MidiInputEvent{
-        InputKey{InputSource::Uart, 77, 15, 127}, InputKind::NoteOn, 1, 0}));
+        InputKey{InputSource::Uart, state.uartInputGeneration(), 15, 127},
+        InputKind::NoteOn, 1, 0}));
 }
 
 void invalidMidiAddressIsRejected() {
@@ -89,6 +90,42 @@ void invalidMidiAddressIsRejected() {
         InputKey{InputSource::Uart, 0, 0, 128}, InputKind::NoteOn, 100, 0}));
 }
 
+void staleEnumerationCompletionCannotReadyNewAttachment() {
+    MidiIoState state;
+    state.setRoutes(MidiRoutes{true, false, false, false});
+    state.requestUsbRole(UsbRole::Host);
+    state.boot();
+    state.usbAttached();
+    const uint32_t firstAttach = state.usbAttachGeneration();
+    state.usbDetached();
+    state.usbAttached();
+
+    state.usbReady(firstAttach, true, false);
+    assert(state.usbPhase() == UsbPhase::Enumerating);
+    assert(!state.usbCanReceive());
+
+    state.usbReady(state.usbAttachGeneration(), true, false);
+    assert(state.usbPhase() == UsbPhase::Ready);
+}
+
+void uartGenerationChangesWhenInputIsDisabled() {
+    MidiIoState state;
+    state.setRoutes(MidiRoutes{false, true, false, false});
+    const uint32_t acceptedGeneration = state.uartInputGeneration();
+    assert(state.acceptsInput(MidiInputEvent{
+        InputKey{InputSource::Uart, acceptedGeneration, 0, 60},
+        InputKind::NoteOn, 100, 0}));
+
+    state.setRoutes(MidiRoutes{false, false, false, false});
+    state.setRoutes(MidiRoutes{false, true, false, false});
+    assert(!state.acceptsInput(MidiInputEvent{
+        InputKey{InputSource::Uart, acceptedGeneration, 0, 60},
+        InputKind::NoteOn, 100, 0}));
+    assert(state.acceptsInput(MidiInputEvent{
+        InputKey{InputSource::Uart, state.uartInputGeneration(), 0, 60},
+        InputKind::NoteOn, 100, 0}));
+}
+
 }  // namespace
 
 int main() {
@@ -97,4 +134,6 @@ int main() {
     criticalOverflowRequestsRecoveryWithoutNeedingQueueSpace();
     uartRouteIsIndependentOfUsbLifecycle();
     invalidMidiAddressIsRejected();
+    staleEnumerationCompletionCannotReadyNewAttachment();
+    uartGenerationChangesWhenInputIsDisabled();
 }
