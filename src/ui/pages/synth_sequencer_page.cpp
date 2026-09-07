@@ -19,6 +19,7 @@
 #include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_insert_edit.h"
+#include "../phrase_source_toggle.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
@@ -47,6 +48,21 @@ static_assert(kNotesTabStripX + kTabStripW <= Layout::SCREEN_W,
 
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+}
+
+// ALT+R switches a voice between its Pattern and its Phrase. R is arbitrary --
+// ALT+P is the global jump to the MIDI player and cannot be taken on one page
+// without making the shortcut mean two things -- so the label carries the
+// meaning instead of the letter.
+bool isSourceToggleKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+      !event.alt || event.ctrl || event.meta) {
+    return false;
+  }
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'r' || event.scancode == GROOVEPUTER_R;
 }
 
 bool isOutputCycleKey(const UIEvent& event) {
@@ -472,7 +488,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   // discoverable without competing with the four keys a beginner needs first.
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(bounds.x + 4, bounds.y + 82,
-               "ENTER ADD   BS DELETE   CTRL+Z UNDO");
+               "ENTER ADD  BS DELETE  ^Z UNDO  ALT+R PATTERN");
 
   // "CUT" sat next to the length and read as a command. It is a consequence, so
   // it is spelled as one -- and it gets its own column, because sharing a line
@@ -684,6 +700,19 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       }
       return true;
     }
+  }
+
+  // The source switch belongs to both views, so it sits above the PHRASE-only
+  // handler: from PATTERN there is otherwise no way back except three
+  // keypresses on the MORE tab.
+  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
+    PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
+                          MiniAcid::SequencedSource::Phrase
+                      ? "SOURCE: MELODY"
+                      : "SOURCE: PATTERN",
+                  1000);
+    return true;
   }
 
   if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;

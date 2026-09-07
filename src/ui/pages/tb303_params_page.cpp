@@ -8,6 +8,7 @@
 #endif
 #include "tb303_params_page.h"
 #include "../ui_common.h"
+#include "../phrase_source_toggle.h"
 #include "../ui_utils.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
@@ -741,35 +742,12 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     return;
   }
   if (make_phrase_control_ && make_phrase_control_->isFocused()) {
-    // The receipt carries the source as well as the material, so Ctrl+Z
-    // restores PATTERN/PHRASE truth and the buffer together rather than
-    // leaving the voice on one source holding the other's content.
-    const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
-                          MiniAcid::SequencedSource::Phrase;
-    GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
-    receipt.voiceIndex = static_cast<uint8_t>(voice_index_);
-    receipt.source = static_cast<uint8_t>(
-        mini_acid_.currentSequencedSource(voice_index_));
-    receipt.before = mini_acid_.currentPhraseBuffer(voice_index_);
-
-    withAudioGuard([&]() {
-      (void)GroovePuterUndo::undoOwner().commitRuntimePrepared(
-          GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
-            if (onPhrase) {
-              // Back to PATTERN. The phrase material is kept, so returning to
-              // PHRASE later does not re-project over edits.
-              mini_acid_.setSequencedSource(
-                  voice_index_, MiniAcid::SequencedSource::Pattern);
-            } else if (mini_acid_.currentPhraseBuffer(voice_index_).count > 0) {
-              // Material already exists: this is a source switch, not a
-              // conversion, so makePhrase() must not run again.
-              mini_acid_.setSequencedSource(
-                  voice_index_, MiniAcid::SequencedSource::Phrase);
-            } else {
-              (void)mini_acid_.makePhrase(voice_index_);
-            }
-          });
-    });
+    // One owner for the switch: ALT+R on the editor reaches the same code.
+    PhraseSourceToggle::toggle(mini_acid_,
+                               [&](const std::function<void()>& body) {
+                                 withAudioGuard(body);
+                               },
+                               voice_index_);
     return;
   }
   if (engine_type_control_ && engine_type_control_->isFocused()) {

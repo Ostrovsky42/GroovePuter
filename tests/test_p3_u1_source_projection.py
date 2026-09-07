@@ -25,8 +25,21 @@ require("handlePhraseNotesEvent" in SYNTH_HEADER and
         "handlePhraseNotesEvent" in SYNTH_SOURCE,
         "Synth NOTES controller has no PHRASE event boundary")
 
+# What is forbidden is a *member* holding a second copy of the source, not the
+# spelling itself. Scanning raw text made `#include "../phrase_source_toggle.h"`
+# trip the "phrase_source_" rule -- a header whose entire purpose is that there
+# is only one owner. Include lines carry no state, so they are excluded.
+def without_includes(text: str) -> str:
+    return "\n".join(line for line in text.splitlines()
+                      if not line.lstrip().startswith("#include"))
+
+
+SYNTH_HEADER_CODE = without_includes(SYNTH_HEADER)
+SYNTH_SOURCE_CODE = without_includes(SYNTH_SOURCE)
+
 for forbidden in ("phrase_source_", "phrase_mode_", "is_phrase_source_", "phraseSource_"):
-    require(forbidden not in SYNTH_HEADER and forbidden not in SYNTH_SOURCE,
+    require(forbidden not in SYNTH_HEADER_CODE and
+            forbidden not in SYNTH_SOURCE_CODE,
             f"Synth NOTES introduced a second UI-owned source state: {forbidden}")
 
 # Slice 2: actual PHRASE rendering must consume the one-event -> one-span
