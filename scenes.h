@@ -169,6 +169,8 @@ struct Song {
   bool reverse = false;
 };
 
+#include "src/state/material_slot.h"
+
 template <typename PatternType>
 struct Bank {
   static constexpr int kPatterns = 8;
@@ -376,6 +378,20 @@ struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
+
+  // M1: which representation each resident synth slot holds. Sized to the
+  // resident page, because that is where the patterns it describes live -- a
+  // kind must never travel separately from the material it names.
+  //
+  // Off-page slots read as Pattern today, which is true by construction while
+  // nothing can promote a slot. M2 introduces promotion and owes the page file
+  // the same field; that obligation is recorded there, not assumed away here.
+  static constexpr int kMaterialVoices = 2;
+  static constexpr int kMaterialSlotsPerVoice =
+      kBankCount * Bank<SynthPattern>::kPatterns;   // 16
+  GroovePuterMaterial::MaterialSlotDescriptor
+      materialSlots[kMaterialVoices][kMaterialSlotsPerVoice]{};
+
   SamplerPadState samplerPads[16];
   // OFF preserves pad assignments and must survive an explicit project save.
   bool samplerEnabled = true;
@@ -403,6 +419,57 @@ struct Scene {
       1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f // Drums
   };
 };
+
+namespace GroovePuterMaterial {
+
+// A flat comma-separated list, synth A then synth B. The scene document is
+// JSON, so a scene written before this existed simply has no such key and
+// decode() is handed nothing -- which is exactly the legacy case, and it
+// resolves to Pattern everywhere without needing a version number.
+inline bool encodeKinds(const Scene& scene, std::string& out) {
+  out.clear();
+  char buffer[8];
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      if (!out.empty()) out.push_back(',');
+      std::snprintf(buffer, sizeof(buffer), "%d",
+                    static_cast<int>(scene.materialSlots[voice][slot].kind));
+      out += buffer;
+    }
+  }
+  return true;
+}
+
+// Missing or short input leaves the remaining slots on Pattern. A value that is
+// not a known kind decodes as Pattern too, rather than being stored as an
+// unknown that later code would have to guess about.
+inline bool decodeKinds(const char* encoded, Scene& scene) {
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene.materialSlots[voice][slot].kind = MaterialKind::Pattern;
+    }
+  }
+  if (encoded == nullptr) return true;
+
+  int index = 0;
+  const char* cursor = encoded;
+  while (*cursor != '\0' &&
+         index < Scene::kMaterialVoices * Scene::kMaterialSlotsPerVoice) {
+    char* end = nullptr;
+    const long value = std::strtol(cursor, &end, 10);
+    if (end == cursor) break;
+    scene.materialSlots[index / Scene::kMaterialSlotsPerVoice]
+                       [index % Scene::kMaterialSlotsPerVoice].kind =
+        kindFromPersistedValue(static_cast<int>(value));
+    ++index;
+    cursor = end;
+    while (*cursor == ',' || *cursor == ' ') ++cursor;
+  }
+  return true;
+}
+
+}  // namespace GroovePuterMaterial
+
 
 // Shared transaction storage for scene parsing and pattern-page validation.
 // Both operations run synchronously through the UI/boot path, and neither may
@@ -1250,6 +1317,16 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeInt(PhraseCore::persistentValueAt(scene_->phraseBank, i))) return false;
   }
   if (!writeChar(']')) return false;
+
+  // M1: which representation each resident synth slot holds. A scene written
+  // before this existed simply lacks the key and decodes as all Pattern.
+  if (!writeLiteral(",\"matKind\":\"")) return false;
+  {
+    std::string kinds;
+    GroovePuterMaterial::encodeKinds(*scene_, kinds);
+    if (!writeLiteral(kinds.c_str())) return false;
+  }
+  if (!writeLiteral("\"")) return false;
 
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
