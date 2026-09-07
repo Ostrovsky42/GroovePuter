@@ -8,6 +8,7 @@
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
 #include <cstdarg>
 #include <cstdio>
@@ -495,6 +496,8 @@ void setup() {
 
 
 void loop() {
+  // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
+  MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
   LedManager::instance().update();
 
