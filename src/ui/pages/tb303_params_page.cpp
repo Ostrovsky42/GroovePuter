@@ -506,13 +506,14 @@ void TB303ParamsPage::layoutComponents() {
   // Both effects are per-voice post-engine stages in MiniAcid, so they are
   // available for every currently selectable synth engine.
   // Engine truth, copied into the row rather than reconstructed from page
-  // state. Once a voice is on PHRASE the conversion is spent: the row goes
-  // read-only instead of offering an action that would refuse.
+  // state. One-way applies to the material, not to the voice: the Pattern
+  // survives conversion, so the source stays switchable and the row stays
+  // enabled. Only the first move to PHRASE creates material.
   const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
-  make_phrase_control_->setLabel("PHRASE");
-  make_phrase_control_->setValue(onPhrase ? "PHRASE" : "MAKE");
-  make_phrase_control_->setEnabled(!onPhrase);
+  make_phrase_control_->setLabel("SRC");
+  make_phrase_control_->setValue(onPhrase ? "PHRASE" : "PATTERN");
+  make_phrase_control_->setEnabled(true);
 
   distortion_control_->setEnabled(true);
   delay_control_->setEnabled(true);
@@ -653,6 +654,8 @@ void TB303ParamsPage::updateTabFocusability() {
   filter_control_->setFocusable(more_tab_ && filter_control_->enabled());
   distortion_control_->setFocusable(more_tab_ && distortion_control_->enabled());
   delay_control_->setFocusable(more_tab_ && delay_control_->enabled());
+  make_phrase_control_->setFocusable(more_tab_ &&
+                                     make_phrase_control_->enabled());
 }
 
 void TB303ParamsPage::setActiveTab(bool more) {
@@ -738,16 +741,11 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     return;
   }
   if (make_phrase_control_ && make_phrase_control_->isFocused()) {
-    // One-way and explicit. A voice already on PHRASE is a benign no-op, not a
-    // failure: makePhrase() refuses so that a stray arrow cannot re-project
-    // over edits made since the conversion.
-    if (mini_acid_.currentSequencedSource(voice_index_) ==
-        MiniAcid::SequencedSource::Phrase) {
-      return;
-    }
     // The receipt carries the source as well as the material, so Ctrl+Z
     // restores PATTERN/PHRASE truth and the buffer together rather than
-    // leaving the voice on PHRASE with Pattern-era content.
+    // leaving the voice on one source holding the other's content.
+    const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
+                          MiniAcid::SequencedSource::Phrase;
     GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
     receipt.voiceIndex = static_cast<uint8_t>(voice_index_);
     receipt.source = static_cast<uint8_t>(
@@ -757,7 +755,19 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     withAudioGuard([&]() {
       (void)GroovePuterUndo::undoOwner().commitRuntimePrepared(
           GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
-            (void)mini_acid_.makePhrase(voice_index_);
+            if (onPhrase) {
+              // Back to PATTERN. The phrase material is kept, so returning to
+              // PHRASE later does not re-project over edits.
+              mini_acid_.setSequencedSource(
+                  voice_index_, MiniAcid::SequencedSource::Pattern);
+            } else if (mini_acid_.currentPhraseBuffer(voice_index_).count > 0) {
+              // Material already exists: this is a source switch, not a
+              // conversion, so makePhrase() must not run again.
+              mini_acid_.setSequencedSource(
+                  voice_index_, MiniAcid::SequencedSource::Phrase);
+            } else {
+              (void)mini_acid_.makePhrase(voice_index_);
+            }
           });
     });
     return;
@@ -848,7 +858,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY");
+                           "TYPE OSC FLT DST DLY SRC");
   }
 }
 
