@@ -268,6 +268,10 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   // spatial claim is the true one -- horizontal is time, width is duration.
   const int laneX = bounds.x + 4;
   const int laneW = std::max(32, bounds.w - 8);
+  // The shell's feel chip reports the Pattern grid, which this screen is not
+  // editing. Declining it removes a wrong label, not merely a busy one.
+  UI::publishShellFeelOverlay(false);
+
   const int laneTop = bounds.y + 24;
   constexpr int kLaneH = 24;
   const int blockY = laneTop + 4;
@@ -308,7 +312,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   if (detailStart + kDetailTicks > barEnd) detailStart = barEnd - kDetailTicks;
   const uint32_t detailEnd = detailStart + kDetailTicks;
 
-  const int detailTop = bounds.y + 50;
+  const int detailTop = bounds.y + 56;
   constexpr int kDetailH = 15;
   const int detailBlockY = detailTop + 2;
   constexpr int kDetailBlockH = 11;
@@ -391,8 +395,10 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   gfx.fillRect(cursorX, blockY + kBlockH + 3, 1,
                (laneTop + kLaneH) - (blockY + kBlockH + 3), COLOR_WHITE);
 
-  // The bracket ties the two strips together: this slice of the melody above is
-  // what the strip below shows enlarged, so magnification never costs position.
+  // Tying the two strips together is the whole job here. On its own a bracket
+  // reads as decoration, and two lanes stacked without an explanation read as
+  // two instruments. The link is therefore stated three ways at once: a bracket
+  // over the slice, guides fanning out to the box corners, and a caption.
   const int bracketY = laneTop + kLaneH;
   const int bracketFrom = tickToX(detailStart);
   const int bracketTo = tickToX(detailEnd);
@@ -400,14 +406,48 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
                voiceColor);
   gfx.fillRect(bracketFrom, bracketY - 2, 1, 3, voiceColor);
   gfx.fillRect(bracketTo - 1, bracketY - 2, 1, 3, voiceColor);
-  gfx.fillRect(bracketFrom, bracketY + 1,
-               std::max(1, bracketTo - bracketFrom), 1, IGfxColor::Black());
+
+  const int guideTop = bracketY + 1;
+  const int guideSteps = std::max(1, (detailTop - 1) - guideTop);
+  for (int step = 0; step <= guideSteps; ++step) {
+    const int left = bracketFrom + ((laneX - bracketFrom) * step) / guideSteps;
+    const int right = (bracketTo - 1) +
+        (((laneX + laneW - 1) - (bracketTo - 1)) * step) / guideSteps;
+    gfx.fillRect(left, guideTop + step, 1, 1, voiceColor);
+    gfx.fillRect(right, guideTop + step, 1, 1, voiceColor);
+  }
+
   gfx.drawRect(laneX, detailTop, laneW, kDetailH, voiceColor);
+
+  const char* caption = "ZOOMED IN ON THIS PART";
+  const int captionW = textWidth(gfx, caption);
+  const int captionX = laneX + (laneW - captionW) / 2;
+  gfx.fillRect(captionX - 3, guideTop, captionW + 6, 9, IGfxColor::Black());
+  gfx.setTextColor(voiceColor);
+  gfx.drawText(captionX, guideTop + 1, caption);
+
   gfx.fillRect(detailToX(cursorTick), detailTop + 1, 1, kDetailH - 2,
                COLOR_WHITE);
 
+  // Where the music is, kept distinct from where the cursor is: a solid bar in
+  // the voice colour riding the bottom of the lane, never crossing the block
+  // band it would otherwise hide.
+  if (mini_acid_.isPlaying()) {
+    const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
+    if (playTick >= barStart && playTick < barEnd) {
+      const int playX = tickToX(playTick);
+      gfx.fillRect(playX - 2, laneTop + kLaneH - 3, 5, 3, voiceColor);
+      gfx.fillRect(playX, blockY + kBlockH + 1, 1,
+                   (laneTop + kLaneH - 3) - (blockY + kBlockH + 1), voiceColor);
+    }
+    if (playTick >= detailStart && playTick < detailEnd) {
+      gfx.fillRect(detailToX(playTick), detailTop + 1, 1, kDetailH - 2,
+                   voiceColor);
+    }
+  }
+
   // What is selected, said in words, in one place.
-  const int statusY = bounds.y + 69;
+  const int statusY = bounds.y + 73;
   char status[48];
   if (selection.active) {
     char name[8];
@@ -418,8 +458,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
             phrase.events[selection.eventIndex].durationSubticks /
             PhraseRuntime::kSubticksPerTick),
         length, sizeof(length));
-    std::snprintf(status, sizeof(status), "SELECTED %s   LENGTH %s%s",
-                  name, length, selectionTruncated ? "  CUT" : "");
+    std::snprintf(status, sizeof(status), "SELECTED %s   %s", name, length);
     gfx.setTextColor(COLOR_WHITE);
   } else {
     std::snprintf(status, sizeof(status), "NO SOUND HERE");
@@ -427,14 +466,25 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   }
   gfx.drawText(bounds.x + 4, statusY, status);
 
+
   // Kept dim and off the two primary hint rows: delete and undo must stay
   // discoverable without competing with the four keys a beginner needs first.
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4, bounds.y + 79, "BS DELETE   CTRL+Z UNDO");
+  gfx.drawText(bounds.x + 4, bounds.y + 82, "BS DELETE  CTRL+Z UNDO");
+
+  // "CUT" sat next to the length and read as a command. It is a consequence, so
+  // it is spelled as one -- and it gets its own column, because sharing a line
+  // with the length ran the two strings together.
+  if (selectionTruncated) {
+    const char* stopped = "STOPPED BY NEXT";
+    gfx.setTextColor(voiceColor);
+    gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, stopped),
+                 bounds.y + 82, stopped);
+  }
 
   UI::drawStandardFooter(gfx,
-                         "SPACE LISTEN/STOP   L/R PICK",
-                         "U/D HIGHER LOWER   ALT+L/R LENGTH");
+                         "SPACE LISTEN/STOP  U/D HIGHER LOWER",
+                         "L/R PICK SOUND  ALT+L/R SHORTER LONGER");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {

@@ -3903,6 +3903,13 @@ MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const
   return sequencedSource_[clamp303Voice(voiceIndex)];
 }
 
+uint16_t MiniAcid::currentPhrasePlayTick(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return 0;
+  const uint16_t lengthTicks = currentPhrase_[voiceIndex].lengthTicks;
+  if (lengthTicks == 0) return 0;
+  return static_cast<uint16_t>(currentTick_ % lengthTicks);
+}
+
 bool MiniAcid::makePhrase(int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   // One-way. A voice already on Phrase keeps what it has; re-projecting would

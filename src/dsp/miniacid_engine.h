@@ -127,6 +127,9 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  // Where the phrase is sounding, in its own time. currentStep() is bar-local
+  // and would place the marker wrongly on any phrase longer than one bar.
+  uint16_t currentPhrasePlayTick(int voiceIndex) const;
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;

@@ -276,6 +276,11 @@ namespace UI {
         gShellFrameModel->setFooter(left, right);
     }
 
+    void publishShellFeelOverlay(bool visible) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->feelOverlay = visible;
+    }
+
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
         LayoutManager::drawFooter(gfx,
                                   footer.valid ? footer.left : "",
@@ -549,7 +554,8 @@ namespace UI {
         gfx.drawText(x, y, buf);
     }
 
-    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse) {
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse,
+                            bool showFeelOverlay) {
         const ThemePalette palette = themePalette();
         gfx.fillRect(Layout::PERFORMANCE_HUD.x,
                      Layout::PERFORMANCE_HUD.y,
@@ -557,7 +563,7 @@ namespace UI {
                      Layout::PERFORMANCE_HUD.h,
                      palette.background);
         drawWaveformOverlay(gfx, mini_acid);
-        drawFeelOverlay(gfx, mini_acid, feelPulse);
+        if (showFeelOverlay) drawFeelOverlay(gfx, mini_acid, feelPulse);
         // Mutes are intentionally last so their digits remain the topmost,
         // readable layer even while the waveform is moving.
         drawMutesOverlay(gfx, mini_acid);

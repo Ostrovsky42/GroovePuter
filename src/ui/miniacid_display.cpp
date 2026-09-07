@@ -256,7 +256,8 @@ void MiniAcidDisplay::update() {
     UI::drawShellFooter(gfx_, shellFrame.footer);
 
     updateCyclePulse_();
-    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
+    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_,
+                           shellFrame.feelOverlay);
 
     if (workspace_launcher_.isVisible()) {
         workspace_launcher_.draw(gfx_);

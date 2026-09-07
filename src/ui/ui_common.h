@@ -55,6 +55,7 @@ namespace UI {
     void beginShellFrameModel(UiShellFrameModel& model);
     void endShellFrameModel();
     void publishShellFooter(const char* left, const char* right = nullptr);
+    void publishShellFeelOverlay(bool visible);
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer);
 
     /**
@@ -99,7 +100,8 @@ namespace UI {
      * pixels first, then draws waveform, feel and mute activity in a stable
      * back-to-front order.
      */
-    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse);
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse,
+                            bool showFeelOverlay = true);
 
     /**
      * Global toast (single line).

@@ -63,8 +63,13 @@ def main() -> None:
             "U4B2 footer must name the cursor binding in plain words")
     require('HIGHER LOWER' in CPP,
             "U4B2 footer must name the pitch binding in plain words")
-    require('LENGTH' in CPP and 'UNDO' in CPP,
-            "U4B2 footer must keep length and undo permanently visible")
+    require('SHORTER' in CPP and 'LONGER' in CPP,
+            "U4B2 footer must name the length binding in plain words")
+    require('UNDO' in CPP,
+            "U4B2 must keep undo permanently visible")
+    require('ZOOMED' in CPP,
+            "the magnified strip must be captioned; an unlabelled second lane "
+            "reads as a second instrument")
     require('U/D:GRID' not in CPP,
             "Up/Down is bound to pitch now; advertising it as GRID would lie")
     require('selected' in CPP.lower() and 'drawRect' in CPP,

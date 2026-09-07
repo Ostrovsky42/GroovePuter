@@ -41,8 +41,15 @@ struct UiFooterModel {
 
 struct UiShellFrameModel {
   UiFooterModel footer{};
+  // The performance HUD's feel chip reports the Pattern grid. On a screen that
+  // is not editing a Pattern it is not merely noise, it is wrong, so a page can
+  // decline it for its own frame. Default stays on for every other page.
+  bool feelOverlay = true;
 
-  void clear() { footer.clear(); }
+  void clear() {
+    footer.clear();
+    feelOverlay = true;
+  }
   void setFooter(const char* left, const char* right = nullptr) {
     footer.set(left, right);
   }
