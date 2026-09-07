@@ -67,9 +67,17 @@ def main() -> None:
             "U4B2 footer must name the length binding in plain words")
     require('UNDO' in CPP,
             "U4B2 must keep undo permanently visible")
-    require('ZOOMED' in CPP,
-            "the magnified strip must be captioned; an unlabelled second lane "
-            "reads as a second instrument")
+    # The second lane is gone; the pitch axis replaced it. What must hold in
+    # its place is stronger, and is the reason the axis is safe to add:
+    # browsing the pitch range is a separate gesture from editing a pitch, and
+    # the browsing offset is view state that never becomes musical state.
+    require('phrase_pitch_offset_' in CPP,
+            "the pitch window must have an explicit browsing offset")
+    require('phrase_pitch_offset_' not in CONT,
+            "browsing the pitch range must not be persisted as session state")
+    require('phrase_pitch_offset_ = 0' in CPP,
+            "selecting another sound must reset the browsing offset, so the "
+            "window belongs to what is selected now")
     require('U/D:GRID' not in CPP,
             "Up/Down is bound to pitch now; advertising it as GRID would lie")
     require('selected' in CPP.lower() and 'drawRect' in CPP,

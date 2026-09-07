@@ -68,6 +68,11 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   uint32_t last_tab_switch_ms_ = 0;
   SynthTab synth_tab_ = SynthTab::Notes;
   PhraseNotesCursor::State phrase_cursor_{};
+  // Browsing offset for the pitch window only. It is view state, never
+  // musical state: it is clamped so the selected sound stays visible and
+  // it is not persisted, so looking around can never be mistaken for an
+  // edit or survive as one.
+  int phrase_pitch_offset_ = 0;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;

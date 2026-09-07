@@ -234,6 +234,10 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
 
+  // The shell's feel chip reports the Pattern grid, which this screen is not
+  // editing. Declining it removes a wrong label, not merely a busy one.
+  UI::publishShellFeelOverlay(false);
+
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
   if (!PhraseNotesProjection::validate(phrase)) {
     gfx.setTextColor(COLOR_WHITE);
@@ -248,13 +252,13 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const PhraseNotesViewport::Window viewport =
       PhraseNotesViewport::resolve(phrase.lengthTicks, focusBar);
   const PhraseNotesSelection::Selection selection =
-      PhraseNotesSelection::derive(phrase, cursorTick);
+      PhraseNotesSelection::deriveInCell(
+          phrase, cursorTick,
+          PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
   const IGfxColor voiceColor = synthTabColor(voice_index_);
 
   gfx.setTextColor(voiceColor);
   gfx.drawText(bounds.x + 4, bounds.y, "MELODY");
-  // Left of the tab strip, not right-aligned: the NOTES/KNOBS/MORE strip owns
-  // the top-right corner from x=190 and silently overdrew this line.
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u OF %u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
@@ -262,121 +266,73 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(bounds.x + 4 + textWidth(gfx, "MELODY") + 10, bounds.y, where);
 
-  const int overviewX = bounds.x + 4;
-  const int overviewW = std::max(16, bounds.w - 8);
-  constexpr int kOverviewH = 3;
-  const int overviewY = bounds.y + 10;
-  for (uint8_t bar = 0; bar < viewport.totalBars; ++bar) {
-    const int x0 = overviewX + static_cast<int>(
-        (static_cast<uint32_t>(bar) * overviewW) / viewport.totalBars);
-    const int x1 = overviewX + static_cast<int>(
-        (static_cast<uint32_t>(bar + 1u) * overviewW) / viewport.totalBars);
-    const int cellW = std::max(1, x1 - x0 - 1);
-    gfx.drawRect(x0, overviewY, cellW, kOverviewH, COLOR_LABEL);
-    if (bar == viewport.focusBar) {
-      gfx.fillRect(x0 + 1, overviewY + 1, std::max(1, cellW - 2),
-                   kOverviewH - 2, voiceColor);
-    }
-  }
+  // One editor. Horizontal is time, vertical is pitch -- the only two claims
+  // the material actually makes. The overview strip and the magnified lane are
+  // gone: a melody drawn on two axes has a shape, and a shape needs no second
+  // view to explain it.
+  const int planeX = bounds.x + 4;
+  const int planeW = std::max(32, bounds.w - 8);
+  const int planeTop = bounds.y + 17;
+  constexpr int kRowH = 5;
+  constexpr int kVisibleNotes = 11;
+  constexpr int kPlaneH = kRowH * kVisibleNotes;
 
-  // One horizontal lane. Vertical position carries no meaning at all, which is
-  // deliberate: the previous packing made a note's row depend on its
-  // neighbours, so the picture rearranged itself on every edit. Here the only
-  // spatial claim is the true one -- horizontal is time, width is duration.
-  const int laneX = bounds.x + 4;
-  const int laneW = std::max(32, bounds.w - 8);
-  // The shell's feel chip reports the Pattern grid, which this screen is not
-  // editing. Declining it removes a wrong label, not merely a busy one.
-  UI::publishShellFeelOverlay(false);
-
-  const int laneTop = bounds.y + 24;
-  constexpr int kLaneH = 24;
-  const int blockY = laneTop + 4;
-  constexpr int kBlockH = 16;
   const uint32_t barStart =
       static_cast<uint32_t>(viewport.focusBar) * PhraseRuntime::kTicksPerBar;
   const uint32_t barEnd = barStart + PhraseRuntime::kTicksPerBar;
 
   const auto tickToX = [&](uint32_t tick) -> int {
-    if (tick <= barStart) return laneX;
-    if (tick >= barEnd) return laneX + laneW;
-    return laneX + static_cast<int>(((tick - barStart) *
-        static_cast<uint32_t>(laneW)) / PhraseRuntime::kTicksPerBar);
+    if (tick <= barStart) return planeX;
+    if (tick >= barEnd) return planeX + planeW;
+    return planeX + static_cast<int>(((tick - barStart) *
+        static_cast<uint32_t>(planeW)) / PhraseRuntime::kTicksPerBar);
   };
 
+  // The pitch window follows the selection and is centred on it, so the sound
+  // being edited is never off screen. ALT+UP/DOWN nudges it for looking around,
+  // clamped so browsing can never hide what you are working on -- moving the
+  // view must not be a way to lose your place.
+  const uint8_t anchorNote = selection.active
+      ? phrase.events[selection.eventIndex].note
+      : 60;
+  int centreNote = static_cast<int>(anchorNote) + phrase_pitch_offset_;
+  const int halfWindow = kVisibleNotes / 2;
+  if (centreNote - halfWindow > static_cast<int>(anchorNote)) {
+    centreNote = static_cast<int>(anchorNote) + halfWindow;
+  }
+  if (centreNote + halfWindow < static_cast<int>(anchorNote)) {
+    centreNote = static_cast<int>(anchorNote) - halfWindow;
+  }
+  const int lowestNote = centreNote - halfWindow;
+
+  const auto noteToY = [&](uint8_t note) -> int {
+    const int row = (lowestNote + kVisibleNotes - 1) - static_cast<int>(note);
+    return planeTop + row * kRowH;
+  };
+  const auto noteVisible = [&](uint8_t note) -> bool {
+    const int value = static_cast<int>(note);
+    return value >= lowestNote && value < lowestNote + kVisibleNotes;
+  };
+
+  // Beats, numbered above the plane and ruled through it. Without them a shape
+  // has no scale and "two beats long" cannot be read off the picture.
   for (int beat = 0; beat < 4; ++beat) {
     const int beatX =
         tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
     const char label[2] = {static_cast<char>('1' + beat), '\0'};
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(beatX + 2, bounds.y + 15, label);
-    gfx.fillRect(beatX, laneTop, 1, kLaneH, COLOR_LABEL);
+    gfx.drawText(beatX + 2, bounds.y + 9, label);
+    gfx.fillRect(beatX, planeTop, 1, kPlaneH, COLOR_LABEL);
   }
-
-  const uint16_t stepTicks = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
-  if (stepTicks > 0) {
-    for (uint32_t tick = barStart; tick < barEnd; tick += stepTicks) {
-      gfx.fillRect(tickToX(tick), blockY + kBlockH / 2, 1, 1, COLOR_LABEL);
-    }
-  }
-
-  // The window the detail strip magnifies. One beat wide, so even a 1/32 note
-  // is about 29 px there and can carry its name.
-  constexpr uint32_t kDetailTicks = kBeatTicks;
-  uint32_t detailStart = cursorTick > barStart + kDetailTicks / 2u
-      ? cursorTick - kDetailTicks / 2u
-      : barStart;
-  if (detailStart + kDetailTicks > barEnd) detailStart = barEnd - kDetailTicks;
-  const uint32_t detailEnd = detailStart + kDetailTicks;
-
-  const int detailTop = bounds.y + 56;
-  constexpr int kDetailH = 15;
-  const int detailBlockY = detailTop + 2;
-  constexpr int kDetailBlockH = 11;
-  const auto detailToX = [&](uint32_t tick) -> int {
-    if (tick <= detailStart) return laneX;
-    if (tick >= detailEnd) return laneX + laneW;
-    return laneX + static_cast<int>(((tick - detailStart) *
-        static_cast<uint32_t>(laneW)) / kDetailTicks);
-  };
-
-  // Draws one note in either strip. Selection is the loudest thing on screen:
-  // everything unselected is dim, the selected block is the only bright fill
-  // and the only one carrying a name, so "which sound is E5" cannot be
-  // ambiguous. Accent survives as a cap rather than competing for the fill.
-  const auto drawNote = [&](uint16_t index,
-                            int x0, int audibleX, int endX,
-                            int y, int h,
-                            bool selected, bool carriedIn, bool withName) {
-    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
-    if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
-    drawMutedTail(gfx, audibleX, endX, y, h, fill);
-    if ((phrase.events[index].flags & PhraseRuntime::kEventAccent) != 0) {
-      gfx.fillRect(x0, y, std::max(1, endX - x0), 2, voiceColor);
-    }
-    // The attack edge. Without it two adjacent notes merge into one shape and
-    // become uncountable. A carried-in note has no attack here, so its left
-    // edge is marked dim instead of cut.
-    gfx.fillRect(x0, y, 1, h, carriedIn ? voiceColor : IGfxColor::Black());
-
-    if (withName) {
-      char name[8];
-      formatNoteName(phrase.events[index].note, name, sizeof(name));
-      const int nameW = textWidth(gfx, name);
-      if (audibleX - x0 >= nameW + 4) {
-        gfx.setTextColor(IGfxColor::Black());
-        gfx.drawText(x0 + ((audibleX - x0) - nameW) / 2, y + (h - 7) / 2, name);
-      }
-    }
-    if (selected) {
-      gfx.drawRect(x0, y - 3, std::max(2, endX - x0), h + 6, COLOR_WHITE);
-    }
-  };
 
   bool selectionTruncated = false;
+  int aboveWindow = 0;
+  int belowWindow = 0;
+
   for (uint16_t i = 0; i < phrase.count; ++i) {
     PhraseNotesProjection::NoteSpan span{};
     if (!PhraseNotesProjection::project(phrase, i, span)) continue;
+    if (span.endTick <= barStart || span.startTick >= barEnd) continue;
 
     // The voice is monophonic at playback: the next attack anywhere ahead
     // releases this note. The block keeps the stored width -- otherwise
@@ -392,79 +348,60 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
     const bool selected = selection.active && selection.eventIndex == i;
     if (selected) selectionTruncated = audibleEnd < span.endTick;
 
-    if (span.endTick > barStart && span.startTick < barEnd) {
-      drawNote(i, tickToX(span.startTick), tickToX(audibleEnd),
-               tickToX(span.endTick), blockY, kBlockH, selected,
-               span.startTick < barStart, selected);
+    const uint8_t note = phrase.events[i].note;
+    if (!noteVisible(note)) {
+      if (static_cast<int>(note) >= lowestNote + kVisibleNotes) ++aboveWindow;
+      else ++belowWindow;
+      continue;
     }
-    if (span.endTick > detailStart && span.startTick < detailEnd) {
-      drawNote(i, detailToX(span.startTick), detailToX(audibleEnd),
-               detailToX(span.endTick), detailBlockY, kDetailBlockH, selected,
-               span.startTick < detailStart, true);
+
+    const int x0 = tickToX(span.startTick);
+    const int audibleX = tickToX(audibleEnd);
+    const int endX = tickToX(span.endTick);
+    const int y = noteToY(note);
+    const int h = kRowH - 1;
+    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+
+    if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
+    drawMutedTail(gfx, audibleX, endX, y, h, fill);
+    if ((phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0) {
+      gfx.fillRect(x0, y, std::max(1, endX - x0), 1, voiceColor);
+    }
+    // The attack edge. Without it two adjacent notes on the same pitch merge
+    // into one shape and become uncountable.
+    gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? voiceColor
+                                                        : IGfxColor::Black());
+    if (selected) {
+      gfx.drawRect(x0 - 1, y - 2, std::max(3, endX - x0 + 2), h + 4,
+                   COLOR_WHITE);
     }
   }
 
-  // The cursor marks time only in the margins above and below the block band.
-  // Drawing it across the band is what previously buried the content it was
-  // supposed to point at.
+  // Sounds outside the pitch window still exist. Saying so costs two glyphs
+  // and prevents reading a partial picture as the whole melody.
+  if (aboveWindow > 0) {
+    gfx.setTextColor(voiceColor);
+    gfx.drawText(planeX + planeW - 8, planeTop - 1, "^");
+  }
+  if (belowWindow > 0) {
+    gfx.setTextColor(voiceColor);
+    gfx.drawText(planeX + planeW - 8, planeTop + kPlaneH - 6, "v");
+  }
+
+  // Time position, marked only in the margin so it never covers a block.
   const int cursorX = tickToX(cursorTick);
-  gfx.fillRect(cursorX, laneTop, 1, 3, COLOR_WHITE);
-  gfx.fillRect(cursorX, blockY + kBlockH + 3, 1,
-               (laneTop + kLaneH) - (blockY + kBlockH + 3), COLOR_WHITE);
+  gfx.fillRect(cursorX, planeTop + kPlaneH + 1, 1, 3, COLOR_WHITE);
 
-  // Tying the two strips together is the whole job here. On its own a bracket
-  // reads as decoration, and two lanes stacked without an explanation read as
-  // two instruments. The link is therefore stated three ways at once: a bracket
-  // over the slice, guides fanning out to the box corners, and a caption.
-  const int bracketY = laneTop + kLaneH;
-  const int bracketFrom = tickToX(detailStart);
-  const int bracketTo = tickToX(detailEnd);
-  gfx.fillRect(bracketFrom, bracketY, std::max(1, bracketTo - bracketFrom), 1,
-               voiceColor);
-  gfx.fillRect(bracketFrom, bracketY - 2, 1, 3, voiceColor);
-  gfx.fillRect(bracketTo - 1, bracketY - 2, 1, 3, voiceColor);
-
-  const int guideTop = bracketY + 1;
-  const int guideSteps = std::max(1, (detailTop - 1) - guideTop);
-  for (int step = 0; step <= guideSteps; ++step) {
-    const int left = bracketFrom + ((laneX - bracketFrom) * step) / guideSteps;
-    const int right = (bracketTo - 1) +
-        (((laneX + laneW - 1) - (bracketTo - 1)) * step) / guideSteps;
-    gfx.fillRect(left, guideTop + step, 1, 1, voiceColor);
-    gfx.fillRect(right, guideTop + step, 1, 1, voiceColor);
-  }
-
-  gfx.drawRect(laneX, detailTop, laneW, kDetailH, voiceColor);
-
-  const char* caption = "ZOOMED IN ON THIS PART";
-  const int captionW = textWidth(gfx, caption);
-  const int captionX = laneX + (laneW - captionW) / 2;
-  gfx.fillRect(captionX - 3, guideTop, captionW + 6, 9, IGfxColor::Black());
-  gfx.setTextColor(voiceColor);
-  gfx.drawText(captionX, guideTop + 1, caption);
-
-  gfx.fillRect(detailToX(cursorTick), detailTop + 1, 1, kDetailH - 2,
-               COLOR_WHITE);
-
-  // Where the music is, kept distinct from where the cursor is: a solid bar in
-  // the voice colour riding the bottom of the lane, never crossing the block
-  // band it would otherwise hide.
+  // Where the music is, distinct from where the cursor is.
   if (mini_acid_.isPlaying()) {
     const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
     if (playTick >= barStart && playTick < barEnd) {
       const int playX = tickToX(playTick);
-      gfx.fillRect(playX - 2, laneTop + kLaneH - 3, 5, 3, voiceColor);
-      gfx.fillRect(playX, blockY + kBlockH + 1, 1,
-                   (laneTop + kLaneH - 3) - (blockY + kBlockH + 1), voiceColor);
-    }
-    if (playTick >= detailStart && playTick < detailEnd) {
-      gfx.fillRect(detailToX(playTick), detailTop + 1, 1, kDetailH - 2,
-                   voiceColor);
+      gfx.fillRect(playX - 2, planeTop + kPlaneH + 5, 5, 3, voiceColor);
     }
   }
 
-  // What is selected, said in words, in one place.
-  const int statusY = bounds.y + 73;
+  const int statusY = bounds.y + 75;
   char status[48];
   if (selection.active) {
     char name[8];
@@ -483,22 +420,16 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   }
   gfx.drawText(bounds.x + 4, statusY, status);
 
-
-  // Kept dim and off the two primary hint rows: delete and undo must stay
-  // discoverable without competing with the four keys a beginner needs first.
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4, bounds.y + 82,
-               "ENTER ADD  BS DELETE  ^Z UNDO  ALT+R PATTERN");
-
-  // "CUT" sat next to the length and read as a command. It is a consequence, so
-  // it is spelled as one -- and it gets its own column, because sharing a line
-  // with the length ran the two strings together.
   if (selectionTruncated) {
     const char* stopped = "STOPPED BY NEXT";
     gfx.setTextColor(voiceColor);
-    gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, stopped),
-                 bounds.y + 82, stopped);
+    gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, stopped), statusY,
+                 stopped);
   }
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(bounds.x + 4, bounds.y + 84,
+               "ENTER ADD  BS DEL  ^Z UNDO  ALT+R SRC");
 
   UI::drawStandardFooter(gfx,
                          "SPACE LISTEN/STOP  U/D HIGHER LOWER",
@@ -567,16 +498,12 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.alt) {
     // Grid resolution is a second-level control now. A beginner never needs it,
     // and plain Up/Down is worth far more spent on pitch.
+    // Browsing the pitch range is deliberately a separate gesture from
+    // changing a pitch: moving the view must never alter the music.
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-      phrase_cursor_ = PhraseNotesCursor::changeGrid(
-          phrase_cursor_, nav == GROOVEPUTER_UP ? 1 : -1, phrase.lengthTicks);
-      // The grid is observable when it is changed rather than permanently
-      // printed: it is an expert control, and on the main screen it competed
-      // for attention with the four keys a first-time user actually needs.
-      char toast[24];
-      std::snprintf(toast, sizeof(toast), "STEP %s",
-                    PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
-      UI::showToast(toast, 900);
+      phrase_pitch_offset_ += nav == GROOVEPUTER_UP ? 1 : -1;
+      if (phrase_pitch_offset_ > 24) phrase_pitch_offset_ = 24;
+      if (phrase_pitch_offset_ < -24) phrase_pitch_offset_ = -24;
       return true;
     }
     if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) {
@@ -614,8 +541,27 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
-    phrase_cursor_ = PhraseNotesCursor::move(
-        phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
+    // Selecting sounds, not grid steps. On a 1/32 grid the old behaviour cost
+    // four presses to reach the next note, landing on empty ticks in between.
+    // Browsing the pitch window resets here: the window belongs to whatever is
+    // selected now.
+    phrase_cursor_ = PhraseNotesCursor::moveToOnset(
+        phrase_cursor_, phrase, nav == GROOVEPUTER_RIGHT ? 1 : -1);
+    phrase_pitch_offset_ = 0;
+    return true;
+  }
+
+  // The grid still decides how far ALT+LEFT/RIGHT moves a length and where
+  // ENTER puts a new sound, so it stays reachable -- just not on the arrows,
+  // which now carry pitch and selection.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'g' || ui_event.key == 'G')) {
+    phrase_cursor_ = PhraseNotesCursor::changeGrid(
+        phrase_cursor_, 1, phrase.lengthTicks);
+    char toast[24];
+    std::snprintf(toast, sizeof(toast), "STEP %s",
+                  PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
+    UI::showToast(toast, 900);
     return true;
   }
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {

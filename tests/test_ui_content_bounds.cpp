@@ -141,6 +141,23 @@ void checkBottomBound(const char* pageName, const RecordingGfx& gfx) {
   }
 }
 
+// Running off the right edge is the other half of the same defect, and the one
+// that keeps coming back: "ALT+R PATTER", "SHORTER L...". Nothing catches it by
+// eye reliably, and it is pure arithmetic.
+void checkRightBound(const char* pageName, const RecordingGfx& gfx) {
+  const int contentRight = Layout::CONTENT.x + Layout::CONTENT.w;
+  for (const auto& entry : gfx.texts) {
+    if (entry.y < Layout::CONTENT.y) continue;
+    const int right = entry.x + gfx.textWidth(entry.text.c_str());
+    if (right <= contentRight) continue;
+    std::fprintf(stderr,
+                 "content bounds FAIL: %s drew \"%s\" ending at x=%d, past the "
+                 "right edge %d -- the tail is cut off\n",
+                 pageName, entry.text.c_str(), right, contentRight);
+    ++g_failures;
+  }
+}
+
 // The footer stacks into two full-width rows when either hint overflows its
 // half column. Both rows must land inside the 16 px band and must not share a
 // pixel row with each other -- on GENRE they did both, so the top row lost its
@@ -149,9 +166,11 @@ void checkStackedFooter(RecordingGfx& gfx) {
   const int footerTop = Layout::FOOTER.y;
   const int footerBottom = Layout::FOOTER.y + Layout::FOOTER.h;
 
-  // Long enough to force the stacked layout, which is the case that breaks.
-  LayoutManager::drawFooter(gfx, "U/D:FIELD L/R:CHANGE",
-                            "G:GEN P:DEPTH M:APPLY");
+  // The real strings the Phrase editor publishes: they are the longest in use
+  // and the ones that have twice been silently ellipsized.
+  const char* kLeft = "SPACE LISTEN/STOP  U/D HIGHER LOWER";
+  const char* kRight = "L/R PICK SOUND  ALT+L/R SHORTER LONGER";
+  LayoutManager::drawFooter(gfx, kLeft, kRight);
 
   std::vector<RecordingGfx::TextEntry> rows;
   for (const auto& entry : gfx.texts) {
@@ -188,6 +207,17 @@ void checkStackedFooter(RecordingGfx& gfx) {
     }
   }
 
+  // drawClippedText truncates and appends an ellipsis rather than overflowing,
+  // so a hint that does not fit arrives on screen quietly shortened. Comparing
+  // what was drawn against what was asked for is the only way to see that.
+  if (rows[0].text != kLeft || rows[1].text != kRight) {
+    std::fprintf(stderr,
+                 "footer FAIL: a hint was truncated -- asked \"%s\" / \"%s\", "
+                 "drew \"%s\" / \"%s\"\n",
+                 kLeft, kRight, rows[0].text.c_str(), rows[1].text.c_str());
+    ++g_failures;
+  }
+
   if (rows[1].y - rows[0].y < gfx.fontHeight()) {
     std::fprintf(stderr,
                  "footer FAIL: rows are %d px apart, less than the font's %d -- "
@@ -218,6 +248,7 @@ int main() {
     page.draw(gfx);
     checkBottomBound("FeelPage", gfx);
     checkTopBound("FeelPage", gfx, headerRows);
+    checkRightBound("FeelPage", gfx);
   }
 
   {
@@ -228,6 +259,7 @@ int main() {
     page.draw(gfx);
     checkBottomBound("GenrePage", gfx);
     checkTopBound("GenrePage", gfx, headerRows);
+    checkRightBound("GenrePage", gfx);
   }
 
   {
@@ -238,6 +270,7 @@ int main() {
     page.draw(gfx);
     checkBottomBound("PhrasePage", gfx);
     checkTopBound("PhrasePage", gfx, headerRows);
+    checkRightBound("PhrasePage", gfx);
   }
 
   {
@@ -248,6 +281,7 @@ int main() {
     page.draw(gfx);
     checkBottomBound("SongPage", gfx);
     checkTopBound("SongPage", gfx, headerRows);
+    checkRightBound("SongPage", gfx);
   }
 
   {
@@ -260,6 +294,7 @@ int main() {
     page.draw(gfx);
     checkBottomBound("PerformPage", gfx);
     checkTopBound("PerformPage", gfx, headerRows);
+    checkRightBound("PerformPage", gfx);
   }
 
   {

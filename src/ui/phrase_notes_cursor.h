@@ -81,6 +81,44 @@ inline State changeGrid(State state, int direction, uint16_t lengthTicks) {
   return clamp(state, lengthTicks);
 }
 
+// Move to the previous/next sound rather than the next grid multiple.
+//
+// The cursor stays the single source of truth -- U4B2's law that the selected
+// object is derived from cursor coverage is untouched, and no event index is
+// persisted. Only the landing places change: onsets instead of grid steps. The
+// ends hold rather than wrap, because wrapping reads as a glitch, and an empty
+// melody leaves the cursor alone so Enter still has somewhere to add.
+inline State moveToOnset(State state,
+                         const PhraseRuntime::RuntimeSynthEventBuffer& phrase,
+                         int direction) {
+  state = clamp(state, phrase.lengthTicks);
+  if (direction != -1 && direction != 1) return state;
+
+  const uint16_t from = tick(state);
+  const uint16_t quantum = quantumTicks(state.grid);
+  if (quantum == 0) return state;
+
+  bool found = false;
+  uint16_t best = from;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const uint16_t start = phrase.events[i].startTick;
+    if (direction > 0) {
+      if (start <= from) continue;
+      if (!found || start < best) { best = start; found = true; }
+    } else {
+      if (start >= from) continue;
+      if (!found || start > best) { best = start; found = true; }
+    }
+  }
+  if (!found) return state;
+
+  // The cursor addresses grid cells, so an onset that is not on the active
+  // grid is approached from the cell containing it. The selection derives from
+  // coverage, so that cell still selects the intended sound.
+  state.cell = static_cast<uint8_t>(best / quantum);
+  return clamp(state, phrase.lengthTicks);
+}
+
 inline uint8_t focusBar(const State& state) {
   return static_cast<uint8_t>(tick(state) / PhraseRuntime::kTicksPerBar);
 }

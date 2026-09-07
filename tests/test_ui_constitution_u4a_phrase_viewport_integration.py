@@ -23,8 +23,14 @@ assert old not in CPP, "Phrase draw must not stay hard-wired to the first two ba
 # to the retired lane-packed renderer.
 assert "barStart" in CPP and "barEnd" in CPP, \
     "the drawn bar window must still be derived from the viewport"
-assert "detailStart" in CPP and "detailEnd" in CPP, \
-    "the magnified window must be derived, not fixed"
+# The magnified lane is gone: pitch on the vertical axis shows a short note and
+# the melody's shape at once, so a second view of the same bar is no longer
+# needed. The law it served -- every drawn window is derived, never fixed --
+# now applies to the pitch axis instead.
+assert "lowestNote" in CPP and "centreNote" in CPP, \
+    "the pitch window must be derived from the selection, not fixed"
+assert "anchorNote" in CPP, \
+    "the pitch window must follow the selected sound"
 
 assert "UI::drawStandardFooter" in CPP or "UI::publishShellFooter" in CPP
 # Footer literals moved to plain words with the beginner redesign. Pinned as
