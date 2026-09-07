@@ -33,6 +33,8 @@ assert "insertSnapped" not in handler
 assert "noteForEntryKey" not in handler
 assert "markSceneMutated" not in handler
 
-assert '"BS:DEL A+L/R:LEN"' in CPP
+# Same requirement as before, new literal: delete must stay permanently
+# advertised in the footer alongside the other Phrase commands.
+assert "BS DEL" in CPP
 
 print("PASS: U4B4 Phrase delete is derived-selection, guarded and Runtime-Undo owned")

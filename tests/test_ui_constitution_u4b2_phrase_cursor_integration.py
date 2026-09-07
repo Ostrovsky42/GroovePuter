@@ -43,16 +43,30 @@ def main() -> None:
         require(key in handler, f"U4B2 handler missing spatial/grid navigation: {key}")
     require('PhraseNotesCursor::move' in handler,
             "plain Left/Right must move the cursor by one current GRID cell")
+    # Grid/zoom moved to ALT+Up/Down when plain Up/Down was reassigned to
+    # pitch. The owner must still be the only thing that changes the grid.
     require('PhraseNotesCursor::changeGrid' in handler,
-            "plain Up/Down must change only the cursor GRID/zoom")
+            "the GRID/zoom change must still go through the cursor owner")
+    require('PhraseNotesPitchEdit::prepare' in handler,
+            "plain Up/Down must edit pitch through the U4B7 policy adapter")
     require('RuntimePhraseEdit::commit' not in handler and
             'commitPreparedPhrase' not in handler,
             "U4B2 navigation must remain mutation-free")
 
     require('gridLabel' in CPP,
             "U4B2 must make the active GRID observable")
-    require('L/R:CUR' in CPP and 'U/D:GRID' in CPP,
-            "U4B2 footer must expose the new navigation grammar")
+    # The footer grammar changed with the beginner redesign: abbreviations
+    # like 'U/D:GRID' were replaced by plain words, and Up/Down no longer means
+    # grid at all. The requirement itself is unchanged -- every binding the
+    # screen offers must be permanently visible in the footer.
+    require('L/R PICK' in CPP,
+            "U4B2 footer must name the cursor binding in plain words")
+    require('HIGHER LOWER' in CPP,
+            "U4B2 footer must name the pitch binding in plain words")
+    require('LENGTH' in CPP and 'UNDO' in CPP,
+            "U4B2 footer must keep length and undo permanently visible")
+    require('U/D:GRID' not in CPP,
+            "Up/Down is bound to pitch now; advertising it as GRID would lie")
     require('selected' in CPP.lower() and 'drawRect' in CPP,
             "U4B2 renderer must visibly distinguish the derived selected span")
 

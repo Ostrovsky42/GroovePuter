@@ -18,10 +18,11 @@
 #include "../phrase_notes_selection.h"
 #include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
-#include "../phrase_notes_lane_layout.h"
+#include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
+#include "../ui_utils.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
 #include "../undo_ux.h"
@@ -164,17 +165,63 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
                label);
 }
 
+namespace {
+
+constexpr uint16_t kBeatTicks = PhraseRuntime::kTicksPerBar / 4u;
+
+// Length spoken in beats, the only unit this screen teaches: the ruler above
+// the lane numbers the beats, so "2 BEATS" needs no theory and "1/16" does.
+//
+// Measured in eighths of a beat, because a duration is not required to land on
+// the grid at all -- a gate projected from a Pattern is typically a fraction of
+// a step -- and an exact-fractions table would fall through to a placeholder
+// for almost every note. Inexact values are marked with "~" rather than
+// rounded silently.
+void formatPhraseLength(uint16_t ticks, char* buf, size_t bufSize) {
+  constexpr uint16_t kEighthOfBeatTicks = kBeatTicks / 8u;
+  const char* approx = (ticks % kEighthOfBeatTicks) != 0u ? "~" : "";
+  const unsigned eighths =
+      (ticks + kEighthOfBeatTicks / 2u) / kEighthOfBeatTicks;
+  if (eighths == 0u) {
+    std::snprintf(buf, bufSize, "VERY SHORT");
+    return;
+  }
+
+  static const char* const kFractions[8] = {
+      "", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8"};
+  const unsigned beats = eighths / 8u;
+  const char* fraction = kFractions[eighths % 8u];
+
+  if (beats > 0u && fraction[0] != '\0') {
+    std::snprintf(buf, bufSize, "%s%u %s BEATS", approx, beats, fraction);
+  } else if (beats > 0u) {
+    std::snprintf(buf, bufSize, "%s%u BEAT%s", approx, beats,
+                  beats == 1u ? "" : "S");
+  } else {
+    std::snprintf(buf, bufSize, "%s%s BEAT", approx, fraction);
+  }
+}
+
+// The stored duration that will not be heard, because the next attack releases
+// this note first. Striped rather than filled: the block keeps its honest
+// width, and the silent part is visibly not the same thing as the sounding one.
+void drawMutedTail(IGfx& gfx, int fromX, int toX, int y, int h, IGfxColor color) {
+  for (int x = fromX; x < toX; x += 2) {
+    gfx.fillRect(x, y, 1, h, color);
+  }
+}
+
+}  // namespace
+
 void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
 
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
-  gfx.setTextColor(synthTabColor(voice_index_));
-  gfx.drawText(bounds.x + 4, bounds.y + 4, "SOURCE: PHRASE");
-
   if (!PhraseNotesProjection::validate(phrase)) {
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(bounds.x + 4, bounds.y + 20, "PHRASE INVALID");
+    gfx.drawText(bounds.x + 4, bounds.y + 20, "MELODY UNREADABLE");
+    UI::drawStandardFooter(gfx, "CTRL+Z UNDO", "");
     return;
   }
 
@@ -185,102 +232,209 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
       PhraseNotesViewport::resolve(phrase.lengthTicks, focusBar);
   const PhraseNotesSelection::Selection selection =
       PhraseNotesSelection::derive(phrase, cursorTick);
+  const IGfxColor voiceColor = synthTabColor(voice_index_);
 
-  char status[40];
-  const unsigned bars = phrase.lengthTicks / PhraseRuntime::kTicksPerBar;
-  std::snprintf(status, sizeof(status), "L:%u G:%s E:%u",
-                bars, PhraseNotesCursor::gridLabel(phrase_cursor_.grid),
-                static_cast<unsigned>(phrase.count));
-  gfx.setTextColor(COLOR_WHITE);
-  gfx.drawText(bounds.x + 4, bounds.y + 18, status);
+  gfx.setTextColor(voiceColor);
+  gfx.drawText(bounds.x + 4, bounds.y, "MELODY");
+  // Left of the tab strip, not right-aligned: the NOTES/KNOBS/MORE strip owns
+  // the top-right corner from x=190 and silently overdrew this line.
+  char where[20];
+  std::snprintf(where, sizeof(where), "BAR %u OF %u",
+                static_cast<unsigned>(viewport.focusBar) + 1u,
+                static_cast<unsigned>(viewport.totalBars));
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(bounds.x + 4 + textWidth(gfx, "MELODY") + 10, bounds.y, where);
 
   const int overviewX = bounds.x + 4;
-  const int overviewY = bounds.y + 30;
   const int overviewW = std::max(16, bounds.w - 8);
-  const int overviewH = 6;
-  const IGfxColor noteColor = synthTabColor(voice_index_);
+  constexpr int kOverviewH = 3;
+  const int overviewY = bounds.y + 10;
   for (uint8_t bar = 0; bar < viewport.totalBars; ++bar) {
     const int x0 = overviewX + static_cast<int>(
         (static_cast<uint32_t>(bar) * overviewW) / viewport.totalBars);
     const int x1 = overviewX + static_cast<int>(
         (static_cast<uint32_t>(bar + 1u) * overviewW) / viewport.totalBars);
     const int cellW = std::max(1, x1 - x0 - 1);
-    gfx.drawRect(x0, overviewY, cellW, overviewH, COLOR_LABEL);
+    gfx.drawRect(x0, overviewY, cellW, kOverviewH, COLOR_LABEL);
     if (bar == viewport.focusBar) {
       gfx.fillRect(x0 + 1, overviewY + 1, std::max(1, cellW - 2),
-                   overviewH - 2, noteColor);
+                   kOverviewH - 2, voiceColor);
     }
   }
 
-  const int timelineX = bounds.x + 4;
-  const int timelineY = bounds.y + 42;
-  const int timelineW = std::max(16, bounds.w - 8);
-  const int rowH = 8;
-  const int maxRows = std::max(1, (bounds.h - 46) / rowH);
-  const uint16_t windowStartTick = static_cast<uint16_t>(
-      static_cast<uint16_t>(viewport.startBar) * PhraseRuntime::kTicksPerBar);
-  const uint16_t windowTicks = static_cast<uint16_t>(
-      static_cast<uint16_t>(viewport.barCount) * PhraseRuntime::kTicksPerBar);
-  const uint32_t windowStartSubtick =
-      static_cast<uint32_t>(windowStartTick) * PhraseRuntime::kSubticksPerTick;
-  const uint32_t windowSubticks =
-      static_cast<uint32_t>(windowTicks) * PhraseRuntime::kSubticksPerTick;
-  const uint32_t windowEndSubtick = windowStartSubtick + windowSubticks;
-  const PhraseNotesLaneLayout::Layout laneLayout = PhraseNotesLaneLayout::build(
-      phrase, windowStartSubtick, windowSubticks,
-      static_cast<uint8_t>(maxRows));
+  // One horizontal lane. Vertical position carries no meaning at all, which is
+  // deliberate: the previous packing made a note's row depend on its
+  // neighbours, so the picture rearranged itself on every edit. Here the only
+  // spatial claim is the true one -- horizontal is time, width is duration.
+  const int laneX = bounds.x + 4;
+  const int laneW = std::max(32, bounds.w - 8);
+  const int laneTop = bounds.y + 24;
+  constexpr int kLaneH = 24;
+  const int blockY = laneTop + 4;
+  constexpr int kBlockH = 16;
+  const uint32_t barStart =
+      static_cast<uint32_t>(viewport.focusBar) * PhraseRuntime::kTicksPerBar;
+  const uint32_t barEnd = barStart + PhraseRuntime::kTicksPerBar;
 
-  gfx.drawRect(timelineX, timelineY, timelineW, maxRows * rowH, COLOR_LABEL);
-  const uint32_t cursorSubtick =
-      static_cast<uint32_t>(cursorTick) * PhraseRuntime::kSubticksPerTick;
-  if (cursorSubtick >= windowStartSubtick && cursorSubtick < windowEndSubtick) {
-    const int cursorX = timelineX + static_cast<int>(
-        ((cursorSubtick - windowStartSubtick) * static_cast<uint32_t>(timelineW)) /
-        windowSubticks);
-    gfx.fillRect(cursorX, timelineY, 1, maxRows * rowH, COLOR_WHITE);
-  }
-  if (viewport.barCount == 2u) {
-    gfx.fillRect(timelineX + timelineW / 2, timelineY,
-                 1, maxRows * rowH, COLOR_LABEL);
+  const auto tickToX = [&](uint32_t tick) -> int {
+    if (tick <= barStart) return laneX;
+    if (tick >= barEnd) return laneX + laneW;
+    return laneX + static_cast<int>(((tick - barStart) *
+        static_cast<uint32_t>(laneW)) / PhraseRuntime::kTicksPerBar);
+  };
+
+  for (int beat = 0; beat < 4; ++beat) {
+    const int beatX =
+        tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
+    const char label[2] = {static_cast<char>('1' + beat), '\0'};
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(beatX + 2, bounds.y + 15, label);
+    gfx.fillRect(beatX, laneTop, 1, kLaneH, COLOR_LABEL);
   }
 
+  const uint16_t stepTicks = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
+  if (stepTicks > 0) {
+    for (uint32_t tick = barStart; tick < barEnd; tick += stepTicks) {
+      gfx.fillRect(tickToX(tick), blockY + kBlockH / 2, 1, 1, COLOR_LABEL);
+    }
+  }
+
+  // The window the detail strip magnifies. One beat wide, so even a 1/32 note
+  // is about 29 px there and can carry its name.
+  constexpr uint32_t kDetailTicks = kBeatTicks;
+  uint32_t detailStart = cursorTick > barStart + kDetailTicks / 2u
+      ? cursorTick - kDetailTicks / 2u
+      : barStart;
+  if (detailStart + kDetailTicks > barEnd) detailStart = barEnd - kDetailTicks;
+  const uint32_t detailEnd = detailStart + kDetailTicks;
+
+  const int detailTop = bounds.y + 50;
+  constexpr int kDetailH = 15;
+  const int detailBlockY = detailTop + 2;
+  constexpr int kDetailBlockH = 11;
+  const auto detailToX = [&](uint32_t tick) -> int {
+    if (tick <= detailStart) return laneX;
+    if (tick >= detailEnd) return laneX + laneW;
+    return laneX + static_cast<int>(((tick - detailStart) *
+        static_cast<uint32_t>(laneW)) / kDetailTicks);
+  };
+
+  // Draws one note in either strip. Selection is the loudest thing on screen:
+  // everything unselected is dim, the selected block is the only bright fill
+  // and the only one carrying a name, so "which sound is E5" cannot be
+  // ambiguous. Accent survives as a cap rather than competing for the fill.
+  const auto drawNote = [&](uint16_t index,
+                            int x0, int audibleX, int endX,
+                            int y, int h,
+                            bool selected, bool carriedIn, bool withName) {
+    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
+    drawMutedTail(gfx, audibleX, endX, y, h, fill);
+    if ((phrase.events[index].flags & PhraseRuntime::kEventAccent) != 0) {
+      gfx.fillRect(x0, y, std::max(1, endX - x0), 2, voiceColor);
+    }
+    // The attack edge. Without it two adjacent notes merge into one shape and
+    // become uncountable. A carried-in note has no attack here, so its left
+    // edge is marked dim instead of cut.
+    gfx.fillRect(x0, y, 1, h, carriedIn ? voiceColor : IGfxColor::Black());
+
+    if (withName) {
+      char name[8];
+      formatNoteName(phrase.events[index].note, name, sizeof(name));
+      const int nameW = textWidth(gfx, name);
+      if (audibleX - x0 >= nameW + 4) {
+        gfx.setTextColor(IGfxColor::Black());
+        gfx.drawText(x0 + ((audibleX - x0) - nameW) / 2, y + (h - 7) / 2, name);
+      }
+    }
+    if (selected) {
+      gfx.drawRect(x0, y - 3, std::max(2, endX - x0), h + 6, COLOR_WHITE);
+    }
+  };
+
+  bool selectionTruncated = false;
   for (uint16_t i = 0; i < phrase.count; ++i) {
     PhraseNotesProjection::NoteSpan span{};
     if (!PhraseNotesProjection::project(phrase, i, span)) continue;
-    if (span.endSubtick <= windowStartSubtick ||
-        span.startSubtick >= windowEndSubtick) continue;
 
-    const uint32_t clippedStart =
-        std::max<uint32_t>(span.startSubtick, windowStartSubtick);
-    const uint32_t clippedEnd =
-        std::min<uint32_t>(span.endSubtick, windowEndSubtick);
-    const int startX = timelineX + static_cast<int>(
-        ((clippedStart - windowStartSubtick) *
-         static_cast<uint32_t>(timelineW)) / windowSubticks);
-    int endX = timelineX + static_cast<int>(
-        ((clippedEnd - windowStartSubtick) *
-         static_cast<uint32_t>(timelineW)) / windowSubticks);
-    if (endX <= startX) endX = startX + 1;
-
-    const uint8_t lane = laneLayout.laneByEvent[i];
-    if (lane == PhraseNotesLaneLayout::kOverflowLane) continue;
-    const int row = static_cast<int>(lane);
-    const int y = timelineY + row * rowH + 2;
+    // The voice is monophonic at playback: the next attack anywhere ahead
+    // releases this note. The block keeps the stored width -- otherwise
+    // ALT+LEFT/RIGHT would edit a value the screen never shows -- and the part
+    // that will not sound is drawn striped instead of filled.
+    uint32_t audibleEnd = span.endTick;
+    for (uint16_t j = 0; j < phrase.count; ++j) {
+      const uint16_t otherStart = phrase.events[j].startTick;
+      if (otherStart > span.startTick && otherStart < audibleEnd) {
+        audibleEnd = otherStart;
+      }
+    }
     const bool selected = selection.active && selection.eventIndex == i;
-    const bool onsetVisible = span.startSubtick >= windowStartSubtick;
-    if (onsetVisible) {
-      gfx.fillRect(startX, y, 2, 5, noteColor);
+    if (selected) selectionTruncated = audibleEnd < span.endTick;
+
+    if (span.endTick > barStart && span.startTick < barEnd) {
+      drawNote(i, tickToX(span.startTick), tickToX(audibleEnd),
+               tickToX(span.endTick), blockY, kBlockH, selected,
+               span.startTick < barStart, selected);
     }
-    const int continuationX = onsetVisible ? startX + 2 : startX;
-    if (endX > continuationX) {
-      gfx.fillRect(continuationX, y + 1, endX - continuationX, 3, noteColor);
-    }
-    if (selected) {
-      gfx.drawRect(startX, y - 1, std::max(2, endX - startX), 7, COLOR_WHITE);
+    if (span.endTick > detailStart && span.startTick < detailEnd) {
+      drawNote(i, detailToX(span.startTick), detailToX(audibleEnd),
+               detailToX(span.endTick), detailBlockY, kDetailBlockH, selected,
+               span.startTick < detailStart, true);
     }
   }
 
-  UI::drawStandardFooter(gfx, "L/R:CUR U/D:GRID", "BS:DEL A+L/R:LEN");
+  // The cursor marks time only in the margins above and below the block band.
+  // Drawing it across the band is what previously buried the content it was
+  // supposed to point at.
+  const int cursorX = tickToX(cursorTick);
+  gfx.fillRect(cursorX, laneTop, 1, 3, COLOR_WHITE);
+  gfx.fillRect(cursorX, blockY + kBlockH + 3, 1,
+               (laneTop + kLaneH) - (blockY + kBlockH + 3), COLOR_WHITE);
+
+  // The bracket ties the two strips together: this slice of the melody above is
+  // what the strip below shows enlarged, so magnification never costs position.
+  const int bracketY = laneTop + kLaneH;
+  const int bracketFrom = tickToX(detailStart);
+  const int bracketTo = tickToX(detailEnd);
+  gfx.fillRect(bracketFrom, bracketY, std::max(1, bracketTo - bracketFrom), 1,
+               voiceColor);
+  gfx.fillRect(bracketFrom, bracketY - 2, 1, 3, voiceColor);
+  gfx.fillRect(bracketTo - 1, bracketY - 2, 1, 3, voiceColor);
+  gfx.fillRect(bracketFrom, bracketY + 1,
+               std::max(1, bracketTo - bracketFrom), 1, IGfxColor::Black());
+  gfx.drawRect(laneX, detailTop, laneW, kDetailH, voiceColor);
+  gfx.fillRect(detailToX(cursorTick), detailTop + 1, 1, kDetailH - 2,
+               COLOR_WHITE);
+
+  // What is selected, said in words, in one place.
+  const int statusY = bounds.y + 69;
+  char status[48];
+  if (selection.active) {
+    char name[8];
+    formatNoteName(phrase.events[selection.eventIndex].note, name, sizeof(name));
+    char length[24];
+    formatPhraseLength(
+        static_cast<uint16_t>(
+            phrase.events[selection.eventIndex].durationSubticks /
+            PhraseRuntime::kSubticksPerTick),
+        length, sizeof(length));
+    std::snprintf(status, sizeof(status), "SELECTED %s   LENGTH %s%s",
+                  name, length, selectionTruncated ? "  CUT" : "");
+    gfx.setTextColor(COLOR_WHITE);
+  } else {
+    std::snprintf(status, sizeof(status), "NO SOUND HERE");
+    gfx.setTextColor(COLOR_LABEL);
+  }
+  gfx.drawText(bounds.x + 4, statusY, status);
+
+  // Kept dim and off the two primary hint rows: delete and undo must stay
+  // discoverable without competing with the four keys a beginner needs first.
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(bounds.x + 4, bounds.y + 79, "BS DELETE   CTRL+Z UNDO");
+
+  UI::drawStandardFooter(gfx,
+                         "SPACE LISTEN/STOP   L/R PICK",
+                         "U/D HIGHER LOWER   ALT+L/R LENGTH");
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
@@ -316,6 +470,20 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (ui_event.alt) {
+    // Grid resolution is a second-level control now. A beginner never needs it,
+    // and plain Up/Down is worth far more spent on pitch.
+    if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+      phrase_cursor_ = PhraseNotesCursor::changeGrid(
+          phrase_cursor_, nav == GROOVEPUTER_UP ? 1 : -1, phrase.lengthTicks);
+      // The grid is observable when it is changed rather than permanently
+      // printed: it is an expert control, and on the main screen it competed
+      // for attention with the four keys a first-time user actually needs.
+      char toast[24];
+      std::snprintf(toast, sizeof(toast), "STEP %s",
+                    PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
+      UI::showToast(toast, 900);
+      return true;
+    }
     if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) {
       return false;
     }
@@ -356,8 +524,29 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-    phrase_cursor_ = PhraseNotesCursor::changeGrid(
-        phrase_cursor_, nav == GROOVEPUTER_UP ? 1 : -1, phrase.lengthTicks);
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+    PhraseNotesPitchEdit::Prepared prepared{};
+    const int direction = nav == GROOVEPUTER_UP ? 1 : -1;
+    const auto result = PhraseNotesPitchEdit::prepare(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_), direction, prepared);
+    if (result != PhraseNotesPitchEdit::Result::Ready) {
+      UI::showToast(
+          result == PhraseNotesPitchEdit::Result::NoTarget
+              ? "NO NOTE"
+              : "PITCH LIMIT",
+          900);
+      return true;
+    }
+
+    const bool committed = commitRuntimePhraseEditWithUndo(
+        mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
+
+    UI::showToast(
+        committed
+            ? (direction > 0 ? "NOTE HIGHER" : "NOTE LOWER")
+            : "EDIT STALE",
+        900);
     return true;
   }
   return false;

@@ -33,7 +33,8 @@ assert "markSceneMutated" not in handler
 assert "ui_event.ctrl || ui_event.alt || ui_event.meta" not in handler
 
 # Later Phrase actions may share the footer, but the U4B3 duration command must
-# remain discoverable from the same command hint.
-assert "A+L/R:LEN" in CPP
+# remain discoverable from the same command hint. The literal changed with the
+# beginner redesign ("A+L/R:LEN" -> plain words); the requirement did not.
+assert "ALT+L/R LENGTH" in CPP
 
 print("PASS: U4B3 Phrase duration edit is derived-selection, GRID-sized and Undo-guarded")
