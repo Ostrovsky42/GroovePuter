@@ -72,7 +72,11 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // musical state: it is clamped so the selected sound stays visible and
   // it is not persisted, so looking around can never be mistaken for an
   // edit or survive as one.
-  int phrase_pitch_offset_ = 0;
+  // Lowest visible semitone. The window holds still while the selected
+  // sound is inside it and moves only far enough to bring it back when it
+  // leaves an edge: recentring on every pick rearranged the whole picture
+  // and made the melody hard to follow. 0 means "not established yet".
+  int phrase_pitch_lowest_ = 0;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;

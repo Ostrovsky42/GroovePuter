@@ -71,13 +71,18 @@ def main() -> None:
     # its place is stronger, and is the reason the axis is safe to add:
     # browsing the pitch range is a separate gesture from editing a pitch, and
     # the browsing offset is view state that never becomes musical state.
-    require('phrase_pitch_offset_' in CPP,
-            "the pitch window must have an explicit browsing offset")
-    require('phrase_pitch_offset_' not in CONT,
-            "browsing the pitch range must not be persisted as session state")
-    require('phrase_pitch_offset_ = 0' in CPP,
-            "selecting another sound must reset the browsing offset, so the "
-            "window belongs to what is selected now")
+    # This gate demanded that picking a sound reset the window, and that was
+    # wrong: it made the whole picture rearrange on every press, with notes
+    # leaving the screen and others moving. The window must hold still while
+    # the selection is inside it and scroll only far enough to bring it back
+    # when it leaves an edge -- which is what these pin instead.
+    require('phrase_pitch_lowest_' in CPP,
+            "the pitch window must have explicit, inspectable position state")
+    require('phrase_pitch_lowest_' not in CONT,
+            "the pitch window is view state and must not be persisted")
+    require('phrase_pitch_lowest_ = 0' not in
+            CPP[CPP.index('nav == GROOVEPUTER_RIGHT ? 1 : -1);'):],
+            "picking a sound must not reset the pitch window")
     require('U/D:GRID' not in CPP,
             "Up/Down is bound to pitch now; advertising it as GRID would lie")
     require('selected' in CPP.lower() and 'drawRect' in CPP,

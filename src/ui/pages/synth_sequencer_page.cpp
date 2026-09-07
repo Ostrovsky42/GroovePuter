@@ -55,6 +55,22 @@ inline IGfxColor synthTabColor(int voiceIndex) {
 // ALT+P is the global jump to the MIDI player and cannot be taken on one page
 // without making the shortcut mean two things -- so the label carries the
 // meaning instead of the letter.
+// How much of a note actually sounds: the stored end, or the next attack if
+// that comes first. Growing the stored length past that point changes nothing
+// anyone can hear, and saying "NOTE LONGER" there would be a false report.
+uint32_t audibleEndTick(
+    const PhraseRuntime::RuntimeSynthEventBuffer& phrase, uint16_t index) {
+  if (index >= phrase.count) return 0;
+  const auto& event = phrase.events[index];
+  uint32_t end = event.startTick +
+      event.durationSubticks / PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const uint16_t other = phrase.events[i].startTick;
+    if (other > event.startTick && other < end) end = other;
+  }
+  return end;
+}
+
 bool isSourceToggleKey(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN ||
       !event.alt || event.ctrl || event.meta) {
@@ -298,15 +314,21 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
   const uint8_t anchorNote = selection.active
       ? phrase.events[selection.eventIndex].note
       : 60;
-  int centreNote = static_cast<int>(anchorNote) + phrase_pitch_offset_;
   const int halfWindow = kVisibleNotes / 2;
-  if (centreNote - halfWindow > static_cast<int>(anchorNote)) {
-    centreNote = static_cast<int>(anchorNote) + halfWindow;
+  if (phrase_pitch_lowest_ == 0) {
+    phrase_pitch_lowest_ = static_cast<int>(anchorNote) - halfWindow;
   }
-  if (centreNote + halfWindow < static_cast<int>(anchorNote)) {
-    centreNote = static_cast<int>(anchorNote) - halfWindow;
+  // Scroll only when the selection leaves an edge, and only far enough to
+  // bring it back. Everything else stays where the eye left it.
+  if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
+    phrase_pitch_lowest_ = static_cast<int>(anchorNote);
+  } else if (static_cast<int>(anchorNote) >=
+             phrase_pitch_lowest_ + kVisibleNotes) {
+    phrase_pitch_lowest_ =
+        static_cast<int>(anchorNote) - (kVisibleNotes - 1);
   }
-  const int lowestNote = centreNote - halfWindow;
+  const int lowestNote = phrase_pitch_lowest_;
+  const int centreNote = lowestNote + halfWindow;
 
   const auto noteToY = [&](uint8_t note) -> int {
     const int row = (lowestNote + kVisibleNotes - 1) - static_cast<int>(note);
@@ -504,9 +526,9 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     // Browsing the pitch range is deliberately a separate gesture from
     // changing a pitch: moving the view must never alter the music.
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-      phrase_pitch_offset_ += nav == GROOVEPUTER_UP ? 1 : -1;
-      if (phrase_pitch_offset_ > 24) phrase_pitch_offset_ = 24;
-      if (phrase_pitch_offset_ < -24) phrase_pitch_offset_ = -24;
+      phrase_pitch_lowest_ += nav == GROOVEPUTER_UP ? 1 : -1;
+      if (phrase_pitch_lowest_ < 1) phrase_pitch_lowest_ = 1;
+      if (phrase_pitch_lowest_ > 116) phrase_pitch_lowest_ = 116;
       return true;
     }
     if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) {
@@ -517,6 +539,12 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
         phrase_cursor_, phrase.lengthTicks);
     PhraseNotesDurationEdit::Prepared prepared{};
     const int direction = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+    const PhraseNotesSelection::Selection before =
+        PhraseNotesSelection::deriveInCell(
+            phrase, PhraseNotesCursor::tick(phrase_cursor_),
+            PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    const uint32_t audibleBefore =
+        before.active ? audibleEndTick(phrase, before.eventIndex) : 0;
     const auto result = PhraseNotesDurationEdit::prepare(
         phrase,
         PhraseNotesCursor::tick(phrase_cursor_),
@@ -535,22 +563,48 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     const bool committed = commitRuntimePhraseEditWithUndo(
         mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
 
-    UI::showToast(
-        committed
-            ? (direction > 0 ? "NOTE LONGER" : "NOTE SHORTER")
-            : "EDIT STALE",
-        900);
+    if (!committed) {
+      UI::showToast("EDIT STALE", 900);
+      return true;
+    }
+
+    // If the growth landed entirely in the part the next attack silences, the
+    // note did not get longer -- only its stored value did. Say so, and name
+    // the way out.
+    const auto& after = mini_acid_.currentPhraseBuffer(voice_index_);
+    const PhraseNotesSelection::Selection nowSelected =
+        PhraseNotesSelection::deriveInCell(
+            after, PhraseNotesCursor::tick(phrase_cursor_),
+            PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    const bool audibleChanged =
+        !nowSelected.active ||
+        audibleEndTick(after, nowSelected.eventIndex) != audibleBefore;
+    if (direction > 0 && !audibleChanged) {
+      UI::showToast("NEXT SOUND BLOCKS LENGTH  J JOIN", 1600);
+    } else {
+      UI::showToast(direction > 0 ? "NOTE LONGER" : "NOTE SHORTER", 900);
+    }
+    return true;
+  }
+
+  // Onset jumping made empty time unreachable, and with it ENTER: the cursor
+  // could only ever stand on a sound, so adding always reported the position
+  // occupied. SHIFT walks the grid one step at a time to put it back.
+  if (ui_event.shift &&
+      (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+    phrase_cursor_ = PhraseNotesCursor::move(
+        phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     return true;
   }
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     // Selecting sounds, not grid steps. On a 1/32 grid the old behaviour cost
     // four presses to reach the next note, landing on empty ticks in between.
-    // Browsing the pitch window resets here: the window belongs to whatever is
-    // selected now.
+    // The pitch window is deliberately left alone: it moves only when the new
+    // selection falls outside it, so picking a sound does not rearrange the
+    // picture around it.
     phrase_cursor_ = PhraseNotesCursor::moveToOnset(
         phrase_cursor_, phrase, nav == GROOVEPUTER_RIGHT ? 1 : -1);
-    phrase_pitch_offset_ = 0;
     return true;
   }
 
@@ -578,7 +632,24 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
     const bool committed = commitRuntimePhraseEditWithUndo(
         mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
-    UI::showToast(committed ? "JOINED WITH NEXT" : "EDIT STALE", 1000);
+    if (!committed) {
+      UI::showToast("EDIT STALE", 1000);
+      return true;
+    }
+    const auto& joined = mini_acid_.currentPhraseBuffer(voice_index_);
+    const PhraseNotesSelection::Selection stillSelected =
+        PhraseNotesSelection::deriveInCell(
+            joined, PhraseNotesCursor::tick(phrase_cursor_),
+            PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    bool stillCut = false;
+    if (stillSelected.active) {
+      const auto& event = joined.events[stillSelected.eventIndex];
+      const uint32_t stored = event.startTick +
+          event.durationSubticks / PhraseRuntime::kSubticksPerTick;
+      stillCut = audibleEndTick(joined, stillSelected.eventIndex) < stored;
+    }
+    UI::showToast(stillCut ? "JOINED  ONE MORE SOUND AFTER" : "JOINED WITH NEXT",
+                  stillCut ? 1600 : 1000);
     return true;
   }
 
