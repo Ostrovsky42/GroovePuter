@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_VIEWPORT_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_VIEWPORT_H
 #include <cstdint>
 #include "../phrase/runtime_synth_events.h"
 
@@ -53,3 +55,5 @@ inline uint8_t moveFocus(uint8_t currentFocusBar,
   return static_cast<uint8_t>(next);
 }
 }  // namespace PhraseNotesViewport
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_VIEWPORT_H

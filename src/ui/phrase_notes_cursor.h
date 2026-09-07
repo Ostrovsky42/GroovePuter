@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_CURSOR_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_CURSOR_H
 
 #include <cstdint>
 
@@ -93,3 +95,5 @@ inline const char* gridLabel(RuntimePhraseEdit::Grid grid) {
 }
 
 }  // namespace PhraseNotesCursor
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_CURSOR_H

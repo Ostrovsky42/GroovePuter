@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_UI_LOCATION_H
+#define GROOVEPUTER_SRC_UI_UI_LOCATION_H
 
 #include <cstdint>
 
@@ -88,3 +90,5 @@ inline bool tryUiLocationForPage(int canonicalPage, UiLocation& out) {
 }
 
 }  // namespace UI
+
+#endif  // GROOVEPUTER_SRC_UI_UI_LOCATION_H

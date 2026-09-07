@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_SELECTION_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_SELECTION_H
 
 #include <cstdint>
 
@@ -31,3 +33,5 @@ inline Selection derive(const PhraseRuntime::RuntimeSynthEventBuffer& phrase,
 }
 
 }  // namespace PhraseNotesSelection
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_SELECTION_H

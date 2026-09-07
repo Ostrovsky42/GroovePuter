@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_LANE_LAYOUT_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_LANE_LAYOUT_H
 
 #include <algorithm>
 #include <array>
@@ -98,3 +100,5 @@ inline Layout build(const PhraseRuntime::RuntimeSynthEventBuffer& phrase,
 }
 
 }  // namespace PhraseNotesLaneLayout
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_LANE_LAYOUT_H

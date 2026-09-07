@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_PROJECTION_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_PROJECTION_H
 
 #include <cstdint>
 
@@ -47,3 +49,5 @@ inline bool project(const PhraseRuntime::RuntimeSynthEventBuffer& phrase,
 }
 
 }  // namespace PhraseNotesProjection
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_PROJECTION_H

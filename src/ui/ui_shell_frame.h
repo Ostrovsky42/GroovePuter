@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_UI_SHELL_FRAME_H
+#define GROOVEPUTER_SRC_UI_UI_SHELL_FRAME_H
 
 #include <cstddef>
 
@@ -50,3 +52,5 @@ static_assert(sizeof(UiShellFrameModel) <= 136,
               "UI shell frame model must stay stack-bounded");
 
 }  // namespace UI
+
+#endif  // GROOVEPUTER_SRC_UI_UI_SHELL_FRAME_H

@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_PHRASE_RUNTIME_PHRASE_EDIT_H
+#define GROOVEPUTER_SRC_PHRASE_RUNTIME_PHRASE_EDIT_H
 
 #include <cstdint>
 #include <cstring>
@@ -299,3 +301,5 @@ inline int eventCoveringTick(const Buffer& phrase, uint16_t cursorTick) {
 }
 
 }  // namespace RuntimePhraseEdit
+
+#endif  // GROOVEPUTER_SRC_PHRASE_RUNTIME_PHRASE_EDIT_H

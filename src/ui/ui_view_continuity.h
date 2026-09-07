@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_UI_VIEW_CONTINUITY_H
+#define GROOVEPUTER_SRC_UI_UI_VIEW_CONTINUITY_H
 
 #include <cstdint>
 
@@ -22,3 +24,5 @@ static_assert(sizeof(UiViewContinuityState) <= 16,
               "runtime UI view continuity must remain tiny");
 
 }  // namespace UI
+
+#endif  // GROOVEPUTER_SRC_UI_UI_VIEW_CONTINUITY_H

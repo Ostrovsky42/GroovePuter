@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PHRASE_NOTES_DELETE_EDIT_H
+#define GROOVEPUTER_SRC_UI_PHRASE_NOTES_DELETE_EDIT_H
 
 #include <cstdint>
 
@@ -60,3 +62,5 @@ inline bool commitIfUnchanged(Buffer& live, const Prepared& prepared) {
 }
 
 }  // namespace PhraseNotesDeleteEdit
+
+#endif  // GROOVEPUTER_SRC_UI_PHRASE_NOTES_DELETE_EDIT_H
