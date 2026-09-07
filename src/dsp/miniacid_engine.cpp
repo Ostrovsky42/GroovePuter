@@ -2105,7 +2105,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     // PHRASE addresses onsets in phrase-relative time and resolves once per
     // tick, at the nominal step, so the per-step A -> B -> drums draw order is
     // untouched. PATTERN keeps its bar-local source-step scan verbatim.
-    if (sequencedSource_[0] == SequencedSource::Phrase) {
+    if (activeMaterial_[0].kind == GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
         if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
                 phraseEventAt_(0, absoluteTick)) {
@@ -2117,7 +2117,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
                eventA != nullptr && eventA->startTick == barTick) {
       triggerSynthStep_(0, *eventA, absoluteStartSubtick);
     }
-    if (sequencedSource_[1] == SequencedSource::Phrase) {
+    if (activeMaterial_[1].kind == GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
         if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
                 phraseEventAt_(1, absoluteTick)) {
@@ -3896,11 +3896,31 @@ void MiniAcid::advanceSongBar_() {
 // P3: Bounded Phrase Source
 
 void MiniAcid::setSequencedSource(int voiceIndex, SequencedSource source) {
-  sequencedSource_[clamp303Voice(voiceIndex)] = source;
+  const int voice = clamp303Voice(voiceIndex);
+  activeMaterial_[voice].kind =
+      source == SequencedSource::Phrase
+          ? GroovePuterMaterial::MaterialKind::Melody
+          : GroovePuterMaterial::MaterialKind::Pattern;
 }
 
 MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const {
-  return sequencedSource_[clamp303Voice(voiceIndex)];
+  return activeMaterial_[clamp303Voice(voiceIndex)].kind ==
+                 GroovePuterMaterial::MaterialKind::Melody
+             ? SequencedSource::Phrase
+             : SequencedSource::Pattern;
+}
+
+void MiniAcid::publishActiveMaterial(int voiceIndex, uint16_t slot,
+                                     GroovePuterMaterial::MaterialKind kind) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
+  activeMaterial_[voiceIndex].slot = slot;
+  activeMaterial_[voiceIndex].kind = kind;
+}
+
+const MiniAcid::ActiveMaterial& MiniAcid::activeMaterial(int voiceIndex) const {
+  static const ActiveMaterial kFallback{};
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return kFallback;
+  return activeMaterial_[voiceIndex];
 }
 
 uint16_t MiniAcid::currentPhrasePlayTick(int voiceIndex) const {
@@ -3914,7 +3934,10 @@ bool MiniAcid::makePhrase(int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   // One-way. A voice already on Phrase keeps what it has; re-projecting would
   // silently discard every edit made since the conversion.
-  if (sequencedSource_[voiceIndex] == SequencedSource::Phrase) return false;
+  if (activeMaterial_[voiceIndex].kind ==
+      GroovePuterMaterial::MaterialKind::Melody) {
+    return false;
+  }
 
   // Same projection inputs the runtime bank already uses, so converted material
   // sounds like the Pattern it came from rather than a second interpretation.
@@ -3941,7 +3964,7 @@ bool MiniAcid::makePhrase(int voiceIndex) {
   }
 
   currentPhrase_[voiceIndex] = candidate;
-  sequencedSource_[voiceIndex] = SequencedSource::Phrase;
+  activeMaterial_[voiceIndex].kind = GroovePuterMaterial::MaterialKind::Melody;
   return true;
 }
 

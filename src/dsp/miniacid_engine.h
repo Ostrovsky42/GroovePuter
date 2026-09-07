@@ -2,6 +2,7 @@
 #ifndef MINIACID_ENGINE_H
 #define MINIACID_ENGINE_H
 
+#include "src/state/material_slot.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <atomic>
@@ -130,6 +131,23 @@ public:
   // Where the phrase is sounding, in its own time. currentStep() is bar-local
   // and would place the marker wrongly on any phrase longer than one bar.
   uint16_t currentPhrasePlayTick(int voiceIndex) const;
+
+  // M3: the one resolved answer to "what is this voice playing", published by
+  // the control side and only read by the audio path.
+  //
+  // Resolving a slot means reading the Scene, a descriptor, a project name and
+  // possibly a file. None of that may happen while audio is being generated, so
+  // it happens once, ahead of time, and the result lands here as a small
+  // bounded value the sequencer can act on without asking anyone.
+  struct ActiveMaterial {
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+  };
+
+  void publishActiveMaterial(int voiceIndex, uint16_t slot,
+                             GroovePuterMaterial::MaterialKind kind);
+  const ActiveMaterial& activeMaterial(int voiceIndex) const;
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -498,7 +516,10 @@ private:
   uint32_t liveInputEpoch_ = 0;
 
   // P3: Bounded Phrase Source, owned per synth voice.
-  SequencedSource sequencedSource_[NUM_303_VOICES]{};
+  // The published authority is the only storage. SequencedSource survives as
+  // an API into it until M5 retires the concept, rather than as a second copy
+  // that could disagree with what is actually sounding.
+  ActiveMaterial activeMaterial_[NUM_303_VOICES]{};
   PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_[NUM_303_VOICES]{};
 
   bool songMode_;
