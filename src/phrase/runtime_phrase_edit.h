@@ -255,6 +255,78 @@ inline EventEditResult deleteEvent(Buffer& phrase, uint16_t eventIndex) {
   return EventEditResult::Changed;
 }
 
+// U4C2: continue this sound instead of the next one.
+//
+// A note cannot sound longer than the gap to the next attack, because the voice
+// releases it there. Making it longer therefore means the next attack has to
+// go. That is a musical decision, so it is its own operation rather than a
+// hidden consequence of resizing -- and it is one commit, so one undo restores
+// both sounds.
+//
+// The surviving sound is the selected one: its pitch, velocity and flags are
+// kept and only its length grows, to the later of the two ends.
+enum class JoinResult : uint8_t {
+  Changed = 0,
+  NoTarget,
+  NoNext,
+  Ambiguous,
+  Rejected,
+};
+
+inline JoinResult joinNextEvent(Buffer& phrase, uint16_t eventIndex) {
+  if (!validate(phrase)) return JoinResult::Rejected;
+  if (eventIndex >= phrase.count) return JoinResult::NoTarget;
+
+  const PhraseRuntime::RuntimeSynthEvent selected = phrase.events[eventIndex];
+
+  int next = -1;
+  uint16_t nextStart = 0;
+  uint16_t coincident = 0;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (i == eventIndex) continue;
+    const uint16_t start = phrase.events[i].startTick;
+    if (start <= selected.startTick) continue;
+    if (next < 0 || start < nextStart) {
+      next = static_cast<int>(i);
+      nextStart = start;
+      coincident = 1;
+    } else if (start == nextStart) {
+      ++coincident;
+    }
+  }
+  if (next < 0) return JoinResult::NoNext;
+
+  // Removing one of two sounds that start together would leave the other still
+  // cutting the note, so the command would look like it did nothing.
+  if (coincident > 1) return JoinResult::Ambiguous;
+
+  const uint32_t selectedEnd =
+      static_cast<uint32_t>(selected.startTick) *
+          PhraseRuntime::kSubticksPerTick +
+      selected.durationSubticks;
+  const PhraseRuntime::RuntimeSynthEvent& neighbour =
+      phrase.events[static_cast<uint16_t>(next)];
+  const uint32_t neighbourEnd =
+      static_cast<uint32_t>(neighbour.startTick) *
+          PhraseRuntime::kSubticksPerTick +
+      neighbour.durationSubticks;
+
+  const uint32_t end = selectedEnd > neighbourEnd ? selectedEnd : neighbourEnd;
+  const uint32_t startSubtick =
+      static_cast<uint32_t>(selected.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  if (end <= startSubtick) return JoinResult::Rejected;
+  const uint32_t duration = end - startSubtick;
+  if (duration > UINT16_MAX) return JoinResult::Rejected;
+
+  phrase.events[eventIndex].durationSubticks = static_cast<uint16_t>(duration);
+  if (deleteEvent(phrase, static_cast<uint16_t>(next)) !=
+      EventEditResult::Changed) {
+    return JoinResult::Rejected;
+  }
+  return JoinResult::Changed;
+}
+
 inline EventEditResult resizeEventByGrid(Buffer& phrase,
                                          uint16_t eventIndex,
                                          int direction,

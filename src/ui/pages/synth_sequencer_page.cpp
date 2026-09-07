@@ -19,6 +19,7 @@
 #include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_insert_edit.h"
+#include "../phrase_notes_join_edit.h"
 #include "../phrase_source_toggle.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
@@ -429,7 +430,7 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
 
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(bounds.x + 4, bounds.y + 84,
-               "ENTER ADD  BS DEL  ^Z UNDO  ALT+R SRC");
+               "ENTER ADD  J JOIN  BS DEL  ^Z UNDO  ALT+R SRC");
 
   UI::drawStandardFooter(gfx,
                          "SPACE LISTEN/STOP  U/D HIGHER LOWER",
@@ -548,6 +549,34 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     phrase_cursor_ = PhraseNotesCursor::moveToOnset(
         phrase_cursor_, phrase, nav == GROOVEPUTER_RIGHT ? 1 : -1);
     phrase_pitch_offset_ = 0;
+    return true;
+  }
+
+  // Continue this sound instead of the next one. Explicit, because removing a
+  // neighbouring sound is a musical decision -- not something "longer" should
+  // do behind the user's back.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'j' || ui_event.key == 'J')) {
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+    PhraseNotesJoinEdit::Prepared prepared{};
+    const auto result = PhraseNotesJoinEdit::prepare(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_),
+        phrase_cursor_.grid, prepared);
+    if (result != PhraseNotesJoinEdit::Result::Ready) {
+      const char* why = "CANNOT JOIN";
+      if (result == PhraseNotesJoinEdit::Result::NoTarget) why = "NO SOUND HERE";
+      else if (result == PhraseNotesJoinEdit::Result::NoNext) why = "NOTHING AFTER IT";
+      else if (result == PhraseNotesJoinEdit::Result::Ambiguous) {
+        why = "TWO SOUNDS START THERE";
+      }
+      UI::showToast(why, 1200);
+      return true;
+    }
+
+    const bool committed = commitRuntimePhraseEditWithUndo(
+        mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
+    UI::showToast(committed ? "JOINED WITH NEXT" : "EDIT STALE", 1000);
     return true;
   }
 
