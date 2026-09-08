@@ -24,6 +24,7 @@
 #include "../phrase_source_toggle.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
+#include "../phrase_instrument_controls.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_utils.h"
@@ -291,15 +292,19 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const IGfxColor voiceColor = synthTabColor(voice_index_);
 
   gfx.setTextColor(voiceColor);
-  gfx.drawText(bounds.x + 4, bounds.y, "MELODY");
+  gfx.drawText(bounds.x + 4, bounds.y, "PHRASE");
   char where[20];
-  std::snprintf(where, sizeof(where), "BAR %u OF %u",
+  std::snprintf(where, sizeof(where), "BAR %u/%u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  const int whereX = bounds.x + 4 + textWidth(gfx, "MELODY") + 10;
+  const int whereX = bounds.x + 4 + textWidth(gfx, "PHRASE") + 10;
   gfx.drawText(whereX, bounds.y, where);
-  gfx.drawText(whereX + textWidth(gfx, where) + 10, bounds.y, "ALT+R SRC");
+  gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:PHR");
+  char grid[16];
+  std::snprintf(grid, sizeof(grid), "GRID %s",
+                PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
+  gfx.drawText(bounds.x + 4, bounds.y + 9, grid);
 
   // One editor. Horizontal is time, vertical is pitch -- the only two claims
   // the material actually makes. The overview strip and the magnified lane are
@@ -636,6 +641,36 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
   const int nav = UIInput::navCode(ui_event);
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+
+  if (!ui_event.alt && lower == 'l') {
+    const bool changed = PhraseInstrumentControls::applyLengthChange(
+        phrase.lengthTicks, +1, [&](uint8_t bars) {
+          return mini_acid_.setPhraseLength(voice_index_, bars);
+        });
+    const auto& after = mini_acid_.currentPhraseBuffer(voice_index_);
+    phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after.lengthTicks);
+    char toast[32];
+    std::snprintf(toast, sizeof(toast), "PHRASE LENGTH %uB",
+                  static_cast<unsigned>(
+                      PhraseInstrumentControls::lengthBars(after.lengthTicks)));
+    UI::showToast(changed ? toast : "LENGTH UNCHANGED", 1000);
+    return true;
+  }
+
+  if (!ui_event.alt && (ui_event.key == '[' || ui_event.key == ']')) {
+    phrase_cursor_ = PhraseInstrumentControls::jumpBar(
+        phrase_cursor_, ui_event.key == ']' ? +1 : -1, phrase.lengthTicks);
+    char toast[32];
+    std::snprintf(toast, sizeof(toast), "PHRASE BAR %u/%u",
+                  static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
+                  static_cast<unsigned>(
+                      PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
+    UI::showToast(toast, 900);
+    return true;
+  }
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
   // Enter adds a sound where the cursor stands. Until now the editor could
@@ -991,12 +1026,17 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   // handler: from PATTERN there is otherwise no way back except three
   // keypresses on the MORE tab.
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-    PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-    UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
-                          MiniAcid::SequencedSource::Phrase
-                      ? "SOURCE: MELODY"
-                      : "SOURCE: PATTERN",
-                  1000);
+    const auto result =
+        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    if (result == PhraseSourceToggle::Result::MadePhrase) {
+      UI::showToast("MAKE PHRASE", 1000);
+    } else {
+      UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
+                            MiniAcid::SequencedSource::Phrase
+                        ? "SOURCE: MELODY"
+                        : "SOURCE: PATTERN",
+                    1000);
+    }
     return true;
   }
 
