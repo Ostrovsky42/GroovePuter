@@ -5,7 +5,6 @@
 bool Wavetable::initialized_ = false;
 float Wavetable::sineTable_[kWavetableSize];
 float Wavetable::sawTable_[kWavetableSize];
-float Wavetable::triangleTable_[kWavetableSize];
 float Wavetable::squareTable_[kWavetableSize];
 
 void Wavetable::init() {
@@ -21,15 +20,6 @@ void Wavetable::init() {
   // Sawtooth wave
   for (uint32_t i = 0; i < kWavetableSize; i++) {
     sawTable_[i] = 2.0f * static_cast<float>(i) / static_cast<float>(kWavetableSize) - 1.0f;
-  }
-  
-  // Triangle wave
-  for (uint32_t i = 0; i < kWavetableSize; i++) {
-    if (i < kWavetableSize / 2) {
-      triangleTable_[i] = 4.0f * static_cast<float>(i) / static_cast<float>(kWavetableSize) - 1.0f;
-    } else {
-      triangleTable_[i] = 3.0f - 4.0f * static_cast<float>(i) / static_cast<float>(kWavetableSize);
-    }
   }
   
   // Square wave (30% duty cycle for acid sound)
