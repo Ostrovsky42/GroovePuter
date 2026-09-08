@@ -76,10 +76,13 @@ for forbidden in ("commitPreparedGeneration(", "undoOwner().commitPrepared", "ma
                   "generatePattern", "generateDrum", "SD.", "File ", "ArduinoJson", "writeScene"):
     require(forbidden not in bar, f"BAR_START leaked forbidden work: {forbidden}")
 
-# Audio reads old audible material/swing/genre from the overlay while Scene is
-# already the persistent truth. Global old truth remains pending through a
-# selector change; only material accessors require exact target identity so old
-# Pattern bytes can never be redirected to the new selector.
+# Audio reads old audible material/swing from the overlay while Scene is already
+# persistent truth. Synth gate/lifetime is now part of the immutable runtime
+# event projection, so the pending activation snapshots the already-audible
+# RuntimePatternEventBuffer instead of re-reading GenreSettings in playback.
+# Global old truth remains pending through a selector change; only material
+# accessors require exact target identity so old Pattern bytes/events can never
+# be redirected to the new selector.
 base_overlay = between(OWNER, "inline const PendingGeneration* pendingAudibleActivation", "inline const SynthPattern* pendingAudibleSynthPattern")
 require("targetStillActive" not in base_overlay,
         "global audible overlay must survive selector changes until BAR_START")
@@ -90,13 +93,16 @@ drum_overlay = between(OWNER, "inline const DrumPatternSet* pendingAudibleDrumPa
 require("targetStillActive" in drum_overlay,
         "drum old-material overlay must validate exact target identity")
 require("pendingAudibleSynthPattern" in ENGINE,
-        "synth playback must consult pending audible overlay")
+        "synth source-step compatibility path must consult pending audible overlay")
 require(ENGINE.count("pendingAudibleDrumPatternSet") >= 3,
         "all drum playback/timing paths must consult pending audible overlay")
 require("audibleGenerationSwingPct" in ENGINE,
         "swing must remain old audible truth until activation")
-require("pendingAudibleGenreSettings" in ENGINE and "GenreCatalog::grooveRecipe" in ENGINE,
-        "gate/groove recipe must remain old audible truth until activation")
+require("activation.synthRuntime[0] = engine.activePatternRuntimeEvents(0)" in OWNER and
+        "activation.synthRuntime[1] = engine.activePatternRuntimeEvents(1)" in OWNER,
+        "pending full activation must snapshot exact audible synth runtime events")
+require("pendingAudibleSynthRuntime" in ENGINE,
+        "synth playback must use the pending runtime-event snapshot until activation")
 
 # Save serializes Scene committed truth and never serializes pending. In
 # particular it may not overwrite newly committed BPM with old audible BPM.
