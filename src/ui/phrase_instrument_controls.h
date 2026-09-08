@@ -72,9 +72,15 @@ inline bool applyLengthChange(uint16_t currentLengthTicks,
                               int direction,
                               SetLengthFn&& setLength) {
   if (direction != -1 && direction != 1) return false;
-  const uint8_t target =
-      nextLengthBars(lengthBars(currentLengthTicks), direction);
-  return std::forward<SetLengthFn>(setLength)(target);
+  uint8_t target = lengthBars(currentLengthTicks);
+  // There are three alternative extents. A contraction may be rejected
+  // because retained notes would fall outside it; continue around the finite
+  // selector so one unsafe wrap target does not trap LENGTH forever.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    target = nextLengthBars(target, direction);
+    if (std::forward<SetLengthFn>(setLength)(target)) return true;
+  }
+  return false;
 }
 
 inline PhraseNotesCursor::State jumpBar(PhraseNotesCursor::State state,
