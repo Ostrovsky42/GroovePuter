@@ -1,0 +1,36 @@
+name: TEMP Apply Pattern Phrase UI Patch
+
+on:
+  push:
+    branches:
+      - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
+    paths:
+      - scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+      - .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact page patch
+        run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+
+      - name: Run focused Pattern Phrase UI gate
+        run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+
+      - name: Commit verified page integration and remove temporary machinery
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/synth_sequencer_page.cpp
+          git rm scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
+          git commit -m "feat(ui): integrate Pattern Phrase instrument controls"
+          git push origin HEAD:feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
