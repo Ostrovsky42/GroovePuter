@@ -11,9 +11,9 @@
 
 // U4B9: the single owner of the PATTERN/PHRASE switch.
 //
-// The decision has three branches and carries an undo receipt, and it now has
-// two entry points -- the SRC row on the MORE tab and ALT+R on the editor
-// itself. Two copies of that would diverge, so both call here.
+// The decision has three branches and carries an undo receipt. The source row,
+// ALT+R and explicit MAKE PHRASE all reuse this owner rather than duplicating
+// projection or source state in the UI.
 //
 // The receipt carries the source as well as the material, so Ctrl+Z restores
 // PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
@@ -56,6 +56,22 @@ inline void toggle(MiniAcid& engine, const AudioGuard& audioGuard,
 
   if (audioGuard) audioGuard(apply);
   else apply();
+}
+
+// Explicit one-way musical gesture from Pattern. It intentionally delegates to
+// the same owner as SRC: no event copy, no UI material model, no second source
+// flag. If the voice is already on Phrase, repeating MAKE PHRASE is a no-op so
+// edited material cannot be silently re-projected.
+inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
+                       int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  if (engine.currentSequencedSource(voiceIndex) ==
+      MiniAcid::SequencedSource::Phrase) {
+    return true;
+  }
+  toggle(engine, audioGuard, voiceIndex);
+  return engine.currentSequencedSource(voiceIndex) ==
+         MiniAcid::SequencedSource::Phrase;
 }
 
 }  // namespace PhraseSourceToggle
