@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${ROOT}/build/host-tests/gf2-lofi-adversarial"
 mkdir -p "$BUILD"
 
+python3 "${ROOT}/tests/test_gf2_harmonic_rate_profile_owner.py"
+
 mapfile -t SOURCES < <(
   sed -n '/COMMON_SOURCES=(/,/)/p' \
     "${ROOT}/tests/run_stage15_tonal_integration_tests.sh" |
