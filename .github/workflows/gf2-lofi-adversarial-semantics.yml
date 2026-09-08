@@ -1,0 +1,56 @@
+name: GF2 Lo-Fi adversarial semantics
+
+on:
+  push:
+    branches:
+      - feature/20260908-04-0.9.10-gf2-lofi-adversarial-semantics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Lo-Fi adversarial semantic gate
+        run: bash tests/run_gf2_lofi_adversarial_tests.sh
+      - name: H2R harmonic-clock compatibility
+        run: bash tests/run_0_9_9_phrase_h2r_tests.sh
+      - name: P1R phrase execution compatibility
+        run: bash tests/run_0_9_9_phrase_p1r_tests.sh
+      - name: GF2 I5 inherited semantic gate
+        run: bash tests/run_gf2_i5_tests.sh
+
+  target-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: arduino/setup-arduino-cli@v2
+        id: arduino
+        with:
+          version: "1.x"
+      - name: Install target dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libsdl2-dev libsdl2-gfx-dev pkg-config rsync
+          bash scripts/install_arduino_deps.sh
+      - name: Validate exact-head GF2 target matrix
+        env:
+          GF2_SDL_SETUP_STATUS: success
+          GF2_ARDUINO_CLI_SETUP_STATUS: success
+          GF2_ARDUINO_DEPS_SETUP_STATUS: success
+        run: |
+          bash scripts/validate_gf2_targets.sh --all
+          cat build/gf2-validation/matrix.txt
