@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lifetime-r1-focused:
@@ -25,5 +25,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Materialize L1 diagnostic hooks once
+        if: github.event_name == 'push'
+        run: python3 scripts/materialize_lifetime_r1_l1_hooks.py
+      - name: Commit materialized hooks when needed
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet -- GroovePuter.ino src/platform/cardputer_smf_player.cpp; then
+            echo "L1 hooks already materialized"
+            exit 0
+          fi
+          git config user.name "GroovePuter CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add GroovePuter.ino src/platform/cardputer_smf_player.cpp
+          git commit -m "feat(diag): wire lifetime-r1 l1 census points"
+          git push origin HEAD:feature/20260908-03-0.9.10-lifetime-r1-explicit-residency
       - name: Run LIFETIME-R1 focused gate
         run: bash tests/run_lifetime_r1_tests.sh
