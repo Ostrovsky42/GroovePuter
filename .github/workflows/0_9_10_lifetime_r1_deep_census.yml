@@ -1,0 +1,51 @@
+name: 0.9.10 LIFETIME-R1 Deep Census
+
+on:
+  push:
+    branches:
+      - research/20260908-05-0.9.10-lifetime-r1-deep-census
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cardputer-elf-owner-census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build unchanged Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Print fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+      - name: Measure lifetime owner symbols from Xtensa ELF
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF=build/cardputer-adv-current/GroovePuter.ino.elf
+          NM="$(find "$HOME/.arduino15" -type f -name 'xtensa-esp32s3-elf-nm' -perm -111 | head -n 1)"
+          if [[ -z "$NM" ]]; then
+            echo "xtensa-esp32s3-elf-nm not found" >&2
+            exit 1
+          fi
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "ELF=$ELF"
+          echo "NM=$NM"
+          echo
+          echo "=== NAMED LIFETIME OWNERS ==="
+          "$NM" -S -C "$ELF" | grep -E 's_tempLoadScene|g_smfPlayer|g_dispatchTaskStack|g_sampleStore|g_miniAcidInstance|sceneTransactionScratch|pendingMaterial_|currentPhrase_|patternRuntimeBank_' || true
+          echo
+          echo "=== LARGEST BSS/DATA SYMBOLS ==="
+          "$NM" -S --size-sort -C "$ELF" | awk '$3 ~ /^[bBdD]$/ {print}' | tail -n 160
