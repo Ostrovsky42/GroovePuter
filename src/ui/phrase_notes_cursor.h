@@ -68,7 +68,9 @@ inline State changeGrid(State state, int direction, uint16_t lengthTicks) {
   if (direction != -1 && direction != 1) return state;
 
   const uint16_t oldTick = tick(state);
-  const int nextRank = gridRank(state.grid) + direction;
+  int nextRank = gridRank(state.grid) + direction;
+  if (nextRank < 0) nextRank = 2;
+  if (nextRank > 2) nextRank = 0;
   state.grid = gridForRank(nextRank);
 
   const uint16_t quantum = quantumTicks(state.grid);
