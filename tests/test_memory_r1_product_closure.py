@@ -23,6 +23,30 @@ require(
 registry = (ROOT / "src/platform/cardputer_smf_player_registry.cpp").read_text(encoding="utf-8")
 require("ensureStarted()" in registry, "Lazy SMF owner missing ensureStarted()")
 
+# The historical source-regression modules contain broader stale assertions that
+# are repaired by the separate test-liveness workstream. MEMORY-R1 owns only the
+# two eager-SMF expectations it changes, so guard those exact oracles here.
+source_oracle = (ROOT / "tests/test_source_regressions.py").read_text(encoding="utf-8")
+require(
+    'sketch.index("beginCardputerSmfPlayerService();")' not in source_oracle,
+    "Lazy SMF source oracle still requires boot-time player startup",
+)
+require(
+    "SMF task/timing storage must remain lazy at boot" in source_oracle,
+    "Lazy SMF source oracle was not updated to the accepted ownership contract",
+)
+performance_oracle = (
+    ROOT / "tests/_performance_source_regressions_base.py"
+).read_text(encoding="utf-8")
+require(
+    '"beginCardputerSmfPlayerService" in\n                (ROOT / "GroovePuter.ino")' not in performance_oracle,
+    "Lazy SMF performance oracle still requires setup ownership",
+)
+require(
+    "SMF runtime must remain lazy until the first player command" in performance_oracle,
+    "Lazy SMF performance oracle was not updated to the accepted ownership contract",
+)
+
 fatfs = (ROOT / "scripts/build_fatfs_dynbuffers_candidate.sh").read_text(encoding="utf-8")
 for token in (
     "858a988d6eb90f54661abe282c523879c6ad0116",
