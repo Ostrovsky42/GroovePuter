@@ -1,0 +1,41 @@
+name: 0.9.10 Pattern Phrase Runtime Lifetime Checkpoint
+
+on:
+  push:
+    branches:
+      - feature/20260908-02-pattern-phrase-runtime-lifetime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-lifetime:
+    name: Focused Pattern Phrase lifetime
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin exact SHA
+        run: |
+          echo "CHECKPOINT_SHA=${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run focused ownership lifetime characterization
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh
