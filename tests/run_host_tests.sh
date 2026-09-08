@@ -62,6 +62,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_runtime_diagnostics.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_runtime_diagnostics"
+
+"${BUILD_DIR}/test_cardputer_runtime_diagnostics"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_atlas_runtime.cpp" \
   "${ROOT_DIR}/src/dsp/atlas_runtime.cpp" \

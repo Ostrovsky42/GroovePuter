@@ -76,7 +76,14 @@ private:
     uint8_t animFrame_ = 0;
     uint8_t tickCounter_ = 0;
 
-    // Memory-safe background caching (Line-based)
+    // Memory-safe background caching (Line-based). Lazily (re)built on first
+    // use / theme change, never eagerly at construction — see
+    // docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md for why an eager
+    // fixed-size version of this cache was tried and reverted: it just moved
+    // the same ~1.4 KB cost onto the MiniAcidDisplay constructor's own tight
+    // margin instead of removing it. drawBackground() guards the (re)build
+    // against low free DRAM and falls back to a flat fill rather than ever
+    // let the allocation itself fail and crash.
     std::vector<uint16_t> linePlain_; // Plain base color
     std::vector<uint16_t> lineEven_;  // Dither Line 0 (Dark at 0, 2, 4...)
     std::vector<uint16_t> lineOdd_;   // Dither Line 2 (Dark at 1, 3, 5...)

@@ -5,6 +5,7 @@
 #include "undo_ux.h"
 #include "src/platform/cardputer_ui_session.h"
 #include "src/platform/cardputer_smf_route_persistence.h"
+#include "src/platform/cardputer_runtime_diagnostics.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -29,7 +30,6 @@
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
-#include "ui_location.h"
 #include "ui_theme.h"
 #include "screen_geometry.h"
 #if defined(ESP32) || defined(ESP_PLATFORM)
@@ -55,6 +55,36 @@ const char* visualStyleName(VisualStyle style) {
         case VisualStyle::RETRO_CLASSIC: return "CYBER";
         case VisualStyle::AMBER: return "AMBER";
         default: return "CARBON";
+    }
+}
+
+// Worst-case observed cost of createPage_() for this index: the actual
+// (freeBefore - freeAfter) delta createPage_() itself measures, taken as the
+// maximum across every capture in this investigation session. sizeof(PageType)
+// was tried first and proved to undercount — page construction can heap-own
+// members sizeof() never sees — which let an unsafe allocation through and
+// crashed the device anyway. See
+// docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md. ProjectPage's spread
+// (244-2176 B, scene/sample-list dependent) is why this is a per-page ceiling,
+// not a single shared guess.
+size_t pageAllocationSize(int index) {
+    switch (index) {
+        case 0:  return 172;   // GenrePage
+        case 1:
+        case 2:  return 1036;  // SynthSequencerPage
+        case 5:  return 1528;  // DrumSequencerPage
+        case 6:  return 388;   // SongPage
+        case 7:  return 364;   // SequencerHubPage
+        case 8:  return 140;   // FeelTexturePage
+        case 9:  return 156;   // SettingsPage
+        case 10: return 2176;  // ProjectPage (scene/sample-list dependent)
+        case 11: return 164;   // ModePage
+        case 12: return 136;   // PerformPage
+        case WorkflowPages::kPhrase:     return 300;  // PhrasePage
+        case WorkflowPages::kPhraseCore: return 292;  // PhrasePage (core mode)
+        case WorkflowPages::kSampler:    return 196;  // SamplerPage
+        case kSmfPlayerPage:             return 484;  // SmfPlayerPage
+        default: return 0;
     }
 }
 } // namespace
@@ -103,8 +133,14 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
     
     pages_.resize(kPageCount);
-    pages_[page_index_] = createPage_(page_index_);
-    
+    // Route through getPage_(), not createPage_() directly: the persisted
+    // session can restore any page as the startup page (including one whose
+    // construction cost doesn't fit in the free DRAM available this boot),
+    // and only getPage_() applies the low-memory guard. A page skipped here
+    // falls back to the existing "PAGE INDEX INVALID" render path — see
+    // docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md.
+    getPage_(page_index_);
+
     applyPageBounds_();
     applied_visual_style_ = UI::currentStyle;
     visual_style_initialized_ = true;
@@ -174,15 +210,41 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
-            if (!keep && pages_[i]) {
-                pages_[i]->captureViewContinuity(ui_view_continuity_);
-                pages_[i].reset();
-            }
+            if (!keep && pages_[i]) pages_[i].reset();
         }
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+        // Refuse the switch rather than attempt an allocation that could fail
+        // and crash (this build has no exceptions, so make_unique cannot fail
+        // gracefully on its own). pages_[index] stays null; the caller's
+        // existing "PAGE INDEX INVALID" fallback renders instead, and this
+        // retries on the next navigation attempt once heap recovers.
+        const size_t neededBytes = pageAllocationSize(index);
+        // 512 B proved crash-free but blocked pages 1/2 almost unconditionally
+        // (typical free DRAM at the check is ~1088-1128 B against a 1236 B
+        // threshold). Confirmed data points: crashed at free=1064 B, succeeded
+        // at free=1160 B, for the same ~1036 B page. 70 B sits inside that gap,
+        // just above the confirmed failure point, to restore normal navigation
+        // without abandoning the guard entirely.
+        constexpr size_t kSafetyMarginBytes = 70;
+        // INTERNAL|8BIT, not INTERNAL|DEFAULT: matching createPage_()'s own
+        // "DRAM: N bytes free" measurement above and every other free-heap
+        // print in this file. The two caps report different totals on this
+        // target; checking DEFAULT let a page through that 8BIT already knew
+        // didn't fit, and it crashed anyway.
+        const uint32_t freeForPage =
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (neededBytes > 0 && freeForPage < neededBytes + kSafetyMarginBytes) {
+            Serial.printf(
+                "[UI] Page %d creation skipped: low memory (free=%u need=%zu)\n",
+                index, (unsigned)freeForPage, neededBytes);
+            showToast("LOW MEMORY", 1200);
+            return pages_[index] ? pages_[index].get() : nullptr;
+        }
+#endif
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
-            pages_[index]->restoreViewContinuity(ui_view_continuity_);
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
             pages_[index]->setVisualStyle(UI::currentStyle);
         }
@@ -219,6 +281,10 @@ void MiniAcidDisplay::update() {
         }
     }
 
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforeSkinDraw);
+
     // Draw background
     if (skin_) {
         skin_->drawBackground();
@@ -227,6 +293,30 @@ void MiniAcidDisplay::update() {
         gfx_.clear(COLOR_BLACK);
     }
 
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforePageDraw);
+
+    IPage* currentPage = getPage_(page_index_);
+    if (currentPage) {
+        currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        currentPage->tick();
+        currentPage->draw(gfx_);
+    } else {
+        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
+        LayoutManager::clearContent(gfx_);
+        gfx_.setTextColor(COLOR_WHITE);
+        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
+        char buf[32];
+        snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
+        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
+        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
+    }
+    
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforeHudTail);
+
     UI::UiStatusContext statusContext = UI::UiStatusContext::Unknown;
     UI::UiLocation statusLocation{};
     if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
@@ -234,30 +324,10 @@ void MiniAcidDisplay::update() {
     }
     const UI::UiStatusSnapshot frameStatus =
         UI::captureUiStatusSnapshot(mini_acid_, statusContext);
-    
-    UI::UiShellFrameModel shellFrame{};
-    UI::beginShellFrameModel(shellFrame);
-    IPage* currentPage = getPage_(page_index_);
-    if (currentPage) {
-        currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        currentPage->tick();
-        currentPage->draw(gfx_);
-    } else {
-        LayoutManager::clearContent(gfx_);
-        gfx_.setTextColor(COLOR_WHITE);
-        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
-        char buf[32];
-        snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
-        gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
-        UI::publishShellFooter("[ ] workspaces", "Fn+M menu");
-    }
-    UI::endShellFrameModel();
-    UI::drawStatusChrome(gfx_, frameStatus);
-    UI::drawShellFooter(gfx_, shellFrame.footer);
+    UI::drawLiveMixLockBadge(gfx_, frameStatus);
 
     updateCyclePulse_();
-    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_,
-                           shellFrame.feelOverlay);
+    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
 
     if (workspace_launcher_.isVisible()) {
         workspace_launcher_.draw(gfx_);
@@ -305,7 +375,11 @@ void MiniAcidDisplay::servicePersistence_() {
     captureUiSession_();
     if (ui_session_save_pending_ && !mini_acid_.isPlaying() &&
         due(ui_session_save_due_ms_)) {
-        if (GroovePuterPlatform::saveCardputerUiSession(ui_session_)) {
+        CardputerRuntimeDiagnostics::checkpoint(
+            CardputerRuntimeDiagnostics::Task::Loop,
+            CardputerRuntimeDiagnostics::Phase::BeforeSessionSave);
+        const bool sessionSaved = GroovePuterPlatform::saveCardputerUiSession(ui_session_);
+        if (sessionSaved) {
             ui_session_save_pending_ = false;
             Serial.printf("[SESSION] saved active=%d mem=%d,%d,%d,%d,%d\n",
                           static_cast<int>(ui_session_.activePage),
@@ -337,6 +411,9 @@ void MiniAcidDisplay::servicePersistence_() {
     }
 
     bool saved = false;
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::BeforeSceneAutosave);
     withAudioGuard([&]() { saved = mini_acid_.autoSaveSceneRecovery(); });
     if (saved) {
         recovery_save_pending_ = false;
@@ -359,9 +436,6 @@ void MiniAcidDisplay::syncVisualStyle_() {
 }
 
 void MiniAcidDisplay::nextPage(bool workflowModifier) {
-    // Either source counts. The hardware query stays so the device keeps the
-    // exact behaviour it had; the argument is what makes the same gesture
-    // reachable where hardwareWorkflowModifierHeld() is compiled out to false.
     if (workflowModifier ||
         WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(1);

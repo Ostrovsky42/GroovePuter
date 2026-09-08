@@ -41,6 +41,7 @@ rsync -a --delete \
 if [[ "${IMAGE_KIND}" == "runtime" ]]; then
   python3 "${SOURCE_ROOT}/scripts/instrument_cardputer_memory_runtime.py" \
     "${SOURCE_ROOT}"
+  export GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-} -DGROOVEPUTER_RUNTIME_DIAGNOSTICS"
 fi
 
 case "${PROFILE}" in

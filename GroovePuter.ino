@@ -24,6 +24,7 @@
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
+#include "src/platform/cardputer_runtime_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
@@ -89,6 +90,8 @@ static float readPatternSequencerPhase(void* context) {
 }
 
 void audioTask(void *param) {
+  CardputerRuntimeDiagnostics::registerCurrentTask(
+      CardputerRuntimeDiagnostics::Task::Audio);
   Serial.println("AudioTask: Starting...");
 
   if (!g_audioOutputReady) {
@@ -269,6 +272,11 @@ void setup() {
 #if ARDUINO_USB_CDC_ON_BOOT
   Serial.begin(115200);
 #endif
+  CardputerRuntimeDiagnostics::begin(
+      0x47505244u,
+      esp_reset_reason() != ESP_RST_POWERON);
+  CardputerRuntimeDiagnostics::registerCurrentTask(
+      CardputerRuntimeDiagnostics::Task::Loop);
   // Keep diagnostics off by default on hardware; detailed profiling can exceed
   // the real-time audio budget and cause underruns.
   AudioDiagnostics::instance().enable(false);
@@ -284,6 +292,11 @@ void setup() {
   cfg.internal_spk = false;
   markBootStage(10, "before M5Cardputer.begin");
   M5Cardputer.begin(cfg);
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterM5Init);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   markBootStage(11, "after M5Cardputer.begin");
 
   // Configure ES8311 without creating a temporary M5Unified I2S channel.
@@ -325,6 +338,11 @@ void setup() {
   markBootStage(30, "before display.begin");
   g_display.setRotation(1);
   g_display.begin();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterDisplayInit);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   markBootStage(31, "after display.begin");
   
   Serial.println("Clearing Display...");
@@ -359,6 +377,11 @@ void setup() {
   // after MiniAcid::init() completes below.
   logHeapCaps("before-audio-task");
   startAudioTask();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterAudioTaskStart);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   logHeapCaps("after-audio-task");
 
   // Each TempoDelay needs one contiguous 8.6KB block. Reserve both before SD
@@ -366,6 +389,11 @@ void setup() {
   screenLog("4a. DSP Buffers...");
   markBootStage(86, "before critical DSP buffers");
   g_miniAcidInstance.preallocateConstrainedDelayBuffers();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterDspDelaysInit);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   markBootStage(87, "after critical DSP buffers");
   logHeapCaps("after-critical-dsp-buffers");
 
@@ -375,6 +403,11 @@ void setup() {
   screenLog("4b. SD Init...");
   markBootStage(82, "before early SD init");
   g_sceneStorage.initializeStorage();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterSdMount);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   markBootStage(83, "after early SD init");
 
   // LazyCardputerSmfPlayer registers itself statically. Allocate the SMF task
@@ -383,6 +416,11 @@ void setup() {
   screenLog("4c. SMF Runtime (lazy)...");
   markBootStage(84, "SMF runtime deferred");
   markBootStage(85, "after SMF runtime deferral");
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterSmfBegin);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
 
   // Global MIDI settings must be restored before the dispatcher starts. The
   // profile runtime is an input to later route projection; letting UI creation
@@ -420,6 +458,11 @@ void setup() {
   g_miniAcidInstance.sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
   g_miniAcidInstance.init();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterSceneLoad);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   g_miniAcid = &g_miniAcidInstance;
   g_patternMusicalEventQueue.setPhaseReader(
       readPatternSequencerPhase, g_miniAcid);
@@ -487,6 +530,11 @@ void setup() {
   Serial.println("10. First drawUI...");
   markBootStage(94, "before first drawUI");
   drawUI();
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterFirstUiFrame);
+  CardputerRuntimeDiagnostics::sampleFromControlTask();
+  CardputerRuntimeDiagnostics::reportFromControlTask();
   markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
   markBootStage(100, "setup-complete");
@@ -884,12 +932,21 @@ void loop() {
   static unsigned long lastUIUpdate = 0;
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
+    CardputerRuntimeDiagnostics::checkpoint(
+        CardputerRuntimeDiagnostics::Task::Loop,
+        CardputerRuntimeDiagnostics::Phase::Ui);
     if (g_miniDisplay) g_miniDisplay->update();
   }
+
+  CardputerRuntimeDiagnostics::checkpoint(
+      CardputerRuntimeDiagnostics::Task::Loop,
+      CardputerRuntimeDiagnostics::Phase::AfterUiBeforeHousekeeping);
 
   static unsigned long lastMemLog = 0;
   if (millis() - lastMemLog > 5000) {
     lastMemLog = millis();
+    CardputerRuntimeDiagnostics::sampleFromControlTask();
+    CardputerRuntimeDiagnostics::reportFromControlTask();
     // logHeapCaps("periodic");
     if (g_miniAcid) {
        auto& stats = g_miniAcid->perfStats;

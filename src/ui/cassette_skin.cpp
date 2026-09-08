@@ -1,6 +1,9 @@
 #include "cassette_skin.h"
 #include <cstdio>
 #include <cstring>
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include "esp_heap_caps.h"
+#endif
 
 CassetteSkin::CassetteSkin(IGfx& gfx, CassetteTheme theme)
     : gfx_(gfx), theme_(theme), palette_(&getPalette(theme)) {}
@@ -38,7 +41,28 @@ void CassetteSkin::drawBackground() {
     uint32_t currentBg = palette_->bg.color24();
 
     // 1) Handle Line Cache Refresh
-    if (linePlain_.empty() || lastBgColor_ != currentBg || linePlain_.size() != (size_t)w) {
+    bool needsRebuild = linePlain_.empty() || lastBgColor_ != currentBg ||
+                         linePlain_.size() != (size_t)w;
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    // This cache is a visual refinement, not a correctness requirement: if
+    // free DRAM is too tight to safely grow it right now, skip the rebuild
+    // instead of letting the allocation fail underneath us (that crashed the
+    // device — docs/audits/RECOVERY_DIAGNOSTICS_D1_2026-09-07.md). Leaving
+    // lastBgColor_ untouched means this retries on a later frame once heap
+    // recovers, rather than permanently giving up.
+    if (needsRebuild) {
+        const size_t neededBytes = static_cast<size_t>(w) * sizeof(uint16_t) * 3;
+        constexpr size_t kSafetyMarginBytes = 2048;
+        const uint32_t freeNow =
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DEFAULT);
+        if (freeNow < neededBytes + kSafetyMarginBytes) {
+            needsRebuild = false;
+        }
+    }
+#endif
+
+    if (needsRebuild) {
         lastBgColor_ = currentBg;
         linePlain_.assign(w, palette_->bg.toCardputerColor());
         lineEven_.resize(w);
@@ -51,6 +75,14 @@ void CassetteSkin::drawBackground() {
             lineEven_[x] = (x % 2 == 0) ? dark : base;
             lineOdd_[x]  = (x % 2 == 1) ? dark : base;
         }
+    }
+
+    if (linePlain_.empty()) {
+        // No cache built yet (first frame landed under memory pressure) —
+        // flat fill this frame, no dithering. Cheaper than the cache itself
+        // and never allocates.
+        gfx_.fillRect(0, 0, w, h, palette_->bg);
+        return;
     }
 
     // 2) Line-by-Line Rendering

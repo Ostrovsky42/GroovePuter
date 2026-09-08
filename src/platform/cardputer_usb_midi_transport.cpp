@@ -33,6 +33,7 @@
 #include "src/midi/usb_endpoint_health.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
+#include "cardputer_runtime_diagnostics.h"
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -815,6 +816,7 @@ enum class PendingKind : uint8_t {
 };
 
 void midiDispatchTask(void*) {
+    CardputerRuntimeDiagnostics::registerCurrentTask(CardputerRuntimeDiagnostics::Task::Midi);
     // Enabled at start-up for the first hardware slice: there is no UI toggle
     // yet, so this is the only way the DIN wire can be heard. Note that with
     // DIN on, mounted() is true even with no USB host, so SMF no longer parks
