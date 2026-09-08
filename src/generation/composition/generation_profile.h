@@ -9,6 +9,7 @@
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
+#include "../roles/harmonic_rhythm.h"
 #include "../roles/melodic_motif.h"
 #include "rhythm_selection.h"
 
@@ -65,6 +66,7 @@ struct GenerationProfileView {
   WeightedIdentityView motifShapes{};
   WeightedIdentityView phraseLaws{};
   GenerationCorridor corridor{};
+  HarmonicChangeRateId harmonicChangeRate = HarmonicChangeRateId::Every2Beats;
   CompositionSecondaryRole secondaryRole = CompositionSecondaryRole::Melodic;
 };
 
@@ -92,6 +94,7 @@ struct GenerationCompositionResult {
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
+  HarmonicChangeRateId harmonicChangeRate = HarmonicChangeRateId::Every2Beats;
   CompositionSecondaryRole secondaryRole = CompositionSecondaryRole::Melodic;
 };
 
