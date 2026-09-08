@@ -799,6 +799,19 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     // selection falls outside it, so moving does not rearrange the picture.
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
+    const uint16_t insertTick = PhraseNotesCursor::tick(phrase_cursor_);
+    phrase_selection_ = PhraseSelectionState::withInsertTick(
+        phrase_selection_, insertTick);
+    const PhraseNotesSelection::Selection underCursor =
+        PhraseNotesSelection::deriveInCell(
+            phrase, insertTick,
+            PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    if (underCursor.active) {
+      const uint16_t retainedInsertTick = phrase_selection_.insertTick;
+      phrase_selection_ =
+          PhraseSelectionState::at(phrase, underCursor.eventIndex);
+      phrase_selection_.insertTick = retainedInsertTick;
+    }
     return true;
   }
 
