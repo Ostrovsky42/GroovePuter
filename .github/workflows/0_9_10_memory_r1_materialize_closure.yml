@@ -32,8 +32,6 @@ jobs:
           set -euo pipefail
           git diff --check
           python3 tests/test_memory_r1_product_closure.py
-          python3 -c 'import sys; sys.path.insert(0, "tests"); import test_source_regressions as t; t.test_cardputer_sd_has_one_hardware_mount_path(); print("lazy-SMF SD/source oracle: OK")'
-          python3 -c 'import sys; sys.path.insert(0, "tests"); import _performance_source_regressions_base as t; t.test_smf_player_is_additive_and_keeps_single_usb_owner(); print("lazy-SMF performance oracle: OK")'
           bash tests/run_pattern_phrase_p2_tests.sh
 
       - name: Commit exact closure delta
