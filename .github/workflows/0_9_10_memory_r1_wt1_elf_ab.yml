@@ -1,0 +1,130 @@
+name: 0.9.10 MEMORY-R1 WT1 ELF A/B
+
+on:
+  push:
+    branches:
+      - feature/20260908-0.9.10-memory-r1-wt1
+    paths:
+      - 'src/dsp/audio_wavetables.h'
+      - 'src/dsp/audio_wavetables.cpp'
+      - '.github/workflows/0_9_10_memory_r1_wt1_elf_ab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wt1-fs1b-elf-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout accepted FS1B baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 3b2bd280e9c39d8d5cbdf425db6ef18126e650be
+          path: before
+          fetch-depth: 1
+
+      - name: Checkout WT1 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: after
+          fetch-depth: 1
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install pinned Cardputer dependencies
+        run: bash after/scripts/install_arduino_deps.sh
+
+      - name: Fetch exact ESP-IDF source object
+        run: |
+          set -euo pipefail
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+
+      - name: Build FS1B baseline ELF
+        run: |
+          set -euo pipefail
+          cd before
+          BUILD_PATH="$GITHUB_WORKSPACE/build-before" \
+          ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-before/.arduino-build" \
+            bash scripts/build_cardputer_memory_r1_fs1b.sh --warnings all
+
+      - name: Build FS1B plus WT1 ELF
+        run: |
+          set -euo pipefail
+          cd after
+          BUILD_PATH="$GITHUB_WORKSPACE/build-after" \
+          ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-after/.arduino-build" \
+            bash scripts/build_cardputer_memory_r1_fs1b.sh --warnings all
+
+      - name: Measure exact WT1 static DRAM delta
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size -perm -u+x -print | sort -V | tail -n 1)"
+          NM_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-nm -perm -u+x -print | sort -V | tail -n 1)"
+          test -x "$SIZE_TOOL"
+          test -x "$NM_TOOL"
+
+          BEFORE_ELF="$GITHUB_WORKSPACE/build-before/GroovePuter.ino.elf"
+          AFTER_ELF="$GITHUB_WORKSPACE/build-after/GroovePuter.ino.elf"
+          test -f "$BEFORE_ELF"
+          test -f "$AFTER_ELF"
+
+          read_sections() {
+            "$SIZE_TOOL" -A "$1" | awk '
+              $1 == ".dram0.data" { data = $2 }
+              $1 == ".dram0.bss" { bss = $2 }
+              END { print data + 0, bss + 0 }
+            '
+          }
+
+          read -r BEFORE_DATA BEFORE_BSS < <(read_sections "$BEFORE_ELF")
+          read -r AFTER_DATA AFTER_BSS < <(read_sections "$AFTER_ELF")
+          BEFORE_FIXED=$((BEFORE_DATA + BEFORE_BSS))
+          AFTER_FIXED=$((AFTER_DATA + AFTER_BSS))
+          DELTA=$((BEFORE_FIXED - AFTER_FIXED))
+
+          if (( DELTA <= 0 )); then
+            echo "WT1 expected positive fixed-DRAM recovery, measured ${DELTA} B" >&2
+            exit 1
+          fi
+
+          if ! "$NM_TOOL" -C "$BEFORE_ELF" | grep -Fq 'Wavetable::triangleTable_'; then
+            echo "WT1 baseline ELF does not contain Wavetable::triangleTable_" >&2
+            exit 1
+          fi
+          if "$NM_TOOL" -C "$AFTER_ELF" | grep -Fq 'Wavetable::triangleTable_'; then
+            echo "WT1 candidate ELF still contains Wavetable::triangleTable_" >&2
+            exit 1
+          fi
+
+          {
+            echo "WT1 FS1B ELF A/B"
+            echo "before_source=3b2bd280e9c39d8d5cbdf425db6ef18126e650be"
+            echo "after_source=${GITHUB_SHA}"
+            echo "before_data=${BEFORE_DATA}"
+            echo "before_bss=${BEFORE_BSS}"
+            echo "before_fixed=${BEFORE_FIXED}"
+            echo "after_data=${AFTER_DATA}"
+            echo "after_bss=${AFTER_BSS}"
+            echo "after_fixed=${AFTER_FIXED}"
+            echo "recovered_fixed_dram=${DELTA}"
+            echo "before_elf_sha256=$(sha256sum "$BEFORE_ELF" | awk '{print $1}')"
+            echo "after_elf_sha256=$(sha256sum "$AFTER_ELF" | awk '{print $1}')"
+          } | tee "$GITHUB_WORKSPACE/wt1-elf-delta.txt"
+
+      - name: Upload WT1 ELF evidence and smoke image
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-memory-r1-wt1-fs1b-ab
+          if-no-files-found: error
+          path: |
+            wt1-elf-delta.txt
+            build-before/GroovePuter.ino.elf
+            build-after/GroovePuter.ino.elf
+            build-after/GroovePuter.ino.bin
+            build-after/GroovePuter.ino.bootloader.bin
+            build-after/GroovePuter.ino.partitions.bin
