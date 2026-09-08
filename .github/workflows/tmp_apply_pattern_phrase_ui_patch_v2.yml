@@ -73,63 +73,24 @@ jobs:
           from pathlib import Path
           path = Path("tests/test_ui_content_bounds.cpp")
           text = path.read_text(encoding="utf-8")
-          old_roll = (
-              "    bool drewMelody = false;\n"
-              "    for (const auto& entry : gfx.texts) {\n"
-              "      if (entry.text == \"MELODY\") drewMelody = true;\n"
-              "    }\n"
-              "    if (!drewMelody) {\n"
-              "      std::fprintf(stderr,\n"
-              "                   \"content bounds FAIL: the melody editor was never rendered, \"\n"
-              "                   \"so this page was not actually under test\\\\n\");\n"
-              "      ++g_failures;\n"
-              "    }\n"
-          )
-          new_roll = (
-              "    bool drewPhrase = false;\n"
-              "    for (const auto& entry : gfx.texts) {\n"
-              "      if (entry.text == \"PHRASE\") drewPhrase = true;\n"
-              "    }\n"
-              "    if (!drewPhrase) {\n"
-              "      std::fprintf(stderr,\n"
-              "                   \"content bounds FAIL: the Phrase roll was never rendered, \"\n"
-              "                   \"so this page was not actually under test\\\\n\");\n"
-              "      ++g_failures;\n"
-              "    }\n"
-          )
-          if text.count(old_roll) != 1:
-              raise SystemExit(f"roll coverage marker count={text.count(old_roll)}; expected one")
-          text = text.replace(old_roll, new_roll, 1)
-          old_list = (
-              "    bool drewList = false;\n"
-              "    for (const auto& entry : gfx.texts) {\n"
-              "      if (entry.text == \"SOUNDS\") drewList = true;\n"
-              "    }\n"
-              "    if (!drewList) {\n"
-              "      std::fprintf(stderr,\n"
-              "                   \"content bounds FAIL: the list view was never rendered, so \"\n"
-              "                   \"this view was not actually under test\\\\n\");\n"
-              "      ++g_failures;\n"
-              "    }\n"
-          )
-          new_list = (
-              "    bool drewList = false;\n"
-              "    for (const auto& entry : gfx.texts) {\n"
-              "      if (entry.text == \"NO SOUNDS YET\" ||\n"
-              "          entry.text.rfind(\"SOUND \", 0) == 0) {\n"
-              "        drewList = true;\n"
-              "      }\n"
-              "    }\n"
-              "    if (!drewList) {\n"
-              "      std::fprintf(stderr,\n"
-              "                   \"content bounds FAIL: the Phrase list was never rendered, so \"\n"
-              "                   \"this view was not actually under test\\\\n\");\n"
-              "      ++g_failures;\n"
-              "    }\n"
-          )
-          if text.count(old_list) != 1:
-              raise SystemExit(f"list coverage marker count={text.count(old_list)}; expected one")
-          path.write_text(text.replace(old_list, new_list, 1), encoding="utf-8")
+          replacements = [
+              ('bool drewMelody = false;', 'bool drewPhrase = false;'),
+              ('if (entry.text == "MELODY") drewMelody = true;',
+               'if (entry.text == "PHRASE") drewPhrase = true;'),
+              ('if (!drewMelody) {', 'if (!drewPhrase) {'),
+              ('content bounds FAIL: the melody editor was never rendered, ',
+               'content bounds FAIL: the Phrase roll was never rendered, '),
+              ('if (entry.text == "SOUNDS") drewList = true;',
+               'if (entry.text == "NO SOUNDS YET" || entry.text.rfind("SOUND ", 0) == 0) drewList = true;'),
+              ('content bounds FAIL: the list view was never rendered, so ',
+               'content bounds FAIL: the Phrase list was never rendered, so '),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"coverage marker {old!r} count={count}; expected one")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
           PY
 
       - name: Run focused Pattern Phrase UI gate
@@ -146,8 +107,8 @@ jobs:
           git add src/ui/pages/synth_sequencer_page.cpp tests/test_ui_content_bounds.cpp \
             .github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml
           git rm scripts/apply_pattern_phrase_ui_instrument_page_patch.py
-          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
-          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch_v2.yml
+          git rm --ignore-unmatch .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
+          git rm --ignore-unmatch .github/workflows/tmp_apply_pattern_phrase_ui_patch_v2.yml
           git commit -m "feat(ui): integrate Pattern Phrase instrument controls"
           PRODUCTION_SHA="$(git rev-parse HEAD)"
           echo "PRODUCTION_SHA=${PRODUCTION_SHA}" >> "$GITHUB_ENV"
