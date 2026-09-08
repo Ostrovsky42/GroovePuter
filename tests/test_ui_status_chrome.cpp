@@ -19,7 +19,10 @@ int main() {
 
     UiStatusSnapshot pattern{};
     pattern.context = UiStatusContext::Genre;
-    pattern.source = UiStatusSource::Pattern;
+    pattern.routing = UiStatusRouting{
+        UiSequencedSource::Pattern,
+        UiTransportOwner::Cycle,
+    };
     pattern.state = UiStatusState::Play;
     pattern.bpm = 128;
     pattern.bar = 3;
@@ -40,7 +43,10 @@ int main() {
 
     UiStatusSnapshot synth{};
     synth.context = UiStatusContext::SynthB;
-    synth.source = UiStatusSource::Pattern;
+    synth.routing = UiStatusRouting{
+        UiSequencedSource::Pattern,
+        UiTransportOwner::Cycle,
+    };
     synth.state = UiStatusState::Stop;
     synth.bpm = 120;
     synth.patternPage = 1;
@@ -75,7 +81,10 @@ int main() {
 
     UiStatusSnapshot smf{};
     smf.context = UiStatusContext::Player;
-    smf.source = UiStatusSource::Smf;
+    smf.routing = UiStatusRouting{
+        UiSequencedSource::NotApplicable,
+        UiTransportOwner::Smf,
+    };
     smf.state = UiStatusState::Armed;
     smf.bpm = 96;
     smf.bar = 8;
@@ -100,6 +109,12 @@ int main() {
     assert(changed != pattern);
     changed = pattern;
     changed.bar = 4;
+    assert(changed != pattern);
+    changed = pattern;
+    changed.routing = UiStatusRouting{
+        UiSequencedSource::Phrase,
+        UiTransportOwner::Cycle,
+    };
     assert(changed != pattern);
     changed = synth;
     assert(changed == synth);
