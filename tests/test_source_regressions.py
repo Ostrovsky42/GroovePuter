@@ -114,13 +114,15 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     require(audio_task_pos < early_sd_pos < engine_init_pos,
             "SD must mount after reserving AudioTask and before DSP heap allocation")
 
-    smf_runtime_pos = sketch.index("beginCardputerSmfPlayerService();")
+    smf_runtime_pos = sketch.index('screenLog("4c. SMF Runtime (lazy)...")')
     require(early_sd_pos < smf_runtime_pos < engine_init_pos,
-            "SMF task and timing storage must be reserved before DSP/UI fragmentation")
+            "SMF deferral marker must remain between SD setup and engine init")
+    require("beginCardputerSmfPlayerService()" not in sketch,
+            "SMF task/timing storage must remain lazy at boot")
 
     midi_runtime_pos = sketch.index("registerCardputerUsbMidiSink(")
     require(smf_runtime_pos < midi_runtime_pos < engine_init_pos,
-            "MIDI dispatcher stack must be reserved before engine heap fragmentation")
+            "MIDI dispatcher stack must still start before engine heap fragmentation")
 
 
 def test_scene_and_page_validation_share_one_scratch_buffer() -> None:

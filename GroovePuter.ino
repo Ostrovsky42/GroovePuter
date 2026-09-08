@@ -377,14 +377,12 @@ void setup() {
   g_sceneStorage.initializeStorage();
   markBootStage(83, "after early SD init");
 
-  // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
-  // UI allocations fragment the DRAM-only Cardputer ADV heap.
-  screenLog("4c. SMF Runtime...");
-  markBootStage(84, "before SMF runtime init");
-  if (!beginCardputerSmfPlayerService()) {
-    Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
-  }
-  markBootStage(85, "after SMF runtime init");
+  // LazyCardputerSmfPlayer registers itself statically. Allocate the SMF task
+  // stack and parser/timing storage only on the first player command; eager boot
+  // startup was the measured 7.0-7.4 KiB residency loss banked before MEMORY-R1.
+  screenLog("4c. SMF Runtime (lazy)...");
+  markBootStage(84, "SMF runtime deferred");
+  markBootStage(85, "after SMF runtime deferral");
 
   // Global MIDI settings must be restored before the dispatcher starts. The
   // profile runtime is an input to later route projection; letting UI creation
