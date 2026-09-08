@@ -19,6 +19,8 @@ require(
 
 # PHRASE must identify edit object, playing source, bar extent and edit resolution
 # at the same time. GRID must not survive only as a transient toast.
+require('gfx.drawText(bounds.x + 4, bounds.y, "PHRASE")',
+        "Phrase editor does not explicitly identify its edited object")
 require("PLAY:PHR", "Phrase screen does not explicitly identify the playing source")
 require("PhraseNotesCursor::gridLabel(phrase_cursor_.grid)",
         "Phrase screen does not project its edit GRID")
