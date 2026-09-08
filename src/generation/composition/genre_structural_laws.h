@@ -9,22 +9,11 @@
 namespace GroovePuterRhythm {
 
 // Harmonic change rate is a musician-facing structural decision: how many
-// quarter-note beats normally pass before moving harmony advances. It is not a
-// texture/effect parameter and it deliberately derives from the authoritative
-// generation profile identity rather than from a parallel genre table.
-//
-// Base Lo-Fi and its slow/sparse recipes leave a full 4/4 bar for each harmonic
-// state. Lo-Fi House is an explicit musical exception: its four-floor grammar
-// keeps the established two-beat harmonic motion used by the faster profiles.
+// quarter-note beats normally pass before moving harmony advances. Profile data
+// is the single genre/recipe owner; this accessor does not reinterpret identity.
 inline HarmonicChangeRateId harmonicChangeRateForProfile(
     const GenerationProfileView& profile) {
-  if (profile.generativeMode != static_cast<uint8_t>(GenerativeMode::LoFi)) {
-    return HarmonicChangeRateId::Every2Beats;
-  }
-  if (profile.recipe == kLoFiHouseRecipeId) {
-    return HarmonicChangeRateId::Every2Beats;
-  }
-  return HarmonicChangeRateId::Every4Beats;
+  return profile.harmonicChangeRate;
 }
 
 }  // namespace GroovePuterRhythm
