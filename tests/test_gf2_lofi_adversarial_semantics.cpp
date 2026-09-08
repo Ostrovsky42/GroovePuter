@@ -41,6 +41,17 @@ bool containsId(WeightedIdentityView view, uint8_t wanted) {
   return false;
 }
 
+bool containsRhythmArchetype(RhythmCompatibilityView view,
+                             ReferenceVocabulary::Archetype wanted) {
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionFor(wanted);
+  assert(definition != nullptr);
+  for (uint8_t i = 0; i < view.count; ++i) {
+    if (view.candidates[i].archetypeId == definition->archetypeId) return true;
+  }
+  return false;
+}
+
 bool containsPhraseLaw(WeightedIdentityView view,
                        PhraseEvolutionLawId wantedLaw,
                        uint8_t maxBarsExclusive = 0) {
@@ -79,12 +90,12 @@ void proveLoFiProfileProhibitions() {
 
   // RHYTHM: auto Lo-Fi may be loose/broken/sparse, but it must not collapse
   // into straight four-floor / rolling-machine drive merely by changing timbre.
-  assert(!containsId(lofi.rhythms,
-                     static_cast<uint8_t>(ReferenceVocabulary::Archetype::StraightDrive)));
-  assert(!containsId(lofi.rhythms,
-                     static_cast<uint8_t>(ReferenceVocabulary::Archetype::StackedQuarters)));
-  assert(!containsId(lofi.rhythms,
-                     static_cast<uint8_t>(ReferenceVocabulary::Archetype::MachineSyncopation)));
+  assert(!containsRhythmArchetype(
+      lofi.rhythms, ReferenceVocabulary::Archetype::StraightDrive));
+  assert(!containsRhythmArchetype(
+      lofi.rhythms, ReferenceVocabulary::Archetype::StackedQuarters));
+  assert(!containsRhythmArchetype(
+      lofi.rhythms, ReferenceVocabulary::Archetype::MachineSyncopation));
 
   // BASS: base Lo-Fi leaves space; root-pulse and rolling-drive are not Auto
   // identities. LoFiHouse is allowed to make a different musician decision.
