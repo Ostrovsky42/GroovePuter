@@ -1,3 +1,4 @@
+# Triggered after workflow exists on branch so push execution is observable.
 name: TEMP Final Pattern Phrase UI Verifier
 
 on:
