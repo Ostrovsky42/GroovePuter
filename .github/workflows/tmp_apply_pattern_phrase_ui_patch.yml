@@ -6,6 +6,8 @@ on:
       - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
     paths:
       - scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+      - src/ui/phrase_source_toggle.h
+      - tests/test_ui_pattern_phrase_instrument_integration.py
       - .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
 
 permissions:
@@ -29,6 +31,53 @@ jobs:
 
       - name: Apply exact page patch
         run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+
+      - name: Keep conversion decision in PhraseSourceToggle
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/ui/pages/synth_sequencer_page.cpp")
+          text = path.read_text(encoding="utf-8")
+          old = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
+            if (mini_acid_.currentSequencedSource(voice_index_) ==
+                MiniAcid::SequencedSource::Pattern) {
+              const bool made =
+                  PhraseSourceToggle::makePhrase(mini_acid_, audio_guard_, voice_index_);
+              UI::showToast(made ? "MAKE PHRASE" : "MAKE PHRASE FAILED", 1000);
+            } else {
+              PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+              UI::showToast("SOURCE: PATTERN", 1000);
+            }
+            return true;
+          }
+          '''
+          new = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
+            const auto sourceResult =
+                PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+            switch (sourceResult) {
+              case PhraseSourceToggle::Result::MadePhrase:
+                UI::showToast("MAKE PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPhrase:
+                UI::showToast("SOURCE: PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPattern:
+                UI::showToast("SOURCE: PATTERN", 1000);
+                break;
+              case PhraseSourceToggle::Result::Rejected:
+                UI::showToast("SOURCE CHANGE FAILED", 1000);
+                break;
+            }
+            return true;
+          }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(
+                  f"source-owner anchor count={text.count(old)}; expected exactly one"
+              )
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Run focused Pattern Phrase UI gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
