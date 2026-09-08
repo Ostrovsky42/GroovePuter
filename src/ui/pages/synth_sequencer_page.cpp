@@ -648,7 +648,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (!ui_event.alt && lower == 'l') {
     const bool changed = PhraseInstrumentControls::applyLengthChange(
         phrase.lengthTicks, +1, [&](uint8_t bars) {
-          return mini_acid_.setPhraseLength(voice_index_, bars);
+          bool committed = false;
+          const auto apply = [&]() {
+            committed = mini_acid_.setPhraseLength(voice_index_, bars);
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+          return committed;
         });
     const auto& after = mini_acid_.currentPhraseBuffer(voice_index_);
     phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after.lengthTicks);
