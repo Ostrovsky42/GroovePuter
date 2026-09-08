@@ -25,11 +25,6 @@ public:
     return sawTable_[index];
   }
   
-  static inline float lookupTriangle(uint32_t phase) {
-    uint32_t index = (phase >> 22) & kWavetableMask;
-    return triangleTable_[index];
-  }
-  
   static inline float lookupSquare(uint32_t phase) {
     uint32_t index = (phase >> 22) & kWavetableMask;
     return squareTable_[index];
@@ -41,6 +36,5 @@ private:
   static bool initialized_;
   static float sineTable_[kWavetableSize];
   static float sawTable_[kWavetableSize];
-  static float triangleTable_[kWavetableSize];
   static float squareTable_[kWavetableSize];
 };

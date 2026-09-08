@@ -402,10 +402,10 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
 
     require("registerCardputerSmfMidiQueue" in player_registry,
             "Cardputer SMF service must publish only through the scheduled queue")
-    require("beginCardputerSmfPlayerService" in player_registry and
-            "beginCardputerSmfPlayerService" in
-                (ROOT / "GroovePuter.ino").read_text(encoding="utf-8"),
-            "SMF runtime must be reserved explicitly during setup")
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    require("ensureStarted()" in player_registry and
+            "beginCardputerSmfPlayerService()" not in sketch,
+            "SMF runtime must remain lazy until the first player command")
     require("kMaxTimingEvents = 32" in
                 (ROOT / "src/platform/cardputer_smf_player.h").read_text(encoding="utf-8") and
             "timingDocument_ = SmfDocument{}" not in player_service,
