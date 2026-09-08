@@ -3903,10 +3903,13 @@ void MiniAcid::advanceSongBar_() {
 
 void MiniAcid::setSequencedSource(int voiceIndex, SequencedSource source) {
   const int voice = clamp303Voice(voiceIndex);
-  activeMaterial_[voice].kind =
+  const GroovePuterMaterial::MaterialKind nextKind =
       source == SequencedSource::Phrase
           ? GroovePuterMaterial::MaterialKind::Melody
           : GroovePuterMaterial::MaterialKind::Pattern;
+  if (activeMaterial_[voice].kind == nextKind) return;
+  hardBarrierPatternPlayback_(voice);
+  activeMaterial_[voice].kind = nextKind;
 }
 
 MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const {
@@ -4030,7 +4033,7 @@ bool MiniAcid::makePhrase(int voiceIndex) {
   }
 
   currentPhrase_[voiceIndex] = candidate;
-  activeMaterial_[voiceIndex].kind = GroovePuterMaterial::MaterialKind::Melody;
+  setSequencedSource(voiceIndex, SequencedSource::Phrase);
   return true;
 }
 
