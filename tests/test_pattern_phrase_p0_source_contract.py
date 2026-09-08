@@ -54,8 +54,8 @@ selection = between(
     "void MiniAcid::advanceSongPlayhead()",
 )
 require(
-    "if (playing) publishPatternAllNotesOff_();" in selection,
-    "Song physical-pattern selection must still publish PatternPlayer cleanup",
+    "hardBarrierPatternPlayback_();" in selection,
+    "Song physical-pattern selection must cross the authoritative runtime playback cleanup barrier",
 )
 
 require(

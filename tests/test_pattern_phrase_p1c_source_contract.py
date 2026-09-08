@@ -17,6 +17,7 @@ PROTECTED_PATHS = {
     "src/dsp/miniacid_engine.cpp",
     "src/dsp/miniacid_engine.h",
 }
+RUNTIME_EVENTS_INCLUDE_GUARD = "GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H"
 
 
 def require(condition: bool, message: str) -> None:
@@ -37,6 +38,27 @@ def output(*args: str) -> str:
 def changed_paths(base: str, head: str) -> list[str]:
     text = output("diff", "--name-only", f"{base}...{head}")
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def strip_reviewed_include_guard(text: str) -> str:
+    prefix = (
+        "#pragma once\n"
+        f"#ifndef {RUNTIME_EVENTS_INCLUDE_GUARD}\n"
+        f"#define {RUNTIME_EVENTS_INCLUDE_GUARD}\n\n"
+    )
+    suffix = f"\n\n#endif  // {RUNTIME_EVENTS_INCLUDE_GUARD}"
+    require(
+        text.startswith(prefix),
+        "P1C runtime-event header lost the reviewed alias-safe macro include guard",
+    )
+    require(
+        text.rstrip("\n").endswith(suffix),
+        "P1C runtime-event header include-guard closing changed unexpectedly",
+    )
+
+    stripped = text[len(prefix):].rstrip("\n")
+    stripped = stripped[:-len(suffix)]
+    return "#pragma once\n\n" + stripped
 
 
 for sha in (BASE, P1C_TIP):
@@ -98,9 +120,14 @@ canonical_header = subprocess.run(
     capture_output=True,
 ).stdout
 header_without_companion = header_text.replace(companion_api, "", 1)
+# Cardputer reaches this header through two physical paths in the staged Arduino
+# tree, so 287638a added a traditional macro guard around the otherwise frozen
+# P1C header. Normalize only that reviewed build wrapper; the declaration/ABI
+# surface inside it remains byte-compared to the canonical P1C tip.
+canonical_surface = strip_reviewed_include_guard(header_without_companion)
 require(
-    header_without_companion == canonical_header,
-    "P1C public runtime-event ABI/declaration surface changed outside the reviewed additive source-step companion API",
+    canonical_surface.rstrip("\n") == canonical_header.rstrip("\n"),
+    "P1C public runtime-event ABI/declaration surface changed outside the reviewed additive source-step companion API and alias-safe include guard",
 )
 
 text = header_text + "\n" + source_text

@@ -1,0 +1,223 @@
+name: Runtime residency controlled A-B
+
+on:
+  push:
+    branches:
+      - feature/20260908-02-pattern-phrase-runtime-lifetime
+    paths:
+      - .github/workflows/runtime-residency-controlled-ab.yml
+      - docs/audits/0_9_10_PATTERN_PHRASE_RUNTIME_RESIDENCY_CONTROLLED_AB_2026-09-08.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FINAL_TREE: 9d7b041c20d34d99c76224d611d429cb12046d41
+  FIX_COMMIT: fc11a958e3e74781cb493dcb11e9ffb2302897af
+  RED_PARENT: 79aff350dee39ec9b5afb31460643b1fccb6fb67
+  TARGET_FILE: src/dsp/miniacid_engine.cpp
+
+jobs:
+  controlled-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact frozen production tree
+        uses: actions/checkout@v4
+        with:
+          ref: 9d7b041c20d34d99c76224d611d429cb12046d41
+          fetch-depth: 0
+          path: source
+
+      - name: Assert provenance and extract authoritative implementations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$FINAL_TREE"
+          test "$(git -C source rev-parse "$FIX_COMMIT^")" = "$RED_PARENT"
+          mkdir -p evidence
+          git -C source show "$RED_PARENT:$TARGET_FILE" > evidence/miniacid_engine.RED.cpp
+          git -C source show "$FINAL_TREE:$TARGET_FILE" > evidence/miniacid_engine.FINAL.cpp
+          git -C source diff "$RED_PARENT" "$FIX_COMMIT" -- "$TARGET_FILE" > evidence/production-fix.patch
+          git -C source diff --exit-code "$FIX_COMMIT" "$FINAL_TREE" -- "$TARGET_FILE"
+          sha256sum evidence/miniacid_engine.RED.cpp evidence/miniacid_engine.FINAL.cpp evidence/production-fix.patch | tee evidence/source-hashes.txt
+          {
+            echo "FINAL_TREE=$FINAL_TREE"
+            echo "FIX_COMMIT=$FIX_COMMIT"
+            echo "RED_PARENT=$RED_PARENT"
+            echo "TARGET_FILE=$TARGET_FILE"
+            git -C source log -1 --format='FINAL_COMMIT=%H%nFINAL_TREE_OBJECT=%T' "$FINAL_TREE"
+            git -C source log -1 --format='FIX_COMMIT_OBJECT=%H%nFIX_TREE_OBJECT=%T' "$FIX_COMMIT"
+            git -C source log -1 --format='RED_PARENT_OBJECT=%H%nRED_PARENT_TREE_OBJECT=%T' "$RED_PARENT"
+          } | tee evidence/git-provenance.txt
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies once
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          bash scripts/install_arduino_deps.sh
+          {
+            echo "arduino-cli=$(arduino-cli version)"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            uname -a
+            arduino-cli core list
+            sha256sum scripts/install_arduino_deps.sh scripts/build.sh scripts/build_cardputer_memory_baseline.sh
+          } | tee ../evidence/build-environment.txt
+
+      - name: Build A from final tree with authoritative RED implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp evidence/miniacid_engine.RED.cpp "source/$TARGET_FILE"
+          rm -rf build-A
+          mkdir -p build-A
+          {
+            echo "variant=A"
+            echo "tree=$FINAL_TREE"
+            echo "substitution=$RED_PARENT:$TARGET_FILE"
+            sha256sum "source/$TARGET_FILE"
+            git -C source status --porcelain
+          } | tee evidence/A-input.txt
+          BUILD_PATH="$GITHUB_WORKSPACE/build-A" \
+            bash source/scripts/build_cardputer_memory_baseline.sh normal product --warnings all \
+            2>&1 | tee evidence/A-build.log
+
+      - name: Build B from same final tree with FINAL implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp evidence/miniacid_engine.FINAL.cpp "source/$TARGET_FILE"
+          rm -rf build-B
+          mkdir -p build-B
+          {
+            echo "variant=B"
+            echo "tree=$FINAL_TREE"
+            echo "implementation=$FINAL_TREE:$TARGET_FILE"
+            sha256sum "source/$TARGET_FILE"
+            git -C source status --porcelain
+          } | tee evidence/B-input.txt
+          BUILD_PATH="$GITHUB_WORKSPACE/build-B" \
+            bash source/scripts/build_cardputer_memory_baseline.sh normal product --warnings all \
+            2>&1 | tee evidence/B-build.log
+          git -C source diff --exit-code "$FINAL_TREE" -- "$TARGET_FILE"
+
+      - name: Extract section and persistent-symbol evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF_A="$GITHUB_WORKSPACE/build-A/GroovePuter.ino.elf"
+          ELF_B="$GITHUB_WORKSPACE/build-B/GroovePuter.ino.elf"
+          test -f "$ELF_A"
+          test -f "$ELF_B"
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name 'xtensa-esp32s3-elf-size' -perm -111 | head -n1)"
+          OBJDUMP_TOOL="$(find "$HOME/.arduino15/packages" -type f -name 'xtensa-esp32s3-elf-objdump' -perm -111 | head -n1)"
+          NM_TOOL="$(find "$HOME/.arduino15/packages" -type f -name 'xtensa-esp32s3-elf-nm' -perm -111 | head -n1)"
+          test -n "$SIZE_TOOL"
+          test -n "$OBJDUMP_TOOL"
+          test -n "$NM_TOOL"
+          "$SIZE_TOOL" -A "$ELF_A" | tee evidence/A-sections.txt
+          "$SIZE_TOOL" -A "$ELF_B" | tee evidence/B-sections.txt
+          "$OBJDUMP_TOOL" -t "$ELF_A" | grep -E '[[:space:]](\.dram0\.(data|bss)|\.rtc\.data|\.rtc_noinit)[[:space:]]' | LC_ALL=C sort > evidence/A-persistent-symbols.txt || true
+          "$OBJDUMP_TOOL" -t "$ELF_B" | grep -E '[[:space:]](\.dram0\.(data|bss)|\.rtc\.data|\.rtc_noinit)[[:space:]]' | LC_ALL=C sort > evidence/B-persistent-symbols.txt || true
+          "$NM_TOOL" -S --size-sort "$ELF_A" > evidence/A-nm-size-sort.txt
+          "$NM_TOOL" -S --size-sort "$ELF_B" > evidence/B-nm-size-sort.txt
+          sha256sum "$ELF_A" "$ELF_B" | tee evidence/elf-hashes.txt
+          stat -c 'A_ELF_FILE_SIZE=%s' "$ELF_A" | tee evidence/elf-file-sizes.txt
+          stat -c 'B_ELF_FILE_SIZE=%s' "$ELF_B" | tee -a evidence/elf-file-sizes.txt
+
+      - name: Classify controlled residency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('evidence')
+          sections = [
+              '.dram0.data',
+              '.dram0.bss',
+              '.rtc.data',
+              '.rtc_noinit',
+              '.ext_ram.bss',
+              '.flash.text',
+              '.flash.rodata',
+          ]
+
+          def parse_sections(path):
+              values = {}
+              for line in Path(path).read_text(errors='replace').splitlines():
+                  m = re.match(r'^\s*(\S+)\s+(\d+)\s+', line)
+                  if m:
+                      values[m.group(1)] = int(m.group(2))
+              return values
+
+          a = parse_sections(root / 'A-sections.txt')
+          b = parse_sections(root / 'B-sections.txt')
+          sizes = (root / 'elf-file-sizes.txt').read_text().splitlines()
+          elf_a = int(sizes[0].split('=', 1)[1])
+          elf_b = int(sizes[1].split('=', 1)[1])
+          fixed_a = a.get('.dram0.data', 0) + a.get('.dram0.bss', 0)
+          fixed_b = b.get('.dram0.data', 0) + b.get('.dram0.bss', 0)
+          symbols_equal = (
+              (root / 'A-persistent-symbols.txt').read_bytes()
+              == (root / 'B-persistent-symbols.txt').read_bytes()
+          )
+
+          rows = []
+          for name in sections:
+              av = a.get(name, 0)
+              bv = b.get(name, 0)
+              rows.append((name, av, bv, bv - av))
+          rows.append(('fixed DRAM', fixed_a, fixed_b, fixed_b - fixed_a))
+          rows.append(('ELF file size', elf_a, elf_b, elf_b - elf_a))
+
+          if fixed_a == fixed_b and symbols_equal:
+              classification = 'CROSS-TEST-IDENTITY ARTIFACT'
+              verdict = 'PASS'
+          elif symbols_equal:
+              classification = 'MEASURED IMPLEMENTATION COST — NOT A LIFETIME OWNERSHIP DEFECT'
+              verdict = 'PASS'
+          else:
+              classification = 'RUNTIME RESIDENCY RED'
+              verdict = 'FAIL'
+
+          lines = [
+              '# Controlled Runtime Residency A/B',
+              '',
+              '| metric | A RED impl | B FINAL impl | delta B-A |',
+              '|---|---:|---:|---:|',
+          ]
+          lines.extend(
+              f'| {name} | {av} | {bv} | {delta:+d} |'
+              for name, av, bv, delta in rows
+          )
+          lines += [
+              '',
+              f'Persistent symbol maps identical: **{symbols_equal}**',
+              f'Classification: **{classification}**',
+              f'Controlled residency comparator: **{verdict}**',
+          ]
+          report = '\n'.join(lines) + '\n'
+          (root / 'controlled-ab-report.md').write_text(report)
+          print(report)
+
+          if verdict != 'PASS':
+              raise SystemExit(1)
+          PY
+
+      - name: Upload controlled A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-residency-controlled-ab-${{ github.sha }}
+          path: evidence/
+          if-no-files-found: error

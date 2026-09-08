@@ -172,6 +172,111 @@ void caseSongMode(int synth) {
   });
 }
 
+void caseSequencedSourceTransfer(int synth) {
+  expectTargetBarrier("PATTERN -> PHRASE SOURCE", synth,
+                      [synth](MiniAcid& engine) {
+    engine.setSequencedSource(synth, MiniAcid::SequencedSource::Phrase);
+  });
+}
+
+void casePhraseToPatternSequencedSourceTransfer(int synth) {
+  Fixture f;
+  const char* name = "PHRASE -> PATTERN SOURCE";
+  f.engine.setSequencedSource(synth, MiniAcid::SequencedSource::Phrase);
+  (void)f.drain();
+  expect(f.engine.currentSequencedSource(synth) ==
+             MiniAcid::SequencedSource::Phrase,
+         name, "fixture did not select Phrase before the held-note transfer");
+
+  // RuntimeSynthPlaybackState is the common sequenced-note lifetime owner. Seed
+  // an active held lifetime while Phrase is authoritative, then transfer source
+  // ownership back to Pattern and require the same target-scoped release.
+  startPattern(f, synth, static_cast<uint8_t>(62 + synth));
+  f.beginBlock();
+  f.engine.setSequencedSource(synth, MiniAcid::SequencedSource::Pattern);
+  f.endBlock();
+  const Trace trace = f.drain();
+  const MusicalEventTarget target = targetForSynth(synth);
+  const MusicalEventTarget other = targetForSynth(1 - synth);
+
+  expect(f.engine.currentSequencedSource(synth) ==
+             MiniAcid::SequencedSource::Pattern,
+         name, "source transfer did not publish Pattern");
+  expect(!f.engine.patternPlaybackState_[synth].active(), name,
+         "RuntimeSynthPlaybackState stayed active across Phrase -> Pattern transfer");
+  expect(!f.noteHeld(synth), name,
+         "old Phrase physical voice stayed held across source transfer");
+  expect(!f.engine.patternOwnsInternalSynth(synth), name,
+         "old sequenced physical ownership bit stayed set");
+  expect(trace.count(MusicalEventType::NoteOff, target) == 1, name,
+         "Phrase -> Pattern transfer did not emit exactly one targeted NoteOff");
+  expect(trace.count(MusicalEventType::AllNotesOff, target) == 0, name,
+         "Phrase -> Pattern transfer used panic instead of targeted release");
+  expect(trace.count(MusicalEventType::NoteOff, other) == 0, name,
+         "Phrase -> Pattern transfer released the other synth target");
+  expect(trace.count(MusicalEventType::AllNotesOff, other) == 0, name,
+         "Phrase -> Pattern transfer emitted global panic");
+}
+
+void caseMakePhraseTransfer(int synth) {
+  Fixture f;
+  SynthPattern& pattern = f.engine.editSynthPattern(synth);
+  pattern.steps[0].note = static_cast<uint8_t>(36 + synth);
+  pattern.steps[4].note = static_cast<uint8_t>(43 + synth);
+
+  startPattern(f, synth, static_cast<uint8_t>(64 + synth));
+  f.beginBlock();
+  const bool made = f.engine.makePhrase(synth);
+  f.endBlock();
+  const Trace trace = f.drain();
+  const MusicalEventTarget target = targetForSynth(synth);
+  const MusicalEventTarget other = targetForSynth(1 - synth);
+  const char* name = "MAKE PHRASE OWNERSHIP TRANSFER";
+
+  expect(made, name, "MAKE PHRASE rejected a valid Pattern source");
+  expect(f.engine.currentSequencedSource(synth) ==
+             MiniAcid::SequencedSource::Phrase,
+         name, "MAKE PHRASE did not publish the Phrase source");
+  expect(f.engine.currentPhraseBuffer(synth).count > 0, name,
+         "MAKE PHRASE did not publish Phrase material");
+  expect(!f.engine.patternPlaybackState_[synth].active(), name,
+         "old Pattern RuntimeSynthPlaybackState survived MAKE PHRASE");
+  expect(!f.noteHeld(synth), name,
+         "old Pattern physical voice stayed held after MAKE PHRASE");
+  expect(!f.engine.patternOwnsInternalSynth(synth), name,
+         "old Pattern physical ownership bit survived MAKE PHRASE");
+  expect(trace.count(MusicalEventType::NoteOff, target) == 1, name,
+         "MAKE PHRASE did not emit exactly one old-owner NoteOff");
+  expect(trace.count(MusicalEventType::AllNotesOff, target) == 0, name,
+         "MAKE PHRASE used panic cleanup instead of targeted Release");
+  expect(trace.count(MusicalEventType::NoteOff, other) == 0, name,
+         "MAKE PHRASE released the other Pattern target");
+  expect(trace.count(MusicalEventType::AllNotesOff, other) == 0, name,
+         "MAKE PHRASE emitted global Pattern panic");
+}
+
+void caseSameSequencedSourceIsNotBarrier(int synth) {
+  Fixture f;
+  startPattern(f, synth, static_cast<uint8_t>(68 + synth));
+  f.beginBlock();
+  f.engine.setSequencedSource(synth, MiniAcid::SequencedSource::Pattern);
+  f.endBlock();
+  const Trace trace = f.drain();
+  const MusicalEventTarget target = targetForSynth(synth);
+  const char* name = "SAME SOURCE";
+
+  expect(f.engine.patternPlaybackState_[synth].active(), name,
+         "idempotent source publication cut an active Pattern lifetime");
+  expect(f.noteHeld(synth), name,
+         "idempotent source publication released the physical Pattern voice");
+  expect(f.engine.patternOwnsInternalSynth(synth), name,
+         "idempotent source publication cleared Pattern ownership");
+  expect(trace.count(MusicalEventType::NoteOff, target) == 0, name,
+         "idempotent source publication emitted a Pattern NoteOff");
+  expect(trace.count(MusicalEventType::AllNotesOff, target) == 0, name,
+         "idempotent source publication emitted Pattern panic");
+}
+
 void caseSongPosition(int synth) {
   Fixture f;
   f.engine.setSongMode(true);
@@ -229,6 +334,10 @@ int main() {
     caseBankIndex(synth);
     casePageIdentity(synth);
     caseSongMode(synth);
+    caseSequencedSourceTransfer(synth);
+    casePhraseToPatternSequencedSourceTransfer(synth);
+    caseMakePhraseTransfer(synth);
+    caseSameSequencedSourceIsNotBarrier(synth);
     caseSongPosition(synth);
     caseSynthEngineConflict(synth);
   }

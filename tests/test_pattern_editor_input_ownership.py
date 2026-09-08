@@ -85,10 +85,32 @@ alt_bracket_block = DISPLAY[DISPLAY.find("alt && (event.key == '['"):DISPLAY.fin
 require("kMaxPages" in alt_bracket_block and "kPageCount" not in alt_bracket_block,
         "Alt+[ / ] must use kMaxPages for pattern-page wraparound, not kPageCount")
 
-# Plain [/] (no modifier) remains UI-page navigation
-require("if (event.key == ']') { nextPage(); return true; }" in DISPLAY and
-        "if (event.key == '[') { previousPage(); return true; }" in DISPLAY,
-        "plain [ / ] must remain UI-page navigation")
+# Plain [/] still enters the page-navigation helpers. The helpers also accept
+# the modifier state because the same physical bracket gesture can become a
+# workflow switch on platforms where the modifier is carried by the event.
+require("if (event.key == ']') { nextPage(event.meta); return true; }" in DISPLAY and
+        "if (event.key == '[') { previousPage(event.meta); return true; }" in DISPLAY,
+        "[ / ] must route through modifier-aware page navigation helpers")
+next_page_start = DISPLAY.find("void MiniAcidDisplay::nextPage(bool workflowModifier)")
+previous_page_start = DISPLAY.find("void MiniAcidDisplay::previousPage(bool workflowModifier)")
+switch_workflow_start = DISPLAY.find("void MiniAcidDisplay::switchWorkflow_(int direction)")
+require(next_page_start >= 0 and previous_page_start > next_page_start and
+        switch_workflow_start > previous_page_start,
+        "modifier-aware page navigation helper definitions must be present")
+next_page_block = DISPLAY[next_page_start:previous_page_start]
+previous_page_block = DISPLAY[previous_page_start:switch_workflow_start]
+require("workflowModifier ||" in next_page_block and
+        "WorkflowPages::hardwareWorkflowModifierHeld()" in next_page_block and
+        "switchWorkflow_(1)" in next_page_block and
+        "workflowNavigationTarget(" in next_page_block and
+        "ui_session_, page_index_, 1, false" in next_page_block,
+        "nextPage must switch workflow only for a modifier and otherwise navigate pages")
+require("workflowModifier ||" in previous_page_block and
+        "WorkflowPages::hardwareWorkflowModifierHeld()" in previous_page_block and
+        "switchWorkflow_(-1)" in previous_page_block and
+        "workflowNavigationTarget(" in previous_page_block and
+        "ui_session_, page_index_, -1, false" in previous_page_block,
+        "previousPage must switch workflow only for a modifier and otherwise navigate pages")
 
 # Fn+[/] (meta modifier) remains workflow switching
 require("event.meta && (event.key == '[' || event.key == '{')" in DISPLAY and
