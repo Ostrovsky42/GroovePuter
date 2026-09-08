@@ -1,0 +1,22 @@
+name: GF2 Lo-Fi adversarial semantics
+
+on:
+  push:
+    branches:
+      - feature/20260908-04-0.9.10-gf2-lofi-adversarial-semantics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-lofi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang
+      - name: Run Lo-Fi adversarial semantic gate
+        run: bash tests/run_gf2_lofi_adversarial_tests.sh
