@@ -14,6 +14,7 @@
 #include "../scenes.h"
 #include "../src/generation/composition/generation_profile.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
+#include "../src/phrase/runtime_pattern_event_bank.h"
 #include "../src/state/generation_request_state.h"
 #include "../src/state/scene_revision.h"
 #include "../src/state/undo_owner.h"
@@ -102,6 +103,14 @@ class MiniAcid {
   // tempo; the I1 contract is asserted on the production owner below.
   void regeneratePatternsWithGenre() {}
 
+  bool rebuildPatternRuntimeEventBank() { return true; }
+  bool refreshPatternRuntimeEvents(int, int, int) { return true; }
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(
+      int voice) const {
+    return runtime_[voice == 0 ? 0 : 1];
+  }
+  void barrierPatternRuntimeSourceTransition() { ++runtimeBarrierCount_; }
+
  private:
   TestSceneManager scenes_{};
   bool playing_ = false;
@@ -109,6 +118,8 @@ class MiniAcid {
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   GrooveboxModeManager modeManager_;
   TestGenreManager genreManager_{};
+  PhraseRuntime::RuntimePatternEventBuffer runtime_[2]{};
+  int runtimeBarrierCount_ = 0;
 };
 
 namespace GenreCatalog {
