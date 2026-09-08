@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROFILE_H = ROOT / "src/generation/composition/generation_profile.h"
 PROFILE_CPP = ROOT / "src/generation/composition/generation_profile.cpp"
 LAWS_H = ROOT / "src/generation/composition/genre_structural_laws.h"
+PHRASE_EXECUTION_CPP = ROOT / "src/generation/migration/phrase_execution.cpp"
 
 
 def fail(message: str) -> None:
@@ -16,6 +17,7 @@ def fail(message: str) -> None:
 profile_h = PROFILE_H.read_text(encoding="utf-8")
 profile_cpp = PROFILE_CPP.read_text(encoding="utf-8")
 laws_h = LAWS_H.read_text(encoding="utf-8")
+phrase_execution_cpp = PHRASE_EXECUTION_CPP.read_text(encoding="utf-8")
 
 # Harmonic rhythm is a musician-facing structural decision, so the authoritative
 # profile definition must own it beside corridor, phrase law and role vocabulary.
@@ -61,6 +63,14 @@ for line in lofi_profiles:
             fail("Lo-Fi House must explicitly own its two-beat harmonic rate")
     elif "HarmonicChangeRateId::Every4Beats" not in line:
         fail(f"slow/base Lo-Fi profile lacks explicit four-beat harmonic rate: {line}")
+
+# Phrase preparation already owns a frozen composition snapshot. Harmonic rate
+# must be consumed from that snapshot, not re-derived from mutable settings after
+# selection has completed.
+if "destination.selection.composition.harmonicChangeRate" not in phrase_execution_cpp:
+    fail("phrase execution does not consume frozen composition harmonic rate")
+if "const GenerationProfileView structuralProfile = generationProfileFor(settings);" in phrase_execution_cpp:
+    fail("phrase execution still re-reads profile identity after frozen selection")
 
 print("GF2 harmonic-rate profile ownership: OK")
 print("profile table is the single genre/recipe owner: YES")
