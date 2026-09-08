@@ -42,16 +42,23 @@ require("PHRASE BAR", "bar navigation gives no immediate causal feedback")
 # GRID changes editing resolution only and names itself as GRID, not STEP/LENGTH.
 require('"GRID %s"', "GRID action is still presented as an ambiguous STEP control")
 
-# MAKE PHRASE is explicit from Pattern and reuses the established source owner.
-# It must not copy events in the UI.
-require("PhraseSourceToggle::makePhrase",
-        "Pattern has no explicit one-way MAKE PHRASE gesture")
+# MAKE PHRASE remains explicit to the musician, but conversion/switching must be
+# decided by PhraseSourceToggle, never by SynthSequencerPage. The page consumes
+# the owner's causal result only to choose feedback.
+require("PhraseSourceToggle::toggle",
+        "Pattern/Phrase gesture does not use the shared source owner")
+require("PhraseSourceToggle::Result::MadePhrase",
+        "Pattern source conversion gives no explicit MAKE PHRASE feedback")
+require('"MAKE PHRASE"',
+        "Pattern source conversion is not named as a musical action")
+if "makePhrase(" in SYNTH:
+    raise AssertionError("Synth page still decides conversion for itself")
 if "RuntimeSynthEventBuffer candidate" in SYNTH:
     raise AssertionError("UI introduced a shadow Phrase/material buffer")
 if "currentPhraseBuffer(voice_index_) =" in SYNTH:
     raise AssertionError("UI copies Phrase material instead of invoking domain/runtime")
 
-if "inline bool makePhrase" not in TOGGLE:
-    raise AssertionError("source owner lacks a dedicated MAKE PHRASE entry")
+if "enum class Result" not in TOGGLE or "MadePhrase" not in TOGGLE:
+    raise AssertionError("source owner does not expose causal action result")
 
 print("Pattern/Phrase instrument integration: PASS")
