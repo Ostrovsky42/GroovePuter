@@ -4,19 +4,19 @@ on:
   push:
     branches:
       - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
-  pull_request:
-    branches:
-      - feature/20260907-01-u4b6-make-phrase-entry
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  focused-ui:
+  apply-verify-and-freeze:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Install SDL test dependencies
         run: |
           sudo apt-get update
@@ -24,5 +24,278 @@ jobs:
             build-essential \
             libsdl2-dev \
             libsdl2-gfx-dev
-      - name: Run Pattern/Phrase instrument causal UI gate
+
+      - name: Apply exact page integration
+        run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+
+      - name: Keep conversion decision in PhraseSourceToggle
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/ui/pages/synth_sequencer_page.cpp")
+          text = path.read_text(encoding="utf-8")
+          start_marker = (
+              "  if (synth_tab_ == SynthTab::Notes && "
+              "isSourceToggleKey(ui_event)) {"
+          )
+          end_marker = (
+              "\n\n  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;"
+          )
+          if text.count(start_marker) != 1:
+              raise SystemExit(
+                  f"source-owner start marker count={text.count(start_marker)}; expected one"
+              )
+          start = text.index(start_marker)
+          if end_marker not in text[start:]:
+              raise SystemExit("source-owner end marker missing after source block")
+          end = text.index(end_marker, start)
+          new = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
+            const auto sourceResult =
+                PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+            switch (sourceResult) {
+              case PhraseSourceToggle::Result::MadePhrase:
+                UI::showToast("MAKE PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPhrase:
+                UI::showToast("SOURCE: PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPattern:
+                UI::showToast("SOURCE: PATTERN", 1000);
+                break;
+              case PhraseSourceToggle::Result::Rejected:
+                UI::showToast("SOURCE CHANGE FAILED", 1000);
+                break;
+            }
+            return true;
+          }'''
+          path.write_text(text[:start] + new + text[end:], encoding="utf-8")
+          PY
+
+      - name: Align 240x135 coverage markers with Phrase presentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_ui_content_bounds.cpp")
+          text = path.read_text(encoding="utf-8")
+
+          old_roll = '''    bool drewMelody = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "MELODY") drewMelody = true;
+    }
+    if (!drewMelody) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the melody editor was never rendered, "
+                   "so this page was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          new_roll = '''    bool drewPhrase = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "PHRASE") drewPhrase = true;
+    }
+    if (!drewPhrase) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the Phrase roll was never rendered, "
+                   "so this page was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          if text.count(old_roll) != 1:
+              raise SystemExit(
+                  f"roll coverage marker count={text.count(old_roll)}; expected one"
+              )
+          text = text.replace(old_roll, new_roll, 1)
+
+          old_list = '''    bool drewList = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "SOUNDS") drewList = true;
+    }
+    if (!drewList) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the list view was never rendered, so "
+                   "this view was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          new_list = '''    bool drewList = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "NO SOUNDS YET" ||
+          entry.text.rfind("SOUND ", 0) == 0) {
+        drewList = true;
+      }
+    }
+    if (!drewList) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the Phrase list was never rendered, so "
+                   "this view was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          if text.count(old_list) != 1:
+              raise SystemExit(
+                  f"list coverage marker count={text.count(old_list)}; expected one"
+              )
+          path.write_text(text.replace(old_list, new_list, 1), encoding="utf-8")
+          PY
+
+      - name: Run focused Pattern Phrase UI gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+
+      - name: Freeze production tree and permanent closure workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml <<'YAML'
+          name: 0.9.10 UI Pattern Phrase Instrument Closure
+
+          on:
+            push:
+              branches:
+                - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
+            pull_request:
+              branches:
+                - feature/20260907-01-u4b6-make-phrase-entry
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            focused-ui:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - name: Install SDL test dependencies
+                  run: |
+                    sudo apt-get update
+                    sudo apt-get install -y --no-install-recommends \
+                      build-essential \
+                      libsdl2-dev \
+                      libsdl2-gfx-dev
+                - name: Run Pattern/Phrase instrument causal UI gate
+                  run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+
+            cardputer-adv-ab:
+              needs: focused-ui
+              runs-on: ubuntu-latest
+              timeout-minutes: 50
+              steps:
+                - name: Checkout authoritative post-443 base
+                  uses: actions/checkout@v4
+                  with:
+                    ref: 7ea609e678d3d3794b5e1d22838b999d90a5b28d
+                    path: before
+                    fetch-depth: 1
+
+                - name: Checkout exact closure candidate
+                  uses: actions/checkout@v4
+                  with:
+                    ref: ${{ github.sha }}
+                    path: after
+                    fetch-depth: 1
+
+                - uses: arduino/setup-arduino-cli@v2
+
+                - name: Install pinned Cardputer dependencies
+                  run: bash after/scripts/install_arduino_deps.sh
+
+                - name: Fetch exact ESP-IDF source object
+                  run: |
+                    set -euo pipefail
+                    git init "$HOME/esp-idf"
+                    git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+                    git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+
+                - name: Use identical accepted FS1B builder on both trees
+                  run: |
+                    set -euo pipefail
+                    cp after/scripts/build_fatfs_dynbuffers_candidate.sh before/scripts/build_fatfs_dynbuffers_candidate.sh
+                    cp after/scripts/build_cardputer_dynbuffers.sh before/scripts/build_cardputer_dynbuffers.sh
+                    cp after/scripts/check_cardputer_dram_budget.sh before/scripts/check_cardputer_dram_budget.sh
+
+                - name: Build authoritative base Cardputer ADV
+                  shell: bash
+                  run: |
+                    set -o pipefail
+                    mkdir -p evidence
+                    cd before
+                    BUILD_PATH="$GITHUB_WORKSPACE/build-before" \
+                    ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-before/.arduino-build" \
+                      bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+                      2>&1 | tee "$GITHUB_WORKSPACE/evidence/cardputer-before.log"
+
+                - name: Build closure Cardputer ADV firmware
+                  shell: bash
+                  run: |
+                    set -o pipefail
+                    cd after
+                    BUILD_PATH="$GITHUB_WORKSPACE/build-after" \
+                    ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-after/.arduino-build" \
+                      bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+                      2>&1 | tee "$GITHUB_WORKSPACE/evidence/cardputer-after.log"
+
+                - name: Measure exact static DRAM delta and firmware identity
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size -perm -u+x -print | sort -V | tail -n 1)"
+                    test -x "$SIZE_TOOL"
+                    BEFORE_ELF="$GITHUB_WORKSPACE/build-before/GroovePuter.ino.elf"
+                    AFTER_ELF="$GITHUB_WORKSPACE/build-after/GroovePuter.ino.elf"
+
+                    read_sections() {
+                      "$SIZE_TOOL" -A "$1" | awk '
+                        $1 == ".dram0.data" { data = $2 }
+                        $1 == ".dram0.bss" { bss = $2 }
+                        END { print data + 0, bss + 0 }
+                      '
+                    }
+
+                    read -r BEFORE_DATA BEFORE_BSS < <(read_sections "$BEFORE_ELF")
+                    read -r AFTER_DATA AFTER_BSS < <(read_sections "$AFTER_ELF")
+                    BEFORE_FIXED=$((BEFORE_DATA + BEFORE_BSS))
+                    AFTER_FIXED=$((AFTER_DATA + AFTER_BSS))
+                    DELTA=$((AFTER_FIXED - BEFORE_FIXED))
+
+                    {
+                      echo "PATTERN/PHRASE UI CARDPUTER ADV A/B"
+                      echo "before_source=7ea609e678d3d3794b5e1d22838b999d90a5b28d"
+                      echo "after_source=${GITHUB_SHA}"
+                      echo "before_data=${BEFORE_DATA}"
+                      echo "before_bss=${BEFORE_BSS}"
+                      echo "before_fixed=${BEFORE_FIXED}"
+                      echo "after_data=${AFTER_DATA}"
+                      echo "after_bss=${AFTER_BSS}"
+                      echo "after_fixed=${AFTER_FIXED}"
+                      echo "delta_fixed_dram=${DELTA}"
+                      echo "before_elf_sha256=$(sha256sum "$BEFORE_ELF" | awk '{print $1}')"
+                      echo "after_elf_sha256=$(sha256sum "$AFTER_ELF" | awk '{print $1}')"
+                      echo "after_bin_sha256=$(sha256sum "$GITHUB_WORKSPACE/build-after/GroovePuter.ino.bin" | awk '{print $1}')"
+                    } | tee "$GITHUB_WORKSPACE/evidence/pattern-phrase-ui-cardputer-ab.txt"
+
+                - name: Upload flashable firmware and evidence
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: pattern-phrase-ui-cardputer-adv-${{ github.sha }}
+                    if-no-files-found: error
+                    path: |
+                      evidence/pattern-phrase-ui-cardputer-ab.txt
+                      evidence/cardputer-before.log
+                      evidence/cardputer-after.log
+                      build-after/GroovePuter.ino.elf
+                      build-after/GroovePuter.ino.bin
+                      build-after/GroovePuter.ino.bootloader.bin
+                      build-after/GroovePuter.ino.partitions.bin
+          YAML
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/synth_sequencer_page.cpp tests/test_ui_content_bounds.cpp \
+            .github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml
+          git rm scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
+          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch_v2.yml
+          git commit -m "feat(ui): integrate Pattern Phrase instrument controls"
+          git push origin HEAD:feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
