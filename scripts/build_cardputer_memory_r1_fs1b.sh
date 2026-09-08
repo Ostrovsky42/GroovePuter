@@ -2,8 +2,10 @@
 set -euo pipefail
 
 # Build the MEMORY-R1 FS1B Cardputer image without modifying the shared Arduino
-# installation. The stock -lfatfs token is replaced exactly once in a copied
-# ld_libs response file, so the linker cannot mix stock and candidate objects.
+# installation. Every stock -lfatfs token in a copied ld_libs response file is
+# replaced in-place with the same candidate archive. This preserves the core's
+# intentional repeated-library ordering while making a mixed stock/candidate
+# link impossible.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -29,15 +31,21 @@ dst = Path(sys.argv[2])
 candidate = str(Path(sys.argv[3]).resolve())
 text = src.read_text(encoding="utf-8")
 
-# Replace the library token in-place rather than adding a second archive through
-# build.extra_libs or a later -L search path.
-new_text, count = re.subn(r"(?<!\S)-lfatfs(?!\S)", candidate, text)
-if count != 1:
-    raise SystemExit(f"{src}: expected exactly one -lfatfs token, found {count}")
-if "-lfatfs" in new_text:
+# The pinned core currently repeats -lfatfs in ld_libs. Preserve that exact
+# ordering and multiplicity, but replace every occurrence atomically.
+stock_tokens = len(re.findall(r"(?<!\S)-lfatfs(?!\S)", text))
+if stock_tokens < 1:
+    raise SystemExit(f"{src}: no -lfatfs token found")
+new_text = re.sub(r"(?<!\S)-lfatfs(?!\S)", candidate, text)
+if re.search(r"(?<!\S)-lfatfs(?!\S)", new_text):
     raise SystemExit(f"{dst}: stock -lfatfs token survived replacement")
+if new_text.count(candidate) != stock_tokens:
+    raise SystemExit(
+        f"{dst}: expected {stock_tokens} candidate tokens, "
+        f"found {new_text.count(candidate)}"
+    )
 dst.write_text(new_text, encoding="utf-8")
-print(f"FS1B link response: replaced one -lfatfs with {candidate}")
+print(f"FS1B link response: replaced {stock_tokens} -lfatfs token(s) with {candidate}")
 PY
 
 bash "${SCRIPT_DIR}/build.sh" \
