@@ -25,6 +25,32 @@ void testLengthCycle() {
          "reverse length cycle did not wrap to 8");
 }
 
+void testGridIsFiniteMusicalSelector() {
+  const uint16_t lengthTicks = PhraseRuntime::kTicksPerBar;
+  PhraseNotesCursor::State cursor{};
+  cursor.grid = RuntimePhraseEdit::Grid::Eighth;
+
+  cursor = PhraseNotesCursor::changeGrid(cursor, 1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::Sixteenth,
+         "GRID forward did not move 1/8 -> 1/16");
+  cursor = PhraseNotesCursor::changeGrid(cursor, 1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::ThirtySecond,
+         "GRID forward did not move 1/16 -> 1/32");
+  cursor = PhraseNotesCursor::changeGrid(cursor, 1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::Eighth,
+         "GRID forward did not wrap 1/32 -> 1/8");
+
+  cursor = PhraseNotesCursor::changeGrid(cursor, -1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::ThirtySecond,
+         "GRID reverse did not wrap 1/8 -> 1/32");
+  cursor = PhraseNotesCursor::changeGrid(cursor, -1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::Sixteenth,
+         "GRID reverse did not move 1/32 -> 1/16");
+  cursor = PhraseNotesCursor::changeGrid(cursor, -1, lengthTicks);
+  expect(cursor.grid == RuntimePhraseEdit::Grid::Eighth,
+         "GRID reverse did not move 1/16 -> 1/8");
+}
+
 void testBarNavigationIsCursorOnly() {
   PhraseNotesCursor::State cursor{};
   cursor.grid = RuntimePhraseEdit::Grid::Sixteenth;
@@ -84,6 +110,7 @@ void testRejectedLengthDoesNotPretendToChange() {
 
 int main() {
   testLengthCycle();
+  testGridIsFiniteMusicalSelector();
   testBarNavigationIsCursorOnly();
   testLengthCommandDelegatesToDomain();
   testRejectedLengthDoesNotPretendToChange();
