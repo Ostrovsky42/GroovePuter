@@ -32,6 +32,18 @@ require("PhraseInstrumentControls::applyLengthChange",
         "Phrase length gesture is not routed through the causal control adapter")
 require("mini_acid_.setPhraseLength(voice_index_, bars)",
         "Phrase length gesture does not call the runtime/domain command")
+length_handler = SYNTH.split("if (!ui_event.alt && lower == 'l')", 1)[1].split(
+    "if (!ui_event.alt && (ui_event.key == '['", 1
+)[0]
+require_in_length = {
+    "const auto apply =": "Phrase length gesture has no guarded mutation closure",
+    "if (audio_guard_) audio_guard_(apply)":
+        "Phrase length mutation bypasses the existing AudioGuard",
+    "else apply()": "Phrase length mutation has no unguarded host-test fallback",
+}
+for needle, message in require_in_length.items():
+    if needle not in length_handler:
+        raise AssertionError(message)
 if "currentPhraseBuffer(voice_index_).lengthTicks =" in SYNTH:
     raise AssertionError("UI directly owns Phrase lengthTicks")
 
