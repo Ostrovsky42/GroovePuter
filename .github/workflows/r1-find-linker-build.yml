@@ -1,0 +1,51 @@
+name: R1 Find Remaining Linker BUILD
+
+on:
+  push:
+    branches:
+      - feature/20260908-01-test-liveness-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  find-linker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config clang
+
+      - name: Find inherited linker BUILD
+        shell: bash
+        run: |
+          set -uo pipefail
+          found=0
+          while IFS= read -r runner; do
+            name="$(basename "$runner")"
+            log="${RUNNER_TEMP}/${name}.log"
+            set +e
+            timeout 240s bash "$runner" >"$log" 2>&1
+            rc=$?
+            set -e
+            if [[ $rc -ne 0 ]] && grep -qF 'collect2: error: ld returned 1' "$log"; then
+              echo "LINKER_BUILD_RUNNER=$runner"
+              echo "--- linker context ---"
+              grep -n -B20 -A5 -E 'undefined reference|collect2: error: ld returned 1' "$log" || true
+              echo "--- tail ---"
+              tail -n 80 "$log"
+              found=1
+              break
+            fi
+          done < <(find tests -maxdepth 1 -type f -name 'run*_tests.sh' -print | sort)
+          if [[ $found -ne 1 ]]; then
+            echo 'No failing runner with the inherited collect2 signature was found.' >&2
+            exit 1
+          fi

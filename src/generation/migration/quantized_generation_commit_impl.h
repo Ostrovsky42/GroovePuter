@@ -7,6 +7,7 @@
 #include "../../dsp/atlas_runtime.h"
 #include "../../dsp/miniacid_engine.h"
 #include "../../dsp/mode_manager.h"
+#include "../../phrase/runtime_pattern_event_bank.h"
 #include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 #include "strong_rhythm_live_bridge.h"
