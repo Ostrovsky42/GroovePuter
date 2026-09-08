@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "src/phrase/runtime_phrase_edit.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -4038,12 +4039,27 @@ bool MiniAcid::makePhrase(int voiceIndex) {
 }
 
 bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
-  if (barCount != 1 && barCount != 2 && barCount != 4 && barCount != 8) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+
+  auto candidate = currentPhrase_[voiceIndex];
+  const uint16_t targetTicks =
+      RuntimePhraseEdit::lengthTicksForBars(barCount);
+  if (targetTicks == 0) return false;
+  if (targetTicks == candidate.lengthTicks) {
+    return RuntimePhraseEdit::validate(candidate);
+  }
+
+  if (targetTicks > candidate.lengthTicks) {
+    // Expansion may repair a note which already crosses the old end, so grant
+    // the requested extent before validating the complete candidate.
+    candidate.lengthTicks = targetTicks;
+    if (!RuntimePhraseEdit::validate(candidate)) return false;
+  } else if (RuntimePhraseEdit::setLengthBars(candidate, barCount) !=
+             RuntimePhraseEdit::LengthEditResult::Changed) {
     return false;
   }
-  currentPhrase_[clamp303Voice(voiceIndex)].lengthTicks =
-      static_cast<uint16_t>(barCount * PhraseRuntime::kTicksPerBar);
-  return true;
+
+  return RuntimePhraseEdit::commit(currentPhrase_[voiceIndex], candidate);
 }
 
 PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(

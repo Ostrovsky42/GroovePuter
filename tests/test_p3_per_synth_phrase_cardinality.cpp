@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "src/dsp/miniacid_engine.h"
+#include "src/phrase/runtime_phrase_edit.h"
 #include "src/phrase/runtime_synth_events.h"
 
 SerialMock Serial;
@@ -76,6 +77,18 @@ int main() {
   expect(&engine.currentPhraseBuffer(kSynthA) !=
              &engine.currentPhraseBuffer(kSynthB),
          "both synths share one phrase buffer");
+
+  // A supported bar count is still unsafe when it would cut retained music.
+  // The public engine command must reject that contraction without leaving a
+  // buffer which the Phrase renderer reports as MELODY UNREADABLE.
+  const auto beforeUnsafeShrink = engine.currentPhraseBuffer(kSynthA);
+  expect(!engine.setPhraseLength(kSynthA, 1),
+         "unsafe per-synth phrase shrink was accepted");
+  expect(RuntimePhraseEdit::same(engine.currentPhraseBuffer(kSynthA),
+                                 beforeUnsafeShrink),
+         "unsafe phrase shrink partially mutated the live buffer");
+  expect(RuntimePhraseEdit::validate(engine.currentPhraseBuffer(kSynthA)),
+         "rejected phrase shrink left an unreadable melody");
 
   // Invalid length on one voice must not disturb either voice.
   const uint16_t keepA = engine.currentPhraseBuffer(kSynthA).lengthTicks;
