@@ -40,6 +40,11 @@ if "currentPhraseBuffer(voice_index_).lengthTicks =" in SYNTH:
 require("PhraseInstrumentControls::jumpBar",
         "Phrase bar navigation is not explicit")
 require("PHRASE BAR", "bar navigation gives no immediate causal feedback")
+require("lower == 'l'", "plain L is not owned by the Phrase editor")
+require("ui_event.key == '[' || ui_event.key == ']'",
+        "Phrase editor does not consume bracket bar navigation")
+require("UI::showToast(toast, 900);\n    return true;",
+        "Phrase bracket controls can fall through to workspace navigation")
 
 # GRID changes editing resolution only and names itself as GRID, not STEP/LENGTH.
 require('"GRID %s"', "GRID action is still presented as an ambiguous STEP control")
