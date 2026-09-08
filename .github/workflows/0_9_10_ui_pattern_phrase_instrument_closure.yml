@@ -17,5 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install SDL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
       - name: Run Pattern/Phrase instrument causal UI gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
