@@ -1,0 +1,24 @@
+name: 0.9.10 MEMORY-R1 FS1B
+
+on:
+  push:
+    branches:
+      - feature/20260908-0.9.10-memory-r1-dram-recovery
+    paths:
+      - 'scripts/build_fatfs_dynbuffers_candidate.sh'
+      - 'scripts/build_cardputer_memory_r1_fs1b.sh'
+      - 'tests/test_memory_r1_fs1b_source_contract.py'
+      - '.github/workflows/0_9_10_memory_r1_fs1b.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fs1b-source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove FS1B source/link contract
+        run: python3 tests/test_memory_r1_fs1b_source_contract.py
