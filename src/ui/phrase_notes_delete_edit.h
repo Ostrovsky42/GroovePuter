@@ -7,9 +7,9 @@
 #include "phrase_notes_selection.h"
 #include "src/phrase/runtime_phrase_edit.h"
 
-// U4B4 UI policy adapter: derive the deletion target from cursor-time truth,
-// prepare a complete bounded before/after value, and allow commit only while the
-// live Phrase still matches the prepared before-image.
+// UI policy adapter for deletion. The resolved selected event is the preferred
+// target because cursor time cannot identify coincident events. Cursor-time
+// targeting remains as a compatibility entry point.
 //
 // RuntimePhraseEdit remains the mutation owner; audio/control exclusion remains
 // the caller's responsibility.
@@ -28,24 +28,21 @@ enum class Result : uint8_t {
   Rejected,
 };
 
-inline Result prepare(const Buffer& live,
-                      uint16_t cursorTick,
-                      Prepared& out) {
+inline Result prepareSelected(const Buffer& live,
+                              uint16_t eventIndex,
+                              Prepared& out) {
   out.before = live;
   out.after = live;
 
   if (!RuntimePhraseEdit::validate(live)) return Result::Rejected;
-  const PhraseNotesSelection::Selection selection =
-      PhraseNotesSelection::derive(live, cursorTick);
-  if (!selection.active) return Result::NoTarget;
+  if (eventIndex >= live.count) return Result::NoTarget;
 
   RuntimePhraseEdit::EventEditResult editResult =
       RuntimePhraseEdit::EventEditResult::Rejected;
   const RuntimePhraseEdit::PrepareResult prepareResult =
       RuntimePhraseEdit::prepare(
           live, out.after, [&](Buffer& candidate) {
-            editResult = RuntimePhraseEdit::deleteEvent(
-                candidate, selection.eventIndex);
+            editResult = RuntimePhraseEdit::deleteEvent(candidate, eventIndex);
           });
 
   if (editResult != RuntimePhraseEdit::EventEditResult::Changed ||
@@ -54,6 +51,24 @@ inline Result prepare(const Buffer& live,
     return Result::Rejected;
   }
   return Result::Ready;
+}
+
+inline Result prepare(const Buffer& live,
+                      uint16_t cursorTick,
+                      Prepared& out) {
+  if (!RuntimePhraseEdit::validate(live)) {
+    out.before = live;
+    out.after = live;
+    return Result::Rejected;
+  }
+  const PhraseNotesSelection::Selection selection =
+      PhraseNotesSelection::derive(live, cursorTick);
+  if (!selection.active) {
+    out.before = live;
+    out.after = live;
+    return Result::NoTarget;
+  }
+  return prepareSelected(live, selection.eventIndex, out);
 }
 
 inline bool commitIfUnchanged(Buffer& live, const Prepared& prepared) {
