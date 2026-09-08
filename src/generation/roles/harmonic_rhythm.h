@@ -8,6 +8,43 @@
 
 namespace GroovePuterRhythm {
 
+enum class HarmonicChangeRateId : uint8_t {
+  Every2Beats = 0,
+  Every4Beats,
+  Count,
+};
+
+constexpr bool isValidHarmonicChangeRate(HarmonicChangeRateId rate) {
+  return static_cast<uint8_t>(rate) <
+         static_cast<uint8_t>(HarmonicChangeRateId::Count);
+}
+
+constexpr uint8_t harmonicChangeRateQuarterNotes(HarmonicChangeRateId rate) {
+  switch (rate) {
+    case HarmonicChangeRateId::Every2Beats: return 2;
+    case HarmonicChangeRateId::Every4Beats: return 4;
+    case HarmonicChangeRateId::Count: break;
+  }
+  return 0;
+}
+
+constexpr uint8_t harmonicEventCountPerBar(HarmonicChangeRateId rate) {
+  switch (rate) {
+    case HarmonicChangeRateId::Every2Beats: return 2;
+    case HarmonicChangeRateId::Every4Beats: return 1;
+    case HarmonicChangeRateId::Count: break;
+  }
+  return 0;
+}
+
+constexpr uint32_t harmonicChangePeriodMilliseconds(HarmonicChangeRateId rate,
+                                                     uint16_t bpm) {
+  const uint8_t beats = harmonicChangeRateQuarterNotes(rate);
+  return bpm == 0 || beats == 0
+      ? 0
+      : (static_cast<uint32_t>(beats) * 60000u) / bpm;
+}
+
 enum class HarmonicRhythmStatus : uint8_t {
   Ok = 0,
   InvalidRequest,
@@ -22,7 +59,8 @@ enum class HarmonicRhythmStatus : uint8_t {
 // harmonicEventCount == 0 selects the accepted F08 bootstrap:
 // static progressions expose one state at {0}; moving progressions expose two
 // states at {0,8}. An explicit bounded count preserves the accepted F08 API
-// boundary without introducing F08.1 named-clock vocabulary.
+// boundary while phrase-level structural policy may choose a musician-facing
+// change rate before entering this one-bar owner.
 //
 // phraseBarOrdinal / phraseHarmonicPosition are carried coordinates only, as in
 // accepted F08. They do not create a scheduler, lifecycle, cross-bar harmonic
