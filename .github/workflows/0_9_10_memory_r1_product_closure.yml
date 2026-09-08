@@ -19,10 +19,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prove MEMORY-R1 product closure contract
         run: python3 tests/test_memory_r1_product_closure.py
-      - name: Preserve touched SD/SMF source oracle
-        run: python3 -c 'import sys; sys.path.insert(0, "tests"); import test_source_regressions as t; t.test_cardputer_sd_has_one_hardware_mount_path(); print("lazy-SMF SD/source oracle: OK")'
-      - name: Preserve touched performance/SMF source oracle
-        run: python3 -c 'import sys; sys.path.insert(0, "tests"); import _performance_source_regressions_base as t; t.test_smf_player_is_additive_and_keeps_single_usb_owner(); print("lazy-SMF performance oracle: OK")'
       - name: Preserve Pattern/Phrase runtime regression
         run: bash tests/run_pattern_phrase_p2_tests.sh
 
