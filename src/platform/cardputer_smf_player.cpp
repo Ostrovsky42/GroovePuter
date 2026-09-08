@@ -9,6 +9,7 @@
 
 #include <esp_heap_caps.h>
 #include "src/audio/audio_config.h"
+#include "src/diag/lifetime_census.h"
 #include "src/midi/midi_transport_capabilities.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/platform/cardputer_usb_midi_service.h"
@@ -93,6 +94,7 @@ bool CardputerSmfPlayerService::begin() {
                   static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                   static_cast<unsigned>(
                       heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+    LIFETIME_CENSUS_POINT("SMF_PLAY", "after-create");
     return true;
 }
 
@@ -257,6 +259,7 @@ void CardputerSmfPlayerService::taskEntry(void* context) {
 }
 
 void CardputerSmfPlayerService::taskLoop() {
+    LIFETIME_CENSUS_POINT("SMF_PLAY", "worker-start");
     while (true) {
         handleTransportFailure();
 

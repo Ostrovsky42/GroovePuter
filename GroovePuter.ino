@@ -9,6 +9,7 @@
 #include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/diag/melody_pending_census.h"
+#include "src/diag/lifetime_census.h"
 #include "cardputer_display.h"
 #include <cstdarg>
 #include <cstdio>
@@ -490,6 +491,7 @@ void setup() {
   markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
   markBootStage(100, "setup-complete");
+  LIFETIME_CENSUS_POINT("BOOT", "product-ready");
 }
 
 
