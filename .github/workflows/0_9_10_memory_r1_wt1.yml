@@ -1,0 +1,24 @@
+name: 0.9.10 MEMORY-R1 WT1
+
+on:
+  push:
+    branches:
+      - feature/20260908-0.9.10-memory-r1-wt1
+    paths:
+      - 'src/dsp/audio_wavetables.h'
+      - 'src/dsp/audio_wavetables.cpp'
+      - 'tests/test_memory_r1_wt1_triangle_dead_representation.py'
+      - '.github/workflows/0_9_10_memory_r1_wt1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wt1-triangle-dead-table:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove caller census and dead triangle representation guard
+        run: python3 tests/test_memory_r1_wt1_triangle_dead_representation.py
