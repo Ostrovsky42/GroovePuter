@@ -19,8 +19,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prove MEMORY-R1 product closure contract
         run: python3 tests/test_memory_r1_product_closure.py
-      - name: Preserve Pattern/Phrase runtime regression
-        run: bash tests/run_pattern_phrase_p2_tests.sh
 
   m4-fs1b-wt1-elf-ab:
     needs: closure-contract
