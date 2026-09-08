@@ -86,6 +86,7 @@ jobs:
             echo "build_command=bash scripts/build.sh --warnings all"
             echo "arduino_loop_stack_size=$ARDUINO_LOOP_STACK_SIZE"
             echo "grooveputer_build_extra_cpp_flags=<empty>"
+            echo "top_owner_scope=.dram0.data,.dram0.bss (section-qualified via objdump -t -C)"
             echo "elf=$ELF"
             echo "elf_sha256=$(sha256sum "$ELF" | awk '{print $1}')"
             echo "linker_map=$MAP"
@@ -124,14 +125,45 @@ jobs:
 
           "$NM" -S -C "$ELF" > "$OUT/elf-symbols-all.txt"
           "$NM" -S --size-sort -C "$ELF" > "$OUT/elf-symbols-size-sort.txt"
-          "$NM" -S --size-sort -C "$ELF" \
-            | awk '$3 ~ /^[bBdD]$/ {print}' \
-            | tail -n 30 \
-            | tac > "$OUT/elf-top-owners.txt"
+          "$OBJDUMP" -t -C "$ELF" > "$OUT/elf-symbol-table.txt"
+
+          python3 - "$OUT/elf-symbol-table.txt" "$OUT/elf-top-owners.txt" <<'PY'
+          import pathlib
+          import sys
+
+          source = pathlib.Path(sys.argv[1])
+          target = pathlib.Path(sys.argv[2])
+          allowed = {".dram0.data", ".dram0.bss"}
+          rows = []
+
+          for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
+              parts = raw.split()
+              if len(parts) < 5:
+                  continue
+              for index, token in enumerate(parts):
+                  if token not in allowed or index + 2 >= len(parts):
+                      continue
+                  try:
+                      size = int(parts[index + 1], 16)
+                      int(parts[0], 16)
+                  except ValueError:
+                      break
+                  name = " ".join(parts[index + 2:])
+                  if size > 0 and name:
+                      rows.append((size, token, parts[0], name))
+                  break
+
+          rows.sort(key=lambda row: (-row[0], row[1], row[3]))
+          with target.open("w", encoding="utf-8") as out:
+              out.write("# scope: .dram0.data + .dram0.bss; section-qualified via objdump -t -C\n")
+              out.write("bytes\tsection\taddress\tsymbol\n")
+              for size, section, address, name in rows[:30]:
+                  out.write(f"{size}\t{section}\t0x{address}\t{name}\n")
+          PY
 
           cp "$MAP" "$OUT/linker-map.txt"
 
-          echo "=== TOP 30 BSS/DATA OWNERS ==="
+          echo "=== TOP 30 INTERNAL DRAM OWNERS (.dram0.data + .dram0.bss) ==="
           cat "$OUT/elf-top-owners.txt"
 
       - name: Upload M1-A static residency evidence
