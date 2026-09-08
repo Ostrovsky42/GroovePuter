@@ -371,12 +371,14 @@ void testExact384TickBoundary() {
 
 void testSongBoundaryCleanupBarrierForSynth(int synth) {
   RuntimeFixture f;
-  // This characterization is about Song ownership transfer, not swing. Keep
-  // the step-15 onset on its nominal tick and use a folded TIE so its runtime
-  // lifetime provably extends beyond the row boundary that must terminate it.
+  // Shift the step-15 NOTE to tick 383 so its ordinary gate is genuinely alive
+  // across the physical Song row boundary. This fixture tests the hard barrier
+  // directly and does not depend on folded TIE reachability or swing.
   f.engine.sceneManager_.currentScene().feel.swingPct = 50;
   f.engine.sceneManager_.currentScene().feel.swingMask = 0;
-  editPattern(f, synth, 0, {15, 60, 0, -2});
+  std::vector<int8_t> timing(SynthPattern::kSteps, 0);
+  timing[15] = 23;
+  editPattern(f, synth, 0, {15, 60}, timing);
   editPattern(f, synth, 1, {4, 64});
   editPattern(f, 1 - synth, 0, {});
   editPattern(f, 1 - synth, 1, {});
@@ -394,7 +396,7 @@ void testSongBoundaryCleanupBarrierForSynth(int synth) {
 
   f.engine.playing = true;
   f.beginRender();
-  processTick(f, 360);
+  processTick(f, 383);
   f.endRender();
   f.dispatchLikeProduction();
 
