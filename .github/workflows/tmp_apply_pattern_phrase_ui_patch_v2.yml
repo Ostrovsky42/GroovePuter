@@ -1,0 +1,155 @@
+name: TEMP Final Pattern Phrase UI Verifier
+
+on:
+  push:
+    branches:
+      - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify-v2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SDL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Apply exact page patch
+        run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+
+      - name: Keep conversion decision in PhraseSourceToggle
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/ui/pages/synth_sequencer_page.cpp")
+          text = path.read_text(encoding="utf-8")
+          start_marker = (
+              "  if (synth_tab_ == SynthTab::Notes && "
+              "isSourceToggleKey(ui_event)) {"
+          )
+          end_marker = (
+              "\n\n  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;"
+          )
+          if text.count(start_marker) != 1:
+              raise SystemExit(
+                  f"source-owner start marker count={text.count(start_marker)}; expected one"
+              )
+          start = text.index(start_marker)
+          if end_marker not in text[start:]:
+              raise SystemExit("source-owner end marker missing after source block")
+          end = text.index(end_marker, start)
+          new = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
+            const auto sourceResult =
+                PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+            switch (sourceResult) {
+              case PhraseSourceToggle::Result::MadePhrase:
+                UI::showToast("MAKE PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPhrase:
+                UI::showToast("SOURCE: PHRASE", 1000);
+                break;
+              case PhraseSourceToggle::Result::SwitchedToPattern:
+                UI::showToast("SOURCE: PATTERN", 1000);
+                break;
+              case PhraseSourceToggle::Result::Rejected:
+                UI::showToast("SOURCE CHANGE FAILED", 1000);
+                break;
+            }
+            return true;
+          }'''
+          path.write_text(text[:start] + new + text[end:], encoding="utf-8")
+          PY
+
+      - name: Align bounds coverage markers with Phrase presentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_ui_content_bounds.cpp")
+          text = path.read_text(encoding="utf-8")
+
+          old_roll = '''    bool drewMelody = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "MELODY") drewMelody = true;
+    }
+    if (!drewMelody) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the melody editor was never rendered, "
+                   "so this page was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          new_roll = '''    bool drewPhrase = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "PHRASE") drewPhrase = true;
+    }
+    if (!drewPhrase) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the Phrase roll was never rendered, "
+                   "so this page was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          if text.count(old_roll) != 1:
+              raise SystemExit(
+                  f"roll coverage marker count={text.count(old_roll)}; expected one"
+              )
+          text = text.replace(old_roll, new_roll, 1)
+
+          old_list = '''    bool drewList = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "SOUNDS") drewList = true;
+    }
+    if (!drewList) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the list view was never rendered, so "
+                   "this view was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          new_list = '''    bool drewList = false;
+    for (const auto& entry : gfx.texts) {
+      if (entry.text == "NO SOUNDS YET" ||
+          entry.text.rfind("SOUND ", 0) == 0) {
+        drewList = true;
+      }
+    }
+    if (!drewList) {
+      std::fprintf(stderr,
+                   "content bounds FAIL: the Phrase list was never rendered, so "
+                   "this view was not actually under test\\n");
+      ++g_failures;
+    }
+'''
+          if text.count(old_list) != 1:
+              raise SystemExit(
+                  f"list coverage marker count={text.count(old_list)}; expected one"
+              )
+          path.write_text(text.replace(old_list, new_list, 1), encoding="utf-8")
+          PY
+
+      - name: Run focused Pattern Phrase UI gate
+        run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+
+      - name: Commit verified production integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/synth_sequencer_page.cpp tests/test_ui_content_bounds.cpp
+          git rm scripts/apply_pattern_phrase_ui_instrument_page_patch.py
+          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
+          git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch_v2.yml
+          git commit -m "feat(ui): integrate Pattern Phrase instrument controls"
+          git push origin HEAD:feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
