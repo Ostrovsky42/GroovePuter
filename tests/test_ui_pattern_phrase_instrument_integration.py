@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SYNTH = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text()
+TOGGLE = (ROOT / "src/ui/phrase_source_toggle.h").read_text()
+
+
+def require(needle: str, message: str) -> None:
+    if needle not in SYNTH:
+        raise AssertionError(message)
+
+
+# Domain/runtime truth must still select the renderer. No UI-owned source flag.
+require(
+    "mini_acid_.currentSequencedSource(voice_index_)",
+    "Synth page stopped projecting authoritative runtime source",
+)
+
+# PHRASE must identify edit object, playing source, bar extent and edit resolution
+# at the same time. GRID must not survive only as a transient toast.
+require("PLAY:PHR", "Phrase screen does not explicitly identify the playing source")
+require("PhraseNotesCursor::gridLabel(phrase_cursor_.grid)",
+        "Phrase screen does not project its edit GRID")
+require("BAR %u/%u", "Phrase screen does not project current/total bars compactly")
+
+# Length is a musical-domain command: UI requests one of 1/2/4/8 and then reads
+# the resulting runtime buffer again. It must not assign lengthTicks directly.
+require("PhraseInstrumentControls::applyLengthChange",
+        "Phrase length gesture is not routed through the causal control adapter")
+require("mini_acid_.setPhraseLength(voice_index_, bars)",
+        "Phrase length gesture does not call the runtime/domain command")
+if "currentPhraseBuffer(voice_index_).lengthTicks =" in SYNTH:
+    raise AssertionError("UI directly owns Phrase lengthTicks")
+
+# Bar navigation is UI continuity only. The handler moves the cursor through the
+# adapter; it does not call any musical mutation for the gesture.
+require("PhraseInstrumentControls::jumpBar",
+        "Phrase bar navigation is not explicit")
+require("PHRASE BAR", "bar navigation gives no immediate causal feedback")
+
+# GRID changes editing resolution only and names itself as GRID, not STEP/LENGTH.
+require('"GRID %s"', "GRID action is still presented as an ambiguous STEP control")
+
+# MAKE PHRASE is explicit from Pattern and reuses the established source owner.
+# It must not copy events in the UI.
+require("PhraseSourceToggle::makePhrase",
+        "Pattern has no explicit one-way MAKE PHRASE gesture")
+if "RuntimeSynthEventBuffer candidate" in SYNTH:
+    raise AssertionError("UI introduced a shadow Phrase/material buffer")
+if "currentPhraseBuffer(voice_index_) =" in SYNTH:
+    raise AssertionError("UI copies Phrase material instead of invoking domain/runtime")
+
+if "inline bool makePhrase" not in TOGGLE:
+    raise AssertionError("source owner lacks a dedicated MAKE PHRASE entry")
+
+print("Pattern/Phrase instrument integration: PASS")
