@@ -32,6 +32,10 @@ def collect_occurrences():
 
 
 def prove_caller_census(occurrences):
+    if not occurrences:
+        print("WT1 caller census: CLOSED — no surviving triangle representation or callers")
+        return
+
     unexpected_files = sorted({rel for rel, _, _, _ in occurrences} - ALLOWED_CENSUS_FILES)
     if unexpected_files:
         raise AssertionError(
@@ -42,8 +46,8 @@ def prove_caller_census(occurrences):
     lookup_occurrences = [item for item in occurrences if item[2] == "lookupTriangle"]
     if len(lookup_occurrences) != 1:
         raise AssertionError(
-            f"WT1 caller census expected exactly one lookupTriangle definition, found {len(lookup_occurrences)}: "
-            f"{lookup_occurrences}"
+            f"WT1 caller census expected exactly one lookupTriangle definition while the representation exists, "
+            f"found {len(lookup_occurrences)}: {lookup_occurrences}"
         )
     rel, _, _, line = lookup_occurrences[0]
     if rel != "src/dsp/audio_wavetables.h" or "static inline float lookupTriangle" not in line:
@@ -54,9 +58,11 @@ def prove_caller_census(occurrences):
 
     triangle_occurrences = [item for item in occurrences if item[2] == "triangleTable_"]
     if not triangle_occurrences:
-        raise AssertionError("WT1 caller census unexpectedly found no triangleTable_ representation")
+        raise AssertionError(
+            "WT1 caller census found a lookupTriangle symbol without its owned triangleTable_ representation"
+        )
 
-    print("WT1 caller census: PASS")
+    print("WT1 caller census: PASS — representation exists only in wavetable ownership files")
     for rel, line_no, symbol, line in occurrences:
         print(f"  {rel}:{line_no}: {symbol}: {line}")
 
