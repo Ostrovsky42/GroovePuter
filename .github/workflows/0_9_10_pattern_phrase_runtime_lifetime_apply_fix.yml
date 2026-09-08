@@ -51,25 +51,17 @@ jobs:
           }
           '''
 
-          old_make_phrase = '''  currentPhrase_[voice] = candidate;
-            activeMaterial_[voice].kind = GroovePuterMaterial::MaterialKind::Melody;
-            return true;
-          }
-          '''
-          new_make_phrase = '''  currentPhrase_[voice] = candidate;
-            setSequencedSource(voice, SequencedSource::Phrase);
-            return true;
-          }
-          '''
+          old_make_line = "  activeMaterial_[voice].kind = GroovePuterMaterial::MaterialKind::Melody;"
+          new_make_line = "  setSequencedSource(voice, SequencedSource::Phrase);"
 
           old_setter_count = text.count(old_setter)
-          old_make_count = text.count(old_make_phrase)
+          old_make_count = text.count(old_make_line)
           new_setter_count = text.count(new_setter)
-          new_make_count = text.count(new_make_phrase)
+          new_make_count = text.count(new_make_line)
 
           if old_setter_count == 1 and old_make_count == 1:
               text = text.replace(old_setter, new_setter, 1)
-              text = text.replace(old_make_phrase, new_make_phrase, 1)
+              text = text.replace(old_make_line, new_make_line, 1)
               path.write_text(text)
               print("Applied exact Pattern/Phrase ownership-transfer patch")
           elif new_setter_count == 1 and new_make_count == 1:
