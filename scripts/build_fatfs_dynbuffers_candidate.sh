@@ -89,6 +89,91 @@ mapfile -d '' -t CFLAGS_ARGS < <(read_flags "$AL/flags/c_flags")
 mapfile -d '' -t DEFS_ARGS < <(read_flags "$AL/flags/defines")
 mapfile -d '' -t INC_ARGS < <(read_flags "$AL/flags/includes")
 
+compile_common=(
+  "${CFLAGS_ARGS[@]}"
+  "${DEFS_ARGS[@]}"
+  -iprefix "$AL/include/"
+  "${INC_ARGS[@]}"
+  -I"$OUT/inc"
+  -I"$F/diskio" -I"$F/src" -I"$F/vfs"
+)
+
+# Reproduce the layout with compiler-owned facts. The arrays' symbol sizes equal
+# sizeof(FIL), sizeof(FATFS), and FF_MAX_SS without running target code.
+cat > "$OUT/sizeof_probe.c" <<'EOF'
+#include "ff.h"
+unsigned char gp_sizeof_FIL[sizeof(FIL)];
+unsigned char gp_sizeof_FATFS[sizeof(FATFS)];
+unsigned char gp_FF_MAX_SS[FF_MAX_SS];
+EOF
+
+"$CC" "${compile_common[@]}" \
+  -c "$OUT/sizeof_probe.c" -o "$OUT/obj/sizeof-stock.obj"
+"$CC" "${compile_common[@]}" \
+  -DCONFIG_FATFS_USE_DYN_BUFFERS=1 \
+  -c "$OUT/sizeof_probe.c" -o "$OUT/obj/sizeof-dynamic.obj"
+
+python3 - "$NM" "$OUT/obj/sizeof-stock.obj" "$OUT/obj/sizeof-dynamic.obj" <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+nm = sys.argv[1]
+stock_obj = Path(sys.argv[2])
+dynamic_obj = Path(sys.argv[3])
+required = ("gp_sizeof_FIL", "gp_sizeof_FATFS", "gp_FF_MAX_SS")
+
+
+def sizes(path: Path) -> dict[str, int]:
+    output = subprocess.check_output(
+        [nm, "-S", "--defined-only", str(path)], text=True
+    )
+    found: dict[str, int] = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        name = parts[-1]
+        if name in required:
+            found[name] = int(parts[1], 16)
+    missing = [name for name in required if name not in found]
+    if missing:
+        raise SystemExit(f"{path}: missing probe symbols {missing}")
+    return found
+
+
+stock = sizes(stock_obj)
+dynamic = sizes(dynamic_obj)
+if stock["gp_sizeof_FIL"] != 4136 or stock["gp_sizeof_FATFS"] != 4152:
+    raise SystemExit(
+        "FS1B stock layout drift: "
+        f"FIL={stock['gp_sizeof_FIL']} FATFS={stock['gp_sizeof_FATFS']}"
+    )
+if stock["gp_FF_MAX_SS"] != 4096 or dynamic["gp_FF_MAX_SS"] != 4096:
+    raise SystemExit(
+        "FS1B sector-size invariant failed: "
+        f"stock={stock['gp_FF_MAX_SS']} dynamic={dynamic['gp_FF_MAX_SS']}"
+    )
+if dynamic["gp_sizeof_FIL"] >= stock["gp_sizeof_FIL"]:
+    raise SystemExit("FS1B dynamic FIL layout did not shrink")
+if dynamic["gp_sizeof_FATFS"] >= stock["gp_sizeof_FATFS"]:
+    raise SystemExit("FS1B dynamic FATFS layout did not shrink")
+
+stock_struct = 5 * stock["gp_sizeof_FIL"] + stock["gp_sizeof_FATFS"]
+dynamic_struct = 5 * dynamic["gp_sizeof_FIL"] + dynamic["gp_sizeof_FATFS"]
+print(
+    "FS1B COMPILER-MEASURED layout: "
+    f"FIL {stock['gp_sizeof_FIL']} -> {dynamic['gp_sizeof_FIL']}; "
+    f"FATFS {stock['gp_sizeof_FATFS']} -> {dynamic['gp_sizeof_FATFS']}; "
+    f"FF_MAX_SS {stock['gp_FF_MAX_SS']} -> {dynamic['gp_FF_MAX_SS']}"
+)
+print(
+    "FS1B COMPILER-MEASURED static-structure class: "
+    f"5*FIL+FATFS {stock_struct} -> {dynamic_struct}; "
+    f"delta={stock_struct - dynamic_struct} B"
+)
+PY
+
 # Exactly the member set of the stock libfatfs.a at the pinned framework.
 SOURCES=(
   diskio/diskio.c
@@ -106,13 +191,8 @@ OBJECTS=()
 for source in "${SOURCES[@]}"; do
   object="$OUT/obj/$(basename "$source").obj"
   "$CC" \
-    "${CFLAGS_ARGS[@]}" \
-    "${DEFS_ARGS[@]}" \
+    "${compile_common[@]}" \
     -DCONFIG_FATFS_USE_DYN_BUFFERS=1 \
-    -iprefix "$AL/include/" \
-    "${INC_ARGS[@]}" \
-    -I"$OUT/inc" \
-    -I"$F/diskio" -I"$F/src" -I"$F/vfs" \
     -c "$F/$source" -o "$object"
   OBJECTS+=("$object")
 done
