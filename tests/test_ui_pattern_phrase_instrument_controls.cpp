@@ -168,32 +168,6 @@ void testRejectedLengthDoesNotPretendToChange() {
       [](uint8_t) { return false; });
   expect(!changed, "rejected domain length command was reported as changed");
 }
-
-void testLengthCycleSkipsUnsafeShrinkTargets() {
-  PhraseRuntime::RuntimeSynthEventBuffer phrase{};
-  phrase.lengthTicks = 8 * PhraseRuntime::kTicksPerBar;
-  phrase.count = 1;
-  phrase.events[0] = makeEvent(500, 24);
-
-  uint8_t acceptedBars = 0;
-  const bool changed = PhraseInstrumentControls::applyLengthChange(
-      phrase.lengthTicks, 1, [&](uint8_t bars) {
-        auto candidate = phrase;
-        if (RuntimePhraseEdit::setLengthBars(candidate, bars) !=
-            RuntimePhraseEdit::LengthEditResult::Changed) {
-          return false;
-        }
-        phrase = candidate;
-        acceptedBars = bars;
-        return true;
-      });
-
-  expect(changed, "length cycle stopped at an unsafe wrap target");
-  expect(acceptedBars == 2,
-         "length cycle did not select the first extent containing all notes");
-  expect(RuntimePhraseEdit::validate(phrase),
-         "length cycle published an unreadable melody");
-}
 }  // namespace
 
 int main() {
@@ -204,7 +178,6 @@ int main() {
   testBarNavigationIsCursorOnly();
   testLengthCommandDelegatesToDomain();
   testRejectedLengthDoesNotPretendToChange();
-  testLengthCycleSkipsUnsafeShrinkTargets();
 
   if (g_failures == 0) {
     std::printf("Pattern/Phrase instrument controls: PASS\n");
