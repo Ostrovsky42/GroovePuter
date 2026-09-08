@@ -7,11 +7,14 @@
 #include "phrase_notes_selection.h"
 #include "src/phrase/runtime_phrase_edit.h"
 
-// U4C2 UI policy adapter: "continue instead of the next sound".
+// UI policy adapter for "continue instead of the next sound". The resolved
+// selected event is the preferred target because cursor/grid position cannot
+// distinguish coincident events. Cursor-cell targeting remains as a
+// compatibility entry point.
 //
-// Same shape and obligations as its siblings: RuntimePhraseEdit owns the
-// mutation, the caller owns audio/control exclusion, and the whole change is
-// one prepared value so a single undo restores both sounds.
+// RuntimePhraseEdit owns the mutation, the caller owns audio/control exclusion,
+// and the whole change is one prepared value so a single undo restores both
+// sounds.
 namespace PhraseNotesJoinEdit {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
@@ -29,26 +32,21 @@ enum class Result : uint8_t {
   Rejected,
 };
 
-inline Result prepare(const Buffer& live,
-                      uint16_t cursorTick,
-                      RuntimePhraseEdit::Grid grid,
-                      Prepared& out) {
+inline Result prepareSelected(const Buffer& live,
+                              uint16_t eventIndex,
+                              Prepared& out) {
   out.before = live;
   out.after = live;
 
   if (!RuntimePhraseEdit::validate(live)) return Result::Rejected;
-  const PhraseNotesSelection::Selection selection =
-      PhraseNotesSelection::deriveInCell(
-          live, cursorTick, RuntimePhraseEdit::gridTicks(grid));
-  if (!selection.active) return Result::NoTarget;
+  if (eventIndex >= live.count) return Result::NoTarget;
 
   RuntimePhraseEdit::JoinResult joinResult =
       RuntimePhraseEdit::JoinResult::Rejected;
   const RuntimePhraseEdit::PrepareResult prepareResult =
       RuntimePhraseEdit::prepare(
           live, out.after, [&](Buffer& candidate) {
-            joinResult =
-                RuntimePhraseEdit::joinNextEvent(candidate, selection.eventIndex);
+            joinResult = RuntimePhraseEdit::joinNextEvent(candidate, eventIndex);
           });
 
   if (joinResult != RuntimePhraseEdit::JoinResult::Changed ||
@@ -62,6 +60,26 @@ inline Result prepare(const Buffer& live,
     }
   }
   return Result::Ready;
+}
+
+inline Result prepare(const Buffer& live,
+                      uint16_t cursorTick,
+                      RuntimePhraseEdit::Grid grid,
+                      Prepared& out) {
+  if (!RuntimePhraseEdit::validate(live)) {
+    out.before = live;
+    out.after = live;
+    return Result::Rejected;
+  }
+  const PhraseNotesSelection::Selection selection =
+      PhraseNotesSelection::deriveInCell(
+          live, cursorTick, RuntimePhraseEdit::gridTicks(grid));
+  if (!selection.active) {
+    out.before = live;
+    out.after = live;
+    return Result::NoTarget;
+  }
+  return prepareSelected(live, selection.eventIndex, out);
 }
 
 inline bool commitIfUnchanged(Buffer& live, const Prepared& prepared) {
