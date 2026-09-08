@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   materialize:
-    if: startsWith(github.event.head_commit.message, 'materializer(memory): install closure transformer')
+    if: "${{ startsWith(github.event.head_commit.message, 'materializer(memory)') }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
