@@ -7,6 +7,7 @@
 #include "src/generation/composition/generation_profile.h"
 #include "src/generation/composition/phrase_harmonic_clock_projection.h"
 #include "src/generation/composition/genre_structural_laws.h"
+#include "src/generation/migration/phrase_execution.h"
 
 using namespace GroovePuterRhythm;
 
@@ -16,7 +17,21 @@ GenreSettings settingsFor(GenerativeMode mode, uint8_t recipe = 0) {
   GenreSettings settings{};
   settings.generativeMode = static_cast<uint8_t>(mode);
   settings.recipe = recipe;
+  settings.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Auto);
+  settings.rhythmArchetypeId = kNoArchetypeId;
   return settings;
+}
+
+PhraseExecutionMaterializationSettings materializationSettings() {
+  PhraseExecutionMaterializationSettings value{};
+  value.level = RealizationLevel::P2Variation;
+  value.generationAttemptOrdinal = 0;
+  value.feelProfile = FeelProfileId::Straight;
+  value.feelAmount = 0;
+  value.tonalMaterializationEnabled = true;
+  value.rootPitchClass = 0;
+  value.scaleTypeValue = kScaleDorian;
+  return value;
 }
 
 bool containsId(WeightedIdentityView view, uint8_t wanted) {
@@ -37,6 +52,24 @@ bool containsPhraseLaw(WeightedIdentityView view,
     if (maxBarsExclusive == 0 || bars < maxBarsExclusive) return true;
   }
   return false;
+}
+
+PreparedPhraseExecution findReadyMovingPhrase(GenerativeMode mode,
+                                               uint8_t recipe,
+                                               uint8_t bars) {
+  for (uint16_t identity = 1; identity < 256; ++identity) {
+    PhraseExecutionScratch scratch{};
+    PreparedPhraseExecution prepared{};
+    const PhraseExecutionStatus status = preparePhraseExecution(
+        settingsFor(mode, recipe), materializationSettings(), identity,
+        bars, scratch, prepared);
+    if (status != PhraseExecutionStatus::Ready) continue;
+    if (!isStaticHarmonicProgression(prepared.selection.composition.progression)) {
+      return prepared;
+    }
+  }
+  assert(false && "expected at least one ready moving-harmony phrase");
+  return {};
 }
 
 void proveLoFiProfileProhibitions() {
@@ -66,10 +99,9 @@ void proveLoFiProfileProhibitions() {
     assert(bars >= 4);
   }
 
-  // MELODY: the shipped Lo-Fi melodic palette is explicitly sparse by
-  // construction; the old Stage14 characterization proves every identity is
-  // <=3 onsets/bar. Here we pin the complementary profile prohibition against
-  // the two continuous/high-activity identities.
+  // MELODY: pin the complementary profile prohibition against the two
+  // continuous/high-activity identities. Stage14 separately proves every
+  // allowed Lo-Fi melodic identity realizes <=3 onsets/bar.
   assert(!containsId(lofi.melodicRhythms,
                      static_cast<uint8_t>(MelodicRhythmId::SyncopatedMotif)));
   assert(!containsId(lofi.melodicRhythms,
@@ -94,8 +126,8 @@ void proveBeatBasedHarmonicDecision() {
   assert(harmonicChangeRateQuarterNotes(HarmonicChangeRateId::Every4Beats) == 4);
   assert(harmonicChangeRateQuarterNotes(HarmonicChangeRateId::Every2Beats) == 2);
 
-  // Same musical decision, different physical time. This is deliberately
-  // expressed in beats first and derived in milliseconds from tempo.
+  // Same musical decision, different physical time. Express the decision in
+  // beats; derive wall-clock duration only when tempo matters.
   assert(harmonicChangePeriodMilliseconds(HarmonicChangeRateId::Every4Beats, 54) == 4444);
   assert(harmonicChangePeriodMilliseconds(HarmonicChangeRateId::Every4Beats, 72) == 3333);
   assert(harmonicChangePeriodMilliseconds(HarmonicChangeRateId::Every4Beats, 90) == 2666);
@@ -123,6 +155,25 @@ void proveTimbreStrippedHarmonicDifferentiation() {
   assert(legacy.timeline.totalEventPositions == 8);
 }
 
+void provePhraseExecutionConsumesProfileRate() {
+  const PreparedPhraseExecution lofi =
+      findReadyMovingPhrase(GenerativeMode::LoFi, kBaseRecipeId, 8);
+  assert(lofi.harmonicClock.timeline.totalEventPositions == 8);
+  for (uint8_t bar = 0; bar < 8; ++bar) {
+    assert(lofi.harmonicClock.bars[bar].harmonicRhythm.eventCount == 1);
+    assert(lofi.harmonicClock.timeline.eventPositionsByBar[bar] == stepBit(0));
+  }
+
+  const PreparedPhraseExecution hiphop =
+      findReadyMovingPhrase(GenerativeMode::HipHop, kBaseRecipeId, 4);
+  assert(hiphop.harmonicClock.timeline.totalEventPositions == 8);
+  for (uint8_t bar = 0; bar < 4; ++bar) {
+    assert(hiphop.harmonicClock.bars[bar].harmonicRhythm.eventCount == 2);
+    assert(hiphop.harmonicClock.timeline.eventPositionsByBar[bar] ==
+           static_cast<StepMask>(stepBit(0) | stepBit(8)));
+  }
+}
+
 void proveCorridorSingleSource() {
   const GenerationProfileView base = generationProfileFor(
       settingsFor(GenerativeMode::LoFi));
@@ -148,6 +199,7 @@ int main() {
   proveLoFiProfileProhibitions();
   proveBeatBasedHarmonicDecision();
   proveTimbreStrippedHarmonicDifferentiation();
+  provePhraseExecutionConsumesProfileRate();
   proveCorridorSingleSource();
   std::puts("GF2 LOFI ADVERSARIAL SEMANTICS: PASS");
   return 0;
