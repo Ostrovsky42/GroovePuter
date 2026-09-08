@@ -12,6 +12,18 @@ void expect(bool condition, const char* message) {
   ++g_failures;
 }
 
+PhraseRuntime::RuntimeSynthEvent makeEvent(uint16_t startTick,
+                                           uint16_t durationTicks) {
+  PhraseRuntime::RuntimeSynthEvent event{};
+  event.startTick = startTick;
+  event.durationSubticks = static_cast<uint16_t>(
+      static_cast<uint32_t>(durationTicks) * PhraseRuntime::kSubticksPerTick);
+  event.note = 60;
+  event.velocity = 100;
+  event.probability = 100;
+  return event;
+}
+
 void testLengthCycle() {
   expect(PhraseInstrumentControls::nextLengthBars(1, 1) == 2,
          "1 bar did not advance to 2");
@@ -23,6 +35,56 @@ void testLengthCycle() {
          "8 bars did not wrap to 1");
   expect(PhraseInstrumentControls::nextLengthBars(1, -1) == 8,
          "reverse length cycle did not wrap to 8");
+}
+
+void testExpansionValidatesAgainstRequestedExtent() {
+  PhraseRuntime::RuntimeSynthEventBuffer before{};
+  before.lengthTicks = PhraseRuntime::kTicksPerBar;
+  before.count = 1;
+  before.events[0] = makeEvent(
+      static_cast<uint16_t>(PhraseRuntime::kTicksPerBar - 12u), 24u);
+
+  expect(!RuntimePhraseEdit::validate(before),
+         "cross-boundary fixture unexpectedly validates against old extent");
+
+  PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+  const bool prepared = PhraseInstrumentControls::prepareLengthTarget(
+      before, 2, candidate);
+  expect(prepared,
+         "1 -> 2 expansion rejected an event that fits requested extent");
+  expect(candidate.lengthTicks ==
+             static_cast<uint16_t>(2u * PhraseRuntime::kTicksPerBar),
+         "expansion candidate did not use requested extent");
+  expect(candidate.count == before.count,
+         "expansion changed event cardinality");
+  expect(candidate.events[0].startTick == before.events[0].startTick &&
+             candidate.events[0].durationSubticks ==
+                 before.events[0].durationSubticks,
+         "expansion moved or truncated the cross-boundary event");
+  expect(RuntimePhraseEdit::validate(candidate),
+         "expanded candidate is not valid against new extent");
+}
+
+void testShrinkKeepsExistingNonDestructivePolicy() {
+  PhraseRuntime::RuntimeSynthEventBuffer before{};
+  before.lengthTicks =
+      static_cast<uint16_t>(2u * PhraseRuntime::kTicksPerBar);
+  before.count = 1;
+  before.events[0] = makeEvent(
+      static_cast<uint16_t>(PhraseRuntime::kTicksPerBar + 24u), 12u);
+  expect(RuntimePhraseEdit::validate(before), "shrink fixture is invalid");
+
+  PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+  expect(!PhraseInstrumentControls::prepareLengthTarget(before, 1, candidate),
+         "unsafe 2 -> 1 shrink was accepted");
+  expect(before.count == 1,
+         "shrink preparation mutated the live/before material");
+
+  before.count = 0;
+  expect(PhraseInstrumentControls::prepareLengthTarget(before, 1, candidate),
+         "safe 2 -> 1 shrink was rejected");
+  expect(candidate.lengthTicks == PhraseRuntime::kTicksPerBar,
+         "safe shrink did not prepare a 1-bar candidate");
 }
 
 void testGridIsFiniteMusicalSelector() {
@@ -54,7 +116,7 @@ void testGridIsFiniteMusicalSelector() {
 void testBarNavigationIsCursorOnly() {
   PhraseNotesCursor::State cursor{};
   cursor.grid = RuntimePhraseEdit::Grid::Sixteenth;
-  cursor.cell = 5;  // 120 ticks into bar 1.
+  cursor.cell = 5;
 
   const uint16_t lengthTicks =
       static_cast<uint16_t>(4 * PhraseRuntime::kTicksPerBar);
@@ -110,6 +172,8 @@ void testRejectedLengthDoesNotPretendToChange() {
 
 int main() {
   testLengthCycle();
+  testExpansionValidatesAgainstRequestedExtent();
+  testShrinkKeepsExistingNonDestructivePolicy();
   testGridIsFiniteMusicalSelector();
   testBarNavigationIsCursorOnly();
   testLengthCommandDelegatesToDomain();
