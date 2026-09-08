@@ -8,6 +8,7 @@ on:
       - 'scripts/build_fatfs_dynbuffers_candidate.sh'
       - 'scripts/build_cardputer_memory_r1_fs1b.sh'
       - 'tests/test_memory_r1_fs1b_source_contract.py'
+      - 'tests/test_memory_r1_fs1b_realtime_fs_contract.py'
       - '.github/workflows/0_9_10_memory_r1_fs1b.yml'
   workflow_dispatch:
 
@@ -22,6 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prove FS1B source/link contract
         run: python3 tests/test_memory_r1_fs1b_source_contract.py
+      - name: Prove filesystem allocation stays outside hard realtime
+        run: python3 tests/test_memory_r1_fs1b_realtime_fs_contract.py
 
   cardputer-candidate-build:
     needs: fs1b-source-contract
