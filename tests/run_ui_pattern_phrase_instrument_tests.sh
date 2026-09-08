@@ -24,6 +24,7 @@ bash tests/run_ui_constitution_u4c1_tests.sh
 bash tests/run_ui_constitution_u4c2_tests.sh
 bash tests/run_ui_constitution_u4c3_tests.sh
 bash tests/run_ui_constitution_u4d1_tests.sh
+bash tests/run_ui_pattern_phrase_hardware_controls_tests.sh
 bash tests/run_ui_content_bounds_tests.sh
 
 # U4B6 MAKE PHRASE/materialization is now part of the instrument integration
