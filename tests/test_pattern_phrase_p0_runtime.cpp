@@ -369,9 +369,14 @@ void testExact384TickBoundary() {
   std::puts("P0-B PASS: physical bar boundary is exactly 384 ticks");
 }
 
-void testSongBoundaryCleanupDivergenceForSynth(int synth) {
+void testSongBoundaryCleanupBarrierForSynth(int synth) {
   RuntimeFixture f;
-  editPattern(f, synth, 0, {15, 60});
+  // This characterization is about Song ownership transfer, not swing. Keep
+  // the step-15 onset on its nominal tick and use a folded TIE so its runtime
+  // lifetime provably extends beyond the row boundary that must terminate it.
+  f.engine.sceneManager_.currentScene().feel.swingPct = 50;
+  f.engine.sceneManager_.currentScene().feel.swingMask = 0;
+  editPattern(f, synth, 0, {15, 60, 0, -2});
   editPattern(f, synth, 1, {4, 64});
   editPattern(f, 1 - synth, 0, {});
   editPattern(f, 1 - synth, 1, {});
@@ -396,7 +401,7 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
   assert(f.noteHeld(synth));
   assert(f.runtimeActive(synth));
   const uint32_t deadlineBefore = f.runtimeDeadline(synth);
-  assert(deadlineBefore > 360u * PhraseRuntime::kSubticksPerTick);
+  assert(deadlineBefore > 384u * PhraseRuntime::kSubticksPerTick);
   assert(f.midi.activeGateCount(
              MusicalEventSource::PatternPlayer,
              targetForSynth(synth), 0) == 1);
@@ -409,12 +414,13 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
 
   assert(f.engine.currentSongPosition() == 1);
   assert(f.engine.current303PatternIndex(synth) == 1);
-  // Current 0.9.10 baseline is intentionally asymmetric: Song selection
-  // publishes PatternPlayer MIDI cleanup, but direct internal voice lifetime is
-  // not synchronously released by applySongPositionSelection().
-  assert(f.noteHeld(synth));
-  assert(f.runtimeActive(synth));
-  assert(f.runtimeDeadline(synth) == deadlineBefore);
+  // RuntimeSynthPlaybackState is the lifetime owner. Song row selection crosses
+  // its hard barrier before publishing the new physical Pattern, so internal
+  // voice state, runtime ownership, and PatternPlayer MIDI ownership all end
+  // synchronously even though the old event's natural deadline is still ahead.
+  assert(!f.noteHeld(synth));
+  assert(!f.runtimeActive(synth));
+  assert(f.runtimeDeadline(synth) == 0);
   assert(f.midi.activeGateCount(
              MusicalEventSource::PatternPlayer,
              targetForSynth(synth), 0) == 0);
@@ -423,10 +429,10 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
   f.assertEndpointParity();
 }
 
-void testSongBoundaryCleanupDivergence() {
-  testSongBoundaryCleanupDivergenceForSynth(0);
-  testSongBoundaryCleanupDivergenceForSynth(1);
-  std::puts("P0-C PASS: Song row @384 cleans MIDI while direct internal gate survives");
+void testSongBoundaryCleanupBarrier() {
+  testSongBoundaryCleanupBarrierForSynth(0);
+  testSongBoundaryCleanupBarrierForSynth(1);
+  std::puts("P0-C PASS: Song row @384 hard-barriers internal/runtime/MIDI ownership");
 }
 
 void testLegacyTieCanExtendAnActiveGateAcrossBoundaryForSynth(int synth) {
@@ -557,7 +563,7 @@ void testNegativeMicrotimingWrapsStepZero() {
 int main() {
   testGridStepsAreSchedulerNoOp();
   testExact384TickBoundary();
-  testSongBoundaryCleanupDivergence();
+  testSongBoundaryCleanupBarrier();
   testLegacyTieCrossingSymptom();
   testSwingPlusMicrotimingWrapsLateStep();
   testNegativeMicrotimingWrapsStepZero();
