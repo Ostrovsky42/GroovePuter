@@ -7,6 +7,7 @@ on:
     paths:
       - 'scripts/build_fatfs_dynbuffers_candidate.sh'
       - 'scripts/build_cardputer_memory_r1_fs1b.sh'
+      - 'scripts/compare_cardputer_memory_r1_fs1b_static.sh'
       - 'tests/test_memory_r1_fs1b_source_contract.py'
       - 'tests/test_memory_r1_fs1b_realtime_fs_contract.py'
       - '.github/workflows/0_9_10_memory_r1_fs1b.yml'
@@ -26,10 +27,10 @@ jobs:
       - name: Prove filesystem allocation stays outside hard realtime
         run: python3 tests/test_memory_r1_fs1b_realtime_fs_contract.py
 
-  cardputer-candidate-build:
+  cardputer-stock-vs-candidate:
     needs: fs1b-source-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,5 +44,5 @@ jobs:
           git init "$HOME/esp-idf"
           git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
           git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
-      - name: Build candidate and prove candidate-only FatFs link
-        run: bash scripts/build_cardputer_memory_r1_fs1b.sh --warnings all
+      - name: Build same-HEAD stock and candidate, then compare ELF DRAM
+        run: bash scripts/compare_cardputer_memory_r1_fs1b_static.sh --warnings all
