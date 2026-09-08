@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # MEMORY-R1 FS1B: rebuild exactly the FatFs archive used by the Cardputer ADV
-# Arduino core, changing only CONFIG_FATFS_USE_DYN_BUFFERS 0 -> 1.
+# Arduino core, enabling only CONFIG_FATFS_USE_DYN_BUFFERS.
 # The shared Arduino installation is never modified.
 
 IDF="${IDF:-$HOME/esp-idf}"
@@ -31,9 +31,9 @@ git -C "$IDF" archive "$COMMIT" components/fatfs | tar -x -C "$OUT/src"
 F="$OUT/src/components/fatfs"
 cp "$SDKCONFIG" "$OUT/inc/sdkconfig.h"
 
-# Assert the production configuration before changing it. This checkpoint must
-# not obtain memory by changing wear-levelling sector size, private file caches,
-# or any unrelated SDK option.
+# Assert the production configuration before changing it. In the shipped
+# Arduino sdkconfig.h a disabled bool may be omitted entirely rather than
+# materialized as `#define ... 0`; both representations mean disabled.
 python3 - "$OUT/inc/sdkconfig.h" <<'PY'
 from pathlib import Path
 import re
@@ -42,41 +42,58 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-def value(name: str) -> int:
+
+def numeric_value(name: str) -> int:
     m = re.search(rf"^#define\s+{re.escape(name)}\s+([0-9]+)\s*$", text, re.M)
     if not m:
         raise SystemExit(f"{path}: missing numeric {name}")
     return int(m.group(1))
 
-expected = {
-    "CONFIG_FATFS_USE_DYN_BUFFERS": 0,
-    "CONFIG_FATFS_PER_FILE_CACHE": 1,
-    "CONFIG_WL_SECTOR_SIZE": 4096,
-}
-for name, want in expected.items():
-    got = value(name)
+
+for name, want in (
+    ("CONFIG_FATFS_PER_FILE_CACHE", 1),
+    ("CONFIG_WL_SECTOR_SIZE", 4096),
+):
+    got = numeric_value(name)
     if got != want:
         raise SystemExit(f"{path}: expected {name}={want}, got {got}")
 
-new_text, count = re.subn(
-    r"^#define\s+CONFIG_FATFS_USE_DYN_BUFFERS\s+0\s*$",
-    "#define CONFIG_FATFS_USE_DYN_BUFFERS 1",
-    text,
-    count=1,
-    flags=re.M,
-)
-if count != 1:
-    raise SystemExit(f"{path}: dynamic-buffer config replacement count={count}")
+name = "CONFIG_FATFS_USE_DYN_BUFFERS"
+dyn = re.search(rf"^#define\s+{name}(?:\s+([^\s/]+))?\s*$", text, re.M)
+if dyn:
+    raw = dyn.group(1)
+    if raw is None:
+        raise SystemExit(f"{path}: {name} is already defined without a numeric false value")
+    try:
+        current = int(raw, 0)
+    except ValueError as exc:
+        raise SystemExit(f"{path}: unsupported {name} value {raw!r}") from exc
+    if current != 0:
+        raise SystemExit(f"{path}: expected {name} disabled, got {current}")
+    new_text, count = re.subn(
+        rf"^#define\s+{name}\s+0\s*$",
+        f"#define {name} 1",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    if count != 1:
+        raise SystemExit(f"{path}: disabled {name} replacement count={count}")
+else:
+    new_text = text
+    if not new_text.endswith("\n"):
+        new_text += "\n"
+    new_text += f"#define {name} 1\n"
 
-# Re-read guards from the candidate text as a second assertion.
-for name, want in (
+# Re-read all three guards from the candidate text.
+for guard, want in (
     ("CONFIG_FATFS_USE_DYN_BUFFERS", 1),
     ("CONFIG_FATFS_PER_FILE_CACHE", 1),
     ("CONFIG_WL_SECTOR_SIZE", 4096),
 ):
-    m = re.search(rf"^#define\s+{re.escape(name)}\s+([0-9]+)\s*$", new_text, re.M)
+    m = re.search(rf"^#define\s+{re.escape(guard)}\s+([0-9]+)\s*$", new_text, re.M)
     if not m or int(m.group(1)) != want:
-        raise SystemExit(f"{path}: candidate guard failed for {name}={want}")
+        raise SystemExit(f"{path}: candidate guard failed for {guard}={want}")
 
 path.write_text(new_text, encoding="utf-8")
 PY
@@ -113,34 +130,42 @@ done
 "$AR" rcs "$OUT/libfatfs.a" "${OBJECTS[@]}"
 CANDIDATE="$OUT/libfatfs.a"
 
-normalize_nm() {
-  "$NM" "$@" | sed -E 's#^.*/##' | LC_ALL=C sort
+symbol_names() {
+  "$NM" "$@" | awk 'NF >= 2 { print $NF }' | LC_ALL=C sort -u
 }
 
-# ABI/rebuild-radius gates. Member names and symbol contracts must be identical;
-# only implementation/layout inside the one FatFs archive may differ.
+# ABI/rebuild-radius gates. The archive member set and all exported definitions
+# remain identical. Dynamic buffering is allowed to add only the allocator
+# requirements supplied by IDF's FatFs system port.
 diff -u \
   <("$AR" t "$STOCK" | LC_ALL=C sort) \
   <("$AR" t "$CANDIDATE" | LC_ALL=C sort)
 
 diff -u \
-  <(normalize_nm -g --defined-only "$STOCK") \
-  <(normalize_nm -g --defined-only "$CANDIDATE")
+  <(symbol_names -g --defined-only "$STOCK") \
+  <(symbol_names -g --defined-only "$CANDIDATE")
 
-diff -u \
-  <(normalize_nm -u "$STOCK") \
-  <(normalize_nm -u "$CANDIDATE")
+symbol_names -u "$STOCK" > "$OUT/stock.undefined"
+symbol_names -u "$CANDIDATE" > "$OUT/candidate.undefined"
+python3 - "$OUT/stock.undefined" "$OUT/candidate.undefined" <<'PY'
+from pathlib import Path
+import sys
 
-stock_ff_memalloc="$("$NM" -u "$STOCK" | grep -c '[[:space:]]ff_memalloc$' || true)"
-candidate_ff_memalloc="$("$NM" -u "$CANDIDATE" | grep -c '[[:space:]]ff_memalloc$' || true)"
-if [[ "$stock_ff_memalloc" -ne 0 || "$candidate_ff_memalloc" -lt 1 ]]; then
-  echo "FS1B ff_memalloc gate failed: stock=$stock_ff_memalloc candidate=$candidate_ff_memalloc" >&2
-  exit 3
-fi
+stock = set(Path(sys.argv[1]).read_text(encoding="utf-8").splitlines())
+candidate = set(Path(sys.argv[2]).read_text(encoding="utf-8").splitlines())
+added = candidate - stock
+removed = stock - candidate
+allowed_added = {"ff_memalloc", "ff_memfree"}
+if removed:
+    raise SystemExit(f"FS1B undefined-symbol gate: removed={sorted(removed)}")
+if not added <= allowed_added:
+    raise SystemExit(f"FS1B undefined-symbol gate: unexpected added={sorted(added)}")
+if "ff_memalloc" not in candidate:
+    raise SystemExit("FS1B undefined-symbol gate: candidate does not require ff_memalloc")
+print(f"FS1B undefined-symbol additions: {sorted(added)}")
+PY
 
 printf 'FS1B source commit: %s\n' "$COMMIT"
 printf 'FS1B stock archive: %s\n' "$STOCK"
 printf 'FS1B candidate: %s\n' "$CANDIDATE"
-printf 'FS1B ff_memalloc undefined refs: stock=%s candidate=%s\n' \
-  "$stock_ff_memalloc" "$candidate_ff_memalloc"
 sha256sum "$STOCK" "$CANDIDATE"
