@@ -51,8 +51,8 @@ jobs:
           }
           '''
 
-          old_make_line = "  activeMaterial_[voice].kind = GroovePuterMaterial::MaterialKind::Melody;"
-          new_make_line = "  setSequencedSource(voice, SequencedSource::Phrase);"
+          old_make_line = "  activeMaterial_[voiceIndex].kind = GroovePuterMaterial::MaterialKind::Melody;"
+          new_make_line = "  setSequencedSource(voiceIndex, SequencedSource::Phrase);"
 
           old_setter_count = text.count(old_setter)
           old_make_count = text.count(old_make_line)
