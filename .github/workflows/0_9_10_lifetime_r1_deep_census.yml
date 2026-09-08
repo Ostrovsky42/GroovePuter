@@ -40,12 +40,23 @@ jobs:
             echo "xtensa-esp32s3-elf-nm not found" >&2
             exit 1
           fi
-          echo "HEAD=$(git rev-parse HEAD)"
-          echo "ELF=$ELF"
-          echo "NM=$NM"
-          echo
-          echo "=== NAMED LIFETIME OWNERS ==="
-          "$NM" -S -C "$ELF" | grep -E 's_tempLoadScene|g_smfPlayer|g_dispatchTaskStack|g_sampleStore|g_miniAcidInstance|sceneTransactionScratch|pendingMaterial_|currentPhrase_|patternRuntimeBank_' || true
-          echo
-          echo "=== LARGEST BSS/DATA SYMBOLS ==="
-          "$NM" -S --size-sort -C "$ELF" | awk '$3 ~ /^[bBdD]$/ {print}' | tail -n 160
+          OUT=lifetime-r1-deep-census.txt
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "ELF=$ELF"
+            echo "NM=$NM"
+            echo
+            echo "=== NAMED LIFETIME OWNERS ==="
+            "$NM" -S -C "$ELF" | grep -E 's_tempLoadScene|g_smfPlayer|g_dispatchTaskStack|g_sampleStore|g_miniAcidInstance|sceneTransactionScratch|pendingMaterial_|currentPhrase_|patternRuntimeBank_' || true
+            echo
+            echo "=== LARGEST BSS/DATA SYMBOLS ==="
+            "$NM" -S --size-sort -C "$ELF" | awk '$3 ~ /^[bBdD]$/ {print}' | tail -n 160
+          } | tee "$OUT"
+
+      - name: Upload lifetime owner census
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifetime-r1-deep-census
+          path: lifetime-r1-deep-census.txt
+          if-no-files-found: error
+          retention-days: 7
