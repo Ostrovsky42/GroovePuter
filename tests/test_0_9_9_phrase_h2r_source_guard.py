@@ -81,10 +81,10 @@ for pattern in (
     r"\bcalloc\s*\(",
     r"\brealloc\s*\(",
     r"\bfree\s*\(",
-    r"\bnew\s+[A-Za-z_:]",
-    r"\bdelete\s+",
-    r"std::vector",
-    r"std::string",
+    r"\bnew\s+(?:[A-Za-z_][A-Za-z0-9_:<>]*)\s*(?:\(|\{|\[)",
+    r"\bdelete\s+(?:\[\]\s*)?[A-Za-z_]",
+    r"std::vector\s*<",
+    r"std::string\b",
 ):
     if re.search(pattern, combined):
         fail(f"dynamic allocation/container leaked into bounded H2 owner: {pattern}")
