@@ -16,7 +16,7 @@ def require(condition: bool, message: str) -> None:
 
 ino = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 require(
-    "beginCardputerSmfPlayerService();" not in ino,
+    "beginCardputerSmfPlayerService()" not in ino,
     "Lazy SMF regression: setup still eagerly calls beginCardputerSmfPlayerService()",
 )
 
