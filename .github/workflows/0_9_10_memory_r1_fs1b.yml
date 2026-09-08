@@ -22,3 +22,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prove FS1B source/link contract
         run: python3 tests/test_memory_r1_fs1b_source_contract.py
+
+  cardputer-candidate-build:
+    needs: fs1b-source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install pinned Cardputer dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Fetch exact ESP-IDF source object
+        run: |
+          set -euo pipefail
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+      - name: Build candidate and prove candidate-only FatFs link
+        run: bash scripts/build_cardputer_memory_r1_fs1b.sh --warnings all
