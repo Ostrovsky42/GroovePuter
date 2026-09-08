@@ -7,6 +7,7 @@
 
 #include "src/ui/phrase_notes_delete_edit.h"
 #include "src/ui/phrase_notes_duration_edit.h"
+#include "src/ui/phrase_notes_join_edit.h"
 #include "src/ui/phrase_notes_pitch_edit.h"
 
 namespace {
@@ -89,6 +90,27 @@ int main() {
            "selected delete removed the wrong coincident sound");
     expect(prepared.after.events[2].note == 72,
            "selected delete did not remove the selected sound");
+  }
+
+  // JOIN is destructive too: the explicitly selected coincident sound owns
+  // the continuation gesture. Cursor/grid may choose an insertion cell, but
+  // they must not rename which sound gets extended and which next sound goes.
+  {
+    const Buffer phrase = fixture();
+    PhraseNotesJoinEdit::Prepared prepared{};
+    const auto result = PhraseNotesJoinEdit::prepareSelected(
+        phrase, 2, prepared);
+    expect(result == PhraseNotesJoinEdit::Result::Ready,
+           "selected join was not prepared");
+    expect(prepared.after.count == phrase.count - 1,
+           "selected join did not consume exactly one following sound");
+    expect(prepared.after.events[1].note == 64,
+           "selected join altered the other coincident sound");
+    expect(prepared.after.events[2].note == 67,
+           "selected join lost the selected sound");
+    expect(prepared.after.events[2].durationSubticks >
+               phrase.events[2].durationSubticks,
+           "selected join did not extend the selected sound");
   }
 
   if (g_failures == 0) {
