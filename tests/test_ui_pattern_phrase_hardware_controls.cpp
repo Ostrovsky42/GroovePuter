@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "src/dsp/miniacid_engine.h"
 #include "src/ui/pages/synth_sequencer_page.h"
 #include "src/ui/screen_geometry.h"
 
