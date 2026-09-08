@@ -60,7 +60,8 @@ for token in (
     require(token not in instrumenter, f"Generic memory runtime still auto-drives musical state: {token}")
 
 # Exercise the transformer, not only its source text. The generic runtime image
-# may add passive telemetry/probes, but must not inject an autonomous P3 player.
+# may add passive telemetry/probes, but must both apply to the live M4 source and
+# avoid injecting an autonomous P3 player.
 with tempfile.TemporaryDirectory(prefix="memory-r1-closure-") as tmp:
     staged = Path(tmp) / "GroovePuter"
     shutil.copytree(
@@ -68,15 +69,21 @@ with tempfile.TemporaryDirectory(prefix="memory-r1-closure-") as tmp:
         staged,
         ignore=shutil.ignore_patterns(".git", "build", ".pytest_cache", "__pycache__"),
     )
-    subprocess.run(
-        [sys.executable, str(staged / "scripts/instrument_cardputer_memory_runtime.py"), str(staged)],
-        check=True,
-        cwd=staged,
-    )
-    staged_ino = (staged / "GroovePuter.ino").read_text(encoding="utf-8")
-    require("[MEM-BASE]" in staged_ino, "Runtime instrumentation lost passive memory telemetry")
-    for token in ("P3DramCharacterization", "P3AudibleAB", "P3_DRAM_CHARACTERIZATION", "P3_AUDIBLE_AB"):
-        require(token not in staged_ino, f"Instrumented runtime autonomously contains {token}")
+    try:
+        subprocess.run(
+            [sys.executable, str(staged / "scripts/instrument_cardputer_memory_runtime.py"), str(staged)],
+            check=True,
+            cwd=staged,
+        )
+    except subprocess.CalledProcessError as exc:
+        failures.append(
+            f"Generic memory runtime instrumenter no longer applies to live M4 source (exit={exc.returncode})"
+        )
+    else:
+        staged_ino = (staged / "GroovePuter.ino").read_text(encoding="utf-8")
+        require("[MEM-BASE]" in staged_ino, "Runtime instrumentation lost passive memory telemetry")
+        for token in ("P3DramCharacterization", "P3AudibleAB", "P3_DRAM_CHARACTERIZATION", "P3_AUDIBLE_AB"):
+            require(token not in staged_ino, f"Instrumented runtime autonomously contains {token}")
 
 if failures:
     print("MEMORY-R1 PRODUCT CLOSURE: RED")
