@@ -39,19 +39,21 @@ jobs:
 
           path = Path("src/ui/pages/synth_sequencer_page.cpp")
           text = path.read_text(encoding="utf-8")
-          old = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-            if (mini_acid_.currentSequencedSource(voice_index_) ==
-                MiniAcid::SequencedSource::Pattern) {
-              const bool made =
-                  PhraseSourceToggle::makePhrase(mini_acid_, audio_guard_, voice_index_);
-              UI::showToast(made ? "MAKE PHRASE" : "MAKE PHRASE FAILED", 1000);
-            } else {
-              PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-              UI::showToast("SOURCE: PATTERN", 1000);
-            }
-            return true;
-          }
-          '''
+          start_marker = (
+              "  if (synth_tab_ == SynthTab::Notes && "
+              "isSourceToggleKey(ui_event)) {"
+          )
+          end_marker = (
+              "\n\n  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;"
+          )
+          if text.count(start_marker) != 1:
+              raise SystemExit(
+                  f"source-owner start marker count={text.count(start_marker)}; expected one"
+              )
+          start = text.index(start_marker)
+          if end_marker not in text[start:]:
+              raise SystemExit("source-owner end marker missing after source block")
+          end = text.index(end_marker, start)
           new = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
             const auto sourceResult =
                 PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
@@ -70,13 +72,8 @@ jobs:
                 break;
             }
             return true;
-          }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit(
-                  f"source-owner anchor count={text.count(old)}; expected exactly one"
-              )
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          }'''
+          path.write_text(text[:start] + new + text[end:], encoding="utf-8")
           PY
 
       - name: Run focused Pattern Phrase UI gate
