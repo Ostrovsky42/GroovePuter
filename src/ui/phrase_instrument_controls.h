@@ -44,6 +44,29 @@ inline uint8_t nextLengthBars(uint8_t current, int direction) {
   return kBars[index];
 }
 
+// Prepare a requested Phrase extent without treating the old extent as a
+// lifetime barrier. Expansion first grants the new temporal territory, then
+// validates the unchanged events against that requested extent. Shrink keeps
+// the existing RuntimePhraseEdit policy: reject any contraction that would cut
+// or discard material. This helper is UI transaction preparation only; it owns
+// no live Phrase buffer and performs no runtime commit.
+inline bool prepareLengthTarget(
+    const PhraseRuntime::RuntimeSynthEventBuffer& before,
+    uint8_t bars,
+    PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+  const uint16_t targetTicks = RuntimePhraseEdit::lengthTicksForBars(bars);
+  if (targetTicks == 0 || targetTicks == before.lengthTicks) return false;
+
+  candidate = before;
+  if (targetTicks > before.lengthTicks) {
+    candidate.lengthTicks = targetTicks;
+    return RuntimePhraseEdit::validate(candidate);
+  }
+
+  return RuntimePhraseEdit::setLengthBars(candidate, bars) ==
+         RuntimePhraseEdit::LengthEditResult::Changed;
+}
+
 template <typename SetLengthFn>
 inline bool applyLengthChange(uint16_t currentLengthTicks,
                               int direction,
