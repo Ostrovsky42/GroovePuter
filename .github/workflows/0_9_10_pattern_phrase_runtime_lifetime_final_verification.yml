@@ -1,0 +1,161 @@
+name: 0.9.10 Pattern Phrase Runtime Lifetime Final Verification
+
+on:
+  push:
+    branches:
+      - verification/20260908-pattern-phrase-runtime-lifetime-final
+    paths:
+      - ".github/workflows/0_9_10_pattern_phrase_runtime_lifetime_final_verification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pattern-phrase-runtime-lifetime-final-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      FINAL_SHA: 5214f00257db1990cd0c26529afca31155ce4005
+      TARGET_BRANCH: feature/20260908-02-pattern-phrase-runtime-lifetime
+      RED_SHA: c413fb0ee683c06632b941cd537d88b673d1542a
+      ARDUINO_CLI_VERSION: 1.3.1
+
+    steps:
+      - name: Checkout exact final SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FINAL_SHA }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Exact SHA and remote provenance
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git fetch origin "${TARGET_BRANCH}"
+          test "$(git rev-parse HEAD)" = "${FINAL_SHA}"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "${FINAL_SHA}"
+          test -z "$(git status --porcelain)"
+          printf 'FINAL_SHA=%s\n' "$(git rev-parse HEAD)"
+          printf 'REMOTE_TARGET_SHA=%s\n' "$(git rev-parse "origin/${TARGET_BRANCH}")"
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config \
+            rsync \
+            python3
+
+      - name: Focused lifetime GREEN
+        run: bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh
+
+      - name: Pattern Phrase P2 regression
+        run: bash tests/run_pattern_phrase_p2_tests.sh
+
+      - name: Pattern Phrase P3 and phrase editing regression
+        run: bash tests/run_pattern_phrase_p3_u1_tests.sh
+
+      - name: UI source switching regression
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
+
+      - name: Host regression
+        run: bash tests/run_host_tests.sh
+
+      - name: SDL host compile link
+        run: make -C platform_sdl clean all CXX=g++
+
+      - name: Install Arduino CLI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh -s "${ARDUINO_CLI_VERSION}"
+          echo "${GITHUB_WORKSPACE}/bin" >> "${GITHUB_PATH}"
+          "${GITHUB_WORKSPACE}/bin/arduino-cli" version
+
+      - name: Install pinned Arduino dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          arduino-cli version
+          bash scripts/install_arduino_deps.sh
+
+      - name: Cardputer ADV real compile link
+        run: bash scripts/build.sh --warnings all
+
+      - name: Cardputer fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+      - name: SEQTRAK real compile link
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
+
+      - name: Lifetime production delta and allocation provenance
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git diff --check
+          mapfile -t production_files < <(git diff --name-only "${RED_SHA}" "${FINAL_SHA}" -- src)
+          printf 'PRODUCTION_FILES=%s\n' "${production_files[*]}"
+          test "${#production_files[@]}" -eq 1
+          test "${production_files[0]}" = "src/dsp/miniacid_engine.cpp"
+          git diff --unified=0 "${RED_SHA}" "${FINAL_SHA}" -- src/dsp/miniacid_engine.cpp > /tmp/lifetime-production.patch
+          cat /tmp/lifetime-production.patch
+          if grep -E '^\+.*\b(new|malloc|calloc|realloc|free|make_unique|make_shared)\b' /tmp/lifetime-production.patch; then
+            echo "Runtime allocation introduced in lifetime production delta" >&2
+            exit 1
+          fi
+          mapfile -t changed_headers < <(git diff --name-only "${RED_SHA}" "${FINAL_SHA}" -- 'src/**/*.h' 'src/**/*.hpp')
+          printf 'CHANGED_PRODUCTION_HEADERS=%s\n' "${changed_headers[*]}"
+          test "${#changed_headers[@]}" -eq 0
+
+      - name: Checkout RED residency comparator
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RED_SHA }}
+          path: red-residency
+          fetch-depth: 1
+          submodules: false
+
+      - name: Build RED Cardputer residency comparator
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/cardputer-red-residency" bash red-residency/scripts/build.sh --warnings all
+
+      - name: Compare fixed DRAM residency RED to final
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SIZE_TOOL="$(find "${HOME}/.arduino15/packages/esp32/tools" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
+          test -n "${SIZE_TOOL}"
+          section_sum() {
+            "${SIZE_TOOL}" -A "$1" | awk '$1 == ".dram0.data" || $1 == ".dram0.bss" { sum += $2 } END { print sum + 0 }'
+          }
+          FINAL_ELF="${GITHUB_WORKSPACE}/build/cardputer-adv-current/GroovePuter.ino.elf"
+          RED_ELF="${GITHUB_WORKSPACE}/build/cardputer-red-residency/GroovePuter.ino.elf"
+          test -f "${FINAL_ELF}"
+          test -f "${RED_ELF}"
+          FINAL_FIXED="$(section_sum "${FINAL_ELF}")"
+          RED_FIXED="$(section_sum "${RED_ELF}")"
+          printf 'FINAL_FIXED_DRAM=%s\n' "${FINAL_FIXED}"
+          printf 'RED_FIXED_DRAM=%s\n' "${RED_FIXED}"
+          test "${FINAL_FIXED}" -eq "${RED_FIXED}"
+
+      - name: Final exact SHA evidence
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git rev-parse HEAD)" = "${FINAL_SHA}"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "${FINAL_SHA}"
+          git show --no-ext-diff --stat --oneline "${FINAL_SHA}"
+          printf 'ALL_GATES_EXACT_SHA=%s\n' "${FINAL_SHA}"
