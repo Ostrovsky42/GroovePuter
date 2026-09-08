@@ -1,4 +1,3 @@
-# Triggered after workflow exists on branch so push execution is observable.
 name: TEMP Final Pattern Phrase UI Verifier
 
 on:
@@ -11,8 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-verify-v2:
+  verify-build-and-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,131 +26,231 @@ jobs:
             libsdl2-dev \
             libsdl2-gfx-dev
 
-      - name: Apply exact page patch
+      - name: Apply exact page integration
         run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
 
       - name: Keep conversion decision in PhraseSourceToggle
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path("src/ui/pages/synth_sequencer_page.cpp")
           text = path.read_text(encoding="utf-8")
-          start_marker = (
-              "  if (synth_tab_ == SynthTab::Notes && "
-              "isSourceToggleKey(ui_event)) {"
-          )
-          end_marker = (
-              "\n\n  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;"
-          )
+          start_marker = "  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {"
+          end_marker = "\n\n  if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;"
           if text.count(start_marker) != 1:
-              raise SystemExit(
-                  f"source-owner start marker count={text.count(start_marker)}; expected one"
-              )
+              raise SystemExit(f"source-owner start marker count={text.count(start_marker)}; expected one")
           start = text.index(start_marker)
           if end_marker not in text[start:]:
               raise SystemExit("source-owner end marker missing after source block")
           end = text.index(end_marker, start)
-          new = '''  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-            const auto sourceResult =
-                PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-            switch (sourceResult) {
-              case PhraseSourceToggle::Result::MadePhrase:
-                UI::showToast("MAKE PHRASE", 1000);
-                break;
-              case PhraseSourceToggle::Result::SwitchedToPhrase:
-                UI::showToast("SOURCE: PHRASE", 1000);
-                break;
-              case PhraseSourceToggle::Result::SwitchedToPattern:
-                UI::showToast("SOURCE: PATTERN", 1000);
-                break;
-              case PhraseSourceToggle::Result::Rejected:
-                UI::showToast("SOURCE CHANGE FAILED", 1000);
-                break;
-            }
-            return true;
-          }'''
+          new = (
+              "  if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {\n"
+              "    const auto sourceResult =\n"
+              "        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);\n"
+              "    switch (sourceResult) {\n"
+              "      case PhraseSourceToggle::Result::MadePhrase:\n"
+              "        UI::showToast(\"MAKE PHRASE\", 1000);\n"
+              "        break;\n"
+              "      case PhraseSourceToggle::Result::SwitchedToPhrase:\n"
+              "        UI::showToast(\"SOURCE: PHRASE\", 1000);\n"
+              "        break;\n"
+              "      case PhraseSourceToggle::Result::SwitchedToPattern:\n"
+              "        UI::showToast(\"SOURCE: PATTERN\", 1000);\n"
+              "        break;\n"
+              "      case PhraseSourceToggle::Result::Rejected:\n"
+              "        UI::showToast(\"SOURCE CHANGE FAILED\", 1000);\n"
+              "        break;\n"
+              "    }\n"
+              "    return true;\n"
+              "  }"
+          )
           path.write_text(text[:start] + new + text[end:], encoding="utf-8")
           PY
 
-      - name: Align bounds coverage markers with Phrase presentation
+      - name: Align 240x135 coverage markers with Phrase presentation
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path("tests/test_ui_content_bounds.cpp")
           text = path.read_text(encoding="utf-8")
-
-          old_roll = '''    bool drewMelody = false;
-    for (const auto& entry : gfx.texts) {
-      if (entry.text == "MELODY") drewMelody = true;
-    }
-    if (!drewMelody) {
-      std::fprintf(stderr,
-                   "content bounds FAIL: the melody editor was never rendered, "
-                   "so this page was not actually under test\\n");
-      ++g_failures;
-    }
-'''
-          new_roll = '''    bool drewPhrase = false;
-    for (const auto& entry : gfx.texts) {
-      if (entry.text == "PHRASE") drewPhrase = true;
-    }
-    if (!drewPhrase) {
-      std::fprintf(stderr,
-                   "content bounds FAIL: the Phrase roll was never rendered, "
-                   "so this page was not actually under test\\n");
-      ++g_failures;
-    }
-'''
+          old_roll = (
+              "    bool drewMelody = false;\n"
+              "    for (const auto& entry : gfx.texts) {\n"
+              "      if (entry.text == \"MELODY\") drewMelody = true;\n"
+              "    }\n"
+              "    if (!drewMelody) {\n"
+              "      std::fprintf(stderr,\n"
+              "                   \"content bounds FAIL: the melody editor was never rendered, \"\n"
+              "                   \"so this page was not actually under test\\\\n\");\n"
+              "      ++g_failures;\n"
+              "    }\n"
+          )
+          new_roll = (
+              "    bool drewPhrase = false;\n"
+              "    for (const auto& entry : gfx.texts) {\n"
+              "      if (entry.text == \"PHRASE\") drewPhrase = true;\n"
+              "    }\n"
+              "    if (!drewPhrase) {\n"
+              "      std::fprintf(stderr,\n"
+              "                   \"content bounds FAIL: the Phrase roll was never rendered, \"\n"
+              "                   \"so this page was not actually under test\\\\n\");\n"
+              "      ++g_failures;\n"
+              "    }\n"
+          )
           if text.count(old_roll) != 1:
-              raise SystemExit(
-                  f"roll coverage marker count={text.count(old_roll)}; expected one"
-              )
+              raise SystemExit(f"roll coverage marker count={text.count(old_roll)}; expected one")
           text = text.replace(old_roll, new_roll, 1)
-
-          old_list = '''    bool drewList = false;
-    for (const auto& entry : gfx.texts) {
-      if (entry.text == "SOUNDS") drewList = true;
-    }
-    if (!drewList) {
-      std::fprintf(stderr,
-                   "content bounds FAIL: the list view was never rendered, so "
-                   "this view was not actually under test\\n");
-      ++g_failures;
-    }
-'''
-          new_list = '''    bool drewList = false;
-    for (const auto& entry : gfx.texts) {
-      if (entry.text == "NO SOUNDS YET" ||
-          entry.text.rfind("SOUND ", 0) == 0) {
-        drewList = true;
-      }
-    }
-    if (!drewList) {
-      std::fprintf(stderr,
-                   "content bounds FAIL: the Phrase list was never rendered, so "
-                   "this view was not actually under test\\n");
-      ++g_failures;
-    }
-'''
+          old_list = (
+              "    bool drewList = false;\n"
+              "    for (const auto& entry : gfx.texts) {\n"
+              "      if (entry.text == \"SOUNDS\") drewList = true;\n"
+              "    }\n"
+              "    if (!drewList) {\n"
+              "      std::fprintf(stderr,\n"
+              "                   \"content bounds FAIL: the list view was never rendered, so \"\n"
+              "                   \"this view was not actually under test\\\\n\");\n"
+              "      ++g_failures;\n"
+              "    }\n"
+          )
+          new_list = (
+              "    bool drewList = false;\n"
+              "    for (const auto& entry : gfx.texts) {\n"
+              "      if (entry.text == \"NO SOUNDS YET\" ||\n"
+              "          entry.text.rfind(\"SOUND \", 0) == 0) {\n"
+              "        drewList = true;\n"
+              "      }\n"
+              "    }\n"
+              "    if (!drewList) {\n"
+              "      std::fprintf(stderr,\n"
+              "                   \"content bounds FAIL: the Phrase list was never rendered, so \"\n"
+              "                   \"this view was not actually under test\\\\n\");\n"
+              "      ++g_failures;\n"
+              "    }\n"
+          )
           if text.count(old_list) != 1:
-              raise SystemExit(
-                  f"list coverage marker count={text.count(old_list)}; expected one"
-              )
+              raise SystemExit(f"list coverage marker count={text.count(old_list)}; expected one")
           path.write_text(text.replace(old_list, new_list, 1), encoding="utf-8")
           PY
 
       - name: Run focused Pattern Phrase UI gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
 
-      - name: Commit verified production integration
+      - name: Create clean production commit locally
+        shell: bash
         run: |
+          set -euo pipefail
+          git show 7f446a307683c8234678374c9c5694d06215f730:.github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml \
+            > .github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/ui/pages/synth_sequencer_page.cpp tests/test_ui_content_bounds.cpp
+          git add src/ui/pages/synth_sequencer_page.cpp tests/test_ui_content_bounds.cpp \
+            .github/workflows/0_9_10_ui_pattern_phrase_instrument_closure.yml
           git rm scripts/apply_pattern_phrase_ui_instrument_page_patch.py
           git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch.yml
           git rm .github/workflows/tmp_apply_pattern_phrase_ui_patch_v2.yml
           git commit -m "feat(ui): integrate Pattern Phrase instrument controls"
+          PRODUCTION_SHA="$(git rev-parse HEAD)"
+          echo "PRODUCTION_SHA=${PRODUCTION_SHA}" >> "$GITHUB_ENV"
+          echo "production_sha=${PRODUCTION_SHA}"
+          test -z "$(git status --porcelain)"
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install pinned Cardputer dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Fetch exact ESP-IDF source object
+        run: |
+          set -euo pipefail
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+
+      - name: Prepare authoritative base worktree
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$GITHUB_WORKSPACE/before" 7ea609e678d3d3794b5e1d22838b999d90a5b28d
+          cp scripts/build_fatfs_dynbuffers_candidate.sh "$GITHUB_WORKSPACE/before/scripts/build_fatfs_dynbuffers_candidate.sh"
+          cp scripts/build_cardputer_dynbuffers.sh "$GITHUB_WORKSPACE/before/scripts/build_cardputer_dynbuffers.sh"
+          cp scripts/check_cardputer_dram_budget.sh "$GITHUB_WORKSPACE/before/scripts/check_cardputer_dram_budget.sh"
+
+      - name: Build authoritative base Cardputer ADV
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/evidence"
+          cd "$GITHUB_WORKSPACE/before"
+          BUILD_PATH="$GITHUB_WORKSPACE/build-before" \
+          ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-before/.arduino-build" \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+            2>&1 | tee "$GITHUB_WORKSPACE/evidence/cardputer-before.log"
+
+      - name: Build exact production Cardputer ADV firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCTION_SHA"
+          BUILD_PATH="$GITHUB_WORKSPACE/build-after" \
+          ARDUINO_BUILD_PATH="$GITHUB_WORKSPACE/build-after/.arduino-build" \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+            2>&1 | tee "$GITHUB_WORKSPACE/evidence/cardputer-after.log"
+
+      - name: Measure exact static DRAM delta and firmware identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size -perm -u+x -print | sort -V | tail -n 1)"
+          test -x "$SIZE_TOOL"
+          BEFORE_ELF="$GITHUB_WORKSPACE/build-before/GroovePuter.ino.elf"
+          AFTER_ELF="$GITHUB_WORKSPACE/build-after/GroovePuter.ino.elf"
+          read_sections() {
+            "$SIZE_TOOL" -A "$1" | awk '
+              $1 == ".dram0.data" { data = $2 }
+              $1 == ".dram0.bss" { bss = $2 }
+              END { print data + 0, bss + 0 }
+            '
+          }
+          read -r BEFORE_DATA BEFORE_BSS < <(read_sections "$BEFORE_ELF")
+          read -r AFTER_DATA AFTER_BSS < <(read_sections "$AFTER_ELF")
+          BEFORE_FIXED=$((BEFORE_DATA + BEFORE_BSS))
+          AFTER_FIXED=$((AFTER_DATA + AFTER_BSS))
+          DELTA=$((AFTER_FIXED - BEFORE_FIXED))
+          {
+            echo "PATTERN/PHRASE UI CARDPUTER ADV A/B"
+            echo "before_source=7ea609e678d3d3794b5e1d22838b999d90a5b28d"
+            echo "after_source=${PRODUCTION_SHA}"
+            echo "before_data=${BEFORE_DATA}"
+            echo "before_bss=${BEFORE_BSS}"
+            echo "before_fixed=${BEFORE_FIXED}"
+            echo "after_data=${AFTER_DATA}"
+            echo "after_bss=${AFTER_BSS}"
+            echo "after_fixed=${AFTER_FIXED}"
+            echo "delta_fixed_dram=${DELTA}"
+            echo "before_elf_sha256=$(sha256sum "$BEFORE_ELF" | awk '{print $1}')"
+            echo "after_elf_sha256=$(sha256sum "$AFTER_ELF" | awk '{print $1}')"
+            echo "after_bin_sha256=$(sha256sum "$GITHUB_WORKSPACE/build-after/GroovePuter.ino.bin" | awk '{print $1}')"
+          } | tee "$GITHUB_WORKSPACE/evidence/pattern-phrase-ui-cardputer-ab.txt"
+
+      - name: Upload flashable firmware and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pattern-phrase-ui-cardputer-adv-${{ env.PRODUCTION_SHA }}
+          if-no-files-found: error
+          path: |
+            evidence/pattern-phrase-ui-cardputer-ab.txt
+            evidence/cardputer-before.log
+            evidence/cardputer-after.log
+            build-after/GroovePuter.ino.elf
+            build-after/GroovePuter.ino.bin
+            build-after/GroovePuter.ino.bootloader.bin
+            build-after/GroovePuter.ino.partitions.bin
+
+      - name: Push exact verified production SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCTION_SHA"
+          test -z "$(git status --porcelain)"
           git push origin HEAD:feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
