@@ -93,20 +93,27 @@ def main() -> None:
         "CardputerAudioRecorder::writeSamples",
     )
 
-    # SMF loading is owned by its dedicated task. The load command must remain
-    # inside taskLoop(), and loadFile() must be the owner that can open source_.
+    # SMF command consumption is owned by the dedicated task. taskLoop() may
+    # delegate command semantics, but Load -> loadFile -> source_.open must stay
+    # under that chain rather than migrating into AudioTask.
     task_loop = function_body(
         smf,
         r"\bvoid\s+CardputerSmfPlayerService::taskLoop\s*\([^)]*\)",
         "CardputerSmfPlayerService::taskLoop",
+    )
+    handle_command = function_body(
+        smf,
+        r"\bvoid\s+CardputerSmfPlayerService::handleCommand\s*\([^)]*\)",
+        "CardputerSmfPlayerService::handleCommand",
     )
     load_file = function_body(
         smf,
         r"\bbool\s+CardputerSmfPlayerService::loadFile\s*\([^)]*\)",
         "CardputerSmfPlayerService::loadFile",
     )
-    require(task_loop, r"CommandType::Load", "SMF taskLoop")
-    require(task_loop, r"loadFile\s*\(", "SMF taskLoop")
+    require(task_loop, r"handleCommand\s*\(", "SMF taskLoop")
+    require(handle_command, r"CommandType::Load", "SMF handleCommand")
+    require(handle_command, r"loadFile\s*\(", "SMF handleCommand")
     require(load_file, r"source_\.open\s*\(", "SMF loadFile")
 
     print("MEMORY-R1 FS1B realtime filesystem contract: PASS")
