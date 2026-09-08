@@ -1,6 +1,5 @@
 #include "phrase_execution.h"
 
-#include "../composition/genre_structural_laws.h"
 #include "../rhythm/bar_evolution.h"
 #include "../rhythm/reference_phrase_vocabulary.h"
 #include "../rhythm/reference_vocabulary.h"
@@ -191,11 +190,10 @@ PhraseExecutionStatus preparePhraseExecution(
   }
   destination.progressionSource = source.source;
 
-  const GenerationProfileView structuralProfile = generationProfileFor(settings);
   destination.harmonicClock = projectPhraseHarmonicClock(
       destination.length.effectivePhraseBars,
       destination.selection.composition.progression,
-      harmonicChangeRateForProfile(structuralProfile));
+      destination.selection.composition.harmonicChangeRate);
   if (destination.harmonicClock.status !=
           PhraseHarmonicClockProjectionStatus::Ok ||
       destination.harmonicClock.harmonicRhythmRealizationCount !=
