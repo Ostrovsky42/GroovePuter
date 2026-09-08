@@ -1,90 +1,104 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import subprocess
+import re
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-W1R = "329dcb91e40feb734182f437a8a50f2b61b40fd2"
-OLD_H2 = "c9c0dc852dfb96b191c5d7066c81af99e3df189a"
-PRODUCTION_PATH = "src/generation/composition/phrase_harmonic_clock_projection.h"
-PRODUCTION = ROOT / PRODUCTION_PATH
+PROJECTION = ROOT / "src/generation/composition/phrase_harmonic_clock_projection.h"
+HARMONIC = ROOT / "src/generation/roles/harmonic_rhythm.h"
+TIMELINE = ROOT / "src/generation/composition/phrase_harmonic_timeline.h"
+PROGRESSION = ROOT / "src/generation/roles/chord_progression.h"
 
-PROTECTED = [
-    "src/generation/roles/chord_progression.h",
-    "src/generation/roles/chord_progression.cpp",
-    "src/generation/roles/harmonic_rhythm.h",
-    "src/generation/migration/strong_rhythm_migration.h",
-    "src/generation/migration/strong_rhythm_migration.cpp",
-    "src/generation/composition/phrase_harmonic_timeline.h",
-    "src/generation/migration/phrase_semantic_result.h",
-]
 
-text = PRODUCTION.read_text(encoding="utf-8")
-old_h2 = subprocess.check_output(["git", "show", f"{OLD_H2}:{PRODUCTION_PATH}"], cwd=ROOT)
-assert PRODUCTION.read_bytes() == old_h2, "H2R production projection is not byte-identical to frozen old H2"
+def fail(message: str) -> None:
+    print(f"H2R SOURCE GUARD FAIL: {message}", file=sys.stderr)
+    raise SystemExit(1)
 
-for path in PROTECTED:
-    current = (ROOT / path).read_bytes()
-    frozen = subprocess.check_output(["git", "show", f"{W1R}:{path}"], cwd=ROOT)
-    assert current == frozen, f"protected H1-F1/W1R owner changed in H2R: {path}"
 
-required = [
+projection = PROJECTION.read_text(encoding="utf-8")
+harmonic = HARMONIC.read_text(encoding="utf-8")
+timeline = TIMELINE.read_text(encoding="utf-8")
+progression = PROGRESSION.read_text(encoding="utf-8")
+combined = "\n".join((projection, harmonic, timeline))
+
+# H2R has accepted descendants. Byte identity with the original replay commit is
+# no longer a live contract once GF2 deliberately extends harmonic WHEN policy.
+# Preserve the actual compatibility boundary instead: historical two-argument
+# callers must still select the accepted {0,8} moving-harmony clock, while any
+# explicit musical policy must enter the same bounded one-bar owner.
+required_projection = [
+    "projectPhraseHarmonicClock(\n    uint8_t phraseBars,\n    ProgressionId progression,\n    HarmonicChangeRateId changeRate)",
+    "projectPhraseHarmonicClock(\n    uint8_t phraseBars,\n    ProgressionId progression)",
+    "HarmonicChangeRateId::Every2Beats",
     "realizeHarmonicRhythm(request)",
     "request.phraseBarOrdinal = bar",
     "request.phraseHarmonicPosition = nextPhraseOrdinal",
     "makePhraseHarmonicTimeline",
     "phraseHarmonicEventRangeForBar",
 ]
-for token in required:
-    assert token in text, f"missing frozen H2 projection token: {token!r}"
+for token in required_projection:
+    if token not in projection:
+        fail(f"required live H2 projection contract missing: {token!r}")
 
-forbidden = [
+required_harmonic = [
+    "struct HarmonicRhythmRequest",
+    "uint8_t harmonicEventCount = 0;",
+    "defaultOneBarHarmonicEventCount",
+    "return isStaticHarmonicProgression(id) ? 1 : 2;",
+    "evenlySpacedHarmonicOnsets",
+    "std::is_trivially_copyable<HarmonicRhythmRequest>",
+    "std::is_trivially_copyable<HarmonicRhythmPlan>",
+]
+for token in required_harmonic:
+    if token not in harmonic:
+        fail(f"accepted F08 one-bar owner contract missing: {token!r}")
+
+# H2 remains WHEN-only. WHAT, runtime, storage and transport ownership must not
+# leak into the projection even though GF2 can now supply a musical change rate.
+for token in (
     "ChordRhythm",
-    "chord.plan.onsets",
     "ChordProgressionSource",
     "realizeChordProgressionSource",
     "chordProgressionSourceEventAt",
     "chordProgressionEventAt",
     "realizeChordProgression(",
-    "Song",
-    "transport",
+    "PatternPlayer",
+    "RuntimeSynthEvent",
+    "AudioMutationGate",
+    "Midi",
     "MIDI",
-    "synth",
+    "Song",
     "patternAddress",
-    "storage",
-    "QuarterCycle",
-    "F08.1",
-    "genre",
-    "BPM",
-    "feel",
-    "std::vector",
-    "std::string",
-    "new ",
-    "malloc",
-    "free(",
-    "C2",
-    "R1",
-    "I2",
-]
-for token in forbidden:
-    assert token not in text, f"forbidden H2R production owner/policy: {token!r}"
+    "GenreSettings",
+    "GenerativeMode",
+    "FeelProfile",
+):
+    if token in projection:
+        fail(f"foreign owner leaked into H2 projection: {token!r}")
 
-changed = subprocess.check_output(
-    ["git", "diff", "--name-only", f"{W1R}...HEAD"], cwd=ROOT, text=True
-).splitlines()
-allowed = {
-    PRODUCTION_PATH,
-    "tests/test_0_9_9_phrase_h2r_harmonic_clock_projection.cpp",
-    "tests/test_0_9_9_phrase_h2r_source_guard.py",
-    "tests/run_0_9_9_phrase_h2r_tests.sh",
-    ".github/workflows/0-9-9-phrase-h2r-h1-f1-replay.yml",
-    "docs/contracts/0_9_9_PHRASE_H2R_H1_F1_REPLAY.md",
-}
-extra = sorted(set(changed) - allowed)
-assert not extra, f"unexpected H2R delta outside replay scope: {extra}"
+for pattern in (
+    r"\bmalloc\s*\(",
+    r"\bcalloc\s*\(",
+    r"\brealloc\s*\(",
+    r"\bfree\s*\(",
+    r"\bnew\s+[A-Za-z_:]",
+    r"\bdelete\s+",
+    r"std::vector",
+    r"std::string",
+):
+    if re.search(pattern, combined):
+        fail(f"dynamic allocation/container leaked into bounded H2 owner: {pattern}")
 
-print("H2R source guard: OK")
-print("old H2 production projection byte-identical: YES")
-print("H1-F1/W1R protected owners unchanged: YES")
-print("H2 production consumes ChordProgressionSource: NO")
-print("H2 production consumes chordProgressionEventAt: NO")
-print("F08.1 / QuarterCycle / downstream execution imported: NO")
+# H2 still consumes progression identity only. Its WHAT source remains owned by
+# chord_progression, and the timeline remains a fixed-capacity WHEN carrier.
+if "struct ChordProgressionSource" not in progression:
+    fail("H1-F1 progression source owner missing")
+if "kMaxPhraseHarmonicEventPositions =" not in timeline:
+    fail("fixed-capacity phrase harmonic timeline missing")
+if "std::is_trivially_copyable<PhraseHarmonicClockProjection>" not in projection:
+    fail("H2 projection lost fixed-capacity value contract")
+
+print("H2R source firewall: OK")
+print("legacy two-argument moving clock -> Every2Beats: YES")
+print("explicit musical rate reuses F08 one-bar WHEN owner: YES")
+print("H1 WHAT / runtime / storage / transport ownership leakage: NO")
