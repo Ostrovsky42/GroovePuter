@@ -9,12 +9,27 @@ on:
 permissions:
   contents: read
 
+env:
+  FIRMWARE_SOURCE_SHA: 8581e284fc5b95757ab090e558ef56d8f0c21aa0
+  FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+  ARDUINO_LOOP_STACK_SIZE: "32768"
+
 jobs:
   cardputer-elf-owner-census:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove production-source equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$FIRMWARE_SOURCE_SHA" -- . \
+            ':(exclude).github/workflows/0_9_10_lifetime_r1_deep_census.yml' \
+            ':(exclude)docs/research/**'
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -25,38 +40,104 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
 
       - name: Build unchanged Cardputer ADV firmware
+        env:
+          GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS: ""
         run: bash scripts/build.sh --warnings all
 
       - name: Print fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
 
-      - name: Measure lifetime owner symbols from Xtensa ELF
+      - name: Build M1-A static residency evidence pack
         shell: bash
         run: |
           set -euo pipefail
           ELF=build/cardputer-adv-current/GroovePuter.ino.elf
-          NM="$(find "$HOME/.arduino15" -type f -name 'xtensa-esp32s3-elf-nm' -perm -111 | head -n 1)"
-          if [[ -z "$NM" ]]; then
-            echo "xtensa-esp32s3-elf-nm not found" >&2
+          OUT=lifetime-r1-static-census
+          mkdir -p "$OUT"
+
+          find_tool() {
+            local name="$1"
+            find "$HOME/.arduino15" -type f -name "$name" -perm -111 | head -n 1
+          }
+
+          NM="$(find_tool xtensa-esp32s3-elf-nm)"
+          SIZE="$(find_tool xtensa-esp32s3-elf-size)"
+          OBJDUMP="$(find_tool xtensa-esp32s3-elf-objdump)"
+          CXX="$(find_tool xtensa-esp32s3-elf-g++)"
+          for tool in "$NM" "$SIZE" "$OBJDUMP" "$CXX"; do
+            if [[ -z "$tool" ]]; then
+              echo "required Xtensa tool not found" >&2
+              exit 1
+            fi
+          done
+
+          MAP="$(find build/cardputer-adv-current -type f -name '*.map' | head -n 1)"
+          if [[ -z "$MAP" ]]; then
+            echo "linker map not found under build/cardputer-adv-current" >&2
             exit 1
           fi
-          OUT=lifetime-r1-deep-census.txt
-          {
-            echo "HEAD=$(git rev-parse HEAD)"
-            echo "ELF=$ELF"
-            echo "NM=$NM"
-            echo
-            echo "=== NAMED LIFETIME OWNERS ==="
-            "$NM" -S -C "$ELF" | grep -E 's_tempLoadScene|g_smfPlayer|g_dispatchTaskStack|g_sampleStore|g_miniAcidInstance|sceneTransactionScratch|pendingMaterial_|currentPhrase_|patternRuntimeBank_' || true
-            echo
-            echo "=== LARGEST BSS/DATA SYMBOLS ==="
-            "$NM" -S --size-sort -C "$ELF" | awk '$3 ~ /^[bBdD]$/ {print}' | tail -n 160
-          } | tee "$OUT"
 
-      - name: Upload lifetime owner census
+          {
+            echo "firmware_source_sha=$FIRMWARE_SOURCE_SHA"
+            echo "research_workflow_sha=$(git rev-parse HEAD)"
+            echo "source_equivalence_to_firmware_sha=PASS"
+            echo "board=Cardputer ADV"
+            echo "fqbn=$FQBN"
+            echo "build_command=bash scripts/build.sh --warnings all"
+            echo "arduino_loop_stack_size=$ARDUINO_LOOP_STACK_SIZE"
+            echo "grooveputer_build_extra_cpp_flags=<empty>"
+            echo "elf=$ELF"
+            echo "elf_sha256=$(sha256sum "$ELF" | awk '{print $1}')"
+            echo "linker_map=$MAP"
+          } > "$OUT/build-meta.txt"
+
+          {
+            echo "=== arduino-cli ==="
+            arduino-cli version
+            echo
+            echo "=== installed cores ==="
+            arduino-cli core list
+            echo
+            echo "=== pinned M5 libraries ==="
+            arduino-cli lib list | grep -E '^(M5Cardputer|M5Unified|M5GFX)[[:space:]]' || true
+            echo
+            echo "=== xtensa c++ ==="
+            "$CXX" --version
+            echo
+            echo "=== xtensa nm ==="
+            "$NM" --version
+            echo
+            echo "=== xtensa size ==="
+            "$SIZE" --version
+            echo
+            echo "=== xtensa objdump ==="
+            "$OBJDUMP" --version
+          } > "$OUT/toolchain.txt"
+
+          {
+            echo "=== xtensa-esp32s3-elf-size -A ==="
+            "$SIZE" -A "$ELF"
+            echo
+            echo "=== xtensa-esp32s3-elf-objdump -h ==="
+            "$OBJDUMP" -h "$ELF"
+          } > "$OUT/elf-sections.txt"
+
+          "$NM" -S -C "$ELF" > "$OUT/elf-symbols-all.txt"
+          "$NM" -S --size-sort -C "$ELF" > "$OUT/elf-symbols-size-sort.txt"
+          "$NM" -S --size-sort -C "$ELF" \
+            | awk '$3 ~ /^[bBdD]$/ {print}' \
+            | tail -n 30 \
+            | tac > "$OUT/elf-top-owners.txt"
+
+          cp "$MAP" "$OUT/linker-map.txt"
+
+          echo "=== TOP 30 BSS/DATA OWNERS ==="
+          cat "$OUT/elf-top-owners.txt"
+
+      - name: Upload M1-A static residency evidence
         uses: actions/upload-artifact@v4
         with:
-          name: lifetime-r1-deep-census
-          path: lifetime-r1-deep-census.txt
+          name: lifetime-r1-static-census
+          path: lifetime-r1-static-census/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
