@@ -25,6 +25,9 @@ bash tests/run_ui_constitution_u4c2_tests.sh
 bash tests/run_ui_constitution_u4c3_tests.sh
 bash tests/run_ui_constitution_u4d1_tests.sh
 bash tests/run_ui_content_bounds_tests.sh
-bash tests/run_u4b6_make_phrase_entry_tests.sh
+
+# U4B6 MAKE PHRASE/materialization is now part of the instrument integration
+# contract above and the U4B9 centralized PhraseSourceToggle ownership gate.
+# The historical run_u4b6_make_phrase_entry_tests.sh no longer exists.
 
 printf '%s\n' 'Pattern/Phrase instrument focused gate: PASS'
