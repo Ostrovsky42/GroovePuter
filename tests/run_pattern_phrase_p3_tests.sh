@@ -5,7 +5,7 @@ set -euo pipefail
 # phrase-relative onset addressing, verified against a real MiniAcid built
 # through the platform_sdl host target.
 #
-# The shared engine sources are compiled once into an archive and the three test
+# The shared engine sources are compiled once into an archive and the test
 # binaries link against it. Compiling the whole source list once per test in a
 # single g++ invocation peaks high enough to be OOM-killed on a 38 GB host.
 
@@ -80,6 +80,7 @@ TESTS=(
   test_p3_bounded_phrase_source_real
   test_p3_per_synth_phrase_cardinality
   test_p3_phrase_relative_onset
+  test_p3_explicit_make_phrase_source_toggle
 )
 
 for test_name in "${TESTS[@]}"; do
