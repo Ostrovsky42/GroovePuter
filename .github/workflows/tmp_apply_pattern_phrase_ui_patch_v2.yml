@@ -29,6 +29,37 @@ jobs:
       - name: Apply exact page integration
         run: python3 scripts/apply_pattern_phrase_ui_instrument_page_patch.py
 
+      - name: Recognize Phrase G and L by key or scancode
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/ui/pages/synth_sequencer_page.cpp")
+          text = path.read_text(encoding="utf-8")
+          old = '''  const char plainKey = ui_event.key
+              ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+              : 0;
+          '''
+          new = '''  const char plainKey = ui_event.key
+              ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+              : 0;
+            const bool isPhraseLengthKey =
+                plainKey == 'l' || ui_event.scancode == GROOVEPUTER_L;
+            const bool isPhraseGridKey =
+                plainKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"plain-key marker count={text.count(old)}; expected one")
+          text = text.replace(old, new, 1)
+          if text.count("if (plainKey == 'l') {") != 1:
+              raise SystemExit("length-key marker not unique")
+          text = text.replace("if (plainKey == 'l') {", "if (isPhraseLengthKey) {", 1)
+          old_grid = "(ui_event.key == 'g' || ui_event.key == 'G')) {"
+          if text.count(old_grid) != 1:
+              raise SystemExit(f"grid-key marker count={text.count(old_grid)}; expected one")
+          text = text.replace(old_grid, "isPhraseGridKey) {", 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
       - name: Keep conversion decision in PhraseSourceToggle
         run: |
           python3 - <<'PY'
@@ -92,6 +123,9 @@ jobs:
               text = text.replace(old, new, 1)
           path.write_text(text, encoding="utf-8")
           PY
+
+      - name: Characterize hardware Phrase controls before broad gate
+        run: bash tests/run_ui_pattern_phrase_hardware_controls.sh
 
       - name: Run focused Pattern Phrase UI gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
