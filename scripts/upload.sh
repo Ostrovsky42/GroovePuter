@@ -53,7 +53,7 @@ else
             echo "Override only for a deliberate A/B: $0 --stock-fatfs" >&2
             exit 1
         fi
-        if ! grep -Fq "grooveputer-sdk-dynbuffers/lib/libfatfs.a" "${MAP_FILE}"; then
+        if ! grep -Eq "(grooveputer-sdk-dynbuffers|fatfs-dynbuffers)/libfatfs\.a" "${MAP_FILE}"; then
             echo "REFUSING TO FLASH: this build uses the stock libfatfs.a." >&2
             echo "It reboot-loops with an SD card inserted (FS1)." >&2
             echo "Build with: bash scripts/build_cardputer_dynbuffers.sh" >&2

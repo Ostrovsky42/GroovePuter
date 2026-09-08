@@ -73,6 +73,40 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_nanokey2_packet_diagnostics.cpp" \
+  -o "${BUILD_DIR}/test_nanokey2_packet_diagnostics"
+
+"${BUILD_DIR}/test_nanokey2_packet_diagnostics"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_usb_role_runtime.cpp" \
+  "${ROOT_DIR}/src/platform/cardputer_usb_role_runtime.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_usb_role_runtime"
+
+"${BUILD_DIR}/test_cardputer_usb_role_runtime"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_m2_target_abi_sizing.cpp" \
+  -o "${BUILD_DIR}/test_m2_target_abi_sizing"
+
+"${BUILD_DIR}/test_m2_target_abi_sizing"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_atlas_runtime.cpp" \
   "${ROOT_DIR}/src/dsp/atlas_runtime.cpp" \

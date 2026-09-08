@@ -35,6 +35,8 @@ public:
 
     bool keyDown(char physicalKey, uint8_t velocity = 0);
     bool keyUp(char physicalKey);
+    bool midiNoteOn(uint8_t note, uint8_t velocity = 0, uint8_t channel = 0);
+    bool midiNoteOff(uint8_t note, uint8_t channel = 0);
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
     void setTempoBpm(float bpm);
@@ -202,10 +204,12 @@ private:
     static bool isUpperRowKey(char key);
     static bool containsKey(const char* keys, std::size_t count, char key);
     static bool drumChannelForKey(char physicalKey, uint8_t& zeroBasedChannel);
+    static bool drumChannelForMidiNote(uint8_t note, uint8_t& zeroBasedChannel);
     static bool due(uint32_t nowMicros, uint32_t dueMicros);
     static uint8_t clampPercent(uint8_t value);
 
     int findHeld(char physicalKey) const;
+    int findHeldMidi(uint8_t note, uint8_t channel) const;
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
     void emitPolyNoteOn(const HeldNote& held);

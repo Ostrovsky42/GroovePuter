@@ -25,6 +25,8 @@
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/platform/cardputer_runtime_diagnostics.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/platform/cardputer_usb_host_midi.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
@@ -34,6 +36,7 @@
 #include "src/midi/external_midi_clock_follower.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/midi/m2_runtime_structures.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -74,6 +77,37 @@ RTC_DATA_ATTR static uint32_t g_bootStage = 0;
 #else
 static uint32_t g_bootStage = 0;
 #endif
+
+static uint16_t g_midiRxNoteCount = 0;
+
+static void onUsbHostMidiPacket(const uint8_t packet[4]) {
+  const uint8_t status = packet[1];
+  const uint8_t d1 = packet[2];
+  const uint8_t d2 = packet[3];
+
+  const uint8_t typeNibble = status & 0xF0;
+  if (typeNibble == 0x90 || typeNibble == 0x80) {
+    const bool isNoteOn = (typeNibble == 0x90) && (d2 > 0);
+    const uint8_t channel = status & 0x0F;
+    ++g_midiRxNoteCount;
+    if (isNoteOn) {
+      g_performanceKeyboard.midiNoteOn(d1, d2, channel);
+    } else {
+      g_performanceKeyboard.midiNoteOff(d1, channel);
+    }
+
+    if (isNoteOn) {
+      char toast[32];
+      snprintf(toast, sizeof(toast), "NOTE %u V%u", (unsigned)d1, (unsigned)d2);
+      UI::showToast(toast, 600);
+    }
+  } else if (typeNibble == 0xB0) {
+    // Control Change: nanoKEY2 Sustain button sends CC64
+    if (d1 == 64) {
+      g_performanceKeyboard.setLatchEnabled(d2 >= 64);
+    }
+  }
+}
 
 static void markBootStage(uint32_t stage, const char* msg = nullptr) {
   g_bootStage = stage;
@@ -269,6 +303,8 @@ void setup() {
   digitalWrite(GroovePuterHardware::kPowerAmplifierEnablePin, HIGH);
   // pinMode(42, OUTPUT); digitalWrite(42, LOW); // Possible I2S conflict
   
+  CardputerUsbRoleRuntime::init();
+
 #if ARDUINO_USB_CDC_ON_BOOT
   Serial.begin(115200);
 #endif
@@ -433,6 +469,16 @@ void setup() {
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   screenLog("4d. USB MIDI Runtime...");
   markBootStage(52, "before USB MIDI sink");
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    screenLog("4d. USB Host Init...");
+    if (!GroovePuterMidi::CardputerUsbHostMidi::begin(onUsbHostMidiPacket)) {
+      Serial.println("[ERROR] USB Host MIDI begin failed");
+      markBootStage(952, "USB Host MIDI begin failed");
+    } else {
+      Serial.println("[USB] USB Host MIDI active");
+    }
+  }
+
   if (!registerCardputerUsbMidiSink(
           g_musicalEventRouter,
           g_patternMusicalEventQueue,
@@ -547,6 +593,25 @@ void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
 
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    GroovePuterMidi::CardputerUsbHostMidi::service();
+    static bool s_lastHostConnected = false;
+    const bool hostConn = GroovePuterMidi::CardputerUsbHostMidi::isConnected();
+    if (hostConn != s_lastHostConnected) {
+      s_lastHostConnected = hostConn;
+      if (hostConn) {
+        char toast[32];
+        snprintf(toast, sizeof(toast), "HOST: %04X:%04X %s",
+                 (unsigned)GroovePuterMidi::CardputerUsbHostMidi::vid(),
+                 (unsigned)GroovePuterMidi::CardputerUsbHostMidi::pid(),
+                 GroovePuterMidi::CardputerUsbHostMidi::status());
+        UI::showToast(toast, 2000);
+      } else {
+        UI::showToast("HOST: DISCONNECTED", 1500);
+      }
+    }
+  }
+
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
@@ -616,6 +681,15 @@ void loop() {
       // prevents a full display redraw from intentionally pausing audio output.
       AudioMutationScope mutationScope(g_audioMutationGate);
       char c = evt.key;
+      if (evt.alt && (c == 'u' || c == 'U')) {
+        const UsbBootRole nextRole = (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host)
+                                         ? UsbBootRole::Device
+                                         : UsbBootRole::Host;
+        UI::showToast(nextRole == UsbBootRole::Host ? "REBOOT -> HOST" : "REBOOT -> DEV", 2000);
+        delay(400);
+        CardputerUsbRoleRuntime::requestRebootWithRole(nextRole);
+        return;
+      }
       if (c == '\t' && g_miniDisplay) {
         UIEvent app_evt{};
         app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
@@ -974,6 +1048,18 @@ void loop() {
            (unsigned)freeInt, (unsigned)largestInt,
            (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
        g_peakUiDrawUs = g_lastUiDrawUs;
+       GroovePuterMidi::recordTelemetrySnapshot(
+           millis(),
+           freeInt,
+           heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+           largestInt,
+           heap_caps_get_free_size(MALLOC_CAP_DMA),
+           heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+           g_midiRxNoteCount,
+           0,
+           static_cast<uint8_t>(CardputerRuntimeDiagnostics::Phase::AfterUiBeforeHousekeeping),
+           static_cast<uint8_t>(CardputerUsbRoleRuntime::activeRole()),
+           static_cast<uint16_t>(underruns));
     }
   }
 

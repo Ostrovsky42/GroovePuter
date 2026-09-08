@@ -156,6 +156,25 @@ bool PerformanceKeyboard::drumChannelForKey(char physicalKey,
     return false;
 }
 
+bool PerformanceKeyboard::drumChannelForMidiNote(uint8_t note,
+                                                 uint8_t& zeroBasedChannel) {
+    switch (note % 12) {
+        case 0:  zeroBasedChannel = 0; return true; // C: Kick (Seqtrak 0 / GM 36)
+        case 1:  zeroBasedChannel = 0; return true; // C#: Kick alt
+        case 2:  zeroBasedChannel = 1; return true; // D: Snare (Seqtrak 1 / GM 38)
+        case 3:  zeroBasedChannel = 2; return true; // D#: Clap (GM 39)
+        case 4:  zeroBasedChannel = 2; return true; // E: Clap (Seqtrak 2)
+        case 5:  zeroBasedChannel = 3; return true; // F: Hat1 (Seqtrak 3)
+        case 6:  zeroBasedChannel = 3; return true; // F#: Closed Hat (GM 42)
+        case 7:  zeroBasedChannel = 4; return true; // G: Hat2 (Seqtrak 4)
+        case 8:  zeroBasedChannel = 4; return true; // G#: Hat2 alt
+        case 9:  zeroBasedChannel = 5; return true; // A: Perc1 (Seqtrak 5)
+        case 10: zeroBasedChannel = 4; return true; // A#: Open Hat (GM 46)
+        case 11: zeroBasedChannel = 6; return true; // B: Perc2 (Seqtrak 6)
+        default: return false;
+    }
+}
+
 bool PerformanceKeyboard::due(uint32_t nowMicros, uint32_t dueMicros) {
     return static_cast<int32_t>(nowMicros - dueMicros) >= 0;
 }
@@ -179,9 +198,21 @@ bool PerformanceKeyboard::noteForKey(char physicalKey, uint8_t& note) const {
 }
 
 int PerformanceKeyboard::findHeld(char physicalKey) const {
+    if (physicalKey == '\0') return -1;
     physicalKey = normalizeKey(physicalKey);
     for (std::size_t i = 0; i < heldCount_; ++i) {
         if (held_[i].physicalKey == physicalKey) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+int PerformanceKeyboard::findHeldMidi(uint8_t note, uint8_t channel) const {
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        if (held_[i].physicalKey == '\0' &&
+            static_cast<uint8_t>(held_[i].note) == note &&
+            held_[i].channel == channel) {
+            return static_cast<int>(i);
+        }
     }
     return -1;
 }
@@ -1117,12 +1148,124 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     return true;
 }
 
+bool PerformanceKeyboard::midiNoteOn(uint8_t note, uint8_t velocity, uint8_t channel) {
+    serviceHardwareClock();
+    if (!noteModeEnabled_) return false;
+    if (!enabled_) return true;
+    if (velocity == 0) return midiNoteOff(note, channel);
+    if (velocity > 127) velocity = 127;
+
+    if (target_ == MusicalEventTarget::Drums) {
+        uint8_t drumChannel = 0;
+        if (!drumChannelForMidiNote(note, drumChannel)) return true;
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (held_[i].physicalKey == '\0' && held_[i].channel == drumChannel) return true;
+        }
+        if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+        held_[heldCount_++] = HeldNote{'\0', kSeqtrakDrumNote, velocity, drumChannel};
+        emitNoteOn(held_[heldCount_ - 1]);
+        return true;
+    }
+
+    note = fitMidiNote(note);
+    if (findHeldMidi(note, channel) >= 0) return true;
+    if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+
+    const std::size_t priorHeld = heldCount_;
+    held_[heldCount_++] = HeldNote{'\0', note, velocity, channel};
+
+    if (activeClocked_.latchEnabled || pendingClocked_.latchEnabled) {
+        if (!pendingLatchCapture_) {
+            pendingLatchCount_ = latchedCount_;
+            for (std::size_t i = 0; i < latchedCount_; ++i) pendingLatch_[i] = latched_[i];
+        }
+        if (priorHeld == 0 && latchReplaceArmed_) {
+            pendingLatchCount_ = 0;
+            latchReplaceArmed_ = false;
+        }
+        bool duplicate = false;
+        for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
+            if (pendingLatch_[i].note == note) { duplicate = true; break; }
+        }
+        if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
+            pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
+        }
+        pendingLatchCapture_ = true;
+    }
+
+    if (activeStepEngineEnabled() || requestedStepEngineEnabled()) {
+        // Active or pending step-engine ownership suppresses an immediate direct attack.
+    } else if (chordMode_ != PerformanceChordMode::Off) {
+        triggerDirectTransformed(lastServiceMicros_);
+    } else if (directPolyphonyEnabled()) {
+        emitPolyNoteOn(held_[heldCount_ - 1]);
+    } else {
+        emitNoteOn(held_[heldCount_ - 1]);
+    }
+
+    if (requestedStepEngineEnabled()) service(lastServiceMicros_);
+    return true;
+}
+
+bool PerformanceKeyboard::midiNoteOff(uint8_t note, uint8_t channel) {
+    serviceHardwareClock();
+    if (target_ == MusicalEventTarget::Drums) {
+        uint8_t drumChannel = 0;
+        if (!drumChannelForMidiNote(note, drumChannel)) return false;
+        int found = -1;
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (held_[i].physicalKey == '\0' && held_[i].channel == drumChannel) {
+                found = static_cast<int>(i);
+                break;
+            }
+        }
+        if (found < 0) return false;
+        const std::size_t index = static_cast<std::size_t>(found);
+        const HeldNote released = held_[index];
+        for (std::size_t i = index + 1; i < heldCount_; ++i) held_[i - 1] = held_[i];
+        held_[--heldCount_] = HeldNote{};
+        emitNoteOff(released.note, released.channel);
+        return true;
+    }
+
+    note = fitMidiNote(note);
+    const int found = findHeldMidi(note, channel);
+    if (found < 0) return false;
+    const std::size_t index = static_cast<std::size_t>(found);
+    const HeldNote released = held_[index];
+    const bool wasActive = index + 1 == heldCount_;
+    for (std::size_t i = index + 1; i < heldCount_; ++i) held_[i - 1] = held_[i];
+    held_[--heldCount_] = HeldNote{};
+    if (heldCount_ == 0 && (activeClocked_.latchEnabled || pendingClocked_.latchEnabled)) {
+        latchReplaceArmed_ = true;
+    }
+
+    if (activeStepEngineEnabled()) {
+        if (heldCount_ == 0 && !(activeClocked_.latchEnabled && latchedCount_ > 0)) {
+            stopGeneratedOutput();
+            if (!pendingClocked_.latchEnabled) resetPulseClock(false);
+        }
+        return true;
+    }
+    if (chordMode_ != PerformanceChordMode::Off) {
+        if (polyChordSustainEnabled()) reconcileDirectPolyChord(lastServiceMicros_);
+        else if (wasActive) {
+            stopGeneratedOutput();
+            if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
+        }
+        return true;
+    }
+    if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
+    else emitNoteOff(released.note);
+    return true;
+}
+
 void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
                                              std::size_t pressedCount) {
     char missing[kMaxHeldNotes]{};
     std::size_t missingCount = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) {
-        if (!containsKey(pressedKeys, pressedCount, held_[i].physicalKey)) {
+        if (held_[i].physicalKey != '\0' && !containsKey(pressedKeys, pressedCount, held_[i].physicalKey)) {
             missing[missingCount++] = held_[i].physicalKey;
         }
     }

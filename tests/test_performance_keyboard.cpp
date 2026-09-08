@@ -337,6 +337,74 @@ int main() {
     assert(!keyboard.shiftOctave(1));
     assert(keyboard.octaveShift() == PerformanceKeyboard::kMaxOctaveShift);
 
+    // Test MIDI input through PerformanceKeyboard
+    keyboard.panic();
+    keyboard.setTarget(MusicalEventTarget::SynthA);
+    keyboard.setChordMode(PerformanceChordMode::Off);
+    keyboard.setVoiceMode(PerformanceVoiceMode::Mono);
+    sink.clear();
+
+    // 1. Mono MIDI NoteOn / NoteOff
+    assert(keyboard.midiNoteOn(60, 90));
+    assert(keyboard.heldCount() == 1);
+    assert(keyboard.activeNote() == 60);
+    assert(keyboard.activeVelocity() == 90);
+    assert(sink.events.size() == 1);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 60, MusicalEventSource::PerformanceKeyboard);
+
+    sink.clear();
+    assert(keyboard.midiNoteOff(60));
+    assert(keyboard.heldCount() == 0);
+    assert(sink.events.size() == 1);
+    expectEvent(sink.events[0], MusicalEventType::NoteOff, 60, MusicalEventSource::PerformanceKeyboard);
+
+    // 2. MIDI NoteOn with releaseMissingKeys (must not release MIDI note)
+    sink.clear();
+    assert(keyboard.midiNoteOn(64, 100));
+    assert(keyboard.heldCount() == 1);
+    char physicalPressed[] = "a";
+    keyboard.releaseMissingKeys(physicalPressed, 1);
+    assert(keyboard.heldCount() == 1); // Not released because it's MIDI!
+    keyboard.midiNoteOff(64);
+    assert(keyboard.heldCount() == 0);
+
+    // 3. MIDI input with Chord Mode (Major triad: 60 -> 60, 64, 67)
+    sink.clear();
+    keyboard.setChordMode(PerformanceChordMode::Major);
+    assert(keyboard.midiNoteOn(60, 80));
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 60, MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[1], MusicalEventType::NoteOn, 64, MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[2], MusicalEventType::NoteOn, 67, MusicalEventSource::Arpeggiator);
+
+    sink.clear();
+    assert(keyboard.midiNoteOff(60));
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events[0], MusicalEventType::NoteOff, 60, MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[1], MusicalEventType::NoteOff, 64, MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[2], MusicalEventType::NoteOff, 67, MusicalEventSource::Arpeggiator);
+    keyboard.setChordMode(PerformanceChordMode::Off);
+
+    // 4. MIDI input with Drums target
+    keyboard.setTarget(MusicalEventTarget::Drums);
+    sink.clear();
+    // C3 (48) -> drum channel 0 (Kick)
+    assert(keyboard.midiNoteOn(48, 110));
+    assert(sink.events.size() == 1);
+    assert(sink.events[0].type == MusicalEventType::NoteOn);
+    assert(sink.events[0].target == MusicalEventTarget::Drums);
+    assert(sink.events[0].channel == 0);
+    assert(sink.events[0].note == PerformanceKeyboard::kSeqtrakDrumNote);
+    assert(sink.events[0].velocity == 110);
+
+    sink.clear();
+    assert(keyboard.midiNoteOff(48));
+    assert(sink.events.size() == 1);
+    assert(sink.events[0].type == MusicalEventType::NoteOff);
+    assert(sink.events[0].target == MusicalEventTarget::Drums);
+    assert(sink.events[0].channel == 0);
+    keyboard.setTarget(MusicalEventTarget::SynthA);
+
     router.removeSink(sink);
     assert(router.sinkCount() == 0);
     return 0;

@@ -34,6 +34,7 @@
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
 #include "cardputer_runtime_diagnostics.h"
+#include "cardputer_usb_role_runtime.h"
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -1265,6 +1266,9 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 bool CardputerUsbMidiTransport::begin() {
     if (begun_) return true;
     if (!descriptorRegistered_) return false;
+    if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+        return false;
+    }
 
     // The global transport constructor has already registered the MIDI
     // descriptor before Arduino app_main() assembles the composite device.

@@ -13,6 +13,8 @@ __pycache__/
 *.py[cod]
 platform_sdl/miniacid
 platform_sdl/grooveputer
+platform_sdl/grooveputer_scene.auto.json
+platform_sdl/patterns/
 
 # Local/IDE config
 .idea/
