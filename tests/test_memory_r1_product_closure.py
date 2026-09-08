@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -17,7 +16,7 @@ def require(condition: bool, message: str) -> None:
 
 ino = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 require(
-    re.search(r"\bbeginCardputerSmfPlayerService\s*\(\s*\)\s*;", ino) is None,
+    "beginCardputerSmfPlayerService();" not in ino,
     "Lazy SMF regression: setup still eagerly calls beginCardputerSmfPlayerService()",
 )
 
