@@ -8,6 +8,11 @@ mkdir -p "${BUILD_DIR}"
 g++ -std=c++17 -I. tests/test_ui_pattern_phrase_instrument_controls.cpp \
   -o "${BUILD_DIR}/test_ui_pattern_phrase_instrument_controls"
 "${BUILD_DIR}/test_ui_pattern_phrase_instrument_controls"
+
+g++ -std=c++17 -I. tests/test_ui_phrase_selected_event_edits.cpp \
+  -o "${BUILD_DIR}/test_ui_phrase_selected_event_edits"
+"${BUILD_DIR}/test_ui_phrase_selected_event_edits"
+
 python3 tests/test_ui_pattern_phrase_instrument_integration.py
 
 # Existing focused causal contracts that this checkpoint must preserve.
