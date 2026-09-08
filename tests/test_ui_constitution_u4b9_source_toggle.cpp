@@ -1,16 +1,8 @@
-// U4B9: one owner for the PATTERN/PHRASE switch, reachable by a key.
+// U4B9 / #444: SELECT SOURCE and MAKE PHRASE are distinct musical actions.
 //
-// The switch existed only as the SRC row on the MORE tab, three keypresses and
-// a tab away from the editor it governs. Adding a hotkey without extracting the
-// dispatch would leave two copies of a decision with three branches and an undo
-// receipt -- the kind of pair that silently diverges.
-//
-// So the behaviour moves into PhraseSourceToggle and both callers use it. The
-// contract tested here is the one the U4B6 entry established, now stated once:
-//
-//   PATTERN with no material  -> convert (makePhrase) and go to PHRASE
-//   PATTERN with material     -> switch only; never re-project over edits
-//   PHRASE                    -> back to PATTERN, keeping the material
+// Explicit PATTERN -> PHRASE source selection must never project Pattern
+// material as a side effect. MAKE PHRASE is the one-way materialization
+// command. Once material exists, source switching preserves it unchanged.
 
 #include <cstdint>
 #include <cstdio>
@@ -45,20 +37,34 @@ int main() {
     pattern.steps[4].note = 43;
   }
 
-  // 1. First use converts: material appears and the voice moves to PHRASE.
+  // 1. SOURCE is selection only. An empty Phrase stays empty.
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Pattern,
          "voice did not start on PATTERN");
-  PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
+  expect(engine.currentPhraseBuffer(kSynthA).count == 0,
+         "fixture unexpectedly started with Phrase material");
+  const auto selected = PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
+  expect(selected == PhraseSourceToggle::Result::SwitchedToPhrase,
+         "explicit SOURCE did not report a pure switch to PHRASE");
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Phrase,
-         "first toggle did not reach PHRASE");
-  expect(engine.currentPhraseBuffer(kSynthA).count > 0,
-         "first toggle produced no material");
+         "explicit SOURCE did not reach PHRASE");
+  expect(engine.currentPhraseBuffer(kSynthA).count == 0,
+         "explicit SOURCE silently materialized Pattern as Phrase");
 
-  // 2. Editing the material and toggling twice must return it untouched. This
-  //    is the invariant that makes the switch safe to use casually: it is a
-  //    source change, not a conversion, once material exists.
+  // 2. Return to PATTERN, then MAKE PHRASE is the distinct materialization.
+  expect(PhraseSourceToggle::toggle(engine, nullptr, kSynthA) ==
+             PhraseSourceToggle::Result::SwitchedToPattern,
+         "SOURCE did not return to PATTERN");
+  expect(PhraseSourceToggle::makePhrase(engine, nullptr, kSynthA),
+         "explicit MAKE PHRASE failed");
+  expect(engine.currentSequencedSource(kSynthA) ==
+             MiniAcid::SequencedSource::Phrase,
+         "MAKE PHRASE did not select PHRASE after materialization");
+  expect(engine.currentPhraseBuffer(kSynthA).count > 0,
+         "MAKE PHRASE produced no material");
+
+  // 3. Existing Phrase edits survive pure source changes.
   const uint16_t edited = static_cast<uint16_t>(
       engine.currentPhraseBuffer(kSynthA).events[0].startTick + 1u);
   engine.currentPhraseBuffer(kSynthA).events[0].startTick = edited;
@@ -66,29 +72,30 @@ int main() {
   PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Pattern,
-         "toggle did not return to PATTERN");
-  expect(engine.currentPhraseBuffer(kSynthA).count > 0,
-         "returning to PATTERN destroyed the material");
-
+         "SOURCE did not return to PATTERN after editing");
   PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
+  expect(engine.currentSequencedSource(kSynthA) ==
+             MiniAcid::SequencedSource::Phrase,
+         "SOURCE did not return to PHRASE after editing");
   expect(engine.currentPhraseBuffer(kSynthA).events[0].startTick == edited,
-         "toggling back re-projected over existing edits");
+         "SOURCE re-projected over existing Phrase edits");
 
-  // 3. Voices are independent.
+  // 4. Voices are independent.
   expect(engine.currentSequencedSource(kSynthB) ==
              MiniAcid::SequencedSource::Pattern,
-         "toggling synth A moved synth B");
+         "synth A actions moved synth B source");
   expect(engine.currentPhraseBuffer(kSynthB).count == 0,
-         "toggling synth A wrote material into synth B");
+         "synth A actions wrote material into synth B");
 
-  // 4. An out-of-range voice changes nothing at all.
+  // 5. Invalid voice is rejected without disturbing a real voice.
   const auto sourceBefore = engine.currentSequencedSource(kSynthA);
-  PhraseSourceToggle::toggle(engine, nullptr, 9);
+  expect(PhraseSourceToggle::toggle(engine, nullptr, 9) ==
+             PhraseSourceToggle::Result::Rejected,
+         "invalid voice was not rejected");
   expect(engine.currentSequencedSource(kSynthA) == sourceBefore,
-         "a rejected toggle disturbed a real voice");
+         "rejected SOURCE disturbed a real voice");
 
-  // 5. The audio guard is honoured when supplied: the mutation must run inside
-  //    it, not beside it.
+  // 6. The audio guard wraps source mutation.
   {
     int guardCalls = 0;
     bool ranInside = false;
@@ -98,18 +105,23 @@ int main() {
       ranInside = true;
     };
     const auto before = engine.currentSequencedSource(kSynthB);
-    PhraseSourceToggle::toggle(engine, guard, kSynthB);
+    const auto result = PhraseSourceToggle::toggle(engine, guard, kSynthB);
+    expect(result == PhraseSourceToggle::Result::SwitchedToPhrase,
+           "guarded empty-Phrase SOURCE was not a pure source switch");
     expect(guardCalls == 1, "the audio guard was not used");
-    expect(ranInside, "the mutation did not run inside the guard");
+    expect(ranInside, "the source mutation did not run inside the guard");
     expect(engine.currentSequencedSource(kSynthB) != before,
-         "the guarded toggle did not change the source");
+           "guarded SOURCE did not change source");
+    expect(engine.currentPhraseBuffer(kSynthB).count == 0,
+           "guarded SOURCE materialized an empty Phrase");
   }
 
   if (g_failures == 0) {
-    std::printf("UI Constitution U4B9 source toggle: PASS\n");
+    std::printf("UI Constitution U4B9 source vs MAKE PHRASE: PASS\n");
     return 0;
   }
-  std::fprintf(stderr, "UI Constitution U4B9 source toggle: %d failure(s)\n",
+  std::fprintf(stderr,
+               "UI Constitution U4B9 source vs MAKE PHRASE: %d failure(s)\n",
                g_failures);
   return 1;
 }
