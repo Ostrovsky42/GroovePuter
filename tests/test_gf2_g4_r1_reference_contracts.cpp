@@ -26,48 +26,15 @@ GenreSettings settingsFor(GenerativeMode mode, uint8_t recipe) {
   return settings;
 }
 
-bool expectedBassFamilyCompatibility(BassRhythmId bass, RhythmFamily family) {
-  switch (family) {
-    case RhythmFamily::FourFloor:
-      return bass == BassRhythmId::KickLock ||
-             bass == BassRhythmId::OffbeatPush ||
-             bass == BassRhythmId::RollingDrive ||
-             bass == BassRhythmId::SustainAndDrop;
-    case RhythmFamily::MachineSyncopation:
-      return bass == BassRhythmId::KickAnswer ||
-             bass == BassRhythmId::GapFill ||
-             bass == BassRhythmId::SyncopatedHook ||
-             bass == BassRhythmId::RollingDrive;
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-      return bass == BassRhythmId::KickAnswer ||
-             bass == BassRhythmId::GapFill ||
-             bass == BassRhythmId::HalfTimePocket ||
-             bass == BassRhythmId::SyncopatedHook;
-    case RhythmFamily::HipHopBackbeat:
-      return bass == BassRhythmId::RootPulse ||
-             bass == BassRhythmId::KickAnswer ||
-             bass == BassRhythmId::SparseAnchor ||
-             bass == BassRhythmId::HalfTimePocket ||
-             bass == BassRhythmId::SustainAndDrop;
-    case RhythmFamily::DubPulse:
-      return bass == BassRhythmId::RootPulse ||
-             bass == BassRhythmId::GapFill ||
-             bass == BassRhythmId::SparseAnchor ||
-             bass == BassRhythmId::SustainAndDrop;
-    case RhythmFamily::Funk16:
-      return bass == BassRhythmId::KickLock ||
-             bass == BassRhythmId::KickAnswer ||
-             bass == BassRhythmId::GapFill ||
-             bass == BassRhythmId::SyncopatedHook;
-    case RhythmFamily::SparsePulse:
-      return bass == BassRhythmId::RootPulse ||
-             bass == BassRhythmId::SparseAnchor ||
-             bass == BassRhythmId::SustainAndDrop;
-    case RhythmFamily::Count:
-      return false;
-  }
-  return false;
+// G4-R1: this is a DnB genre-identity contract, not a universal statement that
+// every explicit bass request must belong to a RhythmFamily's Auto vocabulary.
+// Acid is the counterexample: its profile intentionally has independent bass
+// motion across FourFloor / MachineSyncopation / SparsePulse archetypes.
+bool dnbBassIdentityAllowed(BassRhythmId bass) {
+  return bass == BassRhythmId::KickAnswer ||
+         bass == BassRhythmId::GapFill ||
+         bass == BassRhythmId::HalfTimePocket ||
+         bass == BassRhythmId::SyncopatedHook;
 }
 
 const LaneGrammar* kickLane(const RhythmArchetype& archetype) {
@@ -93,39 +60,6 @@ bool hasQuarterNoteKickSkeleton(RhythmArchetypeId archetypeId) {
   return (structuralAnchors & kQuarterNotes) == kQuarterNotes;
 }
 
-bool checkExplicitBassFamilyBoundary() {
-  BassRhythmRequest incompatible{};
-  incompatible.requestedId = BassRhythmId::RollingDrive;
-  incompatible.family = RhythmFamily::Breakbeat;
-  incompatible.archetypeId = 413;
-  incompatible.kickOnsets = stepBit(0) | stepBit(6) | stepBit(10);
-  incompatible.generation = GenerationContext{0x47110001u, 7};
-
-  const BassRhythmResult rejected = realizeBassRhythm(incompatible);
-  if (rejected.status != BassRhythmStatus::InvalidRequest) {
-    std::printf(
-        "G4_R1_FAIL R1_BASS_EXPLICIT_FAMILY_BYPASS family=Breakbeat "
-        "requested=RollingDrive status=%u\n",
-        static_cast<unsigned>(rejected.status));
-    return false;
-  }
-
-  BassRhythmRequest compatible = incompatible;
-  compatible.requestedId = BassRhythmId::HalfTimePocket;
-  const BassRhythmResult accepted = realizeBassRhythm(compatible);
-  if (accepted.status != BassRhythmStatus::Ok ||
-      accepted.plan.id != BassRhythmId::HalfTimePocket) {
-    std::printf(
-        "G4_R1_FAIL R1_BASS_LEGAL_EXPLICIT_REJECTED family=Breakbeat "
-        "requested=HalfTimePocket status=%u\n",
-        static_cast<unsigned>(accepted.status));
-    return false;
-  }
-
-  std::printf("G4_R1_PASS explicit_bass_family_boundary\n");
-  return true;
-}
-
 bool checkDnbBassCoherence() {
   const GenreSettings settings =
       settingsFor(GenerativeMode::DrumAndBass, kBaseRecipeId);
@@ -146,10 +80,12 @@ bool checkDnbBassCoherence() {
 
     const ReferenceVocabulary::Definition* definition =
         ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
-    if (definition == nullptr) {
+    if (definition == nullptr || definition->family != RhythmFamily::Breakbeat) {
       std::printf(
-          "G4_R1_FAIL R1_DNB_ARCHETYPE identity=%u archetype=%u\n",
-          identity, composition.rhythmArchetypeId);
+          "G4_R1_FAIL R1_DNB_ARCHETYPE identity=%u archetype=%u family=%u\n",
+          identity, composition.rhythmArchetypeId,
+          definition == nullptr ? 255u
+                                : static_cast<unsigned>(definition->family));
       return false;
     }
 
@@ -160,14 +96,12 @@ bool checkDnbBassCoherence() {
       ++distinctBass;
     }
 
-    if (!expectedBassFamilyCompatibility(composition.bassRhythm,
-                                         definition->family)) {
+    if (!dnbBassIdentityAllowed(composition.bassRhythm)) {
       if (violations < 8) {
         std::printf(
-            "G4_R1_WITNESS R1_DNB_BASS_FAMILY_INCOHERENCE identity=%u "
-            "archetype=%u family=%u bass=%u\n",
+            "G4_R1_WITNESS R1_DNB_BASS_IDENTITY_INCOHERENCE identity=%u "
+            "archetype=%u bass=%u\n",
             identity, composition.rhythmArchetypeId,
-            static_cast<unsigned>(definition->family),
             static_cast<unsigned>(composition.bassRhythm));
       }
       ++violations;
@@ -179,7 +113,7 @@ bool checkDnbBassCoherence() {
       kIdentityCount, violations, distinctBass);
 
   if (violations != 0) {
-    std::printf("G4_R1_FAIL R1_DNB_BASS_FAMILY_INCOHERENCE\n");
+    std::printf("G4_R1_FAIL R1_DNB_BASS_IDENTITY_INCOHERENCE\n");
     return false;
   }
   if (distinctBass < 2) {
@@ -188,7 +122,7 @@ bool checkDnbBassCoherence() {
     return false;
   }
 
-  std::printf("G4_R1_PASS dnb_bass_family_coherence\n");
+  std::printf("G4_R1_PASS dnb_bass_identity_coherence\n");
   return true;
 }
 
@@ -215,10 +149,9 @@ bool checkDubTechnoCandidateSpace() {
       "G4_R1_DUB candidates=%u quarter_skeleton_candidates=%u\n",
       compatibility.count, technoSkeletonCandidates);
 
-  // G4-R1 does not force every Dub Techno idea to be canonical four-floor.
-  // It requires more than one structural techno-skeleton statement in the
-  // candidate space so dub vocabulary is layered over a real techno choice,
-  // rather than Steppers being the sole structural witness.
+  // Do not canonicalize Dub Techno into one four-floor pattern. The first G4
+  // contract merely requires a plural techno-skeleton choice in the candidate
+  // space; the existing dub/space archetypes remain available for evaluation.
   if (technoSkeletonCandidates < 2) {
     std::printf("G4_R1_FAIL R1_DUB_TECHNO_SKELETON\n");
     return false;
@@ -250,7 +183,6 @@ bool checkReferenceGenreReachability() {
 
 int main() {
   bool ok = true;
-  ok = checkExplicitBassFamilyBoundary() && ok;
   ok = checkDnbBassCoherence() && ok;
   ok = checkDubTechnoCandidateSpace() && ok;
   ok = checkReferenceGenreReachability() && ok;
