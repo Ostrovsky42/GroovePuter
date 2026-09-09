@@ -19,6 +19,7 @@ on:
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
+      - 'docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv'
       - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
       - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
   workflow_dispatch:
@@ -71,6 +72,14 @@ jobs:
           bash tests/run_gf2_i3_tests.sh 2>&1 | \
             tee build/host-tests/gf2-g4-c0/gf2-i3-regression.log
 
+      - name: Preserve regenerated FEEL census
+        if: always()
+        run: |
+          if test -f docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv; then
+            cp docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv \
+              build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
+          fi
+
       - name: Print accepted G4-C0 summary
         if: always()
         run: |
@@ -99,4 +108,5 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-r1.log
             build/host-tests/gf2-g4-c0/g4-i3.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+            build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
           if-no-files-found: error
