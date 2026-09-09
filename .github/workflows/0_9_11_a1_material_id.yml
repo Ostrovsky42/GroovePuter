@@ -4,14 +4,6 @@ on:
   push:
     branches:
       - feature/20260909-0.9.11-a1-material-id
-    paths:
-      - 'src/state/material_slot.h'
-      - 'src/state/material_slot_access.h'
-      - 'src/state/melody_promotion.h'
-      - 'tests/test_melody_promotion.cpp'
-      - 'tests/test_0_9_11_a1_material_id.cpp'
-      - 'tests/test_0_9_11_a1_material_id_api.cpp'
-      - '.github/workflows/0_9_11_a1_material_id.yml'
   workflow_dispatch:
 
 permissions:
@@ -45,3 +37,50 @@ jobs:
 
       - name: Diff hygiene
         run: git diff --check
+
+  host-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Run P3 lifetime regressions
+        run: bash tests/run_pattern_phrase_p3_tests.sh
+
+      - name: Run P3-U1 UI regressions
+        run: bash tests/run_pattern_phrase_p3_u1_tests.sh
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
