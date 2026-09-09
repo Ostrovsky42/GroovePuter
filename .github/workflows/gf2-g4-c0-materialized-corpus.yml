@@ -31,10 +31,8 @@ on:
       - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
   workflow_dispatch:
 
-# TEMPORARY G4-I5 baseline-refresh authority. Remove after the validated House
-# census commit is materialized; final exact-SHA verification must be read-only.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   materialized-corpus:
@@ -84,64 +82,6 @@ jobs:
         run: |
           bash tests/run_gf2_g4_i5_tests.sh \
             > build/host-tests/gf2-g4-c0/g4-i5.log
-
-      - name: Validate and materialize G4-I5 House FEEL census baseline
-        run: |
-          set -euo pipefail
-          census='docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv'
-          old="$(mktemp)"
-          git show "HEAD:${census}" > "${old}"
-          python3 tools/gf2/generate_gf2_i2a_feel_amplitude_census.py
-
-          python3 - "${old}" "${census}" <<'PY'
-          import itertools
-          import sys
-
-          old_path, new_path = sys.argv[1:]
-          old = open(old_path, encoding='utf-8').read().splitlines()
-          new = open(new_path, encoding='utf-8').read().splitlines()
-          if len(old) != 1816 or len(new) != 1816:
-              raise SystemExit(f'G4-I5 census row-count drift: old={len(old)-1} new={len(new)-1}')
-          if old[0] != new[0]:
-              raise SystemExit('G4-I5 census header drift')
-
-          changed = []
-          for index, (before, after) in enumerate(zip(old[1:], new[1:]), start=2):
-              if before == after:
-                  continue
-              b = before.split('\t')
-              a = after.split('\t')
-              if b[:9] != a[:9]:
-                  raise SystemExit(f'G4-I5 census identity/order drift at line {index}')
-              if not (a[0] == '9' and a[1] == 'House' and
-                      a[2] == '0' and a[3] == 'BASE' and a[4] == 'STAGE7'):
-                  raise SystemExit(f'G4-I5 census changed outside House BASE at line {index}')
-              changed.append((a[6], a[7]))
-
-          profiles = ['STRAIGHT', 'SWING COMPAT', 'LAID BACK', 'PUSH/PULL', 'AUTO']
-          amounts = ['0', '2', '12', '20', '22', '30', '40', '50', '60', '80', '100']
-          expected = set(itertools.product(profiles, amounts))
-          actual = set(changed)
-          if len(changed) != 55 or actual != expected:
-              missing = sorted(expected - actual)
-              extra = sorted(actual - expected)
-              raise SystemExit(
-                  f'G4-I5 expected exact 55-row House BASE matrix; '
-                  f'changed={len(changed)} missing={missing} extra={extra}'
-              )
-
-          print('G4-I5 census candidate validated: exact 55-row House BASE matrix only')
-          PY
-
-          if git diff --quiet -- "${census}"; then
-            echo 'G4-I5 census baseline already current'
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -- "${census}"
-            git commit -m 'docs(gf2): refresh House FEEL census for G4-I5'
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
 
       - name: Run existing GF2-I3 ownership regressions and FEEL census freshness
         run: |
