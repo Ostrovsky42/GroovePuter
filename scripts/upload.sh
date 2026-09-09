@@ -8,7 +8,13 @@ FQBN="${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=hug
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ARDUINO_CLI="${ARDUINO_CLI:-arduino-cli}"
-BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-current}"
+if [ -z "${BUILD_PATH:-}" ]; then
+    if [ -d "${PROJECT_ROOT}/build/cardputer-adv-dynbuffers" ]; then
+        BUILD_PATH="${PROJECT_ROOT}/build/cardputer-adv-dynbuffers"
+    else
+        BUILD_PATH="${PROJECT_ROOT}/build/cardputer-adv-current"
+    fi
+fi
 PORT="/dev/ttyACM0"
 USE_PREBUILT=0
 ALLOW_STOCK_FATFS=0
@@ -53,7 +59,7 @@ else
             echo "Override only for a deliberate A/B: $0 --stock-fatfs" >&2
             exit 1
         fi
-        if ! grep -Fq "grooveputer-sdk-dynbuffers/lib/libfatfs.a" "${MAP_FILE}"; then
+        if ! grep -Eq "(grooveputer-sdk-dynbuffers|fatfs-dynbuffers)/.*libfatfs\.a" "${MAP_FILE}"; then
             echo "REFUSING TO FLASH: this build uses the stock libfatfs.a." >&2
             echo "It reboot-loops with an SD card inserted (FS1)." >&2
             echo "Build with: bash scripts/build_cardputer_dynbuffers.sh" >&2
