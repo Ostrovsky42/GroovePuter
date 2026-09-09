@@ -145,14 +145,14 @@ constexpr RhythmCompatibilityCandidate kPsytrance[] = {
     candidate(Archetype::StraightDrive, 120), candidate(Archetype::OffbeatOpenHat, 110),
     candidate(Archetype::RollingAcid, 100),
 };
-// G4-I2 is deliberately additive: retain the established dub/space vocabulary
-// and add one low-weight independent techno-skeleton statement. This prevents
-// Steppers from being the sole four-floor witness without canonicalizing the
-// whole recipe into generic Techno.
+// G4-I4: Dub Techno recipe 5 owns only ideas with an explicit structural
+// techno-skeleton witness. The retained Steppers candidate also preserves the
+// dub chord-response vocabulary. OneDropSpace, SparseSkank and ChordResponse
+// remain available to Reggae/Dub owners instead of entering through timbre/FX.
 constexpr RhythmCompatibilityCandidate kDubTechno[] = {
     candidate(Archetype::StraightDrive, 55),
-    candidate(Archetype::OneDropSpace, 110), candidate(Archetype::Steppers, 100),
-    candidate(Archetype::SparseSkank, 110), candidate(Archetype::ChordResponse, 120),
+    candidate(Archetype::BrokenTechno, 65),
+    candidate(Archetype::Steppers, 100),
 };
 constexpr RhythmCompatibilityCandidate kChicagoJack[] = {
     candidate(Archetype::StraightAcid, 120), candidate(Archetype::SparseAcid, 100),
