@@ -10,6 +10,7 @@ on:
       - 'tests/run_gf2_g4_c0_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
       - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
+      - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
   workflow_dispatch:
 
 permissions:
