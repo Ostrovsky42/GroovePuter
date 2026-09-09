@@ -32,8 +32,12 @@ constexpr const char* kNotObserved = "NOT_OBSERVED";
 
 struct ProfileCase {
   uint16_t ordinal = 0;
+  GenerativeMode genre = GenerativeMode::Acid;
+  GenreRecipeId recipe = kBaseRecipeId;
   GenreSettings settings{};
   std::string profileId;
+  std::string genreName;
+  std::string recipeName;
 };
 
 std::vector<ProfileCase> enumerateProfiles() {
@@ -51,15 +55,15 @@ std::vector<ProfileCase> enumerateProfiles() {
       }
       ProfileCase value{};
       value.ordinal = ordinal++;
+      value.genre = genre;
+      value.recipe = recipe;
       value.settings.generativeMode = static_cast<uint8_t>(genreIndex);
       value.settings.recipe = static_cast<uint8_t>(recipe);
       value.settings.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Auto);
       value.settings.rhythmArchetypeId = kNoArchetypeId;
-      const std::string genreName = GenreCatalog::generativeModeName(genre);
-      const std::string recipeName = recipe == kBaseRecipeId
-          ? "BASE"
-          : GenreCatalog::recipeName(recipe);
-      value.profileId = genreName + "/" + recipeName;
+      value.genreName = GenreCatalog::generativeModeName(genre);
+      value.recipeName = recipe == kBaseRecipeId ? "BASE" : GenreCatalog::recipeName(recipe);
+      value.profileId = value.genreName + std::string("/") + value.recipeName;
       profiles.push_back(value);
     }
   }
