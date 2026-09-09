@@ -1,0 +1,25 @@
+name: 0.9.10 Unified Source Toggle
+
+on:
+  push:
+    branches:
+      - fix/20260909-0.9.10-unified-source-toggle-pure
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+      - name: Run U4B9 source vs MAKE PHRASE contract
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
