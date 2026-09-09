@@ -1,4 +1,4 @@
-name: 0.9.11 A1 MaterialId
+name: 0.9.11 A1 Persistence Identity
 
 on:
   push:
@@ -18,13 +18,13 @@ permissions:
   contents: read
 
 jobs:
-  focused-material-identity:
+  focused-persistence-identity:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build A1 and MelodyPromotion contracts
+      - name: Build A1 persistence contracts
         run: |
           mkdir -p build/host-tests
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
@@ -37,7 +37,7 @@ jobs:
             tests/test_melody_promotion.cpp \
             -o build/host-tests/test_melody_promotion
 
-      - name: Run A1 material identity contracts
+      - name: Run A1 persistence identity contracts
         run: |
           build/host-tests/test_0_9_11_a1_material_id
           build/host-tests/test_0_9_11_a1_material_id_api
