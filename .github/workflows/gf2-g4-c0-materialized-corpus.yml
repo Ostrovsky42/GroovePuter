@@ -67,19 +67,28 @@ jobs:
 
       - name: Run existing GF2-I3 ownership regressions
         run: |
-          bash tests/run_gf2_i3_tests.sh \
-            > build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+          set -o pipefail
+          bash tests/run_gf2_i3_tests.sh 2>&1 | \
+            tee build/host-tests/gf2-g4-c0/gf2-i3-regression.log
 
       - name: Print accepted G4-C0 summary
-        run: cat build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
+        if: always()
+        run: |
+          test -f build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt && \
+            cat build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt || true
 
       - name: Print focused verification summaries
+        if: always()
         run: |
-          cat build/host-tests/gf2-g4-c0/g4-r1.log
-          cat build/host-tests/gf2-g4-c0/g4-i3.log
-          cat build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+          for log in g4-r1.log g4-i3.log gf2-i3-regression.log; do
+            if test -f "build/host-tests/gf2-g4-c0/${log}"; then
+              echo "===== ${log} ====="
+              cat "build/host-tests/gf2-g4-c0/${log}"
+            fi
+          done
 
       - name: Upload G4-C0 evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: g4-c0-materialized-corpus
