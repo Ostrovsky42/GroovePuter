@@ -1,0 +1,79 @@
+name: 0.9.11 Apply Hybrid Song truthfulness patch
+
+on:
+  push:
+    branches:
+      - research/20260909-01-hybrid-song-orchestration-ux
+    paths:
+      - ".github/workflows/0-9-11-hybrid-song-apply-truthfulness-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/20260909-01-hybrid-song-orchestration-ux
+          fetch-depth: 0
+
+      - name: Apply exact presentation-only patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          song_path = Path("src/ui/pages/song_page.cpp")
+          phrase_path = Path("src/ui/pages/phrase_page.cpp")
+
+          song = song_path.read_text(encoding="utf-8")
+          phrase = phrase_path.read_text(encoding="utf-8")
+
+          old_song = '''    const char* mode_names[] = { "RND", "SMART", "EVOL", "FILL" };\n    int modeIdx = static_cast<int>(gen_mode_);\n    const char* current_mode = (modeIdx < 4) ? mode_names[modeIdx] : "?";'''
+          new_song = '''    int modeIdx = static_cast<int>(gen_mode_);'''
+          assert song.count(old_song) == 1, "Song generator hint source shape changed"
+          song = song.replace(old_song, new_song, 1)
+
+          old_song_fmt = '''    char buf[16];\n    snprintf(buf, sizeof(buf), "GEN:%s", current_mode);'''
+          new_song_fmt = '''    char buf[20];\n    std::snprintf(buf, sizeof(buf), "GEN ALT:%d/4", modeIdx + 1);'''
+          assert song.count(old_song_fmt) == 1, "Song generator hint formatting source shape changed"
+          song = song.replace(old_song_fmt, new_song_fmt, 1)
+
+          assert phrase.count('gfx.drawText(x + 88, LayoutManager::lineY(0), "DEPTH");') == 1
+          phrase = phrase.replace(
+              'gfx.drawText(x + 88, LayoutManager::lineY(0), "DEPTH");',
+              'gfx.drawText(x + 88, LayoutManager::lineY(0), "LEVEL");',
+              1,
+          )
+
+          assert phrase.count('std::snprintf(line, sizeof(line), "LAST G: %s", outcome);') == 1
+          phrase = phrase.replace(
+              'std::snprintf(line, sizeof(line), "LAST G: %s", outcome);',
+              'std::snprintf(line, sizeof(line), "LAST GEN: %s", outcome);',
+              1,
+          )
+
+          song_path.write_text(song, encoding="utf-8")
+          phrase_path.write_text(phrase, encoding="utf-8")
+          PY
+
+      - name: Verify focused and inherited source contracts
+        run: |
+          python3 tests/test_hybrid_song_orchestration_ui_source_regressions.py
+          python3 tests/test_song_generation_source_regressions.py
+          python3 tests/test_phrase_ui_source_regressions.py
+          git diff --check
+
+      - name: Show bounded production diff
+        run: |
+          git diff -- src/ui/pages/song_page.cpp src/ui/pages/phrase_page.cpp
+
+      - name: Commit verified patch and remove one-shot workflow
+        run: |
+          rm .github/workflows/0-9-11-hybrid-song-apply-truthfulness-patch.yml
+          git config user.name "GroovePuter CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/ui/pages/song_page.cpp src/ui/pages/phrase_page.cpp .github/workflows/0-9-11-hybrid-song-apply-truthfulness-patch.yml
+          git commit -m "fix(ui): neutralize orchestration generator labels"
+          git push origin HEAD:research/20260909-01-hybrid-song-orchestration-ux
