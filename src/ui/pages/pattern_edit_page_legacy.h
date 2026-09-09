@@ -1084,6 +1084,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     gfx.setTextColor(note >= 0 ? COLOR_BLACK : COLOR_WHITE);
     gfx.drawText(tx, ty, note_label);
   }
+  UI::drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK Alt[]:PAGE");
 }
 
 void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
@@ -1275,11 +1276,14 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     }
   }
 
-  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
-  drawFooterBar(gfx, x, y + h - 12, w, 12,
-                "A/Z:Nt F:FX Alt+Arw:Prm",
-                "Q-I:PAT B:Bank Alt[]:PG",
-                focusLabel);
+  // Scanlines disabled: caused flicker on small TFT
+
+  // 5. Footer (consistent with header)
+  UI::drawStandardFooter(gfx,
+                     "A/Z:Nt F:FX Alt+Arw:Prm",
+                     "Q-I:PAT B:Bank Alt[]:PG");
+
+  // NO scanlines - clean and readable
 #else
   drawMinimalStyle(gfx);
 #endif
@@ -1462,12 +1466,12 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     AmberWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
   }
 
-  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
-  AmberWidgets::drawFooterBar(
-      gfx, x, y + h - 12, w, 12,
+  // Scanlines disabled: caused flicker on small TFT
+
+  UI::drawStandardFooter(
+      gfx,
       "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "Q-I:PAT  B:Bank  Alt[]:PG",
-      focusLabel);
+      "Q-I:PAT  B:Bank  Alt[]:PG");
 #else
   drawMinimalStyle(gfx);
 #endif

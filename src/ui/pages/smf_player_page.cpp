@@ -1021,23 +1021,23 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "ENT Open R Name X Delete",
-                               seqMaster ? "F Refresh C Master G Follow"
-                                         : "F Refresh C Master T Tempo");
+        UI::drawStandardFooter(gfx, "[ENT]OPEN R:NAME [X]DEL",
+                               seqMaster ? "F:REFRESH C:MSTR G:FOLLOW"
+                                         : "F:REFRESH C:MSTR T:TEMPO");
     } else if (muteMixerVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                               "1-9 Hot ENT/K Sel A AllOn");
+        UI::drawStandardFooter(gfx, "[U/D]SELECT [L/R]PAGE",
+                               "1-9:HOT [ENT]SEL A:ALLON");
     } else if (channelInspectorVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
-                               "U Mutes D Perf B Files");
+        UI::drawStandardFooter(gfx, "[U/D]SCROLL I:PLAYER",
+                               "U:MUTES D:PERF B Files");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player B Files I Channels",
-                               seqMaster ? "U Mutes G Follow T Tempo"
-                                         : "U Mutes Space MIDI T Tempo");
+        UI::drawStandardFooter(gfx, "D:PLAYER B Files I:CHANNELS",
+                               seqMaster ? "U:MUTES G:FOLLOW T:TEMPO"
+                                         : "U:MUTES [SPC]MIDI T:TEMPO");
     } else {
         UI::drawStandardFooter(gfx,
-                               seqMaster ? "Space MIDI G Follow C Master"
-                                         : "Space MIDI C Master R RESTART",
-                               "1-9 SMF Mute U Table I Info");
+                               seqMaster ? "[SPC]MIDI G:FOLLOW C:MSTR"
+                                         : "[SPC]MIDI C:MSTR R RESTART",
+                               "1-9:MUTE U:TABLE I:INFO");
     }
 }

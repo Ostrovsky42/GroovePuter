@@ -801,11 +801,11 @@ void PerformPage::drawContent(IGfx& gfx) {
 void PerformPage::drawFooter(IGfx& gfx) {
     if (toolsLayerVisible_) {
         UI::drawStandardFooter(gfx,
-                               "Tab/Bksp Context  ^/v Row  </> Value",
-                               "Enter Action  Esc Live");
+                               "[TAB]CTX [U/D]ROW [L/R]VAL",
+                               "[ENT]ACTION [ESC]LIVE");
         return;
     }
     UI::drawStandardFooter(gfx,
-                           "\\ Target  N Note  ,/. Scale",
-                           "Tab Tools  -/= Oct  X Panic");
+                           "Tab Tools [\\]TARGET [,]SCALE",
+                           "[-/+]OCT [N]NOTE [X]PANIC");
 }

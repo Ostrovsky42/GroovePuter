@@ -968,7 +968,7 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
+    UI::drawStandardFooter(gfx, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
 }
 
 void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
@@ -1013,7 +1013,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
+    UI::drawStandardFooter(gfx, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
 }
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
@@ -1106,6 +1106,8 @@ void GlobalDrumFeelPage::draw(IGfx& gfx) {
   int decPct = static_cast<int>(std::clamp(dfx.reverbDecay, 0.05f, 0.95f) * 100.0f + 0.5f);
   std::snprintf(buf, sizeof(buf), "DR DEC %d%%", decPct);
   Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 5);
+
+  UI::drawStandardFooter(gfx, "[TAB]AUTO [U/D]ROW [L/R]VAL", "CHAR COMP ATT SUS REV");
 }
 
 void GlobalDrumFeelPage::adjustDrumFx(int row, float delta) {
