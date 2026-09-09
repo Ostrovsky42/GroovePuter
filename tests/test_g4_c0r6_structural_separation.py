@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RED characterization for G4-C0R6 identity/take structural separation."""
+"""Characterization for G4-C0R6 identity/take structural separation."""
 
 from __future__ import annotations
 
@@ -105,8 +105,27 @@ class StructuralSeparationTest(unittest.TestCase):
 
         collisions = c0r6.structural_collision_groups(rows)
 
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0], (1, 2))
+        self.assertEqual(collisions, [(1, 2)])
+
+    def test_attempt_order_does_not_create_false_musical_distinction(self) -> None:
+        rows = []
+        masks = ("0x1111", "0x2222", "0x3333", "0x4444")
+        for attempt, mask in enumerate(masks):
+            rows.append(row(identity=1, attempt=attempt, bass_attack=mask))
+        for attempt, mask in enumerate(reversed(masks)):
+            rows.append(row(identity=2, attempt=attempt, bass_attack=mask))
+
+        self.assertEqual(c0r6.structural_collision_groups(rows), [(1, 2)])
+
+    def test_same_audible_take_space_with_different_selection_is_topology_convergence(self) -> None:
+        rows = []
+        masks = ("0x1111", "0x2222", "0x3333", "0x4444")
+        for attempt, mask in enumerate(masks):
+            rows.append(row(identity=1, attempt=attempt, bass_attack=mask, bass_rhythm="2"))
+            rows.append(row(identity=2, attempt=attempt, bass_attack=mask, bass_rhythm="7"))
+
+        self.assertEqual(c0r6.structural_collision_groups(rows), [])
+        self.assertEqual(c0r6.topology_collision_groups(rows), [(1, 2)])
 
 
 if __name__ == "__main__":
