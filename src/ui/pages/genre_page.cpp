@@ -291,10 +291,11 @@ void GenrePage::draw(IGfx& gfx) {
     rhythmFallbackPending_ = false;
   }
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
-  const IGfxColor axisColor = palette.genre;
   const int profileIndex = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
   const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
+  const auto genreProf = UI::genreProfile(selectedGenre);
+  const IGfxColor axisColor = genreProf.primary;
   const GroovePuterRhythm::GenerationProfileView selectedProfile =
       GroovePuterRhythm::generationProfileFor(pendingSettings());
   const GenreSettings& settings = mini_acid_.sceneManager().currentScene().genre;
@@ -307,6 +308,11 @@ void GenrePage::draw(IGfx& gfx) {
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/2",
                       "CORRIDOR / VOCABULARY", axisColor, palette);
+  int tagBadgeW = gfx.textWidth(genreProf.tag) + 8;
+  int tagBadgeX = x + width - tagBadgeW - 2;
+  gfx.fillRect(tagBadgeX, LayoutManager::lineY(0) + 1, tagBadgeW, 9, genreProf.primary);
+  gfx.setTextColor(COLOR_BLACK);
+  gfx.drawText(tagBadgeX + 4, LayoutManager::lineY(0) + 2, genreProf.tag);
   drawRecipeOverlay(gfx, recipeIndex_);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "GENRE",
@@ -341,7 +347,7 @@ void GenrePage::draw(IGfx& gfx) {
       static_cast<unsigned>(selectedProfile.corridor.bpmMax),
       static_cast<unsigned>(selectedProfile.corridor.densityMin),
       static_cast<unsigned>(selectedProfile.corridor.densityMax));
-  gfx.setTextColor(palette.muted);
+  gfx.setTextColor(genreProf.secondary);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   const char* pendingSuffix =

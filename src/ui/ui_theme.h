@@ -10,6 +10,7 @@ namespace UI {
 // Global style state is owned by ui_common.cpp. The palette API lives in this
 // small header so common widgets can be themed without depending on ui_common.h.
 extern VisualStyle currentStyle;
+extern IGfxColor currentGenreAccent;
 
 struct ThemePalette {
     IGfxColor background;
@@ -89,7 +90,13 @@ inline ThemePalette themePalette(VisualStyle style) {
 }
 
 inline ThemePalette themePalette() {
-    return themePalette(currentStyle);
+    ThemePalette p = themePalette(currentStyle);
+    if (currentGenreAccent.color24() != 0) {
+        p.accent = currentGenreAccent;
+        p.focus = currentGenreAccent;
+        p.active = currentGenreAccent;
+    }
+    return p;
 }
 
 inline const char* themeName(VisualStyle style) {

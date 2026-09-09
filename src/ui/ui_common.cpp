@@ -19,10 +19,13 @@ namespace UI {
     // Global overlay state
     WaveformOverlayState waveformOverlay;
     VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
+    IGfxColor currentGenreAccent = IGfxColor(0);
     bool hintOverlayActive = false;
 
     // Internal state for the compact global audio waveform.
     namespace {
+        MiniAcid* gActiveEngine = nullptr;
+        int sVuDecay = 0;
         constexpr int kOverlayMaxPoints = 256;
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
@@ -213,6 +216,10 @@ namespace UI {
 
     UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
                                              UiStatusContext context) {
+        gActiveEngine = &mini_acid;
+        const auto mode = static_cast<GenerativeMode>(
+            mini_acid.sceneManager().currentScene().genre.generativeMode);
+        currentGenreAccent = genreAccentColor(mode);
         return buildUiStatusSnapshot(mini_acid, context);
     }
 
@@ -319,6 +326,95 @@ namespace UI {
                          p.panel);
 
             const int y = Layout::FOOTER.y + 3;
+
+            if (gActiveEngine != nullptr) {
+                // 1. Audio Peak VU Meter (x: 2..54)
+                const auto& waveBuffer = gActiveEngine->getWaveformBuffer();
+                int32_t peak = 0;
+                for (size_t i = 0; i < waveBuffer.count; ++i) {
+                    int32_t s = std::abs(static_cast<int32_t>(waveBuffer.data[i]));
+                    if (s > peak) peak = s;
+                }
+                if (peak > sVuDecay) {
+                    sVuDecay = peak;
+                } else {
+                    sVuDecay = (sVuDecay * 7) / 8;
+                }
+                int numSegments = 0;
+                if (sVuDecay > 150) numSegments = 1;
+                if (sVuDecay > 800) numSegments = 2;
+                if (sVuDecay > 2500) numSegments = 3;
+                if (sVuDecay > 6000) numSegments = 4;
+                if (sVuDecay > 13000) numSegments = 5;
+                if (sVuDecay > 22000) numSegments = 6;
+
+                gfx.setTextColor(p.dim);
+                gfx.drawText(2, y + 1, "VU");
+                for (int i = 0; i < 6; ++i) {
+                    int sx = 16 + i * 6;
+                    IGfxColor segCol = (i < 3) ? IGfxColor(0x00E676)
+                                     : ((i < 5) ? IGfxColor(0xFFD600) : IGfxColor(0xFF1744));
+                    if (i < numSegments) {
+                        gfx.fillRect(sx, y, 5, 7, segCol);
+                    } else {
+                        gfx.drawRect(sx, y, 5, 7, IGfxColor(0x18222B));
+                    }
+                }
+
+                gfx.drawLine(56, y - 1, 56, y + 7, p.panel);
+
+                // 2. Genre Badge (Right edge: x: badgeX..238)
+                const auto& genre = gActiveEngine->sceneManager().currentScene().genre;
+                const auto mode = static_cast<GenerativeMode>(genre.generativeMode);
+                const auto& prof = genreProfile(mode);
+
+                int badgeW = gfx.textWidth(prof.tag) + 8;
+                int badgeX = Layout::FOOTER.w - badgeW - 2;
+
+                if (gStatusSnapshot.dirty) {
+                    gfx.setTextColor(p.warning);
+                    gfx.drawText(badgeX - 8, y + 1, "*");
+                }
+                gfx.fillRect(badgeX, y, badgeW, 8, prof.primary);
+                gfx.setTextColor(COLOR_BLACK);
+                gfx.drawText(badgeX + 4, y + 1, prof.tag);
+
+                gfx.drawLine(badgeX - 12, y - 1, badgeX - 12, y + 7, p.panel);
+
+                // 3. Center zone (x: 60 .. badgeX - 14):
+                // If page published contextual parameter info, show it!
+                if (gInfoValid && gInfoLeft[0] != '\0') {
+                    gfx.setTextColor(p.accent);
+                    int maxW = (badgeX - 16) - 60;
+                    Widgets::drawClippedText(gfx, 60, y + 1, maxW, gInfoLeft);
+                } else {
+                    // Live Transport & Position
+                    const bool playing = gActiveEngine->isPlaying();
+                    if (playing) {
+                        gfx.setTextColor(IGfxColor(0x00E676));
+                        gfx.drawText(60, y + 1, "PLAY");
+                    } else {
+                        gfx.setTextColor(p.dim);
+                        gfx.drawText(60, y + 1, "STOP");
+                    }
+
+                    char posBuf[24];
+                    if (gActiveEngine->songModeEnabled()) {
+                        int pos = gActiveEngine->currentSongPosition() + 1;
+                        int len = gActiveEngine->songLength();
+                        std::snprintf(posBuf, sizeof(posBuf), "SONG %02d/%02d", pos, len > 0 ? len : 16);
+                        gfx.setTextColor(p.warning);
+                    } else {
+                        int step = gActiveEngine->currentStep();
+                        int stepInBar = (step >= 0 ? (step % 16) + 1 : 1);
+                        std::snprintf(posBuf, sizeof(posBuf), "STEP %02d/16", stepInBar);
+                        gfx.setTextColor(playing ? p.text : p.dim);
+                    }
+                    gfx.drawText(94, y + 1, posBuf);
+                }
+                return;
+            }
+
             if (gInfoValid) {
                 if (gInfoLeft[0] != '\0') {
                     gfx.setTextColor(p.text);
