@@ -7,12 +7,14 @@ on:
     paths:
       - "src/ui/pages/song_page.cpp"
       - "src/ui/pages/phrase_page.cpp"
+      - "src/ui/help_dialog_frames.h"
       - "tests/test_hybrid_song_orchestration_ui_source_regressions.py"
       - ".github/workflows/0-9-11-hybrid-song-orchestration-ux.yml"
   pull_request:
     paths:
       - "src/ui/pages/song_page.cpp"
       - "src/ui/pages/phrase_page.cpp"
+      - "src/ui/help_dialog_frames.h"
       - "tests/test_hybrid_song_orchestration_ui_source_regressions.py"
       - ".github/workflows/0-9-11-hybrid-song-orchestration-ux.yml"
 
