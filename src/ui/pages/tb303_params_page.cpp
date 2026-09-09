@@ -8,6 +8,7 @@
 #endif
 #include "tb303_params_page.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
 #include "../phrase_source_toggle.h"
 #include "../ui_utils.h"
 #include "../../debug_log.h"
@@ -804,11 +805,20 @@ void TB303ParamsPage::draw(IGfx& gfx) {
     const int width = content.w - Layout::CONTENT_PAD_X * 2;
     const int spacing = width / 5;
     const char* keyHints[4] = {"A/Z", "S/X", "D/C", "F/V"};
-    const int keyY = content.y + kMainKeyHintY;
-    gfx.setTextColor(kDimText);
-    for (int i = 0; i < 4; ++i) {
-      const int cx = x0 + spacing * (i + 1);
-      gfx.drawText(cx - gfx.textWidth(keyHints[i]) / 2, keyY, keyHints[i]);
+    if (UI::isHintOverlayActive()) {
+      const UI::ThemePalette p = UI::themePalette();
+      const int keyY = content.y + kMainKeyHintY;
+      for (int i = 0; i < 4; ++i) {
+        const int cx = x0 + spacing * (i + 1);
+        const int tw = gfx.textWidth(keyHints[i]);
+        const int badgeW = tw + 4;
+        const int badgeH = 9;
+        const int bx = cx - badgeW / 2;
+        const int by = keyY - 1;
+        gfx.fillRect(bx, by, badgeW, badgeH, p.accent);
+        gfx.setTextColor(COLOR_BLACK);
+        gfx.drawText(cx - tw / 2, keyY, keyHints[i]);
+      }
     }
     drawMainSummary(gfx, contentRect);
   }
@@ -951,13 +961,6 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
         withAudioGuard([&]() { mini_acid_.adjust303Parameter(TB303ParamId::FilterType, 1, voice_index_); });
       } else {
         adjustGenericParameter(5, 1, fine);
-      }
-      return true;
-    case 'h':
-      if (isTb303Engine()) {
-        withAudioGuard([&]() { mini_acid_.adjust303Parameter(TB303ParamId::FilterType, -1, voice_index_); });
-      } else {
-        adjustGenericParameter(5, -1, fine);
       }
       return true;
 

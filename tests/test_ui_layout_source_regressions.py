@@ -27,7 +27,7 @@ class UiLayoutSourceRegressions(unittest.TestCase):
         )
         self.assertIn("void SongPage::drawRetroClassicStyle", source)
         self.assertIn("void SongPage::drawAmberStyle", source)
-        self.assertGreaterEqual(source.count("EDIT:%c  PLAY:%c"), 2)
+        self.assertGreaterEqual(source.count("EDIT:%c PLAY:%c"), 2)
         self.assertGreaterEqual(source.count("const int gap = 4;"), 2)
         self.assertIn("UI::themePalette(::VisualStyle::MINIMAL)", source)
         self.assertGreaterEqual(source.count("const int gap = 4;"), 3)

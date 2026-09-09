@@ -15,10 +15,10 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> None:
-    # Field-list grammar: Up/Down already own focus movement. Plain Tab must not
-    # duplicate that action because Tab is reserved for peer/local representation.
-    require("UIInput::isTab(event)" not in FEEL,
-            "FEEL must not consume plain Tab as next-field navigation")
+    # Field-list grammar: Up/Down already own focus movement. Plain Tab is
+    # reserved for peer/local representation switching.
+    require("requestPageTransition(WorkflowPages::kGenre)" in FEEL,
+            "FEEL Tab must switch to Genre peer")
     require("TAB/U/D:FIELD" not in FEEL,
             "FEEL footer must not advertise Tab as field navigation")
     require("U/D:FIELD L/R:CHANGE" in FEEL,
@@ -26,8 +26,8 @@ def main() -> None:
     require("nav == GROOVEPUTER_UP" in FEEL and "nav == GROOVEPUTER_DOWN" in FEEL,
             "FEEL Up/Down focus navigation must remain intact")
 
-    require("UIInput::isTab(event)" not in GENRE,
-            "GENRE must not consume plain Tab as next-field navigation")
+    require("requestPageTransition(WorkflowPages::kFeel)" in GENRE,
+            "GENRE Tab must switch to Feel peer")
     require("TAB/U/D:FIELD" not in GENRE,
             "GENRE footer must not advertise Tab as field navigation")
     require("U/D:FIELD L/R:CHANGE" in GENRE,

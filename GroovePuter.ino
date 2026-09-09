@@ -852,6 +852,17 @@ void loop() {
       M5Cardputer.Keyboard.keysState();
   reconcilePerformanceKeys(currentKeysState);
 
+  const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
+                      GroovePuterInput::containsWord(currentKeysState, 'h') ||
+                      GroovePuterInput::containsWord(currentKeysState, 'H') ||
+                      M5Cardputer.Keyboard.isKeyPressed('h') ||
+                      M5Cardputer.Keyboard.isKeyPressed('H')) &&
+                     !currentKeysState.alt && !currentKeysState.ctrl && !currentKeysState.fn;
+  if (hHeld != UI::isHintOverlayActive()) {
+    UI::setHintOverlayActive(hHeld);
+    drawUI();
+  }
+
   const uint32_t candidatePressId = nextPressId;
   const bool dispatched = processKeyEdges(
       currentKeysState,

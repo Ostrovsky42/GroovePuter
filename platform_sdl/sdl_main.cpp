@@ -11,6 +11,7 @@
 #include "sdl_display.h"
 #include "../cardputer_display.h"
 #include "../src/ui/miniacid_display.h"
+#include "../src/ui/ui_common.h"
 #include "../src/dsp/miniacid_engine.h"
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
@@ -190,6 +191,14 @@ static void handleEvents(AppState& s) {
         grooveputerEvent.key = static_cast<char>(keycode);
       }
 
+      if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.shift && !grooveputerEvent.meta &&
+          (keycode == SDLK_h || sc == SDL_SCANCODE_H)) {
+        if (!UI::isHintOverlayActive()) {
+          UI::setHintOverlayActive(true);
+          if (s.ui) s.ui->update();
+        }
+      }
+
       bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
       if (handledByUI) continue;
 
@@ -285,6 +294,12 @@ static void handleEvents(AppState& s) {
       }
     } else if (e.type == SDL_KEYUP) {
       const SDL_Keycode keycode = e.key.keysym.sym;
+      if (keycode == SDLK_h || e.key.keysym.scancode == SDL_SCANCODE_H) {
+        if (UI::isHintOverlayActive()) {
+          UI::setHintOverlayActive(false);
+          if (s.ui) s.ui->update();
+        }
+      }
       const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
       if (!modified && keycode >= 32 && keycode < 127) {
         s.keyboard.keyUp(static_cast<char>(keycode));
