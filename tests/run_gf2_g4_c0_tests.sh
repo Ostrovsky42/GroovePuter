@@ -24,21 +24,28 @@ CXXFLAGS=(
   -I"${ROOT}"
 )
 
-TEST="${ROOT}/tests/test_gf2_g4_c0_materialized_corpus.cpp"
-
 build() {
   local compiler="$1"
   local output="$2"
-  shift 2
+  local test="$3"
+  shift 3
   local resolved=()
   local source
   for source in "${SOURCES[@]}"; do
     resolved+=("${ROOT}${source}")
   done
-  "$compiler" "${CXXFLAGS[@]}" "$@" "${resolved[@]}" "$TEST" -o "$output"
+  "$compiler" "${CXXFLAGS[@]}" "$@" "${resolved[@]}" "$test" -o "$output"
 }
 
-build "${CXX:-g++}" "$BUILD/g4-c0"
-"$BUILD/g4-c0" | tee "$BUILD/g4-c0-summary.txt"
+MAIN_TEST="${ROOT}/tests/test_gf2_g4_c0_materialized_corpus.cpp"
+CROSS_TEST="${ROOT}/tests/test_gf2_g4_c0_cross_genre.cpp"
+
+build "${CXX:-g++}" "$BUILD/g4-c0" "$MAIN_TEST"
+"$BUILD/g4-c0" | tee "$BUILD/g4-c0-main.txt"
+
+build "${CXX:-g++}" "$BUILD/g4-c0-cross" "$CROSS_TEST"
+"$BUILD/g4-c0-cross" | tee "$BUILD/g4-c0-cross.txt"
+
+cat "$BUILD/g4-c0-main.txt" "$BUILD/g4-c0-cross.txt" > "$BUILD/g4-c0-summary.txt"
 
 echo "G4-C0 materialized corpus host gate: PASS"
