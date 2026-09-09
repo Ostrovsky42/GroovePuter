@@ -16,26 +16,27 @@
 namespace GroovePuterMaterial {
 
 static_assert(kMaxGlobalPatterns <= 256,
-              "MaterialId::globalSlot must cover the global slot space");
+              "MaterialAddress::globalSlot must cover the global slot space");
 
 inline bool residentSlotInRange(int voice, int slot) {
   return voice >= 0 && voice < Scene::kMaterialVoices &&
          slot >= 0 && slot < Scene::kMaterialSlotsPerVoice;
 }
 
-inline bool materialIdInRange(MaterialId id) {
-  return static_cast<int>(id.voice) < Scene::kMaterialVoices &&
-         static_cast<int>(id.globalSlot) < kMaxGlobalPatterns;
+inline bool materialAddressInRange(MaterialAddress address) {
+  return static_cast<int>(address.voice) < Scene::kMaterialVoices &&
+         static_cast<int>(address.globalSlot) < kMaxGlobalPatterns;
 }
 
-inline bool materialIdIsResident(MaterialId id, int activePage) {
-  return materialIdInRange(id) && activePage >= 0 && activePage < kMaxPages &&
-         songPatternPage(static_cast<int>(id.globalSlot)) == activePage;
+inline bool materialAddressIsResident(MaterialAddress address, int activePage) {
+  return materialAddressInRange(address) && activePage >= 0 &&
+         activePage < kMaxPages &&
+         songPatternPage(static_cast<int>(address.globalSlot)) == activePage;
 }
 
-inline int residentSlotFor(MaterialId id) {
-  if (!materialIdInRange(id)) return -1;
-  const int globalSlot = static_cast<int>(id.globalSlot);
+inline int residentSlotFor(MaterialAddress address) {
+  if (!materialAddressInRange(address)) return -1;
+  const int globalSlot = static_cast<int>(address.globalSlot);
   return (songPatternBank(globalSlot) * Bank<SynthPattern>::kPatterns) +
          songPatternIndexInBank(globalSlot);
 }
