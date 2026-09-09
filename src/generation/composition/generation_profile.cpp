@@ -84,6 +84,15 @@ constexpr WeightedIdentityCandidate kBassMachine[] = {
     weighted(BassRhythmId::OffbeatPush, 70),
     weighted(BassRhythmId::SyncopatedHook, 120),
 };
+// G4-I1: DnB's rhythm candidates are all Breakbeat. Keep its editorial
+// weights inside the same semantic vocabulary already owned by bass_rhythm.cpp
+// rather than sending FourFloor-only identities through an explicit request.
+constexpr WeightedIdentityCandidate kBassBreakbeat[] = {
+    weighted(BassRhythmId::KickAnswer, 100),
+    weighted(BassRhythmId::GapFill, 100),
+    weighted(BassRhythmId::HalfTimePocket, 100),
+    weighted(BassRhythmId::SyncopatedHook, 100),
+};
 constexpr WeightedIdentityCandidate kBassSlow[] = {
     weighted(BassRhythmId::KickAnswer, 75),
     weighted(BassRhythmId::GapFill, 45),
@@ -334,7 +343,7 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::HipHop, 0, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {76,104,90,16,3,10}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::FunkSoul, 0, view(kFeelSwingDrive), view(kBassBoomBap), view(kChordLoFi), view(kProgressionFunk), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {88,116,102,16,4,11}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::UkGarage, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {126,140,132,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::LoFi, 0, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {54,90,72,16,2,8}, CompositionSecondaryRole::ChordWithMelodicFill, HarmonicChangeRateId::Every4Beats),
 
     profile(GenerativeMode::Broken, 1, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {125,138,132,16,5,13}, CompositionSecondaryRole::Melodic),
