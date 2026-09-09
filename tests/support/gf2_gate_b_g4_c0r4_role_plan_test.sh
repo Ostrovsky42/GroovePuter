@@ -68,3 +68,8 @@ for row in rows:
 print("G4-C0R4 native bass vocabulary: production candidate set observed")
 print("G4-C0R4 planning bass: realized role-plan masks observed separately from audible bass")
 PY
+
+# C0R5 expands the exact same production-backed observer to the complete
+# four-profile P1 / attempt-0 identity corpus. Keep this chained here so the
+# existing Gate-B step proves C0R4 before C0R5 is allowed to run.
+bash "${ROOT}/tests/support/gf2_gate_b_g4_c0r5_full_role_census_test.sh"
