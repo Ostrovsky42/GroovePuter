@@ -11,13 +11,14 @@
 
 // U4B9: the single owner of the PATTERN/PHRASE switch.
 //
-// The decision has three branches and carries an undo receipt. The source row,
-// ALT+R and explicit MAKE PHRASE all reuse this owner rather than duplicating
-// projection or source state in the UI.
+// SELECT SOURCE and MAKE PHRASE are distinct musical actions. Source selection
+// only changes which already-authoritative buffer is heard/edited; it must not
+// project Pattern material into an empty Phrase as a side effect. MAKE PHRASE
+// owns the one-way Pattern -> Phrase materialization gesture.
 //
-// The receipt carries the source as well as the material, so Ctrl+Z restores
-// PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
-// one source holding the other's content.
+// Both operations carry the same runtime Phrase undo receipt so Ctrl+Z restores
+// PATTERN/PHRASE truth and the Phrase buffer atomically rather than leaving the
+// voice on one source holding the other's content.
 namespace PhraseSourceToggle {
 
 using AudioGuard = std::function<void(const std::function<void()>&)>;
@@ -29,6 +30,16 @@ enum class Result : uint8_t {
   SwitchedToPattern,
 };
 
+inline GroovePuterUndo::RuntimePhraseUndoPayload makeReceipt(
+    MiniAcid& engine, int voiceIndex) {
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
+  receipt.source =
+      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
+  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+  return receipt;
+}
+
 inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
                      int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
@@ -37,14 +48,8 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
 
   const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
                         MiniAcid::SequencedSource::Phrase;
-  const bool hasPhraseMaterial =
-      engine.currentPhraseBuffer(voiceIndex).count > 0;
-
-  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
-  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
-  receipt.source =
-      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
-  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+  const GroovePuterUndo::RuntimePhraseUndoPayload receipt =
+      makeReceipt(engine, voiceIndex);
 
   Result result = Result::Rejected;
   const auto apply = [&]() {
@@ -52,19 +57,15 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
         GroovePuterUndo::undoOwner().commitRuntimePrepared(
             GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
               if (onPhrase) {
-                // Back to PATTERN. The phrase material is kept, so returning to
-                // PHRASE later does not re-project over edits.
                 engine.setSequencedSource(voiceIndex,
                                           MiniAcid::SequencedSource::Pattern);
                 result = Result::SwitchedToPattern;
-              } else if (hasPhraseMaterial) {
-                // Material already exists: this is a source switch, not a
-                // conversion, so makePhrase() must not run again.
+              } else {
+                // Pure source selection. An empty Phrase remains empty; only
+                // explicit MAKE PHRASE is allowed to materialize Pattern data.
                 engine.setSequencedSource(voiceIndex,
                                           MiniAcid::SequencedSource::Phrase);
                 result = Result::SwitchedToPhrase;
-              } else if (engine.makePhrase(voiceIndex)) {
-                result = Result::MadePhrase;
               }
             });
     if (!committed) result = Result::Rejected;
@@ -75,10 +76,10 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   return result;
 }
 
-// Explicit one-way musical gesture from Pattern. It intentionally delegates to
-// the same owner as SRC: no event copy, no UI material model, no second source
-// flag. If the voice is already on Phrase, repeating MAKE PHRASE is a no-op so
-// edited material cannot be silently re-projected.
+// Explicit one-way Pattern -> Phrase materialization. This is deliberately not
+// implemented by toggle(): SOURCE is selection-only, while MAKE PHRASE is the
+// sole command allowed to project the Pattern into Phrase material. Repeating
+// MAKE PHRASE on an already-active Phrase is a no-op so edits are never lost.
 inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
                        int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
@@ -86,8 +87,22 @@ inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
       MiniAcid::SequencedSource::Phrase) {
     return true;
   }
-  const Result result = toggle(engine, audioGuard, voiceIndex);
-  return result == Result::MadePhrase || result == Result::SwitchedToPhrase;
+
+  const GroovePuterUndo::RuntimePhraseUndoPayload receipt =
+      makeReceipt(engine, voiceIndex);
+  bool materialized = false;
+  const auto apply = [&]() {
+    const bool committed =
+        GroovePuterUndo::undoOwner().commitRuntimePrepared(
+            GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+              materialized = engine.makePhrase(voiceIndex);
+            });
+    if (!committed) materialized = false;
+  };
+
+  if (audioGuard) audioGuard(apply);
+  else apply();
+  return materialized;
 }
 
 }  // namespace PhraseSourceToggle
