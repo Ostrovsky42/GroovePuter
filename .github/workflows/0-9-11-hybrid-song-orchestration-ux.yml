@@ -1,0 +1,20 @@
+name: 0.9.11 Hybrid Song orchestration UX
+
+on:
+  pull_request:
+    paths:
+      - "src/ui/pages/song_page.cpp"
+      - "src/ui/pages/phrase_page.cpp"
+      - "tests/test_hybrid_song_orchestration_ui_source_regressions.py"
+      - ".github/workflows/0-9-11-hybrid-song-orchestration-ux.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify truthful orchestration presentation
+        run: python3 tests/test_hybrid_song_orchestration_ui_source_regressions.py
