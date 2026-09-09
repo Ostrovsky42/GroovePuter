@@ -7,8 +7,10 @@ BIN="${BUILD_DIR}/gf2_gate_b_dump_c0r3_gcc"
 OUT="${BUILD_DIR}/g4-c0r3-semantic-topology.tsv"
 REPLAY="${BUILD_DIR}/g4-c0r3-semantic-topology-replay.tsv"
 
+bash "${ROOT}/tests/support/build_gf2_gate_b_g4_c0r3_probe.sh"
+
 if [[ ! -x "${BIN}" ]]; then
-  echo "G4-C0R3 RED: semantic pre-adapter probe binary is not implemented" >&2
+  echo "G4-C0R3 semantic pre-adapter probe binary was not built" >&2
   exit 1
 fi
 
