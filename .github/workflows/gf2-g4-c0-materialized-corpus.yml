@@ -22,6 +22,7 @@ on:
       - 'tests/run_gf2_g4_i4_tests.sh'
       - 'tests/test_gf2_g4_i5_house_structural_ownership.cpp'
       - 'tests/run_gf2_g4_i5_tests.sh'
+      - 'tests/test_gf2_i2a_feel_magnitude.cpp'
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
