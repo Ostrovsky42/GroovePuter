@@ -170,7 +170,10 @@ bool checkReferenceGenreReachability() {
   std::printf("G4_R1_REFERENCE acid_archetypes=%u house_archetypes=%u\n",
               acidCount, houseCount);
 
-  if (acidCount < 4 || houseCount < 5) {
+  // G4-I5 removes one unowned House idea while preserving four distinct
+  // quarter-pulse archetypes. Reachability protects plurality, not the obsolete
+  // pre-ownership cardinality of five candidates.
+  if (acidCount < 4 || houseCount < 4) {
     std::printf("G4_R1_FAIL R1_REFERENCE_SPACE_COLLAPSE\n");
     return false;
   }
