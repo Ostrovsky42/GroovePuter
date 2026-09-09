@@ -1,0 +1,36 @@
+name: 0.9.11 A1 MaterialId
+
+on:
+  push:
+    branches:
+      - feature/20260909-0.9.11-a1-material-id
+    paths:
+      - 'src/state/material_slot.h'
+      - 'src/state/material_slot_access.h'
+      - 'src/state/melody_promotion.h'
+      - 'tests/test_0_9_11_a1_material_id.cpp'
+      - '.github/workflows/0_9_11_a1_material_id.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-material-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build A1 characterization
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_0_9_11_a1_material_id.cpp \
+            -o build/host-tests/test_0_9_11_a1_material_id
+
+      - name: Run A1 material identity characterization
+        run: build/host-tests/test_0_9_11_a1_material_id
+
+      - name: Diff hygiene
+        run: git diff --check
