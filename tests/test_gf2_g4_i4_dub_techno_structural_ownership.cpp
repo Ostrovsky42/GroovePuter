@@ -3,9 +3,9 @@
 
 #include "scenes.h"
 #include "src/dsp/genre_manager.h"
+#include "src/generation/composition/rhythm_selection.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
 #include "src/generation/rhythm/reference_vocabulary.h"
-#include "src/generation/composition/rhythm_selection.h"
 
 using namespace GroovePuterRhythm;
 
@@ -16,13 +16,12 @@ constexpr StepMask kQuarterNotes =
     stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12);
 constexpr StepMask kBrokenKickFrame = stepBit(0) | stepBit(10);
 constexpr StepMask kBackbeatFrame = stepBit(4) | stepBit(12);
-constexpr StepMask kDubOffbeats =
-    stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14);
+constexpr StepMask kDubChordCanonical = stepBit(2) | stepBit(10);
 
 enum class TechnoSkeletonWitness : uint8_t {
   None = 0,
-  QuarterPulse = 1,
-  BrokenFrame = 2,
+  QuarterPulse,
+  BrokenFrame,
 };
 
 const char* witnessName(TechnoSkeletonWitness witness) {
@@ -68,12 +67,15 @@ TechnoSkeletonWitness witnessForMasks(StepMask kick, StepMask backbeat) {
   return TechnoSkeletonWitness::None;
 }
 
-TechnoSkeletonWitness witnessForArchetype(RhythmArchetypeId archetypeId) {
+const RhythmArchetype* archetypeForId(RhythmArchetypeId archetypeId) {
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(archetypeId);
-  if (definition == nullptr) return TechnoSkeletonWitness::None;
-  const RhythmArchetype* archetype =
-      ReferenceVocabulary::archetypeFor(definition->key);
+  if (definition == nullptr) return nullptr;
+  return ReferenceVocabulary::archetypeFor(definition->key);
+}
+
+TechnoSkeletonWitness witnessForArchetype(RhythmArchetypeId archetypeId) {
+  const RhythmArchetype* archetype = archetypeForId(archetypeId);
   if (archetype == nullptr) return TechnoSkeletonWitness::None;
   return witnessForMasks(
       structuralAnchors(laneFor(*archetype, RhythmRole::Kick)),
@@ -81,15 +83,12 @@ TechnoSkeletonWitness witnessForArchetype(RhythmArchetypeId archetypeId) {
 }
 
 bool hasDubChordDialogue(RhythmArchetypeId archetypeId) {
-  const ReferenceVocabulary::Definition* definition =
-      ReferenceVocabulary::definitionForId(archetypeId);
-  if (definition == nullptr) return false;
-  const RhythmArchetype* archetype =
-      ReferenceVocabulary::archetypeFor(definition->key);
+  const RhythmArchetype* archetype = archetypeForId(archetypeId);
   if (archetype == nullptr) return false;
-  const StepMask chord =
-      structuralAnchors(laneFor(*archetype, RhythmRole::ChordRhythm));
-  return (chord & kDubOffbeats) == kDubOffbeats;
+  const LaneGrammar* chord = laneFor(*archetype, RhythmRole::ChordRhythm);
+  if (chord == nullptr) return false;
+  return (chord->canonicalAnchors & kDubChordCanonical) ==
+         kDubChordCanonical;
 }
 
 StepMask drumOnsets(const DrumPatternSet& drums, uint8_t voice) {
@@ -115,9 +114,13 @@ StrongRhythmMigrationContext contextFor(RealizationLevel level) {
   return context;
 }
 
+uint8_t witnessBit(TechnoSkeletonWitness witness) {
+  return static_cast<uint8_t>(1u << static_cast<uint8_t>(witness));
+}
+
 bool checkAdmittedIdeaOwnership() {
-  const GenreSettings settings = dubTechnoSettings();
-  const RhythmCompatibilityView compatibility = rhythmCompatibilityFor(settings);
+  const RhythmCompatibilityView compatibility =
+      rhythmCompatibilityFor(dubTechnoSettings());
   if (compatibility.candidates == nullptr || compatibility.count < 2) {
     std::printf("G4_I4_FAIL I4_DUB_EMPTY_ADMISSION count=%u\n",
                 compatibility.count);
@@ -127,19 +130,14 @@ bool checkAdmittedIdeaOwnership() {
   uint8_t violations = 0;
   uint8_t witnessKinds = 0;
   uint8_t dubDialogueCandidates = 0;
-
   for (uint8_t index = 0; index < compatibility.count; ++index) {
     const RhythmCompatibilityCandidate candidate = compatibility.candidates[index];
     const TechnoSkeletonWitness witness =
         witnessForArchetype(candidate.archetypeId);
     const bool dubDialogue = hasDubChordDialogue(candidate.archetypeId);
     if (witness == TechnoSkeletonWitness::None) ++violations;
-    if (witness != TechnoSkeletonWitness::None) {
-      witnessKinds = static_cast<uint8_t>(
-          witnessKinds | (1u << static_cast<uint8_t>(witness)));
-    }
+    else witnessKinds = static_cast<uint8_t>(witnessKinds | witnessBit(witness));
     if (dubDialogue) ++dubDialogueCandidates;
-
     std::printf(
         "G4_I4_DUB_CANDIDATE archetype=%u weight=%u witness=%s dub_chord_dialogue=%u\n",
         candidate.archetypeId, candidate.weight, witnessName(witness),
@@ -147,12 +145,9 @@ bool checkAdmittedIdeaOwnership() {
   }
 
   const bool hasQuarter =
-      (witnessKinds & (1u << static_cast<uint8_t>(
-                           TechnoSkeletonWitness::QuarterPulse))) != 0;
+      (witnessKinds & witnessBit(TechnoSkeletonWitness::QuarterPulse)) != 0;
   const bool hasBroken =
-      (witnessKinds & (1u << static_cast<uint8_t>(
-                           TechnoSkeletonWitness::BrokenFrame))) != 0;
-
+      (witnessKinds & witnessBit(TechnoSkeletonWitness::BrokenFrame)) != 0;
   std::printf(
       "G4_I4_DUB_ADMISSION candidates=%u violations=%u quarter=%u broken=%u dub_dialogue=%u\n",
       compatibility.count, violations, hasQuarter ? 1u : 0u,
@@ -170,7 +165,6 @@ bool checkAdmittedIdeaOwnership() {
     std::puts("G4_I4_FAIL I4_DUB_RELATIONSHIP_COLLAPSE");
     return false;
   }
-
   std::puts("G4_I4_PASS dub_techno_admission_ownership");
   return true;
 }
@@ -182,18 +176,16 @@ bool checkMaterializedOwnership() {
       RealizationLevel::P2Variation,
       RealizationLevel::P3Transformation,
   };
-
   uint16_t ready = 0;
   uint16_t violations = 0;
-  uint8_t observedWitnessKinds = 0;
+  uint8_t observedKinds = 0;
 
   for (uint16_t identity = 1; identity <= kIdentityCount; ++identity) {
     for (RealizationLevel level : levels) {
       const StrongRhythmMigrationContext context = contextFor(level);
       StrongRhythmFrozenSelection selection{};
       const StrongRhythmMigrationResult selected =
-          resolveStrongRhythmFrozenSelection(
-              settings, context, identity, selection);
+          resolveStrongRhythmFrozenSelection(settings, context, identity, selection);
       if (selected.status != StrongRhythmMigrationStatus::Applied ||
           !selection.resolved) {
         std::printf(
@@ -220,21 +212,19 @@ bool checkMaterializedOwnership() {
 
       const TechnoSkeletonWitness expected =
           witnessForArchetype(selection.composition.rhythmArchetypeId);
-      const TechnoSkeletonWitness actual = witnessForMasks(
-          drumOnsets(drums, KICK), drumOnsets(drums, SNARE));
+      const StepMask kick = drumOnsets(drums, KICK);
+      const StepMask backbeat = drumOnsets(drums, SNARE);
+      const TechnoSkeletonWitness actual = witnessForMasks(kick, backbeat);
       if (actual != TechnoSkeletonWitness::None) {
-        observedWitnessKinds = static_cast<uint8_t>(
-            observedWitnessKinds | (1u << static_cast<uint8_t>(actual)));
+        observedKinds = static_cast<uint8_t>(observedKinds | witnessBit(actual));
       }
-
       if (expected == TechnoSkeletonWitness::None || actual != expected) {
         if (violations < 12) {
           std::printf(
               "G4_I4_WITNESS I4_DUB_MATERIALIZED_OWNERSHIP identity=%u level=%u archetype=%u expected=%s actual=%s kick=%04x backbeat=%04x\n",
               identity, static_cast<unsigned>(level),
               selection.composition.rhythmArchetypeId,
-              witnessName(expected), witnessName(actual),
-              drumOnsets(drums, KICK), drumOnsets(drums, SNARE));
+              witnessName(expected), witnessName(actual), kick, backbeat);
         }
         ++violations;
       }
@@ -242,12 +232,9 @@ bool checkMaterializedOwnership() {
   }
 
   const bool observedQuarter =
-      (observedWitnessKinds & (1u << static_cast<uint8_t>(
-                                   TechnoSkeletonWitness::QuarterPulse))) != 0;
+      (observedKinds & witnessBit(TechnoSkeletonWitness::QuarterPulse)) != 0;
   const bool observedBroken =
-      (observedWitnessKinds & (1u << static_cast<uint8_t>(
-                                   TechnoSkeletonWitness::BrokenFrame))) != 0;
-
+      (observedKinds & witnessBit(TechnoSkeletonWitness::BrokenFrame)) != 0;
   std::printf(
       "G4_I4_DUB_MATERIALIZED ready=%u violations=%u quarter=%u broken=%u\n",
       ready, violations, observedQuarter ? 1u : 0u,
@@ -262,7 +249,6 @@ bool checkMaterializedOwnership() {
     std::puts("G4_I4_FAIL I4_DUB_MATERIALIZED_SKELETON_COLLAPSE");
     return false;
   }
-
   std::puts("G4_I4_PASS dub_techno_materialized_ownership");
   return true;
 }
@@ -273,12 +259,10 @@ int main() {
   bool ok = true;
   ok = checkAdmittedIdeaOwnership() && ok;
   ok = checkMaterializedOwnership() && ok;
-
   if (!ok) {
     std::puts("G4-I4 Dub Techno structural ownership: FAIL");
     return 1;
   }
-
   std::puts("G4-I4 Dub Techno structural ownership: PASS");
   return 0;
 }
