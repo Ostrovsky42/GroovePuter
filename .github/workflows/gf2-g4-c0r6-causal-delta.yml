@@ -1,0 +1,43 @@
+name: G4-C0R6 causal delta attribution
+
+on:
+  push:
+    branches:
+      - research/20260910-01-0.9.11-g4-c0r6-causal-delta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g4-c0r6-causal-delta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  causal-delta:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Exact-head provenance
+        run: |
+          set -euo pipefail
+          echo "EXPECTED=${GITHUB_SHA}"
+          echo "ACTUAL=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: G4-C0R6 causal delta attribution
+        run: |
+          bash tests/support/gf2_g4_c0r6_causal_delta_test.sh
+
+      - name: Upload C0R6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-g4-c0r6-causal-delta
+          path: build/host-tests/gf2-g4-c0r6-causal-delta
+          if-no-files-found: warn
