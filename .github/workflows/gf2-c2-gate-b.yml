@@ -35,6 +35,157 @@ jobs:
         run: bash tests/support/gf2_gate_b_g4_c0r_coordinate_test.sh
       - name: G4-C0R2 materialized idea corpus regression
         run: bash tests/support/gf2_gate_b_g4_c0r_corpus_test.sh
+      - name: G4-C0R2 full pilot corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_DIR="build/host-tests/gf2-gate-b"
+          BIN="${BUILD_DIR}/gf2_gate_b_dump_gcc"
+          OUT_DIR="${BUILD_DIR}/g4-c0r2-full"
+          mkdir -p "${OUT_DIR}"
+
+          python3 tools/gf2/g4_c0r_corpus.py \
+            --dump-binary "${BIN}" \
+            --profiles 0,11,14,21 \
+            --identity-start 0 \
+            --identity-count 128 \
+            --attempt-count 4 \
+            --pattern-address 23 \
+            --output "${OUT_DIR}/G4_C0R2_FULL_CORPUS.tsv"
+
+          python3 tools/gf2/g4_c0r_corpus.py \
+            --dump-binary "${BIN}" \
+            --profiles 0,11,14,21 \
+            --identity-start 0 \
+            --identity-count 128 \
+            --attempt-count 4 \
+            --pattern-address 23 \
+            --output "${OUT_DIR}/G4_C0R2_FULL_CORPUS_REPLAY.tsv"
+
+          cmp \
+            "${OUT_DIR}/G4_C0R2_FULL_CORPUS.tsv" \
+            "${OUT_DIR}/G4_C0R2_FULL_CORPUS_REPLAY.tsv"
+
+          python3 - \
+            "${OUT_DIR}/G4_C0R2_FULL_CORPUS.tsv" \
+            "${OUT_DIR}/G4_C0R2_TAKE_DIVERSITY.tsv" <<'PY'
+          import csv
+          import itertools
+          import sys
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          corpus_path = Path(sys.argv[1])
+          summary_path = Path(sys.argv[2])
+          with corpus_path.open(newline="", encoding="utf-8") as handle:
+              rows = list(csv.DictReader(handle, delimiter="\t"))
+
+          expected_profiles = {
+              "0": "Acid/BASE",
+              "11": "Drum&Bass/BASE",
+              "14": "Dub/Reggae/Dub Techno",
+              "21": "House/BASE",
+          }
+          depths = ("P1", "P2", "P3")
+          expected_count = 4 * 128 * 4 * 3
+          assert len(rows) == expected_count, (len(rows), expected_count)
+
+          expected_coordinates = {
+              (profile, str(identity), str(attempt), depth)
+              for profile, identity, attempt, depth in itertools.product(
+                  expected_profiles, range(128), range(4), depths
+              )
+          }
+          actual_coordinates = {
+              (
+                  row["profile_ordinal"],
+                  row["identity_ordinal"],
+                  row["generation_attempt_ordinal"],
+                  row["depth"],
+              )
+              for row in rows
+          }
+          assert actual_coordinates == expected_coordinates
+
+          groups = defaultdict(list)
+          for row in rows:
+              profile = row["profile_ordinal"]
+              assert row["profile_id"] == expected_profiles[profile]
+              assert row["pattern_address"] == "23"
+              assert row["selection_status"] == "APPLIED"
+              assert row["migration_status"] == "APPLIED"
+              assert row["effective_material_fingerprint"] not in ("", "NOT_OBSERVED")
+              key = (profile, row["profile_id"], row["depth"], row["identity_ordinal"])
+              groups[key].append(row)
+
+          summary_rows = []
+          for profile, profile_id in expected_profiles.items():
+              for depth in depths:
+                  identity_groups = [
+                      groups[(profile, profile_id, depth, str(identity))]
+                      for identity in range(128)
+                  ]
+                  distribution = Counter()
+                  all_fingerprints = set()
+                  fingerprint_identities = defaultdict(set)
+                  for identity, group in enumerate(identity_groups):
+                      assert {row["generation_attempt_ordinal"] for row in group} == {
+                          "0", "1", "2", "3"
+                      }
+                      fingerprints = {
+                          row["effective_material_fingerprint"] for row in group
+                      }
+                      distribution[len(fingerprints)] += 1
+                      all_fingerprints.update(fingerprints)
+                      for fingerprint in fingerprints:
+                          fingerprint_identities[fingerprint].add(identity)
+
+                  shared = {
+                      fingerprint: identities
+                      for fingerprint, identities in fingerprint_identities.items()
+                      if len(identities) > 1
+                  }
+                  identities_touching_shared = set().union(*shared.values()) if shared else set()
+                  summary_rows.append({
+                      "profile_ordinal": profile,
+                      "profile_id": profile_id,
+                      "depth": depth,
+                      "identity_count": 128,
+                      "unique_material_fingerprints": len(all_fingerprints),
+                      "identities_with_1_unique_take": distribution[1],
+                      "identities_with_2_unique_takes": distribution[2],
+                      "identities_with_3_unique_takes": distribution[3],
+                      "identities_with_4_unique_takes": distribution[4],
+                      "identities_where_attempt_changes_material": 128 - distribution[1],
+                      "fingerprints_shared_across_identities": len(shared),
+                      "identities_touching_shared_fingerprint": len(identities_touching_shared),
+                  })
+
+          fields = list(summary_rows[0])
+          with summary_path.open("w", newline="", encoding="utf-8") as handle:
+              writer = csv.DictWriter(
+                  handle, fieldnames=fields, delimiter="\t", lineterminator="\n"
+              )
+              writer.writeheader()
+              writer.writerows(summary_rows)
+
+          print(f"G4-C0R2 full corpus: {len(rows)} deterministic rows; replay BYTE-IDENTICAL")
+          for row in summary_rows:
+              print(
+                  "TAKES",
+                  row["profile_id"],
+                  row["depth"],
+                  f"unique_material={row['unique_material_fingerprints']}",
+                  "take_distribution="
+                  f"1:{row['identities_with_1_unique_take']},"
+                  f"2:{row['identities_with_2_unique_takes']},"
+                  f"3:{row['identities_with_3_unique_takes']},"
+                  f"4:{row['identities_with_4_unique_takes']}",
+                  f"attempt_changes={row['identities_where_attempt_changes_material']}/128",
+                  f"shared_fp={row['fingerprints_shared_across_identities']}",
+                  f"shared_identities={row['identities_touching_shared_fingerprint']}/128",
+              )
+          PY
       - name: Upload strict proof artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -42,4 +193,5 @@ jobs:
           path: |
             build/host-tests/gf2-gate-b/raw.tsv
             build/host-tests/gf2-gate-b/generated-c0r-preflight
+            build/host-tests/gf2-gate-b/g4-c0r2-full
           if-no-files-found: error
