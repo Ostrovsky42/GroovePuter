@@ -1,0 +1,42 @@
+name: GF2 G4-I3 phrase truthfulness
+
+on:
+  push:
+    branches:
+      - feature/20260909-02-0.9.11-g4-reference-genre-contracts
+    paths:
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/migration/phrase_execution.cpp'
+      - 'src/generation/rhythm/reference_phrase_vocabulary.cpp'
+      - 'src/generation/rhythm/reference_phrase_vocabulary.h'
+      - 'tests/test_gf2_g4_i3_phrase_truthfulness.cpp'
+      - 'tests/run_gf2_g4_i3_tests.sh'
+      - '.github/workflows/gf2-g4-i3-phrase-truthfulness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phrase-truthfulness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-I3 phrase truthfulness
+        run: bash tests/run_gf2_g4_i3_tests.sh
+
+      - name: Upload G4-I3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-i3-phrase-truthfulness
+          path: build/host-tests/gf2-g4-i3/g4-i3-summary.txt
+          if-no-files-found: warn
