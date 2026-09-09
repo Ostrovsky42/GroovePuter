@@ -27,6 +27,11 @@ namespace UI {
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
 
+        bool g_hintOverlayHeld = false;
+        uint32_t g_hPressStartMs = 0;
+        bool g_hintOverlayTimedActive = false;
+        uint32_t g_hintOverlayTimedUntilMs = 0;
+
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
 
@@ -619,6 +624,60 @@ namespace UI {
             gfx.setTextColor(COLOR_WHITE);
             gfx.drawText(x, y, gToastMsg);
         }
+    }
+
+    void setHintOverlayActive(bool active) {
+        hintOverlayActive = active;
+        if (!active) {
+            g_hintOverlayHeld = false;
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+    }
+
+    bool dismissHintOverlay() {
+        g_hintOverlayTimedActive = false;
+        g_hintOverlayTimedUntilMs = 0;
+        if (hintOverlayActive) {
+            hintOverlayActive = false;
+            return true;
+        }
+        return false;
+    }
+
+    bool updateHintOverlay(bool hHeld, uint32_t nowMs) {
+        if (hHeld && !g_hintOverlayHeld) {
+            g_hPressStartMs = nowMs;
+        } else if (!hHeld && g_hintOverlayHeld) {
+            const uint32_t holdDuration = nowMs - g_hPressStartMs;
+            if (holdDuration < 350) {
+                // Short press (single click / tap): toggle or activate for 5 seconds
+                if (g_hintOverlayTimedActive && static_cast<int32_t>(g_hintOverlayTimedUntilMs - nowMs) > 0) {
+                    g_hintOverlayTimedActive = false;
+                    g_hintOverlayTimedUntilMs = 0;
+                } else {
+                    g_hintOverlayTimedActive = true;
+                    g_hintOverlayTimedUntilMs = nowMs + 5000;
+                }
+            } else {
+                // Long press (hold): immediately dismiss on release
+                g_hintOverlayTimedActive = false;
+                g_hintOverlayTimedUntilMs = 0;
+            }
+        }
+        g_hintOverlayHeld = hHeld;
+
+        if (g_hintOverlayTimedActive && static_cast<int32_t>(nowMs - g_hintOverlayTimedUntilMs) >= 0) {
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+
+        const bool shouldBeActive = hHeld || g_hintOverlayTimedActive;
+        if (shouldBeActive != hintOverlayActive) {
+            hintOverlayActive = shouldBeActive;
+            return true;
+        }
+        return false;
     }
 
 }

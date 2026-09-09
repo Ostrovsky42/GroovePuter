@@ -25,7 +25,9 @@ namespace UI {
     extern bool hintOverlayActive;
 
     inline bool isHintOverlayActive() { return hintOverlayActive; }
-    inline void setHintOverlayActive(bool active) { hintOverlayActive = active; }
+    void setHintOverlayActive(bool active);
+    bool updateHintOverlay(bool hHeld, uint32_t nowMs);
+    bool dismissHintOverlay();
     
     // Page count moved to ui_config.h
 

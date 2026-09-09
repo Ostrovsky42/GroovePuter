@@ -78,6 +78,8 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
   ctx->recorder.writeSamples(out, frames);
 }
 
+static bool s_hKeyHeld = false;
+
 static void handleEvents(AppState& s) {
   SDL_Event e;
   auto scaleMouse = [&](int value) {
@@ -193,16 +195,16 @@ static void handleEvents(AppState& s) {
 
       if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.shift && !grooveputerEvent.meta &&
           (keycode == SDLK_h || sc == SDL_SCANCODE_H)) {
-        if (!UI::isHintOverlayActive()) {
-          UI::setHintOverlayActive(true);
-          if (s.ui) s.ui->update();
-        }
+        s_hKeyHeld = true;
       }
 
       bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
       if (handledByUI) continue;
 
       if (sc == SDL_SCANCODE_ESCAPE) {
+        if (UI::dismissHintOverlay()) {
+          if (s.ui) s.ui->update();
+        }
         // s.running = false;
       } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
         if (s.ui) s.ui->dismissSplash();
@@ -295,10 +297,7 @@ static void handleEvents(AppState& s) {
     } else if (e.type == SDL_KEYUP) {
       const SDL_Keycode keycode = e.key.keysym.sym;
       if (keycode == SDLK_h || e.key.keysym.scancode == SDL_SCANCODE_H) {
-        if (UI::isHintOverlayActive()) {
-          UI::setHintOverlayActive(false);
-          if (s.ui) s.ui->update();
-        }
+        s_hKeyHeld = false;
       }
       const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
       if (!modified && keycode >= 32 && keycode < 127) {
@@ -309,6 +308,9 @@ static void handleEvents(AppState& s) {
 }
 
 static void updateUI(AppState& s) {
+  if (UI::updateHintOverlay(s_hKeyHeld, SDL_GetTicks())) {
+    if (s.ui) s.ui->update();
+  }
   unsigned long now = SDL_GetTicks();
   if (now - s.lastUIUpdate > 80) {
     s.lastUIUpdate = now;
