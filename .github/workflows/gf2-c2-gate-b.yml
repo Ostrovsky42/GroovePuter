@@ -37,6 +37,8 @@ jobs:
         run: bash tests/support/gf2_gate_b_g4_c0r_corpus_test.sh
       - name: G4-C0R3 active-axis and semantic-topology characterization
         run: bash tests/support/gf2_gate_b_g4_c0r3_semantic_topology_test.sh
+      - name: G4-C0R4 role-plan and native-vocabulary characterization
+        run: bash tests/support/gf2_gate_b_g4_c0r4_role_plan_test.sh
       - name: G4-C0R2 full pilot corpus
         shell: bash
         run: |
