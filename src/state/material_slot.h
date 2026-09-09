@@ -22,6 +22,20 @@
 // it with the resolved runtime authority without rewriting every caller.
 namespace GroovePuterMaterial {
 
+// 0.9.11 A1: canonical identity inside one project namespace.
+//
+// A Scene only owns the currently resident 16-slot page, so a page-local slot
+// cannot identify persistent material. The global slot already names the same
+// arrangement coordinate across all pages; pair it with voice and keep project
+// namespace outside this embedded value.
+struct MaterialId {
+  uint8_t voice = 0;
+  uint8_t globalSlot = 0;
+};
+
+static_assert(sizeof(MaterialId) == 2,
+              "MaterialId must remain a two-byte embedded value");
+
 enum class MaterialKind : uint8_t {
   Pattern = 0,
   Melody = 1,
