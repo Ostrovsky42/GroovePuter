@@ -361,7 +361,7 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "ALT+M", "Toggle song mode", IGfxColor::Yellow());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "G", "Generate new song", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "G / Gx2", "gen cell / row", IGfxColor::Cyan());
 }
 
 inline void drawHelpPageSongSelectionLoop(IGfx& gfx, int x, int y, int w, int h) {
