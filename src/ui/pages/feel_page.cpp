@@ -287,8 +287,7 @@ void FeelPage::draw(IGfx& gfx) {
       explanation = "ENTER: load all FEEL values";
       break;
   }
-  gfx.setTextColor(palette.text);
-  gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), explanation);
+  UI::publishShellInfo(explanation, "FEEL");
 
   UI::drawStandardFooter(gfx,
                          "[TAB]GENRE U/D:FIELD L/R:CHANGE",

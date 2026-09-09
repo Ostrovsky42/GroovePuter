@@ -3,6 +3,7 @@
 #include "ui_core.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
+#include "genre_palette.h"
 
 namespace UI {
 

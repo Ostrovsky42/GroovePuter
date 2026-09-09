@@ -825,6 +825,17 @@ void TB303ParamsPage::draw(IGfx& gfx) {
 
   Container::draw(gfx_);
 
+  char synthInfo[64];
+  const std::string engineName = mini_acid_.currentSynthEngineName(voice_index_);
+  std::snprintf(synthInfo, sizeof(synthInfo), "%s: %s",
+                voice_index_ == 0 ? "SYNTH-A" : "SYNTH-B",
+                engineName.c_str());
+  char fxStatus[32];
+  std::snprintf(fxStatus, sizeof(fxStatus), "DST:%s DLY:%s",
+                mini_acid_.is303DistortionEnabled(voice_index_) ? "ON" : "OFF",
+                mini_acid_.is303DelayEnabled(voice_index_) ? "ON" : "OFF");
+  UI::publishShellInfo(synthInfo, fxStatus);
+
   if (!more_tab_) {
     UI::drawStandardFooter(gfx,
                            "[TAB]M [L/R]FOCUS [U/D]VAL",

@@ -93,6 +93,16 @@ void LedManager::onBeat(int step, const LedSettings& settings) {
     publishPulse_(event);
 }
 
+void LedManager::testPulse(const LedSettings& settings) {
+    const LedPulseEvent event{
+        static_cast<uint32_t>(millis()),
+        settings.color,
+        settings.brightness > 0 ? settings.brightness : (uint8_t)80,
+        150,
+    };
+    publishPulse_(event);
+}
+
 void LedManager::update() {
     const uint32_t now = millis();
 

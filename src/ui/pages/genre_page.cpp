@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "../axis_page_palette.h"
+#include "../genre_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -356,8 +357,7 @@ void GenrePage::draw(IGfx& gfx) {
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
-  gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), value);
-
+  UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
   UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }
 
