@@ -8,6 +8,8 @@ OUT_DIR="${BUILD_DIR}/g4-c0r5-full-role-census"
 RAW="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_RAW.tsv"
 DETAIL="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_ROWS.tsv"
 SUMMARY="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_SUMMARY.tsv"
+DETAIL_REPLAY="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_ROWS_REPLAY.tsv"
+SUMMARY_REPLAY="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_SUMMARY_REPLAY.tsv"
 
 bash "${ROOT}/tests/support/build_gf2_gate_b_g4_c0r3_probe.sh"
 mkdir -p "${OUT_DIR}"
@@ -74,11 +76,20 @@ for row in rows:
 print("G4-C0R5 raw role-coherence corpus: 512 deterministic P1/attempt0 rows")
 PY
 
-# RED until the deterministic C0R5 analyzer exists.
 python3 "${ROOT}/tools/gf2/g4_c0r5_role_coherence.py" \
   --input "${RAW}" \
   --rows-output "${DETAIL}" \
   --summary-output "${SUMMARY}"
+
+python3 "${ROOT}/tools/gf2/g4_c0r5_role_coherence.py" \
+  --input "${RAW}" \
+  --rows-output "${DETAIL_REPLAY}" \
+  --summary-output "${SUMMARY_REPLAY}" \
+  > "${OUT_DIR}/analyzer-replay.log"
+
+cmp "${DETAIL}" "${DETAIL_REPLAY}"
+cmp "${SUMMARY}" "${SUMMARY_REPLAY}"
+echo "G4-C0R5 analyzer replay: BYTE-IDENTICAL"
 
 python3 - "${DETAIL}" "${SUMMARY}" <<'PY'
 import csv
