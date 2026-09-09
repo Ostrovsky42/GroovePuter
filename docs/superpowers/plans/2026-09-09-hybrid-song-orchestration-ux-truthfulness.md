@@ -53,15 +53,15 @@ Run:
 python3 tests/test_hybrid_song_orchestration_ui_source_regressions.py
 ```
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
-Expected failure before production edits:
+Authoritative RED was observed before production edits:
 
 ```text
-Song generator hint still exposes misleading musical mode "RND"
+AssertionError: Song generator hint still exposes misleading musical mode "RND"
 ```
 
-or the first equivalent unmet contract.
+GitHub Actions run: `34325261060`.
 
 ---
 
@@ -75,25 +75,23 @@ or the first equivalent unmet contract.
 - Consumes: existing `gen_mode_` integer selector.
 - Produces: neutral UI text describing an alternative generation selection without promising evolution/fill semantics.
 
-- [ ] **Step 1: Keep selector behavior unchanged**
+- [x] **Step 1: Keep selector behavior unchanged**
 
-Do not change `cycleGeneratorMode()`, `materializeSongTracks()`, Atlas variation selection, modeTag or keyboard mapping.
+`cycleGeneratorMode()`, `materializeSongTracks()`, Atlas variation selection, modeTag and keyboard mapping are unchanged.
 
-- [ ] **Step 2: Replace semantic mode-name array**
+- [x] **Step 2: Replace semantic mode-name array**
 
-Replace the current names with a neutral ordinal presentation:
+The current presentation is now:
 
 ```cpp
-const int modeIdx = static_cast<int>(gen_mode_);
+int modeIdx = static_cast<int>(gen_mode_);
 char buf[20];
 std::snprintf(buf, sizeof(buf), "GEN ALT:%d/4", modeIdx + 1);
 ```
 
-Keep current hint bounds and rendering.
+- [x] **Step 3: Run the focused source regression**
 
-- [ ] **Step 3: Run the focused source regression**
-
-Expected: Song portion passes; PHRASE portion still fails until Task 3.
+The focused contract passed in the verified patch job.
 
 ---
 
@@ -107,45 +105,29 @@ Expected: Song portion passes; PHRASE portion still fails until Task 3.
 - Consumes: existing `GroovePuterState::currentGenerationLevel()` and accepted-generation outcome state.
 - Produces: truthful labels without changing P1/P2/P3 semantics.
 
-- [ ] **Step 1: Rename presentation label**
+- [x] **Step 1: Rename presentation label**
 
-Change:
+`DEPTH` is now presented as `LEVEL`.
 
-```cpp
-gfx.drawText(x + 88, LayoutManager::lineY(0), "DEPTH");
-```
+- [x] **Step 2: Rename previous-attempt status**
 
-to:
+`LAST G` is now presented as `LAST GEN`.
 
-```cpp
-gfx.drawText(x + 88, LayoutManager::lineY(0), "LEVEL");
-```
+- [x] **Step 3: Preserve all event handling**
 
-- [ ] **Step 2: Rename previous-attempt status**
+`handleProductEvent()`, `generationLevelCode()`, P key behavior, G behavior and placement are unchanged.
 
-Change:
+- [x] **Step 4: Run focused source regression**
 
-```cpp
-std::snprintf(line, sizeof(line), "LAST G: %s", outcome);
-```
-
-to:
-
-```cpp
-std::snprintf(line, sizeof(line), "LAST GEN: %s", outcome);
-```
-
-- [ ] **Step 3: Preserve all event handling**
-
-Do not change `handleProductEvent()`, `generationLevelCode()`, P key behavior, `G` behavior or placement.
-
-- [ ] **Step 4: Run focused source regression**
-
-Expected:
+Observed in the patch job:
 
 ```text
 Hybrid Song orchestration UX source regressions: PASS
+Song generation source regressions passed
+Phrase UI source regressions: PASS
 ```
+
+Production patch commit: `e9482e2340990c12614d816da41e40b36ccb9a8b`.
 
 ---
 
@@ -158,7 +140,7 @@ Hybrid Song orchestration UX source regressions: PASS
 - Consumes: exact post-patch SHA.
 - Produces: evidence that presentation cleanup did not alter musical/runtime behavior.
 
-- [ ] **Step 1: Run focused 0.9.11 UX workflow**
+- [ ] **Step 1: Run focused 0.9.11 UX workflow on the current PR head**
 
 Expected: PASS.
 
@@ -170,16 +152,16 @@ Required evidence includes the existing Song generation source regression and re
 
 At minimum verify the existing PR workflows for host regressions and Cardputer ADV compile are not newly broken by this presentation-only patch.
 
-- [ ] **Step 4: Inspect diff**
+- [x] **Step 4: Inspect diff**
 
-Expected production diff:
+Verified production diff is presentation-only:
 
 ```text
-src/ui/pages/song_page.cpp   presentation strings only
-src/ui/pages/phrase_page.cpp presentation strings only
+src/ui/pages/song_page.cpp   removes RND/SMART/EVOL/FILL presentation; shows GEN ALT ordinal
+src/ui/pages/phrase_page.cpp DEPTH -> LEVEL; LAST G -> LAST GEN
 ```
 
-No changes to generation, persistence, runtime ownership or keyboard handling.
+No generation, persistence, runtime ownership or keyboard handling changed.
 
 ---
 
@@ -191,7 +173,7 @@ No changes to generation, persistence, runtime ownership or keyboard handling.
 **Interfaces:**
 - Produces: explicit follow-up boundary for O1/O2/O3.
 
-- [ ] **Step 1: Keep future semantics deferred**
+- [x] **Step 1: Keep future semantics deferred**
 
 The next checkpoint must separately design/prove:
 
