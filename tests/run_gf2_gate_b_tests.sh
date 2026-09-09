@@ -154,8 +154,8 @@ classification_counts = Counter(row["classification"] for row in pairs)
 assert classification_counts["STRUCTURALLY DISTINCT"] == 381
 assert classification_counts["PARTIALLY DISTINCT"] == 147
 assert classification_counts["TIMBRE-DEPENDENT"] == 0
-assert classification_counts["STRUCTURALLY_REDUNDANT"] == 0
-assert classification_counts["INSUFFICIENT_EVIDENCE"] == 0
+assert classification_counts["STRUCTURALLY REDUNDANT"] == 0
+assert classification_counts["INSUFFICIENT EVIDENCE"] == 0
 print(f"Gate B profiles: {len(profile_ids)}")
 print(f"Gate B seeds: {len(seeds)}")
 print(f"Gate B realizations: {len(corpus)}")
