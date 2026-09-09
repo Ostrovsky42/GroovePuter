@@ -50,7 +50,7 @@ void LayoutManager::drawFooter(IGfx& gfx, const char* left, const char* right) {
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::FOOTER.x, Layout::FOOTER.y, Layout::FOOTER.w, Layout::FOOTER.h, p.panel);
     gfx.drawLine(Layout::FOOTER.x, Layout::FOOTER.y,
-                 Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y, p.dim);
+                 Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y, p.accent);
 
     const char* leftText = left ? left : "";
     const bool hasRight = right && right[0] != '\0';

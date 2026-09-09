@@ -19,6 +19,7 @@ namespace UI {
     // Global overlay state
     WaveformOverlayState waveformOverlay;
     VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
+    bool hintOverlayActive = false;
 
     // Internal state for the compact global audio waveform.
     namespace {
@@ -282,6 +283,11 @@ namespace UI {
     }
 
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
+        if (!hintOverlayActive) {
+            const ThemePalette p = themePalette();
+            gfx.fillRect(Layout::FOOTER.x, Layout::FOOTER.y, Layout::FOOTER.w, Layout::FOOTER.h, p.background);
+            return;
+        }
         LayoutManager::drawFooter(gfx,
                                   footer.valid ? footer.left : "",
                                   footer.valid ? footer.right : "");

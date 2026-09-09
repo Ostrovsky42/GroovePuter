@@ -23,6 +23,8 @@ def main() -> None:
             "FEEL Tab must switch to GENRE peer")
     require("TAB/U/D:FIELD" not in FEEL,
             "FEEL must not advertise Tab as field navigation")
+    require("U/D:FIELD L/R:CHANGE" in FEEL,
+            "FEEL must keep explicit Up/Down field navigation help")
     require("nav == GROOVEPUTER_UP" in FEEL and "nav == GROOVEPUTER_DOWN" in FEEL,
             "FEEL Up/Down focus navigation must remain intact")
 
@@ -30,6 +32,8 @@ def main() -> None:
             "GENRE Tab must switch to FEEL peer")
     require("TAB/U/D:FIELD" not in GENRE,
             "GENRE must not advertise Tab as field navigation")
+    require("U/D:FIELD L/R:CHANGE" in GENRE,
+            "GENRE must keep explicit Up/Down field navigation help")
     require("nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN" in GENRE,
             "GENRE Up/Down focus navigation must remain intact")
 

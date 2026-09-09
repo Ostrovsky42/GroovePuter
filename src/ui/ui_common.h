@@ -22,6 +22,10 @@ namespace UI {
     // Global overlay state (extern, defined in ui_common.cpp)
     extern WaveformOverlayState waveformOverlay;
     extern VisualStyle currentStyle;
+    extern bool hintOverlayActive;
+
+    inline bool isHintOverlayActive() { return hintOverlayActive; }
+    inline void setHintOverlayActive(bool active) { hintOverlayActive = active; }
     
     // Page count moved to ui_config.h
 

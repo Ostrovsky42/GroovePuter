@@ -247,9 +247,91 @@ void drawButtonGrid(IGfx& gfx, int x, int y, int cellW, int cellH,
 }
 
 void drawKeyHelp(IGfx& gfx, int x, int y, int maxWidth, const char* text) {
+    if (!text || text[0] == '\0' || maxWidth <= 0) return;
     const UI::ThemePalette p = UI::themePalette();
-    gfx.setTextColor(p.secondary);
-    drawClippedText(gfx, x, y, maxWidth, text ? text : "");
+
+    int curX = x;
+    const int maxX = x + maxWidth;
+    const char* ptr = text;
+
+    while (*ptr != '\0' && curX < maxX) {
+        if (*ptr == '[') {
+            const char* close = strchr(ptr, ']');
+            if (close) {
+                int len = close - ptr + 1;
+                char keyBuf[32];
+                if (len >= (int)sizeof(keyBuf)) len = sizeof(keyBuf) - 1;
+                memcpy(keyBuf, ptr, len);
+                keyBuf[len] = '\0';
+
+                gfx.setTextColor(p.accent);
+                int kw = gfx.textWidth(keyBuf);
+                if (curX + kw > maxX) kw = maxX - curX;
+                drawClippedText(gfx, curX, y, kw, keyBuf);
+                curX += gfx.textWidth(keyBuf);
+                ptr = close + 1;
+                continue;
+            }
+        }
+
+        const char* space = strchr(ptr, ' ');
+        int wordLen = space ? (int)(space - ptr) : (int)strlen(ptr);
+        const char* colon = (const char*)memchr(ptr, ':', wordLen);
+        if (colon && colon != ptr) {
+            int keyLen = (int)(colon - ptr) + 1;
+            char keyBuf[16];
+            if (keyLen >= (int)sizeof(keyBuf)) keyLen = sizeof(keyBuf) - 1;
+            memcpy(keyBuf, ptr, keyLen);
+            keyBuf[keyLen] = '\0';
+
+            gfx.setTextColor(p.accent);
+            int kw = gfx.textWidth(keyBuf);
+            if (curX + kw <= maxX) {
+                drawClippedText(gfx, curX, y, kw, keyBuf);
+                curX += kw;
+            }
+
+            int restLen = wordLen - keyLen;
+            if (restLen > 0) {
+                char restBuf[32];
+                if (restLen >= (int)sizeof(restBuf)) restLen = sizeof(restBuf) - 1;
+                memcpy(restBuf, colon + 1, restLen);
+                restBuf[restLen] = '\0';
+
+                gfx.setTextColor(COLOR_WHITE);
+                int rw = gfx.textWidth(restBuf);
+                if (curX + rw <= maxX) {
+                    drawClippedText(gfx, curX, y, rw, restBuf);
+                    curX += rw;
+                }
+            }
+
+            ptr += wordLen;
+            if (*ptr == ' ') {
+                gfx.setTextColor(COLOR_WHITE);
+                int sw = gfx.textWidth(" ");
+                if (curX + sw <= maxX) {
+                    drawClippedText(gfx, curX, y, sw, " ");
+                    curX += sw;
+                }
+                ptr++;
+            }
+            continue;
+        }
+
+        char seg[32];
+        int segLen = space ? (int)(space - ptr + 1) : wordLen;
+        if (segLen >= (int)sizeof(seg)) segLen = sizeof(seg) - 1;
+        memcpy(seg, ptr, segLen);
+        seg[segLen] = '\0';
+
+        gfx.setTextColor(COLOR_WHITE);
+        int sw = gfx.textWidth(seg);
+        if (curX + sw > maxX) sw = maxX - curX;
+        drawClippedText(gfx, curX, y, sw, seg);
+        curX += gfx.textWidth(seg);
+        ptr += segLen;
+    }
 }
 
 void drawInfoBox(IGfx& gfx, int x, int y, int width,
