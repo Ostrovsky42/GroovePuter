@@ -1,0 +1,36 @@
+name: G4-I7 Dub bass compatibility diagnosis
+
+on:
+  push:
+    branches:
+      - research/20260910-02-0.9.11-g4-i7-dub-bass-compatibility
+  workflow_dispatch:
+
+jobs:
+  dub-bass-compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EXPECTED=${GITHUB_SHA}"
+          echo "ACTUAL=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: G4-I7 Dub bass compatibility diagnosis
+        shell: bash
+        run: bash tests/run_gf2_g4_i7_tests.sh
+
+      - name: Upload G4-I7 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-g4-i7-dub-bass-compatibility
+          path: build/host-tests/gf2-g4-i7
+          if-no-files-found: warn
