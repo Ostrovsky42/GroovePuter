@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - research/20260909-01-g4-c0-materialized-corpus
+      - feature/20260909-02-0.9.11-g4-reference-genre-contracts
     paths:
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/migration/phrase_execution.cpp'
+      - 'src/generation/rhythm/rhythm_selection.cpp'
       - 'tests/test_gf2_g4_c0_materialized_corpus.cpp'
       - 'tests/test_gf2_g4_c0_cross_genre.cpp'
       - 'tests/run_gf2_g4_c0_tests.sh'
