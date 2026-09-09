@@ -26,6 +26,7 @@
 namespace MelodyPromotion {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
+using MaterialId = GroovePuterMaterial::MaterialId;
 
 // The storage this needs, small enough that a test can be honest about failure
 // at every step a real card fails at.
@@ -49,29 +50,25 @@ enum class Error : uint8_t {
   VerifyFailed,
   PublishFailed,
 };
-// Addressed by what the melody already is -- project, voice and slot -- rather
-// than by a separate identifier. A second ID space would be another mapping
-// able to drift from what it names.
-//
-// The project name is passed in, and the caller passes
-// PatternPagingService::currentProjectName(): the same owner that already
-// decides which project's pattern pages are in play. Two owners of "which
-// project is this" would file a melody under one project and its pattern under
-// another -- the class of bug this design keeps removing.
-inline std::string slotPath(const std::string& project, int voice, int slot,
+
+// Project namespace is owned by the paging/application layer. Within that
+// namespace the persistent identity is MaterialId, whose globalSlot spans all
+// pages. Resident page/local coordinates are derived only when mutating Scene.
+inline std::string slotPath(const std::string& project, MaterialId id,
                             const char* extension) {
   char buffer[48];
-  std::snprintf(buffer, sizeof(buffer), "/melody/v%d_s%02d.%s", voice, slot,
-                extension);
+  std::snprintf(buffer, sizeof(buffer), "/melody/v%u_g%03u.%s",
+                static_cast<unsigned>(id.voice),
+                static_cast<unsigned>(id.globalSlot), extension);
   return "/projects/" + project + buffer;
 }
 
-inline std::string finalPath(const std::string& project, int voice, int slot) {
-  return slotPath(project, voice, slot, "gpml");
+inline std::string finalPath(const std::string& project, MaterialId id) {
+  return slotPath(project, id, "gpml");
 }
 
-inline std::string tempPath(const std::string& project, int voice, int slot) {
-  return slotPath(project, voice, slot, "tmp");
+inline std::string tempPath(const std::string& project, MaterialId id) {
+  return slotPath(project, id, "tmp");
 }
 
 inline bool sameMelody(const Buffer& a, const Buffer& b) {
@@ -89,10 +86,12 @@ inline bool sameMelody(const Buffer& a, const Buffer& b) {
   return true;
 }
 
-inline bool loadResident(const FileSystem& fs, const std::string& project,
-                         int voice, int slot, Buffer& out) {
-  if (!fs.available()) return false;
-  const std::string path = finalPath(project, voice, slot);
+inline bool loadMaterial(const FileSystem& fs, const std::string& project,
+                         MaterialId id, Buffer& out) {
+  if (!fs.available() || !GroovePuterMaterial::materialIdInRange(id)) {
+    return false;
+  }
+  const std::string path = finalPath(project, id);
   if (!fs.exists(path.c_str())) return false;
   std::vector<uint8_t> blob;
   if (!fs.read(path.c_str(), blob)) return false;
@@ -100,17 +99,23 @@ inline bool loadResident(const FileSystem& fs, const std::string& project,
 }
 
 inline Error promoteResident(FileSystem& fs, const std::string& project,
-                             Scene& scene, int voice, int slot,
+                             Scene& scene, int activePage, MaterialId id,
                              const Buffer& candidate) {
   // Refused before the first mutation, so a missing card cannot leave the
   // project half-changed.
   if (!fs.available()) return Error::NoStorage;
-  if (!GroovePuterMaterial::residentSlotInRange(voice, slot)) {
+  if (!GroovePuterMaterial::materialIdIsResident(id, activePage)) {
     return Error::BadSlot;
   }
+
+  const int slot = GroovePuterMaterial::residentSlotFor(id);
+  if (!GroovePuterMaterial::residentSlotInRange(id.voice, slot)) {
+    return Error::BadSlot;
+  }
+
   // One-way per slot. Promoting again would overwrite the melody with a fresh
   // projection and destroy every edit made since.
-  if (GroovePuterMaterial::residentKind(scene, voice, slot) ==
+  if (GroovePuterMaterial::residentKind(scene, id.voice, slot) ==
       GroovePuterMaterial::MaterialKind::Melody) {
     return Error::AlreadyMelody;
   }
@@ -118,7 +123,7 @@ inline Error promoteResident(FileSystem& fs, const std::string& project,
   std::vector<uint8_t> blob;
   if (!MelodyStore::encode(candidate, blob)) return Error::EncodeFailed;
 
-  const std::string temp = tempPath(project, voice, slot);
+  const std::string temp = tempPath(project, id);
   if (!fs.write(temp.c_str(), blob.data(), blob.size())) {
     return Error::WriteFailed;
   }
@@ -134,7 +139,7 @@ inline Error promoteResident(FileSystem& fs, const std::string& project,
     return Error::VerifyFailed;
   }
 
-  const std::string final = finalPath(project, voice, slot);
+  const std::string final = finalPath(project, id);
   if (!fs.rename(temp.c_str(), final.c_str())) {
     fs.remove(temp.c_str());
     return Error::PublishFailed;
@@ -143,7 +148,7 @@ inline Error promoteResident(FileSystem& fs, const std::string& project,
   // Last. Everything above can fail without the project noticing; past this
   // line the slot is a Melody and the payload is already there to prove it.
   if (!GroovePuterMaterial::setResidentKind(
-          scene, voice, slot, GroovePuterMaterial::MaterialKind::Melody)) {
+          scene, id.voice, slot, GroovePuterMaterial::MaterialKind::Melody)) {
     return Error::BadSlot;
   }
   return Error::None;
