@@ -13,12 +13,12 @@ namespace {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 using MelodyPromotion::Error;
-using GroovePuterMaterial::MaterialId;
+using GroovePuterMaterial::MaterialAddress;
 
-static_assert(sizeof(MaterialId) == 2,
-              "MaterialId must remain a two-byte embedded value");
-static_assert(std::is_trivially_copyable<MaterialId>::value,
-              "MaterialId must remain trivially copyable");
+static_assert(sizeof(MaterialAddress) == 2,
+              "MaterialAddress must remain a two-byte embedded value");
+static_assert(std::is_trivially_copyable<MaterialAddress>::value,
+              "MaterialAddress must remain trivially copyable");
 
 struct FakeFs : MelodyPromotion::FileSystem {
   std::map<std::string, std::vector<uint8_t>> files;
@@ -58,13 +58,13 @@ Buffer melodyWithNote(uint8_t note) {
 }  // namespace
 
 int main() {
-  constexpr MaterialId page0Id{0, 5};
-  constexpr MaterialId page1Id{0, 21};
+  constexpr MaterialAddress page0Address{0, 5};
+  constexpr MaterialAddress page1Address{0, 21};
 
   const std::string project = "a1-api";
-  if (MelodyPromotion::finalPath(project, page0Id) ==
-      MelodyPromotion::finalPath(project, page1Id)) {
-    std::fprintf(stderr, "A1 API RED: distinct global slots share one path\n");
+  if (MelodyPromotion::finalPath(project, page0Address) ==
+      MelodyPromotion::finalPath(project, page1Address)) {
+    std::fprintf(stderr, "A1 API FAIL: distinct global slots share one path\n");
     return 1;
   }
 
@@ -72,20 +72,21 @@ int main() {
   Scene page0{};
   Scene page1{};
 
-  if (MelodyPromotion::promoteResident(fs, project, page0, 0, page0Id,
+  if (MelodyPromotion::promoteResident(fs, project, page0, 0, page0Address,
                                        melodyWithNote(60)) != Error::None ||
-      MelodyPromotion::promoteResident(fs, project, page1, 1, page1Id,
+      MelodyPromotion::promoteResident(fs, project, page1, 1, page1Address,
                                        melodyWithNote(72)) != Error::None) {
-    std::fprintf(stderr, "A1 API RED: valid global material promotion failed\n");
+    std::fprintf(stderr, "A1 API FAIL: valid global material promotion failed\n");
     return 1;
   }
 
-  // page1Id belongs to page 1. A page-0 Scene must not be mutated through it.
+  // page1Address belongs to page 1. A page-0 Scene must not be mutated through it.
   Scene wrongPage{};
-  if (MelodyPromotion::promoteResident(fs, project, wrongPage, 0, page1Id,
-                                       melodyWithNote(84)) != Error::BadSlot) {
+  if (MelodyPromotion::promoteResident(fs, project, wrongPage, 0,
+                                       page1Address, melodyWithNote(84)) !=
+      Error::BadSlot) {
     std::fprintf(stderr,
-                 "A1 API RED: non-resident MaterialId was accepted by Scene\n");
+                 "A1 API FAIL: non-resident MaterialAddress was accepted by Scene\n");
     return 1;
   }
 
@@ -94,10 +95,10 @@ int main() {
       GroovePuterMaterial::residentKind(page1, 0, 5) !=
           GroovePuterMaterial::MaterialKind::Melody) {
     std::fprintf(stderr,
-                 "A1 API RED: canonical ID did not publish resident descriptor\n");
+                 "A1 API FAIL: address did not publish resident descriptor\n");
     return 1;
   }
 
-  std::printf("0.9.11 A1 MaterialId API: PASS\n");
+  std::printf("0.9.11 A1 MaterialAddress API: PASS\n");
   return 0;
 }
