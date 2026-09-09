@@ -29,6 +29,7 @@ jobs:
 
       - name: Run G4-C0 corpus first pass
         run: |
+          mkdir -p build/host-tests/gf2-g4-c0
           bash tests/run_gf2_g4_c0_tests.sh > build/host-tests/gf2-g4-c0/run-1.log
           cp build/host-tests/gf2-g4-c0/g4-c0-summary.txt \
              build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
