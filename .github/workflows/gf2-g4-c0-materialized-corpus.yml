@@ -1,0 +1,56 @@
+name: GF2 G4-C0 materialized corpus
+
+on:
+  push:
+    branches:
+      - research/20260909-01-g4-c0-materialized-corpus
+    paths:
+      - 'tests/test_gf2_g4_c0_materialized_corpus.cpp'
+      - 'tests/run_gf2_g4_c0_tests.sh'
+      - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
+      - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  materialized-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-C0 corpus first pass
+        run: |
+          bash tests/run_gf2_g4_c0_tests.sh > build/host-tests/gf2-g4-c0/run-1.log
+          cp build/host-tests/gf2-g4-c0/g4-c0-summary.txt \
+             build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
+
+      - name: Run G4-C0 corpus deterministic repeat
+        run: |
+          bash tests/run_gf2_g4_c0_tests.sh > build/host-tests/gf2-g4-c0/run-2.log
+          cp build/host-tests/gf2-g4-c0/g4-c0-summary.txt \
+             build/host-tests/gf2-g4-c0/g4-c0-summary-2.txt
+          diff -u \
+            build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt \
+            build/host-tests/gf2-g4-c0/g4-c0-summary-2.txt
+
+      - name: Print accepted G4-C0 summary
+        run: cat build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
+
+      - name: Upload G4-C0 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-c0-materialized-corpus
+          path: |
+            build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
+            build/host-tests/gf2-g4-c0/run-1.log
+            build/host-tests/gf2-g4-c0/run-2.log
+          if-no-files-found: error
