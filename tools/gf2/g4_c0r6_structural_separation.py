@@ -54,6 +54,11 @@ def take_signature(row: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
     )
 
 
+def take_space(rows: Sequence[Mapping[str, str]]) -> tuple[tuple[tuple[str, str], ...], ...]:
+    """Canonical sampled take multiset; TRY ordinal is deliberately non-musical."""
+    return tuple(sorted(take_signature(row) for row in rows))
+
+
 def analyze_group(rows: Sequence[Mapping[str, str]]) -> GroupAnalysis:
     if not rows:
         raise ValueError("identity group must not be empty")
@@ -66,15 +71,9 @@ def analyze_group(rows: Sequence[Mapping[str, str]]) -> GroupAnalysis:
     )
 
 
-def structural_collision_groups(
+def _identity_groups(
     rows: Iterable[Mapping[str, str]],
-) -> list[tuple[int, ...]]:
-    """Return identities with identical active-selection + ordered take topology.
-
-    Collisions are scoped by profile and depth. Attempt order is part of the
-    observed realization set so this does not turn an unordered fingerprint bag
-    into an invented musical equivalence relation.
-    """
+) -> dict[tuple[str, str, int], list[Mapping[str, str]]]:
     identities: dict[tuple[str, str, int], list[Mapping[str, str]]] = defaultdict(list)
     for row in rows:
         key = (
@@ -83,28 +82,67 @@ def structural_collision_groups(
             int(row["identity_ordinal"], 10),
         )
         identities[key].append(row)
+    return identities
 
+
+def structural_collision_groups(
+    rows: Iterable[Mapping[str, str]],
+) -> list[tuple[int, ...]]:
+    """Return identities with identical active selection and sampled take space.
+
+    Collisions are scoped by profile and depth. Attempt ordinals are excluded
+    because TRY numbering is an engineering coordinate, not a musical decision.
+    Multiplicity is preserved, so four identical takes remain distinct from a
+    sampled space containing two copies of two different take topologies.
+    """
     by_structure: dict[
         tuple[str, str, tuple[tuple[str, str], ...], tuple[tuple[tuple[str, str], ...], ...]],
         list[int],
     ] = defaultdict(list)
 
-    for (profile, depth, identity), group in identities.items():
-        ordered = sorted(group, key=lambda row: int(row["generation_attempt_ordinal"], 10))
-        ideas = {idea_signature(row) for row in ordered}
+    for (profile, depth, identity), group in _identity_groups(rows).items():
+        ideas = {idea_signature(row) for row in group}
         if len(ideas) != 1:
             continue
         structure = (
             profile,
             depth,
             next(iter(ideas)),
-            tuple(take_signature(row) for row in ordered),
+            take_space(group),
         )
         by_structure[structure].append(identity)
 
     collisions = [
         tuple(sorted(group))
         for group in by_structure.values()
+        if len(group) > 1
+    ]
+    return sorted(collisions)
+
+
+def topology_collision_groups(
+    rows: Iterable[Mapping[str, str]],
+) -> list[tuple[int, ...]]:
+    """Return identities whose sampled audible topology converges.
+
+    Active selection is intentionally ignored here. This catches cases where
+    distinct intended selections collapse onto the same observed rhythmic/
+    lifetime topology. Identities with internal selection drift are excluded
+    because their identity-side contract is already unstable.
+    """
+    by_topology: dict[
+        tuple[str, str, tuple[tuple[tuple[str, str], ...], ...]],
+        list[int],
+    ] = defaultdict(list)
+
+    for (profile, depth, identity), group in _identity_groups(rows).items():
+        if len({idea_signature(row) for row in group}) != 1:
+            continue
+        by_topology[(profile, depth, take_space(group))].append(identity)
+
+    collisions = [
+        tuple(sorted(group))
+        for group in by_topology.values()
         if len(group) > 1
     ]
     return sorted(collisions)
