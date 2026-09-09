@@ -33,7 +33,8 @@ constexpr const char* kGlobalLines[] = {
 constexpr const char* kGenreLines[] = {
     "=== GENRE 1/2 ===",
     "Genre = corridor/vocabulary",
-    "Tab/Up/Dn   Select field",
+    "Tab         FEEL table",
+    "Up/Down     Select field",
     "Left/Right  Genre/variant/rhythm/apply",
     "Alt+L/R     Morph selected variant",
     "Enter       Apply profile/materialize",
@@ -175,12 +176,14 @@ constexpr const char* kSongLines[] = {
     "Alt+Q/E/R/T Save markers 1..4",
     "Ctrl+Alt+Q/E/R/T Jump markers",
     "Alt+,/.     Song top/end",
-    "Bksp/Tab    Clear cell",
+    "Bksp        Clear cell",
+    "Tab         Generations (Phrase)",
     "Alt+Bksp    Clear full Song",
 };
 
 constexpr const char* kPhraseProductLines[] = {
     "=== PHRASE ===",
+    "Tab         Return to SONG",
     "Up/Down     Focus field",
     "Left/Right  Adjust focused field",
     "TO          APPEND or EXPLICIT",
@@ -233,7 +236,8 @@ constexpr const char* kHubLines[] = {
 constexpr const char* kFeelLines[] = {
     "=== FEEL 2/2 ===",
     "Feel = timing/velocity only",
-    "Tab/Up/Dn   Select field",
+    "Tab         GENRE page",
+    "Up/Down     Select field",
     "Left/Right  Adjust value/preset",
     "Shift/Ctrl  Fast adjustment",
     "Enter/Space Apply FEEL preset",

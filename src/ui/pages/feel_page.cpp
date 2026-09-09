@@ -7,6 +7,8 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
+#include "../ui_input.h"
+#include "../workflow_mode.h"
 #include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 
@@ -295,6 +297,16 @@ void FeelPage::draw(IGfx& gfx) {
 
 bool FeelPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (!event.ctrl && !event.alt && !event.meta) {
+    if (UIInput::isTab(event)) {
+      requestPageTransition(WorkflowPages::kGenre);
+      return true;
+    }
+    if (event.key == '[' || event.key == ']') {
+      return true;
+    }
+  }
 
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP) {

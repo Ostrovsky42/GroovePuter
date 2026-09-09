@@ -38,8 +38,8 @@
 #include "src/state/undo_receipts.h"
 
 namespace {
-constexpr int kNotesTabStripX = 190;
-constexpr int kParamsTabStripX = 172;
+constexpr int kNotesTabStripX = 204;
+constexpr int kParamsTabStripX = 204;
 constexpr int kTabStripW = 32;
 constexpr int kTabStripH = 11;
 constexpr int kPatternNumbersX = 106;

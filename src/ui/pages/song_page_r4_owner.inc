@@ -229,6 +229,17 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return handleEventLegacyUnowned(ui_event);
   }
 
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      const int row = cursorRow();
+      requestPageTransition(WorkflowPages::kPhrase, row + 1);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') {
+      return true;
+    }
+  }
+
   const int nav = UIInput::navCode(ui_event);
   if (ui_event.alt && (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) &&
       !cursorOnPlayheadLabel()) {
@@ -374,7 +385,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     showToast("Song Cleared", 900);
     return true;
   }
-  if (!ui_event.alt && (backspace || ui_event.key == '\t')) {
+  if (!ui_event.alt && backspace) {
     if (has_selection_) {
       int minRow, maxRow, minTrack, maxTrack;
       getSelectionBounds(minRow, maxRow, minTrack, maxTrack);

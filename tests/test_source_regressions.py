@@ -51,10 +51,10 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
             "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
             "Cardputer ADV PA compatibility overloads must not drive GPIO")
-    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
-            "RGB output must remain disabled until a distinct ADV pin is verified")
-    require("neopixelWrite(21" not in led,
-            "GPIO21 must never receive WS2812 timing on Cardputer ADV")
+    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN 21" in profile,
+            "Cardputer ADV RGB LED must use verified GPIO21")
+    require("neopixelWrite(GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN" in led,
+            "LedManager must drive configured RGB LED pin")
 
 
 def test_cardputer_sd_has_one_hardware_mount_path() -> None:

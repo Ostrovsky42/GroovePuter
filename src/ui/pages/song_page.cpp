@@ -1600,9 +1600,15 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return clearPattern();
   }
 
-  // Tab clears pattern (legacy behavior)
-  if (key == '\t') {
-    return clearPattern();
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      const int row = cursorRow();
+      requestPageTransition(WorkflowPages::kPhrase, row + 1);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') {
+      return true;
+    }
   }
 
   if (lowerKey == 'g') {

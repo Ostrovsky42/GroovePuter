@@ -8,6 +8,7 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../workflow_mode.h"
 #include "../../generation/composition/generation_profile.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
@@ -389,6 +390,16 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return false;
   }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (!event.ctrl && !event.alt && !event.meta) {
+    if (UIInput::isTab(event)) {
+      requestPageTransition(WorkflowPages::kFeel);
+      return true;
+    }
+    if (event.key == '[' || event.key == ']') {
+      return true;
+    }
+  }
 
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {

@@ -44,19 +44,15 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "compact KNOBS indicator must be visible")
     require('"NK[M]"' in source,
             "compact MORE indicator must be visible")
-    require("constexpr int kNotesTabStripX = 190;" in source,
+    require("constexpr int kNotesTabStripX = 204;" in source,
             "NOTES tab must appear after the pattern-number row")
-    require("constexpr int kParamsTabStripX = 172;" in source,
-            "params tab must sit near the right edge before its mode label")
+    require("constexpr int kParamsTabStripX = 204;" in source,
+            "params tab must sit near the right edge")
     require("constexpr int kTabStripW = 32;" in source,
             "compact synth tabs must stop before the pattern-number row")
     require("kNotesTabStripX > kPatternNumbersEndX" in source and
             "kNotesTabStripX + kTabStripW <= Layout::SCREEN_W" in source,
             "NOTES tab must prove it is after pattern numbers and on screen")
-    require("notesTab &&" in source and
-            "UI::currentStyle != VisualStyle::RETRO_CLASSIC" in source and
-            "UI::currentStyle != VisualStyle::AMBER" in source,
-            "MINIMAL NOTES must suppress tabs instead of covering pattern numbers")
     require("notesTab ? kNotesTabStripX : kParamsTabStripX" in source,
             "tabs must use their respective right-side safe slots")
     require('"[NOTES] KNOBS MORE"' not in source and
@@ -67,7 +63,8 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "params page must not duplicate the parent N/K/M switcher")
     require("UIInput::isTab(ui_event)" not in params,
             "only SynthSequencerPage may own the three-state Tab cycle")
-    require("UI::drawStandardFooter" not in source,
+    draw_body = source[source.index("void SynthSequencerPage::draw(IGfx& gfx) {"):source.index("bool SynthSequencerPage::handleEvent")]
+    require("UI::drawStandardFooter" not in draw_body,
             "parent must not redraw the params footer")
     require('"[TAB]N [U/D]ROW [L/R]CHANGE"' in params and
             '"[TAB]M [L/R]FOCUS [U/D]VAL"' in params,

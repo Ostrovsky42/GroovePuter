@@ -796,22 +796,8 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
   layoutComponents();
 
-  const char* modeName = "MIN";
-  switch (mini_acid_.grooveboxMode()) {
-    case GrooveboxMode::Acid: modeName = "ACID"; break;
-    case GrooveboxMode::Minimal: modeName = "MIN"; break;
-    case GrooveboxMode::Breaks: modeName = "BRK"; break;
-    case GrooveboxMode::Dub: modeName = "DUB"; break;
-    case GrooveboxMode::Electro: modeName = "ELC"; break;
-    default: break;
-  }
-
   const auto& content = Layout::CONTENT;
   const Rect contentRect{content.x, content.y, content.w, content.h};
-  gfx.setTextColor(kDimText);
-  gfx.drawText(content.x + content.w - gfx.textWidth(modeName) - 4,
-               content.y + 3,
-               modeName);
 
   if (!more_tab_) {
     const int x0 = content.x + Layout::CONTENT_PAD_X;
