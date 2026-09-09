@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE="9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38"
+BASE="fcd0d77da5ed6ef38419547477ab26e77ec6ff26"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 GENERATED="${BUILD_DIR}/generated"
 REPLAY="${BUILD_DIR}/generated-replay"
@@ -154,8 +154,8 @@ classification_counts = Counter(row["classification"] for row in pairs)
 assert classification_counts["STRUCTURALLY DISTINCT"] == 381
 assert classification_counts["PARTIALLY DISTINCT"] == 147
 assert classification_counts["TIMBRE-DEPENDENT"] == 0
-assert classification_counts["STRUCTURALLY REDUNDANT"] == 0
-assert classification_counts["INSUFFICIENT EVIDENCE"] == 0
+assert classification_counts["STRUCTURALLY_REDUNDANT"] == 0
+assert classification_counts["INSUFFICIENT_EVIDENCE"] == 0
 print(f"Gate B profiles: {len(profile_ids)}")
 print(f"Gate B seeds: {len(seeds)}")
 print(f"Gate B realizations: {len(corpus)}")
