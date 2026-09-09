@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CPP = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
 HDR = (ROOT / "src/ui/pages/synth_sequencer_page.h").read_text(encoding="utf-8")
 CONT = (ROOT / "src/ui/ui_view_continuity.h").read_text(encoding="utf-8")
+SELECTION = (ROOT / "src/ui/phrase_selection_state.h").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -16,13 +17,30 @@ def main() -> None:
     require('phrase_notes_cursor.h' in CPP + HDR,
             "U4B2 Phrase NOTES must use the GRID cursor owner")
     require('phrase_notes_selection.h' in CPP + HDR,
-            "U4B2 Phrase NOTES must derive selection from the live Phrase")
+            "U4B2 Phrase NOTES must retain the live-Phrase selection projection")
+    require('phrase_selection_state.h' in CPP + HDR,
+            "U4B2 Phrase NOTES must use the shared stable selection owner")
     require('PhraseNotesCursor::tick' in CPP,
             "U4B2 renderer must derive the visible cursor tick from GRID state")
     require('PhraseNotesCursor::focusBar' in CPP,
             "U4B2 viewport focus must follow cursor time")
-    require('PhraseNotesSelection::derive' in CPP,
-            "U4B2 selected musical object must be derived from cursor coverage")
+
+    # U4D1 strengthened the original U4B2 selection model. Cursor coverage is
+    # still used to pick a sound under the time cursor, but the selected sound
+    # itself must survive reorder/delete/undo and switching between roll/list.
+    # Requiring PhraseNotesSelection::derive() here would force the UI back to
+    # the old ephemeral "whatever is under this tick" selection semantics.
+    require('PhraseSelectionState::resolve' in CPP,
+            "U4B2 selected musical object must be re-resolved from stable identity")
+    require('PhraseSelectionState::first' in CPP,
+            "U4B2 must recover a lawful selection when the current sound disappears")
+    require('PhraseSelectionState::State phrase_selection_' in HDR,
+            "U4B2 roll/list views must share one selected-sound state")
+    require('startTick' in SELECTION and 'note' in SELECTION,
+            "stable selection identity must describe the sound, not only its array slot")
+    require('PhraseNotesSelection::deriveInCell' in CPP,
+            "cursor coverage must remain the adapter for choosing a sound under the GRID cell")
+
     require('PhraseNotesViewport::moveFocus' not in CPP,
             "U4B2 must retire independent coarse bar-focus navigation")
     require('phrase_focus_bar_' not in HDR,
@@ -43,8 +61,6 @@ def main() -> None:
         require(key in handler, f"U4B2 handler missing spatial/grid navigation: {key}")
     require('PhraseNotesCursor::move' in handler,
             "plain Left/Right must move the cursor by one current GRID cell")
-    # Grid/zoom moved to ALT+Up/Down when plain Up/Down was reassigned to
-    # pitch. The owner must still be the only thing that changes the grid.
     require('PhraseNotesCursor::changeGrid' in handler,
             "the GRID/zoom change must still go through the cursor owner")
     require('PhraseNotesPitchEdit::prepare' in handler,
@@ -71,18 +87,10 @@ def main() -> None:
     # its place is stronger, and is the reason the axis is safe to add:
     # browsing the pitch range is a separate gesture from editing a pitch, and
     # the browsing offset is view state that never becomes musical state.
-    # This gate demanded that picking a sound reset the window, and that was
-    # wrong: it made the whole picture rearrange on every press, with notes
-    # leaving the screen and others moving. The window must hold still while
-    # the selection is inside it and scroll only far enough to bring it back
-    # when it leaves an edge -- which is what these pin instead.
     require('phrase_pitch_lowest_' in CPP,
             "the pitch window must have explicit, inspectable position state")
     require('phrase_pitch_lowest_' not in CONT,
             "the pitch window is view state and must not be persisted")
-    # Anchored to the handler rather than to a line of code: the first version
-    # of this pinned a literal expression, which a refactor removed and broke
-    # the gate for no product reason.
     require('phrase_pitch_lowest_ = 0' not in handler,
             "picking a sound must not reset the pitch window")
     require('U/D:GRID' not in CPP,
