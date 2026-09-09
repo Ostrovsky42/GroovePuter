@@ -268,6 +268,38 @@ std::vector<ProfileCase> enumerateProfiles() {
   return profiles;
 }
 
+bool parseUnsignedArgument(const char* text,
+                           uint32_t maximum,
+                           uint32_t& destination) {
+  if (text == nullptr || *text == '\0' || *text == '-') return false;
+  char* end = nullptr;
+  const unsigned long value = std::strtoul(text, &end, 0);
+  if (end == text || *end != '\0' || value > static_cast<unsigned long>(maximum)) {
+    return false;
+  }
+  destination = static_cast<uint32_t>(value);
+  return true;
+}
+
+bool parseRealizationLevelArgument(const char* text,
+                                   RealizationLevel& destination) {
+  if (text == nullptr) return false;
+  const std::string value(text);
+  if (value == "P1") {
+    destination = RealizationLevel::P1Canonical;
+    return true;
+  }
+  if (value == "P2") {
+    destination = RealizationLevel::P2Variation;
+    return true;
+  }
+  if (value == "P3") {
+    destination = RealizationLevel::P3Transformation;
+    return true;
+  }
+  return false;
+}
+
 StrongRhythmMigrationContext migrationContext(uint32_t seed,
                                                RealizationLevel level,
                                                uint16_t phraseIdentity) {
@@ -276,6 +308,24 @@ StrongRhythmMigrationContext migrationContext(uint32_t seed,
   context.level = level;
   context.generationAttemptOrdinal = seed;
   context.phraseGenerationIdentity = phraseIdentity;
+  context.feelProfile = FeelProfileId::Auto;
+  context.feelAmount = kFeelAmount;
+  context.tonalMaterializationEnabled = true;
+  context.rootPitchClass = kRootPitchClass;
+  context.scaleTypeValue = kScaleDorian;
+  return context;
+}
+
+StrongRhythmMigrationContext g4C0RMigrationContext(
+    uint16_t identityOrdinal,
+    uint32_t generationAttemptOrdinal,
+    int16_t patternAddress,
+    RealizationLevel level) {
+  StrongRhythmMigrationContext context{};
+  context.patternAddress = patternAddress;
+  context.level = level;
+  context.generationAttemptOrdinal = generationAttemptOrdinal;
+  context.phraseGenerationIdentity = identityOrdinal;
   context.feelProfile = FeelProfileId::Auto;
   context.feelAmount = kFeelAmount;
   context.tonalMaterializationEnabled = true;
@@ -477,6 +527,89 @@ void printRealization(const ProfileCase& profile,
   std::cout << '\n';
 }
 
+void printG4C0RObservation(const ProfileCase& profile,
+                           uint16_t identityOrdinal,
+                           uint32_t generationAttemptOrdinal,
+                           int16_t patternAddress,
+                           RealizationLevel level) {
+  StrongRhythmMigrationContext context = g4C0RMigrationContext(
+      identityOrdinal, generationAttemptOrdinal, patternAddress, level);
+  StrongRhythmFrozenSelection selection{};
+  const StrongRhythmMigrationResult selectionResult = resolveStrongRhythmFrozenSelection(
+      profile.settings, context, identityOrdinal, selection);
+
+  DrumPatternSet drums{};
+  SynthPattern synthA = pitchSource(36);
+  SynthPattern synthB = pitchSource(60);
+  const uint32_t previousFingerprint =
+      GF2Measurement::materialFingerprint(drums, synthA, synthB);
+
+  StrongRhythmMigrationResult result = selectionResult;
+  if (selectionResult.status == StrongRhythmMigrationStatus::Applied && selection.resolved) {
+    result = migrateStrongRhythmFrozenMaterial(
+        profile.settings, selection, context, drums, synthA, synthB);
+  }
+  const uint32_t effectiveFingerprint =
+      GF2Measurement::materialFingerprint(drums, synthA, synthB);
+  const bool accepted = result.status == StrongRhythmMigrationStatus::Applied;
+  const GF2Measurement::GenerationObservation v0r = GF2Measurement::observeGeneration(
+      profile.settings, context, result, static_cast<uint8_t>(result.status), accepted,
+      previousFingerprint, effectiveFingerprint);
+
+  const GenerationCorridor corridor = selection.composition.corridor;
+  const std::string declaredLaw = selection.resolved
+      ? phraseEvolutionLawName(selection.composition.phraseLaw)
+      : kNotObserved;
+  const std::string requestedBars = selection.resolved
+      ? std::to_string(static_cast<unsigned>(selection.composition.phraseBars))
+      : kNotObserved;
+  const std::string densityMin = selection.resolved
+      ? std::to_string(static_cast<unsigned>(corridor.densityMin))
+      : kNotObserved;
+  const std::string densityMax = selection.resolved
+      ? std::to_string(static_cast<unsigned>(corridor.densityMax))
+      : kNotObserved;
+  const std::string resolvedDensity = selection.resolved
+      ? std::to_string(static_cast<unsigned>(selection.structuralDensityTarget))
+      : kNotObserved;
+  const std::string resolvedFeel = selection.resolved
+      ? std::to_string(static_cast<unsigned>(selection.resolvedFeel))
+      : kNotObserved;
+  const std::string realizationSeed = selection.resolved
+      ? std::to_string(selection.realizationGeneration.projectSeed)
+      : kNotObserved;
+
+  std::cout
+      << "profile_ordinal\tprofile_id\tdepth\tidentity_ordinal\t"
+      << "generation_attempt_ordinal\tpattern_address\tselection_status\t"
+      << "migration_status\tv0r_requested_mode\tv0r_requested_recipe\t"
+      << "v0r_attempt\tv0r_level\tv0r_migration_route\tv0r_archetype\t"
+      << "declared_phrase_law\trequested_bars\tdensity_min\tdensity_max\t"
+      << "resolved_density\tresolved_feel\trealization_seed\n";
+  std::cout
+      << profile.ordinal << '\t'
+      << profile.profileId << '\t'
+      << depthName(level) << '\t'
+      << identityOrdinal << '\t'
+      << generationAttemptOrdinal << '\t'
+      << v0r.patternAddress << '\t'
+      << migrationStatusName(selectionResult.status) << '\t'
+      << migrationStatusName(result.status) << '\t'
+      << static_cast<unsigned>(v0r.requestedMode) << '\t'
+      << static_cast<unsigned>(v0r.requestedRecipe) << '\t'
+      << v0r.generationAttemptOrdinal << '\t'
+      << static_cast<unsigned>(v0r.realizationLevel) << '\t'
+      << static_cast<unsigned>(v0r.migrationRoute) << '\t'
+      << static_cast<unsigned>(v0r.migrationArchetype) << '\t'
+      << declaredLaw << '\t'
+      << requestedBars << '\t'
+      << densityMin << '\t'
+      << densityMax << '\t'
+      << resolvedDensity << '\t'
+      << resolvedFeel << '\t'
+      << realizationSeed << '\n';
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -486,6 +619,38 @@ int main(int argc, char** argv) {
     std::cout << '\n';
     printPhysicalObservation(std::cout, neutral, false);
     std::cout << '\n';
+    return 0;
+  }
+
+  if (argc == 7 && std::string(argv[1]) == "--g4-c0r-dump") {
+    const std::vector<ProfileCase> profiles = enumerateProfiles();
+    uint32_t profileOrdinal = 0;
+    uint32_t identityOrdinal = 0;
+    uint32_t generationAttemptOrdinal = 0;
+    uint32_t patternAddress = 0;
+    RealizationLevel level = RealizationLevel::Count;
+    const bool valid =
+        parseUnsignedArgument(argv[2], 0xFFFFu, profileOrdinal) &&
+        profileOrdinal < profiles.size() &&
+        parseUnsignedArgument(argv[3], 0xFFFFu, identityOrdinal) &&
+        parseUnsignedArgument(argv[4], 0xFFFFFFFFu, generationAttemptOrdinal) &&
+        parseUnsignedArgument(
+            argv[5], static_cast<uint32_t>(kMaxGlobalPatterns - 1), patternAddress) &&
+        parseRealizationLevelArgument(argv[6], level);
+    if (!valid) {
+      std::fprintf(
+          stderr,
+          "usage: %s --g4-c0r-dump PROFILE IDENTITY ATTEMPT PATTERN_ADDRESS P1|P2|P3\n",
+          argv[0]);
+      return 2;
+    }
+
+    printG4C0RObservation(
+        profiles[profileOrdinal],
+        static_cast<uint16_t>(identityOrdinal),
+        generationAttemptOrdinal,
+        static_cast<int16_t>(patternAddress),
+        level);
     return 0;
   }
 
