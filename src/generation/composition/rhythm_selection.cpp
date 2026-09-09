@@ -96,9 +96,12 @@ constexpr RhythmCompatibilityCandidate kChipBase[] = {
 
 // Stage 14 uses only repository-approved production identities. Pending
 // HARD_02/HARD_04/HARD_05 never appear in these compatibility edges.
+// G4-I5: House BASE owns quarter-pulse ideas. FunkHouseBridge remains in the
+// shared vocabulary and its other owners, but its kick grammar does not carry
+// the House quarter-pulse witness and therefore is not admitted here.
 constexpr RhythmCompatibilityCandidate kHouseBase[] = {
     candidate(Archetype::StraightDrive, 90), candidate(Archetype::OffbeatOpenHat, 90),
-    candidate(Archetype::StackedQuarters, 125), candidate(Archetype::FunkHouseBridge, 130),
+    candidate(Archetype::StackedQuarters, 125),
     candidate(Archetype::ShuffledFourFour, 70),
 };
 constexpr RhythmCompatibilityCandidate kTechnoBase[] = {
