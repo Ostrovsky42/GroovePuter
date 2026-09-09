@@ -35,6 +35,10 @@ namespace UI {
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
 
+        char gInfoLeft[64] = {0};
+        char gInfoRight[32] = {0};
+        bool gInfoValid = false;
+
         UiStatusSnapshot gStatusSnapshot{};
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
@@ -271,6 +275,9 @@ namespace UI {
     void beginShellFrameModel(UiShellFrameModel& model) {
         model.clear();
         gShellFrameModel = &model;
+        gInfoValid = false;
+        gInfoLeft[0] = '\0';
+        gInfoRight[0] = '\0';
     }
 
     void endShellFrameModel() {
@@ -282,6 +289,22 @@ namespace UI {
         gShellFrameModel->setFooter(left, right);
     }
 
+    void publishShellInfo(const char* left, const char* right) {
+        if (left) {
+            std::strncpy(gInfoLeft, left, sizeof(gInfoLeft) - 1);
+            gInfoLeft[sizeof(gInfoLeft) - 1] = '\0';
+        } else {
+            gInfoLeft[0] = '\0';
+        }
+        if (right) {
+            std::strncpy(gInfoRight, right, sizeof(gInfoRight) - 1);
+            gInfoRight[sizeof(gInfoRight) - 1] = '\0';
+        } else {
+            gInfoRight[0] = '\0';
+        }
+        gInfoValid = (left != nullptr || right != nullptr);
+    }
+
     void publishShellFeelOverlay(bool visible) {
         if (gShellFrameModel == nullptr) return;
         gShellFrameModel->feelOverlay = visible;
@@ -291,6 +314,35 @@ namespace UI {
         if (!hintOverlayActive) {
             const ThemePalette p = themePalette();
             gfx.fillRect(Layout::FOOTER.x, Layout::FOOTER.y, Layout::FOOTER.w, Layout::FOOTER.h, p.background);
+            gfx.drawLine(Layout::FOOTER.x, Layout::FOOTER.y,
+                         Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y,
+                         p.panel);
+
+            const int y = Layout::FOOTER.y + 3;
+            if (gInfoValid) {
+                if (gInfoLeft[0] != '\0') {
+                    gfx.setTextColor(p.text);
+                    int maxW = Layout::FOOTER.w - 8;
+                    if (gInfoRight[0] != '\0') {
+                        maxW -= (gfx.textWidth(gInfoRight) + 8);
+                    }
+                    Widgets::drawClippedText(gfx, Layout::FOOTER.x + 4, y, maxW, gInfoLeft);
+                }
+                if (gInfoRight[0] != '\0') {
+                    gfx.setTextColor(p.secondary);
+                    int tw = gfx.textWidth(gInfoRight);
+                    gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, gInfoRight);
+                }
+            } else {
+                if (gStatusSnapshot.dirty) {
+                    gfx.setTextColor(p.accent);
+                    gfx.drawText(Layout::FOOTER.x + 4, y, "* MODIFIED");
+                }
+                gfx.setTextColor(p.dim);
+                const char* hPrompt = "[H] HELP";
+                int tw = gfx.textWidth(hPrompt);
+                gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, hPrompt);
+            }
             return;
         }
         LayoutManager::drawFooter(gfx,
@@ -615,12 +667,13 @@ namespace UI {
 
     void drawToast(IGfx& gfx) {
         if (millis() < gToastEndMs) {
+            const ThemePalette p = themePalette();
             int w = gfx.width();
             int tw = gfx.textWidth(gToastMsg);
             int x = (w - tw) / 2;
             int y = gfx.height() - 25;
-            gfx.fillRect(x - 4, y - 2, tw + 8, 11, COLOR_BLACK);
-            gfx.drawRect(x - 4, y - 2, tw + 8, 11, COLOR_KNOB_2);
+            gfx.fillRect(x - 4, y - 2, tw + 8, 11, p.background);
+            gfx.drawRect(x - 4, y - 2, tw + 8, 11, p.accent);
             gfx.setTextColor(COLOR_WHITE);
             gfx.drawText(x, y, gToastMsg);
         }

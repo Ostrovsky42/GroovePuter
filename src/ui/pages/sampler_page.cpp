@@ -177,6 +177,15 @@ void SamplerPage::draw(IGfx& gfx) {
   choke_ctrl_->setValue(p.chokeGroup == 0 ? "NONE" : std::to_string(p.chokeGroup));
 
   Container::draw(gfx);
+
+  char sampleInfo[64];
+  const SampleFileInfo* curFile = mini_acid_.sampleIndex.resolveRuntimeFile(p.id);
+  std::snprintf(sampleInfo, sizeof(sampleInfo), "PAD %d: %s",
+                current_pad_ + 1, curFile ? curFile->filename.c_str() : "EMPTY");
+  char padStatus[32];
+  std::snprintf(padStatus, sizeof(padStatus), "VOL:%.1f PITCH:%.1f", p.volume, p.pitch);
+  UI::publishShellInfo(sampleInfo, padStatus);
+
   UI::drawStandardFooter(gfx, "[TAB]GRID [U/D]ROW [L/R]VAL", "M:MUTE BS:CLR Q-I:PAD");
 }
 

@@ -61,6 +61,7 @@ namespace UI {
     void beginShellFrameModel(UiShellFrameModel& model);
     void endShellFrameModel();
     void publishShellFooter(const char* left, const char* right = nullptr);
+    void publishShellInfo(const char* left, const char* right = nullptr);
     void publishShellFeelOverlay(bool visible);
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer);
 
