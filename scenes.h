@@ -15,6 +15,7 @@
 #include "src/generation/feel/feel_types.h"
 #include "src/phrase/phrase_types.h"
 #include "src/phrase/phrase_persistence.h"
+#include "src/state/song_cell.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -159,8 +160,11 @@ enum class SongTrack : uint8_t {
 
 struct SongPosition {
   static constexpr int kTrackCount = 4;
-  int16_t patterns[kTrackCount] = {-1, -1, -1, -1};
+  GroovePuterSong::SongCell patterns[kTrackCount]{};
 };
+
+static_assert(sizeof(SongPosition) == 8,
+              "O1 SongPosition must remain exactly eight bytes");
 
 struct Song {
   static constexpr int kMaxPositions = 128;

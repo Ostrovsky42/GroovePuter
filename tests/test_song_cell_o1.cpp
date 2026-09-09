@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cstdint>
+#include <type_traits>
+#include <utility>
 
 #include "../scenes.h"
 #include "../src/state/song_cell.h"
@@ -8,9 +10,15 @@ int main() {
   using GroovePuterSong::SongCell;
 
   static_assert(sizeof(SongCell) == sizeof(int16_t),
-                "SongCell must stay exactly two bytes");
+      "SongCell must stay exactly two bytes");
   static_assert(sizeof(SongPosition) == 8,
                 "SongPosition must stay exactly eight bytes");
+  static_assert(
+      std::is_same<
+          std::remove_reference<
+              decltype(std::declval<SongPosition&>().patterns[0])>::type,
+          SongCell>::value,
+      "SongPosition must store SongCell values");
 
   const SongCell empty = SongCell::empty();
   assert(empty.isEmpty());
