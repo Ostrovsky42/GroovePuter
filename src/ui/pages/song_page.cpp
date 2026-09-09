@@ -2828,9 +2828,7 @@ void SongPage::drawGeneratorHint(IGfx& gfx) {
         return;
     }
     
-    const char* mode_names[] = { "RND", "SMART", "EVOL", "FILL" };
     int modeIdx = static_cast<int>(gen_mode_);
-    const char* current_mode = (modeIdx < 4) ? mode_names[modeIdx] : "?";
     
     int hintW = 60;
     int hintH = 12;
@@ -2842,8 +2840,8 @@ void SongPage::drawGeneratorHint(IGfx& gfx) {
     gfx.drawRect(hintX, hintY, hintW, hintH, COLOR_ACCENT);
     
     gfx.setTextColor(COLOR_WHITE);
-    char buf[16];
-    snprintf(buf, sizeof(buf), "GEN:%s", current_mode);
+    char buf[20];
+    std::snprintf(buf, sizeof(buf), "GEN ALT:%d/4", modeIdx + 1);
     gfx.drawText(hintX + 4, hintY + 2, buf);
 }
 

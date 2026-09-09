@@ -579,7 +579,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.drawText(x + 46, LayoutManager::lineY(0), line);
 
   gfx.setTextColor(palette.dim);
-  gfx.drawText(x + 88, LayoutManager::lineY(0), "DEPTH");
+  gfx.drawText(x + 88, LayoutManager::lineY(0), "LEVEL");
   gfx.setTextColor(depthColor);
   gfx.drawText(x + 128, LayoutManager::lineY(0),
                GroovePuterState::generationLevelCode(depth));
@@ -635,7 +635,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
           : (product.lastOutcome == GroovePuterState::GeneratedPhraseOutcome::TypedRejection
                  ? palette.drums
                  : palette.dim);
-  std::snprintf(line, sizeof(line), "LAST G: %s", outcome);
+  std::snprintf(line, sizeof(line), "LAST GEN: %s", outcome);
   gfx.setTextColor(outcomeColor);
   gfx.drawText(x + 70, LayoutManager::lineY(2), line);
 
