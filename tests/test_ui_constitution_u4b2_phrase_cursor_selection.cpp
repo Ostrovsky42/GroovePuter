@@ -75,6 +75,10 @@ int main() {
     State state{};
     state.grid = Grid::Eighth;
     state.cell = 1;  // tick 48, representable on every supported grid.
+
+    // GRID is now a one-key musician control: G cycles all three supported
+    // resolutions. At the ends it must wrap rather than become a dead press.
+    // The time position remains stable whenever the new grid can represent it.
     state = PhraseNotesCursor::changeGrid(state, +1, eightBars);
     assert(state.grid == Grid::Sixteenth);
     assert(PhraseNotesCursor::tick(state) == 48);
@@ -82,13 +86,19 @@ int main() {
     assert(state.grid == Grid::ThirtySecond);
     assert(PhraseNotesCursor::tick(state) == 48);
     state = PhraseNotesCursor::changeGrid(state, +1, eightBars);
+    assert(state.grid == Grid::Eighth);
+    assert(PhraseNotesCursor::tick(state) == 48);
+
+    // Reverse cycling obeys the same wrap contract.
+    state = PhraseNotesCursor::changeGrid(state, -1, eightBars);
     assert(state.grid == Grid::ThirtySecond);
+    assert(PhraseNotesCursor::tick(state) == 48);
     state = PhraseNotesCursor::changeGrid(state, -1, eightBars);
     assert(state.grid == Grid::Sixteenth);
+    assert(PhraseNotesCursor::tick(state) == 48);
     state = PhraseNotesCursor::changeGrid(state, -1, eightBars);
     assert(state.grid == Grid::Eighth);
-    state = PhraseNotesCursor::changeGrid(state, -1, eightBars);
-    assert(state.grid == Grid::Eighth);
+    assert(PhraseNotesCursor::tick(state) == 48);
   }
 
   {
