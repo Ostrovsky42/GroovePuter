@@ -13,7 +13,8 @@ mapfile -t COMMON_SOURCES < <(
 
 SOURCES=()
 for source in "${COMMON_SOURCES[@]}"; do
-  if [[ "${source}" == "/src/generation/migration/tonal_pattern_adapter.cpp" ]]; then
+  if [[ "${source}" == "/src/generation/migration/tonal_pattern_adapter.cpp" ||
+        "${source}" == "/src/generation/rhythm/rhythm_realizer.cpp" ]]; then
     continue
   fi
   SOURCES+=("${source}")
@@ -30,6 +31,7 @@ compile_probe() {
   local compiler="$1"
   local suffix="$2"
   local adapter_obj="${BUILD_DIR}/g4_c0r3_tonal_pattern_adapter_${suffix}.o"
+  local realizer_obj="${BUILD_DIR}/g4_c0r4_rhythm_realizer_${suffix}.o"
   local output="${BUILD_DIR}/gf2_gate_b_dump_c0r3_${suffix}"
 
   "${compiler}" "${COMMON_FLAGS[@]}" \
@@ -38,14 +40,22 @@ compile_probe() {
     -o "${adapter_obj}"
 
   "${compiler}" "${COMMON_FLAGS[@]}" \
+    -DrealizeRhythmPhrase=g4C0R4RealRealizeRhythmPhrase \
+    -c "${ROOT}/src/generation/rhythm/rhythm_realizer.cpp" \
+    -o "${realizer_obj}"
+
+  "${compiler}" "${COMMON_FLAGS[@]}" \
     "${SOURCES[@]/#/${ROOT}}" \
     "${ROOT}/src/dsp/genre_manager.cpp" \
     "${ROOT}/scenes.cpp" \
     "${ROOT}/json_evented.cpp" \
     "${ROOT}/src/audio/pattern_paging.cpp" \
     "${ROOT}/tools/gf2/g4_c0r3_tonal_probe.cpp" \
+    "${ROOT}/tools/gf2/g4_c0r4_role_plan_probe.cpp" \
+    "${ROOT}/tools/gf2/g4_c0r4_bass_candidates_probe.cpp" \
     "${ROOT}/tools/gf2/g4_c0r3_dump.cpp" \
     "${adapter_obj}" \
+    "${realizer_obj}" \
     -o "${output}"
 }
 
