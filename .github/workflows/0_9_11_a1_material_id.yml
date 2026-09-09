@@ -9,6 +9,7 @@ on:
       - 'src/state/material_slot_access.h'
       - 'src/state/melody_promotion.h'
       - 'tests/test_0_9_11_a1_material_id.cpp'
+      - 'tests/test_0_9_11_a1_material_id_api.cpp'
       - '.github/workflows/0_9_11_a1_material_id.yml'
   workflow_dispatch:
 
@@ -28,9 +29,14 @@ jobs:
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_0_9_11_a1_material_id.cpp \
             -o build/host-tests/test_0_9_11_a1_material_id
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_0_9_11_a1_material_id_api.cpp \
+            -o build/host-tests/test_0_9_11_a1_material_id_api
 
       - name: Run A1 material identity characterization
-        run: build/host-tests/test_0_9_11_a1_material_id
+        run: |
+          build/host-tests/test_0_9_11_a1_material_id
+          build/host-tests/test_0_9_11_a1_material_id_api
 
       - name: Diff hygiene
         run: git diff --check
