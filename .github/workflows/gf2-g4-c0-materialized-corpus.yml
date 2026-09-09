@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   materialized-corpus:
@@ -71,6 +71,58 @@ jobs:
           set -o pipefail
           bash tests/run_gf2_i3_tests.sh 2>&1 | \
             tee build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+
+      - name: Validate and refresh intended FEEL census delta
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          import sys
+
+          path = "docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv"
+          diff = subprocess.check_output(
+              ["git", "diff", "--unified=0", "--", path], text=True)
+          changed = [
+              line for line in diff.splitlines()
+              if line[:1] in "+-" and not line.startswith(("+++", "---"))
+          ]
+          expected = {
+              "-5\tDub/Reggae\t5\tDub Techno\t": 61,
+              "+5\tDub/Reggae\t5\tDub Techno\t": 61,
+              "-14\tDrum&Bass\t0\tBASE\t": 61,
+              "+14\tDrum&Bass\t0\tBASE\t": 61,
+          }
+          counts = {prefix: 0 for prefix in expected}
+          bad = []
+          for line in changed:
+              matched = False
+              for prefix in expected:
+                  if line.startswith(prefix):
+                      counts[prefix] += 1
+                      matched = True
+                      break
+              if not matched:
+                  bad.append(line)
+          if bad:
+              print("Unexpected FEEL census changes:", *bad[:20], sep="\n")
+              raise SystemExit(1)
+          if len(changed) != 244:
+              print(f"Expected 244 changed data lines, got {len(changed)}")
+              print(counts)
+              raise SystemExit(1)
+          if counts != expected:
+              print("Unexpected per-scope counts")
+              print("expected:", expected)
+              print("actual:  ", counts)
+              raise SystemExit(1)
+          print("Validated FEEL census delta:", counts)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv
+          git diff --cached --quiet && exit 0
+          git commit -m "docs(gf2): refresh FEEL census for G4 contracts"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Preserve regenerated FEEL census
         if: always()
