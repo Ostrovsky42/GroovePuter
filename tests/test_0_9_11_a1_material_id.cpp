@@ -12,7 +12,7 @@ namespace {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 using MelodyPromotion::Error;
-using GroovePuterMaterial::MaterialId;
+using GroovePuterMaterial::MaterialAddress;
 
 struct FakeFs : MelodyPromotion::FileSystem {
   std::map<std::string, std::vector<uint8_t>> files;
@@ -56,18 +56,18 @@ int main() {
   Scene page0{};
   Scene page1{};
 
-  constexpr MaterialId page0Id{0, 5};
-  constexpr MaterialId page1Id{0, 21};
+  constexpr MaterialAddress page0Address{0, 5};
+  constexpr MaterialAddress page1Address{0, 21};
   const std::string project = "a1-page-alias";
 
   const Error first = MelodyPromotion::promoteResident(
-      fs, project, page0, 0, page0Id, melodyWithNote(60));
+      fs, project, page0, 0, page0Address, melodyWithNote(60));
   const Error second = MelodyPromotion::promoteResident(
-      fs, project, page1, 1, page1Id, melodyWithNote(72));
+      fs, project, page1, 1, page1Address, melodyWithNote(72));
 
   if (first != Error::None || second != Error::None) {
     std::fprintf(stderr,
-                 "A1 setup failed: both global material promotions must succeed\n");
+                 "A1 setup failed: both material promotions must succeed\n");
     return 2;
   }
 
@@ -81,8 +81,8 @@ int main() {
 
   Buffer back0{};
   Buffer back1{};
-  if (!MelodyPromotion::loadMaterial(fs, project, page0Id, back0) ||
-      !MelodyPromotion::loadMaterial(fs, project, page1Id, back1) ||
+  if (!MelodyPromotion::loadMaterial(fs, project, page0Address, back0) ||
+      !MelodyPromotion::loadMaterial(fs, project, page1Address, back1) ||
       back0.count != 1 || back1.count != 1 || back0.events[0].note != 60 ||
       back1.events[0].note != 72) {
     std::fprintf(stderr,
@@ -90,6 +90,6 @@ int main() {
     return 1;
   }
 
-  std::printf("0.9.11 A1 material identity: PASS\n");
+  std::printf("0.9.11 A1 persistence identity: PASS\n");
   return 0;
 }
