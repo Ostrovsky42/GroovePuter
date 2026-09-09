@@ -1,11 +1,5 @@
 // 0.9.11 A1 characterization: persistent material identity must not alias
 // resident slots from different pages.
-//
-// This is intentionally written against the current production API. Two Scene
-// objects model two different resident pages of the same project. Today both
-// page-local slot 5 values address the same melody path, so the second publish
-// overwrites the first. A1 must make those materials distinct before callers
-// start depending on a canonical MaterialId.
 
 #include <cstdio>
 #include <map>
@@ -18,6 +12,7 @@ namespace {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 using MelodyPromotion::Error;
+using GroovePuterMaterial::MaterialId;
 
 struct FakeFs : MelodyPromotion::FileSystem {
   std::map<std::string, std::vector<uint8_t>> files;
@@ -61,28 +56,37 @@ int main() {
   Scene page0{};
   Scene page1{};
 
-  constexpr int kVoice = 0;
-  constexpr int kLocalSlot = 5;
+  constexpr MaterialId page0Id{0, 5};
+  constexpr MaterialId page1Id{0, 21};
   const std::string project = "a1-page-alias";
 
   const Error first = MelodyPromotion::promoteResident(
-      fs, project, page0, kVoice, kLocalSlot, melodyWithNote(60));
+      fs, project, page0, 0, page0Id, melodyWithNote(60));
   const Error second = MelodyPromotion::promoteResident(
-      fs, project, page1, kVoice, kLocalSlot, melodyWithNote(72));
+      fs, project, page1, 1, page1Id, melodyWithNote(72));
 
   if (first != Error::None || second != Error::None) {
     std::fprintf(stderr,
-                 "A1 RED setup failed: both page-local promotions must succeed\n");
+                 "A1 setup failed: both global material promotions must succeed\n");
     return 2;
   }
 
-  // Correct behavior requires two independently addressable payloads. Current
-  // production leaves one file because page is absent from persistent identity.
   if (fs.files.size() != 2u) {
     std::fprintf(stderr,
-                 "A1 RED: same local slot on different pages aliases one melody "
-                 "payload (files=%zu)\n",
+                 "A1 FAIL: distinct global materials do not own two payloads "
+                 "(files=%zu)\n",
                  fs.files.size());
+    return 1;
+  }
+
+  Buffer back0{};
+  Buffer back1{};
+  if (!MelodyPromotion::loadMaterial(fs, project, page0Id, back0) ||
+      !MelodyPromotion::loadMaterial(fs, project, page1Id, back1) ||
+      back0.count != 1 || back1.count != 1 || back0.events[0].note != 60 ||
+      back1.events[0].note != 72) {
+    std::fprintf(stderr,
+                 "A1 FAIL: cross-page materials are not independently loadable\n");
     return 1;
   }
 
