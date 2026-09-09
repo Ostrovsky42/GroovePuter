@@ -35,6 +35,8 @@ jobs:
         run: bash tests/support/gf2_gate_b_g4_c0r_coordinate_test.sh
       - name: G4-C0R2 materialized idea corpus regression
         run: bash tests/support/gf2_gate_b_g4_c0r_corpus_test.sh
+      - name: G4-C0R3 active-axis and semantic-topology characterization
+        run: bash tests/support/gf2_gate_b_g4_c0r3_semantic_topology_test.sh
       - name: G4-C0R2 full pilot corpus
         shell: bash
         run: |
@@ -216,7 +218,7 @@ jobs:
                   "take_distribution="
                   f"1:{row['identities_with_1_unique_take']},"
                   f"2:{row['identities_with_2_unique_takes']},"
-                  f"3:{row['identities_with_3_unique_takes']},"
+                  f"3:{row['identities_with_3_unique_take'] if False else row['identities_with_3_unique_takes']},"
                   f"4:{row['identities_with_4_unique_takes']}",
                   f"attempt_changes={row['identities_where_attempt_changes_material']}/128",
                   f"shared_fp={row['fingerprints_shared_across_identities']}",
