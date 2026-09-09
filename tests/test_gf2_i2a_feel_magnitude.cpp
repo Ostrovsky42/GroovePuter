@@ -52,16 +52,18 @@ constexpr int16_t kPatternAddress = 3;
 // what the vocabulary actually draws for AUTO rather than by a guessed list.
 //
 //   AUTO draws LaidBack or PushPull   the recipe is expected-active
-//   AUTO draws Straight               expected-inert: acid, techno, house,
+//   AUTO draws Straight               expected-inert: acid, techno,
 //                                     drum & bass and rave are played straight
 //   AUTO draws SwingCompatible        expected-inert for the same reason
 //                                     SwingCompatible itself is: it defers to
 //                                     the independently applied swingPct
 //
 // The counts are pinned so a vocabulary edit that silently flips a recipe
-// between classes has to be acknowledged.
-constexpr int kExpectedActiveRecipes = 16;
-constexpr int kExpectedStraightRecipes = 11;
+// between classes has to be acknowledged. G4-I5 intentionally changed House
+// BASE from the STRAIGHT bucket to an active FEEL draw when its unowned
+// FunkHouseBridge candidate was removed; the other corpus classes are unchanged.
+constexpr int kExpectedActiveRecipes = 17;
+constexpr int kExpectedStraightRecipes = 10;
 constexpr int kExpectedSwingCompatibleRecipes = 6;
 
 int g_failures = 0;
