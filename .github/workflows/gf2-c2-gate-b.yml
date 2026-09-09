@@ -29,6 +29,8 @@ jobs:
         run: python3 tests/test_gf2_gate_b_finalize.py
       - name: Gate B strict artifact proof
         run: bash tests/run_gf2_gate_b_tests.sh
+      - name: G4-C0R coordinate separation regression
+        run: bash tests/support/gf2_gate_b_g4_c0r_coordinate_test.sh
       - name: Upload strict proof artifacts
         uses: actions/upload-artifact@v4
         with:
