@@ -8,6 +8,7 @@ on:
       - 'src/state/material_slot.h'
       - 'src/state/material_slot_access.h'
       - 'src/state/melody_promotion.h'
+      - 'tests/test_melody_promotion.cpp'
       - 'tests/test_0_9_11_a1_material_id.cpp'
       - 'tests/test_0_9_11_a1_material_id_api.cpp'
       - '.github/workflows/0_9_11_a1_material_id.yml'
@@ -23,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build A1 characterization
+      - name: Build A1 and MelodyPromotion contracts
         run: |
           mkdir -p build/host-tests
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
@@ -32,11 +33,15 @@ jobs:
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_0_9_11_a1_material_id_api.cpp \
             -o build/host-tests/test_0_9_11_a1_material_id_api
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_melody_promotion.cpp \
+            -o build/host-tests/test_melody_promotion
 
-      - name: Run A1 material identity characterization
+      - name: Run A1 material identity contracts
         run: |
           build/host-tests/test_0_9_11_a1_material_id
           build/host-tests/test_0_9_11_a1_material_id_api
+          build/host-tests/test_melody_promotion
 
       - name: Diff hygiene
         run: git diff --check
