@@ -4,7 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 BIN="${BUILD_DIR}/gf2_gate_b_dump_c0r3_gcc"
-OUT_DIR="${BUILD_DIR}/g4-c0r5-full-role-census"
+# Keep C0R5 below the already-uploaded full-pilot directory so the existing
+# strict-proof artifact includes the role-coherence evidence without widening
+# workflow artifact policy.
+OUT_DIR="${BUILD_DIR}/g4-c0r2-full/g4-c0r5-full-role-census"
 RAW="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_RAW.tsv"
 DETAIL="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_ROWS.tsv"
 SUMMARY="${OUT_DIR}/G4_C0R5_ROLE_COHERENCE_SUMMARY.tsv"
