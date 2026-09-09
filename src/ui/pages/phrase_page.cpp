@@ -684,8 +684,8 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   }
 
   UI::drawStandardFooter(gfx,
-                         "U/D:FOCUS L/R:ADJUST P:DEPTH",
-                         "G:GEN  ENT:BAR/TO");
+                         "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
+                         "G:GEN P:DEPTH ENT:BAR");
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
@@ -1304,7 +1304,7 @@ void PhrasePage::draw(IGfx& gfx) {
   gfx.drawText(x + width - gfx.textWidth(ownership), actionY, ownership);
 
   UI::drawStandardFooter(gfx,
-                         "1-4:SLOT L/R:BAR U/D:CAPLEN",
+                         "1-4:SLOT [L/R]BAR [U/D]LEN",
                          "G:GEN ENT/D/W");
 }
 

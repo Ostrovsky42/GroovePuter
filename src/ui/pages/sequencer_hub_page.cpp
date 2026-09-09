@@ -515,14 +515,14 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
         // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
-        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [FN<>]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
+        UI::drawStandardFooter(gfx, "[U/D]TRK [L/R]STEP Fn<>:VOL", "[X]HIT [A]ACC [ENT]OPEN");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::RETRO_CLASSIC);
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
-            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC", "DRUM");
+            UI::drawStandardFooter(gfx, "[ARWS]GRID [A]ACCENT", "[ESC]BACK [SPACE]PLAY");
         } else {
             // Enhanced 303 Detail (Retro Style with Teal & Orange)
             int cellW = (w - 20) / 16;
@@ -560,7 +560,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 }
             }
             // Scanlines disabled: caused flicker on small TFT
-            RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC", "303");
+            UI::drawStandardFooter(gfx, "[A/Z]NOTE [S/X]OCT [Alt+S]SLD", "[Alt+A]ACC [ESC]BACK");
         }
     }
 #else
@@ -711,14 +711,13 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
-        // Scanlines disabled: caused flicker on small TFT
-        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [FN<>]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
+        UI::drawStandardFooter(gfx, "[U/D]TRK [L/R]STEP Fn<>:VOL", "[X]HIT [A]ACC [ENT]OPEN");
     } else {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::AMBER);
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
-            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
+            UI::drawStandardFooter(gfx, "[ARWS]GRID [A]ACCENT", "[ESC]BACK [SPACE]PLAY");
         } else {
             int cellW = (w - 20) / 16;
             int cellH = 40;
@@ -754,7 +753,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                     gfx.drawText(cx + (cellW - 4) / 2, gridY + 10, ".");
                 }
             }
-            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
+            UI::drawStandardFooter(gfx, "[A/Z]NOTE [S/X]OCT [Alt+S]SLD", "[Alt+A]ACC [ESC]BACK");
         }
     }
 #else

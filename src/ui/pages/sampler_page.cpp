@@ -1,4 +1,5 @@
 #include "sampler_page.h"
+#include "../ui_common.h"
 #include "../../dsp/miniacid_engine.h"
 #include "../screen_geometry.h"
 #include "../ui_input.h"
@@ -176,6 +177,7 @@ void SamplerPage::draw(IGfx& gfx) {
   choke_ctrl_->setValue(p.chokeGroup == 0 ? "NONE" : std::to_string(p.chokeGroup));
 
   Container::draw(gfx);
+  UI::drawStandardFooter(gfx, "[TAB]GRID [U/D]ROW [L/R]VAL", "M:MUTE BS:CLR Q-I:PAD");
 }
 
 bool SamplerPage::selectIndexedSample(int direction) {

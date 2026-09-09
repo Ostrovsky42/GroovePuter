@@ -358,7 +358,7 @@ void GenrePage::draw(IGfx& gfx) {
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), value);
 
-  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
+  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {

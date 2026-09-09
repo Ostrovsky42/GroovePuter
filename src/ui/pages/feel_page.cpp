@@ -291,8 +291,8 @@ void FeelPage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), explanation);
 
   UI::drawStandardFooter(gfx,
-                         "U/D:FIELD L/R:CHANGE",
-                         "HOLD L/R:ACCEL P:LEVEL");
+                         "[TAB]GENRE U/D:FIELD L/R:CHANGE",
+                         "HOLD L/R:ACCEL");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {

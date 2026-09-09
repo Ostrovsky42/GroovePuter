@@ -1693,6 +1693,7 @@ void ProjectPage::draw(IGfx& gfx) {
     Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
   }
 
+  UI::drawStandardFooter(gfx, "[TAB]SECT [U/D]ITEM [L/R]VAL", "[ENT]SELECT [ESC]BACK");
 }
 
 int ProjectPage::firstFocusInSection(int sectionIdx) {
