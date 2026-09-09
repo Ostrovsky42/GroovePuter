@@ -1,0 +1,46 @@
+name: G4-C0R6 structural separation
+
+on:
+  push:
+    branches:
+      - research/20260909-0.9.11-g4-c0r-materialized-idea-corpus
+  pull_request:
+    paths:
+      - 'tools/gf2/g4_c0r6_structural_separation.py'
+      - 'tests/test_g4_c0r6_structural_separation.py'
+      - 'tests/support/gf2_gate_b_g4_c0r6_structural_separation_test.sh'
+      - '.github/workflows/gf2-g4-c0r6-structural-separation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g4-c0r6-structural-separation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-separation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Exact-head provenance and source firewall
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HEAD=$(git rev-parse HEAD)"
+          BASE="fcd0d77da5ed6ef38419547477ab26e77ec6ff26"
+          if ! git diff --quiet "${BASE}...HEAD" -- src/; then
+            echo "G4_C0R6_S_FAIL reason=research checkpoint changed src/" >&2
+            git diff --stat "${BASE}...HEAD" -- src/ >&2
+            exit 1
+          fi
+          echo "G4-C0R6-S source firewall: src/ DELTA = NONE"
+
+      - name: Structural separation characterization
+        run: bash tests/support/gf2_gate_b_g4_c0r6_structural_separation_test.sh
