@@ -12,6 +12,12 @@ on:
       - 'tests/test_gf2_g4_c0_materialized_corpus.cpp'
       - 'tests/test_gf2_g4_c0_cross_genre.cpp'
       - 'tests/run_gf2_g4_c0_tests.sh'
+      - 'tests/test_gf2_g4_r1_reference_contracts.cpp'
+      - 'tests/run_gf2_g4_r1_tests.sh'
+      - 'tests/test_gf2_g4_i3_phrase_truthfulness.cpp'
+      - 'tests/run_gf2_g4_i3_tests.sh'
+      - 'tests/test_gf2_i3_phrase_law_execution.cpp'
+      - 'tests/run_gf2_i3_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
       - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
       - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
@@ -49,8 +55,29 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt \
             build/host-tests/gf2-g4-c0/g4-c0-summary-2.txt
 
+      - name: Run G4-R1 reference contracts
+        run: |
+          bash tests/run_gf2_g4_r1_tests.sh \
+            > build/host-tests/gf2-g4-c0/g4-r1.log
+
+      - name: Run G4-I3 phrase truthfulness
+        run: |
+          bash tests/run_gf2_g4_i3_tests.sh \
+            > build/host-tests/gf2-g4-c0/g4-i3.log
+
+      - name: Run existing GF2-I3 ownership regressions
+        run: |
+          bash tests/run_gf2_i3_tests.sh \
+            > build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+
       - name: Print accepted G4-C0 summary
         run: cat build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
+
+      - name: Print focused verification summaries
+        run: |
+          cat build/host-tests/gf2-g4-c0/g4-r1.log
+          cat build/host-tests/gf2-g4-c0/g4-i3.log
+          cat build/host-tests/gf2-g4-c0/gf2-i3-regression.log
 
       - name: Upload G4-C0 evidence
         uses: actions/upload-artifact@v4
@@ -60,4 +87,7 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-c0-summary-1.txt
             build/host-tests/gf2-g4-c0/run-1.log
             build/host-tests/gf2-g4-c0/run-2.log
+            build/host-tests/gf2-g4-c0/g4-r1.log
+            build/host-tests/gf2-g4-c0/g4-i3.log
+            build/host-tests/gf2-g4-c0/gf2-i3-regression.log
           if-no-files-found: error
