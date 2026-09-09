@@ -111,7 +111,23 @@ StepMask drumOnsets(const DrumPatternSet& drums, uint8_t voice) {
   return result;
 }
 
-StepMask synthOnsets(const SynthPattern& synth) {
+// On this exact research base, the tonal adapter represents a continuation by
+// copying the active note to the next physical step with slide=true. The four
+// pilot profiles resolve bass articulation to Plain, and chord/melodic
+// adaptation provides no slide-into-onset mask. Therefore slide=true is
+// continuation occupancy here, not a new attack.
+StepMask synthAttacks(const SynthPattern& synth) {
+  StepMask result = 0;
+  for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& event = synth.steps[step];
+    if (event.note >= 0 && !event.slide) {
+      result = static_cast<StepMask>(result | stepBit(step));
+    }
+  }
+  return result;
+}
+
+StepMask synthOccupancy(const SynthPattern& synth) {
   StepMask result = 0;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
     if (synth.steps[step].note >= 0) {
@@ -127,19 +143,21 @@ uint32_t relativePitchFingerprint(const SynthPattern& synth) {
   int8_t previous = 0;
   uint8_t noteCount = 0;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    const int8_t note = synth.steps[step].note;
-    if (note < 0) continue;
+    const SynthStep& event = synth.steps[step];
+    if (event.note < 0 || event.slide) continue;
     ++noteCount;
     if (havePrevious) {
-      const int16_t interval = static_cast<int16_t>(note) - previous;
+      const int16_t interval = static_cast<int16_t>(event.note) - previous;
       hash = mixByte(hash, static_cast<uint8_t>(interval + 128));
     }
-    previous = note;
+    previous = event.note;
     havePrevious = true;
   }
   return mixByte(hash, noteCount);
 }
 
+// Role structure keeps role identity, attacks, synth lifetime occupancy and
+// transposition-invariant pitch motion. Production/surface dimensions are gone.
 uint32_t roleStructureFingerprint(const DrumPatternSet& drums,
                                   const SynthPattern& synthA,
                                   const SynthPattern& synthB) {
@@ -147,18 +165,22 @@ uint32_t roleStructureFingerprint(const DrumPatternSet& drums,
   for (uint8_t voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
     hash = mixMask(hash, drumOnsets(drums, voice));
   }
-  hash = mixMask(hash, synthOnsets(synthA));
-  hash = mixMask(hash, synthOnsets(synthB));
+  hash = mixMask(hash, synthAttacks(synthA));
+  hash = mixMask(hash, synthOccupancy(synthA));
+  hash = mixMask(hash, synthAttacks(synthB));
+  hash = mixMask(hash, synthOccupancy(synthB));
   hash = mix32(hash, relativePitchFingerprint(synthA));
   hash = mix32(hash, relativePitchFingerprint(synthB));
   return hash;
 }
 
+// Strict "all sounds become one same-pitch click" projection. A held/tied
+// synth note produces one click at its attack, not one click per occupied step.
 StepMask clickStructure(const DrumPatternSet& drums,
                         const SynthPattern& synthA,
                         const SynthPattern& synthB) {
   StepMask result = static_cast<StepMask>(
-      synthOnsets(synthA) | synthOnsets(synthB));
+      synthAttacks(synthA) | synthAttacks(synthB));
   for (uint8_t voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
     result = static_cast<StepMask>(result | drumOnsets(drums, voice));
   }
@@ -242,8 +264,8 @@ Sample materializeSample(const Pilot& pilot, uint16_t identity,
   sample.phraseLaw = selection.composition.phraseLaw;
   sample.phraseBars = selection.composition.phraseBars;
   sample.kick = drumOnsets(drums, KICK);
-  sample.bassOnsets = countBits(synthOnsets(synthA));
-  sample.secondaryOnsets = countBits(synthOnsets(synthB));
+  sample.bassOnsets = countBits(synthAttacks(synthA));
+  sample.secondaryOnsets = countBits(synthAttacks(synthB));
   for (uint8_t voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
     sample.drumHits = static_cast<uint8_t>(
         sample.drumHits + countBits(drumOnsets(drums, voice)));
