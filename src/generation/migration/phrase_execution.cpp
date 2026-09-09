@@ -144,11 +144,22 @@ PhraseExecutionStatus preparePhraseExecution(
     return destination.status;
   }
 
-  // GF2-I3: realize the declared bar-function programme once for the phrase.
+  // G4-I3: Phrase is the first causal owner of multi-bar development. A
+  // selected non-Loop label is truthful only when this exact archetype, level
+  // and length admit the trajectory it names. Otherwise retain the selected
+  // Phrase length but normalize the semantic law to the neutral Loop instead
+  // of advertising development that cannot causally reach production.
+  const PhraseEvolutionLawId selectedPhraseLaw =
+      destination.selection.composition.phraseLaw;
   destination.phraseTrajectory = admittedPhraseTrajectory(
       destination.selection.composition.rhythmArchetypeId,
-      destination.selection.composition.phraseLaw, materialization.level,
+      selectedPhraseLaw, materialization.level,
       destination.length.effectivePhraseBars);
+  if (selectedPhraseLaw != PhraseEvolutionLawId::Loop &&
+      destination.phraseTrajectory == kNoTrajectoryId) {
+    destination.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
+  }
+
   if (destination.phraseTrajectory != kNoTrajectoryId) {
     BarEvolutionRequest evolution{};
     evolution.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
@@ -167,9 +178,10 @@ PhraseExecutionStatus preparePhraseExecution(
 
     const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
     if (evolved.status != BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
-      // A law that cannot be realized must not fail the phrase; the established
-      // per-bar realization stays in force.
+      // A programme that still cannot be realized must not leave a false
+      // non-Loop semantic label behind. Preserve Phrase and fall back to Loop.
       destination.phraseTrajectory = kNoTrajectoryId;
+      destination.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
     } else {
       destination.phrasePlan = evolved.plan;
     }
