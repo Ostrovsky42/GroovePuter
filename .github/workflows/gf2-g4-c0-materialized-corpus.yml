@@ -5,6 +5,7 @@ on:
     branches:
       - research/20260909-01-g4-c0-materialized-corpus
       - feature/20260909-02-0.9.11-g4-reference-genre-contracts
+      - feature/20260909-02-0.9.11-g4-i4-dub-techno-structural-ownership
     paths:
       - 'src/generation/composition/generation_profile.cpp'
       - 'src/generation/migration/phrase_execution.cpp'
@@ -16,6 +17,8 @@ on:
       - 'tests/run_gf2_g4_r1_tests.sh'
       - 'tests/test_gf2_g4_i3_phrase_truthfulness.cpp'
       - 'tests/run_gf2_g4_i3_tests.sh'
+      - 'tests/test_gf2_g4_i4_dub_techno_structural_ownership.cpp'
+      - 'tests/run_gf2_g4_i4_tests.sh'
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
@@ -66,6 +69,11 @@ jobs:
           bash tests/run_gf2_g4_i3_tests.sh \
             > build/host-tests/gf2-g4-c0/g4-i3.log
 
+      - name: Run G4-I4 Dub Techno structural ownership
+        run: |
+          bash tests/run_gf2_g4_i4_tests.sh \
+            > build/host-tests/gf2-g4-c0/g4-i4.log
+
       - name: Run existing GF2-I3 ownership regressions and FEEL census freshness
         run: |
           set -o pipefail
@@ -89,7 +97,7 @@ jobs:
       - name: Print focused verification summaries
         if: always()
         run: |
-          for log in g4-r1.log g4-i3.log gf2-i3-regression.log; do
+          for log in g4-r1.log g4-i3.log g4-i4.log gf2-i3-regression.log; do
             if test -f "build/host-tests/gf2-g4-c0/${log}"; then
               echo "===== ${log} ====="
               cat "build/host-tests/gf2-g4-c0/${log}"
@@ -107,6 +115,7 @@ jobs:
             build/host-tests/gf2-g4-c0/run-2.log
             build/host-tests/gf2-g4-c0/g4-r1.log
             build/host-tests/gf2-g4-c0/g4-i3.log
+            build/host-tests/gf2-g4-c0/g4-i4.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
             build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
           if-no-files-found: error
