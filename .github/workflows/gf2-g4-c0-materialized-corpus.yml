@@ -72,34 +72,28 @@ jobs:
 
       - name: Run G4-R1 reference contracts
         run: |
-          bash tests/run_gf2_g4_r1_tests.sh \
-            > build/host-tests/gf2-g4-c0/g4-r1.log
+          bash tests/run_gf2_g4_r1_tests.sh > build/host-tests/gf2-g4-c0/g4-r1.log
 
       - name: Run G4-I3 phrase truthfulness
         run: |
-          bash tests/run_gf2_g4_i3_tests.sh \
-            > build/host-tests/gf2-g4-c0/g4-i3.log
+          bash tests/run_gf2_g4_i3_tests.sh > build/host-tests/gf2-g4-c0/g4-i3.log
 
       - name: Run G4-I4 Dub Techno structural ownership
         run: |
-          bash tests/run_gf2_g4_i4_tests.sh \
-            > build/host-tests/gf2-g4-c0/g4-i4.log
+          bash tests/run_gf2_g4_i4_tests.sh > build/host-tests/gf2-g4-c0/g4-i4.log
 
       - name: Run G4-I5 House structural ownership
         run: |
-          bash tests/run_gf2_g4_i5_tests.sh \
-            > build/host-tests/gf2-g4-c0/g4-i5.log
+          bash tests/run_gf2_g4_i5_tests.sh > build/host-tests/gf2-g4-c0/g4-i5.log
 
       - name: Run G4-I6 global ownership census
         run: |
-          bash tests/run_gf2_g4_i6_tests.sh \
-            > build/host-tests/gf2-g4-c0/g4-i6.log
+          bash tests/run_gf2_g4_i6_tests.sh > build/host-tests/gf2-g4-c0/g4-i6.log
 
       - name: Run existing GF2-I3 ownership regressions and FEEL census freshness
         run: |
           set -o pipefail
-          bash tests/run_gf2_i3_tests.sh 2>&1 | \
-            tee build/host-tests/gf2-g4-c0/gf2-i3-regression.log
+          bash tests/run_gf2_i3_tests.sh 2>&1 | tee build/host-tests/gf2-g4-c0/gf2-i3-regression.log
 
       - name: Preserve verified FEEL census
         if: always()
@@ -125,6 +119,10 @@ jobs:
               cat "build/host-tests/gf2-g4-c0/${log}"
             fi
           done
+          if test -f build/host-tests/gf2-g4-i6/g4-i6-summary.txt; then
+            echo "===== g4-i6-summary.txt ====="
+            cat build/host-tests/gf2-g4-i6/g4-i6-summary.txt
+          fi
 
       - name: Upload G4-C0 evidence
         if: always()
@@ -142,4 +140,10 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-i6.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
             build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md
+            build/host-tests/gf2-g4-i6/g4-i6-summary.txt
+            build/host-tests/gf2-g4-i6/run-a.log
+            build/host-tests/gf2-g4-i6/run-b.log
           if-no-files-found: error
