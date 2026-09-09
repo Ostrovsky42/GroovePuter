@@ -1,0 +1,131 @@
+name: O1 Task 1 apply SongCell authority
+
+on:
+  push:
+    branches:
+      - research/20260909-01-hybrid-song-orchestration-ux
+    paths:
+      - ".github/workflows/o1-task1-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/20260909-01-hybrid-song-orchestration-ux
+          fetch-depth: 0
+
+      - name: Apply exact O1 Task 1 patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          scenes = Path('scenes.h')
+          text = scenes.read_text()
+
+          include_anchor = '#include "src/phrase/phrase_persistence.h"\n#include "json_evented.h"\n'
+          include_replacement = '#include "src/phrase/phrase_persistence.h"\n#include "src/state/song_cell.h"\n#include "json_evented.h"\n'
+          if include_anchor not in text:
+              raise SystemExit('SongCell include anchor not found')
+          if '#include "src/state/song_cell.h"' not in text:
+              text = text.replace(include_anchor, include_replacement, 1)
+
+          old_struct = '''struct SongPosition {
+            static constexpr int kTrackCount = 4;
+            int16_t patterns[kTrackCount] = {-1, -1, -1, -1};
+          };
+          '''
+          new_struct = '''struct SongPosition {
+            static constexpr int kTrackCount = 4;
+            GroovePuterSong::SongCell patterns[kTrackCount]{};
+          };
+
+          static_assert(sizeof(SongPosition) == 8,
+                        "O1 SongPosition must remain exactly eight bytes");
+          '''
+          if old_struct not in text:
+              raise SystemExit('SongPosition storage anchor not found')
+          text = text.replace(old_struct, new_struct, 1)
+          scenes.write_text(text)
+
+          test = Path('tests/test_song_cell_o1.cpp')
+          test.write_text(r'''#include <cassert>
+          #include <cstdint>
+          #include <type_traits>
+          #include <utility>
+
+          #include "../scenes.h"
+          #include "../src/state/song_cell.h"
+
+          int main() {
+            using GroovePuterSong::SongCell;
+
+            static_assert(sizeof(SongCell) == sizeof(int16_t),
+                          "SongCell must stay exactly two bytes");
+            static_assert(sizeof(SongPosition) == 8,
+                          "SongPosition must stay exactly eight bytes");
+            static_assert(
+                std::is_same<
+                    std::remove_reference<
+                        decltype(std::declval<SongPosition&>().patterns[0])>::type,
+                    SongCell>::value,
+                "SongPosition must store SongCell values");
+
+            const SongCell empty = SongCell::empty();
+            assert(empty.isEmpty());
+            assert(!empty.isRest());
+            assert(!empty.hasMaterial());
+            assert(empty.patternRef() == -1);
+
+            const SongCell rest = SongCell::rest();
+            assert(!rest.isEmpty());
+            assert(rest.isRest());
+            assert(!rest.hasMaterial());
+            assert(rest.patternRef() == -1);
+
+            const SongCell p0 = SongCell::material(0);
+            const SongCell p255 = SongCell::material(255);
+            assert(p0.hasMaterial());
+            assert(p0.patternRef() == 0);
+            assert(p255.hasMaterial());
+            assert(p255.patternRef() == 255);
+
+            assert(SongCell::fromRaw(-1).isEmpty());
+            assert(SongCell::fromRaw(-2).isRest());
+            assert(SongCell::fromRaw(12).hasMaterial());
+            assert(SongCell::fromRaw(12).patternRef() == 12);
+            assert(SongCell::fromRaw(9999).isEmpty());
+
+            return 0;
+          }
+          '''.replace('          ', '', 1))
+
+          for tmp in (
+              Path('tests/test_song_cell_o1_strengthened.tmp'),
+              Path('tests/test_song_cell_o1_v2.tmp'),
+          ):
+              if tmp.exists():
+                  tmp.unlink()
+          PY
+
+      - name: Verify focused GREEN
+        run: |
+          g++ -std=c++17 -I. tests/test_song_cell_o1.cpp -o /tmp/test_song_cell_o1
+          /tmp/test_song_cell_o1
+          python3 tests/test_hybrid_song_orchestration_ui_source_regressions.py
+          git diff --check
+
+      - name: Commit verified Task 1 patch and remove helper workflow
+        run: |
+          git config user.name "O1 SongCell CI"
+          git config user.email "actions@users.noreply.github.com"
+          rm .github/workflows/o1-task1-apply.yml
+          git add src/state/song_cell.h scenes.h tests/test_song_cell_o1.cpp
+          git rm --ignore-unmatch tests/test_song_cell_o1_strengthened.tmp tests/test_song_cell_o1_v2.tmp .github/workflows/o1-task1-apply.yml
+          git diff --cached --check
+          git commit -m "feat: make SongPosition own bounded SongCell values"
+          git push origin HEAD:research/20260909-01-hybrid-song-orchestration-ux
