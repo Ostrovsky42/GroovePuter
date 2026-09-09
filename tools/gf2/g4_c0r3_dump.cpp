@@ -1,14 +1,17 @@
-// G4-C0R3 — research-only active-axis and pre-adapter semantic topology dump.
+// G4-C0R3/C0R4 — research-only active-axis, semantic-topology, and
+// role-plan/native-vocabulary dump.
 //
 // This tool owns no generation semantics. It supplies the same explicit C0R
 // coordinates as C0R1/C0R2, calls the production frozen-selection/migration
-// APIs, and observes TonalMaterializationPlan values at the real adapter seam.
+// APIs, and observes production-owned plans at their real execution seams.
 
 #include "../../scenes.h"
 #include "../../src/dsp/genre_manager.h"
 #include "../../src/generation/composition/generation_profile.h"
 #include "../../src/generation/migration/strong_rhythm_migration.h"
 #include "g4_c0r3_tonal_probe.h"
+#include "g4_c0r4_bass_candidates_probe.h"
+#include "g4_c0r4_role_plan_probe.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -138,11 +141,34 @@ const char* roleName(SemanticSynthBRole role) {
   return "INVALID";
 }
 
-std::string hexMask(StepMask value) {
+const char* rhythmFamilyName(RhythmFamily family) {
+  switch (family) {
+    case RhythmFamily::FourFloor: return "FOUR_FLOOR";
+    case RhythmFamily::MachineSyncopation: return "MACHINE_SYNCOPATION";
+    case RhythmFamily::Breakbeat: return "BREAKBEAT";
+    case RhythmFamily::UkTwoStep: return "UK_TWO_STEP";
+    case RhythmFamily::HipHopBackbeat: return "HIP_HOP_BACKBEAT";
+    case RhythmFamily::DubPulse: return "DUB_PULSE";
+    case RhythmFamily::Funk16: return "FUNK_16";
+    case RhythmFamily::SparsePulse: return "SPARSE_PULSE";
+    case RhythmFamily::Count: return "INVALID";
+  }
+  return "INVALID";
+}
+
+std::string hexMask(uint16_t value) {
   std::ostringstream stream;
   stream << "0x" << std::hex << std::setfill('0') << std::setw(4)
          << static_cast<unsigned>(value);
   return stream.str();
+}
+
+const char* nativeMembership(uint16_t nativeMask, BassRhythmId selected) {
+  const uint8_t ordinal = static_cast<uint8_t>(selected);
+  if (ordinal >= 16u) return "OUTSIDE_NATIVE_SET";
+  return (nativeMask & (uint16_t{1} << ordinal)) != 0
+      ? "NATIVE"
+      : "OUTSIDE_NATIVE_SET";
 }
 
 SynthPattern pitchSource(int baseNote) {
@@ -262,11 +288,20 @@ void printObservation(const ProfileCase& profile,
       resolveStrongRhythmFrozenSelection(
           profile.settings, context, identityOrdinal, selection);
 
+  const ReferenceVocabulary::Definition* definition = selection.resolved
+      ? ReferenceVocabulary::definitionForId(
+            selection.composition.rhythmArchetypeId)
+      : nullptr;
+  const uint16_t nativeMask = definition == nullptr
+      ? 0
+      : G4C0R4::nativeBassCandidateMask(definition->family);
+
   DrumPatternSet drums{};
   SynthPattern synthA = pitchSource(36);
   SynthPattern synthB = pitchSource(60);
 
   G4C0R3::resetTonalProbe();
+  G4C0R4::resetRolePlanProbe();
   StrongRhythmMigrationResult result = selectionResult;
   if (selectionResult.status == StrongRhythmMigrationStatus::Applied &&
       selection.resolved) {
@@ -274,10 +309,20 @@ void printObservation(const ProfileCase& profile,
         profile.settings, selection, context, drums, synthA, synthB);
   }
   const G4C0R3::TonalProbeSnapshot snapshot = G4C0R3::tonalProbeSnapshot();
+  const G4C0R4::RolePlanProbeSnapshot rolePlan = G4C0R4::rolePlanProbeSnapshot();
   const SemanticTopology topology = semanticTopology(result.synthBRole, snapshot);
   const ActiveAxisProjection axes = activeAxes(result.synthBRole);
   const bool accepted = result.status == StrongRhythmMigrationStatus::Applied &&
                         selection.resolved && topology.observed;
+  const bool rolePlanObserved = accepted && definition != nullptr &&
+                                rolePlan.observed && !rolePlan.overflow &&
+                                rolePlan.callCount == 1 &&
+                                rolePlan.archetypeId == definition->archetypeId;
+  const StepMask planningOnsets = rolePlanObserved
+      ? static_cast<StepMask>(rolePlan.bass.structural |
+                              rolePlan.bass.secondary |
+                              rolePlan.bass.ghosts)
+      : 0;
 
   std::cout
       << "profile_ordinal\tprofile_id\tdepth\tidentity_ordinal\t"
@@ -288,7 +333,10 @@ void printObservation(const ProfileCase& profile,
       << "chord_axis_status\tmelodic_axis_status\tmotif_axis_status\t"
       << "progression_axis_status\tphrase_law_axis_status\t"
       << "bass_attack_mask\tbass_continuation_mask\tsecondary_attack_mask\t"
-      << "secondary_continuation_mask\tsecondary_topology_role\n";
+      << "secondary_continuation_mask\tsecondary_topology_role\t"
+      << "rhythm_family\tbass_native_candidate_mask\tbass_native_membership\t"
+      << "planning_bass_onset_mask\tplanning_bass_structural_mask\t"
+      << "planning_bass_secondary_mask\tplanning_bass_ghost_mask\n";
 
   std::cout
       << profile.ordinal << '\t'
@@ -316,7 +364,16 @@ void printObservation(const ProfileCase& profile,
       << (accepted ? hexMask(topology.bassContinuations) : kNotObserved) << '\t'
       << (accepted ? hexMask(topology.secondaryAttacks) : kNotObserved) << '\t'
       << (accepted ? hexMask(topology.secondaryContinuations) : kNotObserved) << '\t'
-      << roleName(result.synthBRole) << '\n';
+      << roleName(result.synthBRole) << '\t'
+      << (definition != nullptr ? rhythmFamilyName(definition->family) : kNotObserved) << '\t'
+      << (definition != nullptr ? hexMask(nativeMask) : kNotObserved) << '\t'
+      << (definition != nullptr
+              ? nativeMembership(nativeMask, selection.composition.bassRhythm)
+              : kNotObserved) << '\t'
+      << (rolePlanObserved ? hexMask(planningOnsets) : kNotObserved) << '\t'
+      << (rolePlanObserved ? hexMask(rolePlan.bass.structural) : kNotObserved) << '\t'
+      << (rolePlanObserved ? hexMask(rolePlan.bass.secondary) : kNotObserved) << '\t'
+      << (rolePlanObserved ? hexMask(rolePlan.bass.ghosts) : kNotObserved) << '\n';
 }
 
 }  // namespace
