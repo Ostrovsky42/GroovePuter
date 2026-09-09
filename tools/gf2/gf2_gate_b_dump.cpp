@@ -585,7 +585,8 @@ void printG4C0RObservation(const ProfileCase& profile,
       << "migration_status\tv0r_requested_mode\tv0r_requested_recipe\t"
       << "v0r_attempt\tv0r_level\tv0r_migration_route\tv0r_archetype\t"
       << "declared_phrase_law\trequested_bars\tdensity_min\tdensity_max\t"
-      << "resolved_density\tresolved_feel\trealization_seed\n";
+      << "resolved_density\tresolved_feel\trealization_seed\t"
+      << "effective_material_fingerprint\n";
   std::cout
       << profile.ordinal << '\t'
       << profile.profileId << '\t'
@@ -607,7 +608,9 @@ void printG4C0RObservation(const ProfileCase& profile,
       << densityMax << '\t'
       << resolvedDensity << '\t'
       << resolvedFeel << '\t'
-      << realizationSeed << '\n';
+      << realizationSeed << '\t'
+      << (accepted ? std::to_string(v0r.effectiveMaterialFingerprint) : kNotObserved)
+      << '\n';
 }
 
 }  // namespace
