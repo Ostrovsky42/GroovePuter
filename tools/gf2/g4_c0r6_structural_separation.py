@@ -9,7 +9,7 @@ so identity-owned selection can be distinguished from attempt-owned realization.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Iterable, Mapping, Sequence
 
 
@@ -21,6 +21,25 @@ class GroupAnalysis:
     selection_drift: bool
     unique_take_signatures: int
     attempt_changes_topology: bool
+
+
+@dataclass(frozen=True)
+class ScopeSummary:
+    identity_count: int
+    stable_identity_count: int
+    selection_drift_identities: int
+    attempt_changes_topology_identities: int
+    topology_static_identities: int
+    unique_active_selection_signatures: int
+    unique_take_spaces: int
+    structural_collision_groups: int
+    identities_in_structural_collision: int
+    topology_collision_groups: int
+    identities_in_topology_collision: int
+    identities_with_1_unique_take: int
+    identities_with_2_unique_takes: int
+    identities_with_3_unique_takes: int
+    identities_with_4_unique_takes: int
 
 
 def idea_signature(row: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
@@ -146,3 +165,59 @@ def topology_collision_groups(
         if len(group) > 1
     ]
     return sorted(collisions)
+
+
+def _identities_in(collisions: Sequence[tuple[int, ...]]) -> int:
+    return len({identity for collision in collisions for identity in collision})
+
+
+def summarize_scope(rows: Sequence[Mapping[str, str]]) -> ScopeSummary:
+    """Summarize one profile/depth scope without assigning quality thresholds."""
+    if not rows:
+        raise ValueError("scope must not be empty")
+
+    scopes = {(row["profile_ordinal"], row["depth"]) for row in rows}
+    if len(scopes) != 1:
+        raise ValueError("summarize_scope requires exactly one profile/depth scope")
+
+    groups = _identity_groups(rows)
+    stable: list[list[Mapping[str, str]]] = []
+    drift_count = 0
+    unique_take_distribution: Counter[int] = Counter()
+    active_selections: set[tuple[tuple[str, str], ...]] = set()
+    take_spaces: set[tuple[tuple[tuple[str, str], ...], ...]] = set()
+    topology_changed = 0
+
+    for group in groups.values():
+        result = analyze_group(group)
+        if result.selection_drift:
+            drift_count += 1
+            continue
+
+        stable.append(group)
+        if result.attempt_changes_topology:
+            topology_changed += 1
+        unique_take_distribution[result.unique_take_signatures] += 1
+        active_selections.add(idea_signature(group[0]))
+        take_spaces.add(take_space(group))
+
+    structural = structural_collision_groups(rows)
+    topology = topology_collision_groups(rows)
+
+    return ScopeSummary(
+        identity_count=len(groups),
+        stable_identity_count=len(stable),
+        selection_drift_identities=drift_count,
+        attempt_changes_topology_identities=topology_changed,
+        topology_static_identities=len(stable) - topology_changed,
+        unique_active_selection_signatures=len(active_selections),
+        unique_take_spaces=len(take_spaces),
+        structural_collision_groups=len(structural),
+        identities_in_structural_collision=_identities_in(structural),
+        topology_collision_groups=len(topology),
+        identities_in_topology_collision=_identities_in(topology),
+        identities_with_1_unique_take=unique_take_distribution[1],
+        identities_with_2_unique_takes=unique_take_distribution[2],
+        identities_with_3_unique_takes=unique_take_distribution[3],
+        identities_with_4_unique_takes=unique_take_distribution[4],
+    )
