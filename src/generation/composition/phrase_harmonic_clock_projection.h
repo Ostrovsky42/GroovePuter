@@ -37,26 +37,17 @@ struct PhraseHarmonicClockProjection {
 // existing C1 phrase timeline. phraseHarmonicPosition carries the phrase-global
 // first ordinal for that bar; it does not alter the F08 local clock.
 //
-// changeRate is a phrase-level musical decision expressed in quarter-note beats.
-// It is translated into the existing bounded one-bar event-count request before
-// entering F08; no scheduler, storage owner, transport policy or new timeline is
-// introduced here.
-//
 // This function deliberately does not select or materialize ChordProgression
-// WHAT. H1 remains the single phrase-global WHAT source.
+// WHAT. H1 remains the single phrase-global WHAT source; production execution
+// wiring is deferred to PHRASE-P1R.
 inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
     uint8_t phraseBars,
-    ProgressionId progression,
-    HarmonicChangeRateId changeRate) {
+    ProgressionId progression) {
   PhraseHarmonicClockProjection result{};
   if (!isSupportedPhraseLength(phraseBars) ||
-      !isValidProgressionId(progression, false) ||
-      !isValidHarmonicChangeRate(changeRate)) {
+      !isValidProgressionId(progression, false)) {
     return result;
   }
-
-  const uint8_t movingEventCount = harmonicEventCountPerBar(changeRate);
-  if (movingEventCount == 0) return result;
 
   StepMask eventPositionsByBar[kMaxSemanticPhraseBars]{};
   uint8_t nextPhraseOrdinal = 0;
@@ -65,9 +56,6 @@ inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
   for (uint8_t bar = 0; bar < phraseBars; ++bar) {
     HarmonicRhythmRequest request{};
     request.progression = progression;
-    request.harmonicEventCount = isStaticHarmonicProgression(progression)
-        ? 1
-        : movingEventCount;
     request.phraseBarOrdinal = bar;
     request.phraseHarmonicPosition = nextPhraseOrdinal;
 
@@ -107,16 +95,6 @@ inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
 
   result.status = PhraseHarmonicClockProjectionStatus::Ok;
   return result;
-}
-
-// Compatibility overload: every accepted H2R caller that does not provide a
-// profile-derived musical rate retains the historical moving-harmony clock at
-// steps {0,8}. New GF2 phrase execution opts into the explicit overload above.
-inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
-    uint8_t phraseBars,
-    ProgressionId progression) {
-  return projectPhraseHarmonicClock(
-      phraseBars, progression, HarmonicChangeRateId::Every2Beats);
 }
 
 static_assert(std::is_trivially_copyable<PhraseHarmonicBarProjection>::value,

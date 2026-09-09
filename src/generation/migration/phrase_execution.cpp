@@ -2,6 +2,7 @@
 
 #include "../rhythm/bar_evolution.h"
 #include "../rhythm/reference_phrase_vocabulary.h"
+
 #include "../rhythm/reference_vocabulary.h"
 
 namespace GroovePuterRhythm {
@@ -192,8 +193,7 @@ PhraseExecutionStatus preparePhraseExecution(
 
   destination.harmonicClock = projectPhraseHarmonicClock(
       destination.length.effectivePhraseBars,
-      destination.selection.composition.progression,
-      destination.selection.composition.harmonicChangeRate);
+      destination.selection.composition.progression);
   if (destination.harmonicClock.status !=
           PhraseHarmonicClockProjectionStatus::Ok ||
       destination.harmonicClock.harmonicRhythmRealizationCount !=
