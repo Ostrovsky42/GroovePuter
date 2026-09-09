@@ -1,0 +1,26 @@
+name: 0.9.10 Phrase Bank QWERTYUI P1
+
+on:
+  push:
+    branches:
+      - feature/20260909-phrase-bank-qwertyui-p1
+  pull_request:
+    paths:
+      - 'src/phrase/**'
+      - 'src/ui/**'
+      - 'src/state/**'
+      - 'tests/test_phrase_bank_qwertyui_p1.cpp'
+      - '.github/workflows/0-9-10-phrase-bank-qwertyui-p1.yml'
+
+jobs:
+  phrase-bank-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Phrase Bank characterization
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_phrase_bank_qwertyui_p1.cpp \
+            -o /tmp/test_phrase_bank_qwertyui_p1
+      - name: Run Phrase Bank characterization
+        run: /tmp/test_phrase_bank_qwertyui_p1
