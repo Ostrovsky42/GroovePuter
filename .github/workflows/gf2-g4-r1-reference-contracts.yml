@@ -1,0 +1,46 @@
+name: GF2 G4-R1 reference contracts
+
+on:
+  push:
+    branches:
+      - feature/20260909-02-0.9.11-g4-reference-genre-contracts
+    paths:
+      - 'src/generation/composition/**'
+      - 'src/generation/roles/bass_rhythm.*'
+      - 'src/generation/rhythm/**'
+      - 'src/generation/migration/phrase_execution.*'
+      - 'tests/test_gf2_g4_r1_reference_contracts.cpp'
+      - 'tests/run_gf2_g4_r1_tests.sh'
+      - '.github/workflows/gf2-g4-r1-reference-contracts.yml'
+      - 'docs/superpowers/specs/2026-09-09-g4-reference-genre-idea-contracts-design.md'
+      - 'docs/superpowers/plans/2026-09-09-g4-reference-genre-idea-contracts.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reference-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-R1 reference contracts
+        run: |
+          mkdir -p build/host-tests/gf2-g4-r1
+          bash tests/run_gf2_g4_r1_tests.sh
+
+      - name: Upload G4-R1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-r1-reference-contracts
+          path: build/host-tests/gf2-g4-r1/g4-r1-summary.txt
+          if-no-files-found: warn
