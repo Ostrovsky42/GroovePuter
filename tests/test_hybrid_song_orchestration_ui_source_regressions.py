@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SONG = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
 PHRASE = (ROOT / "src/ui/pages/phrase_page.cpp").read_text(encoding="utf-8")
+HELP = (ROOT / "src/ui/help_dialog_frames.h").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -51,6 +52,20 @@ require(
 require(
     '"LAST GEN: %s"' in phrase_product,
     "Public PHRASE must identify the prior generator outcome explicitly instead of LAST G",
+)
+
+song_help = between(
+    HELP,
+    "inline void drawHelpPageSongCont(IGfx& gfx",
+    "inline void drawHelpPageSongSelectionLoop(IGfx& gfx",
+)
+require(
+    '"Generate new song"' not in song_help,
+    "Song help must not claim that plain G generates a new Song",
+)
+require(
+    '"G / Gx2"' in song_help and '"gen cell / row"' in song_help,
+    "Song help must describe the actual single-G cell / double-G row behavior",
 )
 
 print("Hybrid Song orchestration UX source regressions: PASS")
