@@ -9,6 +9,7 @@ on:
       - 'tools/gf2_gate_b.py'
       - 'tools/gf2/gf2_gate_b_finalize.py'
       - 'tools/gf2/gf2_gate_b_dump.cpp'
+      - 'tools/gf2/g4_c0r_corpus.py'
       - 'tests/test_gf2_gate_b_analysis.py'
       - 'tests/test_gf2_gate_b_finalize.py'
       - 'tests/run_gf2_gate_b_tests.sh'
@@ -32,6 +33,8 @@ jobs:
         run: bash tests/support/gf2_gate_b_g4_c0r_preflight.sh
       - name: G4-C0R coordinate separation regression
         run: bash tests/support/gf2_gate_b_g4_c0r_coordinate_test.sh
+      - name: G4-C0R2 materialized idea corpus regression
+        run: bash tests/support/gf2_gate_b_g4_c0r_corpus_test.sh
       - name: Upload strict proof artifacts
         uses: actions/upload-artifact@v4
         with:
