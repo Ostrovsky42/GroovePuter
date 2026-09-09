@@ -145,7 +145,12 @@ constexpr RhythmCompatibilityCandidate kPsytrance[] = {
     candidate(Archetype::StraightDrive, 120), candidate(Archetype::OffbeatOpenHat, 110),
     candidate(Archetype::RollingAcid, 100),
 };
+// G4-I2 is deliberately additive: retain the established dub/space vocabulary
+// and add one low-weight independent techno-skeleton statement. This prevents
+// Steppers from being the sole four-floor witness without canonicalizing the
+// whole recipe into generic Techno.
 constexpr RhythmCompatibilityCandidate kDubTechno[] = {
+    candidate(Archetype::StraightDrive, 55),
     candidate(Archetype::OneDropSpace, 110), candidate(Archetype::Steppers, 100),
     candidate(Archetype::SparseSkank, 110), candidate(Archetype::ChordResponse, 120),
 };
