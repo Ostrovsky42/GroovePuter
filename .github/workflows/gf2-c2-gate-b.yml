@@ -27,8 +27,8 @@ jobs:
           fetch-depth: 0
       - name: Final reporting semantics regression
         run: python3 tests/test_gf2_gate_b_finalize.py
-      - name: Gate B strict artifact proof
-        run: bash tests/run_gf2_gate_b_tests.sh
+      - name: Gate B C0R integration-base proof
+        run: bash tests/support/gf2_gate_b_g4_c0r_preflight.sh
       - name: G4-C0R coordinate separation regression
         run: bash tests/support/gf2_gate_b_g4_c0r_coordinate_test.sh
       - name: Upload strict proof artifacts
@@ -36,6 +36,6 @@ jobs:
         with:
           name: gf2-gate-b-generated
           path: |
-            build/host-tests/gf2-gate-b/generated
             build/host-tests/gf2-gate-b/raw.tsv
+            build/host-tests/gf2-gate-b/generated-c0r-preflight
           if-no-files-found: error
