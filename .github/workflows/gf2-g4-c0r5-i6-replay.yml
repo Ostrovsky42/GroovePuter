@@ -1,0 +1,43 @@
+name: G4-C0R5 I6 replay
+
+on:
+  push:
+    branches:
+      - research/20260909-03-0.9.11-g4-c0r5-i6-replay
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g4-c0r5-i6-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Exact-head provenance
+        run: |
+          set -euo pipefail
+          echo "EXPECTED=${GITHUB_SHA}"
+          echo "ACTUAL=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: G4-C0R5 replay against I6 production
+        run: |
+          bash tests/support/gf2_g4_c0r5_i6_replay_test.sh
+
+      - name: Upload replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-g4-c0r5-i6-replay
+          path: build/host-tests/gf2-g4-c0r5-i6-replay
+          if-no-files-found: warn
