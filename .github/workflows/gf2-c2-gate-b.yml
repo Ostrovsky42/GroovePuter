@@ -44,9 +44,46 @@ jobs:
           OUT_DIR="${BUILD_DIR}/g4-c0r2-full"
           mkdir -p "${OUT_DIR}"
 
+          # Runtime profile ordinals are the transient enumerateProfiles() order,
+          # not row positions in sorted Gate-B report artifacts. Prove the four
+          # pilot bindings directly through the production-backed dump seam before
+          # starting the 6144-row corpus.
+          python3 - "${BIN}" <<'PY'
+          import csv
+          import subprocess
+          import sys
+
+          binary = sys.argv[1]
+          expected = {
+              "0": "Acid/BASE",
+              "9": "Dub/Reggae/Dub Techno",
+              "20": "House/BASE",
+              "27": "Drum&Bass/BASE",
+          }
+          for ordinal, profile_id in expected.items():
+              completed = subprocess.run(
+                  [binary, "--g4-c0r-dump", ordinal, "0", "0", "23", "P1"],
+                  check=True,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              rows = list(csv.DictReader(completed.stdout.splitlines(), delimiter="\t"))
+              assert len(rows) == 1, (ordinal, len(rows))
+              row = rows[0]
+              assert row["profile_ordinal"] == ordinal, row
+              assert row["profile_id"] == profile_id, (
+                  "runtime profile ordinal mismatch",
+                  ordinal,
+                  profile_id,
+                  row["profile_id"],
+              )
+              print("PROFILE", ordinal, profile_id)
+          PY
+
           python3 tools/gf2/g4_c0r_corpus.py \
             --dump-binary "${BIN}" \
-            --profiles 0,11,14,21 \
+            --profiles 0,9,20,27 \
             --identity-start 0 \
             --identity-count 128 \
             --attempt-count 4 \
@@ -55,7 +92,7 @@ jobs:
 
           python3 tools/gf2/g4_c0r_corpus.py \
             --dump-binary "${BIN}" \
-            --profiles 0,11,14,21 \
+            --profiles 0,9,20,27 \
             --identity-start 0 \
             --identity-count 128 \
             --attempt-count 4 \
@@ -82,9 +119,9 @@ jobs:
 
           expected_profiles = {
               "0": "Acid/BASE",
-              "11": "Drum&Bass/BASE",
-              "14": "Dub/Reggae/Dub Techno",
-              "21": "House/BASE",
+              "9": "Dub/Reggae/Dub Techno",
+              "20": "House/BASE",
+              "27": "Drum&Bass/BASE",
           }
           depths = ("P1", "P2", "P3")
           expected_count = 4 * 128 * 4 * 3
