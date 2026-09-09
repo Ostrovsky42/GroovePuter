@@ -6,7 +6,7 @@ on:
       - integration/20260908-0.9.10-memory-r1-product-closure
   pull_request:
     branches:
-      - feature/20260907-01-u4b6-make-phrase-entry
+      - dev_0.9.10
   workflow_dispatch:
 
 permissions:

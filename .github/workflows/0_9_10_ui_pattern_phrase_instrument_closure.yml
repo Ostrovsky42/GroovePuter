@@ -6,7 +6,7 @@ on:
       - feature/20260908-03-0.9.10-pattern-phrase-ui-instrument-closure
   pull_request:
     branches:
-      - feature/20260907-01-u4b6-make-phrase-entry
+      - dev_0.9.10
   workflow_dispatch:
 
 permissions:

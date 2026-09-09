@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/20260908-01-test-liveness-recovery
+  pull_request:
+    branches:
+      - dev_0.9.10
   workflow_dispatch:
 
 permissions:

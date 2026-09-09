@@ -18,6 +18,9 @@ on:
       - 'tests/test_ui_constitution_u4b3_*'
       - 'tests/test_ui_constitution_u4b4_*'
       - 'tests/test_ui_constitution_u4b5_*'
+  pull_request:
+    branches:
+      - dev_0.9.10
   workflow_dispatch:
 
 permissions:
