@@ -63,6 +63,11 @@ HousePulseWitness witnessForArchetype(RhythmArchetypeId archetypeId) {
   return witnessForMasks(structuralAnchors(laneFor(*archetype, RhythmRole::Kick)));
 }
 
+void mix(uint32_t& hash, uint32_t value) {
+  hash ^= value;
+  hash *= 16777619u;
+}
+
 uint32_t structuralIdeaSignature(const RhythmArchetype& archetype) {
   uint32_t hash = 2166136261u;
   constexpr RhythmRole roles[] = {
@@ -74,9 +79,20 @@ uint32_t structuralIdeaSignature(const RhythmArchetype& archetype) {
   };
   for (RhythmRole role : roles) {
     const LaneGrammar* lane = laneFor(archetype, role);
-    const StepMask anchors = structuralAnchors(lane);
-    hash ^= static_cast<uint32_t>(anchors);
-    hash *= 16777619u;
+    if (lane == nullptr) {
+      mix(hash, 0xffffffffu);
+      continue;
+    }
+    // Keep anchor-strength tiers separate. StraightDrive and StackedQuarters
+    // intentionally cover the same quarter-note pulse, but one declares all
+    // four kicks canonical while the other treats beats 2/4 as preferred.
+    // Collapsing these tiers would erase a real structural idea distinction.
+    mix(hash, static_cast<uint32_t>(lane->immutableAnchors));
+    mix(hash, static_cast<uint32_t>(lane->canonicalAnchors));
+    mix(hash, static_cast<uint32_t>(lane->preferred));
+    mix(hash, static_cast<uint32_t>(lane->optional));
+    mix(hash, static_cast<uint32_t>(lane->structuralMin));
+    mix(hash, static_cast<uint32_t>(lane->structuralMax));
   }
   return hash;
 }
