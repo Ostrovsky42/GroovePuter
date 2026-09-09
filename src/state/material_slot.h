@@ -22,19 +22,20 @@
 // it with the resolved runtime authority without rewriting every caller.
 namespace GroovePuterMaterial {
 
-// 0.9.11 A1: canonical identity inside one project namespace.
+// 0.9.11 A0/A1: project-relative musical address shared across workstreams.
 //
 // A Scene only owns the currently resident 16-slot page, so a page-local slot
-// cannot identify persistent material. The global slot already names the same
-// arrangement coordinate across all pages; pair it with voice and keep project
-// namespace outside this embedded value.
-struct MaterialId {
+// cannot identify material across persistence, Song or edit targeting. The
+// global slot already names the arrangement coordinate across all pages; pair
+// it with voice. Project namespace belongs only to persistence and is therefore
+// deliberately absent from this compact value.
+struct MaterialAddress {
   uint8_t voice = 0;
   uint8_t globalSlot = 0;
 };
 
-static_assert(sizeof(MaterialId) == 2,
-              "MaterialId must remain a two-byte embedded value");
+static_assert(sizeof(MaterialAddress) == 2,
+              "MaterialAddress must remain a two-byte embedded value");
 
 enum class MaterialKind : uint8_t {
   Pattern = 0,
