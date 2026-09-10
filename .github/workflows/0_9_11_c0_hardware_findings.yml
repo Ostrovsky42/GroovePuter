@@ -29,6 +29,8 @@ jobs:
             src/phrase/runtime_synth_events.cpp \
             -o /tmp/test_c0_hardware_findings
           /tmp/test_c0_hardware_findings
+      - name: Prove H1 UI truth surface
+        run: python3 tests/test_c0_phrase_length_ui_truth.py
 
   default-phrase-generation:
     runs-on: ubuntu-latest
