@@ -68,10 +68,9 @@ const std::string kProject = "a2-resolution";
 }  // namespace
 
 int main() {
-  static_assert(sizeof(MaterialResolution) <= 4,
-                "control-side resolution result must stay a tiny value");
+  static_assert(sizeof(MaterialResolution) <= 12,
+                "control-side resolution result must stay a small value");
 
-  // A resident Pattern is an observed value, not a fallback from absence.
   {
     FakeFs fs;
     Scene scene{};
@@ -83,9 +82,9 @@ int main() {
     expect(result.kind == MaterialKind::Pattern,
            "resolved Pattern reported the wrong kind");
     expect(result.isResolved(), "resolved Pattern reported unresolved");
+    expect(result.hasVersion(), "resolved Pattern has no exact version");
   }
 
-  // A valid address on another page is NOT_RESIDENT, never Pattern.
   {
     FakeFs fs;
     Scene scene{};
@@ -96,9 +95,9 @@ int main() {
     expect(result.status == MaterialResolutionStatus::NotResident,
            "non-resident address collapsed to a musical kind");
     expect(!result.isResolved(), "non-resident address reported resolved");
+    expect(!result.hasVersion(), "non-resident address exposed a version");
   }
 
-  // Invalid coordinates are explicit failures.
   {
     FakeFs fs;
     Scene scene{};
@@ -111,8 +110,6 @@ int main() {
     expect(!result.isResolved(), "invalid address reported resolved");
   }
 
-  // A descriptor saying Melody without a payload is a broken material,
-  // never a fallback Pattern.
   {
     FakeFs fs;
     Scene scene{};
@@ -126,9 +123,9 @@ int main() {
     expect(result.status == MaterialResolutionStatus::MissingPayload,
            "missing Melody payload did not fail explicitly");
     expect(!result.isResolved(), "missing Melody payload reported resolved");
+    expect(!result.hasVersion(), "missing Melody payload exposed a version");
   }
 
-  // A valid published Melody resolves with the exact decoded events.
   {
     FakeFs fs;
     Scene scene{};
@@ -145,12 +142,11 @@ int main() {
     expect(result.kind == MaterialKind::Melody,
            "resolved Melody reported the wrong kind");
     expect(result.isResolved(), "resolved Melody reported unresolved");
+    expect(result.hasVersion(), "resolved Melody has no exact version");
     expect(out.count == 1 && out.events[0].note == 67,
            "resolver did not return the published Melody events");
   }
 
-  // Existing final payload that cannot decode is CORRUPT, not missing and not
-  // Pattern.
   {
     FakeFs fs;
     Scene scene{};
@@ -166,6 +162,7 @@ int main() {
     expect(result.status == MaterialResolutionStatus::CorruptPayload,
            "corrupt Melody payload was not distinguished from missing data");
     expect(!result.isResolved(), "corrupt Melody payload reported resolved");
+    expect(!result.hasVersion(), "corrupt Melody payload exposed a version");
   }
 
   if (g_failures == 0) {

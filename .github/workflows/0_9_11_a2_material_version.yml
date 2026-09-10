@@ -1,0 +1,55 @@
+name: 0.9.11 A2 Material Version
+
+on:
+  push:
+    branches:
+      - feature/20260909-0.9.11-a2-canonical-promotion
+    paths:
+      - "src/state/material_version.h"
+      - "src/state/material_resolution.h"
+      - "tests/test_0_9_11_a2_material_version.cpp"
+      - "tests/test_0_9_11_a2_material_resolution.cpp"
+      - "tests/test_melody_promotion.cpp"
+      - ".github/workflows/0_9_11_a2_material_version.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove checkout is the event SHA
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$actual"
+          test "$actual" = "$GITHUB_SHA"
+
+      - name: Build focused A2 version contracts
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_0_9_11_a2_material_resolution.cpp \
+            -o build/host-tests/test_0_9_11_a2_material_resolution
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_0_9_11_a2_material_version.cpp \
+            -o build/host-tests/test_0_9_11_a2_material_version
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_melody_promotion.cpp \
+            -o build/host-tests/test_melody_promotion
+
+      - name: Run focused A2 version contracts
+        run: |
+          build/host-tests/test_0_9_11_a2_material_resolution
+          build/host-tests/test_0_9_11_a2_material_version
+          build/host-tests/test_melody_promotion
+
+      - name: Diff hygiene
+        run: git diff --check
