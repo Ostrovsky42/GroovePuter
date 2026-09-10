@@ -16,12 +16,12 @@ overbroad_owner=0
 structural_collision=0
 shared_admission=24
 shared_valid_under_contracts=0
-proven_contract_owners=2
+proven_contract_owners=3
 provisional_contract_owners=0
-proven_contracts=4
+proven_contracts=6
 provisional_contracts=0
-review_required=31
-unknown_evaluations=11904
+review_required=30
+unknown_evaluations=11520
 auto_observed_edges=122
 manual_reproduced_edges=0
 not_observed_edges=0
@@ -110,6 +110,7 @@ I6 does not mark whole owners PROVEN. It carries only named statements from reta
 
 - G4-I4: every admitted Dub Techno candidate has a required techno skeleton; existential quarter, broken, and dub-dialogue witnesses remain separate; materialized I4 proves skeleton preservation, not per-row dub dialogue.
 - G4-I5: candidate quarter space may be REQUIRED or POSSIBLE_BUT_NOT_REQUIRED via preferred anchors; materialized I5 separately proves observed quarter-pulse preservation.
+- G4-C1: Drum&Bass / BASE admits only Breakbeat archetypes in a plural space; materialized bass selection stays inside KickAnswer / GapFill / HalfTimePocket / SyncopatedHook.
 
 ## Candidate graph
 
@@ -404,7 +405,7 @@ I6 does not mark whole owners PROVEN. It carries only named statements from reta
 
 ### PROVEN OWNERSHIP CONTRADICTIONS
 
-None under applicable PROVEN I4/I5 admission contracts.
+None under applicable PROVEN admission contracts.
 
 ### STRUCTURAL COLLISIONS
 
@@ -418,11 +419,11 @@ SHARED_VALID_UNDER_CONTRACTS=0. Absence of proof is not promoted to shared-valid
 
 ### REVIEW_REQUIRED
 
-31 shipped owners have no applicable PROVEN rhythm admission contract in I6.
+30 shipped owners have no applicable PROVEN rhythm admission contract in I6.
 
 ### UNKNOWN
 
-11904 materialized rows are observations under REVIEW_REQUIRED owners.
+11520 materialized rows are observations under REVIEW_REQUIRED owners.
 
 ## Boundary fixtures outside denominator
 
@@ -458,8 +459,10 @@ The A-G editorial filter is not scored numerically. Gate C (`effective admission
 | G4-I4-DUB-MATERIALIZED-SKELETON | 1 | Reggae / Dub Techno (mode=5, recipe=5) | downstream materialization | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | selected admitted candidate under G4-I4 admission contract | observed skeleton equals selected candidate required skeleton | G4-I4 | PROVEN |
 | G4-I5-HOUSE-ADMISSION-QUARTER-SPACE | 1 | House / BASE (mode=9, recipe=0) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=9, recipe=0) | quarter-pulse witness is REQUIRED or POSSIBLE_BUT_NOT_REQUIRED | G4-I5 | PROVEN |
 | G4-I5-HOUSE-MATERIALIZED-QUARTER | 1 | House / BASE (mode=9, recipe=0) | downstream materialization | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | exact owner (mode=9, recipe=0) | materialized kick preserves observed quarter-pulse | G4-I5 | PROVEN |
+| G4-C1-DNB-ADMISSION-BREAKBEAT | 1 | Drum&Bass / BASE (mode=14, recipe=0) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=14, recipe=0) | RhythmFamily is Breakbeat and admitted space remains plural | G4-C1 | PROVEN |
+| G4-C1-DNB-MATERIALIZED-BASS-SPACE | 1 | Drum&Bass / BASE (mode=14, recipe=0) | bass selection | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | exact owner (mode=14, recipe=0) | selected archetype is Breakbeat and bass identity is one of KickAnswer, GapFill, HalfTimePocket, SyncopatedHook | G4-C1 | PROVEN |
 
-House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract.
+House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract. DnB C1 predicates are structural: RhythmFamily and BassRhythmId only; labels and weights are not evidence.
 
 ## Corrected detector controls and collision scope
 
