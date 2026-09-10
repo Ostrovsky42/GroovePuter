@@ -154,10 +154,44 @@ void testDefaultScenePlayingPhraseG() {
   std::puts("C0 H3 default-scene playing PHRASE G: PASS");
 }
 
+void testPatternCapacityIsVisibleBeforeG() {
+  resetProductState();
+  MiniAcid engine(kSampleRate, nullptr);
+  loadDefaultRuntime(engine);
+  Scene& scene = engine.sceneManager().currentScene();
+
+  // Default Song references local slots 0..7. Occupy the otherwise free
+  // backing slots 8..15 without touching APPEND Song rows 8..11. Song-space
+  // alone still looks free, but the generator cannot safely materialize 4 bars.
+  for (int local = 8; local < kPatternsPerPage; ++local) {
+    const int bank = local / Bank<SynthPattern>::kPatterns;
+    const int index = local % Bank<SynthPattern>::kPatterns;
+    scene.synthABanks[bank].patterns[index].steps[0].note = 60;
+  }
+  const int appendRow = scene.songs[0].length;
+  assert(PhraseGenerator::songRowsAreAvailable(scene.songs[0], appendRow, 4));
+  assert(PhraseGenerator::findSafeContiguousEmptySlots(scene, 0, 4) < 0);
+
+  FakeGfx gfx;
+  PhrasePage page(gfx, engine, AudioGuard{}, false);
+  page.onEnter(0);
+  page.draw(gfx);
+  assert(!hasText(gfx, "FREE") &&
+         "PHRASE must not promise FREE when backing Pattern capacity is exhausted");
+  assert(hasText(gfx, "NO SLOTS") &&
+         "PHRASE must name the hidden backing-capacity blocker before G is pressed");
+
+  UIEvent g = keyEvent('g');
+  assert(page.handleEvent(g));
+  assert(!GroovePuterState::generatedPhraseProductState().accepted.valid);
+  std::puts("C0 H3 Pattern backing capacity truth: PASS");
+}
+
 }  // namespace
 
 int main() {
   testDefaultSceneStoppedPhraseG();
   testDefaultScenePlayingPhraseG();
+  testPatternCapacityIsVisibleBeforeG();
   return 0;
 }
