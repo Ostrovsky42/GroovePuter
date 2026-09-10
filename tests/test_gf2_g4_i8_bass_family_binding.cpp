@@ -35,10 +35,21 @@ bool compatible(const GenerationCompositionResult& composition) {
                                            composition.bassRhythm);
 }
 
+uint8_t bitCount(uint16_t value) {
+  uint8_t count = 0;
+  while (value != 0) {
+    count = static_cast<uint8_t>(count + (value & 1u));
+    value = static_cast<uint16_t>(value >> 1u);
+  }
+  return count;
+}
+
 int run() {
   uint32_t profileCount = 0;
   uint32_t autoRows = 0;
   uint32_t manualRows = 0;
+  uint32_t dubFourFloorRows = 0;
+  uint16_t dubFourFloorBassMask = 0;
 
   for (uint8_t modeOrdinal = 0;
        modeOrdinal < static_cast<uint8_t>(kGenerativeModeCount);
@@ -102,10 +113,10 @@ int run() {
         for (uint16_t identity = 0; identity < 32; ++identity) {
           const GenerationCompositionResult composition =
               resolveGenerationComposition(settings, identityContext(identity));
+          const ReferenceVocabulary::Definition* definition =
+              ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
           if (composition.status != GenerationCompositionStatus::Ok ||
-              !compatible(composition)) {
-            const ReferenceVocabulary::Definition* definition =
-                ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
+              definition == nullptr || !compatible(composition)) {
             std::printf(
                 "G4_I8_FAIL incompatible_manual mode=%u recipe=%u identity=%u archetype=%u family=%u bass=%u status=%u\n",
                 static_cast<unsigned>(modeOrdinal),
@@ -117,16 +128,40 @@ int run() {
                 static_cast<unsigned>(composition.status));
             return 1;
           }
+
+          if (mode == GenerativeMode::Reggae && recipe == 5 &&
+              definition->family == RhythmFamily::FourFloor) {
+            const uint8_t bass = static_cast<uint8_t>(composition.bassRhythm);
+            if (bass < 16u) {
+              dubFourFloorBassMask = static_cast<uint16_t>(
+                  dubFourFloorBassMask | (uint16_t{1} << bass));
+            }
+            ++dubFourFloorRows;
+          }
           ++manualRows;
         }
       }
     }
   }
 
-  std::printf("G4_I8_SUMMARY profiles=%u auto_rows=%u manual_rows=%u\n",
-              static_cast<unsigned>(profileCount),
-              static_cast<unsigned>(autoRows),
-              static_cast<unsigned>(manualRows));
+  const uint8_t dubFourFloorVariants = bitCount(dubFourFloorBassMask);
+  if (dubFourFloorRows == 0 || dubFourFloorVariants < 2) {
+    std::printf(
+        "G4_I8_FAIL dub_four_floor_collapse rows=%u variants=%u mask=0x%04x\n",
+        static_cast<unsigned>(dubFourFloorRows),
+        static_cast<unsigned>(dubFourFloorVariants),
+        static_cast<unsigned>(dubFourFloorBassMask));
+    return 1;
+  }
+
+  std::printf(
+      "G4_I8_SUMMARY profiles=%u auto_rows=%u manual_rows=%u "
+      "dub_four_floor_rows=%u dub_four_floor_variants=%u\n",
+      static_cast<unsigned>(profileCount),
+      static_cast<unsigned>(autoRows),
+      static_cast<unsigned>(manualRows),
+      static_cast<unsigned>(dubFourFloorRows),
+      static_cast<unsigned>(dubFourFloorVariants));
   std::puts("G4-I8 bass family compatibility binding: PASS");
   return 0;
 }
