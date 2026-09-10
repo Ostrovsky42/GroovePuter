@@ -29,6 +29,7 @@ on:
       - 'tests/test_gf2_g4_c1_dnb_contract_promotion.py'
       - 'tests/run_gf2_g4_i6_tests.sh'
       - 'tools/gf2/finalize_gf2_g4_i6_census.py'
+      - 'tools/gf2/promote_gf2_g4_c1_dnb_contract.py'
       - 'tests/test_gf2_i2a_feel_magnitude.cpp'
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
