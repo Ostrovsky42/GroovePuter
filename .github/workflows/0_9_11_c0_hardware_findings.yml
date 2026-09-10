@@ -24,7 +24,7 @@ jobs:
       - name: Compile and run H1/H2 characterization
         run: |
           set -euo pipefail
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+          g++ -std=c++20 -Wall -Wextra -Werror -I. \
             tests/test_c0_hardware_findings.cpp \
             src/phrase/runtime_synth_events.cpp \
             -o /tmp/test_c0_hardware_findings
