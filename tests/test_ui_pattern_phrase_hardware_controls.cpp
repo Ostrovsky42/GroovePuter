@@ -5,6 +5,7 @@
 
 #include "src/dsp/miniacid_engine.h"
 #include "src/ui/pages/synth_sequencer_page.h"
+#include "src/ui/pages/tb303_params_page.h"
 #include "src/ui/screen_geometry.h"
 
 SerialMock Serial;
@@ -231,6 +232,25 @@ void testScancodeOnlyGridKeyCycles() {
   expect(drewTextContaining(gfx, "GRID 1/32"),
          "scancode-only G did not change GRID");
 }
+
+void testMoreMakePhraseMaterializesPattern() {
+  MiniAcid engine(kTestSampleRate, nullptr);
+  RecordingGfx gfx;
+  TB303ParamsPage page(gfx, engine, AudioGuard{}, 0);
+  page.setBoundaries(Rect{Layout::CONTENT.x, Layout::CONTENT.y,
+                          Layout::CONTENT.w, Layout::CONTENT.h});
+  page.showMoreTab(true);
+  page.draw(gfx);
+
+  UIEvent down = letterEvent(0, GROOVEPUTER_DOWN);
+  for (int row = 0; row < 6; ++row) {
+    expect(page.handleEvent(down), "MORE Down navigation was not consumed");
+  }
+  UIEvent activate = letterEvent(0, GROOVEPUTER_RIGHT);
+  expect(page.handleEvent(activate), "MAKE PHRASE activation was not consumed");
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase,
+         "MAKE PHRASE row did not select Phrase");
+}
 }  // namespace
 
 int main() {
@@ -240,6 +260,7 @@ int main() {
   testScancodeOnlyLengthKeyStillWorks();
   testGridCyclesOnRepeatedPhysicalG();
   testScancodeOnlyGridKeyCycles();
+  testMoreMakePhraseMaterializesPattern();
 
   if (failures == 0) {
     std::printf("Pattern/Phrase hardware controls: PASS\n");

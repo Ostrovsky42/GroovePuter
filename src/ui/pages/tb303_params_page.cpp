@@ -34,9 +34,9 @@ constexpr int kMainKeyHintY = 72;
 constexpr int kMainSummaryY = 81;
 constexpr int kMainSummaryH = 11;
 constexpr int kMoreRowY = 20;
-constexpr int kMoreRowHeight = 11;
+constexpr int kMoreRowHeight = 9;
 constexpr int kMoreRowGap = 1;
-constexpr int kMoreRowCount = 6;
+constexpr int kMoreRowCount = 7;
 
 static_assert(Layout::CONTENT.y + kMainSummaryY + kMainSummaryH <=
                   Layout::PERFORMANCE_HUD.y,
@@ -379,7 +379,8 @@ void TB303ParamsPage::initComponents() {
   filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
-  make_phrase_control_ = std::make_shared<LabelValueComponent>("PHRASE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  source_control_ = std::make_shared<LabelValueComponent>("SRC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE PHRASE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -390,6 +391,7 @@ void TB303ParamsPage::initComponents() {
   addChild(filter_control_);
   addChild(distortion_control_);
   addChild(delay_control_);
+  addChild(source_control_);
   addChild(make_phrase_control_);
 
   initialized_ = true;
@@ -512,9 +514,12 @@ void TB303ParamsPage::layoutComponents() {
   // enabled. Only the first move to PHRASE creates material.
   const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
-  make_phrase_control_->setLabel("SRC");
-  make_phrase_control_->setValue(onPhrase ? "PHRASE" : "PATTERN");
-  make_phrase_control_->setEnabled(true);
+  source_control_->setLabel("SRC");
+  source_control_->setValue(onPhrase ? "PHRASE" : "PATTERN");
+  source_control_->setEnabled(true);
+  make_phrase_control_->setLabel("MAKE PHRASE");
+  make_phrase_control_->setValue(">");
+  make_phrase_control_->setEnabled(!onPhrase);
 
   distortion_control_->setEnabled(true);
   delay_control_->setEnabled(true);
@@ -549,6 +554,7 @@ void TB303ParamsPage::layoutComponents() {
         filter_control_.get(),
         distortion_control_.get(),
         delay_control_.get(),
+        source_control_.get(),
         make_phrase_control_.get(),
     };
     for (int i = 0; i < kMoreRowCount; ++i) {
@@ -582,12 +588,14 @@ void TB303ParamsPage::rememberFocusedSlot() {
       env_amount_knob_.get(),
       env_decay_knob_.get(),
   };
-  Component* moreControls[5] = {
+  Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
       osc_control_.get(),
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
+      source_control_.get(),
+      make_phrase_control_.get(),
   };
 
   if (!more_tab_) {
@@ -600,7 +608,7 @@ void TB303ParamsPage::rememberFocusedSlot() {
     return;
   }
 
-  for (uint8_t i = 0; i < 5; ++i) {
+  for (uint8_t i = 0; i < kMoreRowCount; ++i) {
     if (focused == moreControls[i]) {
       more_focus_slot_ = i;
       return;
@@ -615,12 +623,14 @@ void TB303ParamsPage::restoreFocusedSlot() {
       env_amount_knob_.get(),
       env_decay_knob_.get(),
   };
-  Component* moreControls[5] = {
+  Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
       osc_control_.get(),
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
+      source_control_.get(),
+      make_phrase_control_.get(),
   };
 
   if (!more_tab_) {
@@ -629,7 +639,7 @@ void TB303ParamsPage::restoreFocusedSlot() {
     return;
   }
 
-  const uint8_t slot = std::min<uint8_t>(more_focus_slot_, 4);
+  const uint8_t slot = std::min<uint8_t>(more_focus_slot_, kMoreRowCount - 1);
   Component* target = moreControls[slot];
   if (!target->isFocusable()) {
     target = nullptr;
@@ -655,6 +665,7 @@ void TB303ParamsPage::updateTabFocusability() {
   filter_control_->setFocusable(more_tab_ && filter_control_->enabled());
   distortion_control_->setFocusable(more_tab_ && distortion_control_->enabled());
   delay_control_->setFocusable(more_tab_ && delay_control_->enabled());
+  source_control_->setFocusable(more_tab_ && source_control_->enabled());
   make_phrase_control_->setFocusable(more_tab_ &&
                                      make_phrase_control_->enabled());
 }
@@ -741,13 +752,21 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     env_decay_knob_->setValue(direction * step);
     return;
   }
-  if (make_phrase_control_ && make_phrase_control_->isFocused()) {
+  if (source_control_ && source_control_->isFocused()) {
     // One owner for the switch: ALT+R on the editor reaches the same code.
     PhraseSourceToggle::toggle(mini_acid_,
                                [&](const std::function<void()>& body) {
                                  withAudioGuard(body);
                                },
                                voice_index_);
+    return;
+  }
+  if (make_phrase_control_ && make_phrase_control_->isFocused()) {
+    const bool made = PhraseSourceToggle::makePhrase(
+        mini_acid_,
+        [&](const std::function<void()>& body) { withAudioGuard(body); },
+        voice_index_);
+    UI::showToast(made ? "MAKE PHRASE" : "MAKE PHRASE FAILED", 1000);
     return;
   }
   if (engine_type_control_ && engine_type_control_->isFocused()) {
@@ -836,7 +855,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY SRC");
+                           "TYPE OSC FLT DST DLY SRC MAKE");
   }
 }
 
