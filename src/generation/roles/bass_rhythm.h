@@ -56,6 +56,10 @@ struct BassRhythmResult {
 BassRhythmResult realizeBassRhythm(const BassRhythmRequest& request);
 const char* bassRhythmName(BassRhythmId id);
 bool isValidBassRhythmId(BassRhythmId id, bool allowAuto = true);
+// Physical-family compatibility is owned by this role module. Explicit
+// requests remain valid as deliberate overrides; generation uses this
+// predicate to constrain automatic profile selection before materialization.
+bool isBassRhythmCompatibleWithFamily(RhythmFamily family, BassRhythmId id);
 
 static_assert(std::is_trivially_copyable<BassRhythmPlan>::value,
               "BassRhythmPlan must remain fixed-capacity");
