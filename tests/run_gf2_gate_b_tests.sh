@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE="9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38"
+BASE="fcd0d77da5ed6ef38419547477ab26e77ec6ff26"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 GENERATED="${BUILD_DIR}/generated"
 REPLAY="${BUILD_DIR}/generated-replay"

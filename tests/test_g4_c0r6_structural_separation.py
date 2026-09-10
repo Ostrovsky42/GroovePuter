@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Characterization for G4-C0R6 identity/take structural separation."""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tools.gf2 import g4_c0r6_structural_separation as c0r6
+
+
+def row(
+    *,
+    identity: int,
+    attempt: int,
+    bass_attack: str = "0x1111",
+    bass_cont: str = "0x0000",
+    secondary_attack: str = "0x4444",
+    secondary_cont: str = "0x0000",
+    archetype: str = "1",
+    bass_rhythm: str = "2",
+    chord_rhythm: str = "3",
+    melodic_rhythm: str = "4",
+    motif: str = "5",
+    progression: str = "6",
+    role: str = "CHORD",
+    chord_axis: str = "ACTIVE",
+    melodic_axis: str = "INACTIVE_BY_PHYSICAL_ROLE",
+    motif_axis: str = "INACTIVE_BY_PHYSICAL_ROLE",
+) -> dict[str, str]:
+    return {
+        "profile_ordinal": "0",
+        "profile_id": "Acid/BASE",
+        "depth": "P1",
+        "identity_ordinal": str(identity),
+        "generation_attempt_ordinal": str(attempt),
+        "pattern_address": "23",
+        "migration_status": "APPLIED",
+        "selected_archetype": archetype,
+        "selected_bass_rhythm": bass_rhythm,
+        "selected_chord_rhythm": chord_rhythm,
+        "selected_melodic_rhythm": melodic_rhythm,
+        "selected_motif_shape": motif,
+        "selected_progression": progression,
+        "synth_b_role": role,
+        "archetype_axis_status": "ACTIVE",
+        "bass_axis_status": "ACTIVE",
+        "chord_axis_status": chord_axis,
+        "melodic_axis_status": melodic_axis,
+        "motif_axis_status": motif_axis,
+        "progression_axis_status": "ACTIVE",
+        "phrase_law_axis_status": "PLANNING_ONLY",
+        "bass_attack_mask": bass_attack,
+        "bass_continuation_mask": bass_cont,
+        "secondary_attack_mask": secondary_attack,
+        "secondary_continuation_mask": secondary_cont,
+        "secondary_topology_role": role,
+        "rhythm_family": "MACHINE_SYNCOPATION",
+        "planning_bass_onset_mask": bass_attack,
+    }
+
+
+def add_take_space(
+    rows: list[dict[str, str]],
+    *,
+    identity: int,
+    bass_rhythm: str,
+    masks: tuple[str, str, str, str],
+) -> None:
+    for attempt, mask in enumerate(masks):
+        rows.append(
+            row(
+                identity=identity,
+                attempt=attempt,
+                bass_attack=mask,
+                bass_rhythm=bass_rhythm,
+            )
+        )
+
+
+class StructuralSeparationTest(unittest.TestCase):
+    def test_inactive_axes_do_not_create_false_idea_diversity(self) -> None:
+        first = row(identity=1, attempt=0, melodic_rhythm="4", motif="5")
+        second = row(identity=1, attempt=1, melodic_rhythm="99", motif="88")
+
+        self.assertEqual(c0r6.idea_signature(first), c0r6.idea_signature(second))
+
+    def test_attempt_topology_change_is_take_variation_not_selection_drift(self) -> None:
+        rows = [
+            row(identity=1, attempt=0, bass_attack="0x1111"),
+            row(identity=1, attempt=1, bass_attack="0x2222"),
+            row(identity=1, attempt=2, bass_attack="0x1111"),
+            row(identity=1, attempt=3, bass_attack="0x2222"),
+        ]
+
+        result = c0r6.analyze_group(rows)
+
+        self.assertFalse(result.selection_drift)
+        self.assertEqual(result.unique_take_signatures, 2)
+        self.assertTrue(result.attempt_changes_topology)
+
+    def test_attempt_changing_active_axis_is_selection_drift(self) -> None:
+        rows = [
+            row(identity=1, attempt=0, bass_rhythm="2"),
+            row(identity=1, attempt=1, bass_rhythm="7"),
+            row(identity=1, attempt=2, bass_rhythm="2"),
+            row(identity=1, attempt=3, bass_rhythm="2"),
+        ]
+
+        result = c0r6.analyze_group(rows)
+
+        self.assertTrue(result.selection_drift)
+
+    def test_identical_four_take_structures_across_identities_are_collision(self) -> None:
+        rows = []
+        for identity in (1, 2):
+            add_take_space(
+                rows,
+                identity=identity,
+                bass_rhythm="2",
+                masks=("0x1111", "0x2222", "0x3333", "0x4444"),
+            )
+
+        self.assertEqual(c0r6.structural_collision_groups(rows), [(1, 2)])
+
+    def test_attempt_order_does_not_create_false_musical_distinction(self) -> None:
+        rows: list[dict[str, str]] = []
+        masks = ("0x1111", "0x2222", "0x3333", "0x4444")
+        add_take_space(rows, identity=1, bass_rhythm="2", masks=masks)
+        add_take_space(
+            rows,
+            identity=2,
+            bass_rhythm="2",
+            masks=tuple(reversed(masks)),
+        )
+
+        self.assertEqual(c0r6.structural_collision_groups(rows), [(1, 2)])
+
+    def test_same_audible_take_space_with_different_selection_is_topology_convergence(self) -> None:
+        rows: list[dict[str, str]] = []
+        masks = ("0x1111", "0x2222", "0x3333", "0x4444")
+        add_take_space(rows, identity=1, bass_rhythm="2", masks=masks)
+        add_take_space(rows, identity=2, bass_rhythm="7", masks=masks)
+
+        self.assertEqual(c0r6.structural_collision_groups(rows), [])
+        self.assertEqual(c0r6.topology_collision_groups(rows), [(1, 2)])
+
+    def test_scope_summary_separates_selection_and_audible_convergence(self) -> None:
+        rows: list[dict[str, str]] = []
+        take_a = ("0x1111", "0x2222", "0x1111", "0x2222")
+        take_b = tuple(reversed(take_a))
+        add_take_space(rows, identity=1, bass_rhythm="2", masks=take_a)
+        add_take_space(rows, identity=2, bass_rhythm="7", masks=take_b)
+        add_take_space(rows, identity=3, bass_rhythm="2", masks=take_b)
+
+        summary = c0r6.summarize_scope(rows)
+
+        self.assertEqual(summary.identity_count, 3)
+        self.assertEqual(summary.stable_identity_count, 3)
+        self.assertEqual(summary.selection_drift_identities, 0)
+        self.assertEqual(summary.attempt_changes_topology_identities, 3)
+        self.assertEqual(summary.topology_static_identities, 0)
+        self.assertEqual(summary.unique_active_selection_signatures, 2)
+        self.assertEqual(summary.unique_take_spaces, 1)
+        self.assertEqual(summary.structural_collision_groups, 1)
+        self.assertEqual(summary.identities_in_structural_collision, 2)
+        self.assertEqual(summary.topology_collision_groups, 1)
+        self.assertEqual(summary.identities_in_topology_collision, 3)
+        self.assertEqual(summary.identities_with_2_unique_takes, 3)
+
+    def test_scope_summary_excludes_selection_drift_from_collision_evidence(self) -> None:
+        rows: list[dict[str, str]] = []
+        masks = ("0x1111", "0x2222", "0x1111", "0x2222")
+        add_take_space(rows, identity=1, bass_rhythm="2", masks=masks)
+        add_take_space(rows, identity=2, bass_rhythm="2", masks=masks)
+        for attempt, mask in enumerate(masks):
+            rows.append(
+                row(
+                    identity=3,
+                    attempt=attempt,
+                    bass_attack=mask,
+                    bass_rhythm="7" if attempt == 1 else "2",
+                )
+            )
+
+        summary = c0r6.summarize_scope(rows)
+
+        self.assertEqual(summary.identity_count, 3)
+        self.assertEqual(summary.stable_identity_count, 2)
+        self.assertEqual(summary.selection_drift_identities, 1)
+        self.assertEqual(summary.structural_collision_groups, 1)
+        self.assertEqual(summary.identities_in_structural_collision, 2)
+        # Same-selection duplicates are already structural collisions. They must
+        # not be double-counted as cross-selection topology convergence.
+        self.assertEqual(summary.topology_collision_groups, 0)
+        self.assertEqual(summary.identities_in_topology_collision, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

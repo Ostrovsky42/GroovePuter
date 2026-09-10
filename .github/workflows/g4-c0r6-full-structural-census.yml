@@ -1,0 +1,53 @@
+name: G4-C0R6 full structural census
+
+on:
+  push:
+    branches:
+      - research/20260909-0.9.11-g4-c0r-materialized-idea-corpus
+    paths:
+      - 'tests/support/gf2_gate_b_g4_c0r6_full_structural_census_test.sh'
+      - '.github/workflows/g4-c0r6-full-structural-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g4-c0r6-full-structural-census-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Exact-head provenance and source firewall
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EXPECTED=${GITHUB_SHA}"
+          echo "ACTUAL=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          BASE="fcd0d77da5ed6ef38419547477ab26e77ec6ff26"
+          if ! git diff --quiet "${BASE}...HEAD" -- src/; then
+            echo "G4_C0R6_CENSUS_FAIL reason=research checkpoint changed src/" >&2
+            git diff --stat "${BASE}...HEAD" -- src/ >&2
+            exit 1
+          fi
+          echo "G4-C0R6 census source firewall: src/ DELTA = NONE"
+
+      - name: Production-backed full structural census
+        run: bash tests/support/gf2_gate_b_g4_c0r6_full_structural_census_test.sh
+
+      - name: Upload census evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-g4-c0r6-structural-census
+          path: build/host-tests/gf2-gate-b/g4-c0r6-structural-census
+          if-no-files-found: warn
