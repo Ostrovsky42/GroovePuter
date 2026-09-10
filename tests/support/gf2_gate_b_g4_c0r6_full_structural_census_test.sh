@@ -13,15 +13,76 @@ bash "${ROOT}/tests/support/build_gf2_gate_b_g4_c0r3_probe.sh"
 
 # One production-backed corpus is enough here. C0R2/C0R3 already prove the
 # deterministic coordinate/dump seam; replaying all 6144 rows again would add
-# runtime cost without adding a new structural invariant.
-python3 "${ROOT}/tools/gf2/g4_c0r_corpus.py" \
-  --dump-binary "${BIN}" \
-  --profiles 0,9,20,27 \
-  --identity-start 0 \
-  --identity-count 128 \
-  --attempt-count 4 \
-  --pattern-address 23 \
-  --output "${CORPUS}"
+# runtime cost without adding a new structural invariant. This checkpoint needs
+# the richer C0R3 observer, so call its proven CLI directly instead of routing it
+# through the older C0R2 corpus helper/flag.
+python3 - "${BIN}" "${CORPUS}" <<'PY'
+from __future__ import annotations
+
+import csv
+import subprocess
+import sys
+from pathlib import Path
+
+binary = sys.argv[1]
+output_path = Path(sys.argv[2])
+profiles = (0, 9, 20, 27)
+depths = ("P1", "P2", "P3")
+
+fieldnames: list[str] | None = None
+rows: list[dict[str, str]] = []
+for profile in profiles:
+    for identity in range(128):
+        for attempt in range(4):
+            for depth in depths:
+                completed = subprocess.run(
+                    [
+                        binary,
+                        "--g4-c0r3-dump",
+                        str(profile),
+                        str(identity),
+                        str(attempt),
+                        "23",
+                        depth,
+                    ],
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                reader = csv.DictReader(completed.stdout.splitlines(), delimiter="\t")
+                current_fields = list(reader.fieldnames or [])
+                observed = list(reader)
+                if len(observed) != 1:
+                    raise RuntimeError(
+                        "C0R3 observer must emit exactly one row for "
+                        f"profile={profile} identity={identity} attempt={attempt} depth={depth}; "
+                        f"got {len(observed)}; stderr={completed.stderr!r}"
+                    )
+                if fieldnames is None:
+                    fieldnames = current_fields
+                elif current_fields != fieldnames:
+                    raise RuntimeError(
+                        "C0R3 observer header drift at "
+                        f"profile={profile} identity={identity} attempt={attempt} depth={depth}"
+                    )
+                rows.append(observed[0])
+
+if fieldnames is None:
+    raise RuntimeError("C0R3 observer produced no rows")
+
+with output_path.open("w", newline="", encoding="utf-8") as handle:
+    writer = csv.DictWriter(
+        handle,
+        fieldnames=fieldnames,
+        delimiter="\t",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(rows)
+
+print(f"G4-C0R6 C0R3 corpus materialized: rows={len(rows)}")
+PY
 
 python3 - "${CORPUS}" "${SUMMARY}" "${ANOMALIES}" "${ROOT}" <<'PY'
 from __future__ import annotations
