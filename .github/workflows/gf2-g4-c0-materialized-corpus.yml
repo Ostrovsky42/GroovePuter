@@ -31,7 +31,6 @@ on:
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
       - '.github/workflows/gf2-g4-c0-materialized-corpus.yml'
-      - '.github/workflows/g4-i6-publish-artifacts.yml'
       - 'docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv'
       - 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'
       - 'docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'
