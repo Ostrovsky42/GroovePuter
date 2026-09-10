@@ -102,6 +102,10 @@ constexpr WeightedIdentityCandidate kBassSlow[] = {
 };
 constexpr WeightedIdentityCandidate kBassDub[] = {
     weighted(BassRhythmId::KickAnswer, 85),
+    // Dub Techno admits FourFloor as one structural carrier. Keep a second
+    // restrained FourFloor-compatible contour so compatibility filtering does
+    // not collapse that carrier to SustainAndDrop only.
+    weighted(BassRhythmId::OffbeatPush, 70),
     weighted(BassRhythmId::GapFill, 75),
     weighted(BassRhythmId::SparseAnchor, 120),
     weighted(BassRhythmId::SustainAndDrop, 100),
@@ -398,6 +402,25 @@ bool validPhrase(uint8_t id) {
          (bars == 1 || bars == 2 || bars == 4 || bars == 8);
 }
 
+WeightedIdentityView bassCandidatesForFamily(
+    WeightedIdentityView input, RhythmFamily family,
+    WeightedIdentityCandidate* storage, uint8_t capacity) {
+  if (input.candidates == nullptr || storage == nullptr || input.count == 0 ||
+      input.count > capacity) {
+    return {};
+  }
+  uint8_t count = 0;
+  for (uint8_t index = 0; index < input.count; ++index) {
+    const WeightedIdentityCandidate candidate = input.candidates[index];
+    if (!isBassRhythmCompatibleWithFamily(
+            family, static_cast<BassRhythmId>(candidate.id))) {
+      continue;
+    }
+    storage[count++] = candidate;
+  }
+  return {storage, count};
+}
+
 uint32_t profileSalt(const GenerationProfileView& profile) {
   return (static_cast<uint32_t>(profile.generativeMode) << 24u) |
          (static_cast<uint32_t>(profile.recipe) << 16u);
@@ -543,10 +566,21 @@ GenerationCompositionResult resolveGenerationComposition(
   result.harmonicChangeRate = profile.harmonicChangeRate;
   result.secondaryRole = profile.secondaryRole;
 
+  const ReferenceVocabulary::Definition* rhythmDefinition =
+      ReferenceVocabulary::definitionForId(rhythm.archetypeId);
+  if (rhythmDefinition == nullptr) {
+    result.status = GenerationCompositionStatus::InvalidProfile;
+    return result;
+  }
+  WeightedIdentityCandidate compatibleBassStorage[kMaxWeightedCandidates]{};
+  const WeightedIdentityView compatibleBass = bassCandidatesForFamily(
+      profile.bassRhythms, rhythmDefinition->family,
+      compatibleBassStorage, kMaxWeightedCandidates);
+
   const uint32_t baseSalt = profileSalt(profile);
   uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0;
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
-      !selectWeightedIdentityFromView(profile.bassRhythms, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
+      !selectWeightedIdentityFromView(compatibleBass, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
       !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
       !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
       !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
