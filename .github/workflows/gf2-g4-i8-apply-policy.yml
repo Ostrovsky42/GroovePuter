@@ -1,0 +1,37 @@
+name: G4-I8 apply opt-in bass policy
+
+on:
+  push:
+    branches:
+      - feature/20260910-03-0.9.11-g4-i8-bass-family-compatibility-binding
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-policy:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feature/20260910-03-0.9.11-g4-i8-bass-family-compatibility-binding
+
+      - name: Apply bounded policy edit
+        run: python3 tools/gf2/apply_g4_i8_policy.py
+
+      - name: Commit production delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/generation/composition/generation_profile.cpp; then
+            echo "G4-I8 policy delta already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/generation/composition/generation_profile.cpp
+          git commit -m "fix(g4-i8): make family binding opt-in per profile"
+          git push origin HEAD:feature/20260910-03-0.9.11-g4-i8-bass-family-compatibility-binding
