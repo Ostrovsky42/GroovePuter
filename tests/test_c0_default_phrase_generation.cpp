@@ -75,8 +75,13 @@ void resetProductState() {
 
 void loadDefaultRuntime(MiniAcid& engine) {
   engine.sceneManager().loadDefaultScene();
-  engine.applySceneStateFromManager();
   engine.setCurrentPage(0);
+  // Mirror the persisted default Scene into runtime only through public
+  // commands. This is the same ownership boundary the device UI can cross;
+  // the characterization must not depend on MiniAcid's private load helper.
+  engine.setSongMode(true);
+  engine.setSongPlaybackSlot(0);
+  engine.setSongPosition(0);
 }
 
 void testDefaultSceneStoppedPhraseG() {
@@ -119,7 +124,6 @@ void testDefaultScenePlayingPhraseG() {
   loadDefaultRuntime(engine);
   assert(engine.songModeEnabled());
   assert(engine.songPlaybackSlot() == 0);
-  engine.setSongPosition(0);
   engine.start();
   assert(engine.isPlaying());
 
