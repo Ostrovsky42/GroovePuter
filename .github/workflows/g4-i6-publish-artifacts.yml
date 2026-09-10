@@ -28,6 +28,7 @@ jobs:
 
       - name: Generate exact-SHA evidence
         run: |
+          mkdir -p build
           set -o pipefail
           set +e
           bash tests/run_gf2_g4_i6_tests.sh 2>&1 | tee build/g4-i6-publish.log
