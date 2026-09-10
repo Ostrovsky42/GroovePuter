@@ -9,35 +9,106 @@ on:
       - 'src/phrase/**'
       - 'src/midi/**'
       - 'src/ui/phrase_source_toggle.h'
-      - 'tests/test_phrase_bank_qwertyui_p1.cpp'
-      - 'tests/test_midi_panic_cc123.cpp'
+      - 'tests/**'
+      - 'scripts/**'
       - '.github/workflows/0_9_11_convergence_c0.yml'
 
 permissions:
   contents: read
 
+env:
+  CONVERGENCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
-  phrase-bank-red-green:
+  focused-contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Compile Phrase Bank characterization
+        with:
+          ref: ${{ env.CONVERGENCE_HEAD }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CONVERGENCE_HEAD}"
+      - name: Compile and run Phrase Bank characterization
         run: |
+          set -euo pipefail
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_phrase_bank_qwertyui_p1.cpp \
             -o /tmp/test_phrase_bank_qwertyui_p1
-      - name: Run Phrase Bank characterization
-        run: /tmp/test_phrase_bank_qwertyui_p1
-
-  midi-panic-red-green:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build focused panic recovery test
+          /tmp/test_phrase_bank_qwertyui_p1
+      - name: Compile and run MIDI panic recovery
         run: |
+          set -euo pipefail
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_midi_panic_cc123.cpp \
             src/midi/usb_midi_output.cpp \
             -o /tmp/test_midi_panic_cc123
-      - name: Run focused panic recovery test
-        run: /tmp/test_midi_panic_cc123
+          /tmp/test_midi_panic_cc123
+
+  host-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CONVERGENCE_HEAD }}
+          fetch-depth: 0
+      - name: Prepare deterministic Ubuntu package sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -f \
+            /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+      - name: Prove source-toggle owner and full host regressions
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -euo pipefail
+          echo "convergence_head=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${CONVERGENCE_HEAD}"
+          bash tests/run_ui_constitution_u4b9_tests.sh
+          bash tests/run_host_tests.sh
+
+  cardputer-adv-prehardware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CONVERGENCE_HEAD }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check exact-head fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Record exact-head Cardputer provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CONVERGENCE_HEAD}"
+          {
+            echo "convergence_head=${CONVERGENCE_HEAD}"
+            echo "elf_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.elf | awk '{print $1}')"
+            echo "bin_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.bin | awk '{print $1}')"
+          } | tee cardputer-convergence-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: convergence-c0-cardputer-adv-${{ github.sha }}
+          path: |
+            build/cardputer-adv-current/GroovePuter.ino.elf
+            build/cardputer-adv-current/GroovePuter.ino.bin
+            cardputer-convergence-provenance.txt
+          if-no-files-found: error
