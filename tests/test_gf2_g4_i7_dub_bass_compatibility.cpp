@@ -16,8 +16,10 @@
 namespace GroovePuterRhythm {
 namespace {
 
-constexpr uint16_t kIdentityFirst = 1;
-constexpr uint16_t kIdentityLast = 128;
+// Keep the identity coordinates byte-for-byte aligned with C0R5/C0R6. Those
+// corpora define the 128-row pilot as identity_ordinal 0..127.
+constexpr uint16_t kIdentityFirst = 0;
+constexpr uint16_t kIdentityLast = 127;
 
 const char* familyName(RhythmFamily family) {
   switch (family) {
@@ -177,6 +179,11 @@ int run() {
     }
   }
 
+  std::printf(
+      "G4_I7_COORDINATES first=%u last=%u rows=%u\n",
+      static_cast<unsigned>(kIdentityFirst),
+      static_cast<unsigned>(kIdentityLast),
+      static_cast<unsigned>(total));
   std::printf(
       "G4_I7_SUMMARY rows=%u incompatible=%u explicit_bypass_accepted=%u "
       "auto_outside_native=%u selected_outside_profile=%u families=%u\n",
