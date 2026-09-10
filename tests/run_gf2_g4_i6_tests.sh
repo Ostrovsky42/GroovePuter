@@ -41,6 +41,7 @@ for run in "$RUN_A" "$RUN_B"; do
   "$BUILD/g4-i6-ownership-census" --emit "$run" | tee "$run.log"
   "$BUILD/g4-i6-methodology-controls" --emit "$run" | tee "$run.methodology.log"
   python3 "${ROOT}/tools/gf2/finalize_gf2_g4_i6_census.py" --run-dir "$run"
+  python3 "${ROOT}/tools/gf2/promote_gf2_g4_c1_dnb_contract.py" --run-dir "$run"
 done
 
 for artifact in \
