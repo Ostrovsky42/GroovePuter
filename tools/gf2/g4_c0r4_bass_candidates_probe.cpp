@@ -5,11 +5,14 @@
 // normally linked production object, then query its private candidatesFor()
 // directly in the same translation unit.
 #define isValidBassRhythmId g4C0R4ProbeIsValidBassRhythmId
+#define isBassRhythmCompatibleWithFamily \
+  g4C0R4ProbeIsBassRhythmCompatibleWithFamily
 #define realizeBassRhythm g4C0R4ProbeRealizeBassRhythm
 #define bassRhythmName g4C0R4ProbeBassRhythmName
 #include "../../src/generation/roles/bass_rhythm.cpp"
 #undef bassRhythmName
 #undef realizeBassRhythm
+#undef isBassRhythmCompatibleWithFamily
 #undef isValidBassRhythmId
 
 #include "g4_c0r4_bass_candidates_probe.h"
