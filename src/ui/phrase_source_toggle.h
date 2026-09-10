@@ -9,11 +9,13 @@
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 
-// U4B9: the single owner of the PATTERN/PHRASE switch.
+// U4B9: the single owner of PATTERN/PHRASE source selection and the explicit
+// MAKE PHRASE gesture.
 //
-// The decision has three branches and carries an undo receipt. The source row,
-// ALT+R and explicit MAKE PHRASE all reuse this owner rather than duplicating
-// projection or source state in the UI.
+// SOURCE is deliberately a pure source switch. It never projects Pattern
+// material as a side effect, including when the Phrase buffer is empty.
+// MAKE PHRASE is the distinct one-way materialization command. Both actions
+// retain the same bounded Runtime Phrase undo ownership and AudioGuard path.
 //
 // The receipt carries the source as well as the material, so Ctrl+Z restores
 // PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
@@ -37,8 +39,6 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
 
   const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
                         MiniAcid::SequencedSource::Phrase;
-  const bool hasPhraseMaterial =
-      engine.currentPhraseBuffer(voiceIndex).count > 0;
 
   GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
   receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
@@ -52,19 +52,16 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
         GroovePuterUndo::undoOwner().commitRuntimePrepared(
             GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
               if (onPhrase) {
-                // Back to PATTERN. The phrase material is kept, so returning to
-                // PHRASE later does not re-project over edits.
+                // Back to PATTERN. Phrase material is retained untouched.
                 engine.setSequencedSource(voiceIndex,
                                           MiniAcid::SequencedSource::Pattern);
                 result = Result::SwitchedToPattern;
-              } else if (hasPhraseMaterial) {
-                // Material already exists: this is a source switch, not a
-                // conversion, so makePhrase() must not run again.
+              } else {
+                // SOURCE is selection only. An empty Phrase is a valid target;
+                // only MAKE PHRASE is allowed to materialize Pattern content.
                 engine.setSequencedSource(voiceIndex,
                                           MiniAcid::SequencedSource::Phrase);
                 result = Result::SwitchedToPhrase;
-              } else if (engine.makePhrase(voiceIndex)) {
-                result = Result::MadePhrase;
               }
             });
     if (!committed) result = Result::Rejected;
@@ -75,10 +72,9 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   return result;
 }
 
-// Explicit one-way musical gesture from Pattern. It intentionally delegates to
-// the same owner as SRC: no event copy, no UI material model, no second source
-// flag. If the voice is already on Phrase, repeating MAKE PHRASE is a no-op so
-// edited material cannot be silently re-projected.
+// Explicit one-way musical gesture from Pattern. Unlike SOURCE, this command
+// owns materialization. A voice already on Phrase is left untouched so edited
+// material cannot be silently re-projected.
 inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
                        int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
@@ -86,8 +82,26 @@ inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
       MiniAcid::SequencedSource::Phrase) {
     return true;
   }
-  const Result result = toggle(engine, audioGuard, voiceIndex);
-  return result == Result::MadePhrase || result == Result::SwitchedToPhrase;
+
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
+  receipt.source =
+      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
+  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+
+  bool made = false;
+  const auto apply = [&]() {
+    const bool committed =
+        GroovePuterUndo::undoOwner().commitRuntimePrepared(
+            GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+              made = engine.makePhrase(voiceIndex);
+            });
+    if (!committed) made = false;
+  };
+
+  if (audioGuard) audioGuard(apply);
+  else apply();
+  return made;
 }
 
 }  // namespace PhraseSourceToggle
