@@ -75,7 +75,16 @@ jobs:
         shell: bash
         env:
           ASAN_OPTIONS: detect_leaks=0
-        run: bash tests/run_host_tests.sh
+        run: |
+          set -o pipefail
+          bash tests/run_host_tests.sh 2>&1 | tee convergence-full-host.log
+      - name: Upload full-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: convergence-c0-full-host-${{ github.sha }}
+          path: convergence-full-host.log
+          if-no-files-found: error
 
   cardputer-adv-prehardware:
     runs-on: ubuntu-latest
