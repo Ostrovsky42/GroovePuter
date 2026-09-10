@@ -73,11 +73,16 @@ void resetProductState() {
       GroovePuterRhythm::RealizationLevel::P2Variation);
 }
 
+void loadDefaultRuntime(MiniAcid& engine) {
+  engine.sceneManager().loadDefaultScene();
+  engine.applySceneStateFromManager();
+  engine.setCurrentPage(0);
+}
+
 void testDefaultSceneStoppedPhraseG() {
   resetProductState();
   MiniAcid engine(kSampleRate, nullptr);
-  engine.sceneManager().loadDefaultScene();
-  engine.setCurrentPage(0);
+  loadDefaultRuntime(engine);
 
   const int expectedAppendRow = engine.sceneManager().currentScene().songs[0].length;
   assert(expectedAppendRow == 8);
@@ -102,14 +107,53 @@ void testDefaultSceneStoppedPhraseG() {
   assert(page.handleEvent(g));
   const auto& accepted = GroovePuterState::generatedPhraseProductState().accepted;
   assert(accepted.valid && "plain G on default PHRASE surface must publish a candidate");
+  assert(!accepted.pendingNextBar);
   assert(accepted.songStart == expectedAppendRow);
   assert(accepted.bars == 4);
   std::puts("C0 H3 default-scene stopped PHRASE G: PASS");
+}
+
+void testDefaultScenePlayingPhraseG() {
+  resetProductState();
+  MiniAcid engine(kSampleRate, nullptr);
+  loadDefaultRuntime(engine);
+  assert(engine.songModeEnabled());
+  assert(engine.songPlaybackSlot() == 0);
+  engine.setSongPosition(0);
+  engine.start();
+  assert(engine.isPlaying());
+
+  const int expectedAppendRow = engine.sceneManager().currentScene().songs[0].length;
+  assert(expectedAppendRow == 8);
+
+  FakeGfx gfx;
+  PhrasePage page(gfx, engine, AudioGuard{}, false);
+  page.onEnter(0);
+  page.draw(gfx);
+  assert(hasText(gfx, "APPEND A9"));
+  assert(hasText(gfx, "FREE"));
+
+  UIEvent g = keyEvent('g');
+  assert(page.handleEvent(g));
+  const auto& state = GroovePuterState::generatedPhraseProductState();
+  if (!state.accepted.valid) {
+    std::printf("LIVE PHRASE G OUTCOME: %s\n",
+                GroovePuterState::generatedPhraseOutcomeName(state.lastOutcome));
+  }
+  assert(state.accepted.valid &&
+         "plain G while the default Song is playing must publish a pending candidate");
+  assert(state.accepted.pendingNextBar &&
+         "live Phrase generation must be explicit about next-bar activation");
+  assert(state.accepted.songStart == expectedAppendRow);
+  assert(state.accepted.bars == 4);
+  engine.stop();
+  std::puts("C0 H3 default-scene playing PHRASE G: PASS");
 }
 
 }  // namespace
 
 int main() {
   testDefaultSceneStoppedPhraseG();
+  testDefaultScenePlayingPhraseG();
   return 0;
 }
