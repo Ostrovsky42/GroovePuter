@@ -41,6 +41,8 @@ on:
       - 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'
       - 'docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'
       - 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md'
+      - 'docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv'
+      - 'docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md'
       - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
       - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
   workflow_dispatch:
@@ -102,6 +104,19 @@ jobs:
         run: |
           python3 tests/test_gf2_g4_c2_contract_candidate_ranking.py \
             > build/host-tests/gf2-g4-c0/g4-c2.log
+          mkdir -p build/host-tests/gf2-g4-c2
+          python3 tools/gf2/rank_gf2_g4_c2_contract_candidates.py \
+            --census docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            --output-dir build/host-tests/gf2-g4-c2 \
+            >> build/host-tests/gf2-g4-c0/g4-c2.log
+          cmp \
+            build/host-tests/gf2-g4-c2/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv
+          cmp \
+            build/host-tests/gf2-g4-c2/GF2_G4_C2_CONTRACT_CANDIDATES.md \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md
+          echo 'G4-C2 committed evidence freshness: UP TO DATE' \
+            >> build/host-tests/gf2-g4-c0/g4-c2.log
 
       - name: Run existing GF2-I3 ownership regressions and FEEL census freshness
         run: |
@@ -154,6 +169,9 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-c2.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
             build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
+            build/host-tests/gf2-g4-c2/GF2_G4_C2_CONTRACT_CANDIDATES.tsv
+            build/host-tests/gf2-g4-c2/GF2_G4_C2_CONTRACT_CANDIDATES.md
+            build/host-tests/gf2-g4-c2/g4-c2-summary.txt
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md
