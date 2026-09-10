@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  C0R_OBSERVER_SHA: 58ad6b28ceea37be3f1d0a5a80b735efdd1f826f
+  C0R_OBSERVER_SHA: a1451f5d76acd4be68ccef22fde7d786dc0c1a11
 
 jobs:
   bass-family-binding:
