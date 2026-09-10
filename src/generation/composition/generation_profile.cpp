@@ -317,6 +317,7 @@ struct ProfileDefinition {
   GenerationCorridor corridor;
   HarmonicChangeRateId harmonicChangeRate;
   CompositionSecondaryRole secondaryRole;
+  BassSelectionPolicy bassSelectionPolicy;
 };
 
 constexpr ProfileDefinition profile(
@@ -326,9 +327,11 @@ constexpr ProfileDefinition profile(
     WeightedIdentityView motif, WeightedIdentityView phraseLaw,
     GenerationCorridor corridor,
     CompositionSecondaryRole secondaryRole,
-    HarmonicChangeRateId harmonicChangeRate = HarmonicChangeRateId::Every2Beats) {
+    HarmonicChangeRateId harmonicChangeRate = HarmonicChangeRateId::Every2Beats,
+    BassSelectionPolicy bassSelectionPolicy = BassSelectionPolicy::Independent) {
   return {static_cast<uint8_t>(mode), recipe, feels, bass, chord, progression,
-          melodic, motif, phraseLaw, corridor, harmonicChangeRate, secondaryRole};
+          melodic, motif, phraseLaw, corridor, harmonicChangeRate, secondaryRole,
+          bassSelectionPolicy};
 }
 
 constexpr ProfileDefinition kProfiles[] = {
@@ -347,14 +350,14 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::HipHop, 0, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {76,104,90,16,3,10}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::FunkSoul, 0, view(kFeelSwingDrive), view(kBassBoomBap), view(kChordLoFi), view(kProgressionFunk), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {88,116,102,16,4,11}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::UkGarage, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {126,140,132,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic, HarmonicChangeRateId::Every2Beats, BassSelectionPolicy::FamilyNative),
     profile(GenerativeMode::LoFi, 0, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {54,90,72,16,2,8}, CompositionSecondaryRole::ChordWithMelodicFill, HarmonicChangeRateId::Every4Beats),
 
     profile(GenerativeMode::Broken, 1, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {125,138,132,16,5,13}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 2, view(kFeelStraightDrive), view(kBassDrive), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 3, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {145,165,158,16,6,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Rave, 4, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {138,150,145,16,8,15}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Reggae, 5, view(kFeelDubPocket), view(kBassDub), view(kChordDub), view(kProgressionDub), view(kMelodicDub), view(kMotifSparse), view(kPhraseSlow), {112,128,120,16,2,8}, CompositionSecondaryRole::Chord),
+    profile(GenerativeMode::Reggae, 5, view(kFeelDubPocket), view(kBassDub), view(kChordDub), view(kProgressionDub), view(kMelodicDub), view(kMotifSparse), view(kPhraseSlow), {112,128,120,16,2,8}, CompositionSecondaryRole::Chord, HarmonicChangeRateId::Every2Beats, BassSelectionPolicy::FamilyNative),
     profile(GenerativeMode::Acid, 6, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {118,132,124,16,6,13}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Acid, 7, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {126,145,136,16,8,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 8, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {126,136,132,16,5,12}, CompositionSecondaryRole::Melodic),
@@ -481,6 +484,7 @@ GenerationProfileView generationProfileFor(const GenreSettings& settings) {
   result.corridor = definition->corridor;
   result.harmonicChangeRate = definition->harmonicChangeRate;
   result.secondaryRole = definition->secondaryRole;
+  result.bassSelectionPolicy = definition->bassSelectionPolicy;
   return result;
 }
 
@@ -494,7 +498,8 @@ bool isValidGenerationProfile(const GenerationProfileView& profile) {
       profile.corridor.densityMin > profile.corridor.densityMax ||
       profile.corridor.densityMax > 16 ||
       !isValidHarmonicChangeRate(profile.harmonicChangeRate) ||
-      static_cast<uint8_t>(profile.secondaryRole) >= static_cast<uint8_t>(CompositionSecondaryRole::Count)) {
+      static_cast<uint8_t>(profile.secondaryRole) >= static_cast<uint8_t>(CompositionSecondaryRole::Count) ||
+      static_cast<uint8_t>(profile.bassSelectionPolicy) >= static_cast<uint8_t>(BassSelectionPolicy::Count)) {
     return false;
   }
   for (uint8_t index = 0; index < profile.rhythms.count; ++index) {
@@ -566,21 +571,28 @@ GenerationCompositionResult resolveGenerationComposition(
   result.harmonicChangeRate = profile.harmonicChangeRate;
   result.secondaryRole = profile.secondaryRole;
 
-  const ReferenceVocabulary::Definition* rhythmDefinition =
-      ReferenceVocabulary::definitionForId(rhythm.archetypeId);
-  if (rhythmDefinition == nullptr) {
-    result.status = GenerationCompositionStatus::InvalidProfile;
-    return result;
-  }
+  WeightedIdentityView bassCandidates = profile.bassRhythms;
   WeightedIdentityCandidate compatibleBassStorage[kMaxWeightedCandidates]{};
-  const WeightedIdentityView compatibleBass = bassCandidatesForFamily(
-      profile.bassRhythms, rhythmDefinition->family,
-      compatibleBassStorage, kMaxWeightedCandidates);
+  if (profile.bassSelectionPolicy == BassSelectionPolicy::FamilyNative) {
+    const ReferenceVocabulary::Definition* rhythmDefinition =
+        ReferenceVocabulary::definitionForId(rhythm.archetypeId);
+    if (rhythmDefinition == nullptr) {
+      result.status = GenerationCompositionStatus::InvalidProfile;
+      return result;
+    }
+    bassCandidates = bassCandidatesForFamily(
+        profile.bassRhythms, rhythmDefinition->family,
+        compatibleBassStorage, kMaxWeightedCandidates);
+    if (bassCandidates.count == 0) {
+      result.status = GenerationCompositionStatus::InvalidProfile;
+      return result;
+    }
+  }
 
   const uint32_t baseSalt = profileSalt(profile);
   uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0;
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
-      !selectWeightedIdentityFromView(compatibleBass, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
+      !selectWeightedIdentityFromView(bassCandidates, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
       !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
       !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
       !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
