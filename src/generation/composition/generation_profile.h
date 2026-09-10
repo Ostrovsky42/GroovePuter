@@ -35,6 +35,16 @@ enum class CompositionSecondaryRole : uint8_t {
   Count,
 };
 
+// Bass identity is not universally owned by RhythmFamily. Independent keeps
+// genre-level bass motion free from the rhythm family's automatic vocabulary;
+// FamilyNative is an explicit profile contract that constrains automatic
+// selection to identities native to the selected rhythm family.
+enum class BassSelectionPolicy : uint8_t {
+  Independent = 0,
+  FamilyNative,
+  Count,
+};
+
 struct WeightedIdentityCandidate {
   uint8_t id = 0;
   uint8_t weight = 0;
@@ -68,6 +78,7 @@ struct GenerationProfileView {
   GenerationCorridor corridor{};
   HarmonicChangeRateId harmonicChangeRate = HarmonicChangeRateId::Every2Beats;
   CompositionSecondaryRole secondaryRole = CompositionSecondaryRole::Melodic;
+  BassSelectionPolicy bassSelectionPolicy = BassSelectionPolicy::Independent;
 };
 
 enum class GenerationCompositionStatus : uint8_t {
