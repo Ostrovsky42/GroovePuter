@@ -11,11 +11,13 @@ ARDUINO_CLI="${ARDUINO_CLI:-arduino-cli}"
 BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-current}"
 PORT="/dev/ttyACM0"
 USE_PREBUILT=0
+ALLOW_STOCK_FATFS=0
 UPLOAD_SPEED="${UPLOAD_SPEED:-921600}"
 
 for arg in "$@"; do
     case "$arg" in
         --prebuilt) USE_PREBUILT=1 ;;
+        --stock-fatfs) ALLOW_STOCK_FATFS=1 ;;
         /dev/*) PORT="$arg" ;;
     esac
 done
@@ -32,6 +34,35 @@ else
         echo "Current build is missing: ${BUILD_PATH}/GroovePuter.ino.bin" >&2
         echo "Run: bash scripts/build.sh" >&2
         exit 1
+    fi
+
+    # A firmware linked against the stock libfatfs.a reboot-loops as soon as an
+    # SD card is inserted: FatFs reserves 4096-byte sector buffers permanently,
+    # the largest free DRAM block collapses to about 7.6 KB, and the device
+    # panics in loop(). That is FS1, and the fix lives in
+    # scripts/build_cardputer_dynbuffers.sh, not in the default build -- so the
+    # default flashing path used to hand the user a device that dies on a card.
+    #
+    # The check is on the link map, not on which script ran, because that is the
+    # thing that is actually true of the binary about to be written.
+    MAP_FILE="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}/GroovePuter.ino.map"
+    if [ "$ALLOW_STOCK_FATFS" -eq 0 ]; then
+        if [ ! -f "${MAP_FILE}" ]; then
+            echo "Cannot verify the FatFs build: link map not found (${MAP_FILE})" >&2
+            echo "Build with: bash scripts/build_cardputer_dynbuffers.sh" >&2
+            echo "Override only for a deliberate A/B: $0 --stock-fatfs" >&2
+            exit 1
+        fi
+        if ! grep -Fq "grooveputer-sdk-dynbuffers/lib/libfatfs.a" "${MAP_FILE}"; then
+            echo "REFUSING TO FLASH: this build uses the stock libfatfs.a." >&2
+            echo "It reboot-loops with an SD card inserted (FS1)." >&2
+            echo "Build with: bash scripts/build_cardputer_dynbuffers.sh" >&2
+            echo "Override only for a deliberate A/B: $0 --stock-fatfs" >&2
+            exit 1
+        fi
+    else
+        echo "WARNING: flashing a stock-FatFs build on purpose." >&2
+        echo "WARNING: this firmware reboot-loops with an SD card inserted." >&2
     fi
 
     echo "Uploading current build: ${BUILD_PATH}"

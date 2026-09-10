@@ -2,6 +2,7 @@
 #ifndef MINIACID_ENGINE_H
 #define MINIACID_ENGINE_H
 
+#include "src/state/material_slot.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <atomic>
@@ -127,6 +128,53 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  // Where the phrase is sounding, in its own time. currentStep() is bar-local
+  // and would place the marker wrongly on any phrase longer than one bar.
+  uint16_t currentPhrasePlayTick(int voiceIndex) const;
+
+  // M3: the one resolved answer to "what is this voice playing", published by
+  // the control side and only read by the audio path.
+  //
+  // Resolving a slot means reading the Scene, a descriptor, a project name and
+  // possibly a file. None of that may happen while audio is being generated, so
+  // it happens once, ahead of time, and the result lands here as a small
+  // bounded value the sequencer can act on without asking anyone.
+  struct ActiveMaterial {
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+  };
+
+  void publishActiveMaterial(int voiceIndex, uint16_t slot,
+                             GroovePuterMaterial::MaterialKind kind);
+  const ActiveMaterial& activeMaterial(int voiceIndex) const;
+
+  // M4: what a voice will play next, prepared away from the audio path and
+  // swapped in on a musical boundary.
+  //
+  // The press is answered at once; the work it implies is not done where it
+  // would be heard. Preparation may read a file and takes 12-18 ms, against a
+  // 2000 ms bar at 120 BPM -- room to prepare properly instead of racing. What
+  // that margin buys is that nothing half-prepared ever becomes audible.
+  //
+  // The buffers are heap-allocated once at startup: 2 x 1284 bytes does not fit
+  // the static budget, and one fixed allocation is not the fragmentation that
+  // brought this device down before. If it fails, NEXT is simply unavailable.
+  bool initPendingMaterial();
+  bool pendingMaterialReady() const;
+  const void* pendingMaterialAddress(int voiceIndex) const;
+  bool hasPendingMaterial(int voiceIndex) const;
+
+  // Melody requests must arrive already prepared. A null melody for a Melody
+  // request is the failed-load case: refused here, so it can never reach a
+  // boundary and half-activate.
+  bool stagePendingMaterial(int voiceIndex, uint16_t slot,
+                            GroovePuterMaterial::MaterialKind kind,
+                            const PhraseRuntime::RuntimeSynthEventBuffer* melody);
+
+  // Called on a musical boundary. A value copy and two assignments: no
+  // allocation, no I/O, nothing that can fail halfway.
+  void activatePendingMaterial();
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -188,7 +236,8 @@ public:
   bool isPageLoading() const { return pageLoading_.load(std::memory_order_acquire); }
   void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
   void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
-  void setCurrentPage(int8_t page) { currentPage_.store(page, std::memory_order_release); }
+  void setCurrentPage(int8_t page);
+  void barrierPatternRuntimeSourceTransition();
   bool rebuildPatternRuntimeEventBank();
   bool refreshPatternRuntimeEvents(int synthIndex, int bankIndex, int patternIndex);
   const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(int synthIndex) const;
@@ -360,6 +409,26 @@ public:
   const VoiceCache& voiceCache() const { return voiceCache_; }
   bool speakCached(const char* text);
 
+  // P3: Bounded Phrase Source
+  enum class SequencedSource : uint8_t {
+    Pattern = 0,
+    Phrase = 1,
+  };
+
+  // Routing lives in the container: phrase[voice] selects the synth, so
+  // RuntimeSynthEvent stays free of any target field.
+  void setSequencedSource(int voiceIndex, SequencedSource source);
+  SequencedSource currentSequencedSource(int voiceIndex) const;
+  // U4B6: the explicit, one-way entry into the Phrase source. Projects the
+  // voice's active Pattern into bounded Phrase material and moves the source,
+  // or changes nothing at all. A voice already on Phrase is left untouched:
+  // re-projecting would silently discard edits made since the conversion.
+  bool makePhrase(int voiceIndex);
+  bool setPhraseLength(int voiceIndex, uint8_t barCount);
+  PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
+  const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(
+      int voiceIndex) const;
+
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
@@ -369,9 +438,16 @@ private:
   void triggerSynthStep_(int synthIdx,
                          const PhraseRuntime::RuntimeSynthEvent& event,
                          uint32_t absoluteStartSubtick);
+  // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
+  // one place leaves room for a per-voice cycle origin later without touching
+  // the sequencer scan.
+  uint16_t phraseRelativeTick_(int voiceIndex, uint32_t absoluteTick) const;
+  const PhraseRuntime::RuntimeSynthEvent* phraseEventAt_(
+      int voiceIndex, uint32_t absoluteTick) const;
   void consumePatternPlaybackActions_(
       int synthIdx,
       const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
+  void hardBarrierPatternPlayback_(int synthIdx);
   void hardBarrierPatternPlayback_();
   void cleanupLiveNotesForTransportBarrier_(uint8_t patternAuthorityAtEntry);
   uint32_t currentAbsoluteSubtick_() const;
@@ -465,6 +541,23 @@ private:
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
+
+  // P3: Bounded Phrase Source, owned per synth voice.
+  // The published authority is the only storage. SequencedSource survives as
+  // an API into it until M5 retires the concept, rather than as a second copy
+  // that could disagree with what is actually sounding.
+  ActiveMaterial activeMaterial_[NUM_303_VOICES]{};
+
+  struct PendingMaterial {
+    PhraseRuntime::RuntimeSynthEventBuffer* melody = nullptr;
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+    bool queued = false;
+  };
+  PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
+  PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_[NUM_303_VOICES]{};
+
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;

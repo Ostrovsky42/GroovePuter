@@ -7,7 +7,11 @@
 
 class PatternPagingService {
 public:
-    static constexpr uint16_t kFormatVersion = 3;
+    // Version 4 adds the material kind of each resident synth slot. Version 3
+    // files are still read: they predate promotion, so every slot in them is a
+    // Pattern by construction and decodes as one.
+    static constexpr uint16_t kFormatVersion = 4;
+    static constexpr uint16_t kLegacyFormatVersion = 3;
 
     // Select the project namespace used by all following page operations.
     // Names are encoded before becoming SD paths; callers pass scene names.

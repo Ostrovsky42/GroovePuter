@@ -113,9 +113,13 @@ for token in (
 ):
     assert token in drum_automation, f"Drum automation hold acceleration missing: {token}"
 
+# U1B inserted the independent sequenced-source/transport route ahead of the
+# transport state. The BPM contract is unchanged: snapshot it, include it in
+# cache equality, and render the same explicit "NNN BPM Bx/y" segment inside
+# the route-aware status line.
 for token in (
     "uint16_t bpm{uiStatusBpm()}",
-    '"%s %s %s %u BPM B%u/%u %s %s%s%s"',
+    '"%s%s%s %s %u BPM B%u/%u %s %s%s%s"',
     "lhs.bpm == rhs.bpm",
 ):
     assert token in status_chrome, f"BPM status chrome contract missing: {token}"

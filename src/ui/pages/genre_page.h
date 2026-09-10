@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../ui_view_continuity.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/generation/composition/rhythm_selection.h"
 #include "src/state/scene_revision.h"
@@ -32,6 +33,16 @@ class GenrePage : public IPage {
     Regenerate,
     RegenerateTempo,
   };
+
+  void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+    state.genreFocus = static_cast<uint8_t>(focus_);
+  }
+
+  void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+    uint8_t focus = state.genreFocus;
+    if (focus > static_cast<uint8_t>(FocusRow::Apply)) focus = 0;
+    focus_ = static_cast<FocusRow>(focus);
+  }
 
   void updateFromEngine();
   void moveFocus(int delta);

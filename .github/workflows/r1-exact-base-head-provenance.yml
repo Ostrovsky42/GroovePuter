@@ -1,0 +1,142 @@
+name: R1 Exact Base Head Provenance
+
+on:
+  push:
+    branches:
+      - feature/20260908-01-test-liveness-recovery
+  pull_request:
+    branches:
+      - dev_0.9.10
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  causal-host-base:
+    name: Causal host — exact M4 base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9d959174cdc8be120f995ba64d507abbcaff6dbe
+          fetch-depth: 0
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+
+      - name: Run exact causal runners
+        shell: bash
+        run: |
+          set +e
+          overall=0
+          run_case() {
+            label="$1"
+            shift
+            echo "::group::${label}"
+            "$@"
+            rc=$?
+            echo "R1_VERDICT ${label} rc=${rc}"
+            echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then overall=1; fi
+          }
+          run_case bounded-activation bash tests/run_generation_0_9_9_c_tests.sh
+          run_case p1r-focused bash tests/run_0_9_9_phrase_p1r_tests.sh
+          run_case full-host bash tests/run_host_tests.sh
+          exit "$overall"
+
+  causal-host-head:
+    name: Causal host — exact R1 head
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+
+      - name: Run exact causal runners
+        shell: bash
+        run: |
+          set +e
+          overall=0
+          run_case() {
+            label="$1"
+            shift
+            echo "::group::${label}"
+            "$@"
+            rc=$?
+            echo "R1_VERDICT ${label} rc=${rc}"
+            echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then overall=1; fi
+          }
+          run_case bounded-activation bash tests/run_generation_0_9_9_c_tests.sh
+          run_case p1r-focused bash tests/run_0_9_9_phrase_p1r_tests.sh
+          run_case full-host bash tests/run_host_tests.sh
+          exit "$overall"
+
+  cardputer-base:
+    name: Cardputer ADV — exact M4 base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9d959174cdc8be120f995ba64d507abbcaff6dbe
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+  cardputer-head:
+    name: Cardputer ADV — exact R1 head
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+  seqtrak-base:
+    name: SEQTRAK MIDI-only — exact M4 base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9d959174cdc8be120f995ba64d507abbcaff6dbe
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
+
+  seqtrak-head:
+    name: SEQTRAK MIDI-only — exact R1 head
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all

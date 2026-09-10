@@ -15,7 +15,8 @@ def require(condition: bool, message: str) -> None:
 def test_ppqn_dispatch_is_not_step_gated() -> None:
     source = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     loop_start = source.index("while (ticksToAdvance--)")
-    loop_end = source.index("if (gateCountdownA_", loop_start)
+    advance_pos = source.index("advanceTick();", loop_start)
+    loop_end = source.index("}", advance_pos) + 1
     dispatch_block = source[loop_start:loop_end]
 
     require("advanceTick();" in dispatch_block,
@@ -114,13 +115,15 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     require(audio_task_pos < early_sd_pos < engine_init_pos,
             "SD must mount after reserving AudioTask and before DSP heap allocation")
 
-    smf_runtime_pos = sketch.index("beginCardputerSmfPlayerService();")
+    smf_runtime_pos = sketch.index('screenLog("4c. SMF Runtime (lazy)...")')
     require(early_sd_pos < smf_runtime_pos < engine_init_pos,
-            "SMF task and timing storage must be reserved before DSP/UI fragmentation")
+            "SMF deferral marker must remain between SD setup and engine init")
+    require("beginCardputerSmfPlayerService()" not in sketch,
+            "SMF task/timing storage must remain lazy at boot")
 
     midi_runtime_pos = sketch.index("registerCardputerUsbMidiSink(")
     require(smf_runtime_pos < midi_runtime_pos < engine_init_pos,
-            "MIDI dispatcher stack must be reserved before engine heap fragmentation")
+            "MIDI dispatcher stack must still start before engine heap fragmentation")
 
 
 def test_scene_and_page_validation_share_one_scratch_buffer() -> None:

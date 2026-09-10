@@ -10,13 +10,13 @@ namespace Layout {
     constexpr int SCREEN_W = 240;
     constexpr int SCREEN_H = 135;
 
-    // Fixed zones
+    // Standard shell/body zones are adjacent and non-overlapping.
     constexpr LayoutRect HEADER  = {0, 0, 240, 16};    // y: 0..15
-    constexpr LayoutRect CONTENT = {0, 16, 240, 103};  // y: 16..118
+    constexpr LayoutRect CONTENT = {0, 16, 240, 93};   // y: 16..108
     constexpr LayoutRect FOOTER  = {0, 119, 240, 16};  // y: 119..134
 
-    // Global performance HUDs are drawn after the active page. Page layouts
-    // that use the bottom of CONTENT must stop above this reserved strip.
+    // The performance strip is shell-owned and begins immediately after the
+    // active surface body. It is no longer part of CONTENT.
     constexpr int PERFORMANCE_HUD_H = 10;
     constexpr LayoutRect PERFORMANCE_HUD = {
         0, FOOTER.y - PERFORMANCE_HUD_H, SCREEN_W, PERFORMANCE_HUD_H};
@@ -30,8 +30,9 @@ namespace Layout {
     constexpr int CONTENT_PAD_X = 4;
     constexpr int CONTENT_PAD_Y = 2;
 
-    // 103px height, pads 2+2 => 99px usable.
-    // With LINE_HEIGHT=12 => floor(99/12)=8 lines.
+    // The 93px body preserves eight established baseline anchors at 12px
+    // spacing. Only seven complete 12px rows fit; the eighth anchor is used by
+    // compact status/hint content on preserved pages and is not a full row.
     constexpr int LINE_HEIGHT = 12;
     constexpr int MAX_LINES   = 8;
 

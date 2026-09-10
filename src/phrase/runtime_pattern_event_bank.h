@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_PHRASE_RUNTIME_PATTERN_EVENT_BANK_H
+#define GROOVEPUTER_PHRASE_RUNTIME_PATTERN_EVENT_BANK_H
 
 #include <cstdint>
 #include <type_traits>
@@ -157,3 +159,5 @@ static_assert(sizeof(RuntimePatternEventBank) <= 5500,
               "retained Pattern event bank exceeded its fixed budget");
 
 }  // namespace PhraseRuntime
+
+#endif  // GROOVEPUTER_PHRASE_RUNTIME_PATTERN_EVENT_BANK_H

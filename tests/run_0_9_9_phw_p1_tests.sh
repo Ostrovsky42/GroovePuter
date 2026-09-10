@@ -23,7 +23,11 @@ mapfile -t SDL_SOURCES < <(
       line = $0
       sub(/^[[:space:]]+/, "", line)
       sub(/[[:space:]]*\\[[:space:]]*$/, "", line)
-      if (line != "" && line != "sdl_main.cpp") print line
+      # A SOURCES line may carry more than one path (7ff188c3 put the two
+      # runtime_synth_* sources together), so split rather than assume one.
+      n = split(line, parts, /[[:space:]]+/)
+      for (i = 1; i <= n; i++)
+        if (parts[i] != "" && parts[i] != "sdl_main.cpp") print parts[i]
     }
   ' Makefile
 )

@@ -69,8 +69,13 @@ void LayoutManager::drawFooter(IGfx& gfx, const char* left, const char* right) {
          gfx.measureText(right) > rightColumnW);
 
     if (stackRows) {
+        // The font is 7 px of ink plus 1 px of spacing (kFont5x7GlyphHeight).
+        // The rows used to sit 7 px apart, which consumed that spacing and left
+        // the two lines touching -- readable only if you already knew what they
+        // said. The separator rule takes y=FOOTER.y, leaving 15 px, and
+        // 7 + 1 + 7 fills it exactly.
         Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 1, innerW, leftText);
-        Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 8, innerW, right);
+        Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 9, innerW, right);
         return;
     }
 

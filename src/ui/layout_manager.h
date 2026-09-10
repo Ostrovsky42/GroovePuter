@@ -10,6 +10,15 @@ public:
         return Layout::CONTENT.y + Layout::CONTENT_PAD_Y + lineNumber * Layout::LINE_HEIGHT;
     }
 
+    // CONTENT holds exactly seven lines: lineY(7) puts a glyph bottom at 110
+    // while CONTENT ends at 109, and the performance HUD paints over the
+    // remainder. A page that wants a final status line must anchor to this
+    // instead of inventing an eighth line, which is what left "NEXT GEN: ..."
+    // on FEEL and the recipe summary on GENRE sliced in half.
+    static int lastLineY(const IGfx& gfx) {
+        return Layout::CONTENT.y + Layout::CONTENT.h - gfx.fontHeight();
+    }
+
     static void clearContent(IGfx& gfx);
 
     static void drawHeader(IGfx& gfx,

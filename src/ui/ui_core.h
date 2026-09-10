@@ -16,9 +16,9 @@
 #include <vector>
 
 class MiniAcid;
+namespace UI { struct UiViewContinuityState; }
 #include "display.h"
 #include "key_normalize.h"
-#include "ui_active_page_title.h"
 
 enum EventType {
   GROOVEPUTER_NO_TYPE = 0,
@@ -318,11 +318,6 @@ class IPage : public Container {
 
   virtual ~IPage() = default;
 
-  void setBoundaries(const Rect& rect) override {
-      Frame::setBoundaries(rect);
-      UI::publishActivePageTitle(getTitle().c_str());
-  }
-
   virtual bool handleEvent(UIEvent& ui_event) = 0;
   void draw(IGfx& gfx) override {
       drawHeader(gfx);
@@ -343,6 +338,12 @@ class IPage : public Container {
   virtual void onExit() {}
   virtual void tick() {}
   virtual void setContext(int context) { onEnter(context); }
+  virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
+    (void)state;
+  }
+  virtual void restoreViewContinuity(const UI::UiViewContinuityState& state) {
+    (void)state;
+  }
 
  protected:
   void requestPageTransition(int pageIndex, int context = 0) {

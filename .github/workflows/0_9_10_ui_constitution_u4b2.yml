@@ -1,0 +1,48 @@
+name: 0.9.10 UI Constitution U4B2
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/phrase_notes_cursor.h'
+      - 'src/ui/phrase_notes_selection.h'
+      - 'src/ui/ui_view_continuity.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.h'
+      - 'tests/test_ui_constitution_u4b2_*'
+      - 'tests/run_ui_constitution_u4b2_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b2.yml'
+  pull_request:
+    paths:
+      - 'src/ui/phrase_notes_cursor.h'
+      - 'src/ui/phrase_notes_selection.h'
+      - 'src/ui/ui_view_continuity.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.h'
+      - 'tests/test_ui_constitution_u4b2_*'
+      - 'tests/run_ui_constitution_u4b2_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4b2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u4b2-grid-cursor-selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run U4B2 focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u4b2_tests.sh 2>&1 | tee ui-constitution-u4b2.log
+      - name: Upload U4B2 focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u4b2-log
+          path: ui-constitution-u4b2.log
+          if-no-files-found: error

@@ -6,6 +6,7 @@
 #include "src/output/output_ownership.h"
 #include "src/pattern/pattern_address.h"
 #include "src/state/scene_revision.h"
+#include "ui_location.h"
 
 namespace UI {
 
@@ -24,14 +25,55 @@ enum class UiStatusContext : uint8_t {
     Song,
     Project,
     Generator,
+    Phrase,
+    PhraseCore,
     Unknown,
 };
 
-enum class UiStatusSource : uint8_t {
-    Pattern = 0,
+// U1B: the target's sequenced source and the transport/playback owner are
+// independent semantic axes. They remain packed into one byte so the global
+// status snapshot does not grow on Cardputer ADV.
+enum class UiSequencedSource : uint8_t {
+    NotApplicable = 0,
+    Pattern,
+    Phrase,
+};
+
+enum class UiTransportOwner : uint8_t {
+    Cycle = 0,
     Song,
     Smf,
 };
+
+struct UiStatusRouting {
+    uint8_t value{0};
+
+    constexpr UiStatusRouting(
+        UiSequencedSource sequencedSource = UiSequencedSource::NotApplicable,
+        UiTransportOwner transportOwner = UiTransportOwner::Cycle)
+        : value(static_cast<uint8_t>(
+              (static_cast<uint8_t>(sequencedSource) & 0x03u) |
+              ((static_cast<uint8_t>(transportOwner) & 0x03u) << 2u))) {}
+
+    constexpr UiSequencedSource sequencedSource() const {
+        return static_cast<UiSequencedSource>(value & 0x03u);
+    }
+
+    constexpr UiTransportOwner transportOwner() const {
+        return static_cast<UiTransportOwner>((value >> 2u) & 0x03u);
+    }
+
+    constexpr bool operator==(const UiStatusRouting& other) const {
+        return value == other.value;
+    }
+
+    constexpr bool operator!=(const UiStatusRouting& other) const {
+        return !(*this == other);
+    }
+};
+
+static_assert(sizeof(UiStatusRouting) == 1,
+              "status routing must remain one byte on Cardputer ADV");
 
 enum class UiStatusState : uint8_t {
     Stop = 0,
@@ -59,6 +101,36 @@ enum class UiStatusOutput : uint8_t {
     Legacy = 5,
     TrackMidi = 6,
 };
+
+inline UiStatusContext uiStatusContextForLocation(const UiLocation& location) {
+    switch (location.target) {
+        case UiTarget::Performance:
+            return UiStatusContext::Perform;
+        case UiTarget::MidiPlayer:
+            return UiStatusContext::Player;
+        case UiTarget::Generation:
+            return location.surface == UiSurface::Feel
+                ? UiStatusContext::Feel
+                : UiStatusContext::Genre;
+        case UiTarget::Overview:
+            return UiStatusContext::Overview;
+        case UiTarget::SynthA:
+            return UiStatusContext::SynthA;
+        case UiTarget::SynthB:
+            return UiStatusContext::SynthB;
+        case UiTarget::Drums:
+            return UiStatusContext::Drums;
+        case UiTarget::Song:
+            return UiStatusContext::Song;
+        case UiTarget::Phrase:
+            return UiStatusContext::Phrase;
+        case UiTarget::PhraseCore:
+            return UiStatusContext::PhraseCore;
+        case UiTarget::Project:
+            return UiStatusContext::Project;
+    }
+    return UiStatusContext::Unknown;
+}
 
 inline uint16_t normalizeUiStatusBpm(int bpm) {
     if (bpm < 1) return 1;
@@ -117,7 +189,7 @@ static_assert(sizeof(UiStatusDirtyStamp) == 1,
 
 struct UiStatusSnapshot {
     UiStatusContext context{UiStatusContext::Unknown};
-    UiStatusSource source{UiStatusSource::Pattern};
+    UiStatusRouting routing{};
     UiStatusState state{UiStatusState::Stop};
     UiStatusClock clock{UiStatusClock::Internal};
     UiStatusOutput output{UiStatusOutput::InternalAndMidi};
@@ -141,7 +213,7 @@ static_assert(sizeof(UiStatusSnapshot) <= 16,
 inline bool operator==(const UiStatusSnapshot& lhs,
                        const UiStatusSnapshot& rhs) {
     return lhs.context == rhs.context &&
-           lhs.source == rhs.source &&
+           lhs.routing == rhs.routing &&
            lhs.state == rhs.state &&
            lhs.clock == rhs.clock &&
            lhs.output == rhs.output &&
@@ -176,18 +248,29 @@ inline const char* uiStatusContextToken(UiStatusContext context) {
         case UiStatusContext::Song: return "SONG";
         case UiStatusContext::Project: return "PROJ";
         case UiStatusContext::Generator: return "ADV";
+        case UiStatusContext::Phrase: return "PHR";
+        case UiStatusContext::PhraseCore: return "PCOR";
         case UiStatusContext::Unknown: return "PAGE";
     }
     return "PAGE";
 }
 
-inline const char* uiStatusSourceToken(UiStatusSource source) {
+inline const char* uiSequencedSourceToken(UiSequencedSource source) {
     switch (source) {
-        case UiStatusSource::Pattern: return "PAT";
-        case UiStatusSource::Song: return "SONG";
-        case UiStatusSource::Smf: return "SMF";
+        case UiSequencedSource::NotApplicable: return "";
+        case UiSequencedSource::Pattern: return "PAT";
+        case UiSequencedSource::Phrase: return "PHR";
     }
-    return "PAT";
+    return "";
+}
+
+inline const char* uiTransportOwnerToken(UiTransportOwner owner) {
+    switch (owner) {
+        case UiTransportOwner::Cycle: return "";
+        case UiTransportOwner::Song: return "SONG";
+        case UiTransportOwner::Smf: return "SMF";
+    }
+    return "";
 }
 
 inline const char* uiStatusStateToken(UiStatusState state) {
@@ -228,7 +311,9 @@ inline UiStatusOutput uiStatusCanonicalTrackOutput(
     const UiStatusSnapshot& status) {
     // SMF owns an external-only playback path independently from the logical
     // GroovePuter track owner. Preserve the transport snapshot in that case.
-    if (status.source == UiStatusSource::Smf) return status.output;
+    if (status.routing.transportOwner() == UiTransportOwner::Smf) {
+        return status.output;
+    }
 
     GroovePuterOutput::Track track = GroovePuterOutput::Track::Count;
     switch (status.context) {
@@ -270,22 +355,35 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
     const unsigned bpm = status.bpm == 0 ? 1u : status.bpm;
     const unsigned bar = status.bar == 0 ? 1u : status.bar;
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
-    char sourceOrAddress[12];
-    if (status.source == UiStatusSource::Pattern && status.hasPatternAddress()) {
-        formatPatternAddressParts(sourceOrAddress, sizeof(sourceOrAddress),
+
+    char route[20]{};
+    char source[12]{};
+    const UiSequencedSource sequencedSource = status.routing.sequencedSource();
+    if (sequencedSource == UiSequencedSource::Pattern && status.hasPatternAddress()) {
+        formatPatternAddressParts(source, sizeof(source),
                                   status.patternPage,
                                   status.patternBank,
                                   status.patternSlot);
     } else {
-        std::snprintf(sourceOrAddress, sizeof(sourceOrAddress), "%s",
-                      uiStatusSourceToken(status.source));
+        std::snprintf(source, sizeof(source), "%s",
+                      uiSequencedSourceToken(sequencedSource));
+    }
+
+    const char* transport = uiTransportOwnerToken(status.routing.transportOwner());
+    if (source[0] != '\0' && transport[0] != '\0') {
+        std::snprintf(route, sizeof(route), "%s %s", source, transport);
+    } else if (source[0] != '\0') {
+        std::snprintf(route, sizeof(route), "%s", source);
+    } else if (transport[0] != '\0') {
+        std::snprintf(route, sizeof(route), "%s", transport);
     }
 
     std::snprintf(destination,
                   capacity,
-                  "%s %s %s %u BPM B%u/%u %s %s%s%s",
+                  "%s%s%s %s %u BPM B%u/%u %s %s%s%s",
                   uiStatusContextToken(status.context),
-                  sourceOrAddress,
+                  route[0] != '\0' ? " " : "",
+                  route,
                   uiStatusStateToken(status.state),
                   bpm,
                   bar,

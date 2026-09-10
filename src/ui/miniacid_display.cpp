@@ -29,6 +29,7 @@
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
+#include "ui_location.h"
 #include "ui_theme.h"
 #include "screen_geometry.h"
 #if defined(ESP32) || defined(ESP_PLATFORM)
@@ -173,11 +174,15 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
-            if (!keep && pages_[i]) pages_[i].reset();
+            if (!keep && pages_[i]) {
+                pages_[i]->captureViewContinuity(ui_view_continuity_);
+                pages_[i].reset();
+            }
         }
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
+            pages_[index]->restoreViewContinuity(ui_view_continuity_);
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
             pages_[index]->setVisualStyle(UI::currentStyle);
         }
@@ -221,27 +226,38 @@ void MiniAcidDisplay::update() {
     } else {
         gfx_.clear(COLOR_BLACK);
     }
+
+    UI::UiStatusContext statusContext = UI::UiStatusContext::Unknown;
+    UI::UiLocation statusLocation{};
+    if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
+        statusContext = UI::uiStatusContextForLocation(statusLocation);
+    }
+    const UI::UiStatusSnapshot frameStatus =
+        UI::captureUiStatusSnapshot(mini_acid_, statusContext);
     
+    UI::UiShellFrameModel shellFrame{};
+    UI::beginShellFrameModel(shellFrame);
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
         currentPage->tick();
         currentPage->draw(gfx_);
     } else {
-        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
         char buf[32];
         snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
-        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
+        UI::publishShellFooter("[ ] workspaces", "Fn+M menu");
     }
-    
-    UI::drawLiveMixLockBadge(gfx_, mini_acid_);
+    UI::endShellFrameModel();
+    UI::drawStatusChrome(gfx_, frameStatus);
+    UI::drawShellFooter(gfx_, shellFrame.footer);
 
     updateCyclePulse_();
-    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
+    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_,
+                           shellFrame.feelOverlay);
 
     if (workspace_launcher_.isVisible()) {
         workspace_launcher_.draw(gfx_);
@@ -342,10 +358,12 @@ void MiniAcidDisplay::syncVisualStyle_() {
     }
 }
 
-void MiniAcidDisplay::nextPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::nextPage(bool workflowModifier) {
+    // Either source counts. The hardware query stays so the device keeps the
+    // exact behaviour it had; the argument is what makes the same gesture
+    // reachable where hardwareWorkflowModifierHeld() is compiled out to false.
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(1);
         return;
     }
@@ -353,10 +371,9 @@ void MiniAcidDisplay::nextPage() {
         ui_session_, page_index_, 1, false));
 }
 
-void MiniAcidDisplay::previousPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::previousPage(bool workflowModifier) {
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(-1);
         return;
     }
@@ -628,8 +645,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        if (event.key == ']') { nextPage(); return true; }
-        if (event.key == '[') { previousPage(); return true; }
+        if (event.key == ']') { nextPage(event.meta); return true; }
+        if (event.key == '[') { previousPage(event.meta); return true; }
 
         if (event.key == 'h') {
             showToast("[ ] workspaces  Fn+M menu  Alt+H help", 2200);

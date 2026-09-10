@@ -21,7 +21,10 @@ constexpr char kMagic[4] = {'G', 'P', 'P', 'G'};
 constexpr uint32_t kCrcInitial = 0xFFFFFFFFu;
 constexpr uint32_t kCrcPolynomial = 0xEDB88320u;
 
-struct PageFileHeader {
+// The version 3 header, kept verbatim so a file written before material kinds
+// existed can still be read. New fields are appended, never inserted, so this
+// stays a prefix of the current header and one read serves both.
+struct PageFileHeaderV3 {
     char magic[4];
     uint16_t version;
     uint16_t headerSize;
@@ -31,6 +34,10 @@ struct PageFileHeader {
     uint32_t synthABytes;
     uint32_t synthBBytes;
     uint32_t drumBytes;
+};
+
+struct PageFileHeader : PageFileHeaderV3 {
+    uint32_t materialKindBytes;
 };
 
 constexpr size_t kSynthBanksSize = sizeof(Bank<SynthPattern>) * kBankCount;
@@ -214,8 +221,16 @@ uint32_t finalizeCrc(uint32_t crc) {
     return crc ^ 0xFFFFFFFFu;
 }
 
-uint32_t payloadSize() {
+constexpr size_t kMaterialKindsSize =
+    sizeof(GroovePuterMaterial::MaterialSlotDescriptor) *
+    Scene::kMaterialVoices * Scene::kMaterialSlotsPerVoice;
+
+uint32_t legacyPayloadSize() {
     return static_cast<uint32_t>(kSynthBanksSize * 2u + kDrumBanksSize);
+}
+
+uint32_t payloadSize() {
+    return legacyPayloadSize() + static_cast<uint32_t>(kMaterialKindsSize);
 }
 
 uint32_t layoutFingerprint() {
@@ -254,6 +269,9 @@ PageFileHeader makeHeader(const Scene& scene) {
     crc = crc32Update(crc,
         reinterpret_cast<const uint8_t*>(scene.drumBanks),
         sizeof(scene.drumBanks));
+    crc = crc32Update(crc,
+        reinterpret_cast<const uint8_t*>(scene.materialSlots),
+        kMaterialKindsSize);
 
     PageFileHeader header{};
     std::memcpy(header.magic, kMagic, sizeof(kMagic));
@@ -265,19 +283,32 @@ PageFileHeader makeHeader(const Scene& scene) {
     header.synthABytes = sizeof(scene.synthABanks);
     header.synthBBytes = sizeof(scene.synthBBanks);
     header.drumBytes = sizeof(scene.drumBanks);
+    header.materialKindBytes = static_cast<uint32_t>(kMaterialKindsSize);
     return header;
 }
 
-bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
+bool headerCommonIsValid(const PageFileHeaderV3& header) {
     return std::memcmp(header.magic, kMagic, sizeof(kMagic)) == 0 &&
-           header.version == PatternPagingService::kFormatVersion &&
-           header.headerSize == sizeof(PageFileHeader) &&
-           header.payloadSize == payloadSize() &&
            header.layoutFingerprint == layoutFingerprint() &&
            header.synthABytes == kSynthBanksSize &&
            header.synthBBytes == kSynthBanksSize &&
-           header.drumBytes == kDrumBanksSize &&
-           fileSize == sizeof(PageFileHeader) + header.payloadSize;
+           header.drumBytes == kDrumBanksSize;
+}
+
+bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
+    if (!headerCommonIsValid(header)) return false;
+    if (header.version == PatternPagingService::kFormatVersion) {
+        return header.headerSize == sizeof(PageFileHeader) &&
+               header.payloadSize == payloadSize() &&
+               header.materialKindBytes == kMaterialKindsSize &&
+               fileSize == sizeof(PageFileHeader) + header.payloadSize;
+    }
+    if (header.version == PatternPagingService::kLegacyFormatVersion) {
+        return header.headerSize == sizeof(PageFileHeaderV3) &&
+               header.payloadSize == legacyPayloadSize() &&
+               fileSize == sizeof(PageFileHeaderV3) + header.payloadSize;
+    }
+    return false;
 }
 
 bool writeAll(File& file, const void* data, size_t length) {
@@ -292,9 +323,24 @@ bool readAndValidatePage(const std::string& path, Scene& staging) {
     File file = SD.open(path.c_str(), FILE_READ);
     if (!file) return false;
 
+    // Read the shared prefix, then the version decides whether four more bytes
+    // of header follow. Reading the full struct first would over-read a version
+    // 3 file straight into its payload.
     PageFileHeader header{};
-    if (!readAll(file, &header, sizeof(header)) ||
-        !headerIsValid(header, file.size())) {
+    if (!readAll(file, static_cast<PageFileHeaderV3*>(&header),
+                 sizeof(PageFileHeaderV3))) {
+        file.close();
+        return false;
+    }
+    const bool hasMaterialKinds =
+        header.version == PatternPagingService::kFormatVersion;
+    if (hasMaterialKinds &&
+        !readAll(file, &header.materialKindBytes,
+                 sizeof(header.materialKindBytes))) {
+        file.close();
+        return false;
+    }
+    if (!headerIsValid(header, file.size())) {
         file.close();
         return false;
     }
@@ -304,6 +350,36 @@ bool readAndValidatePage(const std::string& path, Scene& staging) {
         !readAll(file, staging.drumBanks, sizeof(staging.drumBanks))) {
         file.close();
         return false;
+    }
+
+    // A version 3 page predates promotion, so every slot in it is a Pattern by
+    // construction. That is a proven legacy case and decodes silently.
+    //
+    // A version 4 page carrying a value that is neither Pattern nor Melody is
+    // corruption, and it is rejected rather than sanitised. Quietly demoting an
+    // unreadable kind to Pattern would make Song play the old pattern bytes
+    // instead of the melody, and nothing downstream could tell that happened.
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+        for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+            staging.materialSlots[voice][slot].kind =
+                GroovePuterMaterial::MaterialKind::Pattern;
+        }
+    }
+    if (hasMaterialKinds) {
+        if (!readAll(file, staging.materialSlots, kMaterialKindsSize)) {
+            file.close();
+            return false;
+        }
+        for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+            for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+                const int raw = static_cast<int>(
+                    staging.materialSlots[voice][slot].kind);
+                if (!GroovePuterMaterial::validKindValue(raw)) {
+                    file.close();
+                    return false;
+                }
+            }
+        }
     }
     file.close();
 
@@ -317,6 +393,11 @@ bool readAndValidatePage(const std::string& path, Scene& staging) {
     crc = crc32Update(crc,
         reinterpret_cast<const uint8_t*>(staging.drumBanks),
         sizeof(staging.drumBanks));
+    if (hasMaterialKinds) {
+        crc = crc32Update(crc,
+            reinterpret_cast<const uint8_t*>(staging.materialSlots),
+            kMaterialKindsSize);
+    }
     return finalizeCrc(crc) == header.payloadCrc32;
 }
 
@@ -408,7 +489,8 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
         writeAll(file, &header, sizeof(header)) &&
         writeAll(file, scene.synthABanks, sizeof(scene.synthABanks)) &&
         writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks)) &&
-        writeAll(file, scene.drumBanks, sizeof(scene.drumBanks));
+        writeAll(file, scene.drumBanks, sizeof(scene.drumBanks)) &&
+        writeAll(file, scene.materialSlots, kMaterialKindsSize);
     file.flush();
     file.close();
 
@@ -442,6 +524,10 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
                 sizeof(scene.synthBBanks));
     std::memcpy(scene.drumBanks, staging.drumBanks,
                 sizeof(scene.drumBanks));
+    // The kind travels with the material it names, restored before anything can
+    // activate it.
+    std::memcpy(scene.materialSlots, staging.materialSlots,
+                kMaterialKindsSize);
     activePageIndexStorage() = pageIndex;
     return true;
 }

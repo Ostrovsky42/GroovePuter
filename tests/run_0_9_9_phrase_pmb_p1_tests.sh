@@ -23,7 +23,10 @@ mapfile -t SDL_SOURCES < <(
       line = $0
       sub(/^[[:space:]]+/, "", line)
       sub(/[[:space:]]*\\[[:space:]]*$/, "", line)
-      if (line != "" && line != "sdl_main.cpp") print line
+      count = split(line, parts, /[[:space:]]+/)
+      for (i = 1; i <= count; ++i) {
+        if (parts[i] != "" && parts[i] != "sdl_main.cpp") print parts[i]
+      }
     }
   ' Makefile
 )

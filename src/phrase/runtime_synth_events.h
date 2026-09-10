@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H
+#define GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H
 
 #include <cstdint>
 #include <type_traits>
@@ -74,3 +76,5 @@ static_assert(std::is_trivially_copyable<RuntimeSynthEventBuffer>::value,
               "runtime synth event buffer must remain fixed-capacity");
 
 }  // namespace PhraseRuntime
+
+#endif  // GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H

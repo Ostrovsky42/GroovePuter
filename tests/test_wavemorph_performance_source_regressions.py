@@ -182,16 +182,18 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require("main_focus_slot_" in header and "more_focus_slot_" in header and
             "rememberFocusedSlot" in page and "restoreFocusedSlot" in page,
             "Knobs and More must remember focus independently")
-    require(page.count("LabelValueComponent::Style::Stepper") == 3,
-            "TYPE/OSC/FLT must use full-row steppers")
+    require(page.count("LabelValueComponent::Style::Stepper") == 4,
+            "TYPE/OSC/FLT/SRC must use full-row steppers")
     require(page.count("LabelValueComponent::Style::Toggle") == 2,
             "DST/DLY must use full-row switches")
     require("if (focused)" in page and
             "gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, focus_color_)" in page,
             "the active MORE row must use a filled focus state")
-    require("kMoreRowHeight = 13" in page and "LabelValueComponent* rows[5]" in page and
+    require("kMoreRowHeight = 11" in page and "kMoreRowCount = 6" in page and
+            "LabelValueComponent* rows[kMoreRowCount]" in page and
+            "make_phrase_control_.get()" in page and
             "synth MORE rows must stay above the performance HUD" in page,
-            "MORE must use five stable full-width rows above the HUD")
+            "MORE must use six stable full-width rows above the HUD")
     require("setEnabled(oscAvailable)" in page and
             "setEnabled(filterAvailable)" in page and
             'setValue("--")' in page,

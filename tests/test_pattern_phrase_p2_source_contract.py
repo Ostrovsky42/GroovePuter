@@ -139,9 +139,14 @@ require("refreshPatternRuntimeEvents" in compact_generation_undo,
         "compact Generation Undo leaves prepared runtime data stale")
 
 # Stopped Synth-page generation is another canonical Pattern assignment.
-stopped_generate = between(synth_page,
-                           "if (synth_tab_ == SynthTab::Notes && isSynthGenerateKey",
-                           "if (isOutputCycleKey(ui_event))")
+stopped_generate = between(
+    synth_page,
+    "if (!phraseNotes && synth_tab_ == SynthTab::Notes &&",
+    "if (isOutputCycleKey(ui_event))")
+require("isSynthGenerateKey(ui_event)" in stopped_generate,
+        "stopped Synth generate key ownership disappeared")
+require("!mini_acid_.isPlaying()" in stopped_generate,
+        "stopped Synth generate must remain stopped-transport-only")
 require("restoreSynthPatternUndo(manager, prepared)" in stopped_generate,
         "stopped Synth generate canonical assignment disappeared")
 require("refreshPatternRuntimeEvents" in stopped_generate,

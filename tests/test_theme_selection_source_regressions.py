@@ -161,10 +161,14 @@ def test_workflow_local_page_navigation() -> None:
             "Fn brackets must bypass page-local first refusal")
     require(page_dispatch < brackets,
             "plain brackets must still give local editors first refusal")
-    require("UIInput::isTab(event)" in feel and
+    require("UIInput::navCode(event)" in feel and
+            "nav == GROOVEPUTER_UP" in feel and
+            "moveFocus(-1)" in feel and
+            "nav == GROOVEPUTER_DOWN" in feel and
+            "moveFocus(1)" in feel and
             "FocusRow::Swing" in feel and "FocusRow::TimingHumanize" in feel and
             "FocusRow::VelocityHumanize" in feel,
-            "plain Tab must navigate the FEEL timing/velocity rows")
+            "FEEL must navigate timing/velocity rows through the current Up/Down route")
 
     for label in ("PERFORM", "GENERATE", "HUB", "SONG", "SETTINGS", "HELP"):
         require(f'return "{label}";' in launcher,

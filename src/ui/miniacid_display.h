@@ -11,6 +11,7 @@
 
 #include "ui_core.h"
 #include "ui_config.h"
+#include "ui_view_continuity.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
 #include "workflow_mode.h"
@@ -35,8 +36,11 @@ public:
       else fn();
   }
 
-  void nextPage();
-  void previousPage();
+  // Fn arrives in the UIEvent as `meta` on the Cardputer, and the emulator
+  // has no hardware Fn to poll at all, so the modifier travels with the
+  // caller instead of being read from a global keyboard state.
+  void nextPage(bool workflowModifier = false);
+  void previousPage(bool workflowModifier = false);
   void goToPage(int index);
   void togglePreviousPage();
   void dismissSplash();
@@ -81,6 +85,7 @@ private:
   AudioGuard audio_guard_;
   IAudioRecorder* audio_recorder_ = nullptr;
   std::vector<std::unique_ptr<IPage>> pages_;
+  UI::UiViewContinuityState ui_view_continuity_{};
   std::unique_ptr<IPage> help_page_;  // Separate help page for 'h' key
   Container mute_buttons_container_;
   bool mute_buttons_initialized_ = false;

@@ -1,0 +1,169 @@
+name: 0.9.10 Exact Head Release Closure
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9.10
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  host-release-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prepare deterministic Ubuntu package sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub's ubuntu image ships third-party repositories that are not
+          # required by GroovePuter. A transient Chrome index hash mismatch must
+          # not prevent our own host tests from running.
+          sudo rm -f \
+            /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run exact-head non-genre release matrix
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -euo pipefail
+          run_gate() {
+            local name="$1"
+            shift
+            printf '\n===== %s =====\n' "$name"
+            "$@"
+          }
+
+          (
+            set -euo pipefail
+            echo "release_head=$(git rev-parse HEAD)"
+            test "$(git rev-parse HEAD)" = "${RELEASE_HEAD}"
+
+            run_gate GF2-I1 bash tests/run_gf2_i1_tests.sh
+            run_gate GF2-I2 bash tests/run_gf2_i2_tests.sh
+            run_gate GF2-I2A bash tests/run_gf2_i2a_tests.sh
+            run_gate GF2-I3 bash tests/run_gf2_i3_tests.sh
+            run_gate GF2-I4 bash tests/run_gf2_i4_tests.sh
+            run_gate GF2-I5 bash tests/run_gf2_i5_tests.sh
+
+            run_gate P1C bash tests/run_pattern_phrase_p1c_tests.sh
+            run_gate P2 bash tests/run_pattern_phrase_p2_tests.sh
+            run_gate P3 bash tests/run_pattern_phrase_p3_tests.sh
+            run_gate P3-U1 bash tests/run_pattern_phrase_p3_u1_tests.sh
+
+            run_gate PMB-P1 bash tests/run_0_9_9_phrase_pmb_p1_tests.sh
+            run_gate P1R bash tests/run_0_9_9_phrase_p1r_tests.sh
+            run_gate I1 bash tests/run_0_9_9_phrase_i1_tests.sh
+            run_gate D2 bash tests/run_0_9_9_d2_tests.sh
+            run_gate E0A bash tests/run_0_9_9_e0a_tests.sh
+            run_gate UI-FINAL bash tests/run_0_9_9_ui_final_tests.sh
+
+            run_gate UI-INSTRUMENT bash tests/run_ui_pattern_phrase_instrument_tests.sh
+            run_gate U1A bash tests/run_ui_constitution_u1a_tests.sh
+            run_gate U1B bash tests/run_ui_constitution_u1b_tests.sh
+            run_gate U1C bash tests/run_ui_constitution_u1c_tests.sh
+            run_gate U1D bash tests/run_ui_constitution_u1d_tests.sh
+            run_gate U1E bash tests/run_ui_constitution_u1e_tests.sh
+            run_gate U1F bash tests/run_ui_constitution_u1f_tests.sh
+            run_gate U1G bash tests/run_ui_constitution_u1g_tests.sh
+            run_gate U2A bash tests/run_ui_constitution_u2a_tests.sh
+            run_gate U4A bash tests/run_ui_constitution_u4a_tests.sh
+            run_gate U4B1 bash tests/run_ui_constitution_u4b1_tests.sh
+            run_gate U4B2 bash tests/run_ui_constitution_u4b2_tests.sh
+            run_gate U4B3 bash tests/run_ui_constitution_u4b3_tests.sh
+            run_gate U4B4 bash tests/run_ui_constitution_u4b4_tests.sh
+            run_gate U4B5 bash tests/run_ui_constitution_u4b5_tests.sh
+
+            run_gate PERFORMANCE bash tests/run_performance_closure_tests.sh
+            run_gate MEMORY-R1-CONTRACT python3 tests/test_memory_r1_product_closure.py
+            run_gate FULL-HOST bash tests/run_host_tests.sh
+
+            base_dir="${RUNNER_TEMP}/grooveputer-r1-base"
+            rm -rf "$base_dir"
+            git worktree add --detach "$base_dir" 9d959174cdc8be120f995ba64d507abbcaff6dbe
+            run_gate R1-BASE-BOUNDED bash "$base_dir/tests/run_generation_0_9_9_c_tests.sh"
+            run_gate R1-BASE-P1R bash "$base_dir/tests/run_0_9_9_phrase_p1r_tests.sh"
+            (
+              cd "$base_dir"
+              run_gate R1-BASE-FULL-HOST bash tests/run_host_tests.sh
+            )
+            git worktree remove --force "$base_dir"
+          ) 2>&1 | tee exact-head-release-host.log
+
+      - name: Upload exact-head host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-head-release-host
+          path: exact-head-release-host.log
+          if-no-files-found: warn
+
+  cardputer-adv-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_HEAD }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check exact-head fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Record exact-head Cardputer provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${RELEASE_HEAD}"
+          {
+            echo "release_head=${RELEASE_HEAD}"
+            echo "elf_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.elf | awk '{print $1}')"
+          } | tee cardputer-release-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-head-cardputer-adv
+          path: |
+            build/cardputer-adv-current/GroovePuter.ino.elf
+            build/cardputer-adv-current/GroovePuter.ino.bin
+            cardputer-release-provenance.txt
+          if-no-files-found: error
+
+  seqtrak-midi-only-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_HEAD }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
+      - name: Prove exact-head checkout
+        run: test "$(git rev-parse HEAD)" = "${RELEASE_HEAD}"

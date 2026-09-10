@@ -1,0 +1,52 @@
+name: R1 Test Liveness Recovery
+
+on:
+  push:
+    branches:
+      - feature/20260908-01-test-liveness-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-r1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config clang
+
+      - name: GF2 I1
+        continue-on-error: true
+        run: bash tests/run_gf2_i1_tests.sh
+
+      - name: GF2 I2A (includes I2)
+        continue-on-error: true
+        run: bash tests/run_gf2_i2a_tests.sh
+
+      - name: GF2 I5 (includes I4)
+        continue-on-error: true
+        run: bash tests/run_gf2_i5_tests.sh
+
+      - name: GF2 C2 V0R
+        continue-on-error: true
+        run: bash tests/run_gf2_c2_v0r_tests.sh
+
+      - name: Generation activation shared fixture
+        continue-on-error: true
+        run: bash tests/run_generation_0_9_9_c_tests.sh
+
+      - name: E0a SDL source parser
+        continue-on-error: true
+        run: bash tests/run_0_9_9_e0a_tests.sh
+
+      - name: PMB P1 SDL source parser
+        continue-on-error: true
+        run: bash tests/run_0_9_9_phrase_pmb_p1_tests.sh

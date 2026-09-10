@@ -1,0 +1,40 @@
+name: 0.9.10 Pattern Phrase P3 Phrase Lifetime
+
+on:
+  push:
+    branches:
+      - feature/20260904-02-0.9.10-pattern-phrase-p3-phrase-lifetime
+  pull_request:
+    paths:
+      - 'src/dsp/miniacid_engine.h'
+      - 'src/dsp/miniacid_engine.cpp'
+      - 'src/phrase/**'
+      - 'tests/test_p3_*'
+      - 'tests/run_pattern_phrase_p3_*'
+      - '.github/workflows/0_9_10_pattern_phrase_p3_phrase_lifetime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p3-phrase-lifetime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+
+      - name: Run P3 focused gate
+        run: bash tests/run_pattern_phrase_p3_tests.sh

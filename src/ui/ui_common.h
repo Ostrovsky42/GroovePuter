@@ -4,6 +4,7 @@
 #include "ui_widgets.h"
 #include "ui_config.h"
 #include "ui_status_chrome.h"
+#include "ui_shell_frame.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
 #include "src/dsp/miniacid_engine.h"
@@ -35,14 +36,27 @@ namespace UI {
     };
 
     /**
-     * Draws standard header with scene number, BPM, and recording status.
+     * Legacy page call-site retained during U1F migration. Global header pixels
+     * are shell-owned, so this helper performs no drawing and no live reads.
      */
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title);
 
     /**
-     * Draws standard footer with left and optional right text.
+     * Publishes the effective page footer into the active shell-frame model.
+     * The shell owns the actual footer pixels after page composition completes.
      */
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right = nullptr);
+
+    /**
+     * Binds one stack-local frame model while the active page composes. Page
+     * helpers may only publish presentation data into this value; they do not
+     * own shell pixels.
+     */
+    void beginShellFrameModel(UiShellFrameModel& model);
+    void endShellFrameModel();
+    void publishShellFooter(const char* left, const char* right = nullptr);
+    void publishShellFeelOverlay(bool visible);
+    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer);
 
     /**
      * Draws a vertical list of items with selection and focus highlighting.
@@ -86,7 +100,8 @@ namespace UI {
      * pixels first, then draws waveform, feel and mute activity in a stable
      * back-to-front order.
      */
-    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse);
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse,
+                            bool showFeelOverlay = true);
 
     /**
      * Global toast (single line).
@@ -100,15 +115,24 @@ namespace UI {
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
 
     /**
-     * Draws the one-line global context/status chrome inside the existing
-     * 16-pixel header. It never changes page bounds or audio state.
+     * Captures the bounded status projection once from authoritative runtime
+     * state. The returned snapshot is independent of renderer residency and is
+     * small enough to live on the stack for one frame.
      */
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid);
+    UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
+                                             UiStatusContext context);
 
     /**
-     * Compatibility hook used by MiniAcidDisplay. The implementation now draws
-     * the full status chrome and preserves LiveMix as the trailing LM token.
+     * Draws the one-line global context/status chrome inside the existing
+     * 16-pixel header from an already captured snapshot. Rendering is pure with
+     * respect to MiniAcid: no second live runtime read is performed here.
      */
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid);
+    void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status);
+
+    /**
+     * Compatibility hook retained for external callers. MiniAcidDisplay uses
+     * drawStatusChrome directly once U1F gives the shell sole header ownership.
+     */
+    void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status);
 
 }

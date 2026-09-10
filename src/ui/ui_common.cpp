@@ -2,7 +2,6 @@
 #include "ui_utils.h"
 #include "ui_widgets.h"
 #include "ui_theme.h"
-#include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -31,75 +30,9 @@ namespace UI {
         unsigned long gToastEndMs = 0;
 
         UiStatusSnapshot gStatusSnapshot{};
-        UiStatusContext gStatusContext = UiStatusContext::Unknown;
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
-
-        bool titleContains(const char* title, const char* token) {
-            return title != nullptr && token != nullptr &&
-                   std::strstr(title, token) != nullptr;
-        }
-
-        UiStatusContext statusContextForTitle(const char* title) {
-            if (titleContains(title, "MIDI PLAYER")) {
-                return UiStatusContext::Player;
-            }
-            if (titleContains(title, "MIDI KEYBOARD") ||
-                titleContains(title, "PERFORM")) {
-                return UiStatusContext::Perform;
-            }
-            if (titleContains(title, "SYNTH A SOUND") ||
-                titleContains(title, "SYNTH A PARAM") ||
-                titleContains(title, "303A PARAM")) {
-                return UiStatusContext::SoundA;
-            }
-            if (titleContains(title, "SYNTH B SOUND") ||
-                titleContains(title, "SYNTH B PARAM") ||
-                titleContains(title, "303B PARAM")) {
-                return UiStatusContext::SoundB;
-            }
-            if (titleContains(title, "SYNTH A") ||
-                titleContains(title, "303A")) {
-                return UiStatusContext::SynthA;
-            }
-            if (titleContains(title, "SYNTH B") ||
-                titleContains(title, "303B")) {
-                return UiStatusContext::SynthB;
-            }
-            if (titleContains(title, "FEEL") ||
-                titleContains(title, "TEXTURE")) {
-                return UiStatusContext::Feel;
-            }
-            if (titleContains(title, "MODE") ||
-                titleContains(title, "FLAVOR") ||
-                titleContains(title, "GROOVE LAB")) {
-                return UiStatusContext::Mode;
-            }
-            if (titleContains(title, "GENRE")) {
-                return UiStatusContext::Genre;
-            }
-            if (titleContains(title, "DRUM")) {
-                return UiStatusContext::Drums;
-            }
-            if (titleContains(title, "SONG") ||
-                titleContains(title, "ARRANGE")) {
-                return UiStatusContext::Song;
-            }
-            if (titleContains(title, "PROJECT") ||
-                titleContains(title, "SETUP")) {
-                return UiStatusContext::Project;
-            }
-            if (titleContains(title, "ADV") ||
-                titleContains(title, "GENERATOR")) {
-                return UiStatusContext::Generator;
-            }
-            if (titleContains(title, "OVERVIEW") ||
-                titleContains(title, "PATTERN") ||
-                titleContains(title, "SEQUENCER HUB")) {
-                return UiStatusContext::Overview;
-            }
-            return UiStatusContext::Unknown;
-        }
+        UiShellFrameModel* gShellFrameModel = nullptr;
 
         uint16_t statusCount(uint32_t value) {
             if (value == 0) return 1;
@@ -136,9 +69,36 @@ namespace UI {
             return UiStatusState::Stop;
         }
 
+        UiSequencedSource uiSequencedSourceForEngine(
+            MiniAcid::SequencedSource source) {
+            return source == MiniAcid::SequencedSource::Phrase
+                ? UiSequencedSource::Phrase
+                : UiSequencedSource::Pattern;
+        }
+
+        UiSequencedSource sequencedSourceForContext(
+            MiniAcid& miniAcid,
+            UiStatusContext context) {
+            switch (context) {
+                case UiStatusContext::SynthA:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(0));
+                case UiStatusContext::SynthB:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(1));
+                case UiStatusContext::Drums:
+                    return UiSequencedSource::Pattern;
+                default:
+                    return UiSequencedSource::NotApplicable;
+            }
+        }
+
         void populatePatternAddress(UiStatusSnapshot& status,
                                     MiniAcid& miniAcid) {
-            if (status.source != UiStatusSource::Pattern) return;
+            if (status.routing.sequencedSource() !=
+                UiSequencedSource::Pattern) {
+                return;
+            }
 
             int bank = -1;
             int slot = -1;
@@ -167,10 +127,23 @@ namespace UI {
             status.patternSlot = static_cast<uint8_t>(address.slot);
         }
 
-        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
+        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid,
+                                               UiStatusContext context) {
             UiStatusSnapshot status{};
-            status.context = gStatusContext;
+            status.context = context;
+            status.bpm = normalizeUiStatusBpm(static_cast<int>(miniAcid.bpm()));
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
+
+            const UiSequencedSource sequencedSource =
+                sequencedSourceForContext(miniAcid, context);
+            const UiTransportOwner defaultTransportOwner =
+                miniAcid.songModeEnabled()
+                    ? UiTransportOwner::Song
+                    : UiTransportOwner::Cycle;
+            status.routing = UiStatusRouting{
+                sequencedSource,
+                defaultTransportOwner,
+            };
 
             const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
                 GroovePuterMidi::transportClockRuntime().snapshot();
@@ -189,11 +162,15 @@ namespace UI {
                     playerPageSelected &&
                     smf.state != GroovePuterMidi::SmfPlayerState::Unloaded;
                 if (smfStateOwnsStatus(smf.state) || loadedPlayerSelected) {
-                    status.source = UiStatusSource::Smf;
+                    status.routing = UiStatusRouting{
+                        sequencedSource,
+                        UiTransportOwner::Smf,
+                    };
                     status.state = uiStateForSmf(smf.state);
                     status.bar = statusCount(smf.bar);
                     status.totalBars = statusCount(smf.totalBars);
                     status.output = UiStatusOutput::Midi;
+                    populatePatternAddress(status, miniAcid);
                     if (smf.tempoMode == GroovePuterMidi::SmfTempoMode::Original) {
                         status.clock = UiStatusClock::File;
                     }
@@ -201,16 +178,13 @@ namespace UI {
                 }
             }
 
-            status.source = miniAcid.songModeEnabled()
-                ? UiStatusSource::Song
-                : UiStatusSource::Pattern;
             status.state = miniAcid.isPlaying()
                 ? UiStatusState::Play
                 : UiStatusState::Stop;
             status.output = UiStatusOutput::InternalAudio;
             populatePatternAddress(status, miniAcid);
 
-            if (status.source == UiStatusSource::Song) {
+            if (defaultTransportOwner == UiTransportOwner::Song) {
                 status.bar = statusOneBasedIndex(miniAcid.songPlayheadPosition());
                 status.totalBars = statusCount(
                     static_cast<uint32_t>(miniAcid.songLength() > 0
@@ -227,19 +201,20 @@ namespace UI {
         }
     }
 
-    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
-        gStatusContext = statusContextForTitle(title);
-
-        char sceneStr[16];
-        snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
-        
-        LayoutManager::drawHeader(gfx, sceneStr, (int)mini_acid.bpm(), 
-                                 title, mini_acid.isRecording());
+    UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
+                                             UiStatusContext context) {
+        return buildUiStatusSnapshot(mini_acid, context);
     }
 
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid) {
-        gStatusContext = statusContextForTitle(UI::activePageTitle());
-        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid);
+    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
+        // U1F: pages no longer own global header pixels or re-read live
+        // status truth while composing their body.
+        (void)gfx;
+        (void)mini_acid;
+        (void)title;
+    }
+
+    void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status) {
         if (!gStatusInitialized || status != gStatusSnapshot) {
             gStatusSnapshot = status;
             formatUiStatusLine(status, gStatusLine, sizeof(gStatusLine));
@@ -259,9 +234,9 @@ namespace UI {
             divider = IGfxColor(AmberTheme::TEXT_DIM);
         }
 
-        // The current renderer redraws every page each UI frame. Keep the
-        // expensive status derivation and formatting change-driven, then paint
-        // only the already-reserved 16-pixel header over the page header.
+        // The current renderer redraws every page each UI frame. Keep status
+        // derivation outside the draw path, then paint only the already-
+        // reserved 16-pixel header from the captured frame snapshot.
         gfx.fillRect(Layout::HEADER.x,
                      Layout::HEADER.y,
                      Layout::HEADER.w,
@@ -280,15 +255,41 @@ namespace UI {
                                  gStatusLine);
     }
 
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
+    void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status) {
         // Compatibility hook: MiniAcidDisplay already invokes this once after
-        // every page. Keeping the call site avoids touching page bounds or the
-        // global input/transport flow in Wave 1 A1.
-        drawStatusChrome(gfx, mini_acid);
+        // every page. U1C makes that call render-only; U2 removes the competing
+        // page/global header ownership itself.
+        drawStatusChrome(gfx, status);
+    }
+
+    void beginShellFrameModel(UiShellFrameModel& model) {
+        model.clear();
+        gShellFrameModel = &model;
+    }
+
+    void endShellFrameModel() {
+        gShellFrameModel = nullptr;
+    }
+
+    void publishShellFooter(const char* left, const char* right) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->setFooter(left, right);
+    }
+
+    void publishShellFeelOverlay(bool visible) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->feelOverlay = visible;
+    }
+
+    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
+        LayoutManager::drawFooter(gfx,
+                                  footer.valid ? footer.left : "",
+                                  footer.valid ? footer.right : "");
     }
 
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
-        LayoutManager::drawFooter(gfx, left, right);
+        (void)gfx;
+        publishShellFooter(left, right);
     }
 
     void drawVerticalList(IGfx& gfx, int x, int y, int width,
@@ -553,7 +554,8 @@ namespace UI {
         gfx.drawText(x, y, buf);
     }
 
-    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse) {
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse,
+                            bool showFeelOverlay) {
         const ThemePalette palette = themePalette();
         gfx.fillRect(Layout::PERFORMANCE_HUD.x,
                      Layout::PERFORMANCE_HUD.y,
@@ -561,7 +563,7 @@ namespace UI {
                      Layout::PERFORMANCE_HUD.h,
                      palette.background);
         drawWaveformOverlay(gfx, mini_acid);
-        drawFeelOverlay(gfx, mini_acid, feelPulse);
+        if (showFeelOverlay) drawFeelOverlay(gfx, mini_acid, feelPulse);
         // Mutes are intentionally last so their digits remain the topmost,
         // readable layer even while the waveform is moving.
         drawMutesOverlay(gfx, mini_acid);

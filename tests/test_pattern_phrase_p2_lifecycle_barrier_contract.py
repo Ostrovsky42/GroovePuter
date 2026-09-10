@@ -72,8 +72,8 @@ require(
 )
 
 # MUTE must release exactly the selected Pattern runtime target through the owner.
-toggle_mute = between(ENGINE, "void MiniAcid::toggleMute303", "void MiniAcid::setMute303")
-set_mute = between(ENGINE, "void MiniAcid::setMute303", "void MiniAcid::toggleMuteKick")
+toggle_mute = between(ENGINE, "void MiniAcid::toggleMute303", "void MiniAcid::toggleMuteKick")
+set_mute = between(ENGINE, "void MiniAcid::setMute303", "bool MiniAcid::isTrackActive")
 for name, body in (("toggleMute303", toggle_mute), ("setMute303", set_mute)):
     require("hardBarrierPatternPlayback_(idx)" in body,
             f"P2 lifecycle RED: {name} does not use target runtime hard barrier")
@@ -84,8 +84,8 @@ for name, body in (("toggleMute303", toggle_mute), ("setMute303", set_mute)):
 source_methods = (
     ("set303PatternIndex", "void MiniAcid::set303PatternIndex", "void MiniAcid::shift303PatternIndex"),
     ("shift303PatternIndex", "void MiniAcid::shift303PatternIndex", "void MiniAcid::set303BankIndex"),
-    ("set303BankIndex", "void MiniAcid::set303BankIndex", "void MiniAcid::setDrumPatternIndex"),
-    ("randomize303Pattern", "void MiniAcid::randomize303Pattern", "void MiniAcid::randomizeDrumPattern"),
+    ("set303BankIndex", "void MiniAcid::set303BankIndex", "void MiniAcid::setCurrentPage(int8_t page)"),
+    ("randomize303Pattern", "void MiniAcid::randomize303Pattern", "void MiniAcid::setParameter"),
 )
 for name, start, end in source_methods:
     body = between(ENGINE, start, end)

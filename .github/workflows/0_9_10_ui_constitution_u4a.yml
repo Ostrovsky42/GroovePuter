@@ -1,0 +1,46 @@
+name: 0.9.10 UI Constitution U4A
+
+on:
+  push:
+    branches:
+      - feature/20260906-04-0.9.10-ui-constitution-v1
+    paths:
+      - 'src/ui/phrase_notes_viewport.h'
+      - 'src/ui/ui_view_continuity.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.h'
+      - 'tests/test_ui_constitution_u4a_*'
+      - 'tests/run_ui_constitution_u4a_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4a.yml'
+  pull_request:
+    paths:
+      - 'src/ui/phrase_notes_viewport.h'
+      - 'src/ui/ui_view_continuity.h'
+      - 'src/ui/pages/synth_sequencer_page.cpp'
+      - 'src/ui/pages/synth_sequencer_page.h'
+      - 'tests/test_ui_constitution_u4a_*'
+      - 'tests/run_ui_constitution_u4a_tests.sh'
+      - '.github/workflows/0_9_10_ui_constitution_u4a.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u4a-phrase-viewport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run U4A focused gate
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run_ui_constitution_u4a_tests.sh 2>&1 | tee ui-constitution-u4a.log
+      - name: Upload U4A focused gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-constitution-u4a-log
+          path: ui-constitution-u4a.log
+          if-no-files-found: error

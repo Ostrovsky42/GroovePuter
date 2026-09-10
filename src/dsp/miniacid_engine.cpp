@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "src/phrase/runtime_phrase_edit.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -264,6 +265,12 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion3032(),
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
+
+  // One allocation, at construction, for the NEXT preparation buffers. They do
+  // not fit the static budget, and a single fixed block is not the churn that
+  // brought this device down. Failure leaves NEXT unavailable rather than
+  // half-working.
+  (void)initPendingMaterial();
   
   // Initialize Drum FX
   drumReverb.setSampleRate(sampleRateValue);
@@ -916,7 +923,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
   songBarIndex_ = -1;
-  if (playing) publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   if (enabled) {
     patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
     patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
@@ -1167,8 +1174,13 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
     return;
   }
 
-  if (playing) publishPatternNoteOff_(idx);
-  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  const uint8_t patternAuthorityAtEntry =
+      patternOwnedMask_.load(std::memory_order_acquire);
+  if ((patternAuthorityAtEntry & static_cast<uint8_t>(1u << idx)) != 0u) {
+    hardBarrierPatternPlayback_(idx);
+  } else if (synthVoices_[idx]) {
+    synthVoices_[idx]->release();
+  }
   liveNotes_[idx] = -1;
   ++liveInputEpoch_;
 
@@ -1275,7 +1287,7 @@ void MiniAcid::toggleMute303(int voiceIndex) {
     mute303_2 = !mute303_2;
     muted = mute303_2;
   }
-  if (muted) publishPatternNoteOff_(idx);
+  if (muted) hardBarrierPatternPlayback_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 void MiniAcid::toggleMuteKick() {
@@ -1315,7 +1327,7 @@ void MiniAcid::setMute303(int voiceIndex, bool muted) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) mute303 = muted;
   else mute303_2 = muted;
-  if (muted) publishPatternNoteOff_(idx);
+  if (muted) hardBarrierPatternPlayback_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 
@@ -1416,12 +1428,12 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
   if (next < 0) next = Bank<SynthPattern>::kPatterns - 1;
@@ -1431,8 +1443,13 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
+}
+
+void MiniAcid::setCurrentPage(int8_t page) {
+  hardBarrierPatternPlayback_();
+  currentPage_.store(page, std::memory_order_release);
 }
 
 void MiniAcid::requestPageSwitch(int pageIndex) {
@@ -1709,7 +1726,7 @@ int MiniAcid::clampSongPosition(int position) const {
 
 void MiniAcid::applySongPositionSelection() {
   if (!songMode_) return;
-  if (playing) publishPatternAllNotesOff_();
+  hardBarrierPatternPlayback_();
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   songPlayheadPosition_ = pos;
@@ -2092,14 +2109,31 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     int s = (sIdx + 16) % 16;
     uint32_t nominalT = s * 24;
 
-    if (const PhraseRuntime::RuntimeSynthEvent* eventA =
-            synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
-        eventA != nullptr && eventA->startTick == barTick) {
+    // PHRASE addresses onsets in phrase-relative time and resolves once per
+    // tick, at the nominal step, so the per-step A -> B -> drums draw order is
+    // untouched. PATTERN keeps its bar-local source-step scan verbatim.
+    if (activeMaterial_[0].kind == GroovePuterMaterial::MaterialKind::Melody) {
+      if (s == nominalStep) {
+        if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
+                phraseEventAt_(0, absoluteTick)) {
+          triggerSynthStep_(0, *phraseA, absoluteStartSubtick);
+        }
+      }
+    } else if (const PhraseRuntime::RuntimeSynthEvent* eventA =
+                   synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
+               eventA != nullptr && eventA->startTick == barTick) {
       triggerSynthStep_(0, *eventA, absoluteStartSubtick);
     }
-    if (const PhraseRuntime::RuntimeSynthEvent* eventB =
-            synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
-        eventB != nullptr && eventB->startTick == barTick) {
+    if (activeMaterial_[1].kind == GroovePuterMaterial::MaterialKind::Melody) {
+      if (s == nominalStep) {
+        if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
+                phraseEventAt_(1, absoluteTick)) {
+          triggerSynthStep_(1, *phraseB, absoluteStartSubtick);
+        }
+      }
+    } else if (const PhraseRuntime::RuntimeSynthEvent* eventB =
+                   synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
+               eventB != nullptr && eventB->startTick == barTick) {
       triggerSynthStep_(1, *eventB, absoluteStartSubtick);
     }
 
@@ -2466,7 +2500,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (playing) publishPatternNoteOff_(idx);
+  hardBarrierPatternPlayback_(idx);
   // Use the complete compiled genre profile. GrooveRecipe is a compact legacy
   // view and cannot represent pitch, articulation or microtiming parameters.
   const GenerativeParams& genreParams =
@@ -3617,11 +3651,19 @@ void MiniAcid::updateDrumReverbDecay(float value) {
   drumReverb.setDecay(value);
 }
 
+void MiniAcid::hardBarrierPatternPlayback_(int synthIdx) {
+  const auto actions = patternPlaybackState_[synthIdx].hardBarrier();
+  consumePatternPlaybackActions_(synthIdx, actions);
+}
+
 void MiniAcid::hardBarrierPatternPlayback_() {
   for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
-    const auto actions = patternPlaybackState_[synth].hardBarrier();
-    consumePatternPlaybackActions_(synth, actions);
+    hardBarrierPatternPlayback_(synth);
   }
+}
+
+void MiniAcid::barrierPatternRuntimeSourceTransition() {
+  hardBarrierPatternPlayback_();
 }
 
 void MiniAcid::cleanupLiveNotesForTransportBarrier_(
@@ -3703,6 +3745,30 @@ uint32_t MiniAcid::currentAbsoluteSubtick_() const {
       (tickPhaseAccum_ & 0xFFFFFFFFULL) >> 28);
   return currentTick_ * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick) +
          fractionalSubtick;
+}
+
+uint16_t MiniAcid::phraseRelativeTick_(int voiceIndex,
+                                      uint32_t absoluteTick) const {
+  const uint16_t length = currentPhrase_[clamp303Voice(voiceIndex)].lengthTicks;
+  if (length == 0) return 0;
+  return static_cast<uint16_t>(absoluteTick % length);
+}
+
+const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
+    int voiceIndex,
+    uint32_t absoluteTick) const {
+  const int idx = clamp303Voice(voiceIndex);
+  const PhraseRuntime::RuntimeSynthEventBuffer& phrase = currentPhrase_[idx];
+  if (phrase.lengthTicks == 0) return nullptr;
+  const uint16_t phraseTick = phraseRelativeTick_(idx, absoluteTick);
+  // First match wins. RuntimeSynthPlaybackState is monophonic, so several events
+  // sharing a startTick would collapse to the last one while still spending a
+  // set of RNG draws each; taking one keeps both the note and the draw count
+  // determinate.
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (phrase.events[i].startTick == phraseTick) return &phrase.events[i];
+  }
+  return nullptr;
 }
 
 void MiniAcid::triggerSynthStep_(
@@ -3832,4 +3898,176 @@ void MiniAcid::advanceSongBar_() {
       advanceSongPlayhead();
     }
   }
+}
+
+// P3: Bounded Phrase Source
+
+void MiniAcid::setSequencedSource(int voiceIndex, SequencedSource source) {
+  const int voice = clamp303Voice(voiceIndex);
+  const GroovePuterMaterial::MaterialKind nextKind =
+      source == SequencedSource::Phrase
+          ? GroovePuterMaterial::MaterialKind::Melody
+          : GroovePuterMaterial::MaterialKind::Pattern;
+  if (activeMaterial_[voice].kind == nextKind) return;
+  hardBarrierPatternPlayback_(voice);
+  activeMaterial_[voice].kind = nextKind;
+}
+
+MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const {
+  return activeMaterial_[clamp303Voice(voiceIndex)].kind ==
+                 GroovePuterMaterial::MaterialKind::Melody
+             ? SequencedSource::Phrase
+             : SequencedSource::Pattern;
+}
+
+bool MiniAcid::initPendingMaterial() {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (pendingMaterial_[voice].melody != nullptr) continue;
+    pendingMaterial_[voice].melody =
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer();
+    if (pendingMaterial_[voice].melody == nullptr) return false;
+  }
+  return true;
+}
+
+bool MiniAcid::pendingMaterialReady() const {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (pendingMaterial_[voice].melody == nullptr) return false;
+  }
+  return true;
+}
+
+const void* MiniAcid::pendingMaterialAddress(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  return pendingMaterial_[voiceIndex].melody;
+}
+
+bool MiniAcid::hasPendingMaterial(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return pendingMaterial_[voiceIndex].queued;
+}
+
+bool MiniAcid::stagePendingMaterial(
+    int voiceIndex, uint16_t slot, GroovePuterMaterial::MaterialKind kind,
+    const PhraseRuntime::RuntimeSynthEventBuffer* melody) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (pending.melody == nullptr) return false;
+
+  // A Melody request that arrives without prepared material is the failed-load
+  // case. Refusing it here is what keeps a half-prepared request from ever
+  // reaching a boundary; the voice simply keeps playing what it was.
+  if (kind == GroovePuterMaterial::MaterialKind::Melody) {
+    if (melody == nullptr) return false;
+    *pending.melody = *melody;
+  }
+  pending.slot = slot;
+  pending.kind = kind;
+  pending.queued = true;
+  return true;
+}
+
+void MiniAcid::activatePendingMaterial() {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    PendingMaterial& pending = pendingMaterial_[voice];
+    if (!pending.queued) continue;
+    if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
+        pending.melody != nullptr) {
+      currentPhrase_[voice] = *pending.melody;
+    }
+    publishActiveMaterial(voice, pending.slot, pending.kind);
+    pending.queued = false;
+  }
+}
+
+void MiniAcid::publishActiveMaterial(int voiceIndex, uint16_t slot,
+                                     GroovePuterMaterial::MaterialKind kind) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
+  activeMaterial_[voiceIndex].slot = slot;
+  activeMaterial_[voiceIndex].kind = kind;
+}
+
+const MiniAcid::ActiveMaterial& MiniAcid::activeMaterial(int voiceIndex) const {
+  static const ActiveMaterial kFallback{};
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return kFallback;
+  return activeMaterial_[voiceIndex];
+}
+
+uint16_t MiniAcid::currentPhrasePlayTick(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return 0;
+  const uint16_t lengthTicks = currentPhrase_[voiceIndex].lengthTicks;
+  if (lengthTicks == 0) return 0;
+  return static_cast<uint16_t>(currentTick_ % lengthTicks);
+}
+
+bool MiniAcid::makePhrase(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  // One-way. A voice already on Phrase keeps what it has; re-projecting would
+  // silently discard every edit made since the conversion.
+  if (activeMaterial_[voiceIndex].kind ==
+      GroovePuterMaterial::MaterialKind::Melody) {
+    return false;
+  }
+
+  // Same projection inputs the runtime bank already uses, so converted material
+  // sounds like the Pattern it came from rather than a second interpretation.
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  const int swingPct = std::clamp(
+      static_cast<int>(scene.feel.swingPct), 50, 75);
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(voiceIndex);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = voiceIndex == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // Project into a candidate first. A failed projection must leave the voice
+  // exactly as it was, with neither half of the conversion committed.
+  PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+  if (PhraseRuntime::projectPatternToRuntimeEvents(
+          activeSynthPattern(voiceIndex), settings, candidate) !=
+      PhraseRuntime::PatternProjectionStatus::Ready) {
+    return false;
+  }
+
+  currentPhrase_[voiceIndex] = candidate;
+  setSequencedSource(voiceIndex, SequencedSource::Phrase);
+  return true;
+}
+
+bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+
+  auto candidate = currentPhrase_[voiceIndex];
+  const uint16_t targetTicks =
+      RuntimePhraseEdit::lengthTicksForBars(barCount);
+  if (targetTicks == 0) return false;
+  if (targetTicks == candidate.lengthTicks) {
+    return RuntimePhraseEdit::validate(candidate);
+  }
+
+  if (targetTicks > candidate.lengthTicks) {
+    // Expansion may repair a note which already crosses the old end, so grant
+    // the requested extent before validating the complete candidate.
+    candidate.lengthTicks = targetTicks;
+    if (!RuntimePhraseEdit::validate(candidate)) return false;
+  } else if (RuntimePhraseEdit::setLengthBars(candidate, barCount) !=
+             RuntimePhraseEdit::LengthEditResult::Changed) {
+    return false;
+  }
+
+  return RuntimePhraseEdit::commit(currentPhrase_[voiceIndex], candidate);
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
+    int voiceIndex) {
+  return currentPhrase_[clamp303Voice(voiceIndex)];
+}
+
+const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
+    int voiceIndex) const {
+  return currentPhrase_[clamp303Voice(voiceIndex)];
 }

@@ -2953,6 +2953,13 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
   }
 
+  // M1: absent key means a scene from before material kinds existed, which
+  // decodes as entirely Pattern -- decodeKinds handles the null itself.
+  GroovePuterMaterial::decodeKinds(
+      obj["matKind"].is<const char*>() ? obj["matKind"].as<const char*>()
+                                       : nullptr,
+      *loaded);
+
   if (obj["customPhrases"].is<ArduinoJson::JsonArrayConst>()) {
     auto phrasesArr = obj["customPhrases"].as<ArduinoJson::JsonArrayConst>();
     int idx = 0;

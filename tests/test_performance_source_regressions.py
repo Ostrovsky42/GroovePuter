@@ -91,7 +91,7 @@ def test_transport_note_mode_keys_remain_live() -> None:
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
     fallback_pos = display.index(
-        "if (event.key == ']') { nextPage(); return true; }", route_pos
+        "if (event.key == ']') { nextPage(event.meta); return true; }", route_pos
     )
     base.require(route_pos < fallback_pos,
                  "NOTE-mode routing must run before legacy global fallback")

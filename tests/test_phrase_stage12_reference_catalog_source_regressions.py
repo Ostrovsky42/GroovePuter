@@ -7,6 +7,9 @@ HEADER = (
 SOURCE = (
     ROOT / "src/generation/rhythm/reference_phrase_vocabulary.cpp"
 ).read_text(encoding="utf-8")
+CATALOG = (
+    ROOT / "src/generation/rhythm/reference_phrase_catalog_data.h"
+).read_text(encoding="utf-8")
 BASE = (
     ROOT / "src/generation/rhythm/reference_vocabulary.cpp"
 ).read_text(encoding="utf-8")
@@ -34,8 +37,9 @@ require(
     "Stage 12 capability query disappeared",
 )
 
+CATALOG_AND_SOURCE = CATALOG + "\n" + SOURCE
+
 for needle in (
-    "phraseBarsBit(1) | phraseBarsBit(2) | phraseBarsBit(4)",
     "BarFunction::Reduction",
     "BarFunction::Break",
     "AllowReduction",
@@ -52,18 +56,24 @@ for needle in (
     "case 712",
 ):
     require(
-        SOURCE,
+        CATALOG_AND_SOURCE,
         needle,
         f"Stage 12 candidate catalog lost contract: {needle}",
     )
 
 require(
-    SOURCE,
+    CATALOG,
+    "phraseBarsBit(1) | phraseBarsBit(2) | phraseBarsBit(4)",
+    "Stage 12 candidate catalog lost phrase bar mask",
+)
+
+require(
+    CATALOG,
     "archetypes[index].trajectories = kNonSubtractivePhraseTrajectoryRefs;",
     "halftime_switch non-subtractive trajectory path disappeared",
 )
 require(
-    SOURCE,
+    CATALOG,
     "archetypes[index].mutation = stage12NonSubtractiveMutationPolicy();",
     "halftime_switch non-subtractive mutation policy disappeared",
 )

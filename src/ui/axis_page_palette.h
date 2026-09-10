@@ -73,8 +73,32 @@ inline void drawValueRow(IGfx& gfx,
   }
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, y + 1, label);
+
+  // The value column used to be a hard x+66. Several labels in production use
+  // are wider than that -- "SWING OFFBEAT" is 78 px -- so the value landed
+  // inside the label's glyphs and the FEEL screen showed three collisions at
+  // once ("SWING OFFBE50%").
+  //
+  // Measure the label instead, but keep the old column as the *minimum*: rows
+  // whose labels fit stay aligned with each other, so a list of settings reads
+  // as a column and not as a staircase. Only a row that genuinely needs more
+  // room moves, and only as far as it needs.
+  // The gap is a minimum, not a preference: "FEEL CYCLE" ends 4 px short of
+  // the shared column, and demanding more would evict it from the column for
+  // no visible gain.
+  constexpr int kSharedValueColumn = 66;
+  constexpr int kMinLabelGap = 4;
+  const int afterLabel = 2 + gfx.textWidth(label ? label : "") + kMinLabelGap;
+  int valueX = x + (afterLabel > kSharedValueColumn ? afterLabel
+                                                    : kSharedValueColumn);
+
+  // Never push the value off the row. Pulling it back is only allowed while it
+  // still clears the label -- an overlap is worse than an overhang.
+  const int rightLimit = x + width - 2 - gfx.textWidth(value ? value : "");
+  if (valueX > rightLimit && rightLimit >= x + afterLabel) valueX = rightLimit;
+
   gfx.setTextColor(focused ? color : palette.text);
-  gfx.drawText(x + 66, y + 1, value);
+  gfx.drawText(valueX, y + 1, value);
 }
 
 inline void drawMeter(IGfx& gfx,

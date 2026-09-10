@@ -1,5 +1,6 @@
 #include "../scenes.h"
 #include "../src/phrase/runtime_synth_events.h"
+#include "../src/phrase/runtime_pattern_event_bank.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/state/generation_request_state.h"
 #include "../src/state/scene_revision.h"

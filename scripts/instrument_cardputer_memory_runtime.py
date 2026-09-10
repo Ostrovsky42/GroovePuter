@@ -329,8 +329,12 @@ setup_injection = '''  Serial.println("setup() complete");
   markBootStage(100, "setup-complete");'''
 
 loop_anchor = '''void loop() {
+  // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
+  MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();'''
 loop_injection = '''void loop() {
+  // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
+  MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
   pollCardputerMemoryBaseline();'''
 
