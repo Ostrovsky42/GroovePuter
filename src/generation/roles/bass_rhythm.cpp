@@ -116,6 +116,18 @@ bool isValidBassRhythmId(BassRhythmId id, bool allowAuto) {
   return allowAuto || id != BassRhythmId::Auto;
 }
 
+bool isBassRhythmCompatibleWithFamily(RhythmFamily family, BassRhythmId id) {
+  if (static_cast<uint8_t>(family) >= static_cast<uint8_t>(RhythmFamily::Count) ||
+      !isValidBassRhythmId(id, false)) {
+    return false;
+  }
+  const BassCandidates candidates = candidatesFor(family);
+  for (uint8_t index = 0; index < candidates.count; ++index) {
+    if (candidates.values[index] == id) return true;
+  }
+  return false;
+}
+
 BassRhythmResult realizeBassRhythm(const BassRhythmRequest& request) {
   BassRhythmResult result{};
   if (request.archetypeId == kNoArchetypeId ||
