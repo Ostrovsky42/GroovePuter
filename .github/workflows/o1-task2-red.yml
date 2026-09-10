@@ -1,0 +1,35 @@
+name: O1 Task 2 RED
+
+on:
+  push:
+    branches:
+      - research/20260909-01-hybrid-song-orchestration-ux
+    paths:
+      - ".github/workflows/o1-task2-red.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  prove-red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/20260909-01-hybrid-song-orchestration-ux
+          fetch-depth: 0
+
+      - name: Compile focused O1 test and require semantic-helper RED
+        shell: bash
+        run: |
+          set +e
+          g++ -std=c++17 -I. tests/test_song_cell_o1.cpp -o /tmp/test_song_cell_o1 > /tmp/o1-task2-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/o1-task2-red.log
+          if [ "$status" -eq 0 ]; then
+            echo "Expected RED, but focused test compiled successfully"
+            exit 1
+          fi
+          grep -Eq "mergeFrom|trimmedLength" /tmp/o1-task2-red.log
+          echo "O1 Task 2 RED confirmed: missing canonical Song semantic helpers"
