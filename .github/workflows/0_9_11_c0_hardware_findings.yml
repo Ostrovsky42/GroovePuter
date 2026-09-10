@@ -29,3 +29,22 @@ jobs:
             src/phrase/runtime_synth_events.cpp \
             -o /tmp/test_c0_hardware_findings
           /tmp/test_c0_hardware_findings
+
+  default-phrase-generation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPAIR_HEAD }}
+          fetch-depth: 0
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${REPAIR_HEAD}"
+      - name: Install host UI dependencies
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Black-box default-scene Phrase G
+        run: bash tests/run_c0_default_phrase_generation.sh
