@@ -95,7 +95,7 @@ class PhrasePage : public IPage {
   // different objects -- see spec sections 1-2. TO placement is a two-mode
   // state machine (section 7), never seeded from transport position.
   enum class PlacementMode : uint8_t { Append, Explicit };
-  enum class Admissibility : uint8_t { Free, Occupied, NoRoom };
+  enum class Admissibility : uint8_t { Free, Occupied, NoRoom, NoSlots };
   enum class ProductFocus : uint8_t { Length, Depth, To, Bar };
 
   struct BarActivity {
@@ -118,9 +118,10 @@ class PhrasePage : public IPage {
   void adjustToField(int delta);
   bool handleToEnter();
 
-  // FREE/OCCUPIED/NO ROOM mirrors the exact predicate generation itself
-  // uses (PhraseGenerator::songRowsAreAvailable + Song::kMaxPositions) --
-  // it must never diverge from what G will actually do.
+  // FREE/OCCUPIED/NO ROOM/NO SLOTS mirrors the allocation preconditions G
+  // can prove without executing musical generation: Song range/occupancy plus
+  // a safe contiguous backing Pattern run on the current page. It must never
+  // promise FREE when G is already known to be impossible for capacity reasons.
   Admissibility admissibilityFor(int row, int bars) const;
 
   void cycleProductFocus(int delta);
