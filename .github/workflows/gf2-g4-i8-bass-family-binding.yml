@@ -1,0 +1,36 @@
+name: G4-I8 bass family compatibility binding
+
+on:
+  push:
+    branches:
+      - feature/20260910-03-0.9.11-g4-i8-bass-family-compatibility-binding
+  workflow_dispatch:
+
+jobs:
+  bass-family-binding:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EXPECTED=${GITHUB_SHA}"
+          echo "ACTUAL=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: G4-I8 bass family compatibility binding
+        shell: bash
+        run: bash tests/run_gf2_g4_i8_tests.sh
+
+      - name: Upload G4-I8 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gf2-g4-i8-bass-family-binding
+          path: build/host-tests/gf2-g4-i8
+          if-no-files-found: warn
