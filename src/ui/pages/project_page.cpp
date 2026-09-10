@@ -1,5 +1,7 @@
 #include "project_page.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
+#include "../led_manager.h"
 #include <algorithm>
 #include <vector>
 #ifdef ARDUINO
@@ -1277,6 +1279,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (m > 3) m = 0;
                 led.mode = static_cast<LedMode>(m);
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedSource) {
@@ -1287,6 +1290,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (s > max) s = 0;
                 led.source = static_cast<LedSource>(s);
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedColor) {
@@ -1304,6 +1308,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx > 5) currentIdx = 0;
                 led.color = TAPE_PALETTE[currentIdx].rgb;
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedBri) {
@@ -1319,6 +1324,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx > 4) currentIdx = 0;
                 led.brightness = BRI_STEPS[currentIdx];
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedFlash) {
@@ -1334,6 +1340,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx > 3) currentIdx = 0;
                 led.flashMs = FLASH_STEPS[currentIdx];
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             return false;
@@ -1389,7 +1396,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         }
         
         auto& led = mini_acid_.sceneManager().currentScene().led;
-        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); GroovePuterState::markSceneMutated(); return true; }
+        if (main_focus_ == MainFocus::LedMode) {
+            led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4);
+            GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
+            return true;
+        }
         if (main_focus_ == MainFocus::LedSource) {
             led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
             switch (led.source) {
@@ -1401,6 +1413,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 default: led.color = TAPE_PALETTE[4].rgb; break;
             }
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedColor) {
@@ -1408,6 +1421,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
             led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedBri) {
@@ -1415,6 +1429,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
             led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedFlash) {
@@ -1422,6 +1437,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
             led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
     }
@@ -1693,6 +1709,15 @@ void ProjectPage::draw(IGfx& gfx) {
     Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
   }
 
+  char projInfo[64];
+  std::snprintf(projInfo, sizeof(projInfo), "SCENE: %s",
+                mini_acid_.currentSceneName().c_str());
+  char projStatus[32];
+  std::snprintf(projStatus, sizeof(projStatus), "THEME: %s",
+                UI::themeName(UI::currentStyle));
+  UI::publishShellInfo(projInfo, projStatus);
+
+  UI::drawStandardFooter(gfx, "[TAB]SECT [U/D]ITEM [L/R]VAL", "[ENT]SELECT [ESC]BACK");
 }
 
 int ProjectPage::firstFocusInSection(int sectionIdx) {

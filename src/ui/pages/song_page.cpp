@@ -1600,9 +1600,15 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return clearPattern();
   }
 
-  // Tab clears pattern (legacy behavior)
-  if (key == '\t') {
-    return clearPattern();
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      const int row = cursorRow();
+      requestPageTransition(WorkflowPages::kPhrase, row + 1);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') {
+      return true;
+    }
   }
 
   if (lowerKey == 'g') {
@@ -1668,6 +1674,7 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
+  visual_style_ = UI::currentStyle;
   switch (visual_style_) {
     case ::VisualStyle::RETRO_CLASSIC:
       drawRetroClassicStyle(gfx);
@@ -1683,6 +1690,7 @@ void SongPage::draw(IGfx& gfx) {
       drawMinimalStyle(gfx);
       break;
   }
+  UI::drawStandardFooter(gfx, "[TAB]PHRASE [ARWS]MOVE Q-I:PAT", "G:GEN B:BANK C+N/M:ROW");
 }
 
 void SongPage::drawMinimalStyle(IGfx &gfx) {
@@ -1694,7 +1702,7 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
   if (w <= 0 || h <= 0)
     return;
 
-  const UI::ThemePalette palette = UI::themePalette(::VisualStyle::MINIMAL);
+  const UI::ThemePalette palette = UI::themePalette();
   const int activeSlot = mini_acid_.activeSongSlot();
   const int playSlot = mini_acid_.songPlaybackSlot();
   const bool liveMix = mini_acid_.liveMixModeEnabled();
@@ -1926,11 +1934,6 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
   } else {
     drawPane(x, w, activeSlot, true);
   }
-
-  gfx.fillRect(x, footerY, w, footerH, palette.panel);
-  gfx.drawLine(x, footerY, x + w - 1, footerY, palette.dim);
-  gfx.setTextColor(palette.secondary);
-  gfx.drawText(x + 2, footerY + 2, "Q-I:P B:PAT <>:TRK/SLOT V:LANE X:SPL");
 
   if (mini_acid_.isPageLoading()) {
     char loadBuf[32];
@@ -2527,9 +2530,6 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     gfx.setTextColor(IGfxColor(RetroTheme::NEON_YELLOW));
     gfx.drawText(boxX + 6, boxY + 3, loadBuf);
   }
-
-  retro::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx &gfx) {
@@ -2786,9 +2786,6 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
     gfx.setTextColor(IGfxColor(AmberTheme::SELECT_BRIGHT));
     gfx.drawText(boxX + 6, boxY + 3, loadBuf);
   }
-
-  amber::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {

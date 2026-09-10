@@ -1,4 +1,5 @@
 #include "drum_sequencer_grid.h"
+#include "../ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
 #include "../retro_ui_theme.h"
@@ -115,6 +116,7 @@ bool DrumSequencerGridComponent::handleEvent(UIEvent& ui_event) {
 }
 
 void DrumSequencerGridComponent::draw(IGfx& gfx) {
+  style_ = UI::currentStyle;
   GridLayout layout{};
   if (!computeLayout(layout)) return;
 

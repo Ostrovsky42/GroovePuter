@@ -22,6 +22,12 @@ namespace UI {
     // Global overlay state (extern, defined in ui_common.cpp)
     extern WaveformOverlayState waveformOverlay;
     extern VisualStyle currentStyle;
+    extern bool hintOverlayActive;
+
+    inline bool isHintOverlayActive() { return hintOverlayActive; }
+    void setHintOverlayActive(bool active);
+    bool updateHintOverlay(bool hHeld, uint32_t nowMs);
+    bool dismissHintOverlay();
     
     // Page count moved to ui_config.h
 
@@ -55,6 +61,7 @@ namespace UI {
     void beginShellFrameModel(UiShellFrameModel& model);
     void endShellFrameModel();
     void publishShellFooter(const char* left, const char* right = nullptr);
+    void publishShellInfo(const char* left, const char* right = nullptr);
     void publishShellFeelOverlay(bool visible);
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer);
 

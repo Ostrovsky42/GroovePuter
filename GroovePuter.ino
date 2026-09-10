@@ -551,6 +551,12 @@ void loop() {
       evt.shift ? 1 : 0, (uint8_t)evt.key, evt.scancode);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
 
+    if (evt.scancode == GROOVEPUTER_ESCAPE || evt.key == '`' || evt.key == 0x1B) {
+      if (UI::dismissHintOverlay()) {
+        drawUI();
+      }
+    }
+
     bool handled = false;
     {
       AudioMutationScope mutationScope(g_audioMutationGate);
@@ -851,6 +857,16 @@ void loop() {
   const Keyboard_Class::KeysState currentKeysState =
       M5Cardputer.Keyboard.keysState();
   reconcilePerformanceKeys(currentKeysState);
+
+  const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
+                      GroovePuterInput::containsWord(currentKeysState, 'h') ||
+                      GroovePuterInput::containsWord(currentKeysState, 'H') ||
+                      M5Cardputer.Keyboard.isKeyPressed('h') ||
+                      M5Cardputer.Keyboard.isKeyPressed('H')) &&
+                     !currentKeysState.alt && !currentKeysState.ctrl && !currentKeysState.fn;
+  if (UI::updateHintOverlay(hHeld, millis())) {
+    drawUI();
+  }
 
   const uint32_t candidatePressId = nextPressId;
   const bool dispatched = processKeyEdges(

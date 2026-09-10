@@ -8,6 +8,7 @@
 #endif
 #include "tb303_params_page.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
 #include "../phrase_source_toggle.h"
 #include "../ui_utils.h"
 #include "../../debug_log.h"
@@ -815,38 +816,44 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
   layoutComponents();
 
-  const char* modeName = "MIN";
-  switch (mini_acid_.grooveboxMode()) {
-    case GrooveboxMode::Acid: modeName = "ACID"; break;
-    case GrooveboxMode::Minimal: modeName = "MIN"; break;
-    case GrooveboxMode::Breaks: modeName = "BRK"; break;
-    case GrooveboxMode::Dub: modeName = "DUB"; break;
-    case GrooveboxMode::Electro: modeName = "ELC"; break;
-    default: break;
-  }
-
   const auto& content = Layout::CONTENT;
   const Rect contentRect{content.x, content.y, content.w, content.h};
-  gfx.setTextColor(kDimText);
-  gfx.drawText(content.x + content.w - gfx.textWidth(modeName) - 4,
-               content.y + 3,
-               modeName);
 
   if (!more_tab_) {
     const int x0 = content.x + Layout::CONTENT_PAD_X;
     const int width = content.w - Layout::CONTENT_PAD_X * 2;
     const int spacing = width / 5;
     const char* keyHints[4] = {"A/Z", "S/X", "D/C", "F/V"};
-    const int keyY = content.y + kMainKeyHintY;
-    gfx.setTextColor(kDimText);
-    for (int i = 0; i < 4; ++i) {
-      const int cx = x0 + spacing * (i + 1);
-      gfx.drawText(cx - gfx.textWidth(keyHints[i]) / 2, keyY, keyHints[i]);
+    if (UI::isHintOverlayActive()) {
+      const UI::ThemePalette p = UI::themePalette();
+      const int keyY = content.y + kMainKeyHintY;
+      for (int i = 0; i < 4; ++i) {
+        const int cx = x0 + spacing * (i + 1);
+        const int tw = gfx.textWidth(keyHints[i]);
+        const int badgeW = tw + 4;
+        const int badgeH = 9;
+        const int bx = cx - badgeW / 2;
+        const int by = keyY - 1;
+        gfx.fillRect(bx, by, badgeW, badgeH, p.accent);
+        gfx.setTextColor(COLOR_BLACK);
+        gfx.drawText(cx - tw / 2, keyY, keyHints[i]);
+      }
     }
     drawMainSummary(gfx, contentRect);
   }
 
   Container::draw(gfx_);
+
+  char synthInfo[64];
+  const std::string engineName = mini_acid_.currentSynthEngineName(voice_index_);
+  std::snprintf(synthInfo, sizeof(synthInfo), "%s: %s",
+                voice_index_ == 0 ? "SYNTH-A" : "SYNTH-B",
+                engineName.c_str());
+  char fxStatus[32];
+  std::snprintf(fxStatus, sizeof(fxStatus), "DST:%s DLY:%s",
+                mini_acid_.is303DistortionEnabled(voice_index_) ? "ON" : "OFF",
+                mini_acid_.is303DelayEnabled(voice_index_) ? "ON" : "OFF");
+  UI::publishShellInfo(synthInfo, fxStatus);
 
   if (!more_tab_) {
     UI::drawStandardFooter(gfx,
@@ -984,13 +991,6 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
         withAudioGuard([&]() { mini_acid_.adjust303Parameter(TB303ParamId::FilterType, 1, voice_index_); });
       } else {
         adjustGenericParameter(5, 1, fine);
-      }
-      return true;
-    case 'h':
-      if (isTb303Engine()) {
-        withAudioGuard([&]() { mini_acid_.adjust303Parameter(TB303ParamId::FilterType, -1, voice_index_); });
-      } else {
-        adjustGenericParameter(5, -1, fine);
       }
       return true;
 

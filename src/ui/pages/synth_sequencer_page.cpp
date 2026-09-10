@@ -30,6 +30,7 @@
 #include "../ui_utils.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
+#include "../amber_ui_theme.h"
 #include "../undo_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
@@ -38,8 +39,8 @@
 #include "src/state/undo_receipts.h"
 
 namespace {
-constexpr int kNotesTabStripX = 190;
-constexpr int kParamsTabStripX = 172;
+constexpr int kNotesTabStripX = 204;
+constexpr int kParamsTabStripX = 204;
 constexpr int kTabStripW = 32;
 constexpr int kTabStripH = 11;
 constexpr int kPatternNumbersX = 106;
@@ -50,6 +51,9 @@ static_assert(kNotesTabStripX + kTabStripW <= Layout::SCREEN_W,
               "NOTES tab must stay on screen");
 
 inline IGfxColor synthTabColor(int voiceIndex) {
+  if (UI::currentStyle == VisualStyle::AMBER) {
+    return voiceIndex == 0 ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::NEON_MAGENTA);
+  }
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
 }
 
@@ -261,7 +265,8 @@ void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
 
 void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
-  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+  const auto themeP = UI::themePalette();
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, themeP.background);
 
   // The shell's feel chip reports the Pattern grid, which this screen is not
   // editing. Declining it removes a wrong label, not merely a busy one.
@@ -297,7 +302,7 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   std::snprintf(where, sizeof(where), "BAR %u/%u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
-  gfx.setTextColor(COLOR_LABEL);
+  gfx.setTextColor(themeP.secondary);
   const int whereX = bounds.x + 4 + textWidth(gfx, "PHRASE") + 10;
   gfx.drawText(whereX, bounds.y, where);
   gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:PHR");
@@ -366,9 +371,9 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     const int beatX =
         tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
     const char label[2] = {static_cast<char>('1' + beat), '\0'};
-    gfx.setTextColor(COLOR_LABEL);
+    gfx.setTextColor(themeP.secondary);
     gfx.drawText(beatX + 2, bounds.y + 9, label);
-    gfx.fillRect(beatX, planeTop, 1, kPlaneH, COLOR_LABEL);
+    gfx.fillRect(beatX, planeTop, 1, kPlaneH, themeP.dim);
   }
 
   bool selectionTruncated = false;
@@ -406,20 +411,20 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     const int endX = tickToX(span.endTick);
     const int y = noteToY(note);
     const int h = kRowH - 1;
-    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    const IGfxColor fill = selected ? themeP.focus : voiceColor;
 
     if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
     drawMutedTail(gfx, audibleX, endX, y, h, fill);
     if ((phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0) {
-      gfx.fillRect(x0, y, std::max(1, endX - x0), 1, voiceColor);
+      gfx.fillRect(x0, y, std::max(1, endX - x0), 1, themeP.focus);
     }
     // The attack edge. Without it two adjacent notes on the same pitch merge
     // into one shape and become uncountable.
-    gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? voiceColor
-                                                        : IGfxColor::Black());
+    gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? themeP.focus
+                                                        : themeP.background);
     if (selected) {
       gfx.drawRect(x0 - 1, y - 2, std::max(3, endX - x0 + 2), h + 4,
-                   COLOR_WHITE);
+                   themeP.focus);
     }
   }
 
@@ -489,7 +494,8 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
 
 void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
-  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
+  const auto themeP = UI::themePalette();
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, themeP.background);
   UI::publishShellFeelOverlay(false);
 
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
@@ -597,11 +603,11 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
                                  ? barTicks
                                  : audibleEnd - (event.startTick - start));
     const int xEnd = toX(storedEnd - (event.startTick - start));
-    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    const IGfxColor fill = selected ? themeP.focus : voiceColor;
     if (xAudible > x0) gfx.fillRect(x0, y + 2, xAudible - x0, 5, fill);
     drawMutedTail(gfx, xAudible, xEnd, y + 2, 5, fill);
     if ((event.flags & PhraseRuntime::kEventAccent) != 0) {
-      gfx.fillRect(x0, y + 1, std::max(1, xEnd - x0), 1, voiceColor);
+      gfx.fillRect(x0, y + 1, std::max(1, xEnd - x0), 1, themeP.focus);
     }
   }
 

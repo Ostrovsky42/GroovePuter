@@ -648,8 +648,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == ']') { nextPage(event.meta); return true; }
         if (event.key == '[') { previousPage(event.meta); return true; }
 
-        if (event.key == 'h') {
-            showToast("[ ] workspaces  Fn+M menu  Alt+H help", 2200);
+        if (event.key == 'h' || event.key == 'H') {
             return true;
         }
 

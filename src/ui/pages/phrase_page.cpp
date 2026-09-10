@@ -10,6 +10,7 @@
 #include "../ui_colors.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../workflow_mode.h"
 #include "src/dsp/generated_phrase_song.h"
 #include "src/state/generated_phrase_product_state.h"
 #include "src/state/generation_request_state.h"
@@ -689,8 +690,8 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   }
 
   UI::drawStandardFooter(gfx,
-                         "U/D:FOCUS L/R:ADJUST P:DEPTH",
-                         "G:GEN  ENT:BAR/TO");
+                         "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
+                         "G:GEN P:DEPTH ENT:BAR");
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
@@ -1309,7 +1310,7 @@ void PhrasePage::draw(IGfx& gfx) {
   gfx.drawText(x + width - gfx.textWidth(ownership), actionY, ownership);
 
   UI::drawStandardFooter(gfx,
-                         "1-4:SLOT L/R:BAR U/D:CAPLEN",
+                         "1-4:SLOT [L/R]BAR [U/D]LEN",
                          "G:GEN ENT/D/W");
 }
 
@@ -1319,6 +1320,16 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     return undoPreparedOwnedState();
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      requestPageTransition(WorkflowPages::kArrange);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') {
+      return true;
+    }
+  }
 
   // PHRASE and PHRASE CORE are two separate, independently-reachable pages
   // (see workflow_mode.h kPhrase/kPhraseCore) -- there is no in-page mode

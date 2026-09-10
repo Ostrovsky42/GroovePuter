@@ -5,9 +5,11 @@
 #include <cstdio>
 
 #include "../axis_page_palette.h"
+#include "../genre_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../workflow_mode.h"
 #include "../../generation/composition/generation_profile.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
@@ -289,10 +291,11 @@ void GenrePage::draw(IGfx& gfx) {
     rhythmFallbackPending_ = false;
   }
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
-  const IGfxColor axisColor = palette.genre;
   const int profileIndex = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
   const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
+  const auto genreProf = UI::genreProfile(selectedGenre);
+  const IGfxColor axisColor = genreProf.primary;
   const GroovePuterRhythm::GenerationProfileView selectedProfile =
       GroovePuterRhythm::generationProfileFor(pendingSettings());
   const GenreSettings& settings = mini_acid_.sceneManager().currentScene().genre;
@@ -305,6 +308,11 @@ void GenrePage::draw(IGfx& gfx) {
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/2",
                       "CORRIDOR / VOCABULARY", axisColor, palette);
+  int tagBadgeW = gfx.textWidth(genreProf.tag) + 8;
+  int tagBadgeX = x + width - tagBadgeW - 2;
+  gfx.fillRect(tagBadgeX, LayoutManager::lineY(0) + 1, tagBadgeW, 9, genreProf.primary);
+  gfx.setTextColor(COLOR_BLACK);
+  gfx.drawText(tagBadgeX + 4, LayoutManager::lineY(0) + 2, genreProf.tag);
   drawRecipeOverlay(gfx, recipeIndex_);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "GENRE",
@@ -339,7 +347,7 @@ void GenrePage::draw(IGfx& gfx) {
       static_cast<unsigned>(selectedProfile.corridor.bpmMax),
       static_cast<unsigned>(selectedProfile.corridor.densityMin),
       static_cast<unsigned>(selectedProfile.corridor.densityMax));
-  gfx.setTextColor(palette.muted);
+  gfx.setTextColor(genreProf.secondary);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   const char* pendingSuffix =
@@ -355,9 +363,8 @@ void GenrePage::draw(IGfx& gfx) {
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
-  gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), value);
-
-  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
+  UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
+  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -389,6 +396,16 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return false;
   }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (!event.ctrl && !event.alt && !event.meta) {
+    if (UIInput::isTab(event)) {
+      requestPageTransition(WorkflowPages::kFeel);
+      return true;
+    }
+    if (event.key == '[' || event.key == ']') {
+      return true;
+    }
+  }
 
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {

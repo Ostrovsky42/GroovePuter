@@ -19,15 +19,28 @@ namespace UI {
     // Global overlay state
     WaveformOverlayState waveformOverlay;
     VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
+    IGfxColor currentGenreAccent = IGfxColor(0);
+    bool hintOverlayActive = false;
 
     // Internal state for the compact global audio waveform.
     namespace {
+        MiniAcid* gActiveEngine = nullptr;
+        int sVuDecay = 0;
         constexpr int kOverlayMaxPoints = 256;
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
 
+        bool g_hintOverlayHeld = false;
+        uint32_t g_hPressStartMs = 0;
+        bool g_hintOverlayTimedActive = false;
+        uint32_t g_hintOverlayTimedUntilMs = 0;
+
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
+
+        char gInfoLeft[64] = {0};
+        char gInfoRight[32] = {0};
+        bool gInfoValid = false;
 
         UiStatusSnapshot gStatusSnapshot{};
         char gStatusLine[48] = {0};
@@ -203,6 +216,10 @@ namespace UI {
 
     UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
                                              UiStatusContext context) {
+        gActiveEngine = &mini_acid;
+        const auto mode = static_cast<GenerativeMode>(
+            mini_acid.sceneManager().currentScene().genre.generativeMode);
+        currentGenreAccent = genreAccentColor(mode);
         return buildUiStatusSnapshot(mini_acid, context);
     }
 
@@ -265,6 +282,9 @@ namespace UI {
     void beginShellFrameModel(UiShellFrameModel& model) {
         model.clear();
         gShellFrameModel = &model;
+        gInfoValid = false;
+        gInfoLeft[0] = '\0';
+        gInfoRight[0] = '\0';
     }
 
     void endShellFrameModel() {
@@ -276,12 +296,151 @@ namespace UI {
         gShellFrameModel->setFooter(left, right);
     }
 
+    void publishShellInfo(const char* left, const char* right) {
+        if (left) {
+            std::strncpy(gInfoLeft, left, sizeof(gInfoLeft) - 1);
+            gInfoLeft[sizeof(gInfoLeft) - 1] = '\0';
+        } else {
+            gInfoLeft[0] = '\0';
+        }
+        if (right) {
+            std::strncpy(gInfoRight, right, sizeof(gInfoRight) - 1);
+            gInfoRight[sizeof(gInfoRight) - 1] = '\0';
+        } else {
+            gInfoRight[0] = '\0';
+        }
+        gInfoValid = (left != nullptr || right != nullptr);
+    }
+
     void publishShellFeelOverlay(bool visible) {
         if (gShellFrameModel == nullptr) return;
         gShellFrameModel->feelOverlay = visible;
     }
 
     void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
+        if (!hintOverlayActive) {
+            const ThemePalette p = themePalette();
+            gfx.fillRect(Layout::FOOTER.x, Layout::FOOTER.y, Layout::FOOTER.w, Layout::FOOTER.h, p.background);
+            gfx.drawLine(Layout::FOOTER.x, Layout::FOOTER.y,
+                         Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y,
+                         p.panel);
+
+            const int y = Layout::FOOTER.y + 3;
+
+            if (gActiveEngine != nullptr) {
+                // 1. Audio Peak VU Meter (x: 2..54)
+                const auto& waveBuffer = gActiveEngine->getWaveformBuffer();
+                int32_t peak = 0;
+                for (size_t i = 0; i < waveBuffer.count; ++i) {
+                    int32_t s = std::abs(static_cast<int32_t>(waveBuffer.data[i]));
+                    if (s > peak) peak = s;
+                }
+                if (peak > sVuDecay) {
+                    sVuDecay = peak;
+                } else {
+                    sVuDecay = (sVuDecay * 7) / 8;
+                }
+                int numSegments = 0;
+                if (sVuDecay > 150) numSegments = 1;
+                if (sVuDecay > 800) numSegments = 2;
+                if (sVuDecay > 2500) numSegments = 3;
+                if (sVuDecay > 6000) numSegments = 4;
+                if (sVuDecay > 13000) numSegments = 5;
+                if (sVuDecay > 22000) numSegments = 6;
+
+                gfx.setTextColor(p.dim);
+                gfx.drawText(2, y + 1, "VU");
+                for (int i = 0; i < 6; ++i) {
+                    int sx = 16 + i * 6;
+                    IGfxColor segCol = (i < 3) ? IGfxColor(0x00E676)
+                                     : ((i < 5) ? IGfxColor(0xFFD600) : IGfxColor(0xFF1744));
+                    if (i < numSegments) {
+                        gfx.fillRect(sx, y, 5, 7, segCol);
+                    } else {
+                        gfx.drawRect(sx, y, 5, 7, IGfxColor(0x18222B));
+                    }
+                }
+
+                gfx.drawLine(56, y - 1, 56, y + 7, p.panel);
+
+                // 2. Genre Badge (Right edge: x: badgeX..238)
+                const auto& genre = gActiveEngine->sceneManager().currentScene().genre;
+                const auto mode = static_cast<GenerativeMode>(genre.generativeMode);
+                const auto& prof = genreProfile(mode);
+
+                int badgeW = gfx.textWidth(prof.tag) + 8;
+                int badgeX = Layout::FOOTER.w - badgeW - 2;
+
+                if (gStatusSnapshot.dirty) {
+                    gfx.setTextColor(p.warning);
+                    gfx.drawText(badgeX - 8, y + 1, "*");
+                }
+                gfx.fillRect(badgeX, y, badgeW, 8, prof.primary);
+                gfx.setTextColor(COLOR_BLACK);
+                gfx.drawText(badgeX + 4, y + 1, prof.tag);
+
+                gfx.drawLine(badgeX - 12, y - 1, badgeX - 12, y + 7, p.panel);
+
+                // 3. Center zone (x: 60 .. badgeX - 14):
+                // If page published contextual parameter info, show it!
+                if (gInfoValid && gInfoLeft[0] != '\0') {
+                    gfx.setTextColor(p.accent);
+                    int maxW = (badgeX - 16) - 60;
+                    Widgets::drawClippedText(gfx, 60, y + 1, maxW, gInfoLeft);
+                } else {
+                    // Live Transport & Position
+                    const bool playing = gActiveEngine->isPlaying();
+                    if (playing) {
+                        gfx.setTextColor(IGfxColor(0x00E676));
+                        gfx.drawText(60, y + 1, "PLAY");
+                    } else {
+                        gfx.setTextColor(p.dim);
+                        gfx.drawText(60, y + 1, "STOP");
+                    }
+
+                    char posBuf[24];
+                    if (gActiveEngine->songModeEnabled()) {
+                        int pos = gActiveEngine->currentSongPosition() + 1;
+                        int len = gActiveEngine->songLength();
+                        std::snprintf(posBuf, sizeof(posBuf), "SONG %02d/%02d", pos, len > 0 ? len : 16);
+                        gfx.setTextColor(p.warning);
+                    } else {
+                        int step = gActiveEngine->currentStep();
+                        int stepInBar = (step >= 0 ? (step % 16) + 1 : 1);
+                        std::snprintf(posBuf, sizeof(posBuf), "STEP %02d/16", stepInBar);
+                        gfx.setTextColor(playing ? p.text : p.dim);
+                    }
+                    gfx.drawText(94, y + 1, posBuf);
+                }
+                return;
+            }
+
+            if (gInfoValid) {
+                if (gInfoLeft[0] != '\0') {
+                    gfx.setTextColor(p.text);
+                    int maxW = Layout::FOOTER.w - 8;
+                    if (gInfoRight[0] != '\0') {
+                        maxW -= (gfx.textWidth(gInfoRight) + 8);
+                    }
+                    Widgets::drawClippedText(gfx, Layout::FOOTER.x + 4, y, maxW, gInfoLeft);
+                }
+                if (gInfoRight[0] != '\0') {
+                    gfx.setTextColor(p.secondary);
+                    int tw = gfx.textWidth(gInfoRight);
+                    gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, gInfoRight);
+                }
+            } else {
+                if (gStatusSnapshot.dirty) {
+                    gfx.setTextColor(p.accent);
+                    gfx.drawText(Layout::FOOTER.x + 4, y, "* MODIFIED");
+                }
+                gfx.setTextColor(p.dim);
+                const char* hPrompt = "[H] HELP";
+                int tw = gfx.textWidth(hPrompt);
+                gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, hPrompt);
+            }
+            return;
+        }
         LayoutManager::drawFooter(gfx,
                                   footer.valid ? footer.left : "",
                                   footer.valid ? footer.right : "");
@@ -604,15 +763,70 @@ namespace UI {
 
     void drawToast(IGfx& gfx) {
         if (millis() < gToastEndMs) {
+            const ThemePalette p = themePalette();
             int w = gfx.width();
             int tw = gfx.textWidth(gToastMsg);
             int x = (w - tw) / 2;
             int y = gfx.height() - 25;
-            gfx.fillRect(x - 4, y - 2, tw + 8, 11, COLOR_BLACK);
-            gfx.drawRect(x - 4, y - 2, tw + 8, 11, COLOR_KNOB_2);
+            gfx.fillRect(x - 4, y - 2, tw + 8, 11, p.background);
+            gfx.drawRect(x - 4, y - 2, tw + 8, 11, p.accent);
             gfx.setTextColor(COLOR_WHITE);
             gfx.drawText(x, y, gToastMsg);
         }
+    }
+
+    void setHintOverlayActive(bool active) {
+        hintOverlayActive = active;
+        if (!active) {
+            g_hintOverlayHeld = false;
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+    }
+
+    bool dismissHintOverlay() {
+        g_hintOverlayTimedActive = false;
+        g_hintOverlayTimedUntilMs = 0;
+        if (hintOverlayActive) {
+            hintOverlayActive = false;
+            return true;
+        }
+        return false;
+    }
+
+    bool updateHintOverlay(bool hHeld, uint32_t nowMs) {
+        if (hHeld && !g_hintOverlayHeld) {
+            g_hPressStartMs = nowMs;
+        } else if (!hHeld && g_hintOverlayHeld) {
+            const uint32_t holdDuration = nowMs - g_hPressStartMs;
+            if (holdDuration < 350) {
+                // Short press (single click / tap): toggle or activate for 5 seconds
+                if (g_hintOverlayTimedActive && static_cast<int32_t>(g_hintOverlayTimedUntilMs - nowMs) > 0) {
+                    g_hintOverlayTimedActive = false;
+                    g_hintOverlayTimedUntilMs = 0;
+                } else {
+                    g_hintOverlayTimedActive = true;
+                    g_hintOverlayTimedUntilMs = nowMs + 5000;
+                }
+            } else {
+                // Long press (hold): immediately dismiss on release
+                g_hintOverlayTimedActive = false;
+                g_hintOverlayTimedUntilMs = 0;
+            }
+        }
+        g_hintOverlayHeld = hHeld;
+
+        if (g_hintOverlayTimedActive && static_cast<int32_t>(nowMs - g_hintOverlayTimedUntilMs) >= 0) {
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+
+        const bool shouldBeActive = hHeld || g_hintOverlayTimedActive;
+        if (shouldBeActive != hintOverlayActive) {
+            hintOverlayActive = shouldBeActive;
+            return true;
+        }
+        return false;
     }
 
 }

@@ -25,6 +25,7 @@ public:
     // Triggered from UI/Logic
     void onMuteChanged(bool muted, const LedSettings& settings);
     void onBeat(int step, const LedSettings& settings);
+    void testPulse(const LedSettings& settings);
 
 private:
     LedManager();

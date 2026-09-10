@@ -1,6 +1,7 @@
 #include "tape_page.h"
 #include "../../dsp/tape_presets.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
 #include "src/state/scene_revision.h"
 #ifdef USE_RETRO_THEME
 #include "../retro_ui_theme.h"
@@ -92,21 +93,23 @@ class TapePage::SliderComponent : public FocusableComponent {
     }
 
     // Default minimal/amber rendering
-    gfx.setTextColor(isFocused() ? COLOR_KNOB_1 : COLOR_LABEL);
+    const auto p = UI::themePalette();
+    gfx.setTextColor(isFocused() ? p.focus : p.secondary);
     gfx.drawText(bounds.x, bounds.y, label_);
     int labelW = gfx.textWidth(label_);
     int barX = bounds.x + labelW + 6;
     int barW = bounds.w - labelW - 35;
     int barY = bounds.y + 3;
     int barH = 4;
-    gfx.fillRect(barX, barY, barW, barH, COLOR_BLACK);
+    gfx.fillRect(barX, barY, barW, barH, p.inset);
     int fillW = (barW * value_) / maxValue_;
-    gfx.fillRect(barX, barY, fillW, barH, isFocused() ? COLOR_KNOB_1 : COLOR_KNOB_2);
+    gfx.fillRect(barX, barY, fillW, barH, isFocused() ? p.focus : p.accent);
     char buf[12];
     if (maxValue_ == 100) std::snprintf(buf, sizeof(buf), "%d%%", value_);
     else std::snprintf(buf, sizeof(buf), "%d", value_);
+    gfx.setTextColor(p.text);
     gfx.drawText(barX + barW + 4, bounds.y, buf);
-    if (isFocused()) gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
+    if (isFocused()) gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, p.focus);
   }
 
  private:
@@ -316,26 +319,27 @@ void TapePage::draw(IGfx& gfx) {
   Container::draw(gfx);
   
   // Draw looper info at bottom
+  const auto p = UI::themePalette();
   int y = dy() + getBoundaries().h - 14;
   int x = dx() + 5;
   
   const TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
   
   // Speed indicator
-  gfx.setTextColor(COLOR_LABEL);
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x, y, "SPD:");
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(p.text);
   gfx.drawText(x + 28, y, tapeSpeedName(tape.speed));
 
   char volBuf[12];
   std::snprintf(volBuf, sizeof(volBuf), "LVL:%d%%", static_cast<int>(tape.looperVolume * 100.0f + 0.5f));
-  gfx.setTextColor(COLOR_LABEL);
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 52, y, volBuf);
 
   // Mode indicator (explicit so it is visible even when mode row is unfocused)
-  gfx.setTextColor(COLOR_LABEL);
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 96, y, "MD:");
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(p.text);
   gfx.drawText(x + 116, y, tapeModeName(tape.mode));
   
   // Recorder/loop status
@@ -350,14 +354,14 @@ void TapePage::draw(IGfx& gfx) {
     } else {
       std::snprintf(buf, sizeof(buf), "ARM");
     }
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(p.text);
     gfx.drawText(x + 174, y, buf);
   } else if (mini_acid_.tapeLooper->hasLoop()) {
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->loopLengthSeconds());
-    gfx.setTextColor(COLOR_LABEL);
+    gfx.setTextColor(p.secondary);
     gfx.drawText(x + 146, y, "LEN:");
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(p.text);
     gfx.drawText(x + 174, y, buf);
   }
 
@@ -616,6 +620,7 @@ void TapePage::updateAnimations() {
 
 void TapePage::drawCassette(IGfx& gfx) {
   const Rect area = getBoundaries();
+  const auto p = UI::themePalette();
   // Compact cassette layout for Cardputer (240x135)
   // Positioned in the remaining space below sliders
   int cx = area.x + area.w / 2 - 80;
@@ -624,19 +629,19 @@ void TapePage::drawCassette(IGfx& gfx) {
   int ch = 42;
   
   // Body background
-  IGfxColor bodyColor(0x333333);
+  IGfxColor bodyColor = (UI::currentStyle == VisualStyle::AMBER) ? p.panel : IGfxColor(0x333333);
   gfx.fillRect(cx, cy, cw, ch, bodyColor);
-  gfx.drawRect(cx, cy, cw, ch, IGfxColor::Gray());
+  gfx.drawRect(cx, cy, cw, ch, p.dim);
   
   // Sticker area
   int sx = cx + 35;
   int sy = cy + 4;
   int sw = 90;
   int sh = 28;
-  gfx.fillRect(sx, sy, sw, sh, IGfxColor(0x1a1a1a));
+  gfx.fillRect(sx, sy, sw, sh, p.inset);
   
   // Waveform visualization on sticker
-  waveform_.drawWaveformInRegion(Rect(sx, sy, sw, sh), IGfxColor::Green());
+  waveform_.drawWaveformInRegion(Rect(sx, sy, sw, sh), p.accent);
   
   // Reels
   drawReel(gfx, cx + 18, cy + 20, 14, reel_rotation_);
@@ -644,15 +649,16 @@ void TapePage::drawCassette(IGfx& gfx) {
 }
 
 void TapePage::drawReel(IGfx& gfx, int x, int y, int radius, float rotation) {
-  gfx.drawCircle(x, y, radius, IGfxColor::White());
-  gfx.fillCircle(x, y, 4, IGfxColor::White());
+  const auto p = UI::themePalette();
+  gfx.drawCircle(x, y, radius, p.text);
+  gfx.fillCircle(x, y, 4, p.text);
   
   // Mechanical hub spokes
   for (int i = 0; i < 3; i++) {
     float angle = rotation + i * (2.09439f); // 2*PI/3
     int x1 = x + cos(angle) * (radius - 2);
     int y1 = y + sin(angle) * (radius - 2);
-    gfx.drawLine(x, y, x1, y1, IGfxColor::White());
+    gfx.drawLine(x, y, x1, y1, p.text);
   }
 }
 

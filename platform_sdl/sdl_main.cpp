@@ -11,6 +11,7 @@
 #include "sdl_display.h"
 #include "../cardputer_display.h"
 #include "../src/ui/miniacid_display.h"
+#include "../src/ui/ui_common.h"
 #include "../src/dsp/miniacid_engine.h"
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
@@ -76,6 +77,8 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
   ctx->synth.generateAudioBuffer(out, frames);
   ctx->recorder.writeSamples(out, frames);
 }
+
+static bool s_hKeyHeld = false;
 
 static void handleEvents(AppState& s) {
   SDL_Event e;
@@ -190,10 +193,18 @@ static void handleEvents(AppState& s) {
         grooveputerEvent.key = static_cast<char>(keycode);
       }
 
+      if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.shift && !grooveputerEvent.meta &&
+          (keycode == SDLK_h || sc == SDL_SCANCODE_H)) {
+        s_hKeyHeld = true;
+      }
+
       bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
       if (handledByUI) continue;
 
       if (sc == SDL_SCANCODE_ESCAPE) {
+        if (UI::dismissHintOverlay()) {
+          if (s.ui) s.ui->update();
+        }
         // s.running = false;
       } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
         if (s.ui) s.ui->dismissSplash();
@@ -285,6 +296,9 @@ static void handleEvents(AppState& s) {
       }
     } else if (e.type == SDL_KEYUP) {
       const SDL_Keycode keycode = e.key.keysym.sym;
+      if (keycode == SDLK_h || e.key.keysym.scancode == SDL_SCANCODE_H) {
+        s_hKeyHeld = false;
+      }
       const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
       if (!modified && keycode >= 32 && keycode < 127) {
         s.keyboard.keyUp(static_cast<char>(keycode));
@@ -294,6 +308,9 @@ static void handleEvents(AppState& s) {
 }
 
 static void updateUI(AppState& s) {
+  if (UI::updateHintOverlay(s_hKeyHeld, SDL_GetTicks())) {
+    if (s.ui) s.ui->update();
+  }
   unsigned long now = SDL_GetTicks();
   if (now - s.lastUIUpdate > 80) {
     s.lastUIUpdate = now;
