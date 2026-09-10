@@ -142,28 +142,35 @@ def structural_collision_groups(
 def topology_collision_groups(
     rows: Iterable[Mapping[str, str]],
 ) -> list[tuple[int, ...]]:
-    """Return identities whose sampled audible topology converges.
+    """Return cross-selection convergence onto one sampled audible topology.
 
-    Active selection is intentionally ignored here. This catches cases where
-    distinct intended selections collapse onto the same observed rhythmic/
-    lifetime topology. Identities with internal selection drift are excluded
-    because their identity-side contract is already unstable.
+    Active selection is intentionally excluded from the grouping key so we can
+    see when different intended selections converge onto the same observed
+    rhythmic/lifetime topology. Same-selection duplicates are NOT reported here;
+    they belong to structural_collision_groups(). Identities with internal
+    selection drift are excluded because their identity-side contract is already
+    unstable.
     """
     by_topology: dict[
         tuple[str, str, tuple[tuple[tuple[str, str], ...], ...]],
-        list[int],
+        list[tuple[int, tuple[tuple[str, str], ...]]],
     ] = defaultdict(list)
 
     for (profile, depth, identity), group in _identity_groups(rows).items():
-        if len({idea_signature(row) for row in group}) != 1:
+        ideas = {idea_signature(row) for row in group}
+        if len(ideas) != 1:
             continue
-        by_topology[(profile, depth, take_space(group))].append(identity)
+        by_topology[(profile, depth, take_space(group))].append(
+            (identity, next(iter(ideas)))
+        )
 
-    collisions = [
-        tuple(sorted(group))
-        for group in by_topology.values()
-        if len(group) > 1
-    ]
+    collisions: list[tuple[int, ...]] = []
+    for group in by_topology.values():
+        if len(group) <= 1:
+            continue
+        if len({idea for _, idea in group}) <= 1:
+            continue
+        collisions.append(tuple(sorted(identity for identity, _ in group)))
     return sorted(collisions)
 
 
