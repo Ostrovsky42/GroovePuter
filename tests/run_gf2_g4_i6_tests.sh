@@ -57,6 +57,10 @@ echo "G4-I6 corrected methodology controls: PASS"
 cp "$RUN_A/g4-i6-summary.txt" "$BUILD/g4-i6-summary.txt"
 cat "$BUILD/g4-i6-summary.txt"
 
+# G4-C1 promotes the already-retained DnB structural/bass witness into an
+# explicit contract. This must be semantic promotion, not counter rewriting.
+python3 "${ROOT}/tests/test_gf2_g4_c1_dnb_contract_promotion.py" "$RUN_A"
+
 # An unknown nonzero raw archetype may be explained, but must never disappear
 # silently and still allow closure.
 if grep -q 'UNKNOWN_ID_REJECTED' "$RUN_A/GF2_G4_I6_OWNERSHIP_CENSUS.tsv"; then
