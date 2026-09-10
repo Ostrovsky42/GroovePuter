@@ -30,8 +30,12 @@ build_and_run() {
     "${SOURCES[@]}" \
     "${ROOT}/tests/test_gf2_g4_i8_bass_family_binding.cpp" \
     -o "${output}"
+  set +e
   "${output}" > "${BUILD}/run-${suffix}.txt"
+  local status=$?
+  set -e
   cat "${BUILD}/run-${suffix}.txt"
+  return "${status}"
 }
 
 build_and_run "${CXX:-g++}" gcc
