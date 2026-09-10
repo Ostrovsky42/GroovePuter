@@ -67,6 +67,73 @@ inline bool prepareLengthTarget(
          RuntimePhraseEdit::LengthEditResult::Changed;
 }
 
+enum class LengthChangeResult : uint8_t {
+  Changed = 0,
+  Unchanged,
+  InvalidDirection,
+  InvalidLength,
+  WouldTruncateEvent,
+  CommitFailed,
+};
+
+struct LengthChangeOutcome {
+  LengthChangeResult result = LengthChangeResult::Unchanged;
+  uint8_t targetBars = 1;
+};
+
+// Detailed UI preflight. In particular, a safe shrink refusal is a musical
+// event, not "nothing happened": preserve WouldTruncateEvent so the surface can
+// tell the player which material blocks the requested boundary.
+template <typename SetLengthFn>
+inline LengthChangeOutcome applyLengthChangeDetailed(
+    const PhraseRuntime::RuntimeSynthEventBuffer& current,
+    int direction,
+    SetLengthFn&& setLength) {
+  LengthChangeOutcome outcome{};
+  outcome.targetBars = lengthBars(current.lengthTicks);
+  if (direction != -1 && direction != 1) {
+    outcome.result = LengthChangeResult::InvalidDirection;
+    return outcome;
+  }
+
+  outcome.targetBars = nextLengthBars(outcome.targetBars, direction);
+  const uint16_t targetTicks =
+      RuntimePhraseEdit::lengthTicksForBars(outcome.targetBars);
+  if (targetTicks == 0) {
+    outcome.result = LengthChangeResult::InvalidLength;
+    return outcome;
+  }
+  if (targetTicks == current.lengthTicks) {
+    outcome.result = LengthChangeResult::Unchanged;
+    return outcome;
+  }
+
+  if (targetTicks < current.lengthTicks) {
+    auto candidate = current;
+    const auto preflight =
+        RuntimePhraseEdit::setLengthBars(candidate, outcome.targetBars);
+    if (preflight == RuntimePhraseEdit::LengthEditResult::WouldTruncateEvent) {
+      outcome.result = LengthChangeResult::WouldTruncateEvent;
+      return outcome;
+    }
+    if (preflight == RuntimePhraseEdit::LengthEditResult::InvalidLength) {
+      outcome.result = LengthChangeResult::InvalidLength;
+      return outcome;
+    }
+    if (preflight != RuntimePhraseEdit::LengthEditResult::Changed) {
+      outcome.result = LengthChangeResult::Unchanged;
+      return outcome;
+    }
+  }
+
+  const bool committed =
+      std::forward<SetLengthFn>(setLength)(outcome.targetBars);
+  outcome.result = committed
+      ? LengthChangeResult::Changed
+      : LengthChangeResult::CommitFailed;
+  return outcome;
+}
+
 template <typename SetLengthFn>
 inline bool applyLengthChange(uint16_t currentLengthTicks,
                               int direction,
