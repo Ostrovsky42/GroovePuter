@@ -46,10 +46,17 @@ uint8_t bitCount(uint16_t value) {
 
 int run() {
   uint32_t profileCount = 0;
+  uint32_t independentProfiles = 0;
+  uint32_t familyNativeProfiles = 0;
   uint32_t autoRows = 0;
   uint32_t manualRows = 0;
+  uint32_t nativeAutoRows = 0;
+  uint32_t outsideIndependentAutoRows = 0;
   uint32_t dubFourFloorRows = 0;
   uint16_t dubFourFloorBassMask = 0;
+  bool acidBaseIndependent = false;
+  bool dubTechnoFamilyNative = false;
+  bool dnbBaseFamilyNative = false;
 
   for (uint8_t modeOrdinal = 0;
        modeOrdinal < static_cast<uint8_t>(kGenerativeModeCount);
@@ -76,23 +83,41 @@ int run() {
       }
       ++profileCount;
 
+      const bool familyNative =
+          profile.bassSelectionPolicy == BassSelectionPolicy::FamilyNative;
+      if (familyNative) ++familyNativeProfiles;
+      else ++independentProfiles;
+
+      if (mode == GenerativeMode::Acid && recipe == kBaseRecipeId) {
+        acidBaseIndependent =
+            profile.bassSelectionPolicy == BassSelectionPolicy::Independent;
+      }
+      if (mode == GenerativeMode::Reggae && recipe == 5) {
+        dubTechnoFamilyNative = familyNative;
+      }
+      if (mode == GenerativeMode::DrumAndBass && recipe == kBaseRecipeId) {
+        dnbBaseFamilyNative = familyNative;
+      }
+
       for (uint16_t identity = 0; identity < 128; ++identity) {
         const GenerationCompositionResult composition =
             resolveGenerationComposition(settings, identityContext(identity));
         if (composition.status != GenerationCompositionStatus::Ok) {
           std::printf(
-              "G4_I8_FAIL unresolved_auto mode=%u recipe=%u identity=%u status=%u\n",
+              "G4_I8_FAIL unresolved_auto mode=%u recipe=%u identity=%u status=%u archetype=%u\n",
               static_cast<unsigned>(modeOrdinal),
               static_cast<unsigned>(recipe),
               static_cast<unsigned>(identity),
-              static_cast<unsigned>(composition.status));
+              static_cast<unsigned>(composition.status),
+              static_cast<unsigned>(composition.rhythmArchetypeId));
           return 1;
         }
-        if (!compatible(composition)) {
+        const bool native = compatible(composition);
+        if (familyNative && !native) {
           const ReferenceVocabulary::Definition* definition =
               ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
           std::printf(
-              "G4_I8_FAIL incompatible_auto mode=%u recipe=%u identity=%u archetype=%u family=%u bass=%u\n",
+              "G4_I8_FAIL family_native_escape mode=%u recipe=%u identity=%u archetype=%u family=%u bass=%u\n",
               static_cast<unsigned>(modeOrdinal),
               static_cast<unsigned>(recipe),
               static_cast<unsigned>(identity),
@@ -101,6 +126,8 @@ int run() {
               static_cast<unsigned>(composition.bassRhythm));
           return 1;
         }
+        if (native) ++nativeAutoRows;
+        else ++outsideIndependentAutoRows;
         ++autoRows;
       }
 
@@ -115,13 +142,15 @@ int run() {
               resolveGenerationComposition(settings, identityContext(identity));
           const ReferenceVocabulary::Definition* definition =
               ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
+          const bool native = definition != nullptr && compatible(composition);
           if (composition.status != GenerationCompositionStatus::Ok ||
-              definition == nullptr || !compatible(composition)) {
+              definition == nullptr || (familyNative && !native)) {
             std::printf(
-                "G4_I8_FAIL incompatible_manual mode=%u recipe=%u identity=%u archetype=%u family=%u bass=%u status=%u\n",
+                "G4_I8_FAIL manual_policy mode=%u recipe=%u identity=%u policy=%u archetype=%u family=%u bass=%u status=%u\n",
                 static_cast<unsigned>(modeOrdinal),
                 static_cast<unsigned>(recipe),
                 static_cast<unsigned>(identity),
+                static_cast<unsigned>(profile.bassSelectionPolicy),
                 static_cast<unsigned>(composition.rhythmArchetypeId),
                 definition == nullptr ? 255u : static_cast<unsigned>(definition->family),
                 static_cast<unsigned>(composition.bassRhythm),
@@ -144,6 +173,19 @@ int run() {
     }
   }
 
+  if (!acidBaseIndependent) {
+    std::puts("G4_I8_FAIL acid_base_must_remain_independent");
+    return 1;
+  }
+  if (!dubTechnoFamilyNative) {
+    std::puts("G4_I8_FAIL dub_techno_must_be_family_native");
+    return 1;
+  }
+  if (!dnbBaseFamilyNative) {
+    std::puts("G4_I8_FAIL dnb_base_must_be_family_native");
+    return 1;
+  }
+
   const uint8_t dubFourFloorVariants = bitCount(dubFourFloorBassMask);
   if (dubFourFloorRows == 0 || dubFourFloorVariants < 2) {
     std::printf(
@@ -155,14 +197,19 @@ int run() {
   }
 
   std::printf(
-      "G4_I8_SUMMARY profiles=%u auto_rows=%u manual_rows=%u "
-      "dub_four_floor_rows=%u dub_four_floor_variants=%u\n",
+      "G4_I8_SUMMARY profiles=%u independent_profiles=%u family_native_profiles=%u "
+      "auto_rows=%u native_auto_rows=%u outside_independent_auto_rows=%u "
+      "manual_rows=%u dub_four_floor_rows=%u dub_four_floor_variants=%u\n",
       static_cast<unsigned>(profileCount),
+      static_cast<unsigned>(independentProfiles),
+      static_cast<unsigned>(familyNativeProfiles),
       static_cast<unsigned>(autoRows),
+      static_cast<unsigned>(nativeAutoRows),
+      static_cast<unsigned>(outsideIndependentAutoRows),
       static_cast<unsigned>(manualRows),
       static_cast<unsigned>(dubFourFloorRows),
       static_cast<unsigned>(dubFourFloorVariants));
-  std::puts("G4-I8 bass family compatibility binding: PASS");
+  std::puts("G4-I8 bass selection policy binding: PASS");
   return 0;
 }
 
