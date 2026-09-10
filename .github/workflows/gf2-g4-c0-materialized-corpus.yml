@@ -9,6 +9,7 @@ on:
       - feature/20260909-03-0.9.11-g4-i5-house-structural-ownership
       - research/20260909-02-0.9.11-g4-i6-global-ownership-census
       - feature/20260910-01-0.9.11-g4-c1-dnb-structural-bass-contract
+      - research/20260910-02-0.9.11-g4-c2-contract-candidate-ranking
     paths:
       - 'src/generation/composition/generation_profile.cpp'
       - 'src/generation/composition/rhythm_selection.cpp'
@@ -27,9 +28,11 @@ on:
       - 'tests/test_gf2_g4_i6_ownership_census.cpp'
       - 'tests/test_gf2_g4_i6_methodology_controls.cpp'
       - 'tests/test_gf2_g4_c1_dnb_contract_promotion.py'
+      - 'tests/test_gf2_g4_c2_contract_candidate_ranking.py'
       - 'tests/run_gf2_g4_i6_tests.sh'
       - 'tools/gf2/finalize_gf2_g4_i6_census.py'
       - 'tools/gf2/promote_gf2_g4_c1_dnb_contract.py'
+      - 'tools/gf2/rank_gf2_g4_c2_contract_candidates.py'
       - 'tests/test_gf2_i2a_feel_magnitude.cpp'
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
       - 'tests/run_gf2_i3_tests.sh'
@@ -95,6 +98,11 @@ jobs:
         run: |
           bash tests/run_gf2_g4_i6_tests.sh > build/host-tests/gf2-g4-c0/g4-i6.log
 
+      - name: Run G4-C2 contract candidate ranking
+        run: |
+          python3 tests/test_gf2_g4_c2_contract_candidate_ranking.py \
+            > build/host-tests/gf2-g4-c0/g4-c2.log
+
       - name: Run existing GF2-I3 ownership regressions and FEEL census freshness
         run: |
           set -o pipefail
@@ -118,7 +126,7 @@ jobs:
       - name: Print focused verification summaries
         if: always()
         run: |
-          for log in g4-r1.log g4-i3.log g4-i4.log g4-i5.log g4-i6.log gf2-i3-regression.log; do
+          for log in g4-r1.log g4-i3.log g4-i4.log g4-i5.log g4-i6.log g4-c2.log gf2-i3-regression.log; do
             if test -f "build/host-tests/gf2-g4-c0/${log}"; then
               echo "===== ${log} ====="
               cat "build/host-tests/gf2-g4-c0/${log}"
@@ -143,6 +151,7 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-i4.log
             build/host-tests/gf2-g4-c0/g4-i5.log
             build/host-tests/gf2-g4-c0/g4-i6.log
+            build/host-tests/gf2-g4-c0/g4-c2.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
             build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
