@@ -31,6 +31,21 @@ jobs:
           /tmp/test_c0_hardware_findings
       - name: Prove H1 UI truth surface
         run: python3 tests/test_c0_phrase_length_ui_truth.py
+      - name: Preserve Phrase Bank state characterization
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_phrase_bank_qwertyui_p1.cpp \
+            -o /tmp/test_phrase_bank_qwertyui_p1
+          /tmp/test_phrase_bank_qwertyui_p1
+      - name: Preserve MIDI panic recovery
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_midi_panic_cc123.cpp \
+            src/midi/usb_midi_output.cpp \
+            -o /tmp/test_midi_panic_cc123
+          /tmp/test_midi_panic_cc123
 
   default-phrase-generation:
     runs-on: ubuntu-latest
@@ -48,5 +63,83 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update -o Acquire::Retries=3
           sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev pkg-config
-      - name: Black-box default-scene Phrase G
+      - name: Black-box default-scene Phrase G in STOP and PLAY
         run: bash tests/run_c0_default_phrase_generation.sh
+
+  host-regressions:
+    needs: [focused-hardware-findings, default-phrase-generation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPAIR_HEAD }}
+          fetch-depth: 0
+      - name: Prepare deterministic Ubuntu package sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -f \
+            /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${REPAIR_HEAD}"
+      - name: Prove U4B9 source-toggle owner
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
+      - name: Run full host regressions
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -o pipefail
+          bash tests/run_host_tests.sh 2>&1 | tee c0-hardware-findings-full-host.log
+      - name: Upload full-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c0-hardware-findings-full-host-${{ github.sha }}
+          path: c0-hardware-findings-full-host.log
+          if-no-files-found: error
+
+  cardputer-adv-prehardware:
+    needs: [focused-hardware-findings, default-phrase-generation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPAIR_HEAD }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check exact-head fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Record exact-head repair provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${REPAIR_HEAD}"
+          {
+            echo "repair_head=${REPAIR_HEAD}"
+            echo "elf_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.elf | awk '{print $1}')"
+            echo "bin_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.bin | awk '{print $1}')"
+          } | tee cardputer-c0-hardware-findings-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c0-hardware-findings-cardputer-adv-${{ github.sha }}
+          path: |
+            build/cardputer-adv-current/GroovePuter.ino.elf
+            build/cardputer-adv-current/GroovePuter.ino.bin
+            cardputer-c0-hardware-findings-provenance.txt
+          if-no-files-found: error
