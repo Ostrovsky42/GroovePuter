@@ -67,16 +67,15 @@ jobs:
             libsdl2-dev \
             libsdl2-gfx-dev \
             pkg-config
-      - name: Prove source-toggle owner and full host regressions
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CONVERGENCE_HEAD}"
+      - name: Prove U4B9 source-toggle owner
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
+      - name: Run full host regressions
         shell: bash
         env:
           ASAN_OPTIONS: detect_leaks=0
-        run: |
-          set -euo pipefail
-          echo "convergence_head=$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "${CONVERGENCE_HEAD}"
-          bash tests/run_ui_constitution_u4b9_tests.sh
-          bash tests/run_host_tests.sh
+        run: bash tests/run_host_tests.sh
 
   cardputer-adv-prehardware:
     runs-on: ubuntu-latest
