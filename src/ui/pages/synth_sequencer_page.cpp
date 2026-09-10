@@ -646,8 +646,8 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       : 0;
 
   if (!ui_event.alt && lower == 'l') {
-    const bool changed = PhraseInstrumentControls::applyLengthChange(
-        phrase.lengthTicks, +1, [&](uint8_t bars) {
+    const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(
+        phrase, +1, [&](uint8_t bars) {
           bool committed = false;
           const auto apply = [&]() {
             committed = mini_acid_.setPhraseLength(voice_index_, bars);
@@ -659,10 +659,25 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     const auto& after = mini_acid_.currentPhraseBuffer(voice_index_);
     phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after.lengthTicks);
     char toast[32];
-    std::snprintf(toast, sizeof(toast), "PHRASE LENGTH %uB",
-                  static_cast<unsigned>(
-                      PhraseInstrumentControls::lengthBars(after.lengthTicks)));
-    UI::showToast(changed ? toast : "LENGTH UNCHANGED", 1000);
+    if (outcome.result == PhraseInstrumentControls::LengthChangeResult::Changed) {
+      std::snprintf(toast, sizeof(toast), "PHRASE LENGTH %uB",
+                    static_cast<unsigned>(
+                        PhraseInstrumentControls::lengthBars(after.lengthTicks)));
+      UI::showToast(toast, 1000);
+    } else if (outcome.result ==
+               PhraseInstrumentControls::LengthChangeResult::WouldTruncateEvent) {
+      std::snprintf(toast, sizeof(toast), "NOTES BEYOND %uB",
+                    static_cast<unsigned>(outcome.targetBars));
+      UI::showToast(toast, 1400);
+    } else if (outcome.result ==
+               PhraseInstrumentControls::LengthChangeResult::Unchanged) {
+      std::snprintf(toast, sizeof(toast), "LENGTH ALREADY %uB",
+                    static_cast<unsigned>(
+                        PhraseInstrumentControls::lengthBars(after.lengthTicks)));
+      UI::showToast(toast, 1000);
+    } else {
+      UI::showToast("LENGTH FAILED", 1000);
+    }
     return true;
   }
 
@@ -741,8 +756,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (isBackspace && !ui_event.alt) {
-    phrase_cursor_ = PhraseNotesCursor::clamp(
-        phrase_cursor_, phrase.lengthTicks);
+    phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
     PhraseNotesDeleteEdit::Prepared prepared{};
     const auto result = PhraseNotesDeleteEdit::prepare(
         phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
@@ -849,8 +863,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
             PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
     if (underCursor.active) {
       const uint16_t retainedInsertTick = phrase_selection_.insertTick;
-      phrase_selection_ =
-          PhraseSelectionState::at(phrase, underCursor.eventIndex);
+      phrase_selection_ = PhraseSelectionState::at(phrase, underCursor.eventIndex);
       phrase_selection_.insertTick = retainedInsertTick;
     }
     return true;
@@ -1006,8 +1019,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
                 const auto exchange = [&]() {
                   auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
                   GroovePuterUndo::exchangeFixedValue(live, retained.before);
-                  const auto currentSource =
-                      mini_acid_.currentSequencedSource(voice_index_);
+                  const auto currentSource = mini_acid_.currentSequencedSource(voice_index_);
                   mini_acid_.setSequencedSource(
                       voice_index_,
                       static_cast<MiniAcid::SequencedSource>(retained.source));
@@ -1032,8 +1044,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   // handler: from PATTERN there is otherwise no way back except three
   // keypresses on the MORE tab.
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-    const auto result =
-        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
     if (result == PhraseSourceToggle::Result::MadePhrase) {
       UI::showToast("MAKE PHRASE", 1000);
     } else {
@@ -1067,14 +1078,12 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       isSynthGenerateKey(ui_event) && !mini_acid_.isPlaying()) {
     SceneManager& manager = mini_acid_.sceneManager();
     GroovePuterUndo::SynthPatternUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
-            manager, voice_index_, before)) {
+    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(manager, voice_index_, before)) {
       return true;
     }
 
     SynthPattern generated = before.before;
-    const GenerativeParams& genreParams =
-        mini_acid_.genreManager().getCompiledGenerativeParams();
+    const GenerativeParams& genreParams = mini_acid_.genreManager().getCompiledGenerativeParams();
     auto behavior = mini_acid_.genreManager().getBehavior();
     if (mini_acid_.genreManager().generativeMode() == GenerativeMode::Reggae) {
       if (voice_index_ == 0) {
@@ -1123,8 +1132,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
 
     bool changed = false;
     auto apply = [&]() {
-      changed = GroovePuterOutput::applyModeWithLocalCleanup(
-          mini_acid_, track, next);
+      changed = GroovePuterOutput::applyModeWithLocalCleanup(mini_acid_, track, next);
     };
     if (audio_guard_) audio_guard_(apply);
     else apply();
@@ -1163,8 +1171,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
 
 const std::string& SynthSequencerPage::getTitle() const {
   if (synth_tab_ == SynthTab::Notes &&
-      mini_acid_.currentSequencedSource(voice_index_) ==
-          MiniAcid::SequencedSource::Phrase) {
+      mini_acid_.currentSequencedSource(voice_index_) == MiniAcid::SequencedSource::Phrase) {
     return phrase_title_;
   }
   if (synth_tab_ == SynthTab::Notes && pattern_page_) {
@@ -1186,8 +1193,7 @@ void SynthSequencerPage::setVisualStyle(VisualStyle style) {
 
 void SynthSequencerPage::tick() {
   if (synth_tab_ == SynthTab::Notes && pattern_page_ &&
-      mini_acid_.currentSequencedSource(voice_index_) ==
-          MiniAcid::SequencedSource::Pattern) {
+      mini_acid_.currentSequencedSource(voice_index_) == MiniAcid::SequencedSource::Pattern) {
     pattern_page_->syncSongPatternContext();
     pattern_page_->tick();
   }
