@@ -6,7 +6,7 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport),
       config_(config),
-      abandonedSmfChannels_(0),
+      pendingChannelPanics_(0),
       patternStartupRoutesBound_(false),
       performanceStartupRoutesComplete_(false),
       seqtrakReceiverModeControl_(true),
@@ -330,7 +330,7 @@ uint8_t UsbMidiOutput::generatedActiveCount(MusicalEventTarget target) const {
 
 bool UsbMidiOutput::begin() {
     configureLanes();
-    abandonedSmfChannels_ = 0;
+    pendingChannelPanics_ = 0;
     clearActiveState();
     begun_ = transport_.begin();
     mounted_ = false;
@@ -346,7 +346,7 @@ void UsbMidiOutput::pollConnection() {
     }
     clearActiveState();
     mounted_ = nextMounted;
-    if (mounted_) releaseAbandonedSmfChannels();
+    if (mounted_) releasePendingChannelPanics();
 }
 
 void UsbMidiOutput::setEnabled(bool enabled) {
@@ -780,22 +780,31 @@ bool UsbMidiOutput::releaseGeneratedTarget(MusicalEventTarget target) {
     return allReleased;
 }
 
+void UsbMidiOutput::requestChannelPanic(uint8_t channel) {
+    pendingChannelPanics_ |=
+        static_cast<uint16_t>(1u << clampChannel(channel));
+}
+
 void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
     if (target != MusicalEventTarget::Drums &&
         isSynthPerformanceSource(source)) {
+        requestChannelPanic(generatedChannel(target));
         releaseGeneratedTarget(target);
+        releasePendingChannelPanics();
         return;
     }
 
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         if (lanes_[i].source != source || lanes_[i].target != target) continue;
+        requestChannelPanic(lanes_[i].channel);
         if (target == MusicalEventTarget::Drums) {
             releasePercussiveLane(lanes_[i]);
         } else {
             releaseActiveNote(lanes_[i]);
         }
     }
+    releasePendingChannelPanics();
 }
 
 void UsbMidiOutput::releaseAllActiveNotes() {
@@ -810,6 +819,7 @@ void UsbMidiOutput::releaseAllActiveNotes() {
     releaseGeneratedTarget(MusicalEventTarget::SynthA);
     releaseGeneratedTarget(MusicalEventTarget::SynthB);
     releaseGeneratedTarget(MusicalEventTarget::Dx);
+    releasePendingChannelPanics();
 }
 
 bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
@@ -817,6 +827,7 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
                                     uint8_t velocity) {
     pollConnection();
     if (!enabled_ || !begun_ || !mounted_) return false;
+    releasePendingChannelPanics();
 
     const uint8_t channel = clampChannel(zeroBasedChannel);
     note = clampDataByte(note);
@@ -848,18 +859,23 @@ bool UsbMidiOutput::handleSmfNoteOff(uint8_t zeroBasedChannel,
     velocity = clampDataByte(velocity);
 
     auto* cell = owners_.peek(channel, note);
-    if (cell == nullptr || cell->smf == 0) return true;
+    if (cell == nullptr || cell->smf == 0) {
+        releasePendingChannelPanics();
+        return true;
+    }
 
     if (cell->wire > 1) {
         --cell->smf;
         --cell->wire;
         owners_.prune();
+        releasePendingChannelPanics();
         return true;
     }
 
     if (cell->wire == 0) {
         cell->smf = 0;
         owners_.prune();
+        releasePendingChannelPanics();
         return true;
     }
 
@@ -870,6 +886,7 @@ bool UsbMidiOutput::handleSmfNoteOff(uint8_t zeroBasedChannel,
     cell->smf = 0;
     cell->wire = 0;
     owners_.prune();
+    releasePendingChannelPanics();
     return true;
 }
 
@@ -906,7 +923,7 @@ bool UsbMidiOutput::releaseAllSmfNotes() {
         cell.smf = 0;
     }
     owners_.prune();
-    return releaseAbandonedSmfChannels() && allReleased;
+    return releasePendingChannelPanics() && allReleased;
 }
 
 void UsbMidiOutput::abandonAllSmfNotes() {
@@ -914,7 +931,7 @@ void UsbMidiOutput::abandonAllSmfNotes() {
         if (cell.smf == 0) continue;
 
         if (cell.wire <= cell.smf) {
-            abandonedSmfChannels_ |=
+            pendingChannelPanics_ |=
                 static_cast<uint16_t>(1u << cell.channel);
         }
         cell.wire = cell.wire > cell.smf
@@ -925,14 +942,14 @@ void UsbMidiOutput::abandonAllSmfNotes() {
     owners_.prune();
 }
 
-bool UsbMidiOutput::releaseAbandonedSmfChannels() {
-    if (abandonedSmfChannels_ == 0) return true;
+bool UsbMidiOutput::releasePendingChannelPanics() {
+    if (pendingChannelPanics_ == 0) return true;
     if (!mounted_) return false;
 
     bool allReleased = true;
     for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
         const uint16_t mask = static_cast<uint16_t>(1u << channel);
-        if ((abandonedSmfChannels_ & mask) == 0) continue;
+        if ((pendingChannelPanics_ & mask) == 0) continue;
 
         if (owners_.channelHasWireOwner(static_cast<uint8_t>(channel))) {
             allReleased = false;
@@ -945,7 +962,7 @@ bool UsbMidiOutput::releaseAbandonedSmfChannels() {
             continue;
         }
         transport_.flush();
-        abandonedSmfChannels_ &= static_cast<uint16_t>(~mask);
+        pendingChannelPanics_ &= static_cast<uint16_t>(~mask);
     }
     return allReleased;
 }
@@ -969,6 +986,7 @@ void UsbMidiOutput::clearActiveState() {
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     if (!begun_) return;
     pollConnection();
+    releasePendingChannelPanics();
 
     if (event.type == MusicalEventType::AllNotesOff) {
         releaseTargetAllNotes(event.source, event.target);
@@ -978,6 +996,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     if (event.target != MusicalEventTarget::Drums &&
         isSynthPerformanceSource(event.source)) {
         if (!retryGeneratedPendingReleases(event.target)) return;
+        releasePendingChannelPanics();
         switch (event.type) {
             case MusicalEventType::NoteOn:
                 ensurePerformanceReceiverMode(
@@ -990,6 +1009,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::AllNotesOff:
                 break;
         }
+        releasePendingChannelPanics();
         return;
     }
 
@@ -1000,6 +1020,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             ? releasePercussiveLane(*lane)
             : releaseActiveNote(*lane);
         if (!released) return;
+        releasePendingChannelPanics();
     }
 
     if (event.target == MusicalEventTarget::Drums) {
@@ -1016,6 +1037,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::AllNotesOff:
                 break;
         }
+        releasePendingChannelPanics();
         return;
     }
 
@@ -1031,4 +1053,5 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         case MusicalEventType::AllNotesOff:
             break;
     }
+    releasePendingChannelPanics();
 }
