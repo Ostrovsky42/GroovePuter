@@ -1,0 +1,43 @@
+name: 0.9.11 Convergence C0
+
+on:
+  push:
+    branches:
+      - integration/20260910-0.9.11-convergence
+  pull_request:
+    paths:
+      - 'src/phrase/**'
+      - 'src/midi/**'
+      - 'src/ui/phrase_source_toggle.h'
+      - 'tests/test_phrase_bank_qwertyui_p1.cpp'
+      - 'tests/test_midi_panic_cc123.cpp'
+      - '.github/workflows/0_9_11_convergence_c0.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  phrase-bank-red-green:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Phrase Bank characterization
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_phrase_bank_qwertyui_p1.cpp \
+            -o /tmp/test_phrase_bank_qwertyui_p1
+      - name: Run Phrase Bank characterization
+        run: /tmp/test_phrase_bank_qwertyui_p1
+
+  midi-panic-red-green:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build focused panic recovery test
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_midi_panic_cc123.cpp \
+            src/midi/usb_midi_output.cpp \
+            -o /tmp/test_midi_panic_cc123
+      - name: Run focused panic recovery test
+        run: /tmp/test_midi_panic_cc123
