@@ -81,9 +81,29 @@ struct LengthChangeOutcome {
   uint8_t targetBars = 1;
 };
 
-// Detailed UI preflight. In particular, a safe shrink refusal is a musical
-// event, not "nothing happened": preserve WouldTruncateEvent so the surface can
-// tell the player which material blocks the requested boundary.
+inline bool shrinkWouldTruncateEvent(
+    const PhraseRuntime::RuntimeSynthEventBuffer& current,
+    uint16_t targetTicks) {
+  if (targetTicks >= current.lengthTicks) return false;
+  const uint32_t targetEndSubtick =
+      static_cast<uint32_t>(targetTicks) * PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < current.count; ++i) {
+    const auto& event = current.events[i];
+    if (event.startTick >= targetTicks) return true;
+    const uint32_t eventEndSubtick =
+        static_cast<uint32_t>(event.startTick) *
+            PhraseRuntime::kSubticksPerTick +
+        static_cast<uint32_t>(event.durationSubticks);
+    if (eventEndSubtick > targetEndSubtick) return true;
+  }
+  return false;
+}
+
+// Detailed UI preflight. RuntimePhraseEdit intentionally exposes only the
+// mutation-level Rejected result. The surface still needs to distinguish the
+// musically meaningful safe-shrink refusal from a stale/invalid commit, so we
+// classify whether existing notes cross the requested boundary before calling
+// the owner command. No live buffer is modified during this classification.
 template <typename SetLengthFn>
 inline LengthChangeOutcome applyLengthChangeDetailed(
     const PhraseRuntime::RuntimeSynthEventBuffer& current,
@@ -91,6 +111,10 @@ inline LengthChangeOutcome applyLengthChangeDetailed(
     SetLengthFn&& setLength) {
   LengthChangeOutcome outcome{};
   outcome.targetBars = lengthBars(current.lengthTicks);
+  if (!RuntimePhraseEdit::validate(current)) {
+    outcome.result = LengthChangeResult::InvalidLength;
+    return outcome;
+  }
   if (direction != -1 && direction != 1) {
     outcome.result = LengthChangeResult::InvalidDirection;
     return outcome;
@@ -107,23 +131,9 @@ inline LengthChangeOutcome applyLengthChangeDetailed(
     outcome.result = LengthChangeResult::Unchanged;
     return outcome;
   }
-
-  if (targetTicks < current.lengthTicks) {
-    auto candidate = current;
-    const auto preflight =
-        RuntimePhraseEdit::setLengthBars(candidate, outcome.targetBars);
-    if (preflight == RuntimePhraseEdit::LengthEditResult::WouldTruncateEvent) {
-      outcome.result = LengthChangeResult::WouldTruncateEvent;
-      return outcome;
-    }
-    if (preflight == RuntimePhraseEdit::LengthEditResult::InvalidLength) {
-      outcome.result = LengthChangeResult::InvalidLength;
-      return outcome;
-    }
-    if (preflight != RuntimePhraseEdit::LengthEditResult::Changed) {
-      outcome.result = LengthChangeResult::Unchanged;
-      return outcome;
-    }
+  if (shrinkWouldTruncateEvent(current, targetTicks)) {
+    outcome.result = LengthChangeResult::WouldTruncateEvent;
+    return outcome;
   }
 
   const bool committed =
