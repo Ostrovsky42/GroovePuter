@@ -8,6 +8,7 @@ on:
       - feature/20260909-02-0.9.11-g4-i4-dub-techno-structural-ownership
       - feature/20260909-03-0.9.11-g4-i5-house-structural-ownership
       - research/20260909-02-0.9.11-g4-i6-global-ownership-census
+      - feature/20260910-01-0.9.11-g4-c1-dnb-structural-bass-contract
     paths:
       - 'src/generation/composition/generation_profile.cpp'
       - 'src/generation/composition/rhythm_selection.cpp'
@@ -25,6 +26,7 @@ on:
       - 'tests/run_gf2_g4_i5_tests.sh'
       - 'tests/test_gf2_g4_i6_ownership_census.cpp'
       - 'tests/test_gf2_g4_i6_methodology_controls.cpp'
+      - 'tests/test_gf2_g4_c1_dnb_contract_promotion.py'
       - 'tests/run_gf2_g4_i6_tests.sh'
       - 'tools/gf2/finalize_gf2_g4_i6_census.py'
       - 'tests/test_gf2_i2a_feel_magnitude.cpp'
