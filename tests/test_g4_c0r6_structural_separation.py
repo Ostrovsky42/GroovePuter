@@ -194,8 +194,10 @@ class StructuralSeparationTest(unittest.TestCase):
         self.assertEqual(summary.selection_drift_identities, 1)
         self.assertEqual(summary.structural_collision_groups, 1)
         self.assertEqual(summary.identities_in_structural_collision, 2)
-        self.assertEqual(summary.topology_collision_groups, 1)
-        self.assertEqual(summary.identities_in_topology_collision, 2)
+        # Same-selection duplicates are already structural collisions. They must
+        # not be double-counted as cross-selection topology convergence.
+        self.assertEqual(summary.topology_collision_groups, 0)
+        self.assertEqual(summary.identities_in_topology_collision, 0)
 
 
 if __name__ == "__main__":
