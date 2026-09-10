@@ -1,19 +1,23 @@
-name: 0.9.11 A2 Material Resolution RED
+name: 0.9.11 A2 Material Resolution
 
 on:
   push:
     branches:
       - feature/20260909-0.9.11-a2-canonical-promotion
     paths:
+      - "src/state/material_resolution.h"
+      - "src/state/material_slot*.h"
+      - "src/state/melody_*.h"
       - "tests/test_0_9_11_a2_material_resolution*.cpp"
-      - ".github/workflows/0_9_11_a2_material_resolution_red.yml"
+      - "tests/test_melody_promotion.cpp"
+      - ".github/workflows/0_9_11_a2_material_resolution.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  prove-resolution-red:
+  focused-resolution:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,32 +32,24 @@ jobs:
           echo "HEAD=$actual"
           test "$actual" = "$GITHUB_SHA"
 
-      - name: Characterize legacy non-resident collapse
+      - name: Build focused A2 resolution contracts
         run: |
           mkdir -p build/host-tests
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_0_9_11_a2_material_resolution_legacy.cpp \
             -o build/host-tests/test_0_9_11_a2_material_resolution_legacy
-          build/host-tests/test_0_9_11_a2_material_resolution_legacy
-
-      - name: Require missing explicit resolver RED
-        shell: bash
-        run: |
-          set +e
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_0_9_11_a2_material_resolution.cpp \
-            -o build/host-tests/test_0_9_11_a2_material_resolution \
-            > /tmp/a2-resolution-red.log 2>&1
-          status=$?
-          set -e
-          cat /tmp/a2-resolution-red.log
-          if [ "$status" -eq 0 ]; then
-            echo "Expected A2 resolution RED, but the contract test compiled"
-            exit 1
-          fi
-          grep -Eq "material_resolution.h|MaterialResolution|resolveMaterial" \
-            /tmp/a2-resolution-red.log
-          echo "A2 resolution RED confirmed: explicit control-side resolver is absent"
+            -o build/host-tests/test_0_9_11_a2_material_resolution
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_melody_promotion.cpp \
+            -o build/host-tests/test_melody_promotion
+
+      - name: Run focused A2 resolution contracts
+        run: |
+          build/host-tests/test_0_9_11_a2_material_resolution_legacy
+          build/host-tests/test_0_9_11_a2_material_resolution
+          build/host-tests/test_melody_promotion
 
       - name: Diff hygiene
         run: git diff --check
