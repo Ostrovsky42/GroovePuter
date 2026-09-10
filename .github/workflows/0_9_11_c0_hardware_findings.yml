@@ -1,0 +1,31 @@
+name: 0.9.11 C0 Hardware Findings
+
+on:
+  push:
+    branches:
+      - fix/20260910-0.9.11-c0-hardware-findings
+
+permissions:
+  contents: read
+
+env:
+  REPAIR_HEAD: ${{ github.sha }}
+
+jobs:
+  focused-hardware-findings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REPAIR_HEAD }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${REPAIR_HEAD}"
+      - name: Compile and run H1/H2 characterization
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_c0_hardware_findings.cpp \
+            src/phrase/runtime_synth_events.cpp \
+            -o /tmp/test_c0_hardware_findings
+          /tmp/test_c0_hardware_findings
