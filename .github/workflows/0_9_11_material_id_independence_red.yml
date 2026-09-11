@@ -1,0 +1,67 @@
+name: 0.9.11 MaterialId Independence RED
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-material-id-independence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  W0_ROOT: d96d3f5e266d0c28ce07b358fe034de219d636ca
+  CANDIDATE_HEAD: ${{ github.sha }}
+
+jobs:
+  material-id-independence-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact checkout and W0 ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${W0_ROOT}" HEAD
+          echo "W0_ROOT=${W0_ROOT}"
+          echo "HEAD=$(git rev-parse HEAD)"
+
+      - name: Prove RED checkpoint is docs tests CI only
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${W0_ROOT}"..HEAD)"
+          printf '%s\n' "${changed}"
+          test -n "${changed}"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/)' || true)"
+          if [ -n "${bad}" ]; then
+            echo "RED checkpoint modified production/persistence files:" >&2
+            printf '%s\n' "${bad}" >&2
+            exit 2
+          fi
+
+      - name: Prove intentional address-reuse RED
+        run: |
+          set -euo pipefail
+          set +e
+          bash tests/run_0_9_11_material_id_independence_red.sh \
+            > material-id-independence-red.log 2>&1
+          status=$?
+          set -e
+          cat material-id-independence-red.log
+
+          if [ "${status}" -eq 0 ]; then
+            echo "Unexpected GREEN: independent MaterialId capability already satisfies the witness" >&2
+            exit 2
+          fi
+
+          grep -F \
+            "MATERIAL_ID_INDEPENDENCE_RED: independent MaterialId owner is missing" \
+            material-id-independence-red.log
+
+          echo "INTENTIONAL RED CONFIRMED: address reuse cannot yet distinguish M@A from N@A" >&2
+          exit 1
