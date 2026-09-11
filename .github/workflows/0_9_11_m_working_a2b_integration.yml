@@ -40,7 +40,7 @@ jobs:
           bad="$(printf '%s\n' "${changed}" | grep -Ev '^(\.github/workflows/0_9_11_m_working_a2b_integration\.yml|docs/superpowers/specs/2026-09-11-0.9.11-m-working-a2b-integration\.md|tests/run_0_9_11_m_working_a2b_integration\.sh|tests/test_0_9_11_m_working_a2b_integration\.cpp)$' || true)"
           test -z "${bad}" || { echo "Unexpected RED files:" >&2; printf '%s\n' "${bad}" >&2; exit 2; }
 
-      - name: Prove address-only integration RED
+      - name: Prove address-only integration RED witness
         shell: bash
         run: |
           set +e
@@ -49,7 +49,11 @@ jobs:
           set -e
           test "${status}" -eq 1
           grep -F 'MATERIAL_ID_INDEPENDENCE_RED:' /tmp/m-working-a2b-red.log
-          echo 'INTENTIONAL INTEGRATION RED CONFIRMED'
+          echo 'INTEGRATION RED WITNESS CONFIRMED'
+
+      - name: Keep integration RED intentionally failing
+        run: |
+          echo 'INTENTIONAL INTEGRATION RED'
           exit 1
 
   integration-green:
