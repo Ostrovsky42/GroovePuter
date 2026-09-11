@@ -5,6 +5,7 @@
 
 #include "../scenes.h"
 #include "../src/state/material_identity.h"
+#include "../src/state/melody_promotion.h"
 
 #if __has_include("../src/state/material_resolution.h")
 #include "../src/state/material_resolution.h"
@@ -15,21 +16,8 @@
 
 namespace {
 
-#if GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION
 using GroovePuterMaterial::MaterialAddress;
-using GroovePuterMaterial::MaterialId;
-using GroovePuterMaterial::MaterialReference;
-using GroovePuterMaterial::MaterialResolution;
-using GroovePuterMaterial::MaterialResolutionStatus;
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
-
-int gFailures = 0;
-
-void expect(bool condition, const char* message) {
-  if (condition) return;
-  std::fprintf(stderr, "A2_IDENTITY_BOUND_RESOLUTION_FAIL: %s\n", message);
-  ++gFailures;
-}
 
 struct FakeFs : MelodyPromotion::FileSystem {
   std::map<std::string, std::vector<uint8_t>> files;
@@ -71,11 +59,100 @@ int residentSlot(MaterialAddress address) {
   return (songPatternBank(globalSlot) * Bank<SynthPattern>::kPatterns) +
          songPatternIndexInBank(globalSlot);
 }
+
+Buffer makeCandidate(uint8_t note) {
+  Buffer melody{};
+  melody.lengthTicks = PhraseRuntime::kTicksPerBar;
+  melody.count = 1;
+  melody.events[0] = {0, 24 * 16, note, 100, 100, 0, 0, 0};
+  return melody;
+}
+
+void test_durable_slot_collision() {
+  constexpr MaterialAddress addr5{0, 5};
+  constexpr MaterialAddress addr21{0, 21};
+
+  const int slot5 = residentSlot(addr5);
+  const int slot21 = residentSlot(addr21);
+
+  // Invariant setup: both global 5 and global 21 project to resident slot 5 across different pages.
+  if (slot5 != 5 || slot21 != 5) {
+    std::fprintf(stderr, "A2_SETUP_FAIL: expected resident slot 5 for both global 5 and global 21\n");
+    return;
+  }
+  if (songPatternPage(addr5.globalSlot) != 0 || songPatternPage(addr21.globalSlot) != 1) {
+    std::fprintf(stderr, "A2_SETUP_FAIL: expected global 5 on page 0 and global 21 on page 1\n");
+    return;
+  }
+
+  // Under current production MelodyPromotion, slotPath/finalPath uses resident slot index: /melody/v%d_s%02d.gpml
+  const std::string path5 = MelodyPromotion::finalPath(kProject, addr5.voice, slot5);
+  const std::string path21 = MelodyPromotion::finalPath(kProject, addr21.voice, slot21);
+
+  // Prove that production currently collides on durable v0_s05.gpml
+  if (path5 == path21 && path5.find("v0_s05.gpml") != std::string::npos) {
+    std::fprintf(
+        stderr,
+        "A2_DURABLE_COLLISION_RED: global 5 (page 0) and global 21 (page 1) both map to resident slot 5 and collide on durable path '%s'\n",
+        path5.c_str());
+  }
+
+  // Prove actual data loss: promoting global 21 on page 1 overwrites global 5 on page 0
+  FakeFs fs;
+  Scene scenePage0{};
+  Scene scenePage1{};
+  const Buffer melody5 = makeCandidate(60);
+  const Buffer melody21 = makeCandidate(72);
+
+  const auto err5 = MelodyPromotion::promoteResident(
+      fs, kProject, scenePage0, addr5.voice, slot5, melody5);
+  if (err5 != MelodyPromotion::Error::None) {
+    std::fprintf(stderr, "A2_SETUP_FAIL: promote global 5 failed\n");
+    return;
+  }
+
+  const auto err21 = MelodyPromotion::promoteResident(
+      fs, kProject, scenePage1, addr21.voice, slot21, melody21);
+  if (err21 != MelodyPromotion::Error::None) {
+    std::fprintf(stderr, "A2_SETUP_FAIL: promote global 21 failed\n");
+    return;
+  }
+
+  Buffer loaded5{};
+  if (!MelodyPromotion::loadResident(
+          fs, kProject, addr5.voice, slot5, loaded5)) {
+    std::fprintf(stderr, "A2_SETUP_FAIL: loadResident global 5 failed\n");
+    return;
+  }
+
+  if (loaded5.events[0].note == 72) {
+    std::fprintf(
+        stderr,
+        "A2_DURABLE_COLLISION_RED: promoting global 21 overwrote global 5 payload (note 60 was replaced by note 72 in '%s')\n",
+        path5.c_str());
+  }
+}
+
+#if GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION
+using GroovePuterMaterial::MaterialId;
+using GroovePuterMaterial::MaterialReference;
+using GroovePuterMaterial::MaterialResolution;
+using GroovePuterMaterial::MaterialResolutionStatus;
+
+int gFailures = 0;
+
+void expect(bool condition, const char* message) {
+  if (condition) return;
+  std::fprintf(stderr, "A2_IDENTITY_BOUND_RESOLUTION_FAIL: %s\n", message);
+  ++gFailures;
+}
 #endif
 
 }  // namespace
 
 int main() {
+  test_durable_slot_collision();
+
 #if !GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION
   std::fprintf(
       stderr,

@@ -50,8 +50,12 @@ jobs:
           fi
 
           grep -F \
+            "A2_DURABLE_COLLISION_RED: global 5 (page 0) and global 21 (page 1) both map to resident slot 5 and collide on durable path" \
+            a2-identity-bound-resolution-red.log
+
+          grep -F \
             "A2_IDENTITY_BOUND_RESOLUTION_RED: MaterialReference-bound resolver is missing; address-only resolution cannot distinguish stale M@A from current N@A" \
             a2-identity-bound-resolution-red.log
 
-          echo "INTENTIONAL RED CONFIRMED: canonical resolution is not yet bound to MaterialReference identity"
+          echo "INTENTIONAL RED CONFIRMED: resident/durable collision and missing MaterialReference resolver proven"
           exit 1
