@@ -29,42 +29,36 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install host dependencies
-        run: |
-          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
-
-      - name: Prove production still equals CC1A start
+      - name: Audit production scope
         run: |
           set -euo pipefail
           BASE=8331735080f25acbc809ef97b9881fd9e17c86a2
           git fetch --no-tags --depth=1 origin "$BASE"
           changed="$(git diff --name-only "$BASE" "$GITHUB_SHA" -- src/)"
-          if test -n "$changed"; then
-            echo "G4_CC1A_P1_FAIL production_changed_before_red"
-            printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -vFx 'src/generation/composition/generation_profile.cpp' || true)"
+          if test -n "$unexpected"; then
+            echo "G4_CC1A_P1_FAIL unexpected_production_diff"
+            printf '%s\n' "$unexpected"
             exit 1
           fi
-          echo "G4_CC1A_P1_PASS production_unchanged_before_red"
+          echo "G4_CC1A_P1_PRODUCTION_SCOPE ${changed:-NONE}"
 
-      - name: Run G4-CC1A-P1 RED
+      - name: Run G4-CC1A-P1 contract gate
         run: |
           bash tests/run_gf2_g4_cc1a_p1_tests.sh
 
-      - name: Print RED evidence
+      - name: Print checkpoint evidence
         if: always()
         run: |
           if test -f build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt; then
             cat build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
           fi
 
-      - name: Upload RED evidence
+      - name: Upload checkpoint evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-cc1a-p1-acid-articulation-red
+          name: g4-cc1a-p1-acid-articulation
           path: |
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-census.tsv
