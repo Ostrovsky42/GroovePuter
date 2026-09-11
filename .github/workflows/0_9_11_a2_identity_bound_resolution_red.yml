@@ -1,4 +1,4 @@
-name: 0.9.11 A2 Identity-Bound Resolution RED
+name: 0.9.11 A2 Identity-Bound Resolution GREEN
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  G2_ROOT: da9b2749a2ad5d4b3ed9ceade169800de9613e6f
+  RED_ROOT: 2994468a945bd728ae1ca6cfb1b03fb882b73c7c
   CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
-  identity-bound-resolution-red:
+  identity-bound-resolution-green:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,42 +20,43 @@ jobs:
           ref: ${{ env.CANDIDATE_HEAD }}
           fetch-depth: 0
 
-      - name: Prove exact checkout and G2 ancestry
+      - name: Prove exact checkout and RED ancestry
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
-          git merge-base --is-ancestor "${G2_ROOT}" HEAD
+          git merge-base --is-ancestor "${RED_ROOT}" HEAD
 
-      - name: Prove RED checkpoint is docs tests CI only
+      - name: Prove bounded GREEN scope
         run: |
           set -euo pipefail
-          unexpected="$(git diff --name-only "${G2_ROOT}"..HEAD | grep -Ev '^(\.github/workflows/|docs/|tests/)' || true)"
+          unexpected="$(git diff --name-only "${RED_ROOT}"..HEAD | grep -Ev '^(.github/workflows/0_9_11_a2_identity_bound_resolution_red.yml|tests/test_0_9_11_a2_identity_bound_resolution.cpp|src/state/material_slot_access.h|src/state/material_version.h|src/state/material_resolution.h|src/state/melody_promotion.h)$' || true)"
           if [[ -n "${unexpected}" ]]; then
-            echo "Unexpected production files in RED checkpoint:" >&2
+            echo "Unexpected files in bounded A2 identity/global-storage GREEN:" >&2
             echo "${unexpected}" >&2
             exit 2
           fi
 
-      - name: Prove intentional identity-bound resolution RED
+      - name: Prove identity-bound resolution and global durable addressing GREEN
         run: |
-          set -uo pipefail
-          set +e
-          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh 2>&1 | tee a2-identity-bound-resolution-red.log
-          status=${PIPESTATUS[0]}
-          set -e
+          set -euo pipefail
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh 2>&1 | tee a2-identity-bound-resolution-green.log
 
-          if [[ ${status} -eq 0 ]]; then
-            echo "A2 identity-bound resolution unexpectedly passed before GREEN production" >&2
+          grep -F \
+            "A2_DURABLE_GLOBAL_ADDRESS_GREEN:" \
+            a2-identity-bound-resolution-green.log
+          grep -F \
+            "A2_IDENTITY_BOUND_RESOLUTION_GREEN:" \
+            a2-identity-bound-resolution-green.log
+          grep -F \
+            "0.9.11 A2 identity-bound material resolution: PASS" \
+            a2-identity-bound-resolution-green.log
+
+          if grep -F "_RED:" a2-identity-bound-resolution-green.log; then
+            echo "A2 GREEN run still emitted a RED witness" >&2
             exit 3
           fi
 
-          grep -F \
-            "A2_DURABLE_COLLISION_RED: global 5 (page 0) and global 21 (page 1) both map to resident slot 5 and collide on durable path" \
-            a2-identity-bound-resolution-red.log
-
-          grep -F \
-            "A2_IDENTITY_BOUND_RESOLUTION_RED: MaterialReference-bound resolver is missing; address-only resolution cannot distinguish stale M@A from current N@A" \
-            a2-identity-bound-resolution-red.log
-
-          echo "INTENTIONAL RED CONFIRMED: resident/durable collision and missing MaterialReference resolver proven"
-          exit 1
+      - name: Preserve M2b melody promotion transaction regressions
+        run: |
+          set -euo pipefail
+          bash tests/run_melody_promotion_tests.sh

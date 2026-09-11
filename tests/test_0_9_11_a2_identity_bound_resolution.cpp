@@ -5,19 +5,25 @@
 
 #include "../scenes.h"
 #include "../src/state/material_identity.h"
-#include "../src/state/melody_promotion.h"
-
-#if __has_include("../src/state/material_resolution.h")
 #include "../src/state/material_resolution.h"
-#define GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION 1
-#else
-#define GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION 0
-#endif
+#include "../src/state/melody_promotion.h"
 
 namespace {
 
 using GroovePuterMaterial::MaterialAddress;
+using GroovePuterMaterial::MaterialId;
+using GroovePuterMaterial::MaterialReference;
+using GroovePuterMaterial::MaterialResolution;
+using GroovePuterMaterial::MaterialResolutionStatus;
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
+
+int gFailures = 0;
+
+void expect(bool condition, const char* message) {
+  if (condition) return;
+  std::fprintf(stderr, "A2_IDENTITY_BOUND_RESOLUTION_FAIL: %s\n", message);
+  ++gFailures;
+}
 
 struct FakeFs : MelodyPromotion::FileSystem {
   std::map<std::string, std::vector<uint8_t>> files;
@@ -55,9 +61,7 @@ constexpr int kPage = 0;
 const std::string kProject = "a2-identity-bound-resolution";
 
 int residentSlot(MaterialAddress address) {
-  const int globalSlot = static_cast<int>(address.globalSlot);
-  return (songPatternBank(globalSlot) * Bank<SynthPattern>::kPatterns) +
-         songPatternIndexInBank(globalSlot);
+  return GroovePuterMaterial::residentSlotFor(address);
 }
 
 Buffer makeCandidate(uint8_t note) {
@@ -68,36 +72,29 @@ Buffer makeCandidate(uint8_t note) {
   return melody;
 }
 
-void test_durable_slot_collision() {
+void test_durable_global_address_isolation() {
+  const int failuresBefore = gFailures;
   constexpr MaterialAddress addr5{0, 5};
   constexpr MaterialAddress addr21{0, 21};
 
   const int slot5 = residentSlot(addr5);
   const int slot21 = residentSlot(addr21);
 
-  // Invariant setup: both global 5 and global 21 project to resident slot 5 across different pages.
-  if (slot5 != 5 || slot21 != 5) {
-    std::fprintf(stderr, "A2_SETUP_FAIL: expected resident slot 5 for both global 5 and global 21\n");
-    return;
-  }
-  if (songPatternPage(addr5.globalSlot) != 0 || songPatternPage(addr21.globalSlot) != 1) {
-    std::fprintf(stderr, "A2_SETUP_FAIL: expected global 5 on page 0 and global 21 on page 1\n");
-    return;
-  }
+  expect(slot5 == 5 && slot21 == 5,
+         "global 5 and global 21 did not project to the same resident slot 5 witness");
+  expect(songPatternPage(addr5.globalSlot) == 0 &&
+             songPatternPage(addr21.globalSlot) == 1,
+         "global 5/page 0 and global 21/page 1 witness changed");
 
-  // Under current production MelodyPromotion, slotPath/finalPath uses resident slot index: /melody/v%d_s%02d.gpml
-  const std::string path5 = MelodyPromotion::finalPath(kProject, addr5.voice, slot5);
-  const std::string path21 = MelodyPromotion::finalPath(kProject, addr21.voice, slot21);
+  const std::string path5 = MelodyPromotion::finalPath(kProject, addr5);
+  const std::string path21 = MelodyPromotion::finalPath(kProject, addr21);
+  expect(path5 != path21,
+         "global 5 and global 21 still collide on one durable path");
+  expect(path5.find("v0_g005.gpml") != std::string::npos,
+         "global 5 durable path is not keyed by global slot 5");
+  expect(path21.find("v0_g021.gpml") != std::string::npos,
+         "global 21 durable path is not keyed by global slot 21");
 
-  // Prove that production currently collides on durable v0_s05.gpml
-  if (path5 == path21 && path5.find("v0_s05.gpml") != std::string::npos) {
-    std::fprintf(
-        stderr,
-        "A2_DURABLE_COLLISION_RED: global 5 (page 0) and global 21 (page 1) both map to resident slot 5 and collide on durable path '%s'\n",
-        path5.c_str());
-  }
-
-  // Prove actual data loss: promoting global 21 on page 1 overwrites global 5 on page 0
   FakeFs fs;
   Scene scenePage0{};
   Scene scenePage1{};
@@ -105,60 +102,40 @@ void test_durable_slot_collision() {
   const Buffer melody21 = makeCandidate(72);
 
   const auto err5 = MelodyPromotion::promoteResident(
-      fs, kProject, scenePage0, addr5.voice, slot5, melody5);
-  if (err5 != MelodyPromotion::Error::None) {
-    std::fprintf(stderr, "A2_SETUP_FAIL: promote global 5 failed\n");
-    return;
-  }
-
+      fs, kProject, scenePage0, addr5, slot5, melody5);
   const auto err21 = MelodyPromotion::promoteResident(
-      fs, kProject, scenePage1, addr21.voice, slot21, melody21);
-  if (err21 != MelodyPromotion::Error::None) {
-    std::fprintf(stderr, "A2_SETUP_FAIL: promote global 21 failed\n");
-    return;
-  }
+      fs, kProject, scenePage1, addr21, slot21, melody21);
+  expect(err5 == MelodyPromotion::Error::None,
+         "promotion of global 5 failed");
+  expect(err21 == MelodyPromotion::Error::None,
+         "promotion of global 21 through resident slot 5 failed");
 
   Buffer loaded5{};
-  if (!MelodyPromotion::loadResident(
-          fs, kProject, addr5.voice, slot5, loaded5)) {
-    std::fprintf(stderr, "A2_SETUP_FAIL: loadResident global 5 failed\n");
-    return;
+  Buffer loaded21{};
+  const bool loaded5Ok = MelodyPromotion::loadMaterial(
+      fs, kProject, addr5, loaded5);
+  const bool loaded21Ok = MelodyPromotion::loadMaterial(
+      fs, kProject, addr21, loaded21);
+  expect(loaded5Ok, "global 5 durable material could not be loaded");
+  expect(loaded21Ok, "global 21 durable material could not be loaded");
+  if (loaded5Ok) {
+    expect(loaded5.count == 1 && loaded5.events[0].note == 60,
+           "global 21 overwrote global 5 payload");
+  }
+  if (loaded21Ok) {
+    expect(loaded21.count == 1 && loaded21.events[0].note == 72,
+           "global 21 payload was not stored independently");
   }
 
-  if (loaded5.events[0].note == 72) {
-    std::fprintf(
-        stderr,
-        "A2_DURABLE_COLLISION_RED: promoting global 21 overwrote global 5 payload (note 60 was replaced by note 72 in '%s')\n",
-        path5.c_str());
+  if (gFailures == failuresBefore) {
+    std::printf(
+        "A2_DURABLE_GLOBAL_ADDRESS_GREEN: global 5 -> %s; global 21 -> %s; resident slot 5 reused without durable collision\n",
+        path5.c_str(), path21.c_str());
   }
 }
 
-#if GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION
-using GroovePuterMaterial::MaterialId;
-using GroovePuterMaterial::MaterialReference;
-using GroovePuterMaterial::MaterialResolution;
-using GroovePuterMaterial::MaterialResolutionStatus;
-
-int gFailures = 0;
-
-void expect(bool condition, const char* message) {
-  if (condition) return;
-  std::fprintf(stderr, "A2_IDENTITY_BOUND_RESOLUTION_FAIL: %s\n", message);
-  ++gFailures;
-}
-#endif
-
-}  // namespace
-
-int main() {
-  test_durable_slot_collision();
-
-#if !GROOVEPUTER_HAS_IDENTITY_BOUND_RESOLUTION
-  std::fprintf(
-      stderr,
-      "A2_IDENTITY_BOUND_RESOLUTION_RED: MaterialReference-bound resolver is missing; address-only resolution cannot distinguish stale M@A from current N@A\n");
-  return 1;
-#else
+void test_identity_bound_resolution() {
+  const int failuresBefore = gFailures;
   FakeFs fs;
   Scene scene{};
   Buffer out{};
@@ -179,7 +156,7 @@ int main() {
   expect(liveM.hasVersion(), "live M@A exposed no exact version");
 
   // Replace only identity. Pattern bytes are deliberately unchanged, so M and
-  // N have the same content/version. Version equality must not rescue refM.
+  // N have the same exact-state token. Version equality must not rescue refM.
   scene.materialSlots[kAddress.voice][slot].id = idN;
   const MaterialResolution stale = GroovePuterMaterial::resolveMaterial(
       fs, kProject, scene, kPage, refM, out);
@@ -195,7 +172,7 @@ int main() {
   expect(liveN.isResolved(), "live N@A reported unresolved");
   expect(liveN.hasVersion(), "live N@A exposed no exact version");
   expect(liveM.version == liveN.version,
-         "test witness accidentally changed content/version while replacing identity");
+         "identity replacement accidentally changed exact-state token");
 
   const MaterialReference invalid{kAddress, MaterialId{}};
   const MaterialResolution invalidResult = GroovePuterMaterial::resolveMaterial(
@@ -204,6 +181,18 @@ int main() {
          "id=0 reference did not fail closed as InvalidReference");
   expect(!invalidResult.isResolved(), "id=0 reference reported resolved");
   expect(!invalidResult.hasVersion(), "id=0 reference exposed a version token");
+
+  if (gFailures == failuresBefore) {
+    std::puts(
+        "A2_IDENTITY_BOUND_RESOLUTION_GREEN: stale MaterialReference rejected before version; equal exact-state token does not substitute for identity");
+  }
+}
+
+}  // namespace
+
+int main() {
+  test_durable_global_address_isolation();
+  test_identity_bound_resolution();
 
   if (gFailures == 0) {
     std::puts("0.9.11 A2 identity-bound material resolution: PASS");
@@ -214,5 +203,4 @@ int main() {
                "0.9.11 A2 identity-bound material resolution: %d failure(s)\n",
                gFailures);
   return 1;
-#endif
 }
