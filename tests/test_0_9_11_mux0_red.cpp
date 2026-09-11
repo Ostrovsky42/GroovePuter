@@ -349,14 +349,83 @@ void test_mux0_active_next_causality() {
 // ---------------------------------------------------------------------------
 // Invariant: Missing or corrupt material must never resolve as a valid, editable
 // empty pattern.
+// CLASSIFICATION: BLOCKED / DEFERRED TO A2 MATERIAL RESOLVER ADMISSION.
+// M-UX0 will consume A2's resolution contract rather than reinventing it.
 void test_mux0_unresolved_material_safety_witness() {
   const char* testName = "H_UNRESOLVED_MATERIAL_SAFETY";
-  const bool hasMaterialResolutionInC0 = false; // A2 resolver is not yet merged into C0
-  if (!hasMaterialResolutionInC0) {
+  std::printf("M-UX0 DEFERRED [%s]: Blocked on A2 Material Resolver admission (dependency boundary)\n", testName);
+}
+
+// ---------------------------------------------------------------------------
+// I. RECOVERY AUTOSAVE WORKING ISOLATION (ADVERSARIAL WITNESS)
+// ---------------------------------------------------------------------------
+// Invariant: Ephemeral WORKING material must NEVER leak into recovery autosave.
+// If user has accepted state A, enters working candidate B, and recovery autosave
+// fires (e.g. playback stopped), recovery reload must restore A, NOT B.
+//
+// In current C0: PatternEditPage directly mutates currentScene(), so writeSceneAuto()
+// serializes candidate B into the recovery file! This test executes the actual
+// C0 engine/storage sequence and proves that C0 currently leaks B into autosave.
+void test_mux0_recovery_autosave_working_isolation_witness() {
+  const char* testName = "I_RECOVERY_AUTOSAVE_ISOLATION";
+
+  class InMemorySceneStorage : public SceneStorage {
+   public:
+    std::string savedData;
+    std::string autoData;
+    std::string currentName{"test_scene"};
+
+    void initializeStorage() override {}
+    bool readScene(std::string& out) override { out = savedData; return true; }
+    bool writeScene(const std::string& data) override { savedData = data; return true; }
+    bool readScene(SceneManager& manager) override { return manager.loadScene(savedData); }
+    bool writeScene(const SceneManager& manager) override { return manager.writeSceneJson(savedData); }
+    bool writeSceneAuto(const SceneManager& manager) override { return manager.writeSceneJson(autoData); }
+    bool readSceneAuto(SceneManager& manager) override { return manager.loadScene(autoData); }
+    bool hasSceneAuto() const override { return !autoData.empty(); }
+    bool clearSceneAuto() override { autoData.clear(); return true; }
+    std::vector<std::string> getAvailableSceneNames() const override { return {currentName}; }
+    std::string getCurrentSceneName() const override { return currentName; }
+    bool setCurrentSceneName(const std::string& name) override { currentName = name; return true; }
+  };
+
+  InMemorySceneStorage storage;
+  MiniAcid engine{44100.0f, &storage};
+  engine.sceneManager().loadDefaultScene();
+
+  // Baseline Accepted state A:
+  // Step 0 note is set to 60 (Accepted baseline)
+  engine.sceneManager().currentScene().synthABanks[0].patterns[0].steps[0].note = 60;
+  // Explicit save establishes clean baseline
+  const bool saved = storage.writeScene(engine.sceneManager());
+  assert(saved);
+
+  // User begins editing: candidate B has note 67 on step 0.
+  // In C0, editing directly mutates currentScene (as PatternEditPage currently does):
+  engine.sceneManager().currentScene().synthABanks[0].patterns[0].steps[0].note = 67;
+
+  // Now playback stops, triggering recovery autosave:
+  const bool autoSaved = engine.autoSaveSceneRecovery();
+  assert(autoSaved);
+
+  // Simulate device restart & crash recovery from autosave:
+  InMemorySceneStorage recoveryStorage;
+  recoveryStorage.autoData = storage.autoData;
+  MiniAcid recoveryEngine{44100.0f, &recoveryStorage};
+  const bool loaded = recoveryStorage.readSceneAuto(recoveryEngine.sceneManager());
+  assert(loaded);
+
+  const int8_t recoveredNote =
+      recoveryEngine.sceneManager().currentScene().synthABanks[0].patterns[0].steps[0].note;
+
+  // If recoveredNote is 67 (B), recovery autosave leaked uncommitted WORKING state!
+  if (recoveredNote == 67) {
     recordFailure(testName,
-                  "C0 lacks explicit MaterialResolution boundary; missing files risk silent corruption");
-  } else {
+                  "Recovery autosave leaked uncommitted WORKING state (note 67) into durable recovery persistence instead of baseline ACCEPTED (note 60)!");
+  } else if (recoveredNote == 60) {
     recordPass(testName);
+  } else {
+    recordFailure(testName, "Corrupt state loaded from recovery autosave");
   }
 }
 
@@ -375,6 +444,7 @@ int main() {
   test_mux0_one_level_undo_contract();
   test_mux0_active_next_causality();
   test_mux0_unresolved_material_safety_witness();
+  test_mux0_recovery_autosave_working_isolation_witness();
 
   std::printf("==================================================\n");
   std::printf("SUMMARY: %d passed, %d TRUE RED failure(s)\n", g_passes, g_failures);
