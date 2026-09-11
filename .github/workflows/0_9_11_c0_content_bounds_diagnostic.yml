@@ -1,0 +1,70 @@
+name: 0.9.11 C0 Content Bounds Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-c0-ui-input-ownership
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASELINE_SHA: 74572eb2c42c490313202f4366950c2c9b6f75ad
+
+jobs:
+  content-bounds-causal-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove exact current checkout
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+      - name: Install SDL host dependencies
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Run current and pre-repair content bounds gates
+        id: bounds
+        run: |
+          set -u
+          set +e
+          bash tests/run_ui_content_bounds_tests.sh > content-bounds-current.log 2>&1
+          current_status=$?
+          set -e
+
+          git worktree add --detach /tmp/content-bounds-baseline "${BASELINE_SHA}"
+          set +e
+          (cd /tmp/content-bounds-baseline && bash tests/run_ui_content_bounds_tests.sh) > content-bounds-74572.log 2>&1
+          baseline_status=$?
+          set -e
+
+          printf 'current_status=%s\nbaseline_status=%s\n' "$current_status" "$baseline_status" | tee content-bounds-status.txt
+          echo "current_status=${current_status}" >> "$GITHUB_OUTPUT"
+          echo "baseline_status=${baseline_status}" >> "$GITHUB_OUTPUT"
+
+          echo '--- current ---'
+          cat content-bounds-current.log
+          echo '--- baseline 74572 ---'
+          cat content-bounds-74572.log
+      - name: Upload causal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c0-content-bounds-causal-${{ github.sha }}
+          path: |
+            content-bounds-current.log
+            content-bounds-74572.log
+            content-bounds-status.txt
+          if-no-files-found: error
+      - name: Record diagnostic verdict
+        run: |
+          echo "current=${{ steps.bounds.outputs.current_status }} baseline=${{ steps.bounds.outputs.baseline_status }}"
+          test -n "${{ steps.bounds.outputs.current_status }}"
+          test -n "${{ steps.bounds.outputs.baseline_status }}"
