@@ -19,44 +19,44 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 
 ## Top five candidates
 
-### 1. Broken / Classic 2-Step (mode=7, recipe=8)
-
-- Tier: `B_SINGLE_FAMILY_PLURAL`
-- Candidate predicate: all effective admitted candidates are RhythmFamily=UkTwoStep; admitted space remains plural (2 candidates)
-- Evidence: observed all 2/2 admitted archetypes; one RhythmFamily across 384 materialized rows
-- Observed bass IDs: 3,4,5,9
-- Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
-
-### 2. Rave / Psytrance (mode=4, recipe=4)
-
-- Tier: `B_SINGLE_FAMILY_PLURAL`
-- Candidate predicate: all effective admitted candidates are RhythmFamily=FourFloor; admitted space remains plural (3 candidates)
-- Evidence: observed all 3/3 admitted archetypes; one RhythmFamily across 384 materialized rows
-- Observed bass IDs: 2,5,7,9
-- Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
-
-### 3. Reggae / Minimal Space (mode=5, recipe=11)
-
-- Tier: `B_SINGLE_FAMILY_PLURAL`
-- Candidate predicate: all effective admitted candidates are RhythmFamily=DubPulse; admitted space remains plural (3 candidates)
-- Evidence: observed all 3/3 admitted archetypes; one RhythmFamily across 384 materialized rows
-- Observed bass IDs: 3,4,6,10
-- Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
-
-### 4. Reggae / BASE (mode=5, recipe=0)
-
-- Tier: `B_SINGLE_FAMILY_PLURAL`
-- Candidate predicate: all effective admitted candidates are RhythmFamily=DubPulse; admitted space remains plural (4 candidates)
-- Evidence: observed all 4/4 admitted archetypes; one RhythmFamily across 384 materialized rows
-- Observed bass IDs: 3,4,6,10
-- Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
-
-### 5. Acid / Chicago Jack (mode=0, recipe=6)
+### 1. Acid / Chicago Jack (mode=0, recipe=6)
 
 - Tier: `C_MIXED_FAMILY_PLURAL`
 - Candidate predicate: effective admitted set spans RhythmFamily={FourFloor,SparsePulse}; a family-only predicate is insufficient
 - Evidence: observed 2/2 archetypes; family_count=2; rows=384
 - Observed bass IDs: 2,5,7,9
+- Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
+
+### 2. Acid / Rolling Acid (mode=0, recipe=7)
+
+- Tier: `C_MIXED_FAMILY_PLURAL`
+- Candidate predicate: effective admitted set spans RhythmFamily={FourFloor,MachineSyncopation}; a family-only predicate is insufficient
+- Evidence: observed 2/2 archetypes; family_count=2; rows=384
+- Observed bass IDs: 2,5,7,9
+- Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
+
+### 3. Broken / Dark Skippy (mode=7, recipe=9)
+
+- Tier: `C_MIXED_FAMILY_PLURAL`
+- Candidate predicate: effective admitted set spans RhythmFamily={MachineSyncopation,UkTwoStep}; a family-only predicate is insufficient
+- Evidence: observed 2/2 archetypes; family_count=2; rows=384
+- Observed bass IDs: 3,4,6,8,10
+- Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
+
+### 4. Hip-Hop / Dusty Jazz (mode=11, recipe=17)
+
+- Tier: `C_MIXED_FAMILY_PLURAL`
+- Candidate predicate: effective admitted set spans RhythmFamily={Breakbeat,Funk16}; a family-only predicate is insufficient
+- Evidence: observed 3/3 archetypes; family_count=2; rows=384
+- Observed bass IDs: 3,4,6,8,9
+- Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
+
+### 5. Funk/Soul / BASE (mode=12, recipe=0)
+
+- Tier: `C_MIXED_FAMILY_PLURAL`
+- Candidate predicate: effective admitted set spans RhythmFamily={Breakbeat,Funk16}; a family-only predicate is insufficient
+- Evidence: observed 3/3 archetypes; family_count=2; rows=384
+- Observed bass IDs: 3,4,6,8,9
 - Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
 
 ## Non-claims

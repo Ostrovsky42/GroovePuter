@@ -16,12 +16,12 @@ overbroad_owner=0
 structural_collision=0
 shared_admission=24
 shared_valid_under_contracts=0
-proven_contract_owners=4
+proven_contract_owners=8
 provisional_contract_owners=0
-proven_contracts=7
+proven_contracts=11
 provisional_contracts=0
-review_required=29
-unknown_evaluations=11136
+review_required=25
+unknown_evaluations=9600
 auto_observed_edges=122
 manual_reproduced_edges=0
 not_observed_edges=0
@@ -112,6 +112,9 @@ I6 does not mark whole owners PROVEN. It carries only named statements from reta
 - G4-I5: candidate quarter space may be REQUIRED or POSSIBLE_BUT_NOT_REQUIRED via preferred anchors; materialized I5 separately proves observed quarter-pulse preservation.
 - G4-C1: Drum&Bass / BASE admits only Breakbeat archetypes in a plural space; materialized bass selection stays inside KickAnswer / GapFill / HalfTimePocket / SyncopatedHook.
 - G4-C3: Broken / Drum&Bass has the same four-member Breakbeat rhythm-admission set as canonical DnB; bass semantics remain independent and are not inherited.
+- G4-C4: Broken / Classic 2-Step admits exactly ClassicTwoStep + ShuffledFourFour: two kick organizations under a shared 4/12 backbeat and shuffle-oriented timing; 418/420 stay outside the recipe.
+- G4-C5: Rave / Psytrance admits exactly 401/402/406; each preserves the quarter-kick skeleton 0/4/8/12.
+- G4-C6: Reggae / BASE owns the full current DubPulse admission set 409/410/411/412, while Minimal Space is exactly 409/411/412 and prohibits Steppers 410.
 
 ## Candidate graph
 
@@ -420,11 +423,11 @@ SHARED_VALID_UNDER_CONTRACTS=0. Absence of proof is not promoted to shared-valid
 
 ### REVIEW_REQUIRED
 
-29 shipped owners have no applicable PROVEN rhythm admission contract in I6.
+25 shipped owners have no applicable PROVEN rhythm admission contract in I6.
 
 ### UNKNOWN
 
-11136 materialized rows are observations under REVIEW_REQUIRED owners.
+9600 materialized rows are observations under REVIEW_REQUIRED owners.
 
 ## Boundary fixtures outside denominator
 
@@ -463,8 +466,12 @@ The A-G editorial filter is not scored numerically. Gate C (`effective admission
 | G4-C1-DNB-ADMISSION-BREAKBEAT | 1 | Drum&Bass / BASE (mode=14, recipe=0) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=14, recipe=0) | RhythmFamily is Breakbeat and admitted space remains plural | G4-C1 | PROVEN |
 | G4-C1-DNB-MATERIALIZED-BASS-SPACE | 1 | Drum&Bass / BASE (mode=14, recipe=0) | bass selection | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | exact owner (mode=14, recipe=0) | selected archetype is Breakbeat and bass identity is one of KickAnswer, GapFill, HalfTimePocket, SyncopatedHook | G4-C1 | PROVEN |
 | G4-C3-BROKEN-DNB-ADMISSION-BREAKBEAT-ALIAS | 1 | Broken / Drum&Bass (mode=7, recipe=2) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=7, recipe=2) | effective admitted archetype set equals {413,414,415,416}; all candidates are RhythmFamily Breakbeat | G4-C3 | PROVEN |
+| G4-C4-CLASSIC-2STEP-ADMISSION | 1 | Broken / Classic 2-Step (mode=7, recipe=8) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=7, recipe=8) | effective admitted set is {417,419}; both preserve backbeat anchors 4/12 and shuffle-oriented timing while retaining distinct broken/quarter kick forms | G4-C4 | PROVEN |
+| G4-C5-PSYTRANCE-FOURFLOOR-ADMISSION | 1 | Rave / Psytrance (mode=4, recipe=4) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=4, recipe=4) | effective admitted set is {401,402,406}; every admitted idea preserves quarter-kick anchors 0/4/8/12 | G4-C5 | PROVEN |
+| G4-C6-REGGAE-BASE-DUBPULSE-ADMISSION | 1 | Reggae / BASE (mode=5, recipe=0) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=5, recipe=0) | effective admitted set is the full current DubPulse vocabulary {409,410,411,412} | G4-C6 | PROVEN |
+| G4-C6-REGGAE-MINIMAL-SPACE-DUBPULSE-ADMISSION | 1 | Reggae / Minimal Space (mode=5, recipe=11) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=5, recipe=11) | effective admitted set is {409,411,412}; Steppers archetype 410 is prohibited relative to Reggae BASE | G4-C6 | PROVEN |
 
-House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract. DnB C1 predicates are structural: RhythmFamily and BassRhythmId only; labels and weights are not evidence. C3 aliases only the Broken / Drum&Bass rhythm-admission set; bass semantics remain independent, so no C3 bass or downstream-materialization contract exists.
+House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract. DnB C1 predicates are structural: RhythmFamily and BassRhythmId only; labels and weights are not evidence. C3 aliases only the Broken / Drum&Bass rhythm-admission set; bass semantics remain independent, so no C3 bass or downstream-materialization contract exists. C4-C6 add owner-specific admission predicates only; bass semantics remain independent, and RhythmFamily labels alone are not used as genre proofs.
 
 ## Corrected detector controls and collision scope
 
