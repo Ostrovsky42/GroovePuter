@@ -1,0 +1,26 @@
+name: 0.9.11 Audible Pattern Publication
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-audible-pattern-publication
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audible-pattern-publication-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-publication-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run audible Pattern publication regression
+        run: bash tests/run_0_9_11_audible_pattern_publication_tests.sh
