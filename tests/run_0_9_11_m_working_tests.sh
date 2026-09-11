@@ -9,6 +9,10 @@ CXX="${CXX:-g++}"
 cd "$ROOT"
 python3 tests/test_0_9_11_m_working_source_contract.py
 
+# MW-K is a real behavior gate, not a source grep: prove the derived
+# Working-vs-Accepted predicate before the broader characterization continues.
+bash tests/run_0_9_11_m_working_modified_state_tests.sh
+
 pushd platform_sdl >/dev/null
 mapfile -t SRCS < <(
   awk '/^SOURCES :=/ { c = 1; next } c && /^[^[:space:]]/ { c = 0 }
