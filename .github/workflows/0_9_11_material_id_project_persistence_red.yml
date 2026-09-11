@@ -1,4 +1,4 @@
-name: 0.9.11 MaterialId Project Persistence RED
+name: 0.9.11 MaterialId Project Persistence G2
 
 on:
   push:
@@ -14,9 +14,9 @@ env:
   CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
-  material-id-project-persistence-red:
+  material-id-project-persistence:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,37 +31,43 @@ jobs:
           echo "G1_ROOT=${G1_ROOT}"
           echo "HEAD=$(git rev-parse HEAD)"
 
-      - name: Prove G2 RED checkpoint is tests docs CI only
+      - name: Prove G2 delta stays inside material persistence owners
         run: |
           set -euo pipefail
           changed="$(git diff --name-only "${G1_ROOT}"..HEAD)"
           printf '%s\n' "${changed}"
           test -n "${changed}"
-          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/)' || true)"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/|src/state/material_slot\.h$|src/audio/pattern_paging\.h$|src/audio/pattern_paging\.cpp$)' || true)"
           if [ -n "${bad}" ]; then
-            echo "G2 RED checkpoint modified production/persistence files:" >&2
+            echo "G2 changed files outside project identity persistence owners:" >&2
             printf '%s\n' "${bad}" >&2
             exit 2
           fi
 
-      - name: Prove intentional project persistence RED
+      - name: Preserve G1 address-reuse contract
+        run: bash tests/run_0_9_11_material_id_independence_red.sh
+
+      - name: Run G2 project persistence contract
+        run: bash tests/run_0_9_11_material_id_project_persistence.sh
+
+      - name: Run existing project paging regression
         run: |
           set -euo pipefail
-          set +e
-          bash tests/run_0_9_11_material_id_project_persistence.sh \
-            > material-id-project-persistence-red.log 2>&1
-          status=$?
-          set -e
-          cat material-id-project-persistence-red.log
+          mkdir -p build/host-tests
+          cat > build/host-tests/pattern_paging_scratch.cpp <<'CPP'
+          #include "scenes.h"
+          Scene& sceneTransactionScratch() {
+            static Scene scratch{};
+            return scratch;
+          }
+          CPP
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_paging.cpp \
+            src/audio/pattern_paging.cpp \
+            src/audio/pattern_project_cleanup.cpp \
+            build/host-tests/pattern_paging_scratch.cpp \
+            -o build/host-tests/test_pattern_paging
+          build/host-tests/test_pattern_paging
 
-          if [ "${status}" -eq 0 ]; then
-            echo "Unexpected GREEN: project MaterialId persistence already satisfies the witness" >&2
-            exit 2
-          fi
-
-          grep -F \
-            "MATERIAL_ID_PROJECT_PERSISTENCE_RED: project-scoped allocator or page MaterialId persistence owner is missing" \
-            material-id-project-persistence-red.log
-
-          echo "INTENTIONAL G2 RED CONFIRMED: MaterialId is not yet project-persistent" >&2
-          exit 1
+      - name: Diff hygiene
+        run: git diff --check "${G1_ROOT}"..HEAD
