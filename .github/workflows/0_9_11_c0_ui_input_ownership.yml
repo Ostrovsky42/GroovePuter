@@ -6,6 +6,9 @@ on:
       - fix/20260911-0.9.11-c0-ui-input-ownership
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   focused-ui-input-ownership:
     runs-on: ubuntu-latest
@@ -21,5 +24,50 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Apply minimal ownership repair
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          synth = Path("src/ui/pages/synth_sequencer_page.cpp")
+          text = synth.read_text(encoding="utf-8")
+          old = """  if (!ui_event.alt && lower == 'l') {\n    const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(\n        phrase, +1, [&](uint8_t bars) {\n"""
+          new = """  if (lower == 'l' || ui_event.scancode == GROOVEPUTER_L) {\n    const int direction = ui_event.alt ? -1 : +1;\n    const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(\n        phrase, direction, [&](uint8_t bars) {\n"""
+          if old not in text:
+              raise SystemExit("expected Phrase LENGTH ownership site not found")
+          text = text.replace(old, new, 1)
+
+          old = """  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&\n      (ui_event.key == 'g' || ui_event.key == 'G')) {\n"""
+          new = """  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&\n      (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {\n"""
+          if old not in text:
+              raise SystemExit("expected Phrase GRID ownership site not found")
+          text = text.replace(old, new, 1)
+          synth.write_text(text, encoding="utf-8")
+
+          song = Path("src/ui/pages/song_page.cpp")
+          text = song.read_text(encoding="utf-8")
+          old = """  char key = ui_event.key;\n  if (!key) return false;\n"""
+          new = """  char key = ui_event.key;\n  if (!key && ui_event.scancode == GROOVEPUTER_NO_SCANCODE) return false;\n"""
+          if old not in text:
+              raise SystemExit("expected Song scancode ownership gate not found")
+          text = text.replace(old, new, 1)
+
+          old = """  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));\n"""
+          new = """  char lowerKey = key\n      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))\n      : 0;\n"""
+          if old not in text:
+              raise SystemExit("expected Song lowercase normalization site not found")
+          text = text.replace(old, new, 1)
+          song.write_text(text, encoding="utf-8")
+          PY
+          git diff --check
+          git diff -- src/ui/pages/synth_sequencer_page.cpp src/ui/pages/song_page.cpp
       - name: Run focused UI input ownership gate
         run: bash tests/run_c0_ui_input_ownership_tests.sh
+      - name: Commit proven repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/synth_sequencer_page.cpp src/ui/pages/song_page.cpp
+          git commit -m "fix(ui): restore Phrase input ownership"
+          git push origin HEAD:fix/20260911-0.9.11-c0-ui-input-ownership
+          echo "PROVEN_REPAIR_SHA=$(git rev-parse HEAD)"
