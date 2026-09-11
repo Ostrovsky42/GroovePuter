@@ -66,7 +66,10 @@ jobs:
           bash tests/run_m4_next_material_tests.sh
 
       - name: Preserve A2-B identity-bound promotion
-        run: bash tests/run_0_9_11_a2b_promotion_transaction_tests.sh
+        run: |
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh
+          bash tests/run_0_9_11_a2b_identity_transaction_red.sh
+          bash tests/run_melody_promotion_tests.sh
 
       - name: Preserve melody promotion regression
         run: |
