@@ -50,6 +50,9 @@ jobs:
       - name: Run G2 project persistence contract
         run: bash tests/run_0_9_11_material_id_project_persistence.sh
 
+      - name: Prove v3 v4 page compatibility
+        run: bash tests/run_0_9_11_material_id_legacy_page_compat.sh
+
       - name: Run existing project paging regression
         run: |
           set -euo pipefail
