@@ -7,6 +7,8 @@ on:
     paths:
       - 'tests/test_gf2_g4_cc1a_p1_acid_articulation_authority.cpp'
       - 'tests/run_gf2_g4_cc1a_p1_tests.sh'
+      - 'tests/test_pattern_phrase_p2_lifecycle_barriers.cpp'
+      - 'tests/run_pattern_phrase_p2_lifecycle_barriers.sh'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_AUTHORITY.md'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_CENSUS.tsv'
       - '.github/workflows/gf2-g4-cc1a-p1-acid-articulation-authority.yml'
@@ -15,6 +17,12 @@ on:
       - 'src/generation/roles/bass_pitch_behavior.cpp'
       - 'src/generation/migration/strong_rhythm_migration.cpp'
       - 'src/generation/migration/tonal_pattern_adapter.cpp'
+      - 'src/phrase/runtime_synth_events.h'
+      - 'src/phrase/runtime_synth_events.cpp'
+      - 'src/phrase/runtime_synth_playback.h'
+      - 'src/phrase/runtime_synth_playback.cpp'
+      - 'src/dsp/miniacid_engine.h'
+      - 'src/dsp/miniacid_engine.cpp'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +36,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Install C1B host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev \
+            pkg-config
 
       - name: Audit production scope
         run: |
@@ -47,11 +64,18 @@ jobs:
         run: |
           bash tests/run_gf2_g4_cc1a_p1_tests.sh
 
+      - name: Run C1B Pattern/Phrase lifetime gate
+        run: |
+          bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh
+
       - name: Print checkpoint evidence
         if: always()
         run: |
           if test -f build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt; then
             cat build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
+          fi
+          if test -f build/pattern-phrase-p2-lifecycle-barriers/behavior.out; then
+            cat build/pattern-phrase-p2-lifecycle-barriers/behavior.out
           fi
 
       - name: Upload checkpoint evidence
@@ -62,4 +86,5 @@ jobs:
           path: |
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-census.tsv
+            build/pattern-phrase-p2-lifecycle-barriers/behavior.out
           if-no-files-found: warn
