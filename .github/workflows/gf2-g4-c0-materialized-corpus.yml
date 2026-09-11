@@ -11,6 +11,7 @@ on:
       - feature/20260910-01-0.9.11-g4-c1-dnb-structural-bass-contract
       - research/20260910-02-0.9.11-g4-c2-contract-candidate-ranking
       - feature/20260911-01-0.9.11-g4-c3-broken-dnb-admission-equivalence
+      - feature/20260911-02-0.9.11-g4-c4-c6-obvious-admission-wave
     paths:
       - 'src/generation/composition/generation_profile.cpp'
       - 'src/generation/composition/rhythm_selection.cpp'
@@ -31,10 +32,13 @@ on:
       - 'tests/test_gf2_g4_c1_dnb_contract_promotion.py'
       - 'tests/test_gf2_g4_c2_contract_candidate_ranking.py'
       - 'tests/test_gf2_g4_c3_broken_dnb_admission_equivalence.py'
+      - 'tests/test_gf2_g4_c4_c6_obvious_admissions.py'
+      - 'tests/test_gf2_g4_c4_c6_structural_witness.cpp'
       - 'tests/run_gf2_g4_i6_tests.sh'
       - 'tools/gf2/finalize_gf2_g4_i6_census.py'
       - 'tools/gf2/promote_gf2_g4_c1_dnb_contract.py'
       - 'tools/gf2/promote_gf2_g4_c3_broken_dnb_admission.py'
+      - 'tools/gf2/promote_gf2_g4_c4_c6_obvious_admissions.py'
       - 'tools/gf2/rank_gf2_g4_c2_contract_candidates.py'
       - 'tests/test_gf2_i2a_feel_magnitude.cpp'
       - 'tests/test_gf2_i3_phrase_law_execution.cpp'
@@ -49,6 +53,8 @@ on:
       - 'docs/superpowers/plans/2026-09-09-g4-c0-materialized-corpus.md'
       - 'docs/superpowers/plans/2026-09-11-g4-c3-broken-dnb-admission-equivalence.md'
       - 'docs/superpowers/specs/2026-09-11-g4-c3-broken-dnb-admission-equivalence-design.md'
+      - 'docs/superpowers/plans/2026-09-11-g4-c4-c6-obvious-admission-wave.md'
+      - 'docs/superpowers/specs/2026-09-11-g4-c4-c6-obvious-admission-wave-design.md'
       - 'docs/gf2/GF2_G4_C0_MATERIALIZED_IDEA_CORPUS.md'
   workflow_dispatch:
 
@@ -112,6 +118,13 @@ jobs:
             build/host-tests/gf2-g4-i6/run-a 2>&1 | \
             tee build/host-tests/gf2-g4-c0/g4-c3.log
 
+      - name: Run G4-C4-C6 obvious admission wave
+        run: |
+          set -o pipefail
+          python3 tests/test_gf2_g4_c4_c6_obvious_admissions.py \
+            build/host-tests/gf2-g4-i6/run-a 2>&1 | \
+            tee build/host-tests/gf2-g4-c0/g4-c4-c6.log
+
       - name: Run G4-C2 contract candidate ranking
         run: |
           python3 tests/test_gf2_g4_c2_contract_candidate_ranking.py \
@@ -153,7 +166,7 @@ jobs:
       - name: Print focused verification summaries
         if: always()
         run: |
-          for log in g4-r1.log g4-i3.log g4-i4.log g4-i5.log g4-i6.log g4-c3.log g4-c2.log gf2-i3-regression.log; do
+          for log in g4-r1.log g4-i3.log g4-i4.log g4-i5.log g4-i6.log g4-c3.log g4-c4-c6.log g4-c2.log gf2-i3-regression.log; do
             if test -f "build/host-tests/gf2-g4-c0/${log}"; then
               echo "===== ${log} ====="
               cat "build/host-tests/gf2-g4-c0/${log}"
@@ -179,6 +192,7 @@ jobs:
             build/host-tests/gf2-g4-c0/g4-i5.log
             build/host-tests/gf2-g4-c0/g4-i6.log
             build/host-tests/gf2-g4-c0/g4-c3.log
+            build/host-tests/gf2-g4-c0/g4-c4-c6.log
             build/host-tests/gf2-g4-c0/g4-c2.log
             build/host-tests/gf2-g4-c0/gf2-i3-regression.log
             build/host-tests/gf2-g4-c0/GF2_I2A_FEEL_AMPLITUDE_CENSUS.regenerated.tsv
