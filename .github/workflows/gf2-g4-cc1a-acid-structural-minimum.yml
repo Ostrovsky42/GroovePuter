@@ -1,0 +1,57 @@
+name: GF2 G4-CC1A Acid structural minimum
+
+on:
+  push:
+    branches:
+      - research/20260911-02-g4-cc1a-acid-structural-minimum
+    paths:
+      - 'tests/test_gf2_g4_cc1a_acid_structural_minimum.cpp'
+      - 'tests/run_gf2_g4_cc1a_tests.sh'
+      - 'docs/research/GF2_G4_CC1A_ACID_STRUCTURAL_MINIMUM.md'
+      - '.github/workflows/gf2-g4-cc1a-acid-structural-minimum.yml'
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/composition/tonal_profile.cpp'
+      - 'src/generation/composition/rhythm_selection.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/rhythm/reference_vocabulary.cpp'
+      - 'src/generation/roles/bass_rhythm.cpp'
+      - 'src/generation/roles/bass_pitch_behavior.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acid-structural-minimum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-CC1A Acid structural minimum
+        run: |
+          bash tests/run_gf2_g4_cc1a_tests.sh
+
+      - name: Print G4-CC1A evidence
+        if: always()
+        run: |
+          if test -f build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt; then
+            cat build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt
+          fi
+
+      - name: Upload G4-CC1A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-cc1a-acid-structural-minimum-red
+          path: |
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-census.a.tsv
+          if-no-files-found: warn
