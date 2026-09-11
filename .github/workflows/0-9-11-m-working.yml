@@ -89,6 +89,9 @@ jobs:
       - name: Bounded WorkingMaterialStorage gate
         run: bash tests/run_0_9_11_m_working_storage_tests.sh
 
+      - name: Preserve Melody working semantics
+        run: bash tests/run_0_9_11_m_working_melody_compat_tests.sh
+
       - name: Characterize remaining M-WORKING RED without STOP
         shell: bash
         run: |
