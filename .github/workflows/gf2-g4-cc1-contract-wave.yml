@@ -1,0 +1,63 @@
+name: GF2 G4-CC1 contract wave
+
+on:
+  push:
+    branches:
+      - research/20260911-01-g4-cc1-acid-techno-funk-contracts
+    paths:
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/composition/generation_profile.h'
+      - 'src/generation/composition/rhythm_selection.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/rhythm/reference_vocabulary.cpp'
+      - 'src/generation/roles/chord_progression.cpp'
+      - 'tests/test_gf2_g4_cc1_contract_wave.cpp'
+      - 'tests/run_gf2_g4_cc1_tests.sh'
+      - 'docs/research/GF2_G4_CC1_ACID_TECHNO_FUNK_CONTRACTS.md'
+      - '.github/workflows/gf2-g4-cc1-contract-wave.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-wave:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-CC1 Acid Techno Funk contracts
+        run: |
+          bash tests/run_gf2_g4_cc1_tests.sh
+
+      - name: Run retained G4-I6 census closure
+        run: |
+          bash tests/run_gf2_g4_i6_tests.sh > build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+
+      - name: Print contract wave evidence
+        if: always()
+        run: |
+          if test -f build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt; then
+            cat build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt
+          fi
+          if test -f build/host-tests/gf2-g4-cc1/g4-i6-retained.log; then
+            tail -n 40 build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+          fi
+
+      - name: Upload G4-CC1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-cc1-contract-wave
+          path: |
+            build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt
+            build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+          if-no-files-found: warn
