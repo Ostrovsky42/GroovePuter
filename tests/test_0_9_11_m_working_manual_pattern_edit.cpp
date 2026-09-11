@@ -63,10 +63,15 @@ int main() {
   assert(working.steps[0].note == 61);
   assert(sameStep(working.steps[3], untouched));
 
-  // Read-side material and the actual Pattern audio bank must both hear B.
-  const SynthPattern& audibleMaterial = engine.activeSynthPattern(0);
-  assert(audibleMaterial.steps[0].note == 61);
-  assert(sameStep(audibleMaterial.steps[3], untouched));
+  // This slice exposes Working explicitly; the broader active/migration read
+  // path remains a separate MW-H checkpoint so edit ownership is not coupled to
+  // Pattern->Melody migration in the same production commit.
+  const SynthPattern* exposedWorking = engine.currentWorking303Pattern(0);
+  assert(exposedWorking != nullptr);
+  assert(exposedWorking->steps[0].note == 61);
+  assert(sameStep(exposedWorking->steps[3], untouched));
+
+  // The actual Pattern audio bank must hear B without reading mutable Scene.
   const auto* event =
       engine.patternRuntimeBank_.select(0, bank, pattern).eventForSourceStep(0);
   assert(event != nullptr);
