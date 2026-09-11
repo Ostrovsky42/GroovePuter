@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PROMOTER_PATH = ROOT / "tools/gf2/promote_gf2_g4_c4_c6_obvious_admissions.py"
 
 
 @dataclass(frozen=True)
@@ -88,9 +92,92 @@ def verify_owner(rows: list[dict[str, str]], contract: Contract) -> None:
         fail(f"owner={key} evaluation_not_satisfied")
 
 
+def load_promoter():
+    spec = importlib.util.spec_from_file_location("g4_c4_c6_promoter", PROMOTER_PATH)
+    if spec is None or spec.loader is None:
+        fail("promoter_import_spec")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def synthetic_rows(promoter_contract) -> list[dict[str, str]]:
+    archetypes = sorted(promoter_contract.archetypes)
+    bass_ids = sorted(promoter_contract.bass_ids)
+    rows: list[dict[str, str]] = []
+    for index in range(384):
+        rows.append(
+            {
+                "owner_mode": promoter_contract.mode,
+                "recipe_id": promoter_contract.recipe,
+                "effective_candidate_count": str(promoter_contract.candidate_count),
+                "selected_archetype_id": archetypes[index % len(archetypes)],
+                "RhythmFamily": promoter_contract.family,
+                "bass_identity": bass_ids[index % len(bass_ids)],
+                "contract_id": "I6-REVIEW-RHYTHM-OWNERSHIP",
+                "contract_status": "REVIEW_REQUIRED",
+                "evaluation": "UNKNOWN",
+                "owner_genre": f"DISPLAY_{index % 3}",
+                "recipe_name": f"LABEL_{index % 5}",
+                "weight_provenance": str(999 - (index % 17)),
+            }
+        )
+    return rows
+
+
+def expect_rejection(name: str, action) -> None:
+    try:
+        action()
+    except SystemExit as exc:
+        if exc.code == 0:
+            fail(f"selftest_{name}_unexpected_zero_exit")
+        print(f"G4_C4_C6_SELFTEST_PASS control={name}")
+        return
+    fail(f"selftest_{name}_accepted_invalid_fixture")
+
+
+def run_boundary_selftests() -> None:
+    promoter = load_promoter()
+    grouped = {c.key: synthetic_rows(c) for c in promoter.CONTRACTS}
+
+    for c in promoter.CONTRACTS:
+        promoter.validate_owner(c, grouped[c.key])
+    promoter.validate_cross_owner_relations(grouped)
+    print("G4_C4_C6_SELFTEST_PASS control=LABEL_WEIGHT_INDEPENDENCE")
+
+    classic = next(c for c in promoter.CONTRACTS if c.key == "classic_2step")
+    classic_drift = [dict(row) for row in grouped[classic.key]]
+    classic_drift[0]["selected_archetype_id"] = "418"
+    expect_rejection(
+        "CLASSIC_2STEP_ADMISSION_DRIFT",
+        lambda: promoter.validate_owner(classic, classic_drift),
+    )
+
+    psy = next(c for c in promoter.CONTRACTS if c.key == "psytrance")
+    psy_drift = [dict(row) for row in grouped[psy.key]]
+    psy_drift[0]["RhythmFamily"] = "MachineSyncopation"
+    expect_rejection(
+        "PSYTRANCE_FAMILY_DRIFT",
+        lambda: promoter.validate_owner(psy, psy_drift),
+    )
+
+    minimal = [dict(row) for row in grouped["reggae_minimal"]]
+    minimal[0]["selected_archetype_id"] = "410"
+    invalid_grouped = dict(grouped)
+    invalid_grouped["reggae_minimal"] = minimal
+    expect_rejection(
+        "MINIMAL_SPACE_STEPPERS_REINTRODUCTION",
+        lambda: promoter.validate_cross_owner_relations(invalid_grouped),
+    )
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: test_gf2_g4_c4_c6_obvious_admissions.py RUN_DIR")
+
+    run_boundary_selftests()
+
     run_dir = Path(sys.argv[1])
     census = run_dir / "GF2_G4_I6_OWNERSHIP_CENSUS.tsv"
     summary = run_dir / "g4-i6-summary.txt"
@@ -103,8 +190,6 @@ def main() -> None:
     for contract in CONTRACTS:
         verify_owner(rows, contract)
 
-    # Minimal Space is intentionally BASE minus Steppers. This prohibition is
-    # part of the contract, not an incidental family label.
     base = next(c for c in CONTRACTS if c.mode == "5" and c.recipe == "0")
     minimal = next(c for c in CONTRACTS if c.mode == "5" and c.recipe == "11")
     if set(base.archetypes) - set(minimal.archetypes) != {"410"}:
