@@ -35,7 +35,7 @@ jobs:
         run: bash tests/run_c0_ui_input_ownership_tests.sh
       - name: Run complete Pattern Phrase instrument gate
         run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
-      - name: Preserve hardware findings contracts
+      - name: Preserve hardware findings runtime contract
         run: |
           set -euo pipefail
           g++ -std=c++20 -Wall -Wextra -Werror -I. \
@@ -43,11 +43,18 @@ jobs:
             src/phrase/runtime_synth_events.cpp \
             -o /tmp/test_c0_hardware_findings
           /tmp/test_c0_hardware_findings
-          python3 tests/test_c0_phrase_length_ui_truth.py
+      - name: Preserve Phrase LENGTH surface truth contract
+        run: python3 tests/test_c0_phrase_length_ui_truth.py
+      - name: Preserve Phrase Bank QWERTYUI contract
+        run: |
+          set -euo pipefail
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_phrase_bank_qwertyui_p1.cpp \
             -o /tmp/test_phrase_bank_qwertyui_p1
           /tmp/test_phrase_bank_qwertyui_p1
+      - name: Preserve MIDI panic CC123 contract
+        run: |
+          set -euo pipefail
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_midi_panic_cc123.cpp \
             src/midi/usb_midi_output.cpp \
