@@ -6,6 +6,7 @@ on:
       - feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
     paths:
       - 'tools/gf2/g4_i6_r1_c1_selection_causality.cpp'
+      - 'tools/gf2/g4_i6_r1_c1_trace_capacity.h'
       - '.github/workflows/gf2-g4-i6-r1-c1-selection-causality.yml'
       - 'docs/research/GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv'
       - 'docs/research/GF2_G4_I6_R1_C1_ACID_SELECTION_RNG_CAUSALITY.md'
@@ -58,6 +59,7 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -Wvla \
             -Wno-c++20-extensions -Wno-unused-but-set-variable \
             -I"$ROOT" \
+            -include "$ROOT/tools/gf2/g4_i6_r1_c1_trace_capacity.h" \
             "${RESOLVED[@]}" \
             "$ROOT/tools/gf2/g4_i6_r1_c1_selection_causality.cpp" \
             -o "$BUILD/g4-i6-r1-c1-selection-causality"
@@ -160,12 +162,11 @@ jobs:
               if old_row is None or new_row is None:
                   unexplained += 1
                   continue
-              ids = ('bass','chord','melodic','motif')
-              for role in ids:
-                  old_col = 'bass_identity' if role == 'bass' else f'{role}_identity'
-                  new_old = t['old_bass_id'] if role == 'bass' else t[f'{role}_id_old']
-                  new_new = t['new_bass_id'] if role == 'bass' else t[f'{role}_id_new']
-                  if new_old != old_row[old_col] or new_new != new_row[old_col]:
+              for role in ('bass','chord','melodic','motif'):
+                  col = 'bass_identity' if role == 'bass' else f'{role}_identity'
+                  trace_old = t['old_bass_id'] if role == 'bass' else t[f'{role}_id_old']
+                  trace_new = t['new_bass_id'] if role == 'bass' else t[f'{role}_id_new']
+                  if trace_old != old_row[col] or trace_new != new_row[col]:
                       unexplained += 1
 
               b = t['old_bass_id'] != t['new_bass_id']
@@ -194,7 +195,6 @@ jobs:
                           seed_stats['motif_seed_same_when_melodic_same'] += 1
                       else:
                           unexplained += 1
-
                   signature = (c,m,o)
                   for label, wanted in classes.items():
                       if signature == wanted and label not in representatives:
@@ -211,8 +211,7 @@ jobs:
           if set(representatives) != set(classes):
               raise SystemExit(f'REPRESENTATIVE_CLASS_MISSING {set(classes)-set(representatives)}')
 
-          summary = []
-          summary += [
+          summary = [
               'rng_model=STATELESS_DOMAIN',
               'hypothesis=H2_CONFIRMED',
               'H1_SHARED_STREAM=REJECTED',
