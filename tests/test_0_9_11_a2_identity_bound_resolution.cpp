@@ -76,6 +76,10 @@ void test_durable_global_address_isolation() {
   const int failuresBefore = gFailures;
   constexpr MaterialAddress addr5{0, 5};
   constexpr MaterialAddress addr21{0, 21};
+  constexpr MaterialId id5{105};
+  constexpr MaterialId id21{121};
+  constexpr MaterialReference ref5{addr5, id5};
+  constexpr MaterialReference ref21{addr21, id21};
 
   const int slot5 = residentSlot(addr5);
   const int slot21 = residentSlot(addr21);
@@ -98,13 +102,15 @@ void test_durable_global_address_isolation() {
   FakeFs fs;
   Scene scenePage0{};
   Scene scenePage1{};
+  scenePage0.materialSlots[addr5.voice][slot5].id = id5;
+  scenePage1.materialSlots[addr21.voice][slot21].id = id21;
   const Buffer melody5 = makeCandidate(60);
   const Buffer melody21 = makeCandidate(72);
 
   const auto err5 = MelodyPromotion::promoteResident(
-      fs, kProject, scenePage0, addr5, slot5, melody5);
+      fs, kProject, scenePage0, ref5, slot5, melody5);
   const auto err21 = MelodyPromotion::promoteResident(
-      fs, kProject, scenePage1, addr21, slot21, melody21);
+      fs, kProject, scenePage1, ref21, slot21, melody21);
   expect(err5 == MelodyPromotion::Error::None,
          "promotion of global 5 failed");
   expect(err21 == MelodyPromotion::Error::None,
@@ -146,7 +152,6 @@ void test_identity_bound_resolution() {
   const MaterialReference refM{kAddress, idM};
   const MaterialReference refN{kAddress, idN};
 
-  // First prove M is a valid live reference and capture the exact-state token.
   scene.materialSlots[kAddress.voice][slot].id = idM;
   const MaterialResolution liveM = GroovePuterMaterial::resolveMaterial(
       fs, kProject, scene, kPage, refM, out);

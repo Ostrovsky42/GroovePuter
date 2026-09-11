@@ -1,4 +1,4 @@
-name: 0.9.11 A2-B Identity Transaction RED
+name: 0.9.11 A2-B Identity Transaction GREEN
 
 on:
   push:
@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  A2_GREEN_ROOT: 730daa7d23f081123f34e122d6f85cfa17ee3158
+  RED_ROOT: 530d1fa4b26d21eb6902e016661c2fb17e162b06
   CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
-  a2b-identity-transaction-red:
+  a2b-identity-transaction-green:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,42 +20,33 @@ jobs:
           ref: ${{ env.CANDIDATE_HEAD }}
           fetch-depth: 0
 
-      - name: Prove exact checkout and A2 GREEN ancestry
+      - name: Prove exact checkout and RED ancestry
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
-          git merge-base --is-ancestor "${A2_GREEN_ROOT}" HEAD
+          git merge-base --is-ancestor "${RED_ROOT}" HEAD
 
-      - name: Prove RED checkpoint is tests docs CI only
+      - name: Prove bounded GREEN scope
         run: |
           set -euo pipefail
-          unexpected="$(git diff --name-only "${A2_GREEN_ROOT}"..HEAD | grep -Ev '^(\.github/workflows/0_9_11_a2b_identity_transaction_red.yml|docs/superpowers/specs/2026-09-11-0.9.11-a2b-identity-transaction-red.md|tests/run_0_9_11_a2b_identity_transaction_red.sh|tests/test_0_9_11_a2b_identity_transaction.cpp)$' || true)"
+          unexpected="$(git diff --name-only "${RED_ROOT}"..HEAD | grep -Ev '^(\.github/workflows/0_9_11_a2b_identity_transaction_red.yml|src/state/melody_promotion.h|tests/test_0_9_11_a2b_identity_transaction.cpp|tests/test_0_9_11_a2_identity_bound_resolution.cpp|tests/test_melody_promotion.cpp)$' || true)"
           if [[ -n "${unexpected}" ]]; then
-            echo "Unexpected production files in A2-B RED checkpoint:" >&2
+            echo "Unexpected files in A2-B GREEN checkpoint:" >&2
             echo "${unexpected}" >&2
             exit 2
           fi
 
-      - name: Prove stale promotion causality witness
+      - name: Prove identity-bound promotion transaction GREEN
         run: |
-          set -uo pipefail
-          set +e
-          bash tests/run_0_9_11_a2b_identity_transaction_red.sh 2>&1 | tee a2b-identity-transaction-red.log
-          status=${PIPESTATUS[0]}
-          set -e
+          set -euo pipefail
+          bash tests/run_0_9_11_a2b_identity_transaction_red.sh
 
-          if [[ ${status} -eq 0 ]]; then
-            echo "A2-B identity transaction unexpectedly passed before GREEN production" >&2
-            exit 3
-          fi
-
-          grep -F \
-            "A2B_STALE_PROMOTION_RED: stale {address,idM} candidate was published after the resident identity changed to idN; idN was marked Melody with idM payload" \
-            a2b-identity-transaction-red.log
-
-          echo "INTENTIONAL RED WITNESS CONFIRMED: promotion lost MaterialReference identity authority"
-
-      - name: Keep RED checkpoint intentionally failing
+      - name: Preserve A2 identity and global durable addressing
         run: |
-          echo "A2-B RED is proven; production remains untouched at this checkpoint"
-          exit 1
+          set -euo pipefail
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh
+
+      - name: Preserve M2b storage transaction regressions
+        run: |
+          set -euo pipefail
+          bash tests/run_melody_promotion_tests.sh

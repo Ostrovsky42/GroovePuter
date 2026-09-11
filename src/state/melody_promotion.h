@@ -9,12 +9,13 @@
 #include "src/state/material_slot_access.h"
 #include "src/state/melody_store.h"
 
-// M2b: turning a Pattern slot into a Melody slot, transactionally.
+// M2b/A2-B: turning a Pattern slot into a Melody slot transactionally.
 //
 // The descriptor changes last -- after the payload is written, read back and
-// verified. The runtime descriptor is resident-page state; durable storage is
-// addressed by the global MaterialAddress. Those two coordinates must never be
-// conflated because different pages reuse the same resident slot indices.
+// verified. A2-B adds the missing mutation-authority rule: the caller must
+// present the MaterialReference that authorized preparation of the candidate.
+// Address/resident-slot equality alone is not authority, because both can be
+// reused by a different MaterialId before promotion starts.
 namespace MelodyPromotion {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
@@ -33,6 +34,8 @@ enum class Error : uint8_t {
   None = 0,
   NoStorage,
   BadSlot,
+  InvalidReference,
+  IdentityMismatch,
   AlreadyMelody,
   EncodeFailed,
   WriteFailed,
@@ -62,9 +65,8 @@ inline std::string tempPath(
   return slotPath(project, address, "tmp");
 }
 
-// Page-0 compatibility overloads. Existing callers that only know a resident
-// slot retain their source contract; callers operating across pages must use
-// MaterialAddress explicitly so durable identity cannot alias.
+// Page-0 compatibility path helpers. These are locators only; mutation does not
+// regain address-only authority through them.
 inline std::string slotPath(const std::string& project, int voice, int slot,
                             const char* extension) {
   return slotPath(project,
@@ -120,21 +122,31 @@ inline bool loadResident(const FileSystem& fs, const std::string& project,
 
 inline Error promoteResident(
     FileSystem& fs, const std::string& project, Scene& scene,
-    GroovePuterMaterial::MaterialAddress address, int residentSlot,
+    const GroovePuterMaterial::MaterialReference& reference, int residentSlot,
     const Buffer& candidate) {
-  // Refused before the first mutation, so a missing card cannot leave the
-  // project half-changed.
-  if (!fs.available()) return Error::NoStorage;
-  if (!GroovePuterMaterial::materialAddressInRange(address) ||
-      !GroovePuterMaterial::residentSlotInRange(address.voice, residentSlot) ||
-      GroovePuterMaterial::residentSlotFor(address) != residentSlot) {
+  using namespace GroovePuterMaterial;
+
+  // Identity is admission authority. It is checked before storage availability,
+  // encoding, temp creation, or any other operation that could publish a stale
+  // candidate under a replacement material.
+  if (!reference.id.valid()) return Error::InvalidReference;
+
+  const MaterialAddress address = reference.address;
+  if (!materialAddressInRange(address) ||
+      !residentSlotInRange(address.voice, residentSlot) ||
+      residentSlotFor(address) != residentSlot) {
     return Error::BadSlot;
   }
 
-  // One-way per resident slot. Promoting again would overwrite the melody with
-  // a fresh projection and destroy every edit made since.
-  if (GroovePuterMaterial::residentKind(scene, address.voice, residentSlot) ==
-      GroovePuterMaterial::MaterialKind::Melody) {
+  const MaterialId actualId = residentId(scene, address.voice, residentSlot);
+  if (!actualId.valid() || actualId != reference.id) {
+    return Error::IdentityMismatch;
+  }
+
+  // Existing M2b transaction semantics begin here and remain unchanged.
+  if (!fs.available()) return Error::NoStorage;
+
+  if (residentKind(scene, address.voice, residentSlot) == MaterialKind::Melody) {
     return Error::AlreadyMelody;
   }
 
@@ -164,24 +176,40 @@ inline Error promoteResident(
   }
 
   // Last. Durable publication is complete before the resident descriptor moves.
-  if (!GroovePuterMaterial::setResidentKind(
-          scene, address.voice, residentSlot,
-          GroovePuterMaterial::MaterialKind::Melody)) {
+  if (!setResidentKind(scene, address.voice, residentSlot, MaterialKind::Melody)) {
     return Error::BadSlot;
   }
   return Error::None;
 }
 
+// Bare-address mutation entry points remain source-compatible only so an older
+// caller fails closed instead of silently publishing against whichever identity
+// happens to occupy the coordinate now. They cannot manufacture a fresh
+// MaterialReference from current state because doing so would recreate the ABA
+// bug A2-B closes.
+inline Error promoteResident(
+    FileSystem& fs, const std::string& project, Scene& scene,
+    GroovePuterMaterial::MaterialAddress address, int residentSlot,
+    const Buffer& candidate) {
+  (void)fs;
+  (void)project;
+  (void)scene;
+  (void)address;
+  (void)residentSlot;
+  (void)candidate;
+  return Error::InvalidReference;
+}
+
 inline Error promoteResident(FileSystem& fs, const std::string& project,
                              Scene& scene, int voice, int slot,
                              const Buffer& candidate) {
-  if (!GroovePuterMaterial::residentSlotInRange(voice, slot)) {
-    return Error::BadSlot;
-  }
-  return promoteResident(
-      fs, project, scene,
-      {static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)}, slot,
-      candidate);
+  (void)fs;
+  (void)project;
+  (void)scene;
+  (void)voice;
+  (void)slot;
+  (void)candidate;
+  return Error::InvalidReference;
 }
 
 }  // namespace MelodyPromotion
