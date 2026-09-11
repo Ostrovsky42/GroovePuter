@@ -128,3 +128,7 @@ G4-I6-R1 is evidence-only. Relative to C1 start SHA `e1ecb6a28bf60aaa42fb705bfc9
 ## Impact on C3A
 
 Once the final read-only exact-head G4-I6-R1 workflow succeeds and remote HEAD equality is proven, the stale-I6-evidence blocker is removed and `C3A READY TO RETRY = YES`. C3A itself is deliberately not run by this checkpoint.
+
+## Final exact-head verification
+
+This report is finalized as an input to the read-only G4-I6-R1 exact-head verification workflow. No further evidence mutation is permitted inside final verification.
