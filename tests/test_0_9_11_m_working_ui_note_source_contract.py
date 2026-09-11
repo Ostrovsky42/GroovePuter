@@ -44,13 +44,17 @@ require(
 
 hub_overview = between(hub, "inline bool hubTrackHitAt", "inline void drawHubScrollbar")
 hub_te = between(hub, "void SequencerHubPage::drawTEGridStyle", "void SequencerHubPage::drawRetroClassicStyle")
+hub_retro = between(hub, "void SequencerHubPage::drawRetroClassicStyle", "void SequencerHubPage::drawAmberStyle")
+hub_amber = between(hub, "void SequencerHubPage::drawAmberStyle", "void SequencerHubPage::drawOverview")
 hub_detail = between(hub, "void SequencerHubPage::drawDetail", "bool SequencerHubPage::handleEvent")
 require(
     "currentWorking303Pattern" in hub_overview
     and "currentWorking303Pattern" in hub_te
+    and "currentWorking303Pattern" in hub_retro
+    and "currentWorking303Pattern" in hub_amber
     and "currentWorking303Pattern" in hub_detail,
     "UI-NOTE-C",
-    "Sequencer Hub overview/detail render paths prefer exact-bound WORKING",
+    "Sequencer Hub overview and every synth detail renderer prefer exact-bound WORKING",
 )
 
 legacy_minimal = between(legacy, "void PatternEditPage::drawMinimalStyle", "void PatternEditPage::drawRetroClassicStyle")
