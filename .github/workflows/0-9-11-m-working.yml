@@ -39,17 +39,26 @@ jobs:
           bash tests/run_0_9_11_m_working_tests.sh 2>&1 | tee /tmp/m-working-red.log
           status=${PIPESTATUS[0]}
           set -e
+          echo "runner_status=$status" | tee -a /tmp/m-working-red.log
           if [[ "$status" -ne 1 ]]; then
-            echo "Expected genuine RED status 1, got $status" >&2
+            echo "Expected genuine RED status 1, got $status" | tee -a /tmp/m-working-red.log >&2
             exit 1
           fi
           grep -q 'M-WORKING: TRUE RED WITNESSES PROVEN' /tmp/m-working-red.log
           grep -q 'M-WORKING GATE \[SOURCE_ROUND_TRIP\]' /tmp/m-working-red.log
           grep -q 'M-WORKING GATE \[SONG_RETARGET\]' /tmp/m-working-red.log
           if grep -q 'M-WORKING STOP' /tmp/m-working-red.log; then
-            echo 'A hard M-WORKING STOP gate tripped' >&2
+            echo 'A hard M-WORKING STOP gate tripped' | tee -a /tmp/m-working-red.log >&2
             exit 1
           fi
+
+      - name: Preserve RED diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m-working-red-diagnostics
+          path: /tmp/m-working-red.log
+          if-no-files-found: error
 
       - name: Preserve M3 ACTIVE authority
         run: bash tests/run_m3_material_authority_tests.sh
