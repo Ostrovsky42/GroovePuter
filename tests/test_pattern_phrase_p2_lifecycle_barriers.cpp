@@ -112,6 +112,38 @@ void startPattern(Fixture& f, int synth, uint8_t note) {
   }
 }
 
+SynthPattern connectedAcidC1AWitness() {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+
+  // C1A authoritative minimal causal pair from Acid / BASE / P1 / identity=2:
+  // step 0 is the active predecessor and step 1 is its physical continuation
+  // carrier. The continuation copies the held pitch and is marked slide=true;
+  // it is not a separate semantic onset in the generation contract.
+  pattern.steps[0].note = 36;
+  pattern.steps[1] = pattern.steps[0];
+  pattern.steps[1].slide = true;
+  return pattern;
+}
+
+const PhraseRuntime::RuntimePatternEventBuffer& installConnectedAcidC1AWitness(
+    Fixture& f) {
+  constexpr int kSynth = 0;
+  f.engine.editSynthPattern(kSynth) = connectedAcidC1AWitness();
+  if (!f.engine.rebuildPatternRuntimeEventBank()) {
+    std::fprintf(stderr, "C1B fixture runtime-bank rebuild failed\n");
+    std::abort();
+  }
+
+  return f.engine.patternRuntimeBank_.selectForPage(
+      f.engine.currentPageIndex(), static_cast<uint8_t>(kSynth),
+      static_cast<uint8_t>(f.engine.current303BankIndex(kSynth)),
+      static_cast<uint8_t>(f.engine.current303PatternIndex(kSynth)));
+}
+
 template <typename Fn>
 void expectTargetBarrier(const char* name, int synth, Fn&& invoke) {
   Fixture f;
@@ -177,6 +209,117 @@ void caseSequencedSourceTransfer(int synth) {
                       [synth](MiniAcid& engine) {
     engine.setSequencedSource(synth, MiniAcid::SequencedSource::Phrase);
   });
+}
+
+void caseConnectedAcidContinuationInvalidatedBySourceTransfer() {
+  constexpr int kSynth = 0;
+  const MusicalEventTarget target = targetForSynth(kSynth);
+  const char* name = "C1B CONNECTED ACID PATTERN -> PHRASE";
+
+  // Negative control: while Pattern remains authoritative, prove that the
+  // physical step-1 continuation carrier really is present in the retained
+  // runtime bank and reaches the real sequencer executor as a slide event.
+  {
+    Fixture control;
+    const PhraseRuntime::RuntimePatternEventBuffer& events =
+        installConnectedAcidC1AWitness(control);
+    const PhraseRuntime::RuntimeSynthEvent* step0 = events.eventForSourceStep(0);
+    const PhraseRuntime::RuntimeSynthEvent* step1 = events.eventForSourceStep(1);
+
+    expect(step0 != nullptr, name,
+           "C1A predecessor step 0 was not retained in the runtime bank");
+    expect(step1 != nullptr, name,
+           "C1A continuation carrier step 1 was not retained in the runtime bank");
+    if (step0 == nullptr || step1 == nullptr) return;
+    expect(step0->note == 36, name,
+           "C1A predecessor pitch changed during runtime projection");
+    expect(step1->note == 36, name,
+           "C1A continuation pitch changed during runtime projection");
+    expect((step1->flags & PhraseRuntime::kEventSlide) != 0, name,
+           "C1A continuation lost its physical slide carrier in projection");
+
+    control.engine.playing = true;
+    control.beginBlock();
+    control.engine.processSequencerEvents(step0->startTick);
+    control.endBlock();
+    const Trace onset = control.drain();
+    expect(onset.count(MusicalEventType::NoteOn, target) == 1, name,
+           "real executor did not start the C1A predecessor");
+    expect(control.engine.patternPlaybackState_[kSynth].active(), name,
+           "C1A predecessor did not establish sequenced lifetime ownership");
+
+    control.beginBlock();
+    control.engine.processSequencerEvents(step1->startTick);
+    control.endBlock();
+    const Trace continuation = control.drain();
+    expect(continuation.count(MusicalEventType::NoteOn, target) == 1, name,
+           "negative control did not dispatch the connected step-1 carrier");
+  }
+
+  // C1B subject: cut Pattern ownership after the predecessor but before the
+  // continuation tick, then let the real executor cross that exact old tick.
+  // The old Pattern carrier must not be able to reassert sound or ownership.
+  Fixture f;
+  const PhraseRuntime::RuntimePatternEventBuffer& events =
+      installConnectedAcidC1AWitness(f);
+  const PhraseRuntime::RuntimeSynthEvent* step0 = events.eventForSourceStep(0);
+  const PhraseRuntime::RuntimeSynthEvent* step1 = events.eventForSourceStep(1);
+  expect(step0 != nullptr && step1 != nullptr, name,
+         "connected C1A pair disappeared from the runtime bank");
+  if (step0 == nullptr || step1 == nullptr) return;
+
+  const uint16_t predecessorTick = step0->startTick;
+  const uint16_t continuationTick = step1->startTick;
+  f.engine.playing = true;
+  f.beginBlock();
+  f.engine.processSequencerEvents(predecessorTick);
+  f.endBlock();
+  const Trace onset = f.drain();
+  expect(onset.count(MusicalEventType::NoteOn, target) == 1, name,
+         "connected predecessor did not start before source transfer");
+  expect(f.engine.patternPlaybackState_[kSynth].active(), name,
+         "connected predecessor did not own RuntimeSynthPlaybackState");
+  expect(f.engine.patternOwnsInternalSynth(kSynth), name,
+         "connected predecessor did not acquire physical Pattern ownership");
+  expect(f.noteHeld(kSynth), name,
+         "connected predecessor did not hold the physical synth voice");
+
+  f.beginBlock();
+  f.engine.setSequencedSource(kSynth, MiniAcid::SequencedSource::Phrase);
+  f.endBlock();
+  const Trace transfer = f.drain();
+  expect(f.engine.currentSequencedSource(kSynth) ==
+             MiniAcid::SequencedSource::Phrase,
+         name, "source transfer did not publish Phrase authority");
+  expect(!f.engine.patternPlaybackState_[kSynth].active(), name,
+         "connected predecessor lifetime survived source transfer");
+  expect(!f.engine.patternOwnsInternalSynth(kSynth), name,
+         "old Pattern ownership survived source transfer");
+  expect(!f.noteHeld(kSynth), name,
+         "old connected predecessor stayed physically held after transfer");
+  expect(transfer.count(MusicalEventType::NoteOff, target) == 1, name,
+         "source transfer did not release the connected predecessor exactly once");
+  expect(transfer.count(MusicalEventType::AllNotesOff, target) == 0, name,
+         "source transfer used panic instead of targeted connected release");
+  expect(f.engine.currentPhraseBuffer(kSynth).count == 0, name,
+         "C1B fixture unexpectedly has Phrase material at the continuation tick");
+
+  f.beginBlock();
+  f.engine.processSequencerEvents(continuationTick);
+  f.endBlock();
+  const Trace after = f.drain();
+  expect(after.count(MusicalEventType::NoteOn, target) == 0, name,
+         "stale Pattern continuation reasserted sound after Phrase took authority");
+  expect(after.count(MusicalEventType::NoteOff, target) == 0, name,
+         "stale Pattern continuation caused a second old-owner release");
+  expect(after.count(MusicalEventType::AllNotesOff, target) == 0, name,
+         "stale Pattern continuation caused panic cleanup");
+  expect(!f.engine.patternPlaybackState_[kSynth].active(), name,
+         "stale continuation reactivated RuntimeSynthPlaybackState");
+  expect(!f.engine.patternOwnsInternalSynth(kSynth), name,
+         "stale continuation reacquired Pattern physical ownership");
+  expect(!f.noteHeld(kSynth), name,
+         "stale continuation re-held the physical synth voice");
 }
 
 void casePhraseToPatternSequencedSourceTransfer(int synth) {
@@ -341,6 +484,7 @@ int main() {
     caseSongPosition(synth);
     caseSynthEngineConflict(synth);
   }
+  caseConnectedAcidContinuationInvalidatedBySourceTransfer();
   if (g_failures != 0) {
     std::fprintf(stderr, "P2 lifecycle barrier characterization: %d failure(s)\n", g_failures);
     return 1;
