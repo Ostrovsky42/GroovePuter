@@ -42,6 +42,7 @@ for run in "$RUN_A" "$RUN_B"; do
   "$BUILD/g4-i6-methodology-controls" --emit "$run" | tee "$run.methodology.log"
   python3 "${ROOT}/tools/gf2/finalize_gf2_g4_i6_census.py" --run-dir "$run"
   python3 "${ROOT}/tools/gf2/promote_gf2_g4_c1_dnb_contract.py" --run-dir "$run"
+  python3 "${ROOT}/tools/gf2/promote_gf2_g4_c3_broken_dnb_admission.py" --run-dir "$run"
 done
 
 for artifact in \
@@ -61,6 +62,10 @@ cat "$BUILD/g4-i6-summary.txt"
 # G4-C1 promotes the already-retained DnB structural/bass witness into an
 # explicit contract. This must be semantic promotion, not counter rewriting.
 python3 "${ROOT}/tests/test_gf2_g4_c1_dnb_contract_promotion.py" "$RUN_A"
+
+# G4-C3 proves only the Broken/DnB rhythm-admission alias. Bass semantics stay
+# independent and are explicitly checked by the focused contract test.
+python3 "${ROOT}/tests/test_gf2_g4_c3_broken_dnb_admission_equivalence.py" "$RUN_A"
 
 # An unknown nonzero raw archetype may be explained, but must never disappear
 # silently and still allow closure.
