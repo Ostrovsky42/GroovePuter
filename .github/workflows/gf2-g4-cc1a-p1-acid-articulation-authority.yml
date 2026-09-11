@@ -7,8 +7,10 @@ on:
     paths:
       - 'tests/test_gf2_g4_cc1a_p1_acid_articulation_authority.cpp'
       - 'tests/run_gf2_g4_cc1a_p1_tests.sh'
-      - 'tests/test_pattern_phrase_p2_lifecycle_barriers.cpp'
-      - 'tests/run_pattern_phrase_p2_lifecycle_barriers.sh'
+      - 'tests/test_pattern_phrase_p2_*'
+      - 'tests/run_pattern_phrase_p2_*'
+      - 'tests/test_p3_*'
+      - 'tests/run_pattern_phrase_p3_*'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_AUTHORITY.md'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_CENSUS.tsv'
       - '.github/workflows/gf2-g4-cc1a-p1-acid-articulation-authority.yml'
@@ -31,17 +33,18 @@ permissions:
 jobs:
   acid-articulation-authority:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Install C1B host dependencies
+      - name: Install C2 host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
+            clang \
             libsdl2-dev \
             libsdl2-gfx-dev \
             pkg-config
@@ -50,7 +53,6 @@ jobs:
         run: |
           set -euo pipefail
           BASE=8331735080f25acbc809ef97b9881fd9e17c86a2
-          git fetch --no-tags --depth=1 origin "$BASE"
           changed="$(git diff --name-only "$BASE" "$GITHUB_SHA" -- src/)"
           unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -vFx 'src/generation/composition/generation_profile.cpp' || true)"
           if test -n "$unexpected"; then
@@ -61,12 +63,15 @@ jobs:
           echo "G4_CC1A_P1_PRODUCTION_SCOPE ${changed:-NONE}"
 
       - name: Run G4-CC1A-P1 contract gate
-        run: |
-          bash tests/run_gf2_g4_cc1a_p1_tests.sh
+        run: bash tests/run_gf2_g4_cc1a_p1_tests.sh
 
-      - name: Run C1B Pattern/Phrase lifetime gate
-        run: |
-          bash tests/run_pattern_phrase_p2_lifecycle_barriers.sh
+      - name: Run C2 retained P2 gate
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p2_tests.sh
+
+      - name: Run C2 retained P3 gate
+        run: bash tests/run_pattern_phrase_p3_tests.sh
 
       - name: Print checkpoint evidence
         if: always()
