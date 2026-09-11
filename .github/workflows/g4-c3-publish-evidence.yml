@@ -1,0 +1,86 @@
+name: G4-C3 publish deterministic evidence
+
+on:
+  push:
+    branches:
+      - feature/20260911-01-0.9.11-g4-c3-broken-dnb-admission-equivalence
+    paths:
+      - '.github/workflows/g4-c3-publish-evidence.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Generate and validate C3 I6 evidence
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p build
+          set +e
+          bash tests/run_gf2_g4_i6_tests.sh 2>&1 | tee build/g4-c3-publish.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          grep -F 'G4_C3_PROMOTION_PASS rows=384 archetypes=4 broken_bass_ids=4 dnb_bass_ids=4 review_required=29 unknown=11136 proven_contracts=7 bass_semantics=INDEPENDENT' build/g4-c3-publish.log
+          grep -F 'G4-C3 Broken/DnB admission equivalence: PASS' build/g4-c3-publish.log
+          grep -F 'G4_C3_SELFTEST_PASS control=LABEL_WEIGHT_INDEPENDENCE' build/g4-c3-publish.log
+          grep -F 'G4_C3_SELFTEST_PASS control=ADMISSION_SET_DRIFT' build/g4-c3-publish.log
+          grep -F 'G4_C3_SELFTEST_PASS control=RHYTHM_FAMILY_DRIFT' build/g4-c3-publish.log
+          grep -F 'G4_C3_SELFTEST_PASS control=BASS_SEMANTICS_COLLAPSE' build/g4-c3-publish.log
+
+          if [[ "$rc" -ne 0 ]]; then
+            grep -F 'G4-I6 committed evidence freshness: RED' build/g4-c3-publish.log
+          fi
+
+      - name: Publish generated I6 and C2 evidence into working tree
+        run: |
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv \
+            docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md
+
+          rm -rf build/host-tests/gf2-g4-c2-publish
+          mkdir -p build/host-tests/gf2-g4-c2-publish
+          python3 tools/gf2/rank_gf2_g4_c2_contract_candidates.py \
+            --census docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            --output-dir build/host-tests/gf2-g4-c2-publish
+          cp build/host-tests/gf2-g4-c2-publish/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv
+          cp build/host-tests/gf2-g4-c2-publish/GF2_G4_C2_CONTRACT_CANDIDATES.md \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md
+
+          python3 tests/test_gf2_g4_c2_contract_candidate_ranking.py
+
+      - name: Commit deterministic evidence
+        run: |
+          git add \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md
+
+          if git diff --cached --quiet; then
+            echo 'G4-C3 evidence already current; no commit needed'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(g4-c3): commit deterministic admission evidence'
+          git push origin HEAD:feature/20260911-01-0.9.11-g4-c3-broken-dnb-admission-equivalence
