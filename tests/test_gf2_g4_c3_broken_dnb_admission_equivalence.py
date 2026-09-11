@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -13,7 +14,9 @@ BROKEN_BASS = {"2", "5", "7", "9"}
 DNB_BASS = {"3", "4", "8", "9"}
 C3_ID = "G4-C3-BROKEN-DNB-ADMISSION-BREAKBEAT-ALIAS"
 C1_ID = "G4-C1-DNB-MATERIALIZED-BASS-SPACE"
-EXPECTED_COVERAGE = "G4_I6_CONTRACT_COVERAGE proven=7 provisional=0 review_required=29 unknown=11136"
+C3_MIN_PROVEN = 7
+C3_MAX_REVIEW_REQUIRED = 29
+C3_MAX_UNKNOWN = 11136
 EXPECTED_MARKER = (
     "G4_C3_BROKEN_DNB_ADMISSION equivalence=PROVEN rows=384 archetypes=4 "
     "broken_bass_ids=4 dnb_bass_ids=4 bass_semantics=INDEPENDENT"
@@ -183,6 +186,48 @@ def run_boundary_selftests() -> None:
     )
 
 
+def parse_summary_metrics(summary_text: str) -> tuple[int, int, int, int]:
+    coverage = re.search(
+        r"(?m)^G4_I6_CONTRACT_COVERAGE proven=(\d+) provisional=(\d+) "
+        r"review_required=(\d+) unknown=(\d+)$",
+        summary_text,
+    )
+    if coverage is None:
+        fail("summary_contract_coverage_missing")
+    proven, provisional, review_required, unknown = map(int, coverage.groups())
+
+    findings = re.search(
+        r"(?m)^G4_I6_FINDINGS .* review_required=(\d+) unknown=(\d+)$",
+        summary_text,
+    )
+    if findings is None:
+        fail("summary_findings_missing")
+    findings_review, findings_unknown = map(int, findings.groups())
+    if (findings_review, findings_unknown) != (review_required, unknown):
+        fail(
+            "summary_findings_coverage_mismatch:"
+            f"findings={findings_review}/{findings_unknown} "
+            f"coverage={review_required}/{unknown}"
+        )
+
+    return proven, provisional, review_required, unknown
+
+
+def assert_c3_coverage_floor(summary_text: str) -> None:
+    proven, provisional, review_required, unknown = parse_summary_metrics(summary_text)
+    if proven < C3_MIN_PROVEN:
+        fail(f"summary_proven={proven} below_c3_floor={C3_MIN_PROVEN}")
+    if provisional != 0:
+        fail(f"summary_provisional={provisional} expected=0")
+    if review_required > C3_MAX_REVIEW_REQUIRED:
+        fail(
+            f"summary_review_required={review_required} "
+            f"above_c3_ceiling={C3_MAX_REVIEW_REQUIRED}"
+        )
+    if unknown > C3_MAX_UNKNOWN:
+        fail(f"summary_unknown={unknown} above_c3_ceiling={C3_MAX_UNKNOWN}")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: test_gf2_g4_c3_broken_dnb_admission_equivalence.py RUN_DIR")
@@ -217,10 +262,10 @@ def main() -> None:
     assert_contract("broken_dnb", broken, C3_ID)
 
     summary_text = summary.read_text(encoding="utf-8")
-    if EXPECTED_COVERAGE not in summary_text:
-        fail("summary_contract_coverage_not_7_29_11136")
-    if "review_required=29 unknown=11136" not in summary_text:
-        fail("summary_findings_not_29_11136")
+    # C3 is a monotonic focused regression: later valid contract promotions may
+    # increase PROVEN and decrease REVIEW_REQUIRED/UNKNOWN, but may not erase
+    # the C3 proof floor or make the summary internally inconsistent.
+    assert_c3_coverage_floor(summary_text)
     if EXPECTED_MARKER not in summary_text:
         fail("summary_c3_marker_missing")
 
