@@ -36,6 +36,17 @@ jobs:
             exit 2
           fi
 
+      - name: Prove no production caller bypasses MaterialReference
+        run: |
+          set -euo pipefail
+          hits="$(git grep -n 'promoteResident' -- '*.cpp' '*.h' '*.ino' 2>/dev/null | grep -Ev '^(src/state/melody_promotion\.h|tests/)' || true)"
+          if [[ -n "${hits}" ]]; then
+            echo "Production promoteResident caller(s) require explicit MaterialReference migration:" >&2
+            echo "${hits}" >&2
+            exit 4
+          fi
+          echo "No production promoteResident callers outside the identity-bound domain header"
+
       - name: Prove identity-bound promotion transaction GREEN
         run: |
           set -euo pipefail
