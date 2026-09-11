@@ -29,3 +29,4 @@ fi
 popd >/dev/null
 
 "$BUILD/test_m_working_manual_pattern_edit"
+python3 tests/test_0_9_11_m_working_ui_note_source_contract.py
