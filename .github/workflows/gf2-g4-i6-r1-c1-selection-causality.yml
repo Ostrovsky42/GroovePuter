@@ -91,7 +91,8 @@ jobs:
 
           ckey = lambda r: (r['owner_genre'], r['recipe_name'], r['identity_ordinal'], r['P_level'])
           tkey = lambda r: (r['owner'], r['profile'], r['identity'], r['level'])
-          old_by, new_by, trace_by = ({ckey(r): r for r in rows} for rows in (old, new, trace))
+          old_by = {ckey(r): r for r in old}
+          new_by = {ckey(r): r for r in new}
           trace_by = {tkey(r): r for r in trace}
 
           changed = 0
@@ -188,10 +189,10 @@ jobs:
               ('C','Acid','BASE','1','P1'),
               ('D','Acid','BASE','9','P1'),
           ]
-          fields_out = ['class'] + list(trace[0].keys())
           projection = build / 'GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv'
+          fieldnames = ['class'] + list(trace[0].keys())
           with projection.open('w', newline='') as fh:
-              w = csv.DictWriter(fh, fieldnames=fields_out, delimiter='\t', lineterminator='\n')
+              w = csv.DictWriter(fh, fieldnames=fieldnames, delimiter='\t', lineterminator='\n')
               w.writeheader()
               for label, owner, profile, identity, level in representative:
                   r = trace_by[(owner,profile,identity,level)].copy()
