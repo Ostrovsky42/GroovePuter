@@ -1,0 +1,31 @@
+name: 0.9.11 A2-B promotion transaction
+
+on:
+  push:
+    branches:
+      - feature/20260911-0.9.11-a2b-promotion-transaction
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a2b-promotion-transaction-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  a2b-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run A2-B promotion transaction characterization
+        run: bash tests/run_0_9_11_a2b_promotion_transaction_tests.sh
+
+      - name: Run existing melody promotion regression
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_melody_promotion.cpp \
+            -o build/host-tests/test_melody_promotion
+          build/host-tests/test_melody_promotion

@@ -460,6 +460,10 @@ PhrasePage::Admissibility PhrasePage::admissibilityFor(
           scene.songs[songSlot], row, bars)) {
     return Admissibility::Occupied;
   }
+  if (PhraseGenerator::findSafeContiguousEmptySlots(
+          scene, mini_acid_.currentPageIndex(), bars) < 0) {
+    return Admissibility::NoSlots;
+  }
   return Admissibility::Free;
 }
 
@@ -591,10 +595,12 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
   const char* admissibilityText =
       admissibility == Admissibility::Free ? "FREE" :
-      (admissibility == Admissibility::Occupied ? "OCCUPIED" : "NO ROOM");
+      (admissibility == Admissibility::Occupied ? "OCCUPIED" :
+       (admissibility == Admissibility::NoSlots ? "NO SLOTS" : "NO ROOM"));
   const IGfxColor admissibilityColor =
       admissibility == Admissibility::Free ? palette.accent :
-      (admissibility == Admissibility::Occupied ? palette.drums : palette.dim);
+      (admissibility == Admissibility::Occupied ||
+       admissibility == Admissibility::NoSlots ? palette.drums : palette.dim);
 
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(1), "TO");

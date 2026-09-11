@@ -28,14 +28,22 @@ require("BAR %u/%u", "Phrase screen does not project current/total bars compactl
 
 # Length is a musical-domain command: UI requests one of 1/2/4/8 and then reads
 # the resulting runtime buffer again. It must not assign lengthTicks directly.
-require("PhraseInstrumentControls::applyLengthChange",
+require("PhraseInstrumentControls::applyLengthChangeDetailed",
         "Phrase length gesture is not routed through the causal control adapter")
 require("mini_acid_.setPhraseLength(voice_index_, bars)",
         "Phrase length gesture does not call the runtime/domain command")
-length_handler = SYNTH.split("if (!ui_event.alt && lower == 'l')", 1)[1].split(
-    "if (!ui_event.alt && (ui_event.key == '['", 1
-)[0]
+length_call = SYNTH.find("PhraseInstrumentControls::applyLengthChangeDetailed(")
+length_guard = SYNTH.rfind("if (", 0, length_call)
+length_end = SYNTH.find("if (!ui_event.alt && (ui_event.key == '['", length_call)
+if length_call < 0 or length_guard < 0 or length_end < 0:
+    raise AssertionError("Could not locate the Phrase LENGTH ownership handler")
+length_handler = SYNTH[length_guard:length_end]
 require_in_length = {
+    "lower == 'l'": "plain L is not owned by the Phrase editor",
+    "ui_event.scancode == GROOVEPUTER_L":
+        "physical/scancode L is not owned by the Phrase editor",
+    "const int direction = ui_event.alt ? -1 : +1;":
+        "Phrase LENGTH handler does not distinguish shrink from growth",
     "const auto apply =": "Phrase length gesture has no guarded mutation closure",
     "if (audio_guard_) audio_guard_(apply)":
         "Phrase length mutation bypasses the existing AudioGuard",
@@ -52,7 +60,6 @@ if "currentPhraseBuffer(voice_index_).lengthTicks =" in SYNTH:
 require("PhraseInstrumentControls::jumpBar",
         "Phrase bar navigation is not explicit")
 require("PHRASE BAR", "bar navigation gives no immediate causal feedback")
-require("lower == 'l'", "plain L is not owned by the Phrase editor")
 require("ui_event.key == '[' || ui_event.key == ']'",
         "Phrase editor does not consume bracket bar navigation")
 require("UI::showToast(toast, 900);\n    return true;",

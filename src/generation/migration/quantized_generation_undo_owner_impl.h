@@ -49,6 +49,32 @@ inline GenerationUndoPayload captureGenerationUndo(
   return before;
 }
 
+inline bool publishCommittedPatternRuntime(
+    MiniAcid& engine,
+    const PatternTarget& target,
+    QuantizedGenerationScope scope) {
+  if (!targetValid(target) ||
+      !targetStillActive(engine.sceneManager(), target)) {
+    return false;
+  }
+
+  if (scope == QuantizedGenerationScope::Full) {
+    return engine.rebuildPatternRuntimeEventBank();
+  }
+
+  const int voice = scope == QuantizedGenerationScope::SynthA ? 0 : 1;
+  if (engine.refreshPatternRuntimeEvents(
+          voice, target.synthBank[voice], target.synthSlot[voice])) {
+    return true;
+  }
+
+  // A valid committed Pattern must never remain visible only in Scene/UI just
+  // because the retained bank identity went stale. This runs on the control
+  // side while the old audible snapshot still owns playback, never at
+  // BAR_START/AudioTask.
+  return engine.rebuildPatternRuntimeEventBank();
+}
+
 inline void applyPreparedGenerationPersistent(
     MiniAcid& engine,
     const PendingGeneration& pending) {
@@ -70,7 +96,8 @@ inline void applyPreparedGenerationPersistent(
     // Swing is projection input for every resident Synth Pattern, therefore a
     // FULL generation commit must settle the complete derived bank, not only
     // the two target slots. Old audible target events remain in PendingGeneration.
-    (void)engine.rebuildPatternRuntimeEventBank();
+    (void)publishCommittedPatternRuntime(
+        engine, pending.target, pending.scope);
     return;
   }
 
@@ -79,8 +106,8 @@ inline void applyPreparedGenerationPersistent(
       ? scene.synthABanks[pending.target.synthBank[0]]
       : scene.synthBBanks[pending.target.synthBank[1]];
   bank.patterns[pending.target.synthSlot[voice]] = pending.synth[voice];
-  (void)engine.refreshPatternRuntimeEvents(
-      voice, pending.target.synthBank[voice], pending.target.synthSlot[voice]);
+  (void)publishCommittedPatternRuntime(
+      engine, pending.target, pending.scope);
 }
 
 inline void activatePreparedGenerationRuntime(
@@ -156,16 +183,27 @@ inline void armActivationSlot(int slot) {
 
 inline void completeArmedActivation(int slot, uint32_t committedRevision) {
   if (slot < 0 || slot > 1) return;
-  g_slots[slot].committedRevision = committedRevision;
+  PendingGeneration& pending = g_slots[slot];
+  if (pending.owner == nullptr ||
+      !publishCommittedPatternRuntime(
+          *pending.owner, pending.target, pending.scope)) {
+    // Never publish READY when Scene/UI truth has no matching runtime carrier.
+    // Keep the old Armed audible snapshot authoritative rather than exposing a
+    // stale runtime bank at the next BAR_START.
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
+        std::memory_order_release);
+    return;
+  }
+
+  pending.committedRevision = committedRevision;
   g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Ready), std::memory_order_release);
   g_status.store(
       static_cast<uint8_t>(QuantizedGenerationStatus::PendingNextBar),
       std::memory_order_release);
-  if (g_slots[slot].owner != nullptr) {
-    g_slots[slot].owner->genreManager().setPendingCommitHook(
-        &commitQuantizedGenerationAtBarStart);
-  }
+  pending.owner->genreManager().setPendingCommitHook(
+      &commitQuantizedGenerationAtBarStart);
 }
 
 inline void abortArmedActivation(int slot,
@@ -372,6 +410,8 @@ inline void restoreGenerationUndo(
     engine.setGrooveboxMode(before.mode);
     engine.sceneManager().setBpm(before.bpm);
     engine.setBpm(before.bpm);
+    (void)publishCommittedPatternRuntime(
+        engine, before.target, before.scope);
     return;
   }
 
@@ -380,6 +420,8 @@ inline void restoreGenerationUndo(
       ? scene.synthABanks[before.target.synthBank[0]]
       : scene.synthBBanks[before.target.synthBank[1]];
   bank.patterns[before.target.synthSlot[voice]] = before.synth[voice];
+  (void)publishCommittedPatternRuntime(
+      engine, before.target, before.scope);
 }
 
 inline void exchangeGenerationUndo(MiniAcid& engine,
@@ -410,8 +452,11 @@ inline void exchangeGenerationUndo(MiniAcid& engine,
     retained.bpm = committedBpm;
 
     // During PLAY the old runtime truth is already the correct side while an
-    // Undo-before-boundary cancels pending ACTIVATE. Never republish runtime
-    // controls mid-bar. STOP can converge runtime immediately.
+    // Undo-before-boundary cancels pending ACTIVATE. Pattern events can still
+    // be republished safely on the control side because the retained old
+    // audible snapshot remains authoritative until that cancellation.
+    (void)publishCommittedPatternRuntime(
+        engine, retained.target, retained.scope);
     if (!engine.isPlaying()) {
       engine.activateCommittedGrooveboxModeRuntime(scenes.getMode());
       engine.setBpm(scenes.getBpm());
@@ -425,6 +470,8 @@ inline void exchangeGenerationUndo(MiniAcid& engine,
       : scene.synthBBanks[retained.target.synthBank[1]];
   GroovePuterUndo::exchangeFixedValue(
       bank.patterns[retained.target.synthSlot[voice]], retained.synth[voice]);
+  (void)publishCommittedPatternRuntime(
+      engine, retained.target, retained.scope);
 }
 
 }  // namespace QuantizedGenerationDetail

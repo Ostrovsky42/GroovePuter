@@ -1,0 +1,80 @@
+name: 0.9.11 Audible Pattern Publication
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-audible-pattern-publication
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audible-pattern-publication-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-publication-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Run audible Pattern publication regression
+        run: bash tests/run_0_9_11_audible_pattern_publication_tests.sh
+
+      - name: Preserve bounded WorkingMaterialStorage
+        run: bash tests/run_0_9_11_m_working_storage_tests.sh
+
+      - name: Preserve Melody working semantics and A2-B compatibility
+        run: bash tests/run_0_9_11_m_working_melody_compat_tests.sh
+
+      - name: Preserve M-WORKING behavioral gates without STOP
+        shell: bash
+        run: |
+          set +e
+          bash tests/run_0_9_11_m_working_tests.sh 2>&1 | tee /tmp/m-working-audible-publication.log
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "runner_status=$status" | tee -a /tmp/m-working-audible-publication.log
+          if [[ "$status" -eq 2 ]]; then
+            echo 'A hard M-WORKING STOP gate tripped' >&2
+            exit 1
+          fi
+          if [[ "$status" -ne 0 && "$status" -ne 1 ]]; then
+            echo "Unexpected M-WORKING runner status $status" >&2
+            exit 1
+          fi
+          if grep -q 'M-WORKING STOP' /tmp/m-working-audible-publication.log; then
+            echo 'A hard M-WORKING STOP gate tripped' >&2
+            exit 1
+          fi
+
+      - name: Preserve Material ACTIVE/NEXT causality
+        run: |
+          bash tests/run_m3_material_authority_tests.sh
+          bash tests/run_m4_next_material_tests.sh
+
+      - name: Preserve A2-B identity-bound promotion
+        run: |
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh
+          bash tests/run_0_9_11_a2b_identity_transaction_red.sh
+          bash tests/run_melody_promotion_tests.sh
+
+      - name: Preserve melody promotion regression
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_melody_promotion.cpp \
+            -o build/host-tests/test_melody_promotion
+          build/host-tests/test_melody_promotion

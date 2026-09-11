@@ -67,6 +67,96 @@ inline bool prepareLengthTarget(
          RuntimePhraseEdit::LengthEditResult::Changed;
 }
 
+enum class LengthChangeResult : uint8_t {
+  Changed = 0,
+  Unchanged,
+  InvalidDirection,
+  InvalidLength,
+  WouldTruncateEvent,
+  CommitFailed,
+};
+
+struct LengthChangeOutcome {
+  LengthChangeResult result = LengthChangeResult::Unchanged;
+  uint8_t targetBars = 1;
+};
+
+inline bool shrinkWouldTruncateEvent(
+    const PhraseRuntime::RuntimeSynthEventBuffer& current,
+    uint16_t targetTicks) {
+  if (targetTicks >= current.lengthTicks) return false;
+  const uint32_t targetEndSubtick =
+      static_cast<uint32_t>(targetTicks) * PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < current.count; ++i) {
+    const auto& event = current.events[i];
+    if (event.startTick >= targetTicks) return true;
+    const uint32_t eventEndSubtick =
+        static_cast<uint32_t>(event.startTick) *
+            PhraseRuntime::kSubticksPerTick +
+        static_cast<uint32_t>(event.durationSubticks);
+    if (eventEndSubtick > targetEndSubtick) return true;
+  }
+  return false;
+}
+
+// Detailed UI preflight. RuntimePhraseEdit intentionally exposes only the
+// mutation-level Rejected result. The surface still needs to distinguish the
+// musically meaningful safe-shrink refusal from a stale/invalid commit, so we
+// classify whether existing notes cross the requested boundary before calling
+// the owner command. No live buffer is modified during this classification.
+template <typename SetLengthFn>
+inline LengthChangeOutcome applyLengthChangeDetailed(
+    const PhraseRuntime::RuntimeSynthEventBuffer& current,
+    int direction,
+    SetLengthFn&& setLength) {
+  LengthChangeOutcome outcome{};
+  if (!RuntimePhraseEdit::validLengthTicks(current.lengthTicks)) {
+    outcome.result = LengthChangeResult::InvalidLength;
+    return outcome;
+  }
+  outcome.targetBars = lengthBars(current.lengthTicks);
+  if (direction != -1 && direction != 1) {
+    outcome.result = LengthChangeResult::InvalidDirection;
+    return outcome;
+  }
+
+  outcome.targetBars = nextLengthBars(outcome.targetBars, direction);
+  const uint16_t targetTicks =
+      RuntimePhraseEdit::lengthTicksForBars(outcome.targetBars);
+  if (targetTicks == 0) {
+    outcome.result = LengthChangeResult::InvalidLength;
+    return outcome;
+  }
+  if (targetTicks == current.lengthTicks) {
+    outcome.result = LengthChangeResult::Unchanged;
+    return outcome;
+  }
+
+  if (targetTicks > current.lengthTicks) {
+    PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+    if (!prepareLengthTarget(current, outcome.targetBars, candidate)) {
+      outcome.result = LengthChangeResult::InvalidLength;
+      return outcome;
+    }
+  } else {
+    if (!RuntimePhraseEdit::validate(current)) {
+      outcome.result = LengthChangeResult::InvalidLength;
+      return outcome;
+    }
+    if (shrinkWouldTruncateEvent(current, targetTicks)) {
+      outcome.result = LengthChangeResult::WouldTruncateEvent;
+      return outcome;
+    }
+  }
+
+  const bool committed =
+      std::forward<SetLengthFn>(setLength)(outcome.targetBars);
+  outcome.result = committed
+      ? LengthChangeResult::Changed
+      : LengthChangeResult::CommitFailed;
+  return outcome;
+}
+
 template <typename SetLengthFn>
 inline bool applyLengthChange(uint16_t currentLengthTicks,
                               int direction,

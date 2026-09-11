@@ -3,6 +3,7 @@
 #define MINIACID_ENGINE_H
 
 #include "src/state/material_slot.h"
+#include "src/state/working_material_storage.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <atomic>
@@ -556,7 +557,7 @@ private:
     bool queued = false;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
-  PhraseRuntime::RuntimeSynthEventBuffer currentPhrase_[NUM_303_VOICES]{};
+  GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
 
   bool songMode_;
   int drumCycleIndex_;

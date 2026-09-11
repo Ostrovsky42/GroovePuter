@@ -28,6 +28,11 @@ inline MaterialKind residentKind(const Scene& scene, int voice, int slot) {
   return scene.materialSlots[voice][slot].kind;
 }
 
+inline MaterialId residentId(const Scene& scene, int voice, int slot) {
+  if (!residentSlotInRange(voice, slot)) return {};
+  return scene.materialSlots[voice][slot].id;
+}
+
 inline bool setResidentKind(Scene& scene, int voice, int slot,
                             MaterialKind kind) {
   if (!residentSlotInRange(voice, slot)) return false;
@@ -35,12 +40,31 @@ inline bool setResidentKind(Scene& scene, int voice, int slot,
   return true;
 }
 
+inline bool materialAddressInRange(MaterialAddress address) {
+  return address.voice < Scene::kMaterialVoices &&
+         static_cast<int>(address.globalSlot) < kMaxGlobalPatterns;
+}
+
+inline int residentSlotFor(MaterialAddress address) {
+  const int globalSlot = static_cast<int>(address.globalSlot);
+  return (songPatternBank(globalSlot) * Bank<SynthPattern>::kPatterns) +
+         songPatternIndexInBank(globalSlot);
+}
+
+inline bool materialAddressIsResident(MaterialAddress address, int activePage) {
+  return materialAddressInRange(address) && activePage >= 0 &&
+         activePage < kMaxPages &&
+         songPatternPage(static_cast<int>(address.globalSlot)) == activePage;
+}
+
 // The global slot space spans pages, and the Scene holds one page. The caller
 // supplies which page it is on rather than this header reaching into the
 // paging service: a Scene cannot honestly answer for material it does not
 // hold, and pretending otherwise is how a kind drifts away from its pattern.
 inline bool globalSlotIsResident(int globalSlot, int activePage) {
-  return songPatternPage(globalSlot) == activePage;
+  return globalSlot >= 0 && globalSlot < kMaxGlobalPatterns &&
+         activePage >= 0 && activePage < kMaxPages &&
+         songPatternPage(globalSlot) == activePage;
 }
 
 inline MaterialKind materialKind(const Scene& scene, int voice, int globalSlot,
