@@ -36,8 +36,6 @@ struct OwnerCapability {
   bool connectedReachable[kLevelCount]{};
   uint16_t detachedWitness[kLevelCount]{};
   uint16_t connectedWitness[kLevelCount]{};
-  uint16_t autoObservedDetached = 0;
-  uint16_t autoObservedConnected = 0;
 };
 
 struct CorpusBucket {
@@ -411,10 +409,6 @@ bool collectHistoricalCorpus(CorpusEvidence& evidence,
         if (slides != 0) {
           ++bucket.slideRows;
           ++evidence.slideRows;
-        }
-
-        if (identity <= kHistoricalIdentityCount) {
-          if (continuations != 0) ++capabilityDummy; // placeholder removed below
         }
 
         if (census.is_open()) {
