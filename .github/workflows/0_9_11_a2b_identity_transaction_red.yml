@@ -36,7 +36,7 @@ jobs:
             exit 2
           fi
 
-      - name: Prove stale promotion causality RED
+      - name: Prove stale promotion causality witness
         run: |
           set -uo pipefail
           set +e
@@ -53,5 +53,9 @@ jobs:
             "A2B_STALE_PROMOTION_RED: stale {address,idM} candidate was published after the resident identity changed to idN; idN was marked Melody with idM payload" \
             a2b-identity-transaction-red.log
 
-          echo "INTENTIONAL RED CONFIRMED: promotion lost MaterialReference identity authority"
+          echo "INTENTIONAL RED WITNESS CONFIRMED: promotion lost MaterialReference identity authority"
+
+      - name: Keep RED checkpoint intentionally failing
+        run: |
+          echo "A2-B RED is proven; production remains untouched at this checkpoint"
           exit 1
