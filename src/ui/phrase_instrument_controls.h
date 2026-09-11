@@ -110,11 +110,11 @@ inline LengthChangeOutcome applyLengthChangeDetailed(
     int direction,
     SetLengthFn&& setLength) {
   LengthChangeOutcome outcome{};
-  outcome.targetBars = lengthBars(current.lengthTicks);
-  if (!RuntimePhraseEdit::validate(current)) {
+  if (!RuntimePhraseEdit::validLengthTicks(current.lengthTicks)) {
     outcome.result = LengthChangeResult::InvalidLength;
     return outcome;
   }
+  outcome.targetBars = lengthBars(current.lengthTicks);
   if (direction != -1 && direction != 1) {
     outcome.result = LengthChangeResult::InvalidDirection;
     return outcome;
@@ -131,9 +131,22 @@ inline LengthChangeOutcome applyLengthChangeDetailed(
     outcome.result = LengthChangeResult::Unchanged;
     return outcome;
   }
-  if (shrinkWouldTruncateEvent(current, targetTicks)) {
-    outcome.result = LengthChangeResult::WouldTruncateEvent;
-    return outcome;
+
+  if (targetTicks > current.lengthTicks) {
+    PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+    if (!prepareLengthTarget(current, outcome.targetBars, candidate)) {
+      outcome.result = LengthChangeResult::InvalidLength;
+      return outcome;
+    }
+  } else {
+    if (!RuntimePhraseEdit::validate(current)) {
+      outcome.result = LengthChangeResult::InvalidLength;
+      return outcome;
+    }
+    if (shrinkWouldTruncateEvent(current, targetTicks)) {
+      outcome.result = LengthChangeResult::WouldTruncateEvent;
+      return outcome;
+    }
   }
 
   const bool committed =
