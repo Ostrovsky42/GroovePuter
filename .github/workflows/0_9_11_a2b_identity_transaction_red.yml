@@ -1,0 +1,57 @@
+name: 0.9.11 A2-B Identity Transaction RED
+
+on:
+  push:
+    branches:
+      - feature/20260911-0.9.11-a2b-identity-transaction
+  workflow_dispatch:
+
+env:
+  A2_GREEN_ROOT: 730daa7d23f081123f34e122d6f85cfa17ee3158
+  CANDIDATE_HEAD: ${{ github.sha }}
+
+jobs:
+  a2b-identity-transaction-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact checkout and A2 GREEN ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${A2_GREEN_ROOT}" HEAD
+
+      - name: Prove RED checkpoint is tests docs CI only
+        run: |
+          set -euo pipefail
+          unexpected="$(git diff --name-only "${A2_GREEN_ROOT}"..HEAD | grep -Ev '^(\.github/workflows/0_9_11_a2b_identity_transaction_red.yml|docs/superpowers/specs/2026-09-11-0.9.11-a2b-identity-transaction-red.md|tests/run_0_9_11_a2b_identity_transaction_red.sh|tests/test_0_9_11_a2b_identity_transaction.cpp)$' || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo "Unexpected production files in A2-B RED checkpoint:" >&2
+            echo "${unexpected}" >&2
+            exit 2
+          fi
+
+      - name: Prove stale promotion causality RED
+        run: |
+          set -uo pipefail
+          set +e
+          bash tests/run_0_9_11_a2b_identity_transaction_red.sh 2>&1 | tee a2b-identity-transaction-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [[ ${status} -eq 0 ]]; then
+            echo "A2-B identity transaction unexpectedly passed before GREEN production" >&2
+            exit 3
+          fi
+
+          grep -F \
+            "A2B_STALE_PROMOTION_RED: stale {address,idM} candidate was published after the resident identity changed to idN; idN was marked Melody with idM payload" \
+            a2b-identity-transaction-red.log
+
+          echo "INTENTIONAL RED CONFIRMED: promotion lost MaterialReference identity authority"
+          exit 1
