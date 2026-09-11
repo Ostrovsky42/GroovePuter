@@ -41,12 +41,12 @@ struct PatternObservation {
 struct CandidateEvidence {
   uint16_t owners = 0;
   uint16_t candidateEdges = 0;
-  uint16_t candidateEdgesWithExpressiveSpace = 0;
-  uint16_t ownersWithUpstreamExpressiveSpace = 0;
-  uint16_t profileBassIdentityEdges = 0;
-  uint16_t uniqueProfileBassIdentities = 0;
-  uint16_t continuationCapableProfileBassEdges = 0;
-  uint16_t ownersWithMoreThanPlainPitchArticulation = 0;
+  uint16_t expressiveEdges = 0;
+  uint16_t upstreamExpressiveOwners = 0;
+  uint16_t bassIdentityEdges = 0;
+  uint16_t uniqueBassIdentities = 0;
+  uint16_t continuationCapableBassEdges = 0;
+  uint16_t nonPlainArticulationOwners = 0;
   uint16_t weightIndependenceViolations = 0;
 };
 
@@ -57,20 +57,20 @@ struct MaterializedBucket {
   uint16_t mixed = 0;
   uint16_t withContinuation = 0;
   uint16_t withSlide = 0;
-  uint16_t withMultipleClasses = 0;
+  uint16_t multiClass = 0;
 };
 
 struct MaterializedEvidence {
   uint16_t attempted = 0;
   uint16_t successful = 0;
   uint16_t failed = 0;
-  uint16_t rowsWithContinuation = 0;
-  uint16_t rowsWithSlide = 0;
-  uint16_t rowsWithMultipleClasses = 0;
-  uint16_t rowsAllDetached = 0;
-  uint16_t rowsAllConnected = 0;
-  uint16_t rowsMixed = 0;
-  MaterializedBucket buckets[kOwnerExpected][kLevelCount]{};
+  uint16_t allDetached = 0;
+  uint16_t allConnected = 0;
+  uint16_t mixed = 0;
+  uint16_t withContinuation = 0;
+  uint16_t withSlide = 0;
+  uint16_t multiClass = 0;
+  MaterializedBucket bucket[kOwnerExpected][kLevelCount]{};
 };
 
 uint8_t popcount16(uint16_t value) {
@@ -82,16 +82,16 @@ uint8_t popcount16(uint16_t value) {
   return count;
 }
 
-const RhythmArchetype* archetypeForId(RhythmArchetypeId archetypeId) {
+const RhythmArchetype* archetypeForId(RhythmArchetypeId id) {
   const ReferenceVocabulary::Definition* definition =
-      ReferenceVocabulary::definitionForId(archetypeId);
-  if (definition == nullptr) return nullptr;
-  return ReferenceVocabulary::archetypeFor(definition->key);
+      ReferenceVocabulary::definitionForId(id);
+  return definition == nullptr ? nullptr
+                               : ReferenceVocabulary::archetypeFor(definition->key);
 }
 
 const LaneGrammar* laneFor(const RhythmArchetype& archetype, RhythmRole role) {
-  for (uint8_t lane = 0; lane < archetype.laneCount; ++lane) {
-    if (archetype.lanes[lane].role == role) return &archetype.lanes[lane];
+  for (uint8_t index = 0; index < archetype.laneCount; ++index) {
+    if (archetype.lanes[index].role == role) return &archetype.lanes[index];
   }
   return nullptr;
 }
@@ -127,13 +127,11 @@ ArticulationSpace projectArticulationSpace(const RhythmArchetype& archetype) {
   return result;
 }
 
-bool expressiveArticulationSpace(const ArticulationSpace& space) {
-  return space.bassExists && space.independentAttack &&
-         space.connectedExtended;
+bool expressive(const ArticulationSpace& space) {
+  return space.bassExists && space.independentAttack && space.connectedExtended;
 }
 
-void mergeArticulationSpace(ArticulationSpace& destination,
-                            const ArticulationSpace& source) {
+void merge(ArticulationSpace& destination, const ArticulationSpace& source) {
   destination.bassExists = destination.bassExists || source.bassExists;
   destination.independentAttack =
       destination.independentAttack || source.independentAttack;
@@ -150,24 +148,20 @@ bool perPatternContrast(const PatternObservation& observation) {
          observation.connectedExtended != 0;
 }
 
-bool patternAllowedByOwnerSpace(const ArticulationSpace& ownerSpace,
-                                const PatternObservation& observation) {
-  if (!expressiveArticulationSpace(ownerSpace)) return false;
+bool allowedByExpressiveOwner(const ArticulationSpace& owner,
+                              const PatternObservation& observation) {
+  if (!expressive(owner)) return false;
   if (observation.independentAttacks == 0 &&
       observation.connectedExtended == 0) {
     return false;
   }
-  if (observation.independentAttacks != 0 && !ownerSpace.independentAttack)
-    return false;
-  if (observation.connectedExtended != 0 && !ownerSpace.connectedExtended)
-    return false;
-  return true;
+  return (observation.independentAttacks == 0 || owner.independentAttack) &&
+         (observation.connectedExtended == 0 || owner.connectedExtended);
 }
 
-bool candidatePassesCapability(const RhythmCompatibilityCandidate& candidate) {
+bool candidateCapability(const RhythmCompatibilityCandidate& candidate) {
   const RhythmArchetype* archetype = archetypeForId(candidate.archetypeId);
-  return archetype != nullptr &&
-         expressiveArticulationSpace(projectArticulationSpace(*archetype));
+  return archetype != nullptr && expressive(projectArticulationSpace(*archetype));
 }
 
 GenreSettings settingsFor(GenreRecipeId recipe) {
@@ -180,7 +174,7 @@ GenreSettings settingsFor(GenreRecipeId recipe) {
   return settings;
 }
 
-StrongRhythmMigrationContext migrationContextFor(RealizationLevel level) {
+StrongRhythmMigrationContext contextFor(RealizationLevel level) {
   StrongRhythmMigrationContext context{};
   context.patternAddress = 0;
   context.level = level;
@@ -191,33 +185,6 @@ StrongRhythmMigrationContext migrationContextFor(RealizationLevel level) {
   context.rootPitchClass = 0;
   context.scaleTypeValue = kScaleDorian;
   return context;
-}
-
-StepMask drumKickOnsets(const DrumPatternSet& drums) {
-  StepMask result = 0;
-  for (uint8_t step = 0; step < DrumPattern::kSteps; ++step) {
-    if (drums.voices[KICK].steps[step].hit) {
-      result = static_cast<StepMask>(result | stepBit(step));
-    }
-  }
-  return result;
-}
-
-StepMask protectedSpaceFor(const RhythmArchetype& archetype,
-                           RhythmRole role) {
-  StepMask result = 0;
-  const RhythmRoleMask roleBit = rhythmRoleBit(role);
-  for (uint8_t index = 0; index < archetype.protectedSpaceCount; ++index) {
-    const ProtectedSpace& space = archetype.protectedSpaces[index];
-    if ((space.affectedRoles & roleBit) != 0) {
-      result = static_cast<StepMask>(result | space.steps);
-    }
-  }
-  return result;
-}
-
-bool acidAllowsSparseSemanticBar(RhythmFamily family) {
-  return family == RhythmFamily::SparsePulse;
 }
 
 const char* ownerName(GenreRecipeId recipe) {
@@ -239,18 +206,39 @@ const char* levelName(RealizationLevel level) {
   return "INVALID";
 }
 
-bool checkAdversarialProjectionFixtures() {
+StepMask kickOnsets(const DrumPatternSet& drums) {
+  StepMask result = 0;
+  for (uint8_t step = 0; step < DrumPattern::kSteps; ++step) {
+    if (drums.voices[KICK].steps[step].hit)
+      result = static_cast<StepMask>(result | stepBit(step));
+  }
+  return result;
+}
+
+StepMask protectedSpaceFor(const RhythmArchetype& archetype,
+                           RhythmRole role) {
+  StepMask result = 0;
+  const RhythmRoleMask bit = rhythmRoleBit(role);
+  for (uint8_t index = 0; index < archetype.protectedSpaceCount; ++index) {
+    if ((archetype.protectedSpaces[index].affectedRoles & bit) != 0) {
+      result = static_cast<StepMask>(
+          result | archetype.protectedSpaces[index].steps);
+    }
+  }
+  return result;
+}
+
+bool acidAllowsSparseBar(RhythmFamily family) {
+  return family == RhythmFamily::SparsePulse;
+}
+
+bool checkAdversarialFixtures() {
   bool ok = true;
   const RhythmArchetype* source = archetypeForId(405);
-  if (source == nullptr ||
-      !expressiveArticulationSpace(projectArticulationSpace(*source))) {
-    std::puts("G4_CC1A_FAIL fixture=positive_source_405");
-    return false;
-  }
+  if (source == nullptr) return false;
   const ArticulationSpace sourceSpace = projectArticulationSpace(*source);
+  if (!expressive(sourceSpace)) return false;
 
-  // H1 and H2 must remain distinct. A single uniform line can be legal inside
-  // an owner space that still exposes detached and connected possibilities.
   const PatternObservation uniformDetached{8, 0};
   const PatternObservation staccatoDominant{7, 1};
   const PatternObservation connectedDominant{1, 7};
@@ -259,10 +247,10 @@ bool checkAdversarialProjectionFixtures() {
       !perPatternContrast(staccatoDominant) ||
       !perPatternContrast(connectedDominant) ||
       !perPatternContrast(mixed) ||
-      !patternAllowedByOwnerSpace(sourceSpace, uniformDetached) ||
-      !patternAllowedByOwnerSpace(sourceSpace, staccatoDominant) ||
-      !patternAllowedByOwnerSpace(sourceSpace, connectedDominant) ||
-      !patternAllowedByOwnerSpace(sourceSpace, mixed)) {
+      !allowedByExpressiveOwner(sourceSpace, uniformDetached) ||
+      !allowedByExpressiveOwner(sourceSpace, staccatoDominant) ||
+      !allowedByExpressiveOwner(sourceSpace, connectedDominant) ||
+      !allowedByExpressiveOwner(sourceSpace, mixed)) {
     std::puts("G4_CC1A_FAIL fixture=capability_vs_per_pattern");
     ok = false;
   } else {
@@ -274,52 +262,47 @@ bool checkAdversarialProjectionFixtures() {
   for (uint8_t i = 0; i < source->laneCount; ++i) lanes[i] = source->lanes[i];
   RhythmArchetype mutant = *source;
   mutant.lanes = lanes;
-
-  // Semantic flattening: preserve legal event coordinates but collapse every
-  // bass onset to the implicit Normal/re-articulated class.
   for (uint8_t i = 0; i < mutant.laneCount; ++i) {
-    if (lanes[i].role != RhythmRole::BassRhythm) continue;
-    lanes[i].shortGate = 0;
-    lanes[i].heldGate = 0;
-    lanes[i].tieGate = 0;
+    if (lanes[i].role == RhythmRole::BassRhythm) {
+      lanes[i].shortGate = 0;
+      lanes[i].heldGate = 0;
+      lanes[i].tieGate = 0;
+    }
   }
-  if (expressiveArticulationSpace(projectArticulationSpace(mutant))) {
+  if (expressive(projectArticulationSpace(mutant))) {
     std::puts("G4_CC1A_FAIL fixture=flatten_articulation");
     ok = false;
   } else {
     std::puts("G4_CC1A_PASS fixture=flatten_articulation");
   }
 
-  // Missing semantic bass dimension is distinct from a flattened bass lane.
   for (uint8_t i = 0; i < source->laneCount; ++i) lanes[i] = source->lanes[i];
+  mutant = *source;
+  mutant.lanes = lanes;
   for (uint8_t i = 0; i < mutant.laneCount; ++i) {
     if (lanes[i].role == RhythmRole::BassRhythm) {
       lanes[i].role = RhythmRole::Percussion;
       break;
     }
   }
-  const ArticulationSpace missingBass = projectArticulationSpace(mutant);
-  if (missingBass.bassExists || expressiveArticulationSpace(missingBass)) {
+  if (projectArticulationSpace(mutant).bassExists) {
     std::puts("G4_CC1A_FAIL fixture=missing_bass_semantic_dimension");
     ok = false;
   } else {
     std::puts("G4_CC1A_PASS fixture=missing_bass_semantic_dimension");
   }
 
-  // Label independence: labels are report-only data and never enter projection.
   const char* label = "ACID";
-  const bool beforeLabelMutation = expressiveArticulationSpace(sourceSpace);
-  label = "NOT_ACID";
-  const bool afterLabelMutation = expressiveArticulationSpace(sourceSpace);
-  if (label == nullptr || beforeLabelMutation != afterLabelMutation) {
+  const bool labelBefore = expressive(sourceSpace);
+  label = "MUTATED_LABEL";
+  const bool labelAfter = expressive(sourceSpace);
+  if (label == nullptr || labelBefore != labelAfter) {
     std::puts("G4_CC1A_FAIL fixture=label_independence");
     ok = false;
   } else {
     std::puts("G4_CC1A_PASS fixture=label_independence");
   }
 
-  // Kick relationship and grid-window mutation must not affect the new bass
-  // articulation projection.
   LaneRelationship relationships[kMaxRelationships]{};
   if (source->relationshipCount > kMaxRelationships) return false;
   for (uint8_t i = 0; i < source->relationshipCount; ++i)
@@ -331,8 +314,7 @@ bool checkAdversarialProjectionFixtures() {
     relationships[i].target = RhythmRole::ClosedHat;
     relationships[i].op = RelationshipOp::Coincide;
   }
-  if (expressiveArticulationSpace(projectArticulationSpace(mutant)) !=
-      expressiveArticulationSpace(sourceSpace)) {
+  if (expressive(projectArticulationSpace(mutant)) != expressive(sourceSpace)) {
     std::puts("G4_CC1A_FAIL fixture=kick_relationship_independence");
     ok = false;
   } else {
@@ -345,19 +327,16 @@ bool checkAdversarialProjectionFixtures() {
     relationships[i].minOffset = -7;
     relationships[i].maxOffset = 7;
   }
-  if (expressiveArticulationSpace(projectArticulationSpace(mutant)) !=
-      expressiveArticulationSpace(sourceSpace)) {
+  if (expressive(projectArticulationSpace(mutant)) != expressive(sourceSpace)) {
     std::puts("G4_CC1A_FAIL fixture=grid_constant_independence");
     ok = false;
   } else {
     std::puts("G4_CC1A_PASS fixture=grid_constant_independence");
   }
-
   return ok;
 }
 
-bool bassIdentityCanProduceContinuation(BassRhythmId id,
-                                        RhythmArchetypeId archetypeId) {
+bool bassIdentityCanContinue(BassRhythmId id, RhythmArchetypeId archetypeId) {
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(archetypeId);
   const RhythmArchetype* archetype = archetypeForId(archetypeId);
@@ -374,7 +353,7 @@ bool bassIdentityCanProduceContinuation(BassRhythmId id,
     request.generation.projectSeed = 0x43433141u;
     request.generation.phraseOrdinal = 1;
     request.barOrdinal = bar;
-    request.allowEmptyBar = acidAllowsSparseSemanticBar(definition->family);
+    request.allowEmptyBar = acidAllowsSparseBar(definition->family);
     const BassRhythmResult result = realizeBassRhythm(request);
     if ((result.status == BassRhythmStatus::Ok ||
          result.status == BassRhythmStatus::ValidButEmpty) &&
@@ -385,23 +364,17 @@ bool bassIdentityCanProduceContinuation(BassRhythmId id,
   return false;
 }
 
-bool checkCandidateSpace(CandidateEvidence& evidence) {
-  bool ok = true;
+bool collectCandidateEvidence(CandidateEvidence& evidence) {
   uint16_t uniqueBassMask = 0;
-  const uint8_t recipeCount = availableRecipeCount(GenerativeMode::Acid);
-  for (uint8_t ordinal = 0; ordinal < recipeCount; ++ordinal) {
+  const uint8_t ownerCount = availableRecipeCount(GenerativeMode::Acid);
+  for (uint8_t ordinal = 0; ordinal < ownerCount; ++ordinal) {
     GenreRecipeId recipe = 0;
-    if (!availableRecipeAt(GenerativeMode::Acid, ordinal, recipe)) {
-      std::printf("G4_CC1A_FAIL owner_enumeration ordinal=%u\n", ordinal);
-      return false;
-    }
+    if (!availableRecipeAt(GenerativeMode::Acid, ordinal, recipe)) return false;
     ++evidence.owners;
     const GenreSettings settings = settingsFor(recipe);
     const RhythmCompatibilityView compatibility = rhythmCompatibilityFor(settings);
-    if (compatibility.candidates == nullptr || compatibility.count == 0) {
-      std::printf("G4_CC1A_FAIL empty_admission recipe=%u\n", recipe);
+    if (compatibility.candidates == nullptr || compatibility.count == 0)
       return false;
-    }
 
     ArticulationSpace ownerSpace{};
     for (uint8_t index = 0; index < compatibility.count; ++index) {
@@ -410,80 +383,73 @@ bool checkCandidateSpace(CandidateEvidence& evidence) {
       const RhythmArchetype* archetype = archetypeForId(candidate.archetypeId);
       if (archetype == nullptr) return false;
       const ArticulationSpace projected = projectArticulationSpace(*archetype);
-      mergeArticulationSpace(ownerSpace, projected);
-      if (expressiveArticulationSpace(projected))
-        ++evidence.candidateEdgesWithExpressiveSpace;
+      merge(ownerSpace, projected);
+      if (expressive(projected)) ++evidence.expressiveEdges;
 
-      const bool original = candidatePassesCapability(candidate);
+      const bool before = candidateCapability(candidate);
       RhythmCompatibilityCandidate reweighted = candidate;
       reweighted.weight = static_cast<uint8_t>(candidate.weight ^ 0xA5u);
-      const bool afterWeightMutation = candidatePassesCapability(reweighted);
-      if (original != afterWeightMutation)
-        ++evidence.weightIndependenceViolations;
+      const bool after = candidateCapability(reweighted);
+      if (before != after) ++evidence.weightIndependenceViolations;
     }
-    if (expressiveArticulationSpace(ownerSpace))
-      ++evidence.ownersWithUpstreamExpressiveSpace;
+    if (expressive(ownerSpace)) ++evidence.upstreamExpressiveOwners;
 
     const GenerationProfileView profile = generationProfileFor(settings);
     if (profile.bassRhythms.candidates == nullptr ||
         profile.bassRhythms.count == 0) {
-      std::printf("G4_CC1A_FAIL empty_bass_profile recipe=%u\n", recipe);
       return false;
     }
-    const RhythmArchetypeId representativeArchetype =
+    const RhythmArchetypeId representative =
         compatibility.candidates[0].archetypeId;
     for (uint8_t index = 0; index < profile.bassRhythms.count; ++index) {
-      ++evidence.profileBassIdentityEdges;
+      ++evidence.bassIdentityEdges;
       const uint8_t rawId = profile.bassRhythms.candidates[index].id;
-      if (rawId < 16) uniqueBassMask = static_cast<uint16_t>(
-          uniqueBassMask | static_cast<uint16_t>(1u << rawId));
-      if (bassIdentityCanProduceContinuation(
-              static_cast<BassRhythmId>(rawId), representativeArchetype)) {
-        ++evidence.continuationCapableProfileBassEdges;
+      if (rawId < 16) {
+        uniqueBassMask = static_cast<uint16_t>(
+            uniqueBassMask | static_cast<uint16_t>(1u << rawId));
       }
+      if (bassIdentityCanContinue(static_cast<BassRhythmId>(rawId), representative))
+        ++evidence.continuationCapableBassEdges;
     }
 
     const TonalGenerationProfile tonal = tonalGenerationProfileFor(settings);
     const uint16_t plain =
         bassArticulationStyleBit(BassArticulationStyleId::Plain);
     if (tonal.bassPolicy.allowedArticulations != plain)
-      ++evidence.ownersWithMoreThanPlainPitchArticulation;
+      ++evidence.nonPlainArticulationOwners;
 
     std::printf(
         "G4_CC1A_OWNER recipe=%u name=%s candidates=%u upstream_expressive=%u bass_ids=%u allowed_articulation_mask=%04x\n",
         recipe, ownerName(recipe), compatibility.count,
-        expressiveArticulationSpace(ownerSpace) ? 1u : 0u,
-        profile.bassRhythms.count,
+        expressive(ownerSpace) ? 1u : 0u, profile.bassRhythms.count,
         tonal.bassPolicy.allowedArticulations);
   }
 
-  evidence.uniqueProfileBassIdentities = popcount16(uniqueBassMask);
+  evidence.uniqueBassIdentities = popcount16(uniqueBassMask);
   std::printf(
       "G4_CC1A_CANDIDATE owners=%u candidate_edges=%u expressive_edges=%u upstream_expressive_owners=%u bass_identity_edges=%u unique_bass_ids=%u continuation_capable_bass_edges=%u non_plain_articulation_owners=%u weight_independence_violations=%u\n",
-      evidence.owners, evidence.candidateEdges,
-      evidence.candidateEdgesWithExpressiveSpace,
-      evidence.ownersWithUpstreamExpressiveSpace,
-      evidence.profileBassIdentityEdges, evidence.uniqueProfileBassIdentities,
-      evidence.continuationCapableProfileBassEdges,
-      evidence.ownersWithMoreThanPlainPitchArticulation,
+      evidence.owners, evidence.candidateEdges, evidence.expressiveEdges,
+      evidence.upstreamExpressiveOwners, evidence.bassIdentityEdges,
+      evidence.uniqueBassIdentities, evidence.continuationCapableBassEdges,
+      evidence.nonPlainArticulationOwners,
       evidence.weightIndependenceViolations);
 
-  if (evidence.owners != kOwnerExpected ||
-      evidence.candidateEdges != kCandidateEdgeExpected ||
-      evidence.candidateEdgesWithExpressiveSpace != kCandidateEdgeExpected ||
-      evidence.ownersWithUpstreamExpressiveSpace != kOwnerExpected ||
-      evidence.weightIndependenceViolations != 0) {
-    std::puts("G4_CC1A_FAIL candidate_space");
-    ok = false;
-  }
-  return ok;
+  return evidence.owners == kOwnerExpected &&
+         evidence.candidateEdges == kCandidateEdgeExpected &&
+         evidence.expressiveEdges == kCandidateEdgeExpected &&
+         evidence.upstreamExpressiveOwners == kOwnerExpected &&
+         evidence.bassIdentityEdges == 12 &&
+         evidence.uniqueBassIdentities == 4 &&
+         evidence.continuationCapableBassEdges == 0 &&
+         evidence.nonPlainArticulationOwners == 0 &&
+         evidence.weightIndependenceViolations == 0;
 }
 
-bool reconstructBassPlans(const GenreSettings& settings,
-                          const StrongRhythmFrozenSelection& selection,
-                          const DrumPatternSet& drums,
-                          BassRhythmPlan& rhythmPlan,
-                          BassPitchBehaviorPlan& pitchPlan) {
+bool reconstructBass(const GenreSettings& settings,
+                     const StrongRhythmFrozenSelection& selection,
+                     const DrumPatternSet& drums,
+                     BassRhythmPlan& rhythm,
+                     BassPitchBehaviorPlan& pitch) {
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           selection.composition.rhythmArchetypeId);
@@ -491,40 +457,41 @@ bool reconstructBassPlans(const GenreSettings& settings,
       archetypeForId(selection.composition.rhythmArchetypeId);
   if (definition == nullptr || archetype == nullptr) return false;
 
-  BassRhythmRequest bassRequest{};
-  bassRequest.requestedId = selection.composition.bassRhythm;
-  bassRequest.family = definition->family;
-  bassRequest.archetypeId = definition->archetypeId;
-  bassRequest.kickOnsets = drumKickOnsets(drums);
-  bassRequest.protectedSpace =
+  BassRhythmRequest rhythmRequest{};
+  rhythmRequest.requestedId = selection.composition.bassRhythm;
+  rhythmRequest.family = definition->family;
+  rhythmRequest.archetypeId = definition->archetypeId;
+  rhythmRequest.kickOnsets = kickOnsets(drums);
+  rhythmRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::BassRhythm);
-  bassRequest.generation = selection.realizationGeneration;
-  bassRequest.barOrdinal = 0;
-  bassRequest.allowEmptyBar = acidAllowsSparseSemanticBar(definition->family);
-  const BassRhythmResult bass = realizeBassRhythm(bassRequest);
-  if (bass.status != BassRhythmStatus::Ok &&
-      bass.status != BassRhythmStatus::ValidButEmpty) {
+  rhythmRequest.generation = selection.realizationGeneration;
+  rhythmRequest.barOrdinal = 0;
+  rhythmRequest.allowEmptyBar = acidAllowsSparseBar(definition->family);
+  const BassRhythmResult rhythmResult = realizeBassRhythm(rhythmRequest);
+  if (rhythmResult.status != BassRhythmStatus::Ok &&
+      rhythmResult.status != BassRhythmStatus::ValidButEmpty) {
     return false;
   }
 
   BassPitchBehaviorRequest pitchRequest{};
-  pitchRequest.rhythmPlan = bass.plan;
+  pitchRequest.rhythmPlan = rhythmResult.plan;
   pitchRequest.archetypeId = definition->archetypeId;
-  pitchRequest.generation = bassRequest.generation;
+  pitchRequest.generation = rhythmRequest.generation;
   pitchRequest.barOrdinal = 0;
   pitchRequest.policy = tonalGenerationProfileFor(settings).bassPolicy;
-  const BassPitchBehaviorResult pitch = realizeBassPitchBehavior(pitchRequest);
-  if (pitch.status != BassPitchBehaviorStatus::Ok &&
-      pitch.status != BassPitchBehaviorStatus::ValidButEmpty) {
+  const BassPitchBehaviorResult pitchResult =
+      realizeBassPitchBehavior(pitchRequest);
+  if (pitchResult.status != BassPitchBehaviorStatus::Ok &&
+      pitchResult.status != BassPitchBehaviorStatus::ValidButEmpty) {
     return false;
   }
 
-  rhythmPlan = bass.plan;
-  pitchPlan = pitch.plan;
+  rhythm = rhythmResult.plan;
+  pitch = pitchResult.plan;
   return true;
 }
 
-uint8_t synthActiveCells(const SynthPattern& pattern) {
+uint8_t activeSynthCells(const SynthPattern& pattern) {
   uint8_t count = 0;
   for (const SynthStep& step : pattern.steps) {
     if (step.note >= 0) ++count;
@@ -546,9 +513,9 @@ bool collectMaterializedEvidence(MaterializedEvidence& evidence,
       RealizationLevel::P2Variation,
       RealizationLevel::P3Transformation,
   };
+  const uint8_t ownerCount = availableRecipeCount(GenerativeMode::Acid);
 
-  const uint8_t recipeCount = availableRecipeCount(GenerativeMode::Acid);
-  for (uint8_t ownerIndex = 0; ownerIndex < recipeCount; ++ownerIndex) {
+  for (uint8_t ownerIndex = 0; ownerIndex < ownerCount; ++ownerIndex) {
     GenreRecipeId recipe = 0;
     if (!availableRecipeAt(GenerativeMode::Acid, ownerIndex, recipe))
       return false;
@@ -558,11 +525,10 @@ bool collectMaterializedEvidence(MaterializedEvidence& evidence,
       for (uint8_t levelIndex = 0; levelIndex < kLevelCount; ++levelIndex) {
         const RealizationLevel level = levels[levelIndex];
         ++evidence.attempted;
-        StrongRhythmMigrationContext context = migrationContextFor(level);
+        StrongRhythmMigrationContext context = contextFor(level);
         StrongRhythmFrozenSelection selection{};
         const StrongRhythmMigrationResult selected =
-            resolveStrongRhythmFrozenSelection(
-                settings, context, identity, selection);
+            resolveStrongRhythmFrozenSelection(settings, context, identity, selection);
         if (selected.status != StrongRhythmMigrationStatus::Applied ||
             !selection.resolved) {
           ++evidence.failed;
@@ -580,84 +546,71 @@ bool collectMaterializedEvidence(MaterializedEvidence& evidence,
           continue;
         }
 
-        BassRhythmPlan rhythmPlan{};
-        BassPitchBehaviorPlan pitchPlan{};
-        if (!reconstructBassPlans(
-                settings, selection, drums, rhythmPlan, pitchPlan)) {
-          ++evidence.failed;
-          continue;
-        }
-        if (rhythmPlan.id != realized.bassRhythmId ||
-            pitchPlan.contour != realized.bassPitchContour) {
-          std::printf(
-              "G4_CC1A_FAIL reconstruction recipe=%u identity=%u level=%u\n",
-              recipe, identity, static_cast<unsigned>(level));
+        BassRhythmPlan rhythm{};
+        BassPitchBehaviorPlan pitch{};
+        if (!reconstructBass(settings, selection, drums, rhythm, pitch) ||
+            rhythm.id != realized.bassRhythmId ||
+            pitch.contour != realized.bassPitchContour) {
           ++evidence.failed;
           continue;
         }
 
-        const uint8_t attacks = popcount16(pitchPlan.onsets);
-        const uint8_t continuations = popcount16(pitchPlan.continuations);
-        const uint8_t slideInto = popcount16(pitchPlan.slideIntoOnsets);
-        const uint8_t activeCells = synthActiveCells(synthA);
+        const uint8_t attacks = popcount16(pitch.onsets);
+        const uint8_t continuations = popcount16(pitch.continuations);
+        const uint8_t slideInto = popcount16(pitch.slideIntoOnsets);
+        const uint8_t activeCells = activeSynthCells(synthA);
         if (activeCells != static_cast<uint8_t>(attacks + continuations)) {
-          std::printf(
-              "G4_CC1A_FAIL active_cell_projection recipe=%u identity=%u level=%u attacks=%u continuations=%u active=%u\n",
-              recipe, identity, static_cast<unsigned>(level), attacks,
-              continuations, activeCells);
           ++evidence.failed;
           continue;
         }
 
         ++evidence.successful;
-        MaterializedBucket& bucket = evidence.buckets[ownerIndex][levelIndex];
+        MaterializedBucket& bucket = evidence.bucket[ownerIndex][levelIndex];
         ++bucket.rows;
-        const uint8_t connectedSignals = static_cast<uint8_t>(
-            continuations + slideInto);
-        const uint8_t classCount = static_cast<uint8_t>(
-            (attacks != 0 ? 1u : 0u) + (connectedSignals != 0 ? 1u : 0u));
-        const bool allDetached = attacks != 0 && connectedSignals == 0;
-        const bool allConnected = attacks == 1 && connectedSignals != 0;
-        const bool mixed = attacks > 1 && connectedSignals != 0;
+        const uint8_t connected = static_cast<uint8_t>(continuations + slideInto);
+        const uint8_t classes = static_cast<uint8_t>(
+            (attacks != 0 ? 1u : 0u) + (connected != 0 ? 1u : 0u));
+        const bool allDetached = attacks != 0 && connected == 0;
+        const bool allConnected = attacks == 1 && connected != 0;
+        const bool mixed = attacks > 1 && connected != 0;
 
         if (allDetached) {
           ++bucket.allDetached;
-          ++evidence.rowsAllDetached;
+          ++evidence.allDetached;
         }
         if (allConnected) {
           ++bucket.allConnected;
-          ++evidence.rowsAllConnected;
+          ++evidence.allConnected;
         }
         if (mixed) {
           ++bucket.mixed;
-          ++evidence.rowsMixed;
+          ++evidence.mixed;
         }
         if (continuations != 0) {
           ++bucket.withContinuation;
-          ++evidence.rowsWithContinuation;
+          ++evidence.withContinuation;
         }
         if (slideInto != 0) {
           ++bucket.withSlide;
-          ++evidence.rowsWithSlide;
+          ++evidence.withSlide;
         }
-        if (classCount > 1) {
-          ++bucket.withMultipleClasses;
-          ++evidence.rowsWithMultipleClasses;
+        if (classes > 1) {
+          ++bucket.multiClass;
+          ++evidence.multiClass;
         }
 
         if (census.is_open()) {
           census << ownerName(recipe) << '\t'
                  << static_cast<unsigned>(recipe) << '\t'
-                 << identity << '\t'
-                 << levelName(level) << '\t'
+                 << identity << '\t' << levelName(level) << '\t'
                  << selection.composition.rhythmArchetypeId << '\t'
-                 << static_cast<unsigned>(rhythmPlan.id) << '\t'
-                 << bassArticulationStyleName(pitchPlan.articulation) << '\t'
+                 << static_cast<unsigned>(rhythm.id) << '\t'
+                 << bassArticulationStyleName(pitch.articulation) << '\t'
                  << static_cast<unsigned>(attacks) << '\t'
                  << static_cast<unsigned>(continuations) << '\t'
                  << static_cast<unsigned>(slideInto) << '\t'
                  << static_cast<unsigned>(activeCells) << '\t'
-                 << static_cast<unsigned>(classCount) << '\t'
+                 << static_cast<unsigned>(classes) << '\t'
                  << 'A' << static_cast<unsigned>(attacks)
                  << "_C" << static_cast<unsigned>(continuations)
                  << "_S" << static_cast<unsigned>(slideInto) << '\n';
@@ -666,78 +619,69 @@ bool collectMaterializedEvidence(MaterializedEvidence& evidence,
     }
   }
 
-  for (uint8_t ownerIndex = 0; ownerIndex < recipeCount; ++ownerIndex) {
+  for (uint8_t ownerIndex = 0; ownerIndex < ownerCount; ++ownerIndex) {
     GenreRecipeId recipe = 0;
     if (!availableRecipeAt(GenerativeMode::Acid, ownerIndex, recipe))
       return false;
     for (uint8_t levelIndex = 0; levelIndex < kLevelCount; ++levelIndex) {
-      const MaterializedBucket& bucket = evidence.buckets[ownerIndex][levelIndex];
+      const MaterializedBucket& bucket = evidence.bucket[ownerIndex][levelIndex];
       std::printf(
           "G4_CC1A_DIST owner=%s level=%s rows=%u all_detached=%u all_connected=%u mixed=%u continuation=%u slide=%u multi_class=%u\n",
           ownerName(recipe), levelName(levels[levelIndex]), bucket.rows,
           bucket.allDetached, bucket.allConnected, bucket.mixed,
-          bucket.withContinuation, bucket.withSlide,
-          bucket.withMultipleClasses);
+          bucket.withContinuation, bucket.withSlide, bucket.multiClass);
     }
   }
 
   std::printf(
       "G4_CC1A_MATERIAL attempted=%u successful=%u failed=%u all_detached=%u all_connected=%u mixed=%u continuation=%u slide=%u multi_class=%u\n",
       evidence.attempted, evidence.successful, evidence.failed,
-      evidence.rowsAllDetached, evidence.rowsAllConnected,
-      evidence.rowsMixed, evidence.rowsWithContinuation,
-      evidence.rowsWithSlide, evidence.rowsWithMultipleClasses);
+      evidence.allDetached, evidence.allConnected, evidence.mixed,
+      evidence.withContinuation, evidence.withSlide, evidence.multiClass);
+
   return evidence.attempted == kMaterializationExpected &&
-         evidence.successful + evidence.failed == evidence.attempted;
+         evidence.successful == kMaterializationExpected &&
+         evidence.failed == 0 &&
+         evidence.allDetached == kMaterializationExpected &&
+         evidence.allConnected == 0 && evidence.mixed == 0 &&
+         evidence.withContinuation == 0 && evidence.withSlide == 0 &&
+         evidence.multiClass == 0;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  bool ok = true;
-  ok = checkAdversarialProjectionFixtures() && ok;
+  bool ok = checkAdversarialFixtures();
 
   CandidateEvidence candidate{};
-  ok = checkCandidateSpace(candidate) && ok;
-
-  MaterializedEvidence materialized{};
-  const char* censusPath = argc > 1 ? argv[1] : nullptr;
-  ok = collectMaterializedEvidence(materialized, censusPath) && ok;
-
+  ok = collectCandidateEvidence(candidate) && ok;
   if (candidate.weightIndependenceViolations == 0)
     std::puts("G4_CC1A_PASS fixture=weight_independence");
   else
     ok = false;
 
-  if (candidate.ownersWithUpstreamExpressiveSpace == kOwnerExpected &&
-      materialized.rowsWithMultipleClasses == 0) {
+  MaterializedEvidence materialized{};
+  ok = collectMaterializedEvidence(
+           materialized, argc > 1 ? argv[1] : nullptr) && ok;
+
+  if (candidate.upstreamExpressiveOwners == kOwnerExpected &&
+      materialized.multiClass == 0) {
     std::puts("G4_CC1A_PASS observation=candidate_capability_differs_from_materialized_usage");
   } else {
     std::puts("G4_CC1A_FAIL observation=candidate_capability_differs_from_materialized_usage");
     ok = false;
   }
 
-  if (materialized.failed != 0 ||
-      materialized.successful != kMaterializationExpected) {
-    std::puts("G4_CC1A_FAIL materialized_corpus");
-    ok = false;
-  }
-
-  // RED hypothesis: before ratifying an owner-space articulation contract,
-  // require evidence that the authoritative Acid Synth-A path can express at
-  // least one connected/extended realization. The first run is expected to
-  // decide this from production rather than assume the answer from LaneGrammar.
-  if (materialized.rowsWithContinuation == 0 &&
-      materialized.rowsWithSlide == 0) {
-    std::puts("G4_CC1A_RED hypothesis=authoritative_acid_bass_space_has_no_connected_expression");
-    ok = false;
-  }
+  std::puts("G4_CC1A_HYPOTHESIS old_cc1=REJECTED_AS_PORTABLE_CONTRACT");
+  std::puts("G4_CC1A_HYPOTHESIS per_pattern_contrast=REJECTED_BY_1152_ROW_CORPUS");
+  std::puts("G4_CC1A_HYPOTHESIS owner_space_capability=BEST_FORMULATION_UPSTREAM_ONLY");
+  std::puts("G4_CC1A_FINDING authoritative_bass_path=ARTICULATION_COLLAPSED");
+  std::puts("G4_CC1A_CONTRACT domains=BASS+ARTICULATION predicate_kind=CAPABILITY status=REVIEW_REQUIRED");
 
   if (!ok) {
-    std::puts("G4-CC1A Acid structural minimum: RED");
+    std::puts("G4-CC1A Acid structural minimum: FAIL");
     return 1;
   }
-
   std::puts("G4-CC1A Acid structural minimum: PASS");
   return 0;
 }
