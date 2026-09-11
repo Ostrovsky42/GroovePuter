@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -17,6 +18,8 @@ EXPECTED_MARKER = (
     "G4_C3_BROKEN_DNB_ADMISSION equivalence=PROVEN rows=384 archetypes=4 "
     "broken_bass_ids=4 dnb_bass_ids=4 bass_semantics=INDEPENDENT"
 )
+ROOT = Path(__file__).resolve().parents[1]
+PROMOTER_PATH = ROOT / "tools/gf2/promote_gf2_g4_c3_broken_dnb_admission.py"
 
 
 def fail(message: str) -> None:
@@ -87,9 +90,104 @@ def assert_contract(
             )
 
 
+def load_promoter():
+    spec = importlib.util.spec_from_file_location("g4_c3_promoter", PROMOTER_PATH)
+    if spec is None or spec.loader is None:
+        fail("promoter_import_spec")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def synthetic_owner(
+    mode: str,
+    recipe: str,
+    bass_ids: tuple[str, ...],
+    contract_id: str,
+    contract_status: str,
+    evaluation: str,
+) -> list[dict[str, str]]:
+    archetypes = ("413", "414", "415", "416")
+    rows: list[dict[str, str]] = []
+    for index in range(384):
+        rows.append(
+            {
+                "owner_mode": mode,
+                "recipe_id": recipe,
+                "effective_candidate_count": "4",
+                "selected_archetype_id": archetypes[index % len(archetypes)],
+                "RhythmFamily": "Breakbeat",
+                "bass_identity": bass_ids[index % len(bass_ids)],
+                "contract_id": contract_id,
+                "contract_status": contract_status,
+                "evaluation": evaluation,
+                # These fields are deliberately non-structural noise. The
+                # promoter must not inspect them as musical evidence.
+                "owner_name": "MUTABLE DISPLAY LABEL",
+                "recipe_name": "MUTABLE RECIPE LABEL",
+                "weight_provenance": str(1 + (index % 255)),
+            }
+        )
+    return rows
+
+
+def expect_rejection(name: str, action) -> None:
+    try:
+        action()
+    except SystemExit as exc:
+        if exc.code == 0:
+            fail(f"selftest_{name}_unexpected_zero_exit")
+        print(f"G4_C3_SELFTEST_PASS control={name}")
+        return
+    fail(f"selftest_{name}_accepted_invalid_fixture")
+
+
+def run_boundary_selftests() -> None:
+    promoter = load_promoter()
+    broken = synthetic_owner(
+        "7", "2", ("2", "5", "7", "9"),
+        "I6-REVIEW-RHYTHM-OWNERSHIP", "REVIEW_REQUIRED", "UNKNOWN",
+    )
+    dnb = synthetic_owner(
+        "14", "0", ("3", "4", "8", "9"),
+        C1_ID, "PROVEN", "SATISFIED",
+    )
+
+    # Positive structural baseline; display labels and weights are arbitrary.
+    promoter.validate_admission("broken_dnb", broken)
+    promoter.validate_admission("canonical_dnb", dnb)
+    promoter.validate_pre_state(broken, dnb)
+    print("G4_C3_SELFTEST_PASS control=LABEL_WEIGHT_INDEPENDENCE")
+
+    drift = [dict(row) for row in broken]
+    drift[0]["selected_archetype_id"] = "999"
+    expect_rejection(
+        "ADMISSION_SET_DRIFT",
+        lambda: promoter.validate_admission("broken_dnb", drift),
+    )
+
+    family_drift = [dict(row) for row in broken]
+    family_drift[0]["RhythmFamily"] = "MachineSyncopation"
+    expect_rejection(
+        "RHYTHM_FAMILY_DRIFT",
+        lambda: promoter.validate_admission("broken_dnb", family_drift),
+    )
+
+    collapsed_bass = synthetic_owner(
+        "7", "2", ("3", "4", "8", "9"),
+        "I6-REVIEW-RHYTHM-OWNERSHIP", "REVIEW_REQUIRED", "UNKNOWN",
+    )
+    expect_rejection(
+        "BASS_SEMANTICS_COLLAPSE",
+        lambda: promoter.validate_pre_state(collapsed_bass, dnb),
+    )
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: test_gf2_g4_c3_broken_dnb_admission_equivalence.py RUN_DIR")
+
+    run_boundary_selftests()
 
     run_dir = Path(sys.argv[1])
     census = run_dir / "GF2_G4_I6_OWNERSHIP_CENSUS.tsv"
