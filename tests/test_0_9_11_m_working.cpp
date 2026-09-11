@@ -110,7 +110,13 @@ void test_pattern_edit_isolation_and_losslessness() {
   accepted.steps[3].probability = 47;
   const SynthStep untouched = accepted.steps[3];
 
+  // Build the same resident bank the Pattern audio path reads, before the edit.
+  // A correct Working edit must publish B into this bank while ACCEPTED A stays
+  // unchanged; rebuilding a private local bank from Scene would not prove that.
+  assert(engine.rebuildPatternRuntimeEventBank());
+
   engine.adjust303StepNote(0, 0, 1);
+  const SynthPattern& candidate = engine.activeSynthPattern(0);
 
   if (accepted.steps[0].note == 60) {
     green("MW-A", "Pattern edit left ACCEPTED Scene unchanged");
@@ -118,25 +124,20 @@ void test_pattern_edit_isolation_and_losslessness() {
     red("MW-A", "Pattern edit wrote directly into ACCEPTED Scene");
   }
 
-  if (sameStep(accepted.steps[3], untouched)) {
-    green("MW-B", "untouched SynthPattern fields survived the edit losslessly");
+  if (sameStep(accepted.steps[3], untouched) &&
+      sameStep(candidate.steps[3], untouched)) {
+    green("MW-B", "untouched SynthPattern fields survived in ACCEPTED and candidate");
   } else {
-    red("MW-B", "unrelated SynthPattern semantics changed during edit");
+    red("MW-B", "unrelated SynthPattern semantics changed across the Working boundary");
   }
 
-  PhraseRuntime::RuntimePatternEventBank bank;
-  PhraseRuntime::PatternProjectionSettings settings{};
-  settings.synthIndex = 0;
-  settings.swingPercent = 50;
-  settings.swingEnabled = false;
-  settings.gateLengthRatio = 0.5f;
-  const auto status = bank.refresh(0, 0, 0, accepted, settings);
-  const auto* ev = bank.select(0, 0, 0).eventForSourceStep(0);
-  if (status == PhraseRuntime::PatternBankRefreshStatus::Ready && ev &&
-      ev->note == 61 && accepted.steps[0].note == 60) {
-    green("MW-C", "runtime hears candidate while ACCEPTED remains unchanged");
+  const auto* ev =
+      engine.patternRuntimeBank_.select(0, 0, 0).eventForSourceStep(0);
+  if (ev && ev->note == 61 && candidate.steps[0].note == 61 &&
+      accepted.steps[0].note == 60) {
+    green("MW-C", "real Pattern audio bank hears Working B while ACCEPTED remains A");
   } else {
-    red("MW-C", "runtime can hear the edit only after canonical Scene has changed");
+    red("MW-C", "Pattern audio bank is stale or depends on mutating ACCEPTED Scene");
   }
 }
 
