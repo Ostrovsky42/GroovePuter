@@ -331,6 +331,14 @@ public:
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
   void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
 
+  // 0.9.11 M-WORKING: a control-side manual Pattern edit is prepared as a
+  // complete value, published to the retained audio bank, and only then stored
+  // as session WORKING. The caller must already own the normal
+  // AudioMutationGate/control-side quiescence used by UI mutations.
+  bool adjustWorking303StepNote(int voiceIndex, int stepIndex,
+                                int semitoneDelta);
+  const SynthPattern* currentWorking303Pattern(int voiceIndex) const;
+
   void clear303StepNote(int voiceIndex, int stepIndex);
   void clear303Step(int stepIndex, int voiceIndex);
   void toggle303AccentStep(int voiceIndex, int stepIndex);
@@ -708,4 +716,104 @@ public:
 inline Parameter& MiniAcid::miniParameter(MiniAcidParamId id) {
   return params[static_cast<int>(id)];
 }
+
+inline const SynthPattern* MiniAcid::currentWorking303Pattern(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return nullptr;
+  }
+
+  const int patternIndex = display303LocalPatternIndex(idx);
+  const int bankIndex = current303BankIndex(idx);
+  const int pageIndex = currentPageIndex();
+  if (patternIndex < 0 || bankIndex < 0 || bankIndex >= kBankCount) {
+    return nullptr;
+  }
+
+  const auto& storage = workingMaterial_[idx];
+  if (!storage.patternMatches(pageIndex, bankIndex, patternIndex)) {
+    return nullptr;
+  }
+  return &storage.pattern();
+}
+
+inline bool MiniAcid::adjustWorking303StepNote(
+    int voiceIndex, int stepIndex, int semitoneDelta) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return false;
+  }
+
+  const int pageIndex = currentPageIndex();
+  const int bankIndex = current303BankIndex(idx);
+  const int patternIndex = display303LocalPatternIndex(idx);
+  if (pageIndex < 0 || pageIndex >= kMaxPages ||
+      bankIndex < 0 || bankIndex >= kBankCount ||
+      patternIndex < 0 || patternIndex >= Bank<SynthPattern>::kPatterns) {
+    return false;
+  }
+  if (patternRuntimeBank_.pageIdentity() != pageIndex) return false;
+
+  auto& storage = workingMaterial_[idx];
+  SynthPattern candidate{};
+  if (storage.empty()) {
+    candidate = sceneManager_.getSynthPattern(idx, patternIndex);
+  } else if (storage.patternMatches(pageIndex, bankIndex, patternIndex)) {
+    candidate = storage.pattern();
+  } else {
+    // Never overwrite retained Melody or a modified Pattern from another
+    // target. Target switching/discard is a separate explicit domain action.
+    return false;
+  }
+
+  const int step = clamp303Step(stepIndex);
+  const int oldNote = candidate.steps[step].note;
+  int nextNote = oldNote;
+  if (oldNote == -2) {
+    if (semitoneDelta > 0) nextNote = -1;
+  } else if (oldNote == -1) {
+    if (semitoneDelta > 0) nextNote = kMin303Note;
+    else if (semitoneDelta < 0) nextNote = -2;
+  } else {
+    nextNote = oldNote + semitoneDelta;
+    if (nextNote < kMin303Note) {
+      nextNote = -1;
+    } else {
+      nextNote = clamp303Note(nextNote);
+    }
+  }
+  if (nextNote == oldNote) return false;
+  candidate.steps[step].note = static_cast<int8_t>(nextNote);
+
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  int swingPct = static_cast<int>(scene.feel.swingPct);
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(idx);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // RuntimePatternEventBank::refresh prepares its own local projection and
+  // commits only on Ready. Therefore a projection failure leaves both the
+  // audible bank and session Working payload unchanged.
+  if (patternRuntimeBank_.refresh(
+          static_cast<uint8_t>(idx), static_cast<uint8_t>(bankIndex),
+          static_cast<uint8_t>(patternIndex), candidate, settings) !=
+      PhraseRuntime::PatternBankRefreshStatus::Ready) {
+    return false;
+  }
+
+  storage.storePattern(candidate, pageIndex, bankIndex, patternIndex);
+  return true;
+}
+
 #endif // MINIACID_ENGINE_H
