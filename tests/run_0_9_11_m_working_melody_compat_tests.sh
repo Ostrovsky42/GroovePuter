@@ -41,3 +41,9 @@ fi
 popd >/dev/null
 
 "$BUILD/test_m_working_melody_compat"
+
+# The permanent M-WORKING workflow invokes this runner as a zero-only
+# preservation gate. Keep the already-proven A2-B promotion transaction here
+# so an A2-B regression cannot be mistaken for the behavioral runner's
+# intentional Task-4 RED exit status 1.
+bash "$ROOT/tests/run_0_9_11_a2b_promotion_transaction_tests.sh"
