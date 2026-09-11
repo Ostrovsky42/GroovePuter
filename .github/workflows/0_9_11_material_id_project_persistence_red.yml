@@ -1,0 +1,67 @@
+name: 0.9.11 MaterialId Project Persistence RED
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-material-id-independence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  G1_ROOT: 28ec6ad0210c45e015222552b45c359b9896603c
+  CANDIDATE_HEAD: ${{ github.sha }}
+
+jobs:
+  material-id-project-persistence-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact checkout and G1 ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${G1_ROOT}" HEAD
+          echo "G1_ROOT=${G1_ROOT}"
+          echo "HEAD=$(git rev-parse HEAD)"
+
+      - name: Prove G2 RED checkpoint is tests docs CI only
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${G1_ROOT}"..HEAD)"
+          printf '%s\n' "${changed}"
+          test -n "${changed}"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/)' || true)"
+          if [ -n "${bad}" ]; then
+            echo "G2 RED checkpoint modified production/persistence files:" >&2
+            printf '%s\n' "${bad}" >&2
+            exit 2
+          fi
+
+      - name: Prove intentional project persistence RED
+        run: |
+          set -euo pipefail
+          set +e
+          bash tests/run_0_9_11_material_id_project_persistence.sh \
+            > material-id-project-persistence-red.log 2>&1
+          status=$?
+          set -e
+          cat material-id-project-persistence-red.log
+
+          if [ "${status}" -eq 0 ]; then
+            echo "Unexpected GREEN: project MaterialId persistence already satisfies the witness" >&2
+            exit 2
+          fi
+
+          grep -F \
+            "MATERIAL_ID_PROJECT_PERSISTENCE_RED: project-scoped allocator or page MaterialId persistence owner is missing" \
+            material-id-project-persistence-red.log
+
+          echo "INTENTIONAL G2 RED CONFIRMED: MaterialId is not yet project-persistent" >&2
+          exit 1
