@@ -78,6 +78,17 @@ constexpr WeightedIdentityCandidate kBassDrive[] = {
     weighted(BassRhythmId::RollingDrive, 110),
     weighted(BassRhythmId::SyncopatedHook, 75),
 };
+// G4-CC1A-P1: Acid keeps every existing drive identity and weight, but its
+// owner-space also admits the already-shipped connected bass identity. 100 is
+// an uncalibrated admission weight reused from the existing SustainAndDrop
+// vocabulary; frequency calibration is explicitly outside this checkpoint.
+constexpr WeightedIdentityCandidate kBassAcid[] = {
+    weighted(BassRhythmId::KickLock, 70),
+    weighted(BassRhythmId::OffbeatPush, 90),
+    weighted(BassRhythmId::RollingDrive, 110),
+    weighted(BassRhythmId::SyncopatedHook, 75),
+    weighted(BassRhythmId::SustainAndDrop, 100),
+};
 constexpr WeightedIdentityCandidate kBassMachine[] = {
     weighted(BassRhythmId::KickAnswer, 90),
     weighted(BassRhythmId::GapFill, 90),
@@ -328,7 +339,7 @@ constexpr ProfileDefinition profile(
 }
 
 constexpr ProfileDefinition kProfiles[] = {
-    profile(GenerativeMode::Acid, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {118,150,132,16,6,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Acid, 0, view(kFeelStraightDrive), view(kBassAcid), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {118,150,132,16,6,14}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Outrun, 0, view(kFeelStraightDrive), view(kBassChip), view(kChordSlow), view(kProgressionPop), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {88,125,108,16,4,11}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Darksynth, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionDark), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {122,148,134,16,5,13}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Electro, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {102,132,116,16,4,12}, CompositionSecondaryRole::Melodic),
@@ -351,8 +362,8 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::Broken, 3, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {145,165,158,16,6,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Rave, 4, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {138,150,145,16,8,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Reggae, 5, view(kFeelDubPocket), view(kBassDub), view(kChordDub), view(kProgressionDub), view(kMelodicDub), view(kMotifSparse), view(kPhraseSlow), {112,128,120,16,2,8}, CompositionSecondaryRole::Chord),
-    profile(GenerativeMode::Acid, 6, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {118,132,124,16,6,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Acid, 7, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {126,145,136,16,8,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Acid, 6, view(kFeelStraightDrive), view(kBassAcid), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {118,132,124,16,6,13}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Acid, 7, view(kFeelStraightDrive), view(kBassAcid), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {126,145,136,16,8,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 8, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {126,136,132,16,5,12}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 9, view(kFeelSwingDrive), view(kBassSlow), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseSlow), {128,140,134,16,3,11}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Reggae, 10, view(kFeelSlowPocket), view(kBassDub), view(kChordDub), view(kProgressionDub), view(kMelodicDub), view(kMotifSparse), view(kPhraseSlow), {108,124,116,16,2,8}, CompositionSecondaryRole::Chord),
