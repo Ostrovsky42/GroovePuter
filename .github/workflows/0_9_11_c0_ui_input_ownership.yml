@@ -33,8 +33,46 @@ jobs:
           sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev pkg-config
       - name: Run C0 UI input ownership regression
         run: bash tests/run_c0_ui_input_ownership_tests.sh
-      - name: Run complete Pattern Phrase instrument gate
-        run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+
+      # Measurement-only expansion of tests/run_ui_pattern_phrase_instrument_tests.sh.
+      # Commands and ordering intentionally match the runner so the first failing
+      # sub-contract is visible in GitHub Actions without changing test semantics.
+      - name: Pattern Phrase gate - instrument controls
+        run: |
+          set -euo pipefail
+          mkdir -p build/ui-pattern-phrase-instrument
+          g++ -std=c++17 -I. tests/test_ui_pattern_phrase_instrument_controls.cpp \
+            -o build/ui-pattern-phrase-instrument/test_ui_pattern_phrase_instrument_controls
+          build/ui-pattern-phrase-instrument/test_ui_pattern_phrase_instrument_controls
+      - name: Pattern Phrase gate - selected event edits
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -I. tests/test_ui_phrase_selected_event_edits.cpp \
+            -o build/ui-pattern-phrase-instrument/test_ui_phrase_selected_event_edits
+          build/ui-pattern-phrase-instrument/test_ui_phrase_selected_event_edits
+      - name: Pattern Phrase gate - roll selection causality
+        run: python3 tests/test_ui_phrase_roll_selection_causality.py
+      - name: Pattern Phrase gate - instrument integration
+        run: python3 tests/test_ui_pattern_phrase_instrument_integration.py
+      - name: Pattern Phrase gate - U4B7
+        run: bash tests/run_ui_constitution_u4b7_tests.sh
+      - name: Pattern Phrase gate - U4B8
+        run: bash tests/run_ui_constitution_u4b8_tests.sh
+      - name: Pattern Phrase gate - U4B9
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
+      - name: Pattern Phrase gate - U4C1
+        run: bash tests/run_ui_constitution_u4c1_tests.sh
+      - name: Pattern Phrase gate - U4C2
+        run: bash tests/run_ui_constitution_u4c2_tests.sh
+      - name: Pattern Phrase gate - U4C3
+        run: bash tests/run_ui_constitution_u4c3_tests.sh
+      - name: Pattern Phrase gate - U4D1
+        run: bash tests/run_ui_constitution_u4d1_tests.sh
+      - name: Pattern Phrase gate - hardware controls
+        run: bash tests/run_ui_pattern_phrase_hardware_controls_tests.sh
+      - name: Pattern Phrase gate - content bounds
+        run: bash tests/run_ui_content_bounds_tests.sh
+
       - name: Preserve hardware findings runtime contract
         run: |
           set -euo pipefail
