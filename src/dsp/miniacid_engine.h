@@ -339,6 +339,41 @@ public:
                                 int semitoneDelta);
   const SynthPattern* currentWorking303Pattern(int voiceIndex) const;
 
+  bool hasModifiedWorking303Pattern(int voiceIndex) const {
+    if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+    const int idx = clamp303Voice(voiceIndex);
+    const int pageIndex = currentPageIndex();
+    const int bankIndex = current303BankIndex(idx);
+    const int patternIndex = display303LocalPatternIndex(idx);
+    if (pageIndex < 0 || pageIndex >= kMaxPages ||
+        bankIndex < 0 || bankIndex >= kBankCount ||
+        patternIndex < 0 || patternIndex >= Bank<SynthPattern>::kPatterns) {
+      return false;
+    }
+
+    const auto& storage = workingMaterial_[idx];
+    if (!storage.patternMatches(pageIndex, bankIndex, patternIndex)) {
+      return false;
+    }
+
+    const Scene& scene = sceneManager_.currentScene();
+    const SynthPattern& accepted = idx == 0
+        ? scene.synthABanks[bankIndex].patterns[patternIndex]
+        : scene.synthBBanks[bankIndex].patterns[patternIndex];
+    const SynthPattern& working = storage.pattern();
+    for (int step = 0; step < SynthPattern::kSteps; ++step) {
+      const SynthStep& a = accepted.steps[step];
+      const SynthStep& w = working.steps[step];
+      if (a.note != w.note || a.slide != w.slide || a.accent != w.accent ||
+          a.ghost != w.ghost || a.velocity != w.velocity ||
+          a.timing != w.timing || a.fx != w.fx || a.fxParam != w.fxParam ||
+          a.probability != w.probability) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void clear303StepNote(int voiceIndex, int stepIndex);
   void clear303Step(int stepIndex, int voiceIndex);
   void toggle303AccentStep(int voiceIndex, int stepIndex);
