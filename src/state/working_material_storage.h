@@ -15,19 +15,25 @@ namespace GroovePuterMaterial {
 
 // One physical session-owned payload for the voice's mutable material.
 //
-// Pattern and Melody reuse the same already-paid 1284-byte footprint.  The
-// physical C++ lifetime tag is intentionally not ActiveMaterial.kind: playback
-// source may toggle Pattern <-> Melody without replacing retained Working
-// material.  When Pattern is active, its much smaller object leaves tail bytes
-// unused.  We keep the Pattern target binding there and mark the final four
-// bytes with a state that a valid Melody can never have
-// (count=0xffff,lengthTicks=0xffff).  storeMelody() overwrites that tail as part
-// of the Melody value, so no sidecar allocation or second musical owner exists.
+// Pattern and Melody reuse the same already-paid 1284-byte footprint. The
+// physical C++ lifetime state is intentionally not ActiveMaterial.kind:
+// playback source may toggle Pattern <-> Melody without replacing retained
+// Working material.
+//
+// Pattern is much smaller than Melody, so its active object leaves tail bytes
+// unused. The tail stores Pattern target binding plus an impossible Melody
+// footer. A second impossible footer represents EMPTY. Valid Melody count is
+// bounded to 128, so neither 0xffffffff nor 0xfefefefe can ever be a valid
+// (count,lengthTicks) footer. No sidecar allocation or second musical owner is
+// needed.
 class WorkingMaterialStorage {
  public:
   using MelodyBuffer = PhraseRuntime::RuntimeSynthEventBuffer;
 
-  WorkingMaterialStorage() { storeMelody(MelodyBuffer{}); }
+  WorkingMaterialStorage() {
+    new (&payload_.melody) MelodyBuffer{};
+    markEmpty();
+  }
 
   void storePattern(const SynthPattern& value) {
     storePattern(value, kUnbound, kUnbound, kUnbound);
@@ -44,7 +50,7 @@ class WorkingMaterialStorage {
     bytes[kPageOffset] = encodeBinding(page);
     bytes[kBankOffset] = encodeBinding(bank);
     bytes[kPatternOffset] = encodeBinding(pattern);
-    for (size_t i = kTagOffset; i < sizeof(Payload); ++i) bytes[i] = 0xffu;
+    fillTag(kPatternTagByte);
   }
 
   void storeMelody(const MelodyBuffer& value) {
@@ -53,15 +59,9 @@ class WorkingMaterialStorage {
     new (&payload_.melody) MelodyBuffer(value);
   }
 
-  bool holdsPattern() const {
-    const uint8_t* bytes = rawBytes();
-    for (size_t i = kTagOffset; i < sizeof(Payload); ++i) {
-      if (bytes[i] != 0xffu) return false;
-    }
-    return true;
-  }
-
-  bool holdsMelody() const { return !holdsPattern(); }
+  bool empty() const { return tagIs(kEmptyTagByte); }
+  bool holdsPattern() const { return tagIs(kPatternTagByte); }
+  bool holdsMelody() const { return !empty() && !holdsPattern(); }
 
   bool patternMatches(int page, int bank, int pattern) const {
     if (!holdsPattern()) return false;
@@ -91,6 +91,8 @@ class WorkingMaterialStorage {
   static constexpr int kUnbound = -1;
   static constexpr size_t kBindingBytes = 3u;
   static constexpr size_t kTagBytes = 4u;
+  static constexpr uint8_t kPatternTagByte = 0xffu;
+  static constexpr uint8_t kEmptyTagByte = 0xfeu;
 
   union Payload {
     SynthPattern pattern;
@@ -111,6 +113,21 @@ class WorkingMaterialStorage {
   }
   static int decodeBinding(uint8_t value) {
     return value == 0xffu ? kUnbound : static_cast<int>(value);
+  }
+
+  void markEmpty() { fillTag(kEmptyTagByte); }
+
+  void fillTag(uint8_t value) {
+    uint8_t* bytes = rawBytes();
+    for (size_t i = kTagOffset; i < sizeof(Payload); ++i) bytes[i] = value;
+  }
+
+  bool tagIs(uint8_t value) const {
+    const uint8_t* bytes = rawBytes();
+    for (size_t i = kTagOffset; i < sizeof(Payload); ++i) {
+      if (bytes[i] != value) return false;
+    }
+    return true;
   }
 
   uint8_t* rawBytes() {
