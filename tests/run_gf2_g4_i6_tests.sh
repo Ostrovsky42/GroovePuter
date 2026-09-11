@@ -37,17 +37,24 @@ done
   "${ROOT}/tests/test_gf2_g4_i6_methodology_controls.cpp" \
   -o "$BUILD/g4-i6-methodology-controls"
 
+# C4-C6 claims are not inferred from RhythmFamily labels. Prove the reference
+# LaneGrammar/admission witnesses once before post-processing either census run.
+bash "${ROOT}/tests/run_gf2_g4_c4_c6_tests.sh"
+
 for run in "$RUN_A" "$RUN_B"; do
   "$BUILD/g4-i6-ownership-census" --emit "$run" | tee "$run.log"
   "$BUILD/g4-i6-methodology-controls" --emit "$run" | tee "$run.methodology.log"
   python3 "${ROOT}/tools/gf2/finalize_gf2_g4_i6_census.py" --run-dir "$run"
 
-  # Preserve C1 as its own checkpoint before downstream contract promotions
-  # change global review/unknown totals.
+  # Preserve each earlier checkpoint in its own intermediate state before the
+  # next promotion changes global review/unknown totals.
   python3 "${ROOT}/tools/gf2/promote_gf2_g4_c1_dnb_contract.py" --run-dir "$run"
   python3 "${ROOT}/tests/test_gf2_g4_c1_dnb_contract_promotion.py" "$run"
 
   python3 "${ROOT}/tools/gf2/promote_gf2_g4_c3_broken_dnb_admission.py" --run-dir "$run"
+  python3 "${ROOT}/tests/test_gf2_g4_c3_broken_dnb_admission_equivalence.py" "$run"
+
+  python3 "${ROOT}/tools/gf2/promote_gf2_g4_c4_c6_obvious_admissions.py" --run-dir "$run"
 done
 
 for artifact in \
@@ -64,9 +71,8 @@ echo "G4-I6 corrected methodology controls: PASS"
 cp "$RUN_A/g4-i6-summary.txt" "$BUILD/g4-i6-summary.txt"
 cat "$BUILD/g4-i6-summary.txt"
 
-# G4-C3 proves only the Broken/DnB rhythm-admission alias. Bass semantics stay
-# independent and are explicitly checked by the focused contract test.
-python3 "${ROOT}/tests/test_gf2_g4_c3_broken_dnb_admission_equivalence.py" "$RUN_A"
+# Final-state focused check for the four newly promoted admission contracts.
+python3 "${ROOT}/tests/test_gf2_g4_c4_c6_obvious_admissions.py" "$RUN_A"
 
 # An unknown nonzero raw archetype may be explained, but must never disappear
 # silently and still allow closure.
