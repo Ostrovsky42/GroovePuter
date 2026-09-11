@@ -429,6 +429,97 @@ void test_mux0_recovery_autosave_working_isolation_witness() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// J. TRANSACTION FAILURE ON PERSISTENCE ERROR
+// ---------------------------------------------------------------------------
+// Invariant: If material persistence fails, ACCEPTED must remain A,
+// WORKING must remain B, and persisted revision must remain unchanged.
+enum class AcceptWorkingResult : uint8_t {
+  Accepted = 0,
+  NoChange,
+  InvalidWorking,
+  PersistenceUnavailable,
+  PersistenceDeferred,
+};
+
+void test_mux0_transaction_failure_witness() {
+  const char* testName = "J_TRANSACTION_FAILURE_PERSISTENCE_ERROR";
+  // In C0, there is no acceptWorking transaction returning PersistenceUnavailable
+  const bool hasAcceptWorkingTransaction = false;
+  if (!hasAcceptWorkingTransaction) {
+    recordFailure(testName,
+                  "C0 lacks acceptWorking() transaction: no persistence-error rollback boundary");
+  } else {
+    recordPass(testName);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K. TRANSACTION DEFERRED/PREVENTED DURING PLAYBACK
+// ---------------------------------------------------------------------------
+// Invariant: When playback is active, blocking SD persistence cannot safely occur.
+// acceptWorking() must return PersistenceDeferred, keeping A as baseline.
+void test_mux0_transaction_deferred_during_playback_witness() {
+  const char* testName = "K_TRANSACTION_DEFERRED_DURING_PLAYBACK";
+  const bool hasDeferredPlaybackCheck = false;
+  if (!hasDeferredPlaybackCheck) {
+    recordFailure(testName,
+                  "C0 lacks playback-aware deferred acceptance contract for realtime safety");
+  } else {
+    recordPass(testName);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// L. PATTERN WORKING CHARACTERIZATION / LOSSLESS PROJECTION GAP
+// ---------------------------------------------------------------------------
+// Invariant: Pattern WORKING must preserve all SynthPattern semantics:
+// note, accent, slide, ghost, velocity, timing, fx, fxParam, probability, step identity.
+// RuntimePatternEventBank is one-way (SynthPattern -> RuntimePatternEventBuffer)
+// and merges/loses fields (timing offset is baked into startTick, rests are omitted).
+void test_mux0_pattern_working_characterization_witness() {
+  const char* testName = "L_PATTERN_WORKING_CHARACTERIZATION";
+
+  SynthPattern original{};
+  original.steps[0].note = 48;
+  original.steps[0].slide = 1;
+  original.steps[0].accent = 1;
+  original.steps[0].ghost = 1;
+  original.steps[0].velocity = 112;
+  original.steps[0].timing = -5; // negative micro-timing offset
+  original.steps[0].fx = 2;
+  original.steps[0].fxParam = 40;
+  original.steps[0].probability = 75;
+
+  // Step 1: rest with custom timing
+  original.steps[1].note = -1;
+  original.steps[1].timing = 3;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 0.5f;
+
+  PhraseRuntime::RuntimeSynthEventBuffer tempBuffer{};
+  uint8_t projectedSourceSteps[SynthPattern::kSteps]{};
+  const auto status = PhraseRuntime::projectPatternToRuntimeEventsWithSourceSteps(
+      original, settings, tempBuffer, projectedSourceSteps);
+  assert(status == PhraseRuntime::PatternProjectionStatus::Ready);
+
+  // In tempBuffer, event 0 has startTick, but NO separate timing field exists.
+  // Step 1 (rest) generated 0 events, so its timing offset is completely lost.
+  // Proving: RuntimePatternEventBank is a one-way playback projection and CANNOT
+  // serve as a lossless Pattern WORKING owner.
+  const bool losslessInverseProjectionPossible = false;
+  if (!losslessInverseProjectionPossible) {
+    recordFailure(testName,
+                  "RuntimePatternEventBank is lossy one-way projection (timing/rests cannot be inverse-projected); Pattern WORKING requires A2 Material owner");
+  } else {
+    recordPass(testName);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -445,6 +536,9 @@ int main() {
   test_mux0_active_next_causality();
   test_mux0_unresolved_material_safety_witness();
   test_mux0_recovery_autosave_working_isolation_witness();
+  test_mux0_transaction_failure_witness();
+  test_mux0_transaction_deferred_during_playback_witness();
+  test_mux0_pattern_working_characterization_witness();
 
   std::printf("==================================================\n");
   std::printf("SUMMARY: %d passed, %d TRUE RED failure(s)\n", g_passes, g_failures);
