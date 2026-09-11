@@ -5,19 +5,16 @@
 #include <cstdint>
 #include <string>
 
+#include "src/state/material_identity.h"
 #include "src/state/material_version.h"
 #include "src/state/melody_promotion.h"
 
-// 0.9.11 A2: explicit control-side material resolution.
+// 0.9.11 A2: fail-closed control-side material resolution.
 //
-// `MaterialAddress` tells us where to look. It does not prove that material is
-// resident, readable, or even valid. This boundary converts address + project
-// context into an observed material state without teaching low-level slot
-// projection helpers about storage.
-//
-// IMPORTANT: unresolved states are never silently interpreted as Pattern.
-// Pattern is returned only when the resident descriptor explicitly says that
-// the canonical representation is Pattern.
+// MaterialAddress says where to look. MaterialId says which material is allowed
+// to be there. MaterialVersionToken is computed only after that identity has
+// been proven and answers a separate question: whether the canonical musical
+// state is exactly the same.
 namespace GroovePuterMaterial {
 
 enum class MaterialResolutionStatus : uint8_t {
@@ -27,6 +24,8 @@ enum class MaterialResolutionStatus : uint8_t {
   MissingPayload,
   CorruptPayload,
   InvalidAddress,
+  InvalidReference,
+  IdentityMismatch,
   StorageUnavailable,
 };
 
@@ -46,7 +45,7 @@ static_assert(sizeof(MaterialResolution) <= 12,
               "MaterialResolution must remain a small control-side value");
 
 inline MaterialResolution unresolved(MaterialResolutionStatus status,
-                                     MaterialKind kind) {
+                                     MaterialKind kind = MaterialKind::Pattern) {
   return {status, kind, {}};
 }
 
@@ -60,28 +59,42 @@ inline const SynthPattern& residentPatternFor(const Scene& scene,
 
 inline MaterialResolution resolveMaterial(
     const MelodyPromotion::FileSystem& fs, const std::string& project,
-    const Scene& scene, int activePage, MaterialAddress address,
+    const Scene& scene, int activePage, const MaterialReference& reference,
     PhraseRuntime::RuntimeSynthEventBuffer& melodyOut) {
+  // Identity validity is independent of address validity. An unassigned id may
+  // never degrade into address-only lookup.
+  if (!reference.id.valid()) {
+    return unresolved(MaterialResolutionStatus::InvalidReference);
+  }
+
+  const MaterialAddress address = reference.address;
   if (!materialAddressInRange(address)) {
-    return unresolved(MaterialResolutionStatus::InvalidAddress,
-                      MaterialKind::Pattern);
+    return unresolved(MaterialResolutionStatus::InvalidAddress);
   }
 
   if (!materialAddressIsResident(address, activePage)) {
-    return unresolved(MaterialResolutionStatus::NotResident,
-                      MaterialKind::Pattern);
+    return unresolved(MaterialResolutionStatus::NotResident);
   }
 
-  const int slot = residentSlotFor(address);
-  if (!residentSlotInRange(address.voice, slot)) {
-    return unresolved(MaterialResolutionStatus::InvalidAddress,
-                      MaterialKind::Pattern);
+  const int residentSlot = residentSlotFor(address);
+  if (!residentSlotInRange(address.voice, residentSlot)) {
+    return unresolved(MaterialResolutionStatus::InvalidAddress);
   }
 
-  const MaterialKind kind = residentKind(scene, address.voice, slot);
+  // This check is the identity boundary. Nothing representation-specific is
+  // inspected, loaded or fingerprinted before it succeeds.
+  const MaterialId actualId = residentId(scene, address.voice, residentSlot);
+  if (!actualId.valid() || actualId != reference.id) {
+    return unresolved(MaterialResolutionStatus::IdentityMismatch);
+  }
+
+  const MaterialKind kind = residentKind(scene, address.voice, residentSlot);
   if (kind == MaterialKind::Pattern) {
+    // Version is deliberately last: it proves exact state, never identity.
+    const MaterialVersionToken version =
+        versionForPattern(residentPatternFor(scene, address));
     return {MaterialResolutionStatus::ResolvedPattern, MaterialKind::Pattern,
-            versionForPattern(residentPatternFor(scene, address))};
+            version};
   }
 
   if (!fs.available()) {
@@ -100,8 +113,11 @@ inline MaterialResolution resolveMaterial(
                       MaterialKind::Melody);
   }
 
+  // Version is computed only after identity, representation and payload have
+  // all been proven trustworthy.
+  const MaterialVersionToken version = versionForMelody(melodyOut);
   return {MaterialResolutionStatus::ResolvedMelody, MaterialKind::Melody,
-          versionForMelody(melodyOut)};
+          version};
 }
 
 }  // namespace GroovePuterMaterial
