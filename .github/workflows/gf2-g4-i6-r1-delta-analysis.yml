@@ -1,4 +1,4 @@
-name: GF2 G4-I6-R1 evidence delta analysis
+name: GF2 G4-I6-R1 evidence refresh verification
 
 on:
   push:
@@ -6,13 +6,24 @@ on:
       - feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
     paths:
       - '.github/workflows/gf2-g4-i6-r1-delta-analysis.yml'
+      - 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'
+      - 'docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'
+      - 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md'
+      - 'docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  G4_I6_R1_START_SHA: e1ecb6a28bf60aaa42fb705bfc9302c2116052ba
+  G4_I6_HISTORICAL_SHA: 47e09186c1ade6cca8ed79c567fca919399fb98e
+  G4_I6_R1_C1_SHA: e1ecb6a28bf60aaa42fb705bfc9302c2116052ba
+  G4_I6_R1_C1_ARTIFACT: '10276170826'
+  G4_I6_R1_C1_DIGEST: c8929e491b5cd36aebe17a498183b6e48b663e3e5c64ea809b0caa5e499b6e21
+
 jobs:
-  delta-analysis:
+  evidence-refresh-verification:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -20,128 +31,225 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/host-tests/gf2-g4-i6-r1
+          head_sha="$(git rev-parse HEAD)"
+          test "$head_sha" = "$GITHUB_SHA"
+          {
+            echo "workflow_sha=$GITHUB_SHA"
+            echo "checked_out_sha=$head_sha"
+            echo "start_sha=$G4_I6_R1_START_SHA"
+            echo "historical_i6_sha=$G4_I6_HISTORICAL_SHA"
+            echo "c1_sha=$G4_I6_R1_C1_SHA"
+            echo "c1_artifact=$G4_I6_R1_C1_ARTIFACT"
+            echo "c1_digest=sha256:$G4_I6_R1_C1_DIGEST"
+          } | tee build/host-tests/gf2-g4-i6-r1/provenance.txt
+
       - name: Install I6 host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
 
-      - name: Generate authoritative current I6 evidence
+      - name: Run full I6 semantic census and deterministic repeat
         shell: bash
         run: |
-          mkdir -p build
+          set -euo pipefail
+          log=build/host-tests/gf2-g4-i6-r1/i6.log
           set +e
-          bash tests/run_gf2_g4_i6_tests.sh > build/g4-i6-r1-run.log 2>&1
+          bash tests/run_gf2_g4_i6_tests.sh > "$log" 2>&1
           rc=$?
           set -e
-          cat build/g4-i6-r1-run.log
-          grep -F 'global ownership census: PASS' build/g4-i6-r1-run.log >/dev/null
-          grep -F 'G4-I6 full derived corpus deterministic repeat: PASS' build/g4-i6-r1-run.log >/dev/null
-          grep -F 'G4-I6 corrected methodology controls: PASS' build/g4-i6-r1-run.log >/dev/null
-          grep -F 'G4-I6 committed evidence freshness: RED' build/g4-i6-r1-run.log >/dev/null
-          test "$rc" -eq 1
+          cat "$log"
 
-      - name: Compare historical committed census to current projection
+          grep -F 'G4-I6 ownership census self-test: PASS' "$log" >/dev/null
+          grep -F 'G4-I6 corrected methodology controls: PASS' "$log" >/dev/null
+          grep -F 'G4-I6 full derived corpus deterministic repeat: PASS' "$log" >/dev/null
+          grep -F 'G4-I6 global ownership census: PASS' "$log" >/dev/null
+
+          if test -f docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md; then
+            echo 'refresh_mode=FINAL' | tee build/host-tests/gf2-g4-i6-r1/mode.txt
+            test "$rc" -eq 0
+            grep -F 'G4-I6 committed evidence freshness: UP TO DATE' "$log" >/dev/null
+            grep -F 'G4-I6 global ownership census host gate: PASS' "$log" >/dev/null
+          else
+            echo 'refresh_mode=CAPTURE' | tee build/host-tests/gf2-g4-i6-r1/mode.txt
+            test "$rc" -eq 1
+            grep -F 'G4-I6 committed evidence freshness: RED' "$log" >/dev/null
+          fi
+
+      - name: Verify required I6 state and methodology controls
         shell: bash
         run: |
+          set -euo pipefail
+          log=build/host-tests/gf2-g4-i6-r1/i6.log
+          grep -F 'G4_I6_CATALOG profiles=33 archetypes=24 effective_edges=122' "$log" >/dev/null
+          grep -F 'G4_I6_CORPUS roots=4224 materializations=12672 attempted=12672 successful=12672 failed=0' "$log" >/dev/null
+          grep -F 'G4_I6_REACHABILITY auto_observed=122 manual_reproduced=0 not_observed=0 proven_unreachable=0' "$log" >/dev/null
+          grep -F 'G4_I6_FINDINGS false_owner=0 admission_orphan=0 overbroad_owner=0 structural_collision=0 shared_admission=24 shared_valid_under_contracts=0 review_required=31 unknown=11904' "$log" >/dev/null
+          grep -F 'G4_I6_CONTRACT_COVERAGE proven=4 provisional=0 review_required=31 unknown=11904' "$log" >/dev/null
+          grep -F 'G4_I6_CORRECTED_PROJECTION collision_pairs=0' "$log" >/dev/null
+
+          for fault in \
+            INCOMPLETE_OWNER_ENUMERATION \
+            RAW_EFFECTIVE_MISMATCH \
+            DUPLICATE_MATERIALIZATION_ROW \
+            UNKNOWN_ARCHETYPE \
+            SELECTION_OUTSIDE_ADMISSION \
+            WITNESS_DETECTOR_ERROR \
+            REVIEW_REQUIRED_PROMOTED_TO_PASS \
+            RETAINED_CONTROL_REGRESSION \
+            LABEL_WEIGHT_INDEPENDENCE \
+            SHARED_ADMISSION_NOT_AUTO_VIOLATION \
+            CANDIDATE_DOWNSTREAM_REASONS_DISTINCT; do
+            grep -F "G4_I6_SELFTEST_PASS fault=$fault" "$log" >/dev/null
+          done
+          echo 'required_i6_state=PASS'
+          echo 'methodology_controls=PASS'
+
+      - name: Verify historical-to-current delta classification
+        shell: bash
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           import csv, io, pathlib, subprocess
           from collections import Counter
 
           OLD_SHA = '47e09186c1ade6cca8ed79c567fca919399fb98e'
           out_dir = pathlib.Path('build/host-tests/gf2-g4-i6-r1')
-          out_dir.mkdir(parents=True, exist_ok=True)
-          def git_show(path):
-              return subprocess.check_output(['git', 'show', f'{OLD_SHA}:{path}'], text=True)
+          run_dir = pathlib.Path('build/host-tests/gf2-g4-i6/run-a')
 
-          old_reader = csv.DictReader(io.StringIO(git_show('docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv')), delimiter='\t')
-          new_reader = csv.DictReader(open('build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'), delimiter='\t')
-          old_rows, new_rows = list(old_reader), list(new_reader)
-          old_fields, new_fields = old_reader.fieldnames, new_reader.fieldnames
+          def git_bytes(path):
+              return subprocess.check_output(['git', 'show', f'{OLD_SHA}:{path}'])
+          def git_text(path):
+              return git_bytes(path).decode()
+          def load_text(text):
+              reader = csv.DictReader(io.StringIO(text), delimiter='\t')
+              return reader.fieldnames, list(reader)
+          def load_path(path):
+              with path.open(newline='') as fh:
+                  reader = csv.DictReader(fh, delimiter='\t')
+                  return reader.fieldnames, list(reader)
+
+          old_fields, old_rows = load_text(git_text('docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'))
+          new_fields, new_rows = load_path(run_dir/'GF2_G4_I6_OWNERSHIP_CENSUS.tsv')
           if old_fields != new_fields:
               raise SystemExit('HEADER_DRIFT')
-          if len(old_rows) != 12672 or len(new_rows) != 12672:
+          if (len(old_rows), len(new_rows)) != (12672, 12672):
               raise SystemExit(f'MATERIALIZATION_COUNT_DRIFT old={len(old_rows)} new={len(new_rows)}')
 
           key_fields = ['owner_mode','owner_genre','recipe_id','recipe_name','identity_ordinal','P_level']
-          stable_fields = {
-              'raw_candidate_count','effective_candidate_count','raw_effective_reconciliation',
-              'selected_archetype_id','selected_archetype_name','weight_provenance','reachability_state',
-              'RhythmFamily','structural_signature','structural_minmax_summary',
-              'chord_identity','melodic_identity','motif_identity','secondary_role','phrase_law_metadata',
-              'selection_seed','realization_seed','contract_id','contract_status','contract_scope',
-              'contract_quantifier','expected_witness','actual_witness','evaluation','reason','offending_stage'
-          }
-          expected_owners = {('Acid','BASE'), ('Acid','Chicago Jack'), ('Acid','Rolling Acid')}
-          field_counts, owner_counts = Counter(), Counter()
-          non_acid_changes = stable_changes = key_drift = changed_rows = 0
-          delta_rows = []
-          for idx, (old, new) in enumerate(zip(old_rows, new_rows), start=2):
-              old_key = tuple(old[k] for k in key_fields); new_key = tuple(new[k] for k in key_fields)
+          expected_owners = Counter({
+              ('Acid','BASE'):333,
+              ('Acid','Chicago Jack'):294,
+              ('Acid','Rolling Acid'):321,
+          })
+          expected_fields = Counter({
+              'materialized_signature':948,
+              'bass_identity':948,
+              'chord_identity':681,
+              'melodic_identity':687,
+              'motif_identity':519,
+          })
+
+          fields = Counter()
+          owners = Counter()
+          changed_rows = 0
+          non_acid = 0
+          raw_delta = []
+          for line_no, (old, new) in enumerate(zip(old_rows, new_rows), start=2):
+              old_key = tuple(old[k] for k in key_fields)
+              new_key = tuple(new[k] for k in key_fields)
               if old_key != new_key:
-                  key_drift += 1
-                  delta_rows.append((idx, old.get('owner_genre','?'), old.get('recipe_name','?'), old.get('identity_ordinal','?'), old.get('P_level','?'), '__KEY__', repr(old_key), repr(new_key)))
-                  continue
+                  raise SystemExit(f'KEY_DRIFT line={line_no} old={old_key} new={new_key}')
               diffs = [f for f in old_fields if old[f] != new[f]]
-              if not diffs: continue
+              if not diffs:
+                  continue
               changed_rows += 1
-              owner = (new['owner_genre'], new['recipe_name']); owner_counts[owner] += 1
-              if owner not in expected_owners: non_acid_changes += 1
-              for f in diffs:
-                  field_counts[f] += 1
-                  if f in stable_fields: stable_changes += 1
-                  delta_rows.append((idx, new['owner_genre'], new['recipe_name'], new['identity_ordinal'], new['P_level'], f, old[f], new[f]))
+              owner = (new['owner_genre'], new['recipe_name'])
+              owners[owner] += 1
+              if owner not in expected_owners:
+                  non_acid += 1
+              for field in diffs:
+                  fields[field] += 1
+                  raw_delta.append((line_no, *owner, new['identity_ordinal'], new['P_level'], field, old[field], new[field]))
+
+          if changed_rows != 948:
+              raise SystemExit(f'CHANGED_ROWS_MISMATCH {changed_rows}')
+          if owners != expected_owners:
+              raise SystemExit(f'OWNER_DELTA_MISMATCH {owners}')
+          if non_acid != 0:
+              raise SystemExit(f'NON_ACID_DELTA {non_acid}')
+          if fields != expected_fields:
+              raise SystemExit(f'FIELD_DELTA_MISMATCH {fields}')
+
+          historical_anomalies = git_bytes('docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv')
+          current_anomalies = (run_dir/'GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv').read_bytes()
+          if historical_anomalies != current_anomalies:
+              raise SystemExit('ANOMALIES_CHANGED')
 
           with (out_dir/'GF2_G4_I6_R1_RAW_DELTA.tsv').open('w', newline='') as fh:
-              w=csv.writer(fh, delimiter='\t', lineterminator='\n'); w.writerow(['line','owner','profile','identity','level','field','old_value','new_value']); w.writerows(delta_rows)
+              writer = csv.writer(fh, delimiter='\t', lineterminator='\n')
+              writer.writerow(['line','owner','profile','identity','level','field','old_value','new_value'])
+              writer.writerows(raw_delta)
 
-          projection_status={}
-          for name in ['GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv','GF2_G4_I6_OWNERSHIP_CENSUS.md','GF2_G4_I6_COLLISION_PROJECTION.tsv']:
-              new_file=pathlib.Path('build/host-tests/gf2-g4-i6/run-a')/name
-              if not new_file.exists(): projection_status[name]='MISSING_CURRENT'; continue
-              try: old_other=git_show('docs/research/'+name)
-              except subprocess.CalledProcessError: projection_status[name]='NO_HISTORICAL_FILE'; continue
-              projection_status[name]='IDENTICAL' if old_other==new_file.read_text() else 'DIFFERENT'
-
-          summary=[f'old_evidence_sha={OLD_SHA}',f'old_rows={len(old_rows)}',f'new_rows={len(new_rows)}',f'changed_rows={changed_rows}',f'changed_fields={len(delta_rows)}',f'key_drift={key_drift}',f'non_expected_owner_changed_rows={non_acid_changes}',f'stable_field_changes={stable_changes}']
-          summary += [f'owner_changed_rows[{a} / {b}]={c}' for (a,b),c in sorted(owner_counts.items())]
-          summary += [f'field_changes[{f}]={c}' for f,c in sorted(field_counts.items())]
-          summary += [f'projection[{n}]={s}' for n,s in projection_status.items()]
-          (out_dir/'analysis-summary.txt').write_text('\n'.join(summary)+'\n'); print('\n'.join(summary))
-
-          if key_drift: raise SystemExit('UNEXPECTED_DELTA key drift')
-          if non_acid_changes: raise SystemExit('UNEXPECTED_DELTA non-Acid owner drift')
-          if stable_changes: raise SystemExit('UNEXPECTED_DELTA stable ownership/contract/archetype field drift')
-          if projection_status['GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'] != 'IDENTICAL': raise SystemExit('UNEXPECTED_DELTA anomaly projection drift')
+          derived = expected_fields['chord_identity'] + expected_fields['melodic_identity'] + expected_fields['motif_identity']
+          summary = [
+              f'historical_i6_sha={OLD_SHA}',
+              'c1_sha=e1ecb6a28bf60aaa42fb705bfc9302c2116052ba',
+              'c1_artifact=10276170826',
+              'c1_digest=sha256:c8929e491b5cd36aebe17a498183b6e48b663e3e5c64ea809b0caa5e499b6e21',
+              f'changed_rows={changed_rows}',
+              'affected_owner[Acid / BASE]=333',
+              'affected_owner[Acid / Chicago Jack]=294',
+              'affected_owner[Acid / Rolling Acid]=321',
+              f'non_acid_delta={non_acid}',
+              'materialized_signature=948',
+              'bass_identity=948 classification=EXPECTED_P1_DELTA',
+              'chord_identity=681 classification=DERIVED_EXPECTED_DELTA',
+              'melodic_identity=687 classification=DERIVED_EXPECTED_DELTA',
+              'motif_identity=519 classification=DERIVED_EXPECTED_DELTA',
+              f'derived_expected_field_changes={derived}',
+              'unexpected_delta=0',
+              'unexplained=0',
+              'anomalies_projection=UNCHANGED',
+          ]
+          (out_dir/'delta-summary.txt').write_text('\n'.join(summary)+'\n')
+          print('\n'.join(summary))
           PY
 
-      - name: Verify high-level retained invariants
+      - name: Verify evidence/report state and production freeze
         shell: bash
         run: |
-          log=build/g4-i6-r1-run.log
-          grep -F 'profile definitions: 33' "$log"
-          grep -F 'unique archetypes: 24' "$log"
-          grep -F 'effective owner->archetype edges: 122' "$log"
-          grep -F 'deterministic roots: 4224' "$log"
-          grep -F 'materializations: 12672/12672' "$log"
-          grep -F 'proven contracts: 4' "$log"
-          grep -F 'review-required owners: 31' "$log"
-          grep -F 'unknown evaluations: 11904' "$log"
-          grep -F 'false-owner findings: 0' "$log"
-          grep -F 'admission-orphan findings: 0' "$log"
-          grep -F 'overbroad-owner findings: 0' "$log"
-          grep -F 'structural-collision findings: 0' "$log"
-          grep -F 'reachable effective edges: 122/122 (unreachable=0)' "$log"
+          set -euo pipefail
+          test -z "$(git diff --name-only "$G4_I6_R1_START_SHA"...HEAD -- 'src/**')"
+          echo 'production_changes=NONE'
 
-      - name: Upload I6-R1 delta analysis
+          if test -f docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md; then
+            cmp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+            cmp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+            cmp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md
+            grep -F 'G4-ACID-BASS-ARTICULATION-CAPABILITY' docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md >/dev/null
+            grep -F 'status=REVIEW_REQUIRED' docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md >/dev/null
+            echo 'committed_evidence=UP_TO_DATE'
+          else
+            echo 'committed_evidence=PENDING_REFRESH'
+          fi
+
+      - name: Upload I6-R1 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-i6-r1-delta-analysis
+          name: g4-i6-r1-evidence-refresh
           path: |
-            build/g4-i6-r1-run.log
             build/host-tests/gf2-g4-i6-r1/
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md
             build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_COLLISION_PROJECTION.tsv
+            build/host-tests/gf2-g4-i6/run-a/g4-i6-summary.txt
+            docs/research/GF2_G4_I6_R1_C1_ACID_SELECTION_RNG_CAUSALITY.md
+            docs/research/GF2_G4_I6_R1_EVIDENCE_REFRESH_AFTER_ACID_P1.md
           if-no-files-found: warn
