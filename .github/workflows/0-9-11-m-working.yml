@@ -1,0 +1,84 @@
+name: 0.9.11 M-WORKING
+
+on:
+  push:
+    branches:
+      - feature/20260911-0.9.11-m-working-red
+      - feature/20260911-0.9.11-m-working-green
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m-working-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  red-characterization:
+    if: github.ref_name == 'feature/20260911-0.9.11-m-working-red'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Prove genuine M-WORKING RED without tripping STOP gates
+        shell: bash
+        run: |
+          set +e
+          bash tests/run_0_9_11_m_working_tests.sh 2>&1 | tee /tmp/m-working-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" -ne 1 ]]; then
+            echo "Expected genuine RED status 1, got $status" >&2
+            exit 1
+          fi
+          grep -q 'M-WORKING: TRUE RED WITNESSES PROVEN' /tmp/m-working-red.log
+          grep -q 'M-WORKING GATE \[SOURCE_ROUND_TRIP\]' /tmp/m-working-red.log
+          grep -q 'M-WORKING GATE \[SONG_RETARGET\]' /tmp/m-working-red.log
+          if grep -q 'M-WORKING STOP' /tmp/m-working-red.log; then
+            echo 'A hard M-WORKING STOP gate tripped' >&2
+            exit 1
+          fi
+
+      - name: Preserve M3 ACTIVE authority
+        run: bash tests/run_m3_material_authority_tests.sh
+
+      - name: Preserve M4 NEXT causality
+        run: bash tests/run_m4_next_material_tests.sh
+
+      - name: Preserve Pattern/Phrase P2 ownership baseline
+        run: python3 tests/test_pattern_phrase_p2_source_contract.py
+
+      - name: Preserve persistence ownership baseline
+        run: python3 tests/test_synth_persistence_source_regressions.py
+
+  green-contract:
+    if: github.ref_name == 'feature/20260911-0.9.11-m-working-green'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+      - name: M-WORKING contract must be green
+        run: bash tests/run_0_9_11_m_working_tests.sh
+      - name: Existing material causality gates
+        run: |
+          bash tests/run_m3_material_authority_tests.sh
+          bash tests/run_m4_next_material_tests.sh
