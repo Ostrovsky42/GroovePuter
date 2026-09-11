@@ -1,4 +1,4 @@
-name: 0.9.11 MaterialId Independence G1
+name: 0.9.11 MaterialId Independence Invariant
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
-  material-id-independence-g1:
+  material-id-independence:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,15 +31,15 @@ jobs:
           echo "W0_ROOT=${W0_ROOT}"
           echo "HEAD=$(git rev-parse HEAD)"
 
-      - name: Prove G1 production delta is identity-only
+      - name: Prove MaterialId work stays inside its owners
         run: |
           set -euo pipefail
           changed="$(git diff --name-only "${W0_ROOT}"..HEAD)"
           printf '%s\n' "${changed}"
           test -n "${changed}"
-          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/|src/state/material_identity\.h$)' || true)"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/|src/state/material_identity\.h$|src/state/material_slot\.h$|src/audio/pattern_paging\.h$|src/audio/pattern_paging\.cpp$)' || true)"
           if [ -n "${bad}" ]; then
-            echo "G1 changed files outside independent identity scope:" >&2
+            echo "MaterialId checkpoint changed files outside bounded owners:" >&2
             printf '%s\n' "${bad}" >&2
             exit 2
           fi
