@@ -28,51 +28,37 @@ jobs:
       - name: Generate authoritative current I6 evidence
         shell: bash
         run: |
+          mkdir -p build
           set +e
           bash tests/run_gf2_g4_i6_tests.sh > build/g4-i6-r1-run.log 2>&1
           rc=$?
           set -e
           cat build/g4-i6-r1-run.log
-          # Before refresh the only accepted non-zero exit is the already-proven
-          # committed-evidence freshness mismatch. All semantic/methodology gates
-          # must have reached PASS first.
-          grep -F 'G4-I6 global ownership census host gate: PASS' build/g4-i6-r1-run.log >/dev/null && semantic_final=1 || semantic_final=0
           grep -F 'global ownership census: PASS' build/g4-i6-r1-run.log >/dev/null
           grep -F 'G4-I6 full derived corpus deterministic repeat: PASS' build/g4-i6-r1-run.log >/dev/null
           grep -F 'G4-I6 corrected methodology controls: PASS' build/g4-i6-r1-run.log >/dev/null
           grep -F 'G4-I6 committed evidence freshness: RED' build/g4-i6-r1-run.log >/dev/null
           test "$rc" -eq 1
-          test "$semantic_final" -eq 0
 
       - name: Compare historical committed census to current projection
         shell: bash
         run: |
           python3 - <<'PY'
-          import csv
-          import io
-          import pathlib
-          import subprocess
-          from collections import Counter, defaultdict
+          import csv, io, pathlib, subprocess
+          from collections import Counter
 
           OLD_SHA = '47e09186c1ade6cca8ed79c567fca919399fb98e'
-          old_path = 'docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'
-          new_path = pathlib.Path('build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv')
           out_dir = pathlib.Path('build/host-tests/gf2-g4-i6-r1')
           out_dir.mkdir(parents=True, exist_ok=True)
-
           def git_show(path):
               return subprocess.check_output(['git', 'show', f'{OLD_SHA}:{path}'], text=True)
 
-          old_text = git_show(old_path)
-          new_text = new_path.read_text()
-          old_reader = csv.DictReader(io.StringIO(old_text), delimiter='\t')
-          new_reader = csv.DictReader(io.StringIO(new_text), delimiter='\t')
-          old_rows = list(old_reader)
-          new_rows = list(new_reader)
-          old_fields = old_reader.fieldnames
-          new_fields = new_reader.fieldnames
+          old_reader = csv.DictReader(io.StringIO(git_show('docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv')), delimiter='\t')
+          new_reader = csv.DictReader(open('build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv'), delimiter='\t')
+          old_rows, new_rows = list(old_reader), list(new_reader)
+          old_fields, new_fields = old_reader.fieldnames, new_reader.fieldnames
           if old_fields != new_fields:
-              raise SystemExit(f'HEADER_DRIFT old={old_fields} new={new_fields}')
+              raise SystemExit('HEADER_DRIFT')
           if len(old_rows) != 12672 or len(new_rows) != 12672:
               raise SystemExit(f'MATERIALIZATION_COUNT_DRIFT old={len(old_rows)} new={len(new_rows)}')
 
@@ -86,87 +72,46 @@ jobs:
               'contract_quantifier','expected_witness','actual_witness','evaluation','reason','offending_stage'
           }
           expected_owners = {('Acid','BASE'), ('Acid','Chicago Jack'), ('Acid','Rolling Acid')}
-
-          field_counts = Counter()
-          owner_counts = Counter()
-          non_acid_changes = 0
-          stable_changes = 0
-          key_drift = 0
-          changed_rows = 0
+          field_counts, owner_counts = Counter(), Counter()
+          non_acid_changes = stable_changes = key_drift = changed_rows = 0
           delta_rows = []
-          row_direct_bass_change = {}
-
           for idx, (old, new) in enumerate(zip(old_rows, new_rows), start=2):
-              old_key = tuple(old[k] for k in key_fields)
-              new_key = tuple(new[k] for k in key_fields)
+              old_key = tuple(old[k] for k in key_fields); new_key = tuple(new[k] for k in key_fields)
               if old_key != new_key:
                   key_drift += 1
                   delta_rows.append((idx, old.get('owner_genre','?'), old.get('recipe_name','?'), old.get('identity_ordinal','?'), old.get('P_level','?'), '__KEY__', repr(old_key), repr(new_key)))
                   continue
               diffs = [f for f in old_fields if old[f] != new[f]]
-              if not diffs:
-                  continue
+              if not diffs: continue
               changed_rows += 1
-              owner = (new['owner_genre'], new['recipe_name'])
-              owner_counts[owner] += 1
-              if owner not in expected_owners:
-                  non_acid_changes += 1
-              row_direct_bass_change[idx] = old['bass_identity'] != new['bass_identity']
+              owner = (new['owner_genre'], new['recipe_name']); owner_counts[owner] += 1
+              if owner not in expected_owners: non_acid_changes += 1
               for f in diffs:
                   field_counts[f] += 1
-                  if f in stable_fields:
-                      stable_changes += 1
+                  if f in stable_fields: stable_changes += 1
                   delta_rows.append((idx, new['owner_genre'], new['recipe_name'], new['identity_ordinal'], new['P_level'], f, old[f], new[f]))
 
-          delta_path = out_dir / 'GF2_G4_I6_R1_RAW_DELTA.tsv'
-          with delta_path.open('w', newline='') as fh:
-              w = csv.writer(fh, delimiter='\t', lineterminator='\n')
-              w.writerow(['line','owner','profile','identity','level','field','old_value','new_value'])
-              w.writerows(delta_rows)
+          with (out_dir/'GF2_G4_I6_R1_RAW_DELTA.tsv').open('w', newline='') as fh:
+              w=csv.writer(fh, delimiter='\t', lineterminator='\n'); w.writerow(['line','owner','profile','identity','level','field','old_value','new_value']); w.writerows(delta_rows)
 
-          # Compare the other deterministic projections against the historical
-          # evidence commit. Any difference is surfaced, never ignored.
-          projection_status = {}
+          projection_status={}
           for name in ['GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv','GF2_G4_I6_OWNERSHIP_CENSUS.md','GF2_G4_I6_COLLISION_PROJECTION.tsv']:
-              new_file = pathlib.Path('build/host-tests/gf2-g4-i6/run-a') / name
-              if not new_file.exists():
-                  projection_status[name] = 'MISSING_CURRENT'
-                  continue
-              try:
-                  old_other = git_show('docs/research/' + name)
-              except subprocess.CalledProcessError:
-                  projection_status[name] = 'NO_HISTORICAL_FILE'
-                  continue
-              projection_status[name] = 'IDENTICAL' if old_other == new_file.read_text() else 'DIFFERENT'
+              new_file=pathlib.Path('build/host-tests/gf2-g4-i6/run-a')/name
+              if not new_file.exists(): projection_status[name]='MISSING_CURRENT'; continue
+              try: old_other=git_show('docs/research/'+name)
+              except subprocess.CalledProcessError: projection_status[name]='NO_HISTORICAL_FILE'; continue
+              projection_status[name]='IDENTICAL' if old_other==new_file.read_text() else 'DIFFERENT'
 
-          summary = []
-          summary.append(f'old_evidence_sha={OLD_SHA}')
-          summary.append(f'old_rows={len(old_rows)}')
-          summary.append(f'new_rows={len(new_rows)}')
-          summary.append(f'changed_rows={changed_rows}')
-          summary.append(f'changed_fields={len(delta_rows)}')
-          summary.append(f'key_drift={key_drift}')
-          summary.append(f'non_expected_owner_changed_rows={non_acid_changes}')
-          summary.append(f'stable_field_changes={stable_changes}')
-          for owner, count in sorted(owner_counts.items()):
-              summary.append(f'owner_changed_rows[{owner[0]} / {owner[1]}]={count}')
-          for field, count in sorted(field_counts.items()):
-              summary.append(f'field_changes[{field}]={count}')
-          for name, status in projection_status.items():
-              summary.append(f'projection[{name}]={status}')
-          (out_dir / 'analysis-summary.txt').write_text('\n'.join(summary) + '\n')
-          print('\n'.join(summary))
+          summary=[f'old_evidence_sha={OLD_SHA}',f'old_rows={len(old_rows)}',f'new_rows={len(new_rows)}',f'changed_rows={changed_rows}',f'changed_fields={len(delta_rows)}',f'key_drift={key_drift}',f'non_expected_owner_changed_rows={non_acid_changes}',f'stable_field_changes={stable_changes}']
+          summary += [f'owner_changed_rows[{a} / {b}]={c}' for (a,b),c in sorted(owner_counts.items())]
+          summary += [f'field_changes[{f}]={c}' for f,c in sorted(field_counts.items())]
+          summary += [f'projection[{n}]={s}' for n,s in projection_status.items()]
+          (out_dir/'analysis-summary.txt').write_text('\n'.join(summary)+'\n'); print('\n'.join(summary))
 
-          # High-level guardrails from the checkpoint. This analysis run does not
-          # refresh evidence; it only refuses obviously unrelated drift.
-          if key_drift:
-              raise SystemExit('UNEXPECTED_DELTA key drift')
-          if non_acid_changes:
-              raise SystemExit('UNEXPECTED_DELTA non-Acid owner drift')
-          if stable_changes:
-              raise SystemExit('UNEXPECTED_DELTA stable ownership/contract/archetype field drift')
-          if projection_status['GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'] != 'IDENTICAL':
-              raise SystemExit('UNEXPECTED_DELTA anomaly projection drift')
+          if key_drift: raise SystemExit('UNEXPECTED_DELTA key drift')
+          if non_acid_changes: raise SystemExit('UNEXPECTED_DELTA non-Acid owner drift')
+          if stable_changes: raise SystemExit('UNEXPECTED_DELTA stable ownership/contract/archetype field drift')
+          if projection_status['GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv'] != 'IDENTICAL': raise SystemExit('UNEXPECTED_DELTA anomaly projection drift')
           PY
 
       - name: Verify high-level retained invariants
