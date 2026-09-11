@@ -645,9 +645,10 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
       : 0;
 
-  if (!ui_event.alt && lower == 'l') {
+  if (lower == 'l' || ui_event.scancode == GROOVEPUTER_L) {
+    const int direction = ui_event.alt ? -1 : +1;
     const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(
-        phrase, +1, [&](uint8_t bars) {
+        phrase, direction, [&](uint8_t bars) {
           bool committed = false;
           const auto apply = [&]() {
             committed = mini_acid_.setPhraseLength(voice_index_, bars);
@@ -939,7 +940,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   // ENTER puts a new sound, so it stays reachable -- just not on the arrows,
   // which now carry pitch and selection.
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
-      (ui_event.key == 'g' || ui_event.key == 'G')) {
+      (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
     phrase_cursor_ = PhraseNotesCursor::changeGrid(
         phrase_cursor_, 1, phrase.lengthTicks);
     char toast[24];

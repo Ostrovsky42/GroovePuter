@@ -1241,7 +1241,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   if (handled) return true;
 
   char key = ui_event.key;
-  if (!key) return false;
+  if (!key && ui_event.scancode == GROOVEPUTER_NO_SCANCODE) return false;
 
   // Log modifier+key combos for debugging song controls
   if (ui_event.ctrl || ui_event.alt) {
@@ -1259,7 +1259,9 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       key = static_cast<char>('a' + (u - 1));
     }
   }
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+  char lowerKey = key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
+      : 0;
 
   bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
