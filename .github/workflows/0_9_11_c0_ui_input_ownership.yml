@@ -34,9 +34,8 @@ jobs:
       - name: Run C0 UI input ownership regression
         run: bash tests/run_c0_ui_input_ownership_tests.sh
 
-      # Measurement-only expansion of tests/run_ui_pattern_phrase_instrument_tests.sh.
-      # Commands and ordering intentionally match the runner so the first failing
-      # sub-contract is visible in GitHub Actions without changing test semantics.
+      # Keep the expanded Pattern/Phrase contracts as permanent failure
+      # localization. Commands and ordering intentionally match the runner.
       - name: Pattern Phrase gate - instrument controls
         run: |
           set -euo pipefail
@@ -70,40 +69,8 @@ jobs:
         run: bash tests/run_ui_constitution_u4d1_tests.sh
       - name: Pattern Phrase gate - hardware controls
         run: bash tests/run_ui_pattern_phrase_hardware_controls_tests.sh
-
-      # Capture the actual rendered-bounds diagnostics before enforcing the
-      # contract. Also run the same gate on the pre-repair 74572 checkpoint so
-      # we can distinguish a new input-fix regression from a pre-existing red.
-      - name: Capture content bounds evidence
-        id: content_bounds
-        run: |
-          set -u
-          set +e
-          bash tests/run_ui_content_bounds_tests.sh > content-bounds-current.log 2>&1
-          current_status=$?
-          set -e
-          cat content-bounds-current.log
-          echo "current_status=${current_status}" >> "$GITHUB_OUTPUT"
-
-          git worktree add --detach /tmp/content-bounds-baseline 74572eb2c42c490313202f4366950c2c9b6f75ad
-          set +e
-          (cd /tmp/content-bounds-baseline && bash tests/run_ui_content_bounds_tests.sh) \
-            > content-bounds-74572.log 2>&1
-          baseline_status=$?
-          set -e
-          cat content-bounds-74572.log
-          echo "baseline_status=${baseline_status}" >> "$GITHUB_OUTPUT"
-      - name: Upload content bounds evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: c0-ui-content-bounds-${{ github.sha }}
-          path: |
-            content-bounds-current.log
-            content-bounds-74572.log
-          if-no-files-found: error
-      - name: Enforce current content bounds contract
-        run: test "${{ steps.content_bounds.outputs.current_status }}" -eq 0
+      - name: Pattern Phrase gate - content bounds
+        run: bash tests/run_ui_content_bounds_tests.sh
 
       - name: Preserve hardware findings runtime contract
         run: |
