@@ -35,7 +35,7 @@ struct HasProjectMaterialIdentityPersistence<
     Paging,
     SceneT,
     std::void_t<decltype(Paging::allocateMaterialId()),
-                decltype(std::declval<SceneT&>().materialIds[0][0])>>
+                decltype(std::declval<SceneT&>().materialSlots[0][0].id)>>
     : std::true_type {};
 
 template <typename Paging, typename SceneT>
@@ -62,14 +62,14 @@ int runProjectPersistenceWitness(const std::filesystem::path& root) {
     if (!require(idM.valid(), "first allocated id is invalid")) return 2;
 
     SceneT source{};
-    source.materialIds[kVoice][kResidentSlot] = idM;
+    source.materialSlots[kVoice][kResidentSlot].id = idM;
     if (!require(Paging::savePage(kPage, source),
                  "cannot save page carrying idM")) return 2;
 
     SceneT loadedM{};
     if (!require(Paging::loadPage(kPage, loadedM),
                  "cannot reload page carrying idM")) return 2;
-    if (!require(loadedM.materialIds[kVoice][kResidentSlot] == idM,
+    if (!require(loadedM.materialSlots[kVoice][kResidentSlot].id == idM,
                  "page round-trip lost idM")) return 2;
 
     const MaterialReference staleRef{address, idM};
@@ -89,18 +89,18 @@ int runProjectPersistenceWitness(const std::filesystem::path& root) {
                  "same project reused idM after project switch")) return 2;
 
     SceneT replacement = loadedM;
-    replacement.materialIds[kVoice][kResidentSlot] = idN;
+    replacement.materialSlots[kVoice][kResidentSlot].id = idN;
     if (!require(Paging::savePage(kPage, replacement),
                  "cannot save replacement idN at the same address")) return 2;
 
     SceneT loadedN{};
     if (!require(Paging::loadPage(kPage, loadedN),
                  "cannot reload replacement idN")) return 2;
-    if (!require(loadedN.materialIds[kVoice][kResidentSlot] == idN,
+    if (!require(loadedN.materialSlots[kVoice][kResidentSlot].id == idN,
                  "page round-trip lost idN")) return 2;
     if (!require(!materialReferenceMatches(
                      staleRef, address,
-                     loadedN.materialIds[kVoice][kResidentSlot]),
+                     loadedN.materialSlots[kVoice][kResidentSlot].id),
                  "stale M@A reference resolved replacement N@A")) return 2;
 
     // Save As must copy both page IDs and allocator high-water. Otherwise the
@@ -113,7 +113,7 @@ int runProjectPersistenceWitness(const std::filesystem::path& root) {
     SceneT copied{};
     if (!require(Paging::loadPage(kPage, copied),
                  "copied project page cannot be loaded")) return 2;
-    if (!require(copied.materialIds[kVoice][kResidentSlot] == idN,
+    if (!require(copied.materialSlots[kVoice][kResidentSlot].id == idN,
                  "Save As lost copied material id")) return 2;
 
     const MaterialId copiedNext = Paging::allocateMaterialId();
