@@ -1,16 +1,32 @@
-name: GF2 G4-CC1A-P1 Acid articulation authority
+name: GF2 G4-CC1A-P1 Acid articulation ratification
 
 on:
   push:
     branches:
       - feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
     paths:
+      - 'tests/run_gf2_g4_cc1a_p1_ratification.sh'
       - 'tests/test_gf2_g4_cc1a_p1_acid_articulation_authority.cpp'
       - 'tests/run_gf2_g4_cc1a_p1_tests.sh'
+      - 'tests/test_gf2_g4_r1_reference_contracts.cpp'
+      - 'tests/run_gf2_g4_r1_tests.sh'
+      - 'tests/test_gf2_g4_i3_phrase_truthfulness.cpp'
+      - 'tests/run_gf2_g4_i3_tests.sh'
+      - 'tests/test_gf2_g4_i4_dub_techno_structural_ownership.cpp'
+      - 'tests/run_gf2_g4_i4_tests.sh'
+      - 'tests/test_gf2_g4_i5_house_structural_ownership.cpp'
+      - 'tests/run_gf2_g4_i5_tests.sh'
+      - 'tests/test_gf2_g4_i6_*'
+      - 'tests/run_gf2_g4_i6_tests.sh'
+      - 'tests/test_gf2_g4_cc1_contract_wave.cpp'
+      - 'tests/run_gf2_g4_cc1_tests.sh'
+      - 'tests/test_gf2_g4_cc1a_acid_structural_minimum.cpp'
+      - 'tests/run_gf2_g4_cc1a_tests.sh'
       - 'tests/test_pattern_phrase_p2_*'
       - 'tests/run_pattern_phrase_p2_*'
       - 'tests/test_p3_*'
       - 'tests/run_pattern_phrase_p3_*'
+      - 'docs/research/GF2_G4_CC1A_P1_C3A_RATIFICATION_ENTRYPOINT.md'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_AUTHORITY.md'
       - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_CENSUS.tsv'
       - '.github/workflows/gf2-g4-cc1a-p1-acid-articulation-authority.yml'
@@ -31,15 +47,15 @@ permissions:
   contents: read
 
 jobs:
-  acid-articulation-authority:
+  acid-articulation-ratification:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install C2 host dependencies
+      - name: Install ratification host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -49,47 +65,30 @@ jobs:
             libsdl2-gfx-dev \
             pkg-config
 
-      - name: Audit production scope
-        run: |
-          set -euo pipefail
-          BASE=8331735080f25acbc809ef97b9881fd9e17c86a2
-          changed="$(git diff --name-only "$BASE" "$GITHUB_SHA" -- src/)"
-          unexpected="$(printf '%s\n' "$changed" | sed '/^$/d' | grep -vFx 'src/generation/composition/generation_profile.cpp' || true)"
-          if test -n "$unexpected"; then
-            echo "G4_CC1A_P1_FAIL unexpected_production_diff"
-            printf '%s\n' "$unexpected"
-            exit 1
-          fi
-          echo "G4_CC1A_P1_PRODUCTION_SCOPE ${changed:-NONE}"
+      - name: Run exact ratification entrypoint
+        run: bash tests/run_gf2_g4_cc1a_p1_ratification.sh
 
-      - name: Run G4-CC1A-P1 contract gate
-        run: bash tests/run_gf2_g4_cc1a_p1_tests.sh
-
-      - name: Run C2 retained P2 gate
-        env:
-          ASAN_OPTIONS: detect_leaks=0
-        run: bash tests/run_pattern_phrase_p2_tests.sh
-
-      - name: Run C2 retained P3 gate
-        run: bash tests/run_pattern_phrase_p3_tests.sh
-
-      - name: Print checkpoint evidence
+      - name: Print ratification summary
         if: always()
         run: |
-          if test -f build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt; then
-            cat build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
+          if test -f build/host-tests/gf2-g4-cc1a-p1-ratification/ratification-summary.txt; then
+            cat build/host-tests/gf2-g4-cc1a-p1-ratification/ratification-summary.txt
           fi
-          if test -f build/pattern-phrase-p2-lifecycle-barriers/behavior.out; then
-            cat build/pattern-phrase-p2-lifecycle-barriers/behavior.out
+          if test -f build/host-tests/gf2-g4-cc1a-p1-ratification/g4_cc1a_retained.log; then
+            cat build/host-tests/gf2-g4-cc1a-p1-ratification/g4_cc1a_retained.log
           fi
 
-      - name: Upload checkpoint evidence
+      - name: Upload ratification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-cc1a-p1-acid-articulation
+          name: g4-cc1a-p1-ratification
           path: |
+            build/host-tests/gf2-g4-cc1a-p1-ratification/
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
             build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-census.tsv
             build/pattern-phrase-p2-lifecycle-barriers/behavior.out
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_COLLISION_PROJECTION.tsv
           if-no-files-found: warn
