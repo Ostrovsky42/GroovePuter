@@ -84,3 +84,7 @@ The reduction by 384 rows is not a claim that Broken bass semantics are proven; 
 7. Final unified workflow uses `contents: read` only.
 8. Final artifact includes updated I6 and C2 evidence.
 9. Remote branch HEAD equals the exact successful workflow SHA.
+
+## Final closure policy
+
+The temporary evidence publisher is not part of the checkpoint. It is removed before the authoritative run. The final accepted SHA must reproduce the committed I6 and C2 evidence under the normal unified workflow with `contents: read`; that exact run, not the publisher run, is the closure authority.
