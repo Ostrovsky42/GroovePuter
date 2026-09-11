@@ -1,0 +1,25 @@
+name: 0.9.11 C0 UI Input Ownership
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-c0-ui-input-ownership
+  workflow_dispatch:
+
+jobs:
+  focused-ui-input-ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove exact checkout
+        run: |
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Run focused UI input ownership gate
+        run: bash tests/run_c0_ui_input_ownership_tests.sh
