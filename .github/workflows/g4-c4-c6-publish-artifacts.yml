@@ -1,0 +1,103 @@
+name: G4-C4-C6 temporary evidence publisher
+
+on:
+  push:
+    branches:
+      - feature/20260911-02-0.9.11-g4-c4-c6-obvious-admission-wave
+    paths:
+      - '.github/workflows/g4-c4-c6-publish-artifacts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential
+
+      - name: Generate exact-SHA I6 evidence
+        run: |
+          mkdir -p build
+          set -o pipefail
+          set +e
+          bash tests/run_gf2_g4_i6_tests.sh 2>&1 | tee build/g4-c4-c6-publish.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -eq 1
+          grep -F 'G4-C4-C6 obvious admission wave: PASS' build/g4-c4-c6-publish.log
+          grep -F 'G4_C4_C6_PROMOTION_PASS contracts=4 owners=4 rows=1536 review_required=25 unknown=9600 proven_contracts=11' build/g4-c4-c6-publish.log
+          grep -F 'G4-I6 full derived corpus deterministic repeat: PASS' build/g4-c4-c6-publish.log
+          grep -F 'G4-I6 committed evidence freshness: RED' build/g4-c4-c6-publish.log
+          ! grep -Fq 'G4_I6_FINALIZER_FAIL' build/g4-c4-c6-publish.log
+
+      - name: Stage generated I6 evidence
+        run: |
+          install -d docs/research
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+             docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv \
+             docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+          cp build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.md \
+             docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md
+
+      - name: Regenerate C2 ranking from promoted census
+        run: |
+          python3 tests/test_gf2_g4_c2_contract_candidate_ranking.py
+          rm -rf build/host-tests/gf2-g4-c2-publish
+          python3 tools/gf2/rank_gf2_g4_c2_contract_candidates.py \
+            --census docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            --output-dir build/host-tests/gf2-g4-c2-publish
+          cp build/host-tests/gf2-g4-c2-publish/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+             docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv
+          cp build/host-tests/gf2-g4-c2-publish/GF2_G4_C2_CONTRACT_CANDIDATES.md \
+             docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md
+          grep -F 'G4_C2_RANKING owners=25 top_candidates=0 single_family_plural=0 exact_proven_admission_aliases=0 auto_promoted=0' \
+            build/host-tests/gf2-g4-c2-publish/g4-c2-summary.txt
+
+      - name: Publish only generated research evidence
+        run: |
+          git diff --exit-code -- src
+          mapfile -t changed < <(git status --short | awk '{print $2}' | sort)
+          test "${#changed[@]}" -ge 4
+          for path in "${changed[@]}"; do
+            case "$path" in
+              docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv|\
+              docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv|\
+              docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md|\
+              docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv|\
+              docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md)
+                ;;
+              *)
+                echo "unexpected changed path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+          for required in \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+            docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+            docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md; do
+            printf '%s\n' "${changed[@]}" | grep -Fx "$required"
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv \
+                     docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv \
+                     docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.md \
+                     docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.tsv \
+                     docs/research/GF2_G4_C2_CONTRACT_CANDIDATES.md
+          git diff --cached --quiet && exit 1
+          git commit -m 'docs(g4-c4-c6): publish deterministic admission evidence'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
