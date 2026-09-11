@@ -1,0 +1,262 @@
+name: GF2 G4-I6-R1-C1 Acid selection causality
+
+on:
+  push:
+    branches:
+      - feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
+    paths:
+      - 'tools/gf2/g4_i6_r1_c1_selection_causality.cpp'
+      - 'tools/gf2/g4_i6_r1_c1_trace_capacity.h'
+      - '.github/workflows/gf2-g4-i6-r1-c1-selection-causality.yml'
+      - 'docs/research/GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv'
+      - 'docs/research/GF2_G4_I6_R1_C1_ACID_SELECTION_RNG_CAUSALITY.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  causality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Regenerate current I6 projection without refreshing evidence
+        shell: bash
+        run: |
+          mkdir -p build/host-tests/gf2-g4-i6-r1-c1
+          set +e
+          bash tests/run_gf2_g4_i6_tests.sh > build/host-tests/gf2-g4-i6-r1-c1/i6.log 2>&1
+          rc=$?
+          set -e
+          cat build/host-tests/gf2-g4-i6-r1-c1/i6.log
+          test "$rc" -eq 1
+          grep -F 'G4-I6 global ownership census: PASS' build/host-tests/gf2-g4-i6-r1-c1/i6.log >/dev/null
+          grep -F 'G4-I6 full derived corpus deterministic repeat: PASS' build/host-tests/gf2-g4-i6-r1-c1/i6.log >/dev/null
+          grep -F 'G4-I6 corrected methodology controls: PASS' build/host-tests/gf2-g4-i6-r1-c1/i6.log >/dev/null
+          grep -F 'G4-I6 committed evidence freshness: RED' build/host-tests/gf2-g4-i6-r1-c1/i6.log >/dev/null
+
+      - name: Build and run exact selection causality trace
+        shell: bash
+        run: |
+          ROOT="$PWD"
+          BUILD="$ROOT/build/host-tests/gf2-g4-i6-r1-c1"
+          mapfile -t SOURCES < <(
+            sed -n '/COMMON_SOURCES=(/,/)/p' "$ROOT/tests/run_stage15_tonal_integration_tests.sh" |
+              grep -F '"${ROOT}/src/' |
+              sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
+          )
+          RESOLVED=()
+          for source in "${SOURCES[@]}"; do RESOLVED+=("$ROOT$source"); done
+          g++ -std=c++17 -Wall -Wextra -Werror -Wvla \
+            -Wno-c++20-extensions -Wno-unused-but-set-variable \
+            -I"$ROOT" \
+            -include "$ROOT/tools/gf2/g4_i6_r1_c1_trace_capacity.h" \
+            "${RESOLVED[@]}" \
+            "$ROOT/tools/gf2/g4_i6_r1_c1_selection_causality.cpp" \
+            -o "$BUILD/g4-i6-r1-c1-selection-causality"
+          "$BUILD/g4-i6-r1-c1-selection-causality" \
+            "$BUILD/GF2_G4_I6_R1_C1_SELECTION_CAUSALITY_FULL.tsv" |
+            tee "$BUILD/causality.log"
+
+      - name: Prove census delta and seed causality
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import csv
+          from collections import Counter
+          from pathlib import Path
+
+          build = Path('build/host-tests/gf2-g4-i6-r1-c1')
+          old_path = Path('docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv')
+          new_path = Path('build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv')
+          trace_path = build / 'GF2_G4_I6_R1_C1_SELECTION_CAUSALITY_FULL.tsv'
+          committed = Path('docs/research/GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv')
+
+          def load(path):
+              with path.open(newline='') as fh:
+                  return list(csv.DictReader(fh, delimiter='\t'))
+
+          old, new, trace = load(old_path), load(new_path), load(trace_path)
+          if (len(old), len(new), len(trace)) != (12672, 12672, 1152):
+              raise SystemExit(f'ROW_COUNT_FAIL old={len(old)} new={len(new)} trace={len(trace)}')
+
+          ckey = lambda r: (r['owner_genre'], r['recipe_name'], r['identity_ordinal'], r['P_level'])
+          tkey = lambda r: (r['owner'], r['profile'], r['identity'], r['level'])
+          old_by, new_by, trace_by = ({ckey(r): r for r in rows} for rows in (old, new, trace))
+          trace_by = {tkey(r): r for r in trace}
+
+          changed = 0
+          non_acid = 0
+          fields = Counter()
+          combos = Counter()
+          owners = Counter()
+          bass_same_downstream = 0
+          for key, a in old_by.items():
+              b = new_by[key]
+              diffs = [f for f in a if a[f] != b[f]]
+              if not diffs:
+                  continue
+              changed += 1
+              fields.update(diffs)
+              owners[key[1]] += 1
+              if key[0] != 'Acid' or key[1] not in {'BASE','Chicago Jack','Rolling Acid'}:
+                  non_acid += 1
+              bd = 'bass_identity' in diffs
+              cd = 'chord_identity' in diffs
+              md = 'melodic_identity' in diffs
+              od = 'motif_identity' in diffs
+              if not bd and (cd or md or od):
+                  bass_same_downstream += 1
+              if bd:
+                  combos[(cd,md,od)] += 1
+
+          expected_fields = Counter({
+              'materialized_signature':948,
+              'bass_identity':948,
+              'chord_identity':681,
+              'melodic_identity':687,
+              'motif_identity':519,
+          })
+          expected_combos = Counter({
+              (False,False,False):51,
+              (False,True,False):39,
+              (False,True,True):177,
+              (True,False,False):210,
+              (True,True,False):129,
+              (True,True,True):342,
+          })
+          if changed != 948 or non_acid != 0 or fields != expected_fields:
+              raise SystemExit(f'CENSUS_DELTA_FAIL changed={changed} non_acid={non_acid} fields={fields}')
+          if owners != Counter({'BASE':333,'Chicago Jack':294,'Rolling Acid':321}):
+              raise SystemExit(f'OWNER_DELTA_FAIL {owners}')
+          if combos != expected_combos or bass_same_downstream != 0:
+              raise SystemExit(f'COMBINATION_FAIL combos={combos} bass_same={bass_same_downstream}')
+
+          unexplained = 0
+          unexpected = 0
+          stats = Counter()
+          for key, t in trace_by.items():
+              a, b = old_by[key], new_by[key]
+              for role in ('bass','chord','melodic','motif'):
+                  col = 'bass_identity' if role == 'bass' else f'{role}_identity'
+                  tv_old = t['old_bass_id'] if role == 'bass' else t[f'{role}_id_old']
+                  tv_new = t['new_bass_id'] if role == 'bass' else t[f'{role}_id_new']
+                  if tv_old != a[col] or tv_new != b[col]:
+                      unexplained += 1
+
+              bd = t['old_bass_id'] != t['new_bass_id']
+              cd = t['chord_id_old'] != t['chord_id_new']
+              md = t['melodic_id_old'] != t['melodic_id_new']
+              od = t['motif_id_old'] != t['motif_id_new']
+              if t['bass_seed_old'] != t['bass_seed_new'] or t['bass_draw_old'] != t['bass_draw_new']:
+                  unexpected += 1
+              if not bd:
+                  if cd or md or od or t['chord_seed_old'] != t['chord_seed_new'] or t['melodic_seed_old'] != t['melodic_seed_new'] or t['motif_seed_old'] != t['motif_seed_new']:
+                      unexpected += 1
+              else:
+                  stats['bass_changed'] += 1
+                  stats['chord_seed_changed'] += t['chord_seed_old'] != t['chord_seed_new']
+                  stats['melodic_seed_changed'] += t['melodic_seed_old'] != t['melodic_seed_new']
+                  if md:
+                      stats['motif_seed_changed_when_melodic_changed'] += t['motif_seed_old'] != t['motif_seed_new']
+                  else:
+                      stats['motif_seed_same_when_melodic_same'] += t['motif_seed_old'] == t['motif_seed_new']
+
+          if unexplained or unexpected:
+              raise SystemExit(f'CAUSAL_RESIDUAL unexplained={unexplained} unexpected={unexpected}')
+          if stats != Counter({
+              'bass_changed':948,
+              'chord_seed_changed':948,
+              'melodic_seed_changed':948,
+              'motif_seed_changed_when_melodic_changed':687,
+              'motif_seed_same_when_melodic_same':261,
+          }):
+              raise SystemExit(f'SEED_CHAIN_FAIL {stats}')
+
+          representative = [
+              ('A','Acid','BASE','5','P1'),
+              ('B','Acid','BASE','12','P1'),
+              ('C','Acid','BASE','1','P1'),
+              ('D','Acid','BASE','9','P1'),
+          ]
+          fields_out = ['class'] + list(trace[0].keys())
+          projection = build / 'GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv'
+          with projection.open('w', newline='') as fh:
+              w = csv.DictWriter(fh, fieldnames=fields_out, delimiter='\t', lineterminator='\n')
+              w.writeheader()
+              for label, owner, profile, identity, level in representative:
+                  r = trace_by[(owner,profile,identity,level)].copy()
+                  r['class'] = label
+                  w.writerow(r)
+
+          if committed.exists():
+              if committed.read_bytes() != projection.read_bytes():
+                  raise SystemExit('COMMITTED_CAUSALITY_PROJECTION_STALE')
+              print('committed_causality_projection=UP_TO_DATE')
+          else:
+              print('committed_causality_projection=PENDING')
+
+          summary = [
+              'rng_model=STATELESS_DOMAIN',
+              'hypothesis=H2_CONFIRMED',
+              'H1_SHARED_STREAM=REJECTED',
+              'H3_ADMISSIBILITY=NOT_OBSERVED',
+              'total_rows=12672',
+              'acid_trace_rows=1152',
+              'changed_rows=948',
+              'non_acid_changed=0',
+              'bass_changed=948',
+              'bass_same_downstream_changed=0',
+              'chord_changed=681',
+              'melodic_changed=687',
+              'motif_changed=519',
+              'bass_changed_only=51',
+              'all_four_changed=342',
+              'unexplained=0',
+              'unexpected=0',
+              'old_bass_total_weight=345',
+              'new_bass_total_weight=445',
+              'bass_seed_changed=0',
+              'bass_draw_changed=0',
+              'chord_seed_changed_given_bass_changed=948',
+              'melodic_seed_changed_given_bass_changed=948',
+              'motif_seed_changed_given_melodic_changed=687',
+              'motif_seed_same_given_melodic_same=261',
+          ]
+          for (c,m,o), n in sorted(combos.items()):
+              summary.append(f'combo bass=1 chord={int(c)} melodic={int(m)} motif={int(o)} rows={n}')
+          for owner in ('BASE','Chicago Jack','Rolling Acid'):
+              summary.append(f'owner_changed[{owner}]={owners[owner]}')
+          (build / 'analysis-summary.txt').write_text('\n'.join(summary) + '\n')
+          print('\n'.join(summary))
+          PY
+
+      - name: Verify production and evidence freeze
+        shell: bash
+        run: |
+          test -z "$(git diff --name-only f411300cf6d011caddd5a1d793b39338eba01468...HEAD -- 'src/**')"
+          test -z "$(git diff --name-only f411300cf6d011caddd5a1d793b39338eba01468...HEAD -- docs/research/GF2_G4_I6_OWNERSHIP_CENSUS.tsv docs/research/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv)"
+          echo 'production_changes=NONE'
+          echo 'committed_i6_evidence_changes=NONE'
+
+      - name: Upload C1 causal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-i6-r1-c1-selection-causality
+          path: |
+            build/host-tests/gf2-g4-i6-r1-c1/
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_CENSUS.tsv
+            build/host-tests/gf2-g4-i6/run-a/GF2_G4_I6_OWNERSHIP_ANOMALIES.tsv
+            docs/research/GF2_G4_I6_R1_C1_SELECTION_CAUSALITY.tsv
+            docs/research/GF2_G4_I6_R1_C1_ACID_SELECTION_RNG_CAUSALITY.md
+          if-no-files-found: warn
