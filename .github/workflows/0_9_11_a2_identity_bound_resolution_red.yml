@@ -1,0 +1,57 @@
+name: 0.9.11 A2 Identity-Bound Resolution RED
+
+on:
+  push:
+    branches:
+      - fix/20260911-0.9.11-a2-identity-bound-resolution
+  workflow_dispatch:
+
+env:
+  G2_ROOT: da9b2749a2ad5d4b3ed9ceade169800de9613e6f
+  CANDIDATE_HEAD: ${{ github.sha }}
+
+jobs:
+  identity-bound-resolution-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact checkout and G2 ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${G2_ROOT}" HEAD
+
+      - name: Prove RED checkpoint is docs tests CI only
+        run: |
+          set -euo pipefail
+          unexpected="$(git diff --name-only "${G2_ROOT}"..HEAD | grep -Ev '^(\.github/workflows/|docs/|tests/)' || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo "Unexpected production files in RED checkpoint:" >&2
+            echo "${unexpected}" >&2
+            exit 2
+          fi
+
+      - name: Prove intentional identity-bound resolution RED
+        run: |
+          set -uo pipefail
+          set +e
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh 2>&1 | tee a2-identity-bound-resolution-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [[ ${status} -eq 0 ]]; then
+            echo "A2 identity-bound resolution unexpectedly passed before GREEN production" >&2
+            exit 3
+          fi
+
+          grep -F \
+            "A2_IDENTITY_BOUND_RESOLUTION_RED: MaterialReference-bound resolver is missing; address-only resolution cannot distinguish stale M@A from current N@A" \
+            a2-identity-bound-resolution-red.log
+
+          echo "INTENTIONAL RED CONFIRMED: canonical resolution is not yet bound to MaterialReference identity"
+          exit 1
