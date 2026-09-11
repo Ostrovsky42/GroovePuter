@@ -2,19 +2,19 @@
 from __future__ import annotations
 
 import csv
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-EXPECTED_TOP5 = [
-    ("7", "2"),   # Broken / Drum&Bass
+EXPECTED_REVIEW_OWNERS = 29
+EXPECTED_TOP4 = [
     ("7", "8"),   # Broken / Classic 2-Step
     ("4", "4"),   # Rave / Psytrance
     ("5", "11"),  # Reggae / Minimal Space
     ("5", "0"),   # Reggae / BASE
 ]
+EXPECTED_FIRST_MIXED = ("0", "6")  # Acid / Chicago Jack
 OUTPUTS = (
     "GF2_G4_C2_CONTRACT_CANDIDATES.tsv",
     "GF2_G4_C2_CONTRACT_CANDIDATES.md",
@@ -96,8 +96,13 @@ def main() -> None:
         for row in source_rows
         if row["contract_status"] == "REVIEW_REQUIRED"
     }
-    if len(review_owners) != 30:
-        fail(f"review_owner_count={len(review_owners)} expected=30")
+    if len(review_owners) != EXPECTED_REVIEW_OWNERS:
+        fail(
+            f"review_owner_count={len(review_owners)} "
+            f"expected={EXPECTED_REVIEW_OWNERS}"
+        )
+    if ("7", "2") in review_owners:
+        fail("c3_promoted_broken_dnb_still_review_required")
 
     with tempfile.TemporaryDirectory(prefix="g4-c2-") as tmp:
         base = Path(tmp)
@@ -110,19 +115,24 @@ def main() -> None:
         assert_deterministic(run_a, run_b)
 
         ranked = read_tsv(run_a / OUTPUTS[0])
-        if len(ranked) != 30:
-            fail(f"ranked_owner_count={len(ranked)} expected=30")
-        if [int(row["rank"]) for row in ranked] != list(range(1, 31)):
-            fail("rank_sequence_not_1_to_30")
+        if len(ranked) != EXPECTED_REVIEW_OWNERS:
+            fail(
+                f"ranked_owner_count={len(ranked)} "
+                f"expected={EXPECTED_REVIEW_OWNERS}"
+            )
+        if [int(row["rank"]) for row in ranked] != list(range(1, EXPECTED_REVIEW_OWNERS + 1)):
+            fail("rank_sequence_not_contiguous")
         ranked_keys = {(row["owner_mode"], row["recipe_id"]) for row in ranked}
         if ranked_keys != review_owners:
             fail("ranking_owner_set_differs_from_review_required")
 
-        actual_top5 = [(row["owner_mode"], row["recipe_id"]) for row in ranked[:5]]
-        if actual_top5 != EXPECTED_TOP5:
-            fail(f"top5={actual_top5} expected={EXPECTED_TOP5}")
+        actual_top4 = [(row["owner_mode"], row["recipe_id"]) for row in ranked[:4]]
+        if actual_top4 != EXPECTED_TOP4:
+            fail(f"top4={actual_top4} expected={EXPECTED_TOP4}")
 
-        for row in ranked[:5]:
+        for row in ranked[:4]:
+            if row["ranking_tier"] != "B_SINGLE_FAMILY_PLURAL":
+                fail(f"top_candidate_wrong_tier rank={row['rank']} tier={row['ranking_tier']}")
             if row["fully_observed"] != "1":
                 fail(f"top_candidate_not_fully_observed rank={row['rank']}")
             if int(row["effective_candidate_count"]) < 2:
@@ -132,25 +142,24 @@ def main() -> None:
             if row["promotion_decision"] != "BLOCKED":
                 fail(f"c2_must_not_promote rank={row['rank']} decision={row['promotion_decision']}")
 
-        first = ranked[0]
-        if first["exact_proven_admission_alias"] != "1":
-            fail("rank1_missing_proven_admission_alias")
-        if (first["alias_owner_mode"], first["alias_recipe_id"]) != ("14", "0"):
-            fail("rank1_alias_is_not_proven_dnb")
-        if first["observed_archetypes"] != "413,414,415,416":
-            fail(f"rank1_archetypes={first['observed_archetypes']}")
-        if first["observed_bass_identities"] != "2,5,7,9":
-            fail(f"rank1_bass={first['observed_bass_identities']}")
-        if first["blocking_reason"] != "OWNER_EQUIVALENCE_NOT_PROVEN;BASS_VOCABULARY_DIFFERS_FROM_PROVEN_ALIAS":
-            fail(f"rank1_blocker={first['blocking_reason']}")
+        fifth = ranked[4]
+        if (fifth["owner_mode"], fifth["recipe_id"]) != EXPECTED_FIRST_MIXED:
+            fail(
+                f"first_mixed={(fifth['owner_mode'], fifth['recipe_id'])} "
+                f"expected={EXPECTED_FIRST_MIXED}"
+            )
+        if fifth["ranking_tier"] != "C_MIXED_FAMILY_PLURAL":
+            fail(f"rank5_should_start_mixed_wave tier={fifth['ranking_tier']}")
 
+        if any(row["exact_proven_admission_alias"] != "0" for row in ranked):
+            fail("unexpected_remaining_proven_admission_alias")
         if any(row["promotion_decision"] != "BLOCKED" for row in ranked):
             fail("c2_contains_automatic_promotion")
 
         summary = (run_a / OUTPUTS[2]).read_text(encoding="utf-8")
         expected_summary = (
-            "G4_C2_RANKING owners=30 top_candidates=5 "
-            "single_family_plural=5 exact_proven_admission_aliases=1 auto_promoted=0"
+            "G4_C2_RANKING owners=29 top_candidates=4 "
+            "single_family_plural=4 exact_proven_admission_aliases=0 auto_promoted=0"
         )
         if expected_summary not in summary:
             fail("summary_metrics_missing")
@@ -158,9 +167,11 @@ def main() -> None:
         report = (run_a / OUTPUTS[1]).read_text(encoding="utf-8")
         if "C2 does not promote contracts" not in report:
             fail("report_non_promotion_boundary_missing")
-        for mode, recipe in EXPECTED_TOP5:
+        for mode, recipe in EXPECTED_TOP4:
             if f"mode={mode}, recipe={recipe}" not in report:
                 fail(f"report_missing_top_candidate={mode}/{recipe}")
+        if "mode=7, recipe=2" in report:
+            fail("report_still_ranks_promoted_broken_dnb")
 
         mutated = base / "mutated.tsv"
         mutated_out = base / "mutated-out"
