@@ -50,13 +50,23 @@ int main() {
                 "M-WORKING may not increase per-voice material storage");
 
   WorkingMaterialStorage storage;
+  assert(storage.empty());
+  assert(!storage.holdsPattern());
+  assert(!storage.holdsMelody());
 
   const SynthPattern pattern = makePattern();
-  storage.storePattern(pattern);
+  storage.storePattern(pattern, 2, 1, 7);
+  assert(!storage.empty());
+  assert(storage.holdsPattern());
+  assert(!storage.holdsMelody());
+  assert(storage.patternMatches(2, 1, 7));
   assert(std::memcmp(&storage.pattern(), &pattern, sizeof(pattern)) == 0);
 
   const Buffer melody = makeMelody();
   storage.storeMelody(melody);
+  assert(!storage.empty());
+  assert(!storage.holdsPattern());
+  assert(storage.holdsMelody());
   assert(std::memcmp(&storage.melody(), &melody, sizeof(melody)) == 0);
 
   std::printf("M-WORKING storage size: %zu <= %zu: PASS\n",
