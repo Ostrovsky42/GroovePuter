@@ -9,7 +9,7 @@ rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
 "${CXX}" \
-  -std=c++17 \
+  -std=c++20 \
   -Wall -Wextra -Werror \
   -I. \
   -Iplatform_sdl \
