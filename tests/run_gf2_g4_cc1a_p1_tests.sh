@@ -33,12 +33,28 @@ done
   "${ROOT}/tests/test_gf2_g4_cc1a_p1_acid_articulation_authority.cpp" \
   -o "$BUILD/g4-cc1a-p1-acid-articulation-authority"
 
-set +e
-"$BUILD/g4-cc1a-p1-acid-articulation-authority" \
-  "$BUILD/g4-cc1a-p1-census.tsv" \
-  > "$BUILD/g4-cc1a-p1-summary.txt" 2>&1
-status=$?
-set -e
+run_once() {
+  local tag="$1"
+  "$BUILD/g4-cc1a-p1-acid-articulation-authority" \
+    "$BUILD/g4-cc1a-p1-census-${tag}.tsv" \
+    > "$BUILD/g4-cc1a-p1-summary-${tag}.txt" 2>&1
+}
+
+run_once run1
+run_once run2
+
+rows1="$(($(wc -l < "$BUILD/g4-cc1a-p1-census-run1.tsv") - 1))"
+rows2="$(($(wc -l < "$BUILD/g4-cc1a-p1-census-run2.tsv") - 1))"
+test "$rows1" -eq 1152
+test "$rows2" -eq 1152
+cmp -s "$BUILD/g4-cc1a-p1-census-run1.tsv" \
+       "$BUILD/g4-cc1a-p1-census-run2.tsv"
+cmp -s "$BUILD/g4-cc1a-p1-summary-run1.txt" \
+       "$BUILD/g4-cc1a-p1-summary-run2.txt"
+
+cp "$BUILD/g4-cc1a-p1-census-run1.tsv" "$BUILD/g4-cc1a-p1-census.tsv"
+cp "$BUILD/g4-cc1a-p1-summary-run1.txt" "$BUILD/g4-cc1a-p1-summary.txt"
+printf 'G4_CC1A_P1_DETERMINISM PASS rows=%s semantic=row-byte-for-byte\n' "$rows1" \
+  | tee -a "$BUILD/g4-cc1a-p1-summary.txt"
 
 cat "$BUILD/g4-cc1a-p1-summary.txt"
-exit "$status"
