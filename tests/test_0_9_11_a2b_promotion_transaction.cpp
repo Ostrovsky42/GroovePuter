@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "src/state/material_resolution.h"
 #include "src/state/material_version.h"
 #include "src/state/melody_promotion.h"
 
