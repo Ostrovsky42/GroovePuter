@@ -1,0 +1,80 @@
+name: GF2 G4-CC1 contract coverage
+
+on:
+  push:
+    branches:
+      - research/20260911-03-g4-cc1-acid-techno-funk-contract-closure
+    paths:
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/composition/generation_profile.h'
+      - 'src/generation/composition/rhythm_selection.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/rhythm/reference_vocabulary.cpp'
+      - 'src/generation/roles/chord_progression.cpp'
+      - 'tests/test_gf2_g4_cc1_contract_wave.cpp'
+      - 'tests/run_gf2_g4_cc1_tests.sh'
+      - 'tests/test_gf2_g4_cc1_evidence.py'
+      - 'tests/run_gf2_g4_i6_tests.sh'
+      - 'docs/research/GF2_G4_CC1_ACID_TECHNO_FUNK_CONTRACTS.md'
+      - '.github/workflows/gf2-g4-cc1-contract-coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Run G4-CC1 structural contracts
+        run: |
+          bash tests/run_gf2_g4_cc1_tests.sh
+
+      - name: Validate G4-CC1 evidence scope
+        run: |
+          python3 tests/test_gf2_g4_cc1_evidence.py \
+            build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt \
+            docs/research/GF2_G4_CC1_ACID_TECHNO_FUNK_CONTRACTS.md
+
+      - name: Run retained current I6 closure
+        run: |
+          bash tests/run_gf2_g4_i6_tests.sh \
+            > build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+
+      - name: Assert I6 totals remain orthogonal
+        run: |
+          grep -F 'G4_I6_CONTRACT_COVERAGE proven=11 provisional=0 review_required=25 unknown=9600' \
+            build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+          grep -F 'G4-I6 committed evidence freshness: UP TO DATE' \
+            build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+          grep -F 'G4-I6 global ownership census host gate: PASS' \
+            build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+
+      - name: Print contract coverage evidence
+        if: always()
+        run: |
+          test -f build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt && \
+            cat build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt || true
+          test -f build/host-tests/gf2-g4-cc1/g4-i6-retained.log && \
+            tail -n 50 build/host-tests/gf2-g4-cc1/g4-i6-retained.log || true
+
+      - name: Upload G4-CC1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-cc1-contract-coverage
+          path: |
+            build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt
+            build/host-tests/gf2-g4-cc1/g4-i6-retained.log
+            docs/research/GF2_G4_CC1_ACID_TECHNO_FUNK_CONTRACTS.md
+          if-no-files-found: error
