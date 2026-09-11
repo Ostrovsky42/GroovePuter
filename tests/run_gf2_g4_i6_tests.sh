@@ -41,7 +41,12 @@ for run in "$RUN_A" "$RUN_B"; do
   "$BUILD/g4-i6-ownership-census" --emit "$run" | tee "$run.log"
   "$BUILD/g4-i6-methodology-controls" --emit "$run" | tee "$run.methodology.log"
   python3 "${ROOT}/tools/gf2/finalize_gf2_g4_i6_census.py" --run-dir "$run"
+
+  # Preserve C1 as its own checkpoint before downstream contract promotions
+  # change global review/unknown totals.
   python3 "${ROOT}/tools/gf2/promote_gf2_g4_c1_dnb_contract.py" --run-dir "$run"
+  python3 "${ROOT}/tests/test_gf2_g4_c1_dnb_contract_promotion.py" "$run"
+
   python3 "${ROOT}/tools/gf2/promote_gf2_g4_c3_broken_dnb_admission.py" --run-dir "$run"
 done
 
@@ -58,10 +63,6 @@ echo "G4-I6 full derived corpus deterministic repeat: PASS"
 echo "G4-I6 corrected methodology controls: PASS"
 cp "$RUN_A/g4-i6-summary.txt" "$BUILD/g4-i6-summary.txt"
 cat "$BUILD/g4-i6-summary.txt"
-
-# G4-C1 promotes the already-retained DnB structural/bass witness into an
-# explicit contract. This must be semantic promotion, not counter rewriting.
-python3 "${ROOT}/tests/test_gf2_g4_c1_dnb_contract_promotion.py" "$RUN_A"
 
 # G4-C3 proves only the Broken/DnB rhythm-admission alias. Bass semantics stay
 # independent and are explicitly checked by the focused contract test.
