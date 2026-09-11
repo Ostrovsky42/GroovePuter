@@ -74,3 +74,70 @@ jobs:
 
       - name: Diff hygiene
         run: git diff --check "${G1_ROOT}"..HEAD
+
+  host-regressions:
+    needs: material-id-project-persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+      - name: Prepare deterministic Ubuntu package sources
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+      - name: Run full host regressions
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -o pipefail
+          bash tests/run_host_tests.sh 2>&1 | tee material-id-g2-full-host.log
+      - name: Upload full-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: material-id-g2-full-host-${{ github.sha }}
+          path: material-id-g2-full-host.log
+          if-no-files-found: error
+
+  cardputer-adv-prehardware:
+    needs: material-id-project-persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check exact-head fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Record exact-head provenance
+        run: |
+          set -euo pipefail
+          {
+            echo "candidate_head=${CANDIDATE_HEAD}"
+            echo "elf_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.elf | awk '{print $1}')"
+            echo "bin_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.bin | awk '{print $1}')"
+          } | tee material-id-g2-cardputer-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: material-id-g2-cardputer-adv-${{ github.sha }}
+          path: |
+            build/cardputer-adv-current/GroovePuter.ino.elf
+            build/cardputer-adv-current/GroovePuter.ino.bin
+            material-id-g2-cardputer-provenance.txt
+          if-no-files-found: error
