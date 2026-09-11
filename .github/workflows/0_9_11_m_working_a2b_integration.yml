@@ -1,0 +1,140 @@
+name: 0.9.11 M-WORKING A2-B unified integration
+
+on:
+  push:
+    branches:
+      - integration/20260911-0.9.11-m-working-a2b-red
+      - integration/20260911-0.9.11-m-working-a2b-green
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  M_WORKING_ROOT: 3af3807be3c3e1218fe85376cc83381e95261119
+  A2B_ROOT: f5c2a48894c8b162f658501d7ff50639d80e94ca
+  CANDIDATE_HEAD: ${{ github.sha }}
+
+jobs:
+  integration-red:
+    if: github.ref_name == 'integration/20260911-0.9.11-m-working-a2b-red'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact M-WORKING RED descendant
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${M_WORKING_ROOT}" HEAD
+
+      - name: Prove RED is tests docs CI only
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${M_WORKING_ROOT}"..HEAD)"
+          printf '%s\n' "${changed}"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(\.github/workflows/0_9_11_m_working_a2b_integration\.yml|docs/superpowers/specs/2026-09-11-0.9.11-m-working-a2b-integration\.md|tests/run_0_9_11_m_working_a2b_integration\.sh|tests/test_0_9_11_m_working_a2b_integration\.cpp)$' || true)"
+          test -z "${bad}" || { echo "Unexpected RED files:" >&2; printf '%s\n' "${bad}" >&2; exit 2; }
+
+      - name: Prove address-only integration RED
+        shell: bash
+        run: |
+          set +e
+          bash tests/run_0_9_11_m_working_a2b_integration.sh 2>&1 | tee /tmp/m-working-a2b-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "${status}" -eq 1
+          grep -F 'MATERIAL_ID_INDEPENDENCE_RED:' /tmp/m-working-a2b-red.log
+          echo 'INTENTIONAL INTEGRATION RED CONFIRMED'
+          exit 1
+
+  integration-green:
+    if: github.ref_name == 'integration/20260911-0.9.11-m-working-a2b-green'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+
+      - name: Prove exact checkout and dual ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+          git merge-base --is-ancestor "${M_WORKING_ROOT}" HEAD
+          git merge-base --is-ancestor "${A2B_ROOT}" HEAD
+
+      - name: Prove bounded integration delta
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${M_WORKING_ROOT}"..HEAD)"
+          printf '%s\n' "${changed}"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(\.github/workflows/0_9_11_m_working_a2b_integration\.yml|docs/superpowers/specs/2026-09-11-0.9.11-m-working-a2b-integration\.md|src/audio/pattern_paging\.(h|cpp)|src/state/material_identity\.h|src/state/material_slot\.h|src/state/material_slot_access\.h|src/state/material_resolution\.h|src/state/material_version\.h|src/state/melody_promotion\.h|tests/)' || true)"
+          test -z "${bad}" || { echo "Unexpected integration files:" >&2; printf '%s\n' "${bad}" >&2; exit 2; }
+
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+
+      - name: Prove MaterialId identity and project persistence
+        run: |
+          bash tests/run_0_9_11_m_working_a2b_integration.sh
+          bash tests/run_0_9_11_material_id_project_persistence.sh
+          bash tests/run_0_9_11_material_id_legacy_page_compat.sh
+
+      - name: Prove A2 and A2-B authority
+        run: |
+          bash tests/run_0_9_11_a2_identity_bound_resolution_red.sh
+          bash tests/run_0_9_11_a2b_identity_transaction_red.sh
+          bash tests/run_melody_promotion_tests.sh
+
+      - name: Prove no production mutation or resolution bypass
+        shell: bash
+        run: |
+          set -euo pipefail
+          promotion_bad="$(git grep -n 'promoteResident' -- '*.cpp' '*.h' '*.ino' | grep -Ev '^(src/state/melody_promotion\.h|tests/)' || true)"
+          resolution_bad="$(git grep -n 'resolveMaterial' -- '*.cpp' '*.h' '*.ino' | grep -Ev '^(src/state/material_resolution\.h|tests/)' || true)"
+          if [[ -n "${promotion_bad}" ]]; then
+            echo 'Production promotion caller bypasses audited authority:' >&2
+            printf '%s\n' "${promotion_bad}" >&2
+            exit 3
+          fi
+          if [[ -n "${resolution_bad}" ]]; then
+            echo 'Production resolver caller needs explicit integration audit:' >&2
+            printf '%s\n' "${resolution_bad}" >&2
+            exit 3
+          fi
+
+      - name: Preserve M-WORKING storage and Melody semantics
+        run: |
+          bash tests/run_0_9_11_m_working_storage_tests.sh
+          bash tests/run_0_9_11_m_working_melody_compat_tests.sh
+
+      - name: Preserve M-WORKING behavioral progress without STOP
+        shell: bash
+        run: |
+          set +e
+          bash tests/run_0_9_11_m_working_tests.sh 2>&1 | tee /tmp/m-working-integration.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "${status}" -eq 0 -o "${status}" -eq 1
+          if grep -q 'M-WORKING STOP' /tmp/m-working-integration.log; then
+            echo 'A hard M-WORKING STOP gate tripped' >&2
+            exit 4
+          fi
+
+      - name: Preserve material causality ownership and persistence
+        run: |
+          bash tests/run_m3_material_authority_tests.sh
+          bash tests/run_m4_next_material_tests.sh
+          python3 tests/test_pattern_phrase_p2_source_contract.py
+          python3 tests/test_synth_persistence_source_regressions.py
+
+      - name: Diff hygiene
+        run: git diff --check "${M_WORKING_ROOT}"..HEAD
