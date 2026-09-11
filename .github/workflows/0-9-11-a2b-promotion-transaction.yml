@@ -9,19 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: a2b-promotion-transaction-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   a2b-host:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install SDL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            libsdl2-dev \
-            libsdl2-gfx-dev
 
       - name: Run A2-B promotion transaction characterization
         run: bash tests/run_0_9_11_a2b_promotion_transaction_tests.sh

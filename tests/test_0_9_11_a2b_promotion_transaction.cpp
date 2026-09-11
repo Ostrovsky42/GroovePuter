@@ -7,9 +7,6 @@
 #include "src/state/material_version.h"
 #include "src/state/melody_promotion.h"
 
-SerialMock Serial;
-SDMock SD;
-
 namespace {
 
 using GroovePuterMaterial::MaterialAddress;
@@ -53,7 +50,8 @@ struct TransactionFs final : MelodyPromotion::FileSystem {
     // different, still-well-formed canonical melody on read-back. Recompute
     // the payload CRC so MelodyStore::decode succeeds and the promotion
     // transaction itself must reject the semantic mismatch.
-    if (alterVerifiedRead && out.size() >= MelodyStore::kHeaderBytes + MelodyStore::kEventBytes) {
+    if (alterVerifiedRead &&
+        out.size() >= MelodyStore::kHeaderBytes + MelodyStore::kEventBytes) {
       out[MelodyStore::kHeaderBytes + 4] ^= 1u;  // first event note
       const uint8_t* payload = out.data() + MelodyStore::kHeaderBytes;
       const size_t payloadSize = out.size() - MelodyStore::kHeaderBytes;
@@ -74,9 +72,7 @@ struct TransactionFs final : MelodyPromotion::FileSystem {
     return true;
   }
 
-  bool remove(const char* path) override {
-    return files.erase(path) > 0;
-  }
+  bool remove(const char* path) override { return files.erase(path) > 0; }
 };
 
 Buffer makeCandidate() {
