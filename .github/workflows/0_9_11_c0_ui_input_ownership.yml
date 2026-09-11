@@ -7,82 +7,122 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
   focused-ui-input-ownership:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CANDIDATE_HEAD }}
           fetch-depth: 0
       - name: Prove exact checkout
         run: |
           echo "HEAD=$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
       - name: Install SDL host dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
-      - name: Apply minimal ownership repair
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          synth = Path("src/ui/pages/synth_sequencer_page.cpp")
-          text = synth.read_text(encoding="utf-8")
-          old = """  if (!ui_event.alt && lower == 'l') {\n    const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(\n        phrase, +1, [&](uint8_t bars) {\n"""
-          new = """  if (lower == 'l' || ui_event.scancode == GROOVEPUTER_L) {\n    const int direction = ui_event.alt ? -1 : +1;\n    const auto outcome = PhraseInstrumentControls::applyLengthChangeDetailed(\n        phrase, direction, [&](uint8_t bars) {\n"""
-          if old not in text:
-              raise SystemExit("expected Phrase LENGTH ownership site not found")
-          text = text.replace(old, new, 1)
-
-          old = """  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&\n      (ui_event.key == 'g' || ui_event.key == 'G')) {\n"""
-          new = """  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&\n      (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {\n"""
-          if old not in text:
-              raise SystemExit("expected Phrase GRID ownership site not found")
-          text = text.replace(old, new, 1)
-          synth.write_text(text, encoding="utf-8")
-
-          controls = Path("src/ui/phrase_instrument_controls.h")
-          text = controls.read_text(encoding="utf-8")
-          old = """  LengthChangeOutcome outcome{};\n  outcome.targetBars = lengthBars(current.lengthTicks);\n  if (!RuntimePhraseEdit::validate(current)) {\n    outcome.result = LengthChangeResult::InvalidLength;\n    return outcome;\n  }\n  if (direction != -1 && direction != 1) {\n"""
-          new = """  LengthChangeOutcome outcome{};\n  if (!RuntimePhraseEdit::validLengthTicks(current.lengthTicks)) {\n    outcome.result = LengthChangeResult::InvalidLength;\n    return outcome;\n  }\n  outcome.targetBars = lengthBars(current.lengthTicks);\n  if (direction != -1 && direction != 1) {\n"""
-          if old not in text:
-              raise SystemExit("expected LENGTH preflight validation site not found")
-          text = text.replace(old, new, 1)
-
-          old = """  if (targetTicks == current.lengthTicks) {\n    outcome.result = LengthChangeResult::Unchanged;\n    return outcome;\n  }\n  if (shrinkWouldTruncateEvent(current, targetTicks)) {\n    outcome.result = LengthChangeResult::WouldTruncateEvent;\n    return outcome;\n  }\n\n  const bool committed =\n"""
-          new = """  if (targetTicks == current.lengthTicks) {\n    outcome.result = LengthChangeResult::Unchanged;\n    return outcome;\n  }\n\n  if (targetTicks > current.lengthTicks) {\n    PhraseRuntime::RuntimeSynthEventBuffer candidate{};\n    if (!prepareLengthTarget(current, outcome.targetBars, candidate)) {\n      outcome.result = LengthChangeResult::InvalidLength;\n      return outcome;\n    }\n  } else {\n    if (!RuntimePhraseEdit::validate(current)) {\n      outcome.result = LengthChangeResult::InvalidLength;\n      return outcome;\n    }\n    if (shrinkWouldTruncateEvent(current, targetTicks)) {\n      outcome.result = LengthChangeResult::WouldTruncateEvent;\n      return outcome;\n    }\n  }\n\n  const bool committed =\n"""
-          if old not in text:
-              raise SystemExit("expected LENGTH shrink preflight site not found")
-          text = text.replace(old, new, 1)
-          controls.write_text(text, encoding="utf-8")
-
-          song = Path("src/ui/pages/song_page.cpp")
-          text = song.read_text(encoding="utf-8")
-          old = """  char key = ui_event.key;\n  if (!key) return false;\n"""
-          new = """  char key = ui_event.key;\n  if (!key && ui_event.scancode == GROOVEPUTER_NO_SCANCODE) return false;\n"""
-          if old not in text:
-              raise SystemExit("expected Song scancode ownership gate not found")
-          text = text.replace(old, new, 1)
-
-          old = """  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));\n"""
-          new = """  char lowerKey = key\n      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))\n      : 0;\n"""
-          if old not in text:
-              raise SystemExit("expected Song lowercase normalization site not found")
-          text = text.replace(old, new, 1)
-          song.write_text(text, encoding="utf-8")
-          PY
-          git diff --check
-          git diff -- src/ui/pages/synth_sequencer_page.cpp src/ui/phrase_instrument_controls.h src/ui/pages/song_page.cpp
-      - name: Run focused UI input ownership gate
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Run C0 UI input ownership regression
         run: bash tests/run_c0_ui_input_ownership_tests.sh
-      - name: Commit proven repair
+      - name: Run complete Pattern Phrase instrument gate
+        run: bash tests/run_ui_pattern_phrase_instrument_tests.sh
+      - name: Preserve hardware findings contracts
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/ui/pages/synth_sequencer_page.cpp src/ui/phrase_instrument_controls.h src/ui/pages/song_page.cpp
-          git commit -m "fix(ui): restore Phrase input ownership"
-          git push origin HEAD:fix/20260911-0.9.11-c0-ui-input-ownership
-          echo "PROVEN_REPAIR_SHA=$(git rev-parse HEAD)"
+          set -euo pipefail
+          g++ -std=c++20 -Wall -Wextra -Werror -I. \
+            tests/test_c0_hardware_findings.cpp \
+            src/phrase/runtime_synth_events.cpp \
+            -o /tmp/test_c0_hardware_findings
+          /tmp/test_c0_hardware_findings
+          python3 tests/test_c0_phrase_length_ui_truth.py
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_phrase_bank_qwertyui_p1.cpp \
+            -o /tmp/test_phrase_bank_qwertyui_p1
+          /tmp/test_phrase_bank_qwertyui_p1
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_midi_panic_cc123.cpp \
+            src/midi/usb_midi_output.cpp \
+            -o /tmp/test_midi_panic_cc123
+          /tmp/test_midi_panic_cc123
+      - name: Black-box default-scene Phrase G in STOP and PLAY
+        run: bash tests/run_c0_default_phrase_generation.sh
+      - name: Build SDL exact head
+        run: make -C platform_sdl -j2 CXX=g++
+
+  host-regressions:
+    needs: focused-ui-input-ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+          fetch-depth: 0
+      - name: Prepare deterministic Ubuntu package sources
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+      - name: Prove U4B9 source-toggle owner
+        run: bash tests/run_ui_constitution_u4b9_tests.sh
+      - name: Run full host regressions
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          set -o pipefail
+          bash tests/run_host_tests.sh 2>&1 | tee c0-ui-input-ownership-full-host.log
+      - name: Upload full-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c0-ui-input-ownership-full-host-${{ github.sha }}
+          path: c0-ui-input-ownership-full-host.log
+          if-no-files-found: error
+
+  cardputer-adv-prehardware:
+    needs: focused-ui-input-ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_HEAD }}
+      - name: Prove exact checkout
+        run: test "$(git rev-parse HEAD)" = "${CANDIDATE_HEAD}"
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build exact-head Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check exact-head fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+      - name: Record exact-head provenance
+        run: |
+          set -euo pipefail
+          {
+            echo "candidate_head=${CANDIDATE_HEAD}"
+            echo "elf_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.elf | awk '{print $1}')"
+            echo "bin_sha256=$(sha256sum build/cardputer-adv-current/GroovePuter.ino.bin | awk '{print $1}')"
+          } | tee cardputer-c0-ui-input-ownership-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c0-ui-input-ownership-cardputer-adv-${{ github.sha }}
+          path: |
+            build/cardputer-adv-current/GroovePuter.ino.elf
+            build/cardputer-adv-current/GroovePuter.ino.bin
+            cardputer-c0-ui-input-ownership-provenance.txt
+          if-no-files-found: error
