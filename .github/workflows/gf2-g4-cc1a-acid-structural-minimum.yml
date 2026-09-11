@@ -27,6 +27,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Install host dependencies
         run: |
@@ -35,23 +37,75 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
 
+      - name: Prove production diff is empty
+        run: |
+          set -euo pipefail
+          BASE=1a6814af48c6df6824f91e46ee3876e49d54f080
+          git fetch --no-tags --depth=1 origin "$BASE"
+          echo "base=$BASE"
+          echo "head=$GITHUB_SHA"
+          changed="$(git diff --name-only "$BASE" "$GITHUB_SHA" -- src/)"
+          if test -n "$changed"; then
+            echo "G4_CC1A_FAIL production_diff"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          echo "G4_CC1A_PASS production_diff_zero"
+
       - name: Run G4-CC1A Acid structural minimum
         run: |
           bash tests/run_gf2_g4_cc1a_tests.sh
 
-      - name: Print G4-CC1A evidence
+      - name: Retain G4-R1 / I3 / I4 / I5
+        run: |
+          set -euo pipefail
+          mkdir -p build/host-tests/gf2-g4-cc1a/retained
+          bash tests/run_gf2_g4_r1_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-r1.log
+          bash tests/run_gf2_g4_i3_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-i3.log
+          bash tests/run_gf2_g4_i4_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-i4.log
+          bash tests/run_gf2_g4_i5_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-i5.log
+
+      - name: Retain G4-I6
+        run: |
+          set -euo pipefail
+          bash tests/run_gf2_g4_i6_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-i6.log
+
+      - name: Retain G4-CC1
+        run: |
+          set -euo pipefail
+          bash tests/run_gf2_g4_cc1_tests.sh 2>&1 | tee build/host-tests/gf2-g4-cc1a/retained/g4-cc1.log
+
+      - name: Print checkpoint evidence
         if: always()
         run: |
-          if test -f build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt; then
-            cat build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt
-          fi
+          set +e
+          for log in \
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.txt \
+            build/host-tests/gf2-g4-cc1a/retained/g4-r1.log \
+            build/host-tests/gf2-g4-cc1a/retained/g4-i3.log \
+            build/host-tests/gf2-g4-cc1a/retained/g4-i4.log \
+            build/host-tests/gf2-g4-cc1a/retained/g4-i5.log \
+            build/host-tests/gf2-g4-cc1a/retained/g4-i6.log \
+            build/host-tests/gf2-g4-cc1a/retained/g4-cc1.log; do
+            if test -f "$log"; then
+              echo "===== $log ====="
+              cat "$log"
+            fi
+          done
 
       - name: Upload G4-CC1A evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g4-cc1a-acid-structural-minimum-red
+          name: g4-cc1a-acid-structural-minimum
           path: |
             build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.a.txt
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.b.txt
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-summary.txt
             build/host-tests/gf2-g4-cc1a/g4-cc1a-census.a.tsv
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-census.b.tsv
+            build/host-tests/gf2-g4-cc1a/g4-cc1a-acid-articulation-census.tsv
+            build/host-tests/gf2-g4-cc1a/retained/*.log
+            build/host-tests/gf2-g4-i6/g4-i6-summary.txt
+            build/host-tests/gf2-g4-cc1/g4-cc1-summary.txt
           if-no-files-found: warn
