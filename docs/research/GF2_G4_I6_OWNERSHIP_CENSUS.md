@@ -16,12 +16,12 @@ overbroad_owner=0
 structural_collision=0
 shared_admission=24
 shared_valid_under_contracts=0
-proven_contract_owners=3
+proven_contract_owners=4
 provisional_contract_owners=0
-proven_contracts=6
+proven_contracts=7
 provisional_contracts=0
-review_required=30
-unknown_evaluations=11520
+review_required=29
+unknown_evaluations=11136
 auto_observed_edges=122
 manual_reproduced_edges=0
 not_observed_edges=0
@@ -111,6 +111,7 @@ I6 does not mark whole owners PROVEN. It carries only named statements from reta
 - G4-I4: every admitted Dub Techno candidate has a required techno skeleton; existential quarter, broken, and dub-dialogue witnesses remain separate; materialized I4 proves skeleton preservation, not per-row dub dialogue.
 - G4-I5: candidate quarter space may be REQUIRED or POSSIBLE_BUT_NOT_REQUIRED via preferred anchors; materialized I5 separately proves observed quarter-pulse preservation.
 - G4-C1: Drum&Bass / BASE admits only Breakbeat archetypes in a plural space; materialized bass selection stays inside KickAnswer / GapFill / HalfTimePocket / SyncopatedHook.
+- G4-C3: Broken / Drum&Bass has the same four-member Breakbeat rhythm-admission set as canonical DnB; bass semantics remain independent and are not inherited.
 
 ## Candidate graph
 
@@ -419,11 +420,11 @@ SHARED_VALID_UNDER_CONTRACTS=0. Absence of proof is not promoted to shared-valid
 
 ### REVIEW_REQUIRED
 
-30 shipped owners have no applicable PROVEN rhythm admission contract in I6.
+29 shipped owners have no applicable PROVEN rhythm admission contract in I6.
 
 ### UNKNOWN
 
-11520 materialized rows are observations under REVIEW_REQUIRED owners.
+11136 materialized rows are observations under REVIEW_REQUIRED owners.
 
 ## Boundary fixtures outside denominator
 
@@ -461,8 +462,9 @@ The A-G editorial filter is not scored numerically. Gate C (`effective admission
 | G4-I5-HOUSE-MATERIALIZED-QUARTER | 1 | House / BASE (mode=9, recipe=0) | downstream materialization | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | exact owner (mode=9, recipe=0) | materialized kick preserves observed quarter-pulse | G4-I5 | PROVEN |
 | G4-C1-DNB-ADMISSION-BREAKBEAT | 1 | Drum&Bass / BASE (mode=14, recipe=0) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=14, recipe=0) | RhythmFamily is Breakbeat and admitted space remains plural | G4-C1 | PROVEN |
 | G4-C1-DNB-MATERIALIZED-BASS-SPACE | 1 | Drum&Bass / BASE (mode=14, recipe=0) | bass selection | one-bar address-0; identities 1..128; P1/P2/P3 | forall materialized rows | exact owner (mode=14, recipe=0) | selected archetype is Breakbeat and bass identity is one of KickAnswer, GapFill, HalfTimePocket, SyncopatedHook | G4-C1 | PROVEN |
+| G4-C3-BROKEN-DNB-ADMISSION-BREAKBEAT-ALIAS | 1 | Broken / Drum&Bass (mode=7, recipe=2) | rhythm admission | effective admitted candidate space | forall admitted candidates | exact owner (mode=7, recipe=2) | effective admitted archetype set equals {413,414,415,416}; all candidates are RhythmFamily Breakbeat | G4-C3 | PROVEN |
 
-House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract. DnB C1 predicates are structural: RhythmFamily and BassRhythmId only; labels and weights are not evidence.
+House admission deliberately keeps `POSSIBLE_BUT_NOT_REQUIRED` distinct from `REQUIRED`; a preferred anchor is not silently promoted to a requirement. Dub Techno retains the I4 existential dub-dialogue witness separately from its universal techno-skeleton admission contract. DnB C1 predicates are structural: RhythmFamily and BassRhythmId only; labels and weights are not evidence. C3 aliases only the Broken / Drum&Bass rhythm-admission set; bass semantics remain independent, so no C3 bass or downstream-materialization contract exists.
 
 ## Corrected detector controls and collision scope
 

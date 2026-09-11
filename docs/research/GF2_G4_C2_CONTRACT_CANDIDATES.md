@@ -19,15 +19,7 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 
 ## Top five candidates
 
-### 1. Broken / Drum&Bass (mode=7, recipe=2)
-
-- Tier: `A_PROVEN_ADMISSION_ALIAS`
-- Candidate predicate: effective admitted archetype set={413,414,415,416}; all RhythmFamily=Breakbeat; admitted space plural
-- Evidence: fully_observed=1; exact archetype-set alias to mode=14,recipe=0; rows=384
-- Observed bass IDs: 2,5,7,9
-- Promotion: `BLOCKED` — `OWNER_EQUIVALENCE_NOT_PROVEN;BASS_VOCABULARY_DIFFERS_FROM_PROVEN_ALIAS`
-
-### 2. Broken / Classic 2-Step (mode=7, recipe=8)
+### 1. Broken / Classic 2-Step (mode=7, recipe=8)
 
 - Tier: `B_SINGLE_FAMILY_PLURAL`
 - Candidate predicate: all effective admitted candidates are RhythmFamily=UkTwoStep; admitted space remains plural (2 candidates)
@@ -35,7 +27,7 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 - Observed bass IDs: 3,4,5,9
 - Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
 
-### 3. Rave / Psytrance (mode=4, recipe=4)
+### 2. Rave / Psytrance (mode=4, recipe=4)
 
 - Tier: `B_SINGLE_FAMILY_PLURAL`
 - Candidate predicate: all effective admitted candidates are RhythmFamily=FourFloor; admitted space remains plural (3 candidates)
@@ -43,7 +35,7 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 - Observed bass IDs: 2,5,7,9
 - Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
 
-### 4. Reggae / Minimal Space (mode=5, recipe=11)
+### 3. Reggae / Minimal Space (mode=5, recipe=11)
 
 - Tier: `B_SINGLE_FAMILY_PLURAL`
 - Candidate predicate: all effective admitted candidates are RhythmFamily=DubPulse; admitted space remains plural (3 candidates)
@@ -51,7 +43,7 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 - Observed bass IDs: 3,4,6,10
 - Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
 
-### 5. Reggae / BASE (mode=5, recipe=0)
+### 4. Reggae / BASE (mode=5, recipe=0)
 
 - Tier: `B_SINGLE_FAMILY_PLURAL`
 - Candidate predicate: all effective admitted candidates are RhythmFamily=DubPulse; admitted space remains plural (4 candidates)
@@ -59,15 +51,17 @@ The `score` column is only the count of four evidence flags: fully observed, plu
 - Observed bass IDs: 3,4,6,10
 - Promotion: `BLOCKED` — `MUSICAL_NECESSITY_NOT_PROVEN`
 
-## Highest-value next check
+### 5. Acid / Chicago Jack (mode=0, recipe=6)
 
-Rank 1 is structurally special: its admitted archetype set exactly matches the PROVEN reference owner at mode=14, recipe=0.
-That supports a focused admission-equivalence test, but not inheritance of downstream bass semantics.
-The observed bass vocabulary differs, so a future checkpoint must keep rhythm admission and bass selection as separate claims.
+- Tier: `C_MIXED_FAMILY_PLURAL`
+- Candidate predicate: effective admitted set spans RhythmFamily={FourFloor,SparsePulse}; a family-only predicate is insufficient
+- Evidence: observed 2/2 archetypes; family_count=2; rows=384
+- Observed bass IDs: 2,5,7,9
+- Promotion: `BLOCKED` — `FAMILY_ONLY_PREDICATE_WOULD_BE_OVERBROAD`
 
 ## Non-claims
 
 - C2 does not infer genre identity from a RhythmFamily label.
 - C2 does not use weights as evidence.
 - C2 does not turn repeated observation into musical necessity.
-- C2 does not change the I6/C1 census or any production generator behavior.
+- C2 does not change the census or any production generator behavior.
