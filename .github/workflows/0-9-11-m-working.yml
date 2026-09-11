@@ -85,6 +85,8 @@ jobs:
             build-essential \
             libsdl2-dev \
             libsdl2-gfx-dev
+      - name: Bounded WorkingMaterialStorage gate
+        run: bash tests/run_0_9_11_m_working_storage_tests.sh
       - name: M-WORKING contract must be green
         run: bash tests/run_0_9_11_m_working_tests.sh
       - name: Existing material causality gates
