@@ -26,6 +26,7 @@
 namespace MelodyPromotion {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
+using MaterialAddress = GroovePuterMaterial::MaterialAddress;
 
 // The storage this needs, small enough that a test can be honest about failure
 // at every step a real card fails at.
@@ -49,6 +50,29 @@ enum class Error : uint8_t {
   VerifyFailed,
   PublishFailed,
 };
+
+// Persistence owns ProjectNamespace. The pair
+// (project namespace, MaterialAddress) is the persistent material identity;
+// the physical GPML path is only a derived implementation detail.
+inline std::string slotPath(const std::string& project, MaterialAddress address,
+                            const char* extension) {
+  char buffer[48];
+  std::snprintf(buffer, sizeof(buffer), "/melody/v%u_g%03u.%s",
+                static_cast<unsigned>(address.voice),
+                static_cast<unsigned>(address.globalSlot), extension);
+  return "/projects/" + project + buffer;
+}
+
+inline std::string finalPath(const std::string& project,
+                             MaterialAddress address) {
+  return slotPath(project, address, "gpml");
+}
+
+inline std::string tempPath(const std::string& project,
+                            MaterialAddress address) {
+  return slotPath(project, address, "tmp");
+}
+
 // Addressed by what the melody already is -- project, voice and slot -- rather
 // than by a separate identifier. A second ID space would be another mapping
 // able to drift from what it names.
@@ -87,6 +111,69 @@ inline bool sameMelody(const Buffer& a, const Buffer& b) {
     }
   }
   return true;
+}
+
+inline bool loadMaterial(const FileSystem& fs, const std::string& project,
+                         MaterialAddress address, Buffer& out) {
+  if (!fs.available() ||
+      !GroovePuterMaterial::materialAddressInRange(address)) {
+    return false;
+  }
+  const std::string path = finalPath(project, address);
+  if (!fs.exists(path.c_str())) return false;
+  std::vector<uint8_t> blob;
+  if (!fs.read(path.c_str(), blob)) return false;
+  return MelodyStore::decode(blob.data(), blob.size(), out);
+}
+
+inline Error promoteResident(FileSystem& fs, const std::string& project,
+                             Scene& scene, int activePage,
+                             MaterialAddress address,
+                             const Buffer& candidate) {
+  if (!fs.available()) return Error::NoStorage;
+  if (!GroovePuterMaterial::materialAddressIsResident(address, activePage)) {
+    return Error::BadSlot;
+  }
+
+  const int slot = GroovePuterMaterial::residentSlotFor(address);
+  if (!GroovePuterMaterial::residentSlotInRange(address.voice, slot)) {
+    return Error::BadSlot;
+  }
+
+  if (GroovePuterMaterial::residentKind(scene, address.voice, slot) ==
+      GroovePuterMaterial::MaterialKind::Melody) {
+    return Error::AlreadyMelody;
+  }
+
+  std::vector<uint8_t> blob;
+  if (!MelodyStore::encode(candidate, blob)) return Error::EncodeFailed;
+
+  const std::string temp = tempPath(project, address);
+  if (!fs.write(temp.c_str(), blob.data(), blob.size())) {
+    return Error::WriteFailed;
+  }
+
+  std::vector<uint8_t> verify;
+  Buffer restored{};
+  if (!fs.read(temp.c_str(), verify) ||
+      !MelodyStore::decode(verify.data(), verify.size(), restored) ||
+      !sameMelody(candidate, restored)) {
+    fs.remove(temp.c_str());
+    return Error::VerifyFailed;
+  }
+
+  const std::string final = finalPath(project, address);
+  if (!fs.rename(temp.c_str(), final.c_str())) {
+    fs.remove(temp.c_str());
+    return Error::PublishFailed;
+  }
+
+  if (!GroovePuterMaterial::setResidentKind(
+          scene, address.voice, slot,
+          GroovePuterMaterial::MaterialKind::Melody)) {
+    return Error::BadSlot;
+  }
+  return Error::None;
 }
 
 inline bool loadResident(const FileSystem& fs, const std::string& project,

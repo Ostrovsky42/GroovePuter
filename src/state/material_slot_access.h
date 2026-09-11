@@ -15,9 +15,30 @@
 // rewriting every caller.
 namespace GroovePuterMaterial {
 
+static_assert(kMaxGlobalPatterns <= 256,
+              "MaterialAddress::globalSlot must cover the global slot space");
+
 inline bool residentSlotInRange(int voice, int slot) {
   return voice >= 0 && voice < Scene::kMaterialVoices &&
          slot >= 0 && slot < Scene::kMaterialSlotsPerVoice;
+}
+
+inline bool materialAddressInRange(MaterialAddress address) {
+  return static_cast<int>(address.voice) < Scene::kMaterialVoices &&
+         static_cast<int>(address.globalSlot) < kMaxGlobalPatterns;
+}
+
+inline bool materialAddressIsResident(MaterialAddress address, int activePage) {
+  return materialAddressInRange(address) && activePage >= 0 &&
+         activePage < kMaxPages &&
+         songPatternPage(static_cast<int>(address.globalSlot)) == activePage;
+}
+
+inline int residentSlotFor(MaterialAddress address) {
+  if (!materialAddressInRange(address)) return -1;
+  const int globalSlot = static_cast<int>(address.globalSlot);
+  return (songPatternBank(globalSlot) * Bank<SynthPattern>::kPatterns) +
+         songPatternIndexInBank(globalSlot);
 }
 
 // A slot on the resident page. Out of range answers Pattern, because a caller
