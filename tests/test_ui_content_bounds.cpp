@@ -298,7 +298,7 @@ int main() {
     checkRightBound("PerformPage", gfx);
   }
 
-  // The melody editor, on the source it actually renders. It was missing from
+  // The Phrase editor, on the source it actually renders. It was missing from
   // this gate while being the page under the heaviest change, so two of its
   // hints were clipped on screen before anyone noticed.
   {
@@ -309,24 +309,24 @@ int main() {
     (void)engine.makePhrase(0);
     page.draw(gfx);
     // A gate that silently rendered the Pattern view would prove nothing, so
-    // check the melody path was the one exercised before believing its result.
-    bool drewMelody = false;
+    // check the Phrase path was the one exercised before believing its result.
+    bool drewPhrase = false;
     for (const auto& entry : gfx.texts) {
-      if (entry.text == "MELODY") drewMelody = true;
+      if (entry.text == "PHRASE") drewPhrase = true;
     }
-    if (!drewMelody) {
+    if (!drewPhrase) {
       std::fprintf(stderr,
-                   "content bounds FAIL: the melody editor was never rendered, "
+                   "content bounds FAIL: the Phrase editor was never rendered, "
                    "so this page was not actually under test\n");
       ++g_failures;
     }
 
-    checkBottomBound("SynthSequencerPage(melody)", gfx);
-    checkTopBound("SynthSequencerPage(melody)", gfx, headerRows);
-    checkRightBound("SynthSequencerPage(melody)", gfx);
+    checkBottomBound("SynthSequencerPage(phrase)", gfx);
+    checkTopBound("SynthSequencerPage(phrase)", gfx, headerRows);
+    checkRightBound("SynthSequencerPage(phrase)", gfx);
   }
 
-  // The list is the second view of the same melody, with its own presentation
+  // The list is the second view of the same Phrase, with its own presentation
   // and therefore its own chance to run off an edge. Leaving it out is how the
   // roll's hints got clipped twice before anyone noticed.
   {
