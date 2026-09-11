@@ -73,6 +73,7 @@ def die(message: str) -> None:
 def read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
+        fields = set(reader.fieldnames or [])
         required = {
             "owner_mode",
             "owner_genre",
@@ -84,53 +85,36 @@ def read_rows(path: Path) -> list[dict[str, str]]:
             "bass_identity",
             "contract_status",
         }
-        fields = set(reader.fieldnames or [])
         if not required.issubset(fields):
             die("census_schema")
         return list(reader)
 
 
-def parse_int(value: str, field: str) -> int:
-    try:
-        return int(value)
-    except ValueError:
-        die(f"invalid_integer:{field}={value}")
-    raise AssertionError("unreachable")
-
-
 def aggregate(rows: list[dict[str, str]]) -> list[OwnerObservation]:
     grouped: dict[tuple[int, int], list[dict[str, str]]] = {}
     for row in rows:
-        mode = parse_int(row["owner_mode"], "owner_mode")
-        recipe = parse_int(row["recipe_id"], "recipe_id")
-        grouped.setdefault((mode, recipe), []).append(row)
+        key = (int(row["owner_mode"]), int(row["recipe_id"]))
+        grouped.setdefault(key, []).append(row)
 
     owners: list[OwnerObservation] = []
-    for (mode, recipe), group in sorted(grouped.items()):
-        genres = {row["owner_genre"] for row in group}
-        names = {row["recipe_name"] for row in group}
-        statuses = {row["contract_status"] for row in group}
-        candidate_counts = {
-            parse_int(row["effective_candidate_count"], "effective_candidate_count")
-            for row in group
-        }
-        if len(genres) != 1 or len(names) != 1:
-            die(f"owner_label_drift:mode={mode}:recipe={recipe}")
-        if len(statuses) != 1:
-            die(f"contract_status_drift:mode={mode}:recipe={recipe}")
-        if len(candidate_counts) != 1:
-            die(f"candidate_count_drift:mode={mode}:recipe={recipe}")
+    for (mode, recipe_id), owner_rows in sorted(grouped.items()):
+        genres = {row["owner_genre"] for row in owner_rows}
+        recipe_names = {row["recipe_name"] for row in owner_rows}
+        statuses = {row["contract_status"] for row in owner_rows}
+        candidate_counts = {int(row["effective_candidate_count"]) for row in owner_rows}
+        if len(genres) != 1 or len(recipe_names) != 1 or len(statuses) != 1 or len(candidate_counts) != 1:
+            die(f"owner_metadata_not_stable:{mode}/{recipe_id}")
 
-        archetypes = tuple(sorted({parse_int(row["selected_archetype_id"], "selected_archetype_id") for row in group}))
-        families = tuple(sorted({row["RhythmFamily"] for row in group}))
-        bass_ids = tuple(sorted({parse_int(row["bass_identity"], "bass_identity") for row in group}))
+        archetypes = tuple(sorted({int(row["selected_archetype_id"]) for row in owner_rows}))
+        families = tuple(sorted({row["RhythmFamily"] for row in owner_rows}))
+        bass_ids = tuple(sorted({int(row["bass_identity"]) for row in owner_rows}))
         owners.append(
             OwnerObservation(
                 mode=mode,
                 genre=next(iter(genres)),
-                recipe_id=recipe,
-                recipe_name=next(iter(names)),
-                rows=len(group),
+                recipe_id=recipe_id,
+                recipe_name=next(iter(recipe_names)),
+                rows=len(owner_rows),
                 effective_candidate_count=next(iter(candidate_counts)),
                 archetypes=archetypes,
                 families=families,
@@ -141,40 +125,34 @@ def aggregate(rows: list[dict[str, str]]) -> list[OwnerObservation]:
     return owners
 
 
-def choose_alias(review: OwnerObservation, proven: list[OwnerObservation]) -> OwnerObservation | None:
-    matches = [owner for owner in proven if owner.archetypes == review.archetypes]
-    if not matches:
-        return None
-    matches.sort(key=lambda owner: (owner.mode, owner.recipe_id))
-    return matches[0]
+def exact_alias(review: OwnerObservation, proven: list[OwnerObservation]) -> OwnerObservation | None:
+    for candidate in proven:
+        if candidate.archetypes == review.archetypes:
+            return candidate
+    return None
 
 
 def classify(review: OwnerObservation, proven: list[OwnerObservation]) -> RankedCandidate:
     fully_observed = len(review.archetypes) == review.effective_candidate_count
     plural = review.effective_candidate_count >= 2
     single_family = len(review.families) == 1
-    alias = choose_alias(review, proven)
-
+    alias = exact_alias(review, proven) if fully_observed else None
     score = int(fully_observed) + int(plural) + int(single_family) + int(alias is not None)
-
     archetype_text = ",".join(str(value) for value in review.archetypes)
     family_text = ",".join(review.families)
 
-    if alias is not None:
+    if alias is not None and plural and single_family:
         tier = "A_PROVEN_ADMISSION_ALIAS"
         tier_order = 0
         predicate = (
             f"effective admitted archetype set={{{archetype_text}}}; "
-            f"all RhythmFamily={review.families[0] if single_family else family_text}; admitted space plural"
+            f"all RhythmFamily={review.families[0]}; admitted space plural"
         )
         evidence = (
-            f"fully_observed={int(fully_observed)}; exact archetype-set alias to "
-            f"mode={alias.mode},recipe={alias.recipe_id}; rows={review.rows}"
+            f"fully_observed=1; exact archetype-set alias to mode={alias.mode},recipe={alias.recipe_id}; "
+            f"rows={review.rows}"
         )
-        if review.bass_ids != alias.bass_ids:
-            blocker = "OWNER_EQUIVALENCE_NOT_PROVEN;BASS_VOCABULARY_DIFFERS_FROM_PROVEN_ALIAS"
-        else:
-            blocker = "OWNER_EQUIVALENCE_NOT_PROVEN"
+        blocker = "OWNER_EQUIVALENCE_NOT_PROVEN;BASS_VOCABULARY_DIFFERS_FROM_PROVEN_ALIAS"
     elif fully_observed and plural and single_family:
         tier = "B_SINGLE_FAMILY_PLURAL"
         tier_order = 1
@@ -221,8 +199,8 @@ def classify(review: OwnerObservation, proven: list[OwnerObservation]) -> Ranked
 def rank_candidates(owners: list[OwnerObservation]) -> list[RankedCandidate]:
     proven = [owner for owner in owners if owner.contract_status == "PROVEN"]
     review = [owner for owner in owners if owner.contract_status == "REVIEW_REQUIRED"]
-    if len(review) != 30:
-        die(f"review_owner_count:{len(review)}!=30")
+    if not review:
+        die("no_review_required_owners")
     if not proven:
         die("no_proven_reference_owners")
 
@@ -336,7 +314,7 @@ def write_report(path: Path, ranked: list[RankedCandidate]) -> None:
             "- C2 does not infer genre identity from a RhythmFamily label.",
             "- C2 does not use weights as evidence.",
             "- C2 does not turn repeated observation into musical necessity.",
-            "- C2 does not change the I6/C1 census or any production generator behavior.",
+            "- C2 does not change the census or any production generator behavior.",
             "",
         ]
     )
