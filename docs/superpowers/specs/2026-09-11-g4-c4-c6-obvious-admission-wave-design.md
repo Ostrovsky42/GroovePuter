@@ -93,3 +93,7 @@ After the wave there must be no remaining `B_SINGLE_FAMILY_PLURAL` candidates an
 6. Committed I6 and C2 evidence is regenerated from code and freshness-checked byte-for-byte.
 7. Final workflow has `contents: read` only and temporary publisher is absent.
 8. Final exact SHA has no `src/` diff from C3.
+
+## Closure trigger
+
+The deterministic I6/C2 evidence has been published; this documentation-only commit exists to trigger the final read-only exact-SHA closure gate after removal of the temporary publisher.
