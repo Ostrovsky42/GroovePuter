@@ -1,4 +1,4 @@
-name: 0.9.11 MaterialId Independence RED
+name: 0.9.11 MaterialId Independence G1
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   CANDIDATE_HEAD: ${{ github.sha }}
 
 jobs:
-  material-id-independence-red:
+  material-id-independence-g1:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,37 +31,21 @@ jobs:
           echo "W0_ROOT=${W0_ROOT}"
           echo "HEAD=$(git rev-parse HEAD)"
 
-      - name: Prove RED checkpoint is docs tests CI only
+      - name: Prove G1 production delta is identity-only
         run: |
           set -euo pipefail
           changed="$(git diff --name-only "${W0_ROOT}"..HEAD)"
           printf '%s\n' "${changed}"
           test -n "${changed}"
-          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/)' || true)"
+          bad="$(printf '%s\n' "${changed}" | grep -Ev '^(docs/|tests/|\.github/workflows/|src/state/material_identity\.h$)' || true)"
           if [ -n "${bad}" ]; then
-            echo "RED checkpoint modified production/persistence files:" >&2
+            echo "G1 changed files outside independent identity scope:" >&2
             printf '%s\n' "${bad}" >&2
             exit 2
           fi
 
-      - name: Prove intentional address-reuse RED
-        run: |
-          set -euo pipefail
-          set +e
-          bash tests/run_0_9_11_material_id_independence_red.sh \
-            > material-id-independence-red.log 2>&1
-          status=$?
-          set -e
-          cat material-id-independence-red.log
+      - name: Run address-reuse adversarial contract
+        run: bash tests/run_0_9_11_material_id_independence_red.sh
 
-          if [ "${status}" -eq 0 ]; then
-            echo "Unexpected GREEN: independent MaterialId capability already satisfies the witness" >&2
-            exit 2
-          fi
-
-          grep -F \
-            "MATERIAL_ID_INDEPENDENCE_RED: independent MaterialId owner is missing" \
-            material-id-independence-red.log
-
-          echo "INTENTIONAL RED CONFIRMED: address reuse cannot yet distinguish M@A from N@A" >&2
-          exit 1
+      - name: Diff hygiene
+        run: git diff --check "${W0_ROOT}"..HEAD
