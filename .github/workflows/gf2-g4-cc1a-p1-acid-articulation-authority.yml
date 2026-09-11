@@ -1,0 +1,71 @@
+name: GF2 G4-CC1A-P1 Acid articulation authority
+
+on:
+  push:
+    branches:
+      - feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
+    paths:
+      - 'tests/test_gf2_g4_cc1a_p1_acid_articulation_authority.cpp'
+      - 'tests/run_gf2_g4_cc1a_p1_tests.sh'
+      - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_AUTHORITY.md'
+      - 'docs/research/GF2_G4_CC1A_P1_ACID_ARTICULATION_CENSUS.tsv'
+      - '.github/workflows/gf2-g4-cc1a-p1-acid-articulation-authority.yml'
+      - 'src/generation/composition/generation_profile.cpp'
+      - 'src/generation/roles/bass_rhythm.cpp'
+      - 'src/generation/roles/bass_pitch_behavior.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/migration/tonal_pattern_adapter.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acid-articulation-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install host dependencies
+        run: |
+          grep -rl 'dl.google.com' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Prove production still equals CC1A start
+        run: |
+          set -euo pipefail
+          BASE=8331735080f25acbc809ef97b9881fd9e17c86a2
+          git fetch --no-tags --depth=1 origin "$BASE"
+          changed="$(git diff --name-only "$BASE" "$GITHUB_SHA" -- src/)"
+          if test -n "$changed"; then
+            echo "G4_CC1A_P1_FAIL production_changed_before_red"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          echo "G4_CC1A_P1_PASS production_unchanged_before_red"
+
+      - name: Run G4-CC1A-P1 RED
+        run: |
+          bash tests/run_gf2_g4_cc1a_p1_tests.sh
+
+      - name: Print RED evidence
+        if: always()
+        run: |
+          if test -f build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt; then
+            cat build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
+          fi
+
+      - name: Upload RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-cc1a-p1-acid-articulation-red
+          path: |
+            build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-summary.txt
+            build/host-tests/gf2-g4-cc1a-p1/g4-cc1a-p1-census.tsv
+          if-no-files-found: warn
