@@ -44,6 +44,21 @@ jobs:
           text = text.replace(old, new, 1)
           synth.write_text(text, encoding="utf-8")
 
+          controls = Path("src/ui/phrase_instrument_controls.h")
+          text = controls.read_text(encoding="utf-8")
+          old = """  LengthChangeOutcome outcome{};\n  outcome.targetBars = lengthBars(current.lengthTicks);\n  if (!RuntimePhraseEdit::validate(current)) {\n    outcome.result = LengthChangeResult::InvalidLength;\n    return outcome;\n  }\n  if (direction != -1 && direction != 1) {\n"""
+          new = """  LengthChangeOutcome outcome{};\n  if (!RuntimePhraseEdit::validLengthTicks(current.lengthTicks)) {\n    outcome.result = LengthChangeResult::InvalidLength;\n    return outcome;\n  }\n  outcome.targetBars = lengthBars(current.lengthTicks);\n  if (direction != -1 && direction != 1) {\n"""
+          if old not in text:
+              raise SystemExit("expected LENGTH preflight validation site not found")
+          text = text.replace(old, new, 1)
+
+          old = """  if (targetTicks == current.lengthTicks) {\n    outcome.result = LengthChangeResult::Unchanged;\n    return outcome;\n  }\n  if (shrinkWouldTruncateEvent(current, targetTicks)) {\n    outcome.result = LengthChangeResult::WouldTruncateEvent;\n    return outcome;\n  }\n\n  const bool committed =\n"""
+          new = """  if (targetTicks == current.lengthTicks) {\n    outcome.result = LengthChangeResult::Unchanged;\n    return outcome;\n  }\n\n  if (targetTicks > current.lengthTicks) {\n    PhraseRuntime::RuntimeSynthEventBuffer candidate{};\n    if (!prepareLengthTarget(current, outcome.targetBars, candidate)) {\n      outcome.result = LengthChangeResult::InvalidLength;\n      return outcome;\n    }\n  } else {\n    if (!RuntimePhraseEdit::validate(current)) {\n      outcome.result = LengthChangeResult::InvalidLength;\n      return outcome;\n    }\n    if (shrinkWouldTruncateEvent(current, targetTicks)) {\n      outcome.result = LengthChangeResult::WouldTruncateEvent;\n      return outcome;\n    }\n  }\n\n  const bool committed =\n"""
+          if old not in text:
+              raise SystemExit("expected LENGTH shrink preflight site not found")
+          text = text.replace(old, new, 1)
+          controls.write_text(text, encoding="utf-8")
+
           song = Path("src/ui/pages/song_page.cpp")
           text = song.read_text(encoding="utf-8")
           old = """  char key = ui_event.key;\n  if (!key) return false;\n"""
@@ -60,14 +75,14 @@ jobs:
           song.write_text(text, encoding="utf-8")
           PY
           git diff --check
-          git diff -- src/ui/pages/synth_sequencer_page.cpp src/ui/pages/song_page.cpp
+          git diff -- src/ui/pages/synth_sequencer_page.cpp src/ui/phrase_instrument_controls.h src/ui/pages/song_page.cpp
       - name: Run focused UI input ownership gate
         run: bash tests/run_c0_ui_input_ownership_tests.sh
       - name: Commit proven repair
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/ui/pages/synth_sequencer_page.cpp src/ui/pages/song_page.cpp
+          git add src/ui/pages/synth_sequencer_page.cpp src/ui/phrase_instrument_controls.h src/ui/pages/song_page.cpp
           git commit -m "fix(ui): restore Phrase input ownership"
           git push origin HEAD:fix/20260911-0.9.11-c0-ui-input-ownership
           echo "PROVEN_REPAIR_SHA=$(git rev-parse HEAD)"
