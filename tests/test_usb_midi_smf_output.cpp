@@ -52,6 +52,21 @@ int main() {
     assert(output.begin());
     output.pollConnection();
 
+    // A terminal player boundary needs both precise NoteOff and a channel
+    // panic. Some physical receivers can retain a voice after the individual
+    // release; CC123 is the bounded terminal recovery for that SMF channel.
+    assert(output.handleSmfNoteOn(3, 58, 100));
+    const std::size_t beforeTerminalCleanup = transport.packets.size();
+    assert(output.releaseAllSmfNotes());
+    assert(transport.packets.size() == beforeTerminalCleanup + 2);
+    assert(transport.packets[beforeTerminalCleanup].kind == Kind::Off);
+    assert(transport.packets[beforeTerminalCleanup].channel == 3);
+    assert(transport.packets[beforeTerminalCleanup].note == 58);
+    assert(transport.packets[beforeTerminalCleanup + 1].kind == Kind::Control);
+    assert(transport.packets[beforeTerminalCleanup + 1].channel == 3);
+    assert(transport.packets[beforeTerminalCleanup + 1].note == 123);
+    transport.packets.clear();
+
     // SMF is polyphonic and keeps the source channel unchanged.
     assert(output.handleSmfNoteOn(2, 60, 90));
     assert(output.handleSmfNoteOn(2, 64, 80));
