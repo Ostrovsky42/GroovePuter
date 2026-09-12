@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 BASE="cea42fcde945eed651c5cb4413e9eb6616f3d407"
-TARGET="2ef6c76b7c7ea6500c516f0d72586860ce63e978"
+TARGET="4647a0115e752d1affa5b1a53ebd8f38bf3a025b"
 TMP="${TMPDIR:-/tmp}/grooveputer-stage15-history-$$"
 BASELINE="$TMP/frozen.tsv"
 ACTUAL="$TMP/actual.tsv"
@@ -53,6 +53,8 @@ if ! probe_sha "$BASE"; then
 fi
 
 echo "BASELINE_SELF_CHECK=GREEN"
+last_match="$BASE"
+first_build_fail=""
 
 while read -r sha; do
   [[ -n "$sha" ]] || continue
@@ -60,14 +62,27 @@ while read -r sha; do
   probe_sha "$sha"
   status=$?
   set -e
+  if [[ $status -eq 0 ]]; then
+    last_match="$sha"
+    continue
+  fi
   if [[ $status -eq 1 ]]; then
-    echo "STAGE15_FIRST_HISTORICAL_DRIFT=$sha"
+    echo "STAGE15_LAST_FROZEN_MATCH=$last_match"
+    [[ -z "$first_build_fail" ]] || echo "STAGE15_FIRST_BUILD_GAP=$first_build_fail"
+    echo "STAGE15_FIRST_BUILDABLE_DRIFT=$sha"
     exit 0
   fi
-  if [[ $status -ne 0 ]]; then
-    echo "STAGE15_PROBE_INCONCLUSIVE_AT=$sha" >&2
-    exit "$status"
+  if [[ $status -eq 2 ]]; then
+    [[ -n "$first_build_fail" ]] || first_build_fail="$sha"
+    continue
   fi
+  echo "STAGE15_PROBE_INCONCLUSIVE_AT=$sha" >&2
+  exit "$status"
 done < <(git rev-list --reverse --ancestry-path "${BASE}..${TARGET}")
 
-echo "NO_DRIFT_THROUGH=$TARGET"
+if [[ -n "$first_build_fail" ]]; then
+  echo "STAGE15_LAST_FROZEN_MATCH=$last_match"
+  echo "STAGE15_FIRST_BUILD_GAP=$first_build_fail"
+  echo "STAGE15_BUILDABLE_TARGET_MATCH=$TARGET"
+fi
+echo "NO_BUILDABLE_DRIFT_THROUGH=$TARGET"
