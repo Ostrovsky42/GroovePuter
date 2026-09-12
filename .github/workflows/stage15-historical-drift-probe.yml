@@ -5,6 +5,9 @@ on:
     branches:
       - investigation/20260912-stage15-historical-drift
 
+permissions:
+  contents: write
+
 jobs:
   historical-drift-probe:
     runs-on: ubuntu-latest
@@ -24,6 +27,7 @@ jobs:
           test "$(wc -l < build/host-tests/stage15-current-nontonal.tsv)" -eq 257
           test "$(wc -l < build/host-tests/stage15-current-tonal.tsv)" -eq 257
           sha256sum build/host-tests/stage15-current-nontonal.tsv build/host-tests/stage15-current-tonal.tsv
+          cp build/host-tests/stage15-current-tonal.tsv /tmp/stage15-current-tonal.tsv
       - name: Upload captured Stage15 corpora
         uses: actions/upload-artifact@v4
         with:
@@ -32,3 +36,29 @@ jobs:
             build/host-tests/stage15-current-nontonal.tsv
             build/host-tests/stage15-current-tonal.tsv
           if-no-files-found: error
+      - name: Publish current accepted Stage15 tonal golden to ratification branch
+        run: |
+          TARGET_BRANCH=feature/20260912-02-stage15-gf2-i4-ratification
+          EXPECTED_BLOB=a927181840c8ba92324bcdaa7c1225ce39ec7e08
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          cp /tmp/stage15-current-tonal.tsv tests/data/stage15_tonal_enabled_baseline.tsv
+          ACTUAL_BLOB="$(git hash-object tests/data/stage15_tonal_enabled_baseline.tsv)"
+          test "$ACTUAL_BLOB" = "$EXPECTED_BLOB"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_stage15_tonal_fixture_roles.py')
+          text = path.read_text()
+          old = 'EXPECTED_CURRENT_BLOB = "88b8e125dc75c20693dcbbabd492eaef76ad24c0"'
+          new = 'EXPECTED_CURRENT_BLOB = "a927181840c8ba92324bcdaa7c1225ce39ec7e08"'
+          if old not in text:
+              raise SystemExit('expected current golden blob literal not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/data/stage15_tonal_enabled_baseline.tsv tests/test_stage15_tonal_fixture_roles.py
+          git diff --cached --check
+          git diff --cached --quiet && { echo NO_RATIFICATION_DELTA; exit 0; }
+          git commit -m 'test(stage15): ratify GF2-I4 density-aware tonal golden'
+          git push origin "HEAD:$TARGET_BRANCH"
