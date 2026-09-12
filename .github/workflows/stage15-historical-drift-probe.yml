@@ -15,3 +15,20 @@ jobs:
           fetch-depth: 0
       - name: Locate first frozen fingerprint drift
         run: bash tests/probe_stage15_historical_drift.sh
+      - name: Capture current density-aware Stage15 corpora
+        run: |
+          git checkout --detach f2261759071ad3d3f984381ba5f5c608525f8dfa
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15-current-nontonal.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15-current-tonal.tsv
+          test "$(wc -l < build/host-tests/stage15-current-nontonal.tsv)" -eq 257
+          test "$(wc -l < build/host-tests/stage15-current-tonal.tsv)" -eq 257
+          sha256sum build/host-tests/stage15-current-nontonal.tsv build/host-tests/stage15-current-tonal.tsv
+          echo STAGE15_NONTONAL_B64_BEGIN
+          gzip -c build/host-tests/stage15-current-nontonal.tsv | base64 -w0
+          echo
+          echo STAGE15_NONTONAL_B64_END
+          echo STAGE15_TONAL_B64_BEGIN
+          gzip -c build/host-tests/stage15-current-tonal.tsv | base64 -w0
+          echo
+          echo STAGE15_TONAL_B64_END
