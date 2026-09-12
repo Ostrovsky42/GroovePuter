@@ -3,6 +3,7 @@
 #define GROOVEPUTER_SRC_STATE_MATERIAL_SLOT_H
 
 #include <cstdint>
+#include "material_identity.h"
 
 // M1: what kind of musical material a slot holds.
 //
@@ -17,9 +18,9 @@
 // plays, which one the generator rewrites, and what Undo means -- two owners
 // again, which is the failure this whole line of work exists to remove.
 //
-// Consumers must go through the accessors rather than touch the storage. The
-// storage is deliberately the smallest thing that works today; step 3 replaces
-// it with the resolved runtime authority without rewriting every caller.
+// Identity is co-located with kind so a page cannot move one without the other.
+// MaterialId is not the slot address: replacing a material at the same address
+// assigns a new id while ordinary edits preserve the existing id.
 namespace GroovePuterMaterial {
 
 enum class MaterialKind : uint8_t {
@@ -29,6 +30,7 @@ enum class MaterialKind : uint8_t {
 
 struct MaterialSlotDescriptor {
   MaterialKind kind = MaterialKind::Pattern;
+  MaterialId id{};
 };
 
 inline bool validKindValue(int value) {

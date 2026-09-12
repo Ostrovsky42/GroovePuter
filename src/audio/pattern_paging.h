@@ -7,10 +7,11 @@
 
 class PatternPagingService {
 public:
-    // Version 4 adds the material kind of each resident synth slot. Version 3
-    // files are still read: they predate promotion, so every slot in them is a
-    // Pattern by construction and decodes as one.
-    static constexpr uint16_t kFormatVersion = 4;
+    // Version 5 persists the complete MaterialSlotDescriptor (kind + stable
+    // MaterialId). Version 4 persisted kind only; version 3 predates material
+    // metadata entirely. Legacy pages decode with id=0 so identity fails closed.
+    static constexpr uint16_t kFormatVersion = 5;
+    static constexpr uint16_t kKindOnlyFormatVersion = 4;
     static constexpr uint16_t kLegacyFormatVersion = 3;
 
     // Select the project namespace used by all following page operations.
@@ -19,9 +20,14 @@ public:
     static const std::string& currentProjectName();
     static int activePageIndex();
 
+    // Allocate an opaque non-zero identity inside the active project namespace.
+    // The high-water mark is persistent and is deliberately not reset by
+    // clearProjectPages(), so stale references cannot alias new material.
+    static GroovePuterMaterial::MaterialId allocateMaterialId();
+
     // Persist or load all pattern banks for one logical page. Both operations
-    // are transactional from the caller's perspective: a failed save keeps
-    // the previous page file, and a failed load leaves Scene unchanged.
+    // are transactional from the caller's perspective: a failed save keeps the
+    // previous page file, and a failed load leaves Scene unchanged.
     static bool savePage(int pageIndex, const Scene& scene);
     static bool loadPage(int pageIndex, Scene& scene);
 
@@ -38,6 +44,7 @@ public:
 
     // Project lifecycle helpers. Copy is used by Save As. New/Clear remove
     // every page plus transactional .tmp/.bak siblings in one project only.
+    // Save As copies the MaterialId high-water mark; Clear keeps it.
     static bool copyProjectPages(const std::string& sourceProject,
                                  const std::string& targetProject);
     static bool clearProjectPages();
