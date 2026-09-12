@@ -96,6 +96,9 @@ jobs:
       - name: Reconcile MW-K with A2-B Material identity
         run: bash tests/run_0_9_11_m_working_a2b_mwk_tests.sh
 
+      - name: Working Pattern manual note edit transaction
+        run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+
       - name: Characterize remaining M-WORKING RED without STOP
         shell: bash
         run: |
