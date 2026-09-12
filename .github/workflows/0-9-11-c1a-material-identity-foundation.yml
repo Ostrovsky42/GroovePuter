@@ -1,0 +1,30 @@
+name: 0.9.11 C1A Material Identity Foundation
+
+on:
+  push:
+    branches:
+      - feature/20260912-03-c1a-material-identity-foundation
+  pull_request:
+    paths:
+      - 'src/state/material_identity.h'
+      - 'src/state/material_slot.h'
+      - 'src/state/material_slot_access.h'
+      - 'src/audio/pattern_paging.h'
+      - 'src/audio/pattern_paging.cpp'
+      - 'tests/test_0_9_11_c1a_*'
+      - 'tests/run_0_9_11_c1a_*'
+      - '.github/workflows/0-9-11-c1a-material-identity-foundation.yml'
+
+jobs:
+  c1a-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Stable identity contract
+        run: bash tests/run_0_9_11_c1a_material_identity_foundation.sh
+      - name: Project identity persistence
+        run: bash tests/run_0_9_11_c1a_material_id_persistence.sh
+      - name: Legacy page fail-closed compatibility
+        run: bash tests/run_0_9_11_c1a_material_id_legacy.sh
