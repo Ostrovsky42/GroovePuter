@@ -15,6 +15,9 @@ on:
       - 'tests/run_0_9_11_c1a_*'
       - '.github/workflows/0-9-11-c1a-material-identity-foundation.yml'
 
+permissions:
+  contents: read
+
 jobs:
   c1a-identity:
     runs-on: ubuntu-latest
@@ -28,3 +31,78 @@ jobs:
         run: bash tests/run_0_9_11_c1a_material_id_persistence.sh
       - name: Legacy page fail-closed compatibility
         run: bash tests/run_0_9_11_c1a_material_id_legacy.sh
+
+  p1c-preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+      - name: Run P1C focused gate
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: bash tests/run_pattern_phrase_p1c_tests.sh
+
+  stage15-preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tonal Projector
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_projector_tests.sh
+      - name: Tonal Materializer
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_materializer_tests.sh
+      - name: Global-scale harmonic-event regression
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_materializer_global_scale_test.sh
+      - name: Production tonal integration
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_stage15_tonal_integration_tests.sh
+      - name: Exhaust address and key-scale space
+        run: bash tests/run_stage15_tonal_register_sweep.sh
+      - name: Legacy rollback corpus remains frozen
+        run: |
+          bash tests/run_stage15_tonal_baseline_dump.sh > /tmp/stage15_legacy.tsv
+          test "$(wc -l < /tmp/stage15_legacy.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv /tmp/stage15_legacy.tsv
+
+  phw-smf-host-preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PHW-P1 focused gate
+        run: bash tests/run_0_9_9_phw_p1_tests.sh
+      - name: Run broad host and SMF regressions
+        run: bash tests/run_host_tests.sh
+
+  cardputer-adv-dram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
