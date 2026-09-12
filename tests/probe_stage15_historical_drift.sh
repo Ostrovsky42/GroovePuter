@@ -5,8 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 ORACLE="cea42fcde945eed651c5cb4413e9eb6616f3d407"
-ANCHOR="4647a0115e752d1affa5b1a53ebd8f38bf3a025b"
-TARGET="76ec22d52bbccf46c6228f287f410b01db90f41c"
+ANCHOR="76ec22d52bbccf46c6228f287f410b01db90f41c"
+TARGET="3697ec38cc7f5fe2aa87bec5b60c3f25a504bc03"
 TMP="${TMPDIR:-/tmp}/grooveputer-stage15-history-$$"
 BASELINE="$TMP/frozen.tsv"
 ACTUAL="$TMP/actual.tsv"
@@ -52,9 +52,8 @@ probe_sha() {
   return 1
 }
 
-# The previous probe established ANCHOR as the first link-complete post-bridge
-# checkpoint and proved it byte-identical to the original frozen oracle. Re-run
-# it here so every candidate result remains self-contained.
+# ANCHOR is the latest candidate already proved byte-identical to the original
+# frozen oracle. Re-run it so every candidate verdict is self-contained.
 if ! probe_sha "$ANCHOR"; then
   echo "ANCHOR_NOT_FROZEN=$ANCHOR" >&2
   exit 3
