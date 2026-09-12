@@ -3,6 +3,7 @@
 #define MINIACID_ENGINE_H
 
 #include "src/state/material_slot.h"
+#include "src/state/material_slot_access.h"
 #include "src/state/working_material_storage.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -331,6 +332,14 @@ public:
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
   void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
 
+  // 0.9.11 M-WORKING: manual Pattern edits are prepared against the stable
+  // identity of the resident material, published to the retained runtime bank,
+  // and only then stored as session Working. Scene/ACCEPTED is not mutated.
+  bool adjustWorking303StepNote(int voiceIndex, int stepIndex,
+                                int semitoneDelta);
+  const SynthPattern* currentWorking303Pattern(int voiceIndex) const;
+  bool hasModifiedWorking303Pattern(int voiceIndex) const;
+
   void clear303StepNote(int voiceIndex, int stepIndex);
   void clear303Step(int stepIndex, int voiceIndex);
   void toggle303AccentStep(int voiceIndex, int stepIndex);
@@ -468,6 +477,8 @@ private:
   const TB303Voice* tb303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
   int clamp303Note(int note) const;
+  bool current303MaterialReference_(
+      int voiceIndex, GroovePuterMaterial::MaterialReference& out) const;
   const SynthPattern& synthPattern(int synthIndex) const;
   SynthPattern& editSynthPattern(int synthIndex);
   const DrumPattern& drumPattern(int drumVoiceIndex) const;
@@ -708,4 +719,158 @@ public:
 inline Parameter& MiniAcid::miniParameter(MiniAcidParamId id) {
   return params[static_cast<int>(id)];
 }
+
+inline bool MiniAcid::current303MaterialReference_(
+    int voiceIndex, GroovePuterMaterial::MaterialReference& out) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (page < 0 || page >= kMaxPages || bank < 0 || bank >= kBankCount ||
+      pattern < 0 || pattern >= Bank<SynthPattern>::kPatterns) {
+    return false;
+  }
+
+  const int globalSlot = songPatternFromPageBankIndex(page, bank, pattern);
+  if (globalSlot < 0 || globalSlot >= kMaxGlobalPatterns || globalSlot > 0xff) {
+    return false;
+  }
+
+  const GroovePuterMaterial::MaterialAddress address{
+      static_cast<uint8_t>(idx), static_cast<uint8_t>(globalSlot)};
+  if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
+    return false;
+  }
+  const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+  const auto id = GroovePuterMaterial::residentId(
+      sceneManager_.currentScene(), idx, residentSlot);
+  if (!id.valid()) return false;
+
+  out.address = address;
+  out.id = id;
+  return true;
+}
+
+inline const SynthPattern* MiniAcid::currentWorking303Pattern(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return nullptr;
+  }
+
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return nullptr;
+  const auto& storage = workingMaterial_[idx];
+  if (!storage.patternMatches(current)) return nullptr;
+  return &storage.pattern();
+}
+
+inline bool MiniAcid::hasModifiedWorking303Pattern(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return false;
+
+  const auto& storage = workingMaterial_[idx];
+  if (!storage.patternMatches(current)) return false;
+
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  const Scene& scene = sceneManager_.currentScene();
+  const SynthPattern& accepted = idx == 0
+      ? scene.synthABanks[bank].patterns[pattern]
+      : scene.synthBBanks[bank].patterns[pattern];
+  const SynthPattern& working = storage.pattern();
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& a = accepted.steps[step];
+    const SynthStep& w = working.steps[step];
+    if (a.note != w.note || a.slide != w.slide || a.accent != w.accent ||
+        a.ghost != w.ghost || a.velocity != w.velocity ||
+        a.timing != w.timing || a.fx != w.fx || a.fxParam != w.fxParam ||
+        a.probability != w.probability) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool MiniAcid::adjustWorking303StepNote(
+    int voiceIndex, int stepIndex, int semitoneDelta) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return false;
+  }
+
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return false;
+
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (patternRuntimeBank_.pageIdentity() != page) return false;
+
+  auto& storage = workingMaterial_[idx];
+  SynthPattern candidate{};
+  if (storage.empty()) {
+    const Scene& scene = sceneManager_.currentScene();
+    candidate = idx == 0
+        ? scene.synthABanks[bank].patterns[pattern]
+        : scene.synthBBanks[bank].patterns[pattern];
+  } else if (storage.patternMatches(current)) {
+    candidate = storage.pattern();
+  } else {
+    // Retarget/discard is a separate explicit lifecycle operation. Never
+    // overwrite retained Melody or Working belonging to another identity.
+    return false;
+  }
+
+  const int step = clamp303Step(stepIndex);
+  const int oldNote = candidate.steps[step].note;
+  int nextNote = oldNote;
+  if (oldNote == -2) {
+    if (semitoneDelta > 0) nextNote = -1;
+  } else if (oldNote == -1) {
+    if (semitoneDelta > 0) nextNote = kMin303Note;
+    else if (semitoneDelta < 0) nextNote = -2;
+  } else {
+    nextNote = oldNote + semitoneDelta;
+    if (nextNote < kMin303Note) {
+      nextNote = -1;
+    } else {
+      nextNote = clamp303Note(nextNote);
+    }
+  }
+  if (nextNote == oldNote) return false;
+  candidate.steps[step].note = static_cast<int8_t>(nextNote);
+
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  int swingPct = static_cast<int>(scene.feel.swingPct);
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(idx);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // Prepare/validate/publish before the session Working owner is updated. A
+  // failed projection leaves ACCEPTED, audio and Working unchanged.
+  if (patternRuntimeBank_.refresh(
+          static_cast<uint8_t>(idx), static_cast<uint8_t>(bank),
+          static_cast<uint8_t>(pattern), candidate, settings) !=
+      PhraseRuntime::PatternBankRefreshStatus::Ready) {
+    return false;
+  }
+
+  storage.storePattern(candidate, current);
+  return true;
+}
+
 #endif // MINIACID_ENGINE_H
