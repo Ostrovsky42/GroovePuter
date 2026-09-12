@@ -99,6 +99,9 @@ jobs:
       - name: Working Pattern manual note edit transaction
         run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
 
+      - name: Manual Working target-switch guard
+        run: bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
+
       - name: Characterize remaining M-WORKING RED without STOP
         shell: bash
         run: |
