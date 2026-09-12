@@ -892,6 +892,11 @@ bool UsbMidiOutput::releaseAllSmfNotes() {
             continue;
         }
 
+        // A terminal SMF boundary closes the whole SMF channel after the
+        // precise release. Keep the existing deferred-channel mechanism so a
+        // failed write is retried and a known non-SMF wire owner is never cut.
+        abandonedSmfChannels_ |=
+            static_cast<uint16_t>(1u << cell.channel);
         if (!mounted_ || !transport_.sendNoteOff(cell.channel, cell.note, 0)) {
             allReleased = false;
             continue;
