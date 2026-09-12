@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 files = {
     "hub": ROOT / "src/ui/pages/sequencer_hub_page.cpp",
     "pattern": ROOT / "src/ui/pages/pattern_edit_page_legacy.h",
+    "pattern_modern": ROOT / "src/ui/pages/pattern_edit_page.cpp",
     "display": ROOT / "src/ui/miniacid_display.cpp",
     "song": ROOT / "src/ui/pages/song_page.cpp",
     "drum": ROOT / "src/ui/pages/drum_sequencer_page_legacy.h",
@@ -47,6 +48,13 @@ require(
     and "mini_acid_.set303BankIndex" not in text["pattern"],
     "MW-L-UI-B",
     "legacy Pattern editor cannot bypass the manual target guard",
+)
+
+require(
+    "tryManual303TargetSwitch" in text["pattern_modern"]
+    and "mini_acid_.set303PatternIndex" not in text["pattern_modern"],
+    "MW-L-UI-C",
+    "modern Pattern wrapper manual retarget cannot bypass the Working guard",
 )
 
 for name in ("display", "song", "pattern", "drum"):
