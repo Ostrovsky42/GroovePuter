@@ -5,6 +5,7 @@ on:
     branches:
       - feature/20260911-0.9.11-m-working-red
       - feature/20260911-0.9.11-m-working-green
+      - integration/20260912-0.9.11-m-working-a2b-mwk
   workflow_dispatch:
 
 permissions:
@@ -73,7 +74,7 @@ jobs:
         run: python3 tests/test_synth_persistence_source_regressions.py
 
   green-contract:
-    if: github.ref_name == 'feature/20260911-0.9.11-m-working-green'
+    if: github.ref_name == 'feature/20260911-0.9.11-m-working-green' || github.ref_name == 'integration/20260912-0.9.11-m-working-a2b-mwk'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -91,6 +92,9 @@ jobs:
 
       - name: Preserve Melody working semantics
         run: bash tests/run_0_9_11_m_working_melody_compat_tests.sh
+
+      - name: Reconcile MW-K with A2-B Material identity
+        run: bash tests/run_0_9_11_m_working_a2b_mwk_tests.sh
 
       - name: Characterize remaining M-WORKING RED without STOP
         shell: bash
