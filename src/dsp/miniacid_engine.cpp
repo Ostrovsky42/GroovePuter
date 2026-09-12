@@ -3749,7 +3749,8 @@ uint32_t MiniAcid::currentAbsoluteSubtick_() const {
 
 uint16_t MiniAcid::phraseRelativeTick_(int voiceIndex,
                                       uint32_t absoluteTick) const {
-  const uint16_t length = currentPhrase_[clamp303Voice(voiceIndex)].lengthTicks;
+  const uint16_t length =
+      workingMaterial_[clamp303Voice(voiceIndex)].melody().lengthTicks;
   if (length == 0) return 0;
   return static_cast<uint16_t>(absoluteTick % length);
 }
@@ -3758,7 +3759,8 @@ const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
     int voiceIndex,
     uint32_t absoluteTick) const {
   const int idx = clamp303Voice(voiceIndex);
-  const PhraseRuntime::RuntimeSynthEventBuffer& phrase = currentPhrase_[idx];
+  const PhraseRuntime::RuntimeSynthEventBuffer& phrase =
+      workingMaterial_[idx].melody();
   if (phrase.lengthTicks == 0) return nullptr;
   const uint16_t phraseTick = phraseRelativeTick_(idx, absoluteTick);
   // First match wins. RuntimeSynthPlaybackState is monophonic, so several events
@@ -3973,7 +3975,7 @@ void MiniAcid::activatePendingMaterial() {
     if (!pending.queued) continue;
     if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
         pending.melody != nullptr) {
-      currentPhrase_[voice] = *pending.melody;
+      workingMaterial_[voice].storeMelody(*pending.melody);
     }
     publishActiveMaterial(voice, pending.slot, pending.kind);
     pending.queued = false;
@@ -3995,7 +3997,7 @@ const MiniAcid::ActiveMaterial& MiniAcid::activeMaterial(int voiceIndex) const {
 
 uint16_t MiniAcid::currentPhrasePlayTick(int voiceIndex) const {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return 0;
-  const uint16_t lengthTicks = currentPhrase_[voiceIndex].lengthTicks;
+  const uint16_t lengthTicks = workingMaterial_[voiceIndex].melody().lengthTicks;
   if (lengthTicks == 0) return 0;
   return static_cast<uint16_t>(currentTick_ % lengthTicks);
 }
@@ -4033,7 +4035,7 @@ bool MiniAcid::makePhrase(int voiceIndex) {
     return false;
   }
 
-  currentPhrase_[voiceIndex] = candidate;
+  workingMaterial_[voiceIndex].storeMelody(candidate);
   setSequencedSource(voiceIndex, SequencedSource::Phrase);
   return true;
 }
@@ -4041,7 +4043,7 @@ bool MiniAcid::makePhrase(int voiceIndex) {
 bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
 
-  auto candidate = currentPhrase_[voiceIndex];
+  auto candidate = workingMaterial_[voiceIndex].melody();
   const uint16_t targetTicks =
       RuntimePhraseEdit::lengthTicksForBars(barCount);
   if (targetTicks == 0) return false;
@@ -4059,15 +4061,16 @@ bool MiniAcid::setPhraseLength(int voiceIndex, uint8_t barCount) {
     return false;
   }
 
-  return RuntimePhraseEdit::commit(currentPhrase_[voiceIndex], candidate);
+  return RuntimePhraseEdit::commit(
+      workingMaterial_[voiceIndex].melody(), candidate);
 }
 
 PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
     int voiceIndex) {
-  return currentPhrase_[clamp303Voice(voiceIndex)];
+  return workingMaterial_[clamp303Voice(voiceIndex)].melody();
 }
 
 const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(
     int voiceIndex) const {
-  return currentPhrase_[clamp303Voice(voiceIndex)];
+  return workingMaterial_[clamp303Voice(voiceIndex)].melody();
 }
