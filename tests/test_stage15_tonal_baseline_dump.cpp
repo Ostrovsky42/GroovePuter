@@ -96,6 +96,38 @@ StrongRhythmMigrationContext contextFor(int16_t ordinal,
   return context;
 }
 
+StrongRhythmMigrationResult migrateStage15Fixture(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    bool preserveHistoricalLegacyDensity,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB) {
+  if (!preserveHistoricalLegacyDensity) {
+    return migrateStrongRhythmMaterial(settings, context, drums, synthA, synthB);
+  }
+
+  // The no-argument corpus is historical Stage15 evidence, not a current
+  // non-tonal product golden. GF2-I4 deliberately connected profile density in
+  // production after Stage15 froze this fixture. Reconstruct the documented
+  // pre-I4 compatibility path by carrying an explicit absent density target;
+  // all other current selection/materialization semantics remain exercised.
+  StrongRhythmFrozenSelection selection{};
+  const StrongRhythmMigrationResult resolved =
+      resolveStrongRhythmFrozenSelection(
+          settings,
+          context,
+          static_cast<uint16_t>(context.patternAddress),
+          selection);
+  if (resolved.status != StrongRhythmMigrationStatus::Applied) return resolved;
+
+  selection.structuralDensityTarget = kNoStructuralDensityTarget;
+  StrongRhythmMigrationContext legacyContext = context;
+  legacyContext.frozenSelection = &selection;
+  return migrateStrongRhythmMaterial(
+      settings, legacyContext, drums, synthA, synthB);
+}
+
 const char* modeName(GenerativeMode mode) {
   switch (mode) {
     case GenerativeMode::Acid: return "Acid";
@@ -174,9 +206,13 @@ int main(int argc, char** argv) {
       DrumPatternSet drums{};
       SynthPattern synthA = pitchSource(36, 5);
       SynthPattern synthB = pitchSource(60, 7);
-      const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-          settingsFor(mode),
-          contextFor(ordinal, tonalMaterializationEnabled),
+      const GenreSettings settings = settingsFor(mode);
+      const StrongRhythmMigrationContext context =
+          contextFor(ordinal, tonalMaterializationEnabled);
+      const StrongRhythmMigrationResult result = migrateStage15Fixture(
+          settings,
+          context,
+          !tonalMaterializationEnabled,
           drums, synthA, synthB);
       printVoice(modeName(mode), ordinal, "A", fingerprint(synthA), result);
       printVoice(modeName(mode), ordinal, "B", fingerprint(synthB), result);
