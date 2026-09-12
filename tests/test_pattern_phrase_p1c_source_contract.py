@@ -111,7 +111,10 @@ require(
     and header_without_companion.count(include_guard_close) == 1,
     "P1C recovery include guard missing, duplicated, or changed unexpectedly",
 )
-header_without_companion = header_without_companion.replace(include_guard_open, "", 1)
+# Preserve the canonical blank line after #pragma once while removing only the
+# macro wrapper itself. Replacing with an empty string would falsely report a
+# one-newline ABI drift.
+header_without_companion = header_without_companion.replace(include_guard_open, "\n", 1)
 header_without_companion = header_without_companion.replace(include_guard_close, "", 1)
 require(
     header_without_companion == canonical_header,
