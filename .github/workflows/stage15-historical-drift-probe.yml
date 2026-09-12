@@ -1,0 +1,17 @@
+name: Stage15 Historical Frozen Drift Probe
+
+on:
+  push:
+    branches:
+      - investigation/20260912-stage15-historical-drift
+
+jobs:
+  historical-drift-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Locate first frozen fingerprint drift
+        run: bash tests/probe_stage15_historical_drift.sh
