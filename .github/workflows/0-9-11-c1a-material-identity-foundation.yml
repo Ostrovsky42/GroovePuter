@@ -86,6 +86,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
       - name: Run PHW-P1 focused gate
         run: bash tests/run_0_9_9_phw_p1_tests.sh
       - name: Run broad host and SMF regressions
