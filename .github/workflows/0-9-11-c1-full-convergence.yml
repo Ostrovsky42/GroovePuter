@@ -1,0 +1,33 @@
+name: 0.9.11 C1 Full Convergence
+
+on:
+  push:
+    branches:
+      - integration/20260913-0.9.11-full-convergence-r1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: c1-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-c1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - name: Identity-bound Working and A2B
+        run: |
+          bash tests/run_0_9_11_m_working_a2b_mwk_tests.sh
+          bash tests/run_0_9_11_m_working_a2b_integration.sh
+      - name: Manual Working edit and retarget guards
+        run: |
+          bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+          bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
