@@ -16,7 +16,7 @@ concurrency:
 jobs:
   reconciliation:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,6 +58,42 @@ jobs:
           bash tests/run_0_9_11_a2b_identity_transaction_red.sh
           bash tests/run_melody_promotion_tests.sh
 
+      - name: Preserve Pattern/Phrase P2 runtime authority
+        run: bash tests/run_pattern_phrase_p2_tests.sh
+
+      - name: Preserve Scene and synth persistence authority
+        run: |
+          python3 tests/test_synth_persistence_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-variable \
+            -Wno-unused-but-set-variable -Wno-c++20-extensions \
+            -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h \
+            tests/test_scene_roundtrip.cpp \
+            scenes.cpp json_evented.cpp src/audio/pattern_paging.cpp \
+            -o build/host-tests/test_scene_roundtrip
+          build/host-tests/test_scene_roundtrip
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -Wno-c++20-extensions -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp src/dsp/filter.cpp src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_synth_persistence_voices
+          build/host-tests/test_synth_persistence_voices
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_scene_revision_persistence_contract.cpp \
+            -o build/host-tests/test_scene_revision_persistence_contract
+          build/host-tests/test_scene_revision_persistence_contract
+
+      - name: Preserve Phrase persistence contract
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_phrase_persistence_preview.cpp \
+            -o build/host-tests/test_phrase_persistence_preview
+          build/host-tests/test_phrase_persistence_preview
+
       - name: Preserve M-WORKING characterization without STOP
         shell: bash
         run: |
@@ -78,3 +114,25 @@ jobs:
             echo 'A hard M-WORKING STOP gate tripped' >&2
             exit 1
           fi
+
+      - name: Install pinned PlatformIO toolchain
+        run: |
+          python -m pip install --upgrade pip
+          pip install "platformio==6.1.18"
+          pio pkg install --global --tool "platformio/toolchain-xtensa-esp32s3@14.2.0+20241119"
+          pio pkg install --global --tool "platformio/toolchain-riscv32-esp@14.2.0+20241119"
+
+      - name: Strict Cardputer ADV build
+        env:
+          GP_CARDPUTER_ADV_BUILD_GUARD: '1'
+          GP_BUILD_VERSION: '0.9.11'
+        run: |
+          pio run -e m5stack-cardputer_ADV_dynbuffers \
+            --project-option "build_flags = -DCORE_DEBUG_LEVEL=0 -DARDUINO_USB_CDC_ON_BOOT=1 -DARDUINO_USB_MODE=1 -DCARDPUTER_ADV=1 -DGROOVEPUTER_AUDIO_TICK_US=2000 -Werror=return-type -Werror=switch"
+
+      - name: Enforce Cardputer ADV DRAM budget
+        run: |
+          bash scripts/check_cardputer_dram_budget.sh \
+            .pio/build/m5stack-cardputer_ADV_dynbuffers/firmware.elf \
+            191488 \
+            0.9.11
