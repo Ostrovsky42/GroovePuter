@@ -24,11 +24,11 @@ jobs:
           test "$(wc -l < build/host-tests/stage15-current-nontonal.tsv)" -eq 257
           test "$(wc -l < build/host-tests/stage15-current-tonal.tsv)" -eq 257
           sha256sum build/host-tests/stage15-current-nontonal.tsv build/host-tests/stage15-current-tonal.tsv
-          echo STAGE15_NONTONAL_B64_BEGIN
-          gzip -c build/host-tests/stage15-current-nontonal.tsv | base64 -w0
-          echo
-          echo STAGE15_NONTONAL_B64_END
-          echo STAGE15_TONAL_B64_BEGIN
-          gzip -c build/host-tests/stage15-current-tonal.tsv | base64 -w0
-          echo
-          echo STAGE15_TONAL_B64_END
+      - name: Upload captured Stage15 corpora
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage15-density-aware-corpora
+          path: |
+            build/host-tests/stage15-current-nontonal.tsv
+            build/host-tests/stage15-current-tonal.tsv
+          if-no-files-found: error
