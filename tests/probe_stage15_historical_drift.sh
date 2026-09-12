@@ -11,6 +11,7 @@ TMP="${TMPDIR:-/tmp}/grooveputer-stage15-bisect-$$"
 BASELINE="$TMP/frozen.tsv"
 ACTUAL="$TMP/actual.tsv"
 HELPER="$TMP/probe-one.sh"
+BISECT_OUTPUT="$TMP/bisect-output.log"
 mkdir -p "$TMP"
 
 cleanup() {
@@ -59,8 +60,8 @@ printf '%s\n' "STAGE15_BISECT_BAD=$BAD"
 
 git bisect start "$BAD" "$GOOD"
 set +e
-git bisect run "$HELPER"
-bisect_status=$?
+git bisect run "$HELPER" | tee "$BISECT_OUTPUT"
+bisect_status=${PIPESTATUS[0]}
 set -e
 
 if [[ $bisect_status -ne 0 ]]; then
@@ -69,11 +70,22 @@ if [[ $bisect_status -ne 0 ]]; then
   exit "$bisect_status"
 fi
 
-FIRST_BAD="$(git rev-parse HEAD)"
+FIRST_BAD="$(sed -nE "s/^([0-9a-f]{40}) is the first 'bad' commit$/\1/p" "$BISECT_OUTPUT" | tail -n 1)"
+if [[ -z "$FIRST_BAD" ]]; then
+  FIRST_BAD="$(git bisect log | sed -nE "s/^# first 'bad' commit: \[([0-9a-f]{40})\].*$/\1/p" | tail -n 1)"
+fi
+if [[ -z "$FIRST_BAD" ]]; then
+  echo "STAGE15_FIRST_BAD_PARSE_FAILED" >&2
+  git bisect log
+  exit 3
+fi
+
 SUBJECT="$(git show -s --format=%s "$FIRST_BAD")"
 PARENTS="$(git show -s --format=%P "$FIRST_BAD")"
 
-# Fail closed if git-bisect somehow stops on a build-skip or frozen match.
+# Re-check the reported first-bad SHA explicitly. git bisect run may leave HEAD
+# on the final good neighbour rather than the reported culprit.
+git checkout --detach "$FIRST_BAD" >/dev/null 2>&1
 set +e
 "$HELPER" > "$TMP/first-bad-check.log" 2>&1
 first_bad_status=$?
