@@ -74,8 +74,9 @@ source_text = source.read_text(encoding="utf-8")
 # P2 is allowed one additive companion projection API so the compact retained
 # carrier can preserve physical-step execution order without changing the
 # chronological P1C value representation. Everything else in the canonical
-# header remains byte-frozen: event/buffer layouts, constants, flags, settings,
-# status, original projector declaration, and ABI static_asserts.
+# declaration surface remains frozen. The later macro include guard is build
+# liveness hardening only: normalize that exact wrapper before comparing the
+# public ABI/declarations, while still failing on any other header drift.
 companion_api = '''// P2 companion projection metadata. The existing RuntimeSynthEvent ABI and
 // chronological RuntimeSynthEventBuffer order remain unchanged; this helper
 // only exposes which physical Pattern step produced each projected onset.
@@ -98,9 +99,23 @@ canonical_header = subprocess.run(
     capture_output=True,
 ).stdout
 header_without_companion = header_text.replace(companion_api, "", 1)
+include_guard_open = (
+    "#ifndef GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H\n"
+    "#define GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H\n\n"
+)
+include_guard_close = (
+    "\n#endif  // GROOVEPUTER_PHRASE_RUNTIME_SYNTH_EVENTS_H\n"
+)
+require(
+    header_without_companion.count(include_guard_open) == 1
+    and header_without_companion.count(include_guard_close) == 1,
+    "P1C recovery include guard missing, duplicated, or changed unexpectedly",
+)
+header_without_companion = header_without_companion.replace(include_guard_open, "", 1)
+header_without_companion = header_without_companion.replace(include_guard_close, "", 1)
 require(
     header_without_companion == canonical_header,
-    "P1C public runtime-event ABI/declaration surface changed outside the reviewed additive source-step companion API",
+    "P1C public runtime-event ABI/declaration surface changed outside reviewed P2 companion API and recovery include-guard hardening",
 )
 
 text = header_text + "\n" + source_text
