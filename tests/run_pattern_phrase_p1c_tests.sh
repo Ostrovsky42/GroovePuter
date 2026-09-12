@@ -27,7 +27,7 @@ fi
 
 RUNTIME_SOURCES=" ${DEFAULT_SOURCES} "
 RUNTIME_SOURCES="${RUNTIME_SOURCES// sdl_main.cpp / }"
-RUNTIME_SOURCES="${RUNTIME_SOURCES} ../tests/test_pattern_phrase_p0_runtime.cpp ../src/midi/usb_midi_output.cpp"
+RUNTIME_SOURCES="${RUNTIME_SOURCES} ../tests/test_pattern_phrase_p0_runtime_ratified.cpp ../src/midi/usb_midi_output.cpp"
 
 SDL_CFLAGS="$(sdl2-config --cflags 2>/dev/null || true)"
 SDL_LIBS="$(sdl2-config --libs 2>/dev/null || true)"
@@ -48,7 +48,7 @@ P0_FLAGS="-std=c++20 -I.. -I. -include bits/stdc++.h -include arduino_compat.h -
     $RUNTIME_SOURCES $SDL_LIBS $SDL_GFX_LIBS -o "$P0_BUILD/p0-runtime"
   "$P0_BUILD/p0-runtime"
 ) | tee "$P0_BUILD/p0-runtime.out"
-printf '%s\n' 'P1C P0 legacy scheduler characterization: PASS'
+printf '%s\n' 'P1C P0 owner-cleanup characterization: PASS'
 
 python3 tests/test_pattern_phrase_p1c_source_contract.py
 
