@@ -54,8 +54,12 @@ selection = between(
     "void MiniAcid::advanceSongPlayhead()",
 )
 require(
-    "if (playing) publishPatternAllNotesOff_();" in selection,
-    "Song physical-pattern selection must still publish PatternPlayer cleanup",
+    "hardBarrierPatternPlayback_();" in selection,
+    "Song physical-pattern selection must cross the owner-aware Pattern playback barrier",
+)
+require(
+    "publishPatternAllNotesOff_();" not in selection,
+    "Song physical-pattern selection must not bypass the runtime owner with global cleanup",
 )
 
 require(
@@ -75,4 +79,4 @@ require(
     "post-#419 USB/DIN tee ownership contract changed",
 )
 
-print("P0 source contract: OK")
+print("P0 source contract: owner-aware Song cleanup barrier=RATIFIED")
