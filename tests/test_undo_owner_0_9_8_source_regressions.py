@@ -68,9 +68,12 @@ def main() -> None:
     require('#include "../../state/undo_owner.h"' in PATTERN_CPP and
             '#include "../../state/undo_receipts.h"' in PATTERN_CPP,
             "Pattern editor must consume the canonical owner/receipt boundary")
+
+    # Locate Reset by its user-visible trigger, not by a historical comment or
+    # source position. The contract below is the behavior that R2 actually owns.
     reset_block = between(
         PATTERN,
-        "// Alt + Backspace = Reset Pattern. R2 routes this one destructive edit",
+        "if (ui_event.alt && (key == '\\b' || key == 0x7F)) {",
         "if (is_backspace && has_selection_)")
     require("captureCurrentSynthPatternUndo" in reset_block,
             "Pattern reset must PREPARE a stable before-state receipt")
