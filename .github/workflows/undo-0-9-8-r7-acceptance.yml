@@ -16,6 +16,8 @@ on:
       - 'docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md'
       - 'tests/run_undo_0_9_8_r6_tests.sh'
       - 'tests/run_undo_0_9_8_r7_tests.sh'
+      - 'tests/test_undo_owner_0_9_8_source_regressions.py'
+      - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
       - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
   pull_request:
     paths:
@@ -32,6 +34,8 @@ on:
       - 'docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md'
       - 'tests/run_undo_0_9_8_r6_tests.sh'
       - 'tests/run_undo_0_9_8_r7_tests.sh'
+      - 'tests/test_undo_owner_0_9_8_source_regressions.py'
+      - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
       - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
 
 jobs:
