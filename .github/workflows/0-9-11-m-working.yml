@@ -92,6 +92,9 @@ jobs:
       - name: Preserve Melody working semantics
         run: bash tests/run_0_9_11_m_working_melody_compat_tests.sh
 
+      - name: Working Pattern manual note edit transaction
+        run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+
       - name: Characterize remaining M-WORKING RED without STOP
         shell: bash
         run: |

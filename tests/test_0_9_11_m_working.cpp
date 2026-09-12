@@ -179,7 +179,31 @@ void test_pattern_undo_is_currently_persistent() {
 
 void test_discard_and_modified_contract_absence() {
   red("MW-E", "no explicit discardWorking domain operation exists on this baseline");
-  red("MW-K", "no derived Working-vs-Accepted modified query exists on this baseline");
+
+  MiniAcid engine{44100.0f, nullptr};
+  engine.sceneManager().loadDefaultScene();
+  SynthPattern& accepted =
+      engine.sceneManager().currentScene().synthABanks[0].patterns[0];
+  accepted.steps[0].note = 60;
+  const int page = engine.currentPageIndex();
+  const int bank = engine.current303BankIndex(0);
+  const int pattern = engine.display303LocalPatternIndex(0);
+  const bool emptyIsClean = !engine.hasModifiedWorking303Pattern(0);
+
+  SynthPattern working = accepted;
+  working.steps[0].note = 61;
+  engine.workingMaterial_[0].storePattern(working, page, bank, pattern);
+  const bool patternModified = engine.hasModifiedWorking303Pattern(0);
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+  const bool survivesSourceToggle = engine.hasModifiedWorking303Pattern(0);
+
+  if (emptyIsClean && patternModified && survivesSourceToggle &&
+      accepted.steps[0].note == 60) {
+    green("MW-K", "modified state is derived from exact-bound WORKING versus ACCEPTED and survives playback-source toggles");
+  } else {
+    red("MW-K", "derived modified-state contract is missing or coupled to playback source");
+  }
+
   red("MW-L", "no modified-Working target-switch refusal contract exists on this baseline");
 }
 
