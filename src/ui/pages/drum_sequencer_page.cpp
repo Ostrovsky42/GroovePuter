@@ -432,11 +432,13 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
     return true;
   }
 
-  // P owns the single P1/P2/P3 request selector. O remains blocked from the old
-  // sketch-level Synth B generator; I remains a valid Q-I pattern-slot key.
+  // P cycles the shared internal realization selector. The runtime keeps its
+  // stable P1/P2/P3 contract, while the musician-facing projection is STYLE.
+  // O remains blocked from the old sketch-level Synth B generator; I remains a
+  // valid Q-I pattern-slot key.
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
     return true;
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'o') {
