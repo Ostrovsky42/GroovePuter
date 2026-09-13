@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-c9-midi-repair:
@@ -18,6 +18,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+
+      - name: Apply idempotent product wiring
+        run: python3 tools/apply_c9_midi_runtime_wiring.py
 
       - name: C9 focused MIDI repair contracts
         run: bash tests/run_c9_midi_repair_tests.sh
@@ -50,5 +53,25 @@ jobs:
           bash scripts/check_cardputer_dram_budget.sh \
             "${GITHUB_WORKSPACE}/build/c9-midi-repair/GroovePuter.ino.elf"
 
+      - name: Validate patch
+        run: git diff --check
+
+      - name: Publish verified runtime wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "runtime wiring already published"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_service.h \
+            src/input/internal_synth_output.cpp
+          git commit -m "fix(c9): wire melodic USB MIDI input runtime"
+          git push origin "HEAD:fix/20260913-c9-midi-convergence-r1"
+
       - name: Clean tree
-        run: git diff --exit-code
+        run: git diff --exit-code && test -z "$(git status --porcelain)"
