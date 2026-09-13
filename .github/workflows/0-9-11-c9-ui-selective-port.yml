@@ -49,8 +49,8 @@ jobs:
 
           replace_once(
               'src/ui/pages/feel_page.cpp',
-              '#include "../ui_input.h"\n',
-              '#include "../ui_input.h"\n#include "../workflow_mode.h"\n')
+              '#include "../ui_common.h"\n',
+              '#include "../ui_common.h"\n#include "../workflow_mode.h"\n')
           replace_once(
               'src/ui/pages/feel_page.cpp',
               '  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  const int nav = UIInput::navCode(event);',
