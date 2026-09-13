@@ -72,13 +72,14 @@ def main() -> None:
             "captureCurrentSynthPatternUndo" in synth_parent and
             "synthPatternUndoTargetAvailable" in synth_parent,
             "Pattern Undo routing must stay local while STOP Synth G gains bounded prepare ownership")
-    require('"REDO: PATTERN"' in synth_parent and '"UNDO: PATTERN"' in synth_parent,
-            "Pattern one-slot feedback must distinguish Undo from Redo")
+    require('"REDO: MATERIAL"' in synth_parent and '"UNDO: MATERIAL"' in synth_parent and
+            '"REDO: STEPS"' in synth_parent and '"UNDO: STEPS"' in synth_parent,
+            "Synth one-slot feedback must distinguish Material/Steps Undo from Redo")
     require('"REDO: SONG"' in song and '"UNDO: SONG"' in song,
             "Song one-slot feedback must distinguish Undo from Redo")
-    require('"REDO: PHRASE"' in phrase and '"UNDO: PHRASE"' in phrase and
+    require('"REDO: MATERIAL"' in phrase and '"UNDO: MATERIAL"' in phrase and
             '"REDO: SONG"' in phrase and '"UNDO: SONG"' in phrase,
-            "Phrase one-slot feedback must distinguish Undo from Redo")
+            "Material one-slot feedback must distinguish Undo from Redo while preserving Song feedback")
 
     # Ctrl+Z is globally reserved. The former Cutoff reset moves to Ctrl+A;
     # X/C/V retain their existing reset functions.
