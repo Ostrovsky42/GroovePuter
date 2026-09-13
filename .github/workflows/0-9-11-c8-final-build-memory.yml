@@ -35,22 +35,39 @@ jobs:
       - name: Install pinned M5Stack dependencies
         run: bash scripts/install_arduino_deps.sh
 
-      - name: Build exact-head Cardputer ADV product image
+      - name: Build exact-head flash-safe Cardputer ADV product image
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/build/c8-evidence"
           BUILD_PATH="${GITHUB_WORKSPACE}/build/c8-cardputer-product" \
-            bash scripts/build_cardputer_memory_baseline.sh normal product --warnings all \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
             | tee "${GITHUB_WORKSPACE}/build/c8-evidence/build.log"
 
-      - name: Enforce Cardputer DRAM budget
+      - name: Report and enforce Cardputer DRAM budget
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/check_cardputer_dram_budget.sh \
-            "${GITHUB_WORKSPACE}/build/c8-cardputer-product/GroovePuter.ino.elf" \
+          ELF="${GITHUB_WORKSPACE}/build/c8-cardputer-product/GroovePuter.ino.elf"
+          bash scripts/report_cardputer_memory_baseline.sh "${ELF}" \
+            | tee "${GITHUB_WORKSPACE}/build/c8-evidence/memory-report.log"
+          bash scripts/check_cardputer_dram_budget.sh "${ELF}" \
             | tee "${GITHUB_WORKSPACE}/build/c8-evidence/dram-budget.log"
+
+      - name: Prove flash artifact is FS1B candidate-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c8-cardputer-product"
+          MAP="${BUILD_PATH}/.arduino-build/GroovePuter.ino.map"
+          test -f "${MAP}"
+          grep -Fq "fatfs-dynbuffers/libfatfs.a" "${MAP}"
+          if grep -Fq "/lib/libfatfs.a" "${MAP}"; then
+            echo "Stock FatFs archive survived into final link map" >&2
+            exit 1
+          fi
+          echo "FS1B final artifact: candidate FatFs present, stock FatFs absent" \
+            | tee "${GITHUB_WORKSPACE}/build/c8-evidence/fs1b-link-proof.txt"
 
       - name: Record exact-head firmware fingerprints
         shell: bash
@@ -69,7 +86,7 @@ jobs:
             | tee "${EVIDENCE_PATH}/SHA256SUMS.txt"
           test -s "${EVIDENCE_PATH}/SHA256SUMS.txt"
 
-      - name: Upload exact-head Cardputer build evidence
+      - name: Upload exact-head flashable Cardputer build evidence
         uses: actions/upload-artifact@v4
         with:
           name: grooveputer-0.9.11-c8-${{ github.sha }}
@@ -77,6 +94,7 @@ jobs:
             build/c8-cardputer-product/
             build/c8-evidence/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
 
       - name: Prove verification did not mutate tracked source
