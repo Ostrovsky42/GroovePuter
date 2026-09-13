@@ -1,4 +1,4 @@
-name: 0.9.11 C5 Material UX Convergence
+name: 0.9.11 C5 Material UX Final Gate
 
 on:
   push:
@@ -10,11 +10,57 @@ permissions:
   contents: read
 
 jobs:
-  c5-material-ux:
+  verify-c5-material-ux:
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove C5 production lineage
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 53cfd736ce645bc37d86e3b9766738ca4486fcfb HEAD
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+
       - name: Focused C5 Material UX contracts
         run: bash tests/run_0_9_11_c5_material_ux_tests.sh
+
+      - name: Existing host preservation matrix
+        run: bash tests/run_host_tests.sh
+
+      - name: Stage15 tonal integration preservation
+        run: bash tests/run_stage15_tonal_integration_tests.sh
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build Cardputer ADV product image
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c5-cardputer-product" \
+            bash scripts/build_cardputer_memory_baseline.sh normal product --warnings all
+
+      - name: Enforce Cardputer DRAM budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check_cardputer_dram_budget.sh \
+            "${GITHUB_WORKSPACE}/build/c5-cardputer-product/GroovePuter.ino.elf"
+
+      - name: Prove verification did not mutate tracked source
+        run: |
+          set -euo pipefail
+          git diff --exit-code
