@@ -1,0 +1,39 @@
+name: 0.9.11 C1 Full Convergence
+
+on:
+  push:
+    branches:
+      - integration/20260913-0.9.11-c1-full
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HARDWARE_ROOT: 60c43014af96c91f2b38a0423ad839fb15f881c8
+  C1A_ROOT: c168803c26b6e67d3f661494a18493eb459fe022
+
+jobs:
+  c1-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove exact head and hardware ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor "${HARDWARE_ROOT}" HEAD
+          git merge-base --is-ancestor "${C1A_ROOT}" HEAD
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: C1 identity Working runtime promotion retarget contracts
+        run: bash tests/run_0_9_11_c1_full_tests.sh
