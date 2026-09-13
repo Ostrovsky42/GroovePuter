@@ -39,4 +39,8 @@ popd >/dev/null
   tests/test_0_9_11_c1_identity_promotion.cpp -o "$BUILD/c1_identity_promotion"
 "$BUILD/c1_identity_promotion"
 
+"$CXX" -std=c++20 -Wall -Wextra -Werror -I. -Iplatform_sdl \
+  tests/test_0_9_11_c1_material_resolution.cpp -o "$BUILD/c1_material_resolution"
+"$BUILD/c1_material_resolution"
+
 echo "C1 FULL CONTRACTS: PASS"
