@@ -1311,7 +1311,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   const int targetPage = UI::songPatternPageShortcut(
       key, ui_event.ctrl, ui_event.meta, ui_event.alt);
   if (targetPage >= 0) {
-    mini_acid_.requestPageSwitch(targetPage);
+    mini_acid_.tryManualPageSwitch(targetPage);
     char buf[20];
     std::snprintf(buf, sizeof(buf), "Page: %d", targetPage + 1);
     showToast(buf, 800);

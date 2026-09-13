@@ -106,7 +106,7 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
     if (mini_acid_.songModeEnabled()) return;
     focusPatternRow();
     setPatternCursor(index);
-    withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, index); });
+    withAudioGuard([&]() { mini_acid_.tryManual303TargetSwitch(voice_index_, index); });
   };
   pattern_bar_->setCallbacks(std::move(pattern_callbacks));
   BankSelectionBarComponent::Callbacks bank_callbacks;
@@ -151,7 +151,7 @@ void PatternEditPage::setBankIndex(int bankIndex) {
   if (bankIndex >= kBankCount) bankIndex = kBankCount - 1;
   if (bank_index_ == bankIndex) return;
   bank_index_ = bankIndex;
-  withAudioGuard([&]() { mini_acid_.set303BankIndex(voice_index_, bank_index_); });
+  withAudioGuard([&]() { mini_acid_.tryManual303BankSwitch(voice_index_, bank_index_); });
 }
 
 void PatternEditPage::ensureStepFocus() {
@@ -563,7 +563,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         }
         int next = mini_acid_.currentPageIndex() - 1;
         if (next < 0) next = UI::kPageCount - 1;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -578,7 +578,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           break;
         }
         int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -642,7 +642,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       focusPatternRow();
       setPatternCursor(patternIdx);
       withAudioGuard([&]() {
-          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+          mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
 
           if (chaining_mode_) {
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
@@ -693,7 +693,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       if (mini_acid_.songModeEnabled()) return true;
       int cursor = activePatternCursor();
       setPatternCursor(cursor);
-      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, cursor); });
+      withAudioGuard([&]() { mini_acid_.tryManual303TargetSwitch(voice_index_, cursor); });
       return true;
     }
   }
@@ -897,7 +897,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       focusPatternRow();
       setPatternCursor(patternIdx);
       withAudioGuard([&]() {
-          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+          mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
 
           if (chaining_mode_) {
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;

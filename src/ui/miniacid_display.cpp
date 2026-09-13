@@ -508,12 +508,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
             if (prev < 0) prev = kMaxPages - 1;
-            mini_acid_.requestPageSwitch(prev);
+            mini_acid_.tryManualPageSwitch(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
             int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
-            mini_acid_.requestPageSwitch(next);
+            mini_acid_.tryManualPageSwitch(next);
             return true;
         }
 

@@ -627,7 +627,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       if (ui_event.alt) {
         int next = mini_acid_.currentPageIndex() - 1;
         if (next < 0) next = UI::kPageCount - 1;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -638,7 +638,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case GROOVEPUTER_RIGHT:
       if (ui_event.alt) {
         int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
