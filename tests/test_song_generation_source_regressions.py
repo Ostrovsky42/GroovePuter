@@ -152,8 +152,8 @@ def main() -> None:
     require("mini_acid_.stop()" not in generated_action and
             "mini_acid_.start()" not in generated_action,
             "Phrase generation must never hide a stop/generate/restart cycle")
-    require("G:GEN ENT/D/W" in phrase_page,
-            "Phrase Core footer does not expose G together with its command legend")
+    require("G:NEW ENT/D/W" in phrase_page,
+            "Material Bank footer does not expose NEW together with its command legend")
     require("ui_event.ctrl && !ui_event.alt && !ui_event.meta" in phrase_page,
             "Phrase page must still expose the Ctrl+arrow TO/8-bar destination controls")
 
