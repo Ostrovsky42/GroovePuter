@@ -775,7 +775,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       if (mini_acid_.songModeEnabled()) return true;
       setPatternCursor(patternIdx);
       withAudioGuard([&]() {
-        mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+        mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
       });
       if (chaining_mode_) {
         const SongTrack track = voice_index_ == 0

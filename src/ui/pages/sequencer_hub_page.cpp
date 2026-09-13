@@ -982,7 +982,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
             if (isDrumTrack(selectedTrack_)) {
                 mini_acid_.setDrumBankIndex(bankIdx);
             } else {
-                mini_acid_.set303BankIndex(selectedTrack_, bankIdx);
+                mini_acid_.tryManual303BankSwitch(selectedTrack_, bankIdx);
             }
         });
         UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
@@ -996,7 +996,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
                 if (isDrumTrack(selectedTrack_)) {
                     mini_acid_.setDrumPatternIndex(patIdx);
                 } else {
-                    mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
+                    mini_acid_.tryManual303TargetSwitch(selectedTrack_, patIdx);
                 }
             });
             char buf[32];

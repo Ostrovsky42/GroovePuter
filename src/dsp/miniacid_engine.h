@@ -339,6 +339,10 @@ public:
                                 int semitoneDelta);
   const SynthPattern* currentWorking303Pattern(int voiceIndex) const;
   bool hasModifiedWorking303Pattern(int voiceIndex) const;
+  bool tryManual303TargetSwitch(int voiceIndex, int bankIndex, int patternIndex);
+  bool tryManual303TargetSwitch(int voiceIndex, int patternIndex);
+  bool tryManual303BankSwitch(int voiceIndex, int bankIndex);
+  bool tryManualPageSwitch(int pageIndex);
 
   void clear303StepNote(int voiceIndex, int stepIndex);
   void clear303Step(int stepIndex, int voiceIndex);
@@ -871,6 +875,49 @@ inline bool MiniAcid::adjustWorking303StepNote(
 
   storage.storePattern(candidate, current);
   return true;
+}
+
+
+inline bool MiniAcid::tryManual303TargetSwitch(
+    int voiceIndex, int bankIndex, int patternIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  if (bankIndex < 0 || bankIndex >= kBankCount || patternIndex < 0 ||
+      patternIndex >= Bank<SynthPattern>::kPatterns) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (current303BankIndex(idx) == bankIndex &&
+      display303LocalPatternIndex(idx) == patternIndex) {
+    return true;
+  }
+  if (hasModifiedWorking303Pattern(idx)) return false;
+  set303BankIndex(idx, bankIndex);
+  set303PatternIndex(idx, patternIndex);
+  return current303BankIndex(idx) == bankIndex &&
+         display303LocalPatternIndex(idx) == patternIndex;
+}
+
+inline bool MiniAcid::tryManual303TargetSwitch(
+    int voiceIndex, int patternIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return tryManual303TargetSwitch(
+      voiceIndex, current303BankIndex(voiceIndex), patternIndex);
+}
+
+inline bool MiniAcid::tryManual303BankSwitch(
+    int voiceIndex, int bankIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int patternIndex = display303LocalPatternIndex(voiceIndex);
+  if (patternIndex < 0) return false;
+  return tryManual303TargetSwitch(voiceIndex, bankIndex, patternIndex);
+}
+
+inline bool MiniAcid::tryManualPageSwitch(int pageIndex) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages) return false;
+  if (pageIndex == currentPageIndex()) return true;
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (hasModifiedWorking303Pattern(voice)) return false;
+  }
+  requestPageSwitch(pageIndex);
+  return targetPageIndex() == pageIndex || currentPageIndex() == pageIndex;
 }
 
 #endif // MINIACID_ENGINE_H
