@@ -5,15 +5,52 @@ on:
     branches:
       - fix/20260913-c9-hardware-defects
 
+permissions:
+  contents: write
+
 jobs:
   make-phrase-linear-boundary:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Install SDL host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev
+      - name: Apply bounded MAKE PHRASE production fix
+        id: patch
+        run: |
+          python3 tools/apply_c9_make_phrase_boundary_fix.py
+          git diff --check
+          if git diff --quiet -- src/dsp/miniacid_engine.cpp; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/dsp/miniacid_engine.cpp
+            git commit -m "fix(c9): bound MAKE PHRASE lifetime at linear Melody edge"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Prove MAKE PHRASE linear boundary
         run: bash tests/run_c9_make_phrase_linear_boundary.sh
+      - name: Preserve cyclic Pattern projection contract
+        run: bash tests/run_pattern_phrase_p1c_tests.sh
+      - name: Preserve Melody fail-closed persistence
+        run: bash tests/run_melody_store_tests.sh
+      - name: Preserve 0.9.11 Working integration
+        run: |
+          bash tests/run_0_9_11_m_working_a2b_mwk_tests.sh
+          bash tests/run_0_9_11_m_working_a2b_integration.sh
+      - name: Verify exact candidate tree is clean
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ steps.patch.outputs.candidate_sha }}"
+          git diff --exit-code
+          git status --porcelain
+          echo "VERIFIED_SHA=$(git rev-parse HEAD)"
+      - name: Publish verified production fix
+        if: steps.patch.outputs.changed == 'true'
+        run: git push origin HEAD:fix/20260913-c9-hardware-defects
