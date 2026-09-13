@@ -26,11 +26,11 @@ def main() -> None:
         require("generationLevelShortName" not in source,
                 f"{name} leaks P1/P2/P3 engineering vocabulary to the musician")
 
-    require('"P:STYLE"' in GENRE,
+    require("P:STYLE" in GENRE,
             "GENRE footer must name the musician-facing STYLE action")
-    require('"P:STYLE"' in FEEL,
+    require("P:STYLE" in FEEL,
             "FEEL footer must name the musician-facing STYLE action")
-    require('"P:LEVEL"' not in FEEL,
+    require("P:LEVEL" not in FEEL,
             "FEEL footer must not expose the internal P-level")
 
     print("0.9.11 C5 STYLE projection source contracts: OK")
