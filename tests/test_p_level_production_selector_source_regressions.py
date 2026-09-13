@@ -119,8 +119,9 @@ require(
     "P3 break benchmark disappeared",
 )
 
-# P is reachable from both GENERATE pages and the main DRUMS grid, always through
-# the same session owner. Cardputer may deliver a printable key or only scancode.
+# P remains reachable from both GENERATE pages and the main DRUMS grid through
+# the same session owner. The internal P1/P2/P3 contract is projected to the
+# musician as STYLE; Cardputer may deliver a printable key or only scancode.
 for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
     require(
         source,
@@ -129,16 +130,22 @@ for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
     )
     require(
         source,
-        "GroovePuterState::generationLevelShortName(level)",
-        f"{name} no longer reports the selected P-level",
+        "GroovePuterState::generationStyleName(level)",
+        f"{name} no longer projects the selected realization as STYLE",
     )
     require(
         source,
         "GROOVEPUTER_P",
         f"{name} no longer recognizes scancode-only P",
     )
+    if "GroovePuterState::generationLevelShortName(level)" in source:
+        raise AssertionError(f"{name} leaks the internal P-level to the musician")
     if "CONTINUE: Ctrl+Alt+G" in source:
         raise AssertionError(f"{name} still treats plain P as continuation")
+
+require(FEEL, "P:STYLE", "FEEL footer no longer exposes STYLE control")
+if "P:LEVEL" in FEEL:
+    raise AssertionError("FEEL footer exposes internal P-level vocabulary")
 
 # Existing generation ownership remains separate: normal generation is G,
 # phrase audition is Ctrl+Alt+G, and CHAOS stays outside P1/P2/P3/reroll.
@@ -174,7 +181,7 @@ for needle in (
     "regenerateWithQuantizedCommit(",
     "if (doRegenerate && mini_acid_.isPlaying())",
     "AudioTask keeps rendering the current bar",
-    'resultLabel = "GEN -> NEXT BAR";',
+    'resultLabel = "TAKE -> NEXT BAR";',
 ):
     require(GENRE, needle, f"GENRE quantized route changed: {needle}")
 if "mini_acid_.stop();" in GENRE or "mini_acid_.start();" in GENRE:
