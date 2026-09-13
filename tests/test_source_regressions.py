@@ -259,16 +259,8 @@ def test_atlas_recipe_precedes_random_fallback() -> None:
     fallback_pos = block.index("getCompiledGenerativeParams()")
     require(atlas_pos < fallback_pos,
             "compiled Atlas patterns must be attempted before random fallback")
-    # GF2-I2: Atlas material application is not a swing owner either. Swing
-    # belongs to FeelSettings; the source pattern's analysed swing is evidence
-    # about the corpus, not a live control.
     require("scene.feel.swingPct" not in block,
             "Atlas materialization must not write the musician's FEEL swing")
-
-    # GF2-I1: Atlas material application is not a tempo owner. The generation
-    # corridor of the requested genre/recipe resolves the production tempo once,
-    # and the request/candidate/commit path carries it. Atlas source BPM stays
-    # readable provenance.
     require("setBpm(" not in block,
             "Atlas materialization must not write the production tempo")
     require("atlasMetadata.bpm" in block,
@@ -335,9 +327,6 @@ def test_genre_page_profile_only_never_generates_or_retempos() -> None:
         require("doApplyTempo, requestedBpm" in call.split(";")[0],
                 "generation requests must carry the resolved corridor tempo")
 
-    # PROFILE ONLY selects language without rewriting material or tempo: both
-    # generation entries stay behind doRegenerate, and Genre Apply never writes
-    # a tempo of its own.
     require("if (doRegenerate && mini_acid_.isPlaying())" in block,
             "PLAY generation must stay behind the regenerate opt-in")
     require(block.count("regenerateWithQuantizedCommit") == 2,
@@ -457,8 +446,8 @@ def test_enter_applies_selected_recipe() -> None:
     footer_start = page.index("UI::drawStandardFooter(gfx")
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
-    require('"G:GEN P:DEPTH M:APPLY"' in footer_block,
-            "Genre footer must document generation, DEPTH and ApplyMode controls")
+    require('"G:NEW TAKE P:STYLE M:APPLY"' in footer_block,
+            "Genre footer must document NEW TAKE, STYLE and ApplyMode controls")
 
 
 def test_performance_workflow_boundaries() -> None:
