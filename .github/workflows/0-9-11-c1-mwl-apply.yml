@@ -1,0 +1,62 @@
+name: 0.9.11 C1 MW-L Apply
+
+on:
+  push:
+    branches:
+      - feature/20260913-c1-mwl-exec
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-mwl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove exact base lineage
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor 25e15319a78352818e0dd3cd386b351b275e57a0 HEAD
+
+      - name: Apply deterministic MW-L patch
+        run: |
+          set -euo pipefail
+          python3 tools/c1_mwl_retarget_patch.py
+          git diff --check
+          git diff --stat
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Prove MW-L before publication
+        run: bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
+
+      - name: Publish bounded production commit
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "MW-L production already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dsp/miniacid_engine.h \
+                  src/ui/pages/sequencer_hub_page.cpp \
+                  src/ui/pages/pattern_edit_page_legacy.h \
+                  src/ui/pages/pattern_edit_page.cpp \
+                  src/ui/miniacid_display.cpp \
+                  src/ui/pages/song_page.cpp \
+                  src/ui/pages/drum_sequencer_page_legacy.h
+          unexpected="$(git diff --cached --name-only | grep -Ev '^(src/dsp/miniacid_engine\.h|src/ui/miniacid_display\.cpp|src/ui/pages/(sequencer_hub_page\.cpp|pattern_edit_page_legacy\.h|pattern_edit_page\.cpp|song_page\.cpp|drum_sequencer_page_legacy\.h))$' || true)"
+          test -z "${unexpected}"
+          git commit -m "feat(c1): guard dirty Working retargets"
+          git push origin HEAD:feature/20260913-c1-mwl-exec
