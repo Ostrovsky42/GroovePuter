@@ -68,9 +68,17 @@ def main() -> None:
     require('#include "../../state/undo_owner.h"' in PATTERN_CPP and
             '#include "../../state/undo_receipts.h"' in PATTERN_CPP,
             "Pattern editor must consume the canonical owner/receipt boundary")
+
+    # Bind this proof to executable control flow rather than a historical
+    # explanatory comment. The public wrapper delegates the destructive chord to
+    # the retained owner path; that owner path must still implement the complete
+    # capture -> no-op check -> commit -> audio-guarded clear transaction.
+    require("if (ui_event.alt && isBackspace)" in PATTERN_CPP and
+            "return handleEventLegacyUnowned(ui_event);" in PATTERN_CPP,
+            "public Pattern wrapper must keep Alt+Backspace delegated to the retained owner")
     reset_block = between(
         PATTERN,
-        "// Alt + Backspace = Reset Pattern. R2 routes this one destructive edit",
+        "if (ui_event.alt && (key == '\\b' || key == 0x7F)) {",
         "if (is_backspace && has_selection_)")
     require("captureCurrentSynthPatternUndo" in reset_block,
             "Pattern reset must PREPARE a stable before-state receipt")
