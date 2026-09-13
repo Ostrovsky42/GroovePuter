@@ -1,0 +1,27 @@
+name: 0.9.11 C2 Phrase Bank Inclusion
+
+on:
+  push:
+    branches:
+      - integration/20260913-0.9.11-full-convergence-r1
+  workflow_dispatch:
+
+jobs:
+  phrase-bank-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Prove donor blob is included
+        run: |
+          set -euo pipefail
+          test "$(git hash-object src/phrase/phrase_bank_state.h)" = "51c2568167413fe3810d226dab664ebbc5c74eb3"
+      - name: Compile Phrase Bank characterization
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_phrase_bank_qwertyui_p1.cpp \
+            -o /tmp/test_phrase_bank_qwertyui_p1
+      - name: Run Phrase Bank characterization
+        run: /tmp/test_phrase_bank_qwertyui_p1
