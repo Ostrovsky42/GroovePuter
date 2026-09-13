@@ -1,0 +1,52 @@
+name: 0.9.11 C6+C7 Ratification CI Closure
+
+on:
+  push:
+    branches:
+      - feature/20260913-c6-c7-ratification-ci-closure
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-c6-c7-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove convergence lineage and no production delta after C5
+        run: |
+          set -euo pipefail
+          C5_ROOT=c210453c6abe0bb5cd23e8fa2075b07d8937f19d
+          git merge-base --is-ancestor "${C5_ROOT}" HEAD
+          git diff --exit-code "${C5_ROOT}" HEAD -- src
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Cumulative Undo R2-R7 acceptance chain
+        run: bash tests/run_undo_0_9_8_r7_tests.sh
+
+      - name: Preserve C4 MIDI convergence
+        run: bash tests/run_0_9_11_c4_midi_convergence_tests.sh
+
+      - name: Preserve C5 Material UX convergence
+        run: bash tests/run_0_9_11_c5_material_ux_tests.sh
+
+      - name: Existing host preservation matrix
+        run: bash tests/run_host_tests.sh
+
+      - name: Stage15 tonal integration preservation
+        run: bash tests/run_stage15_tonal_integration_tests.sh
+
+      - name: Prove verification did not mutate tracked source
+        run: |
+          set -euo pipefail
+          git diff --exit-code
