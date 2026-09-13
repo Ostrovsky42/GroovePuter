@@ -35,6 +35,15 @@ jobs:
       - name: Install pinned M5Stack dependencies
         run: bash scripts/install_arduino_deps.sh
 
+      - name: Fetch exact ESP-IDF source object for FS1B
+        run: |
+          set -euo pipefail
+          IDF_COMMIT=858a988d6eb90f54661abe282c523879c6ad0116
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin "${IDF_COMMIT}"
+          git -C "$HOME/esp-idf" cat-file -e "${IDF_COMMIT}^{commit}"
+
       - name: Build exact-head flash-safe Cardputer ADV product image
         shell: bash
         run: |
