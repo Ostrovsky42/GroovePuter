@@ -1,0 +1,19 @@
+name: 0.9.11 C9 hardware defect regression
+
+on:
+  push:
+    branches:
+      - fix/20260913-c9-hardware-defects
+
+jobs:
+  make-phrase-linear-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev
+      - name: Prove MAKE PHRASE linear boundary
+        run: bash tests/run_c9_make_phrase_linear_boundary.sh
