@@ -1602,11 +1602,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return clearPattern();
   }
 
-  // Tab clears pattern (legacy behavior)
-  if (key == '\t') {
-    return clearPattern();
-  }
-
   if (lowerKey == 'g') {
     if (ui_event.ctrl) {
         // Ctrl+G - Cycle Mode

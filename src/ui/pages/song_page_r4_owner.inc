@@ -217,6 +217,15 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return handleEventLegacyUnowned(ui_event);
   }
 
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      const int row = cursorRow();
+      requestPageTransition(WorkflowPages::kPhrase, row + 1);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') return true;
+  }
+
   // Generation owns its existing PREPARE/commit path. Queued reverse belongs
   // to 0.9.9 ACTIVATE; R4 only expires a stale arrangement receipt when a new
   // reverse transition is actually scheduled.
