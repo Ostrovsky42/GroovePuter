@@ -290,7 +290,7 @@ void FeelPage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "U/D:FIELD L/R:CHANGE",
-                         "HOLD L/R:ACCEL P:LEVEL");
+                         "HOLD L/R:ACCEL P:STYLE");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
@@ -323,13 +323,13 @@ bool FeelPage::handleEvent(UIEvent& event) {
   const bool keyP = lowerKey == 'p' || event.scancode == GROOVEPUTER_P;
   if (!event.ctrl && !event.alt && !event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
     return true;
   }
 
   // The GENERATE workflow must not fall through to the old global I/O
-  // GrooveboxModeManager shortcuts. P is now owned above by the single
-  // P1/P2/P3 generation-request selector.
+  // GrooveboxModeManager shortcuts. P cycles the shared internal realization
+  // selector above, but the musician-facing projection is STYLE.
   if (!event.ctrl && !event.alt && !event.meta &&
       (lowerKey == 'i' || lowerKey == 'o')) {
     UI::showToast("LEGACY SYNTH GEN OFF", 1200);
