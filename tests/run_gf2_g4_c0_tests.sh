@@ -37,7 +37,20 @@ build() {
   "$compiler" "${CXXFLAGS[@]}" "$@" "${resolved[@]}" "$test" -o "$output"
 }
 
-MAIN_TEST="${ROOT}/tests/test_gf2_g4_c0_materialized_corpus.cpp"
+# The C0 research fixture predates the current GenerationCompositionResult:
+# harmonicChangeRate no longer exists there. Keep the historical measurement
+# source intact, but compile an exact compatibility projection that removes only
+# that obsolete fingerprint term. Fail closed if the expected legacy line drifts.
+SOURCE_MAIN_TEST="${ROOT}/tests/test_gf2_g4_c0_materialized_corpus.cpp"
+MAIN_TEST="${BUILD}/test_gf2_g4_c0_materialized_corpus.current.cpp"
+OBSOLETE='  hash = mixByte(hash, static_cast<uint8_t>(composition.harmonicChangeRate));'
+count="$(grep -Fxc "$OBSOLETE" "$SOURCE_MAIN_TEST" || true)"
+if [[ "$count" != "1" ]]; then
+  echo "G4-C0 fixture compatibility anchor mismatch: expected 1, got ${count}" >&2
+  exit 1
+fi
+grep -Fvx "$OBSOLETE" "$SOURCE_MAIN_TEST" > "$MAIN_TEST"
+
 CROSS_TEST="${ROOT}/tests/test_gf2_g4_c0_cross_genre.cpp"
 
 build "${CXX:-g++}" "$BUILD/g4-c0" "$MAIN_TEST"
