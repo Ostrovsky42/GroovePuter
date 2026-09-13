@@ -1,0 +1,20 @@
+name: 0.9.11 C5 Material UX Convergence
+
+on:
+  push:
+    branches:
+      - feature/20260913-c5-material-ux-convergence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  c5-material-ux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Focused C5 Material UX contracts
+        run: bash tests/run_0_9_11_c5_material_ux_tests.sh
