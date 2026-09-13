@@ -1,0 +1,18 @@
+name: 0.9.11 C4 MIDI Convergence
+
+on:
+  push:
+    branches:
+      - feature/20260913-c4-midi-convergence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  c4-midi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Focused C4 MIDI contracts
+        run: bash tests/run_0_9_11_c4_midi_convergence_tests.sh
