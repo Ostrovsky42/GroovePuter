@@ -21,6 +21,10 @@ int main() {
   scene.materialSlots[1][1].id = MaterialId{202};
   scene.synthABanks[0].patterns[0].steps[0].note = 60;
 
+  // Model the real post-boot state: Pattern Working edits are fail-closed until
+  // the resident Pattern bank is published and activeMaterial says Pattern.
+  assert(engine.rebuildPatternRuntimeEventBank());
+
   assert(engine.currentPageIndex() == 0);
   assert(engine.current303BankIndex(0) == 0);
   assert(engine.display303LocalPatternIndex(0) == 0);
@@ -58,6 +62,7 @@ int main() {
   clean.sceneManager().loadDefaultScene();
   clean.sceneManager().currentScene().materialSlots[0][0].id = MaterialId{301};
   clean.sceneManager().currentScene().materialSlots[0][1].id = MaterialId{302};
+  assert(clean.rebuildPatternRuntimeEventBank());
   assert(clean.tryManual303TargetSwitch(0, 0, 1));
   assert(clean.display303LocalPatternIndex(0) == 1);
   assert(clean.tryManualPageSwitch(1));
