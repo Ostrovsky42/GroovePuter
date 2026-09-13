@@ -1,0 +1,118 @@
+name: 0.9.11 C9 selective UI port
+
+on:
+  push:
+    branches:
+      - feature/20260913-c9-ui-selective-port
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  peer-tab-navigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Characterize updated Tab contract
+        id: red
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python3 tests/test_ui_constitution_u1g_tab_grammar.py; then
+            echo "already_green=1" >> "$GITHUB_OUTPUT"
+            echo "Contract already GREEN; verification-only pass."
+          else
+            echo "already_green=0" >> "$GITHUB_OUTPUT"
+            echo "Selective Tab contract RED confirmed."
+          fi
+
+      - name: Apply selective peer-navigation port
+        if: steps.red.outputs.already_green == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one patch anchor, found {text.count(old)}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'src/ui/pages/feel_page.cpp',
+              '#include "../ui_input.h"\n',
+              '#include "../ui_input.h"\n#include "../workflow_mode.h"\n')
+          replace_once(
+              'src/ui/pages/feel_page.cpp',
+              '  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  const int nav = UIInput::navCode(event);',
+              '''  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  if (!event.ctrl && !event.alt && !event.meta) {\n    if (UIInput::isTab(event)) {\n      requestPageTransition(WorkflowPages::kGenre);\n      return true;\n    }\n    if (event.key == '[' || event.key == ']') return true;\n  }\n\n  const int nav = UIInput::navCode(event);''')
+
+          replace_once(
+              'src/ui/pages/genre_page.cpp',
+              '#include "../ui_input.h"\n',
+              '#include "../ui_input.h"\n#include "../workflow_mode.h"\n')
+          replace_once(
+              'src/ui/pages/genre_page.cpp',
+              '  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  const int nav = UIInput::navCode(event);',
+              '''  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  if (!event.ctrl && !event.alt && !event.meta) {\n    if (UIInput::isTab(event)) {\n      requestPageTransition(WorkflowPages::kFeel);\n      return true;\n    }\n    if (event.key == '[' || event.key == ']') return true;\n  }\n\n  const int nav = UIInput::navCode(event);''')
+
+          replace_once(
+              'src/ui/pages/phrase_page.cpp',
+              '#include "../ui_input.h"\n',
+              '#include "../ui_input.h"\n#include "../workflow_mode.h"\n')
+          replace_once(
+              'src/ui/pages/phrase_page.cpp',
+              '  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  if (!core_mode_) return handleProductEvent(ui_event);',
+              '''  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;\n\n  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {\n    if (UIInput::isTab(ui_event)) {\n      requestPageTransition(WorkflowPages::kArrange);\n      return true;\n    }\n    if (ui_event.key == '[' || ui_event.key == ']') return true;\n  }\n\n  if (!core_mode_) return handleProductEvent(ui_event);''')
+
+          replace_once(
+              'src/ui/pages/song_page_r4_owner.inc',
+              '''  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {\n    return handleEventLegacyUnowned(ui_event);\n  }\n\n  // Generation owns its existing PREPARE/commit path.''',
+              '''  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {\n    return handleEventLegacyUnowned(ui_event);\n  }\n\n  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {\n    if (UIInput::isTab(ui_event)) {\n      const int row = cursorRow();\n      requestPageTransition(WorkflowPages::kPhrase, row + 1);\n      return true;\n    }\n    if (ui_event.key == '[' || ui_event.key == ']') return true;\n  }\n\n  // Generation owns its existing PREPARE/commit path.''')
+
+          replace_once(
+              'src/ui/pages/song_page.cpp',
+              '''  // Tab clears pattern (legacy behavior)\n  if (key == '\\t') {\n    return clearPattern();\n  }\n\n''',
+              '')
+          PY
+
+      - name: Prove peer Tab navigation
+        run: python3 tests/test_ui_constitution_u1g_tab_grammar.py
+
+      - name: Install SDL host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-gfx-dev pkg-config
+
+      - name: Preserve C5 material UX contracts
+        run: bash tests/run_0_9_11_c5_material_ux_tests.sh
+
+      - name: Preserve host suite
+        run: bash tests/run_host_tests.sh
+
+      - name: Verify patch cleanliness
+        run: git diff --check
+
+      - name: Publish verified navigation port
+        if: steps.red.outputs.already_green == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/feel_page.cpp \
+                  src/ui/pages/genre_page.cpp \
+                  src/ui/pages/phrase_page.cpp \
+                  src/ui/pages/song_page.cpp \
+                  src/ui/pages/song_page_r4_owner.inc
+          git commit -m "feat(ui): restore peer Tab representation switching"
+          git push origin HEAD:feature/20260913-c9-ui-selective-port
