@@ -25,9 +25,9 @@ def require(text: str, needle: str, message: str) -> None:
 
 # GENRE plain G is explicit full materialization, independent of ENTER's APPLY
 # selector. It prepares the pending GENRE / VARIANT / RHYTHM state and routes
-# through the quantized owner. UI-P5 renamed the footer's P/M legend to
-# P:DEPTH M:APPLY and deliberately retired the standalone REROLL/REPEAT G
-# affordance; reroll semantics stay internal to the canonical G boundary.
+# through the quantized owner. C5 projects the retained P-level and apply-mode
+# mechanics as musician-facing STYLE / TAKE vocabulary while keeping the same
+# generation ownership and command routing.
 for needle in (
     "void GenrePage::applyCurrent(bool forceRegenerate)",
     "forceRegenerate || applyMode != ApplyMode::ProfileOnly",
@@ -36,7 +36,7 @@ for needle in (
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
-    '"G:GEN P:DEPTH M:APPLY"',
+    '"G:NEW TAKE P:STYLE M:APPLY"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
 for retired_affordance in ('"REROLL"', '"REPEAT G"'):
