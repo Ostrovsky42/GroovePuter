@@ -45,6 +45,19 @@
 namespace {
 constexpr int kSmfPlayerPage = WorkflowPages::kPlayer;
 
+// Transition-only breadcrumbs: no logging in steady-state rendering or audio.
+void tracePageStage(int page, const char* stage) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    Serial.printf("[UI-TRACE] page=%d stage=%s freeInt=%u largestInt=%u\n",
+                  page, stage,
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+#else
+    (void)page;
+    (void)stage;
+#endif
+}
+
 VisualStyle nextVisualStyle(VisualStyle style) {
     return UI::nextThemeStyle(style);
 }
@@ -182,9 +195,13 @@ IPage* MiniAcidDisplay::getPage_(int index) {
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
+            tracePageStage(index, "restore.begin");
             pages_[index]->restoreViewContinuity(ui_view_continuity_);
+            tracePageStage(index, "restore.end.bounds.begin");
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+            tracePageStage(index, "bounds.end.style.begin");
             pages_[index]->setVisualStyle(UI::currentStyle);
+            tracePageStage(index, "style.end");
         }
     }
     return pages_[index].get();
@@ -239,9 +256,13 @@ void MiniAcidDisplay::update() {
     UI::beginShellFrameModel(shellFrame);
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
+        if (first_frame_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        if (first_frame_trace_pending_) tracePageStage(page_index_, "tick.begin");
         currentPage->tick();
+        if (first_frame_trace_pending_) tracePageStage(page_index_, "tick.end.draw.begin");
         currentPage->draw(gfx_);
+        if (first_frame_trace_pending_) tracePageStage(page_index_, "draw.end");
     } else {
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
@@ -271,6 +292,8 @@ void MiniAcidDisplay::update() {
     drawToast();
     gfx_.flush();
     gfx_.endWrite();
+    if (first_frame_trace_pending_) tracePageStage(page_index_, "frame.end");
+    first_frame_trace_pending_ = false;
 }
 
 void MiniAcidDisplay::captureUiSession_() {
@@ -423,6 +446,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
+    first_frame_trace_pending_ = true;
     if (WorkflowPages::isWorkspacePage(index)) {
         active_workspace_ = WorkflowPages::workspaceForPage(index);
     }
@@ -437,10 +461,14 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     IPage* newPage = getPage_(index);
     if (newPage) {
+        tracePageStage(index, "entry.bounds.begin");
         newPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        tracePageStage(index, "onEnter.begin");
         newPage->onEnter(context);
+        tracePageStage(index, "onEnter.end.title.begin");
         Serial.printf("[UI] transition: %d -> %d (%s, ctx=%d)\n", 
                       previous_page_index_, page_index_, newPage->getTitle().c_str(), context);
+        tracePageStage(index, "title.end");
     }
 }
 
