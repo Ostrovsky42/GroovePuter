@@ -106,12 +106,20 @@ def main() -> None:
     require("Selection Cleared" in wrapper,
             "selection clear UX must stay reachable through the owned mutation path")
 
-    # R2 Reset remains in the retained legacy body. R9 deliberately upgrades
-    # the same authoritative Pattern receipt from one-shot restore to one-slot
-    # exchange; this is the accepted cumulative R3->R9 contract.
-    require("// Alt + Backspace = Reset Pattern. R2 routes this one destructive edit" in LEGACY and
-            "undoOwner().commitPrepared" in LEGACY,
-            "R3 must preserve the accepted R2 Reset Pattern vertical slice")
+    # R2 Reset remains in the retained legacy body. Bind the proof to executable
+    # code, not to the historical explanatory comment that used to precede it.
+    # R9 deliberately upgrades the same authoritative Pattern receipt from
+    # one-shot restore to one-slot exchange; this is the cumulative R3->R9 contract.
+    reset_block = between(
+        LEGACY,
+        "if (ui_event.alt && (key == '\\b' || key == 0x7F)) {",
+        "if (is_backspace && has_selection_)")
+    require("captureCurrentSynthPatternUndo" in reset_block and
+            "isCanonicalClearedSynthPattern" in reset_block and
+            "undoOwner().commitPrepared" in reset_block and
+            "UndoKind::Pattern" in reset_block and
+            "audio_guard_(clear_pattern)" in reset_block,
+            "R3 must preserve the accepted R2 Reset Pattern transaction")
     require("case GROOVEPUTER_APP_EVENT_UNDO:" in LEGACY and
             "undoOwner().togglePrepared<SynthPatternUndoPayload>" in LEGACY and
             "exchangeSynthPatternUndo" in LEGACY,
