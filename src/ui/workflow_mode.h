@@ -214,8 +214,8 @@ inline const char* pageName(int page) {
         case kSynthB: return "SYNTH B";
         case kDrums: return "DRUMS";
         case kArrange: return "SONG";
-        case kPhrase: return "PHRASE";
-        case kPhraseCore: return "PHRASE CORE";
+        case kPhrase: return "MATERIAL";
+        case kPhraseCore: return "MATERIAL BANK";
         case kProject: return "PROJECT / SETUP";
         case kSampler: return "SAMPLER";
         default: return "PAGE";

@@ -80,7 +80,7 @@ const char* roleShort(PhraseCore::Role role) {
 const char* sourceShort(PhraseCore::Source source) {
   switch (source) {
     case PhraseCore::Source::None: return "NONE";
-    case PhraseCore::Source::InternalPattern: return "PATTERN";
+    case PhraseCore::Source::InternalPattern: return "STEPS";
     case PhraseCore::Source::Generated: return "GENERATED";
     case PhraseCore::Source::Derived: return "DERIVED";
     case PhraseCore::Source::SmfRegion: return "SMF";
@@ -305,16 +305,12 @@ PhrasePage::PhrasePage(IGfx& gfx,
     : mini_acid_(mini_acid), audio_guard_(audio_guard),
       core_mode_(coreMode) {
   (void)gfx;
-  // PHRASE CORE keeps its pre-PHW-P1 destination_row_ seed and semantics
-  // unchanged. PHRASE (product) never seeds placement from transport/cursor
-  // position -- it starts in APPEND (the PlacementMode member default) and
-  // is only ever put into EXPLICIT via onEnter()'s one-shot SONG handoff.
   if (core_mode_) {
     destination_row_ = static_cast<uint8_t>(
         std::clamp(mini_acid_.currentSongPosition(), 0,
                    Song::kMaxPositions - 1));
   }
-  title_ = core_mode_ ? "PHRASE CORE" : "PHRASE";
+  title_ = core_mode_ ? "MATERIAL BANK" : "MATERIAL";
 }
 
 void PhrasePage::onEnter(int context) {
@@ -376,15 +372,11 @@ bool PhrasePage::focusProductBar() {
   const auto& accepted =
       GroovePuterState::generatedPhraseProductState().accepted;
   if (!accepted.valid || product_bar_cursor_ >= accepted.bars) {
-    UI::showToast("NO GENERATED PHRASE", 1000);
+    UI::showToast("NO MATERIAL YET", 1000);
     return true;
   }
-  // Stale focus protection (spec section 10): a candidate can exist without
-  // being structurally live (undone, overwritten, cleared). Never move the
-  // playhead/editor onto coordinates that no longer hold the expected
-  // generated material.
   if (!acceptedLive()) {
-    UI::showToast("PHRASE NOT LIVE", 1000);
+    UI::showToast("MATERIAL NOT LIVE", 1000);
     return true;
   }
   if (mini_acid_.isPlaying()) {
@@ -396,7 +388,7 @@ bool PhrasePage::focusProductBar() {
   const int pattern = generatedPatternForBar(accepted, product_bar_cursor_);
   if (accepted.songSlot < 0 || accepted.songSlot > 1 ||
       row < 0 || row >= Song::kMaxPositions || pattern < 0) {
-    UI::showToast("PHRASE TARGET UNAVAILABLE", 1200);
+    UI::showToast("MATERIAL TARGET UNAVAILABLE", 1200);
     return true;
   }
 
@@ -416,8 +408,6 @@ bool PhrasePage::focusProductBar() {
 }
 
 int PhrasePage::resolvedAppendRow() const {
-  // Single authoritative Song logical-end owner (spec section 3) -- never
-  // a second length/end concept, never a cached prior destination.
   return mini_acid_.songLength();
 }
 
@@ -445,7 +435,6 @@ bool PhrasePage::handleToEnter() {
     placement_mode_ = PlacementMode::Append;
     explicit_row_ = 0;
   }
-  // ENTER while APPEND: no semantic change (spec section 7).
   return true;
 }
 
@@ -492,11 +481,6 @@ bool PhrasePage::acceptedLive() const {
       accepted.firstLocalSlot + accepted.bars > kPatternsPerPage) {
     return false;
   }
-  // Deliberately page-independent (spec sections 12-14): no dependency on
-  // mini_acid_.currentPageIndex(), no reliance on Scene revision (undo
-  // restores older revisions). Synth A is the sole structural anchor --
-  // Synth B/Drums Song refs and in-pattern note edits never affect
-  // liveness (spec section 13).
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const Song& song = scene.songs[accepted.songSlot];
   for (int bar = 0; bar < accepted.bars; ++bar) {
@@ -522,11 +506,6 @@ PhrasePage::BarActivity PhrasePage::readAcceptedBarActivity(
       accepted.firstLocalSlot < 0) {
     return activity;
   }
-  // Only the currently loaded page's pattern banks are resident in Scene --
-  // reading another page's content would require an async page switch
-  // (spec section 20 STOP condition). Report unavailable rather than
-  // fabricate, mirroring PhraseCore::buildBarPreview's existing cross-page
-  // convention.
   if (accepted.pageIndex != mini_acid_.currentPageIndex()) {
     return activity;
   }
@@ -552,7 +531,7 @@ PhrasePage::BarActivity PhrasePage::readAcceptedBarActivity(
 }
 
 void PhrasePage::drawProductView(IGfx& gfx) {
-  cycleProductFocus(0);  // normalize focus if the live BAR slot disappeared
+  cycleProductFocus(0);
 
   const PhrasePalette palette = paletteForStyle(UI::currentStyle);
   const auto& product = GroovePuterState::generatedPhraseProductState();
@@ -562,7 +541,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const bool live = hasLiveBarFocus();
 
-  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE");
+  UI::drawStandardHeader(gfx, mini_acid_, "MATERIAL");
 
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
@@ -570,12 +549,11 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 
   const IGfxColor lengthColor =
       product_focus_ == ProductFocus::Length ? palette.accent : palette.text;
-  const IGfxColor depthColor =
+  const IGfxColor styleColor =
       product_focus_ == ProductFocus::Depth ? palette.accent : palette.text;
   const IGfxColor toColor =
       product_focus_ == ProductFocus::To ? palette.accent : palette.text;
 
-  // NEXT REQUEST, line 0: LENGTH / DEPTH. Never mixed with LAST ACCEPTED.
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(0), "LENGTH");
   std::snprintf(line, sizeof(line), "%uB", static_cast<unsigned>(requestedBars));
@@ -583,13 +561,11 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.drawText(x + 46, LayoutManager::lineY(0), line);
 
   gfx.setTextColor(palette.dim);
-  gfx.drawText(x + 88, LayoutManager::lineY(0), "DEPTH");
-  gfx.setTextColor(depthColor);
+  gfx.drawText(x + 88, LayoutManager::lineY(0), "STYLE");
+  gfx.setTextColor(styleColor);
   gfx.drawText(x + 128, LayoutManager::lineY(0),
-               GroovePuterState::generationLevelCode(depth));
+               GroovePuterState::generationStyleName(depth));
 
-  // NEXT REQUEST, line 1: TO. Always the row that G will actually target if
-  // pressed right now -- resolved fresh every frame (spec section 3).
   const int toRow = resolvedToRow();
   const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
@@ -613,10 +589,6 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.drawText(x + width - gfx.textWidth(admissibilityText),
                LayoutManager::lineY(1), admissibilityText);
 
-  // NEXT REQUEST, line 2: compact per-track destination occupancy (spec
-  // section 5) plus the last G attempt's typed outcome (spec section 18) --
-  // this is the transient result of the *previous* attempt, independent of
-  // whatever candidate is currently retained as LAST ACCEPTED below.
   bool occA = false;
   bool occB = false;
   bool occD = false;
@@ -641,18 +613,14 @@ void PhrasePage::drawProductView(IGfx& gfx) {
           : (product.lastOutcome == GroovePuterState::GeneratedPhraseOutcome::TypedRejection
                  ? palette.drums
                  : palette.dim);
-  std::snprintf(line, sizeof(line), "LAST G: %s", outcome);
+  std::snprintf(line, sizeof(line), "LAST TRY: %s", outcome);
   gfx.setTextColor(outcomeColor);
   gfx.drawText(x + 70, LayoutManager::lineY(2), line);
 
-  // LAST ACCEPTED, lines 3-7: retrospective only. A candidate that is not
-  // structurally live is never shown as if it were current material (spec
-  // section 25).
   if (!live) {
     gfx.setTextColor(palette.dim);
     gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
-    gfx.drawText(x, LayoutManager::lineY(4),
-                 "G GENERATES INTO EXISTING SONG/PATTERNS");
+    gfx.drawText(x, LayoutManager::lineY(4), "G CREATES A NEW TAKE");
   } else {
     std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
                   static_cast<unsigned>(accepted.bars),
@@ -689,18 +657,15 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   }
 
   UI::drawStandardFooter(gfx,
-                         "U/D:FOCUS L/R:ADJUST P:DEPTH",
-                         "G:GEN  ENT:BAR/TO");
+                         "U/D:FOCUS L/R:ADJUST P:STYLE",
+                         "G:NEW TAKE ENT:BAR/TO");
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-  cycleProductFocus(0);  // normalize focus if the live BAR slot disappeared
+  cycleProductFocus(0);
   const int nav = UIInput::navCode(ui_event);
 
-  // UP/DOWN move focus across the fixed LENGTH -> DEPTH -> TO [-> BAR]
-  // topology (spec section 8); LEFT/RIGHT always adjust the field currently
-  // focused.
   if (nav == GROOVEPUTER_DOWN) {
     cycleProductFocus(1);
     return true;
@@ -717,7 +682,7 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
         break;
       case ProductFocus::Depth: {
         const auto level = GroovePuterState::cycleGenerationLevel(delta);
-        UI::showToast(GroovePuterState::generationLevelShortName(level), 700);
+        UI::showToast(GroovePuterState::generationStyleName(level), 700);
         break;
       }
       case ProductFocus::To:
@@ -744,7 +709,7 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1100);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1100);
     return true;
   }
   return false;
@@ -915,9 +880,6 @@ bool PhrasePage::captureCurrentRegion() {
 }
 
 bool PhrasePage::generatePhraseToSong() {
-  // PHRASE CORE keeps its pre-PHW-P1 destination_row_ target unchanged.
-  // PHRASE (product) resolves TO authoritatively at the moment G is
-  // pressed -- never an old cached resolution (spec section 3).
   const int songStart = core_mode_
       ? static_cast<int>(destination_row_)
       : resolvedToRow();
@@ -982,25 +944,21 @@ bool PhrasePage::generatePhraseToSong() {
         static_cast<int>(songStart) + phraseResult.bars);
     destination_row_ = static_cast<uint8_t>(nextRow);
     if (result.status == GeneratedPhraseSong::LifecycleStatus::PendingNextBar) {
-      std::snprintf(message, sizeof(message), "%dB GEN -> NEXT BAR %d-%d",
+      std::snprintf(message, sizeof(message), "%dB NEW -> NEXT BAR %d-%d",
                     phraseResult.bars,
                     phraseResult.songStart + 1,
                     phraseResult.songStart + phraseResult.bars);
     } else {
-      std::snprintf(message, sizeof(message), "%dB GEN -> SONG %d-%d",
+      std::snprintf(message, sizeof(message), "%dB NEW -> SONG %d-%d",
                     phraseResult.bars,
                     phraseResult.songStart + 1,
                     phraseResult.songStart + phraseResult.bars);
     }
     UI::showToast(message, 1600);
   } else {
-    // After successful G, PHRASE always returns to APPEND (spec section 7).
-    // A short bounded transient confirms the placement (spec section 1)
-    // before the request/result panes settle back into their independent
-    // steady states.
     placement_mode_ = PlacementMode::Append;
     explicit_row_ = 0;
-    std::snprintf(message, sizeof(message), "PLACED %dB -> %c%d-%d",
+    std::snprintf(message, sizeof(message), "NEW TAKE %dB -> %c%d-%d",
                   phraseResult.bars, static_cast<char>('A' + songSlot),
                   phraseResult.songStart + 1,
                   phraseResult.songStart + phraseResult.bars);
@@ -1097,7 +1055,7 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("UNDO: GENERATED PHRASE", 1000);
+      UI::showToast("UNDO: MATERIAL", 1000);
       return true;
     }
     if (result == UndoResult::TargetUnavailable) {
@@ -1128,7 +1086,7 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast(redo ? "REDO: PHRASE" : "UNDO: PHRASE", 900);
+      UI::showToast(redo ? "REDO: MATERIAL" : "UNDO: MATERIAL", 900);
       return true;
     }
     if (result == UndoResult::ContextUnavailable ||
@@ -1183,10 +1141,8 @@ void PhrasePage::draw(IGfx& gfx) {
   const PhrasePalette palette = paletteForStyle(UI::currentStyle);
   const IGfxColor activeColor = slotColor(selected_slot_, palette);
 
-  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE CORE");
+  UI::drawStandardHeader(gfx, mini_acid_, "MATERIAL BANK");
 
-  // MiniAcidDisplay paints the skin before each page draw. Do not perform a
-  // second full-content clear here; render the eight compact content bands once.
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   const int slotY = LayoutManager::lineY(0);
@@ -1294,7 +1250,7 @@ void PhrasePage::draw(IGfx& gfx) {
       refD, palette.drums, palette);
 
   const int actionY = LayoutManager::lineY(7);
-  std::snprintf(line, sizeof(line), "CAP %uB %s  GEN %uB  P:%s",
+  std::snprintf(line, sizeof(line), "CAP %uB %s  NEW %uB  P:%s",
                 static_cast<unsigned>(capture_length_),
                 roleShort(capture_role_),
                 static_cast<unsigned>(GroovePuterState::requestedPhraseBars()),
@@ -1310,7 +1266,7 @@ void PhrasePage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "1-4:SLOT L/R:BAR U/D:CAPLEN",
-                         "G:GEN ENT/D/W");
+                         "G:NEW ENT/D/W");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
@@ -1320,9 +1276,6 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  // PHRASE and PHRASE CORE are two separate, independently-reachable pages
-  // (see workflow_mode.h kPhrase/kPhraseCore) -- there is no in-page mode
-  // switch here anymore (spec section 23).
   if (!core_mode_) return handleProductEvent(ui_event);
 
   const int nav = UIInput::navCode(ui_event);

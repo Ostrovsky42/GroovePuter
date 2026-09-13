@@ -46,6 +46,21 @@ inline const char* generationLevelShortName(
     return "P2 VAR";
 }
 
+// Musician-facing projection of the same bounded realization policy. The
+// technical P-level remains stable for internal contracts and tests; UI speaks
+// in terms of the musical decision the player is making.
+inline const char* generationStyleName(
+        GroovePuterRhythm::RealizationLevel level) {
+    using GroovePuterRhythm::RealizationLevel;
+    switch (sanitizeGenerationLevel(static_cast<uint8_t>(level))) {
+        case RealizationLevel::P1Canonical: return "FAITHFUL";
+        case RealizationLevel::P2Variation: return "VARIANT";
+        case RealizationLevel::P3Transformation: return "REWORK";
+        case RealizationLevel::Count: break;
+    }
+    return "VARIANT";
+}
+
 inline GroovePuterRhythm::RealizationLevel nextGenerationLevel(
         GroovePuterRhythm::RealizationLevel current,
         int direction = 1) {

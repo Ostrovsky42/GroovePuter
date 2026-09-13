@@ -84,11 +84,11 @@ GenrePage::ApplyMode GenrePage::currentApplyMode() const {
 
 const char* GenrePage::applyModeName() const {
   switch (currentApplyMode()) {
-    case ApplyMode::ProfileOnly: return "PROFILE ONLY";
-    case ApplyMode::Regenerate: return "MATERIALIZE";
-    case ApplyMode::RegenerateTempo: return "MATERIALIZE+BPM";
+    case ApplyMode::ProfileOnly: return "STYLE ONLY";
+    case ApplyMode::Regenerate: return "NEW TAKE";
+    case ApplyMode::RegenerateTempo: return "NEW TAKE + TEMPO";
   }
-  return "PROFILE ONLY";
+  return "STYLE ONLY";
 }
 
 void GenrePage::moveFocus(int delta) {
@@ -248,17 +248,17 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   if (doRegenerate) {
     switch (generationResult) {
       case GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar:
-        resultLabel = "GEN -> NEXT BAR";
+        resultLabel = "TAKE -> NEXT BAR";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::CommittedNow:
-        resultLabel = "GENERATED";
+        resultLabel = "NEW TAKE";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::AttemptUnavailable:
-        resultLabel = "GEN ATTEMPT FULL";
+        resultLabel = "TAKE LIMIT";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::Failed:
       default:
-        resultLabel = "GEN FAILED";
+        resultLabel = "TAKE FAILED";
         break;
     }
   }
@@ -325,8 +325,8 @@ void GenrePage::draw(IGfx& gfx) {
                        focus_ == FocusRow::Rhythm, axisColor, palette);
 
   AxisUI::drawValueRow(
-      gfx, x, LayoutManager::lineY(4), width, "DEPTH",
-      GroovePuterState::generationLevelShortName(
+      gfx, x, LayoutManager::lineY(4), width, "STYLE",
+      GroovePuterState::generationStyleName(
           GroovePuterState::currentGenerationLevel()),
       focus_ == FocusRow::Depth, axisColor, palette);
 
@@ -350,14 +350,14 @@ void GenrePage::draw(IGfx& gfx) {
       GenreCatalog::generativeModeName(activeGenre),
       GenreCatalog::recipeName(activeRecipe),
       linkStateShort(mini_acid_),
-      GroovePuterState::generationLevelShortName(
+      GroovePuterState::generationStyleName(
           GroovePuterState::currentGenerationLevel()),
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lastLineY(gfx), value);
 
-  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
+  UI::drawStandardFooter(gfx, "U/D:FIELD L/R:CHANGE", "G:NEW TAKE P:STYLE M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -375,7 +375,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
     });
     if (result == GroovePuterUndo::UndoResult::Restored) {
       updateFromEngine();
-      UI::showToast(redo ? "REDO: GEN" : "UNDO: GEN", 1000);
+      UI::showToast(redo ? "REDO: TAKE" : "UNDO: TAKE", 1000);
       return true;
     }
     if (result == GroovePuterUndo::UndoResult::ContextUnavailable) {
@@ -426,7 +426,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
 
   if (keyP && !event.ctrl && !event.alt && !event.meta) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
     return true;
   }
 

@@ -53,13 +53,9 @@ inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
 }
 
-// ALT+R switches a voice between its Pattern and its Phrase. R is arbitrary --
-// ALT+P is the global jump to the MIDI player and cannot be taken on one page
-// without making the shortcut mean two things -- so the label carries the
-// meaning instead of the letter.
-// How much of a note actually sounds: the stored end, or the next attack if
-// that comes first. Growing the stored length past that point changes nothing
-// anyone can hear, and saying "NOTE LONGER" there would be a false report.
+// ALT+R switches between the two retained representations of one material.
+// The runtime still owns Pattern/Phrase internally; the UI exposes only the
+// musical source truth: STEPS or MELODY.
 uint32_t audibleEndTick(
     const PhraseRuntime::RuntimeSynthEventBuffer& phrase, uint16_t index) {
   if (index >= phrase.count) return 0;
@@ -146,8 +142,8 @@ SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
       voice_index_(voice_index) {
   fallback_title_ = (voice_index_ == 0) ? "SYNTH A" : "SYNTH B";
   phrase_title_ = (voice_index_ == 0)
-      ? "SYNTH A NOTES PHRASE"
-      : "SYNTH B NOTES PHRASE";
+      ? "SYNTH A MATERIAL"
+      : "SYNTH B MATERIAL";
 
   pattern_page_ = std::make_shared<PatternEditPage>(gfx, mini_acid, audio_guard, voice_index_);
   params_page_ = std::make_shared<TB303ParamsPage>(gfx, mini_acid, audio_guard, voice_index_);
@@ -205,14 +201,6 @@ namespace {
 
 constexpr uint16_t kBeatTicks = PhraseRuntime::kTicksPerBar / 4u;
 
-// Length spoken in beats, the only unit this screen teaches: the ruler above
-// the lane numbers the beats, so "2 BEATS" needs no theory and "1/16" does.
-//
-// Measured in eighths of a beat, because a duration is not required to land on
-// the grid at all -- a gate projected from a Pattern is typically a fraction of
-// a step -- and an exact-fractions table would fall through to a placeholder
-// for almost every note. Inexact values are marked with "~" rather than
-// rounded silently.
 void formatPhraseLength(uint16_t ticks, char* buf, size_t bufSize) {
   constexpr uint16_t kEighthOfBeatTicks = kBeatTicks / 8u;
   const char* approx = (ticks % kEighthOfBeatTicks) != 0u ? "~" : "";
@@ -238,9 +226,6 @@ void formatPhraseLength(uint16_t ticks, char* buf, size_t bufSize) {
   }
 }
 
-// The stored duration that will not be heard, because the next attack releases
-// this note first. Striped rather than filled: the block keeps its honest
-// width, and the silent part is visibly not the same thing as the sounding one.
 void drawMutedTail(IGfx& gfx, int fromX, int toX, int y, int h, IGfxColor color) {
   for (int x = fromX; x < toX; x += 2) {
     gfx.fillRect(x, y, 1, h, color);
@@ -250,8 +235,6 @@ void drawMutedTail(IGfx& gfx, int fromX, int toX, int y, int h, IGfxColor color)
 }  // namespace
 
 void SynthSequencerPage::drawPhraseNotes(IGfx& gfx) {
-  // Two views of one melody. They share the selection and every operation;
-  // only presentation and scrolling are their own.
   if (phrase_view_ == PhraseView::List) {
     drawPhraseList(gfx);
     return;
@@ -263,8 +246,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const auto& bounds = Layout::CONTENT;
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
 
-  // The shell's feel chip reports the Pattern grid, which this screen is not
-  // editing. Declining it removes a wrong label, not merely a busy one.
   UI::publishShellFeelOverlay(false);
 
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
@@ -292,24 +273,20 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const IGfxColor voiceColor = synthTabColor(voice_index_);
 
   gfx.setTextColor(voiceColor);
-  gfx.drawText(bounds.x + 4, bounds.y, "PHRASE");
+  gfx.drawText(bounds.x + 4, bounds.y, "MATERIAL");
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u/%u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  const int whereX = bounds.x + 4 + textWidth(gfx, "PHRASE") + 10;
+  const int whereX = bounds.x + 4 + textWidth(gfx, "MATERIAL") + 10;
   gfx.drawText(whereX, bounds.y, where);
-  gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:PHR");
+  gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:MELODY");
   char grid[16];
   std::snprintf(grid, sizeof(grid), "GRID %s",
                 PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
   gfx.drawText(bounds.x + 4, bounds.y + 9, grid);
 
-  // One editor. Horizontal is time, vertical is pitch -- the only two claims
-  // the material actually makes. The overview strip and the magnified lane are
-  // gone: a melody drawn on two axes has a shape, and a shape needs no second
-  // view to explain it.
   const int planeX = bounds.x + 4;
   const int planeW = std::max(32, bounds.w - 8);
   const int planeTop = bounds.y + 17;
@@ -328,10 +305,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
         static_cast<uint32_t>(planeW)) / PhraseRuntime::kTicksPerBar);
   };
 
-  // The pitch window follows the selection and is centred on it, so the sound
-  // being edited is never off screen. ALT+UP/DOWN nudges it for looking around,
-  // clamped so browsing can never hide what you are working on -- moving the
-  // view must not be a way to lose your place.
   const uint8_t anchorNote = selection.active
       ? phrase.events[selection.eventIndex].note
       : 60;
@@ -339,8 +312,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   if (phrase_pitch_lowest_ == 0) {
     phrase_pitch_lowest_ = static_cast<int>(anchorNote) - halfWindow;
   }
-  // Scroll only when the selection leaves an edge, and only far enough to
-  // bring it back. Everything else stays where the eye left it.
   if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
     phrase_pitch_lowest_ = static_cast<int>(anchorNote);
   } else if (static_cast<int>(anchorNote) >=
@@ -349,7 +320,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
         static_cast<int>(anchorNote) - (kVisibleNotes - 1);
   }
   const int lowestNote = phrase_pitch_lowest_;
-  const int centreNote = lowestNote + halfWindow;
 
   const auto noteToY = [&](uint8_t note) -> int {
     const int row = (lowestNote + kVisibleNotes - 1) - static_cast<int>(note);
@@ -360,8 +330,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     return value >= lowestNote && value < lowestNote + kVisibleNotes;
   };
 
-  // Beats, numbered above the plane and ruled through it. Without them a shape
-  // has no scale and "two beats long" cannot be read off the picture.
   for (int beat = 0; beat < 4; ++beat) {
     const int beatX =
         tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
@@ -380,10 +348,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     if (!PhraseNotesProjection::project(phrase, i, span)) continue;
     if (span.endTick <= barStart || span.startTick >= barEnd) continue;
 
-    // The voice is monophonic at playback: the next attack anywhere ahead
-    // releases this note. The block keeps the stored width -- otherwise
-    // ALT+LEFT/RIGHT would edit a value the screen never shows -- and the part
-    // that will not sound is drawn striped instead of filled.
     uint32_t audibleEnd = span.endTick;
     for (uint16_t j = 0; j < phrase.count; ++j) {
       const uint16_t otherStart = phrase.events[j].startTick;
@@ -413,8 +377,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     if ((phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0) {
       gfx.fillRect(x0, y, std::max(1, endX - x0), 1, voiceColor);
     }
-    // The attack edge. Without it two adjacent notes on the same pitch merge
-    // into one shape and become uncountable.
     gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? voiceColor
                                                         : IGfxColor::Black());
     if (selected) {
@@ -423,8 +385,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     }
   }
 
-  // Sounds outside the pitch window still exist. Saying so costs two glyphs
-  // and prevents reading a partial picture as the whole melody.
   if (aboveWindow > 0) {
     gfx.setTextColor(voiceColor);
     gfx.drawText(planeX + planeW - 8, planeTop - 1, "^");
@@ -434,16 +394,12 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(planeX + planeW - 8, planeTop + kPlaneH - 6, "v");
   }
 
-  // Where a new sound would go. Drawn as a full-height caret so it is findable
-  // on an empty melody too, dim through the plane so it never hides a block,
-  // and bright in the margin where nothing else lives.
   const int cursorX = tickToX(cursorTick);
   for (int y = planeTop; y < planeTop + kPlaneH; y += 2) {
     gfx.fillRect(cursorX, y, 1, 1, COLOR_LABEL);
   }
   gfx.fillRect(cursorX - 1, planeTop + kPlaneH + 1, 3, 3, COLOR_WHITE);
 
-  // Where the music is, distinct from where the cursor is.
   if (mini_acid_.isPlaying()) {
     const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
     if (playTick >= barStart && playTick < barEnd) {
@@ -512,8 +468,6 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   gfx.drawText(bounds.x + 4 + textWidth(gfx, "SOUNDS") + 10, bounds.y,
                "V ROLL   ALT+R SRC");
 
-  // Row order: start time, ties by buffer index. Stable, so changing a length
-  // or a pitch never makes the rows jump around under the hand.
   uint16_t order[PhraseRuntime::kMaxSynthEvents];
   for (uint16_t i = 0; i < phrase.count; ++i) order[i] = i;
   for (uint16_t i = 1; i < phrase.count; ++i) {
@@ -540,9 +494,6 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   }
   if (phrase.count <= kRows) phrase_list_top_ = 0;
 
-  // Left column: which sound and what it is. Right: the same shared timeline
-  // for every row, so start and length stay comparable between rows -- that is
-  // what a plain list of numbers cannot show.
   const int laneX = bounds.x + 62;
   const int laneW = bounds.w - 62 - 4;
   const int listTop = bounds.y + 12;
@@ -574,8 +525,6 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(bounds.x + 5, y + 1, label);
 
-    // Position is the start, width is the stored length; the striped part is
-    // the length the next attack will silence, exactly as in the roll.
     const uint32_t barTicks = PhraseRuntime::kTicksPerBar;
     const uint32_t start = event.startTick % barTicks;
     uint32_t audibleEnd = event.startTick +
@@ -661,7 +610,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after.lengthTicks);
     char toast[32];
     if (outcome.result == PhraseInstrumentControls::LengthChangeResult::Changed) {
-      std::snprintf(toast, sizeof(toast), "PHRASE LENGTH %uB",
+      std::snprintf(toast, sizeof(toast), "MATERIAL LENGTH %uB",
                     static_cast<unsigned>(
                         PhraseInstrumentControls::lengthBars(after.lengthTicks)));
       UI::showToast(toast, 1000);
@@ -686,7 +635,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     phrase_cursor_ = PhraseInstrumentControls::jumpBar(
         phrase_cursor_, ui_event.key == ']' ? +1 : -1, phrase.lengthTicks);
     char toast[32];
-    std::snprintf(toast, sizeof(toast), "PHRASE BAR %u/%u",
+    std::snprintf(toast, sizeof(toast), "MATERIAL BAR %u/%u",
                   static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
                   static_cast<unsigned>(
                       PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
@@ -695,18 +644,10 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
-  // Enter adds a sound where the cursor stands. Until now the editor could
-  // only change and remove, never create, so an emptied melody was a dead end.
   if (ui_event.key == '\n' && !ui_event.alt) {
     phrase_cursor_ = PhraseNotesCursor::clamp(
         phrase_cursor_, phrase.lengthTicks);
 
-    // Where the new sound goes. Not "wherever the cursor happens to be": the
-    // Cardputer has no Shift, LEFT/RIGHT hop between sounds, and an emptied
-    // melody has nothing to hop between -- so requiring the user to navigate
-    // to a free position made adding unreachable in exactly the case where it
-    // matters most. It goes after the selected sound instead, on the first
-    // free step, which needs no positioning at all.
     const uint16_t step = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
     uint16_t target = PhraseNotesCursor::tick(phrase_cursor_);
     const PhraseNotesSelection::Selection anchor =
@@ -778,10 +719,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (ui_event.alt) {
-    // Grid resolution is a second-level control now. A beginner never needs it,
-    // and plain Up/Down is worth far more spent on pitch.
-    // Browsing the pitch range is deliberately a separate gesture from
-    // changing a pitch: moving the view must never alter the music.
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
       phrase_pitch_lowest_ += nav == GROOVEPUTER_UP ? 1 : -1;
       if (phrase_pitch_lowest_ < 1) phrase_pitch_lowest_ = 1;
@@ -825,9 +762,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       return true;
     }
 
-    // If the growth landed entirely in the part the next attack silences, the
-    // note did not get longer -- only its stored value did. Say so, and name
-    // the way out.
     const auto& after = mini_acid_.currentPhraseBuffer(voice_index_);
     const PhraseNotesSelection::Selection nowSelected =
         PhraseNotesSelection::deriveInCell(
@@ -845,14 +779,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
-    // One grid cell per press. Jumping straight to the next onset read better
-    // in dense material but made a gap in the middle of a melody unreachable,
-    // so there was nowhere to stand to add a sound -- and an emptied melody
-    // trapped the cursor entirely. Every cell is reachable this way, and no
-    // sound is skipped because a cell holding one selects it.
-    //
-    // The pitch window is deliberately left alone: it moves only when the new
-    // selection falls outside it, so moving does not rearrange the picture.
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     const uint16_t insertTick = PhraseNotesCursor::tick(phrase_cursor_);
@@ -870,8 +796,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Switch view. Musical data is untouched and the selected sound comes along:
-  // that is the whole point of two views over one melody.
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == 'v' || ui_event.key == 'V')) {
     phrase_view_ = phrase_view_ == PhraseView::Roll ? PhraseView::List
@@ -882,8 +806,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Each view selects along the axis its presentation leaves free: rows in the
-  // list, time in the roll. The operation underneath is the same one.
   if (phrase_view_ == PhraseView::List && !ui_event.alt &&
       (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
     phrase_selection_ = PhraseSelectionState::step(
@@ -891,9 +813,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Continue this sound instead of the next one. Explicit, because removing a
-  // neighbouring sound is a musical decision -- not something "longer" should
-  // do behind the user's back.
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == 'j' || ui_event.key == 'J')) {
     phrase_cursor_ = PhraseNotesCursor::clamp(
@@ -936,9 +855,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // The grid still decides how far ALT+LEFT/RIGHT moves a length and where
-  // ENTER puts a new sound, so it stays reachable -- just not on the arrows,
-  // which now carry pitch and selection.
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
     phrase_cursor_ = PhraseNotesCursor::changeGrid(
@@ -949,8 +865,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     UI::showToast(toast, 900);
     return true;
   }
-  // Pitch: UP/DOWN in the roll, LEFT/RIGHT in the list, because each view has
-  // already spent the other axis on selection.
+
   const bool pitchUp = phrase_view_ == PhraseView::List
       ? nav == GROOVEPUTER_RIGHT
       : nav == GROOVEPUTER_UP;
@@ -986,6 +901,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
   return false;
 }
+
 void SynthSequencerPage::draw(IGfx& gfx) {
   if (synth_tab_ == SynthTab::Notes &&
       mini_acid_.currentSequencedSource(voice_index_) ==
@@ -1031,7 +947,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
               });
 
       if (result == GroovePuterUndo::UndoResult::Restored) {
-        UI::showToast(redo ? "REDO: PHRASE" : "UNDO: PHRASE", 900);
+        UI::showToast(redo ? "REDO: MATERIAL" : "UNDO: MATERIAL", 900);
       } else if (result == GroovePuterUndo::UndoResult::Expired) {
         UI::showToast(redo ? "REDO: EXPIRED" : "UNDO: EXPIRED", 900);
       } else {
@@ -1041,18 +957,15 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  // The source switch belongs to both views, so it sits above the PHRASE-only
-  // handler: from PATTERN there is otherwise no way back except three
-  // keypresses on the MORE tab.
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
     const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
     if (result == PhraseSourceToggle::Result::MadePhrase) {
-      UI::showToast("MAKE PHRASE", 1000);
+      UI::showToast("SOURCE: MELODY", 1000);
     } else {
       UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
                             MiniAcid::SequencedSource::Phrase
                         ? "SOURCE: MELODY"
-                        : "SOURCE: PATTERN",
+                        : "SOURCE: STEPS",
                     1000);
     }
     return true;
@@ -1069,7 +982,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       if (handled && owner.hasUndo() &&
           owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
           owner.nextIsRedo() != redo) {
-        UI::showToast(redo ? "REDO: PATTERN" : "UNDO: PATTERN", 900);
+        UI::showToast(redo ? "REDO: STEPS" : "UNDO: STEPS", 900);
       }
       return handled;
     }
