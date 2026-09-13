@@ -4035,6 +4035,26 @@ bool MiniAcid::makePhrase(int voiceIndex) {
     return false;
   }
 
+  // Pattern lifetime is cyclic: a late onset may legitimately sustain through
+  // the bar boundary into step 0. A Phrase/Melody is linear, so MAKE PHRASE is
+  // the ownership boundary where that cyclic tail must be bounded to the new
+  // object's terminal extent. Do not change Pattern projection semantics.
+  const uint32_t phraseEndSubtick =
+      static_cast<uint32_t>(candidate.lengthTicks) *
+      PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < candidate.count; ++i) {
+    auto& event = candidate.events[i];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    if (startSubtick >= phraseEndSubtick) return false;
+    const uint32_t maxDuration = phraseEndSubtick - startSubtick;
+    if (event.durationSubticks > maxDuration) {
+      event.durationSubticks = static_cast<uint16_t>(maxDuration);
+    }
+  }
+  if (!RuntimePhraseEdit::validate(candidate)) return false;
+
   workingMaterial_[voiceIndex].storeMelody(candidate);
   setSequencedSource(voiceIndex, SequencedSource::Phrase);
   return true;
