@@ -9,6 +9,7 @@
 #include "src/generation/composition/generation_profile.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
 #include "src/generation/rhythm/rhythm_types.h"
+#include "src/generation/roles/harmonic_rhythm.h"
 
 using namespace GroovePuterRhythm;
 
@@ -117,6 +118,7 @@ struct Sample {
   RhythmArchetypeId archetype = kNoArchetypeId;
   BassRhythmId bass = BassRhythmId::Auto;
   ChordRhythmId chord = ChordRhythmId::Auto;
+  ProgressionId progression = ProgressionId::Auto;
   StepMask kick = 0;
   uint16_t attacks = 0;
 };
@@ -145,6 +147,7 @@ Sample materialize(const Pilot& pilot, uint16_t identity, RealizationLevel level
   sample.archetype = selection.composition.rhythmArchetypeId;
   sample.bass = selection.composition.bassRhythm;
   sample.chord = selection.composition.chordRhythm;
+  sample.progression = selection.composition.progression;
   sample.kick = drumOnsets(drums, KICK);
   sample.attacks = static_cast<uint16_t>(
       drumAttackCount(drums) + bitCount(synthAttacks(synthA)) + bitCount(synthAttacks(synthB)));
@@ -154,6 +157,7 @@ Sample materialize(const Pilot& pilot, uint16_t identity, RealizationLevel level
 struct LevelCorpus {
   uint16_t ready = 0;
   uint32_t attackTotal = 0;
+  uint32_t harmonicEventTotal = 0;
   std::map<StepMask, uint16_t> clickCounts;
   std::map<StepMask, Sample> clickWitness;
 };
@@ -193,11 +197,9 @@ void printWitness(const char* side, const Pilot& pilot, uint8_t level,
       static_cast<unsigned>(sample.bass), static_cast<unsigned>(sample.chord));
 }
 
-uint32_t harmonicChangeMs(const GenerationProfileView& profile, uint16_t bpm) {
-  if (profile.harmonicChangeRate != HarmonicChangeRateId::Every2Beats || bpm == 0) {
-    return 0;
-  }
-  return 120000u / bpm;
+uint32_t harmonicEventIntervalMs(uint32_t avgEventsPerBarX100, uint16_t bpm) {
+  if (avgEventsPerBarX100 == 0 || bpm == 0) return 0;
+  return 24000000u / (static_cast<uint32_t>(bpm) * avgEventsPerBarX100);
 }
 
 }  // namespace
@@ -226,6 +228,7 @@ int main() {
         if (!sample.ready) continue;
         ++level.ready;
         level.attackTotal += sample.attacks;
+        level.harmonicEventTotal += defaultOneBarHarmonicEventCount(sample.progression);
         ++level.clickCounts[sample.click];
         level.clickWitness.emplace(sample.click, sample);
 
@@ -247,6 +250,9 @@ int main() {
       const uint32_t avgAttacksX100 = level.ready == 0
           ? 0
           : (level.attackTotal * 100u) / level.ready;
+      const uint32_t avgHarmonicEventsX100 = level.ready == 0
+          ? 0
+          : (level.harmonicEventTotal * 100u) / level.ready;
       const uint16_t bpms[3] = {
           profile.corridor.bpmMin,
           profile.corridor.suggestedBpm,
@@ -257,12 +263,14 @@ int main() {
         const uint32_t attacksPerSecondX100 =
             (avgAttacksX100 * bpms[tempo]) / 240u;
         std::printf(
-            "G4_C0 PHYSICAL pilot=%s level=%s tempo=%s bpm=%u avg_attacks_per_bar_x100=%u attacks_per_second_x100=%u harmonic_change_ms=%u\n",
+            "G4_C0 PHYSICAL pilot=%s level=%s tempo=%s bpm=%u avg_attacks_per_bar_x100=%u attacks_per_second_x100=%u avg_harmonic_events_per_bar_x100=%u harmonic_event_interval_ms=%u\n",
             pilot.name, kLevelNames[levelIndex], tempoNames[tempo],
             static_cast<unsigned>(bpms[tempo]),
             static_cast<unsigned>(avgAttacksX100),
             static_cast<unsigned>(attacksPerSecondX100),
-            static_cast<unsigned>(harmonicChangeMs(profile, bpms[tempo])));
+            static_cast<unsigned>(avgHarmonicEventsX100),
+            static_cast<unsigned>(
+                harmonicEventIntervalMs(avgHarmonicEventsX100, bpms[tempo])));
       }
     }
 
