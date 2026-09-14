@@ -256,13 +256,13 @@ void MiniAcidDisplay::update() {
     UI::beginShellFrameModel(shellFrame);
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
-        if (first_frame_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
+        if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        if (first_frame_trace_pending_) tracePageStage(page_index_, "tick.begin");
+        if (first_draw_trace_pending_) tracePageStage(page_index_, "tick.begin");
         currentPage->tick();
-        if (first_frame_trace_pending_) tracePageStage(page_index_, "tick.end.draw.begin");
+        if (first_draw_trace_pending_) tracePageStage(page_index_, "tick.end.draw.begin");
         currentPage->draw(gfx_);
-        if (first_frame_trace_pending_) tracePageStage(page_index_, "draw.end");
+        if (first_draw_trace_pending_) tracePageStage(page_index_, "draw.end");
     } else {
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
@@ -292,8 +292,8 @@ void MiniAcidDisplay::update() {
     drawToast();
     gfx_.flush();
     gfx_.endWrite();
-    if (first_frame_trace_pending_) tracePageStage(page_index_, "frame.end");
-    first_frame_trace_pending_ = false;
+    if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.end");
+    first_draw_trace_pending_ = false;
 }
 
 void MiniAcidDisplay::captureUiSession_() {
@@ -446,7 +446,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
-    first_frame_trace_pending_ = true;
+    first_draw_trace_pending_ = true;
     if (WorkflowPages::isWorkspacePage(index)) {
         active_workspace_ = WorkflowPages::workspaceForPage(index);
     }

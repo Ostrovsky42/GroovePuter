@@ -290,7 +290,7 @@ void FeelPage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "[TAB]GENRE U/D:FIELD L/R:CHANGE",
-                         "HOLD L/R:ACCEL");
+                         "HOLD L/R:ACCEL P:STYLE");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {

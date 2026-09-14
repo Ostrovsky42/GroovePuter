@@ -73,7 +73,7 @@ private:
   MiniAcid& mini_acid_;
   PerformanceKeyboard& performance_keyboard_;
   int page_index_ = 0;
-  bool first_frame_trace_pending_ = true;
+  bool first_draw_trace_pending_ = true;
   int previous_page_index_ = 0;  // For Backspace/` toggle
   Workspace active_workspace_ = Workspace::Groove;
   unsigned long splash_start_ms_ = 0;

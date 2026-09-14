@@ -1267,7 +1267,7 @@ void PhrasePage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "1-4:SLOT [L/R]BAR [U/D]LEN",
-                         "G:GEN ENT/D/W");
+                         "G:NEW ENT/D/W");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
