@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 
 #include "src/midi/midi_input_settings.h"
 #include "src/ui/midi_input_ui.h"
