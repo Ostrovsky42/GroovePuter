@@ -84,6 +84,7 @@ jobs:
           set -euo pipefail
           test ! -e tools/fs2a_apply_green.py
           test ! -e .github/workflows/0-9-12-fs2a-green-apply.yml
+          test ! -e .github/workflows/0-9-12-fs2a-raw-stage-green.yml
 
       - name: Clean tracked tree
         shell: bash
