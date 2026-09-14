@@ -1,0 +1,42 @@
+name: 0.9.12 Material DISCARD
+
+on:
+  push:
+    branches:
+      - feature/20260915-material-discard
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discard-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove FS2A parent and exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor 80aec6a43c2db5b28f19742a1ac95c8ca0150b01 HEAD
+          printf 'checkout_sha=%s\n' "$(git rev-parse HEAD)"
+          printf 'fs2a_parent=%s\n' 80aec6a43c2db5b28f19742a1ac95c8ca0150b01
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Material DISCARD contract
+        run: bash tests/run_material_discard_tests.sh
