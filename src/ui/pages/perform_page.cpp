@@ -6,6 +6,9 @@
 #include "../components/music_visuals.h"
 #include "../ui_input.h"
 #include "src/midi/smf_player_service.h"
+#include "src/output/output_mode_runtime.h"
+#include "src/output/output_ownership.h"
+#include "src/state/scene_revision.h"
 
 namespace {
 constexpr const char* kToolContextNames[] = {
@@ -78,7 +81,7 @@ const char* PerformPage::noteName(int midiNote) {
 uint8_t PerformPage::rowCountForContext() const {
     switch (selectedContext_) {
         case PerformanceToolContext::Key: return 6;
-        case PerformanceToolContext::Chord: return 5;
+        case PerformanceToolContext::Chord: return 6;
         case PerformanceToolContext::Arp: return 4;
         case PerformanceToolContext::Rhythm: return 6;
         case PerformanceToolContext::Count: break;
@@ -108,6 +111,43 @@ void PerformPage::moveRow(int direction) {
     selectedRow_[static_cast<int>(selectedContext_)] = static_cast<uint8_t>(next);
 }
 
+void PerformPage::cycleOutput(int direction) {
+    GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+    if (!GroovePuterOutput::trackForTarget(keyboard_.target(), track)) {
+        UI::showToast("DX: MIDI ONLY", 800);
+        return;
+    }
+
+    const GroovePuterOutput::Mode current = GroovePuterOutput::mode(track);
+    GroovePuterOutput::Mode next;
+    if (direction >= 0) {
+        next = GroovePuterOutput::cycleMode(current);
+    } else {
+        if (current == GroovePuterOutput::Mode::Internal) {
+            next = GroovePuterOutput::Mode::Layer;
+        } else if (current == GroovePuterOutput::Mode::Layer) {
+            next = GroovePuterOutput::Mode::Midi;
+        } else {
+            next = GroovePuterOutput::Mode::Internal;
+        }
+    }
+
+    // Release sounding notes on previous output route before applying updated route
+    keyboard_.panic();
+
+    const bool changed =
+        GroovePuterOutput::applyModeWithLocalCleanup(miniAcid_, track, next);
+    if (changed) {
+        GroovePuterState::markSceneMutated();
+    }
+
+    char toast[48];
+    std::snprintf(toast, sizeof(toast), "%s OUT: %s",
+                  keyboard_.targetName(),
+                  GroovePuterOutput::modeName(next));
+    UI::showToast(toast, 1000);
+}
+
 void PerformPage::adjustSelectedValue(int direction) {
     if (direction == 0) return;
     const uint8_t row = currentRow();
@@ -122,13 +162,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case 2: keyboard_.shiftOctave(direction); break;
                 case 3: keyboard_.adjustVelocity(direction); break;
                 case 4: keyboard_.cycleTarget(direction); break;
-                case 5:
-                    if (keyboard_.target() != MusicalEventTarget::Drums) {
-                        keyboard_.setVoiceMode(direction > 0
-                            ? PerformanceVoiceMode::Poly
-                            : PerformanceVoiceMode::Mono);
-                    }
-                    break;
+                case 5: cycleOutput(direction); break;
                 default: break;
             }
             return;
@@ -152,6 +186,13 @@ void PerformPage::adjustSelectedValue(int direction) {
                         keyboard_.setVoiceLeading(direction > 0
                             ? PerformanceVoiceLeading::Nearest
                             : PerformanceVoiceLeading::Off);
+                    }
+                    break;
+                case 5:
+                    if (keyboard_.target() != MusicalEventTarget::Drums) {
+                        keyboard_.setVoiceMode(direction > 0
+                            ? PerformanceVoiceMode::Poly
+                            : PerformanceVoiceMode::Mono);
                     }
                     break;
                 default:
@@ -201,8 +242,8 @@ void PerformPage::toggleSelectedValue() {
         case PerformanceToolContext::Key:
             if (row == 4) {
                 keyboard_.cycleTarget(1);
-            } else if (row == 5 && keyboard_.target() != MusicalEventTarget::Drums) {
-                keyboard_.toggleVoiceMode();
+            } else if (row == 5) {
+                cycleOutput(1);
             }
             return;
 
@@ -226,6 +267,11 @@ void PerformPage::toggleSelectedValue() {
                     std::snprintf(toast, sizeof(toast), "MEMORY: HOLD 2+ NOTES");
                 }
                 UI::showToast(toast, 900);
+                return;
+            }
+            if (row == 5 && keyboard_.target() != MusicalEventTarget::Drums) {
+                keyboard_.toggleVoiceMode();
+                return;
             }
             return;
 
@@ -263,10 +309,11 @@ const char* PerformPage::selectedRowHint() const {
                 case 1: return "</> SCALE";
                 case 2: return "</> OCTAVE SHIFT -2..+2";
                 case 3: return "</> VELOCITY 10..120";
-                case 4: return "</> OUTPUT (STOPS SOUNDING NOTES)";
+                case 4: return "</> OR \\: TARGET INSTRUMENT";
                 case 5:
-                    return drums ? "N/A: DRUMS ARE ALWAYS 7 LANES"
-                                 : "</> OR ENTER: MONO/POLY RECEIVER";
+                    return keyboard_.target() == MusicalEventTarget::Dx
+                        ? "N/A: DX IS MIDI ONLY"
+                        : "</> OR ENTER: INTERNAL / MIDI / LAYER";
                 default: return "";
             }
 
@@ -283,6 +330,9 @@ const char* PerformPage::selectedRowHint() const {
                     if (keyboard_.heldCount() >= 2) return "ENTER CAPTURE HELD NOTES";
                     if (keyboard_.chordMemorySize() > 0) return "ENTER CLEAR MEMORY";
                     return "HOLD 2+ NOTES, THEN ENTER";
+                case 5:
+                    return drums ? "N/A: DRUMS ARE ALWAYS 7 LANES"
+                                 : "</> OR ENTER: MONO/POLY RECEIVER";
                 default: return "";
             }
 
@@ -455,14 +505,19 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             std::snprintf(value, sizeof(value), "%u",
                           static_cast<unsigned>(keyboard_.velocity()));
             drawRow(3, "VELOCITY", value, true);
-            if (drums) {
-                std::snprintf(value, sizeof(value), "%s  CH1-7", keyboard_.targetName());
+            drawRow(4, "TARGET", keyboard_.targetName(), true);
+            if (keyboard_.target() == MusicalEventTarget::Dx) {
+                drawRow(5, "OUT", "MIDI", false);
             } else {
-                std::snprintf(value, sizeof(value), "%s  CH%u", keyboard_.targetName(),
-                              static_cast<unsigned>(keyboard_.targetMidiChannel()));
+                GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+                if (GroovePuterOutput::trackForTarget(keyboard_.target(), track)) {
+                    drawRow(5, "OUT",
+                            GroovePuterOutput::modeName(GroovePuterOutput::mode(track)),
+                            true);
+                } else {
+                    drawRow(5, "OUT", "MIDI", false);
+                }
             }
-            drawRow(4, "OUTPUT", value, true);
-            drawRow(5, "VOICE", drums ? "N/A" : keyboard_.voiceModeName(), !drums);
             break;
 
         case PerformanceToolContext::Chord: {
@@ -490,6 +545,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                               static_cast<unsigned>(keyboard_.chordMemorySize()));
                 drawRow(4, "MEMORY", value, true);
             }
+            drawRow(5, "VOICE", drums ? "N/A" : keyboard_.voiceModeName(), !drums);
             break;
         }
 
@@ -619,13 +675,20 @@ bool PerformPage::handleEvent(UIEvent& event) {
             return true;
         case '\\': {
             keyboard_.cycleTarget(1);
-            char toast[40];
-            if (keyboard_.target() == MusicalEventTarget::Drums) {
-                std::snprintf(toast, sizeof(toast), "DRUMS -> MIDI CH 1-7");
+            char toast[48];
+            if (keyboard_.target() == MusicalEventTarget::Dx) {
+                std::snprintf(toast, sizeof(toast), "TARGET: DX [MIDI CH10]");
             } else {
-                std::snprintf(toast, sizeof(toast), "%s -> MIDI CH %u",
-                              keyboard_.targetName(),
-                              static_cast<unsigned>(keyboard_.targetMidiChannel()));
+                GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+                if (GroovePuterOutput::trackForTarget(keyboard_.target(), track)) {
+                    const GroovePuterOutput::Mode outMode = GroovePuterOutput::mode(track);
+                    std::snprintf(toast, sizeof(toast), "TARGET: %s [%s]",
+                                  keyboard_.targetName(),
+                                  GroovePuterOutput::modeName(outMode));
+                } else {
+                    std::snprintf(toast, sizeof(toast), "TARGET: %s",
+                                  keyboard_.targetName());
+                }
             }
             UI::showToast(toast, 1000);
             return true;
@@ -691,20 +754,43 @@ void PerformPage::drawContent(IGfx& gfx) {
                                 noteMode ? MusicVisuals::accentForStyle()
                                          : COLOR_DANGER) + 3;
     x += MusicVisuals::drawChip(gfx, x, chipY, keyboard_.targetName(), true) + 3;
-    if (!drums) {
-        x += MusicVisuals::drawChip(gfx, x, chipY,
-                                    keyboard_.voiceModeName(),
-                                    directPoly) + 3;
-    }
 
-    char channel[12];
-    if (drums) {
-        std::snprintf(channel, sizeof(channel), "CH1-7");
+    char routeChip[16];
+    if (keyboard_.target() == MusicalEventTarget::Dx) {
+        std::snprintf(routeChip, sizeof(routeChip), "MIDI CH10");
     } else {
-        std::snprintf(channel, sizeof(channel), "CH%u",
-                      static_cast<unsigned>(keyboard_.targetMidiChannel()));
+        GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+        if (GroovePuterOutput::trackForTarget(keyboard_.target(), track)) {
+            const GroovePuterOutput::Mode outMode = GroovePuterOutput::mode(track);
+            if (outMode == GroovePuterOutput::Mode::Internal) {
+                std::snprintf(routeChip, sizeof(routeChip), "INTERNAL");
+            } else if (outMode == GroovePuterOutput::Mode::Midi) {
+                if (drums) {
+                    std::snprintf(routeChip, sizeof(routeChip), "MIDI CH1-7");
+                } else {
+                    std::snprintf(routeChip, sizeof(routeChip), "MIDI CH%u",
+                                  static_cast<unsigned>(keyboard_.targetMidiChannel()));
+                }
+            } else {
+                if (drums) {
+                    std::snprintf(routeChip, sizeof(routeChip), "LAYER CH1-7");
+                } else {
+                    std::snprintf(routeChip, sizeof(routeChip), "LAYER CH%u",
+                                  static_cast<unsigned>(keyboard_.targetMidiChannel()));
+                }
+            }
+        } else {
+            std::snprintf(routeChip, sizeof(routeChip), "CH%u",
+                          static_cast<unsigned>(keyboard_.targetMidiChannel()));
+        }
     }
-    MusicVisuals::drawChip(gfx, x, chipY, channel, false);
+    x += MusicVisuals::drawChip(gfx, x, chipY, routeChip, false) + 3;
+
+    if (!drums) {
+        MusicVisuals::drawChip(gfx, x, chipY,
+                               keyboard_.voiceModeName(),
+                               directPoly);
+    }
 
     gfx.setTextColor(COLOR_LABEL);
     if (drums) {
