@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_MUSICAL_EVENT_ROUTER_H
+#define GROOVEPUTER_MUSICAL_EVENT_ROUTER_H
 
 #include <cstddef>
 
@@ -46,3 +48,5 @@ private:
     IMusicalEventSink* sinks_[kMaxSinks]{};
     std::size_t sinkCount_{0};
 };
+
+#endif  // GROOVEPUTER_MUSICAL_EVENT_ROUTER_H

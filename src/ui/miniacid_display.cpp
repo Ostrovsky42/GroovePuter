@@ -44,6 +44,17 @@
 
 namespace {
 constexpr int kSmfPlayerPage = WorkflowPages::kPlayer;
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+int g_firstSynthFrameTracePage = -1;
+void traceSynthUiStage(int page, const char* stage) {
+    if (page != 1 && page != 2) return;
+    Serial.printf("[UI-TRACE] page=%d stage=%s\n", page, stage);
+    Serial.flush();
+}
+#else
+int g_firstSynthFrameTracePage = -1;
+void traceSynthUiStage(int, const char*) {}
+#endif
 
 // Transition-only breadcrumbs: no logging in steady-state rendering or audio.
 void tracePageStage(int page, const char* stage) {
@@ -195,13 +206,15 @@ IPage* MiniAcidDisplay::getPage_(int index) {
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
-            tracePageStage(index, "restore.begin");
+            traceSynthUiStage(index, "post-create");
+            traceSynthUiStage(index, "restore-begin");
             pages_[index]->restoreViewContinuity(ui_view_continuity_);
-            tracePageStage(index, "restore.end.bounds.begin");
+            traceSynthUiStage(index, "restore-end");
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-            tracePageStage(index, "bounds.end.style.begin");
+            traceSynthUiStage(index, "bounds-end");
             pages_[index]->setVisualStyle(UI::currentStyle);
-            tracePageStage(index, "style.end");
+            traceSynthUiStage(index, "style-end");
+            if (index == 1 || index == 2) g_firstSynthFrameTracePage = index;
         }
     }
     return pages_[index].get();
@@ -249,20 +262,29 @@ void MiniAcidDisplay::update() {
     if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
         statusContext = UI::uiStatusContextForLocation(statusLocation);
     }
-    const UI::UiStatusSnapshot frameStatus =
-        UI::captureUiStatusSnapshot(mini_acid_, statusContext);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-begin");
+    const UI::UiStatusSnapshot frameStatus = UI::captureUiStatusSnapshot(mini_acid_, statusContext);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-end");
     
     UI::UiShellFrameModel shellFrame{};
     UI::beginShellFrameModel(shellFrame);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-get-begin");
     IPage* currentPage = getPage_(page_index_);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-get-end");
     if (currentPage) {
         if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        if (first_draw_trace_pending_) tracePageStage(page_index_, "tick.begin");
+        if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-tick-begin");
         currentPage->tick();
-        if (first_draw_trace_pending_) tracePageStage(page_index_, "tick.end.draw.begin");
+        if (g_firstSynthFrameTracePage == page_index_) {
+            traceSynthUiStage(page_index_, "frame-tick-end");
+            traceSynthUiStage(page_index_, "frame-draw-begin");
+        }
         currentPage->draw(gfx_);
-        if (first_draw_trace_pending_) tracePageStage(page_index_, "draw.end");
+        if (g_firstSynthFrameTracePage == page_index_) {
+            traceSynthUiStage(page_index_, "frame-draw-end");
+            g_firstSynthFrameTracePage = -1;
+        }
     } else {
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
@@ -460,15 +482,18 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     scheduleUiSessionSave_();
 
     IPage* newPage = getPage_(index);
+    traceSynthUiStage(index, "transition-get-end");
     if (newPage) {
-        tracePageStage(index, "entry.bounds.begin");
         newPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        tracePageStage(index, "onEnter.begin");
+        traceSynthUiStage(index, "transition-bounds-end");
         newPage->onEnter(context);
-        tracePageStage(index, "onEnter.end.title.begin");
+        traceSynthUiStage(index, "transition-enter-end");
+        traceSynthUiStage(index, "transition-title-begin");
+        const std::string& transitionTitle = newPage->getTitle();
+        traceSynthUiStage(index, "transition-title-end");
         Serial.printf("[UI] transition: %d -> %d (%s, ctx=%d)\n", 
-                      previous_page_index_, page_index_, newPage->getTitle().c_str(), context);
-        tracePageStage(index, "title.end");
+                      previous_page_index_, page_index_, transitionTitle.c_str(), context);
+        traceSynthUiStage(index, "transition-log-end");
     }
 }
 

@@ -403,6 +403,7 @@ void setup() {
     markBootStage(952, "USB MIDI runtime unavailable");
   } else {
     markBootStage(53, "after USB MIDI sink");
+    GroovePuterPlatform::initializeCardputerMidiInputSettings();
   }
 
   screenLog("5. Creating Encoder8");

@@ -1,0 +1,87 @@
+name: 0.9.11 C9 MIDI User Closure
+
+on:
+  push:
+    branches:
+      - fix/20260914-c9-midi-user-closure-r1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-c9-midi-user-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Apply MIDI user closure
+        run: python3 tools/apply_c9_midi_user_closure_v2.py
+
+      - name: C9 MIDI user closure contracts
+        run: bash tests/run_c9_midi_repair_tests.sh
+
+      - name: Preserve C4 MIDI lifecycle contracts
+        run: bash tests/run_0_9_11_c4_midi_convergence_tests.sh
+
+      - name: Existing host preservation matrix
+        run: bash tests/run_host_tests.sh
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build Cardputer ADV product image
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c9-midi-user-closure" \
+            bash scripts/build_cardputer_memory_baseline.sh normal product --warnings all
+
+      - name: Enforce Cardputer DRAM budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check_cardputer_dram_budget.sh \
+            "${GITHUB_WORKSPACE}/build/c9-midi-user-closure/GroovePuter.ino.elf"
+
+      - name: Validate production delta
+        run: git diff --check
+
+      - name: Publish verified MIDI user closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            GroovePuter.ino \
+            src/midi/tee_midi_transport.h \
+            src/midi/midi_input_settings.h \
+            src/ui/midi_input_ui.h \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_midi_settings_session.h \
+            src/platform/cardputer_midi_settings_session.cpp \
+            src/ui/pages/project_page.h \
+            src/ui/pages/project_page.cpp \
+            src/ui/miniacid_display.cpp \
+            tools/apply_c9_midi_runtime_wiring.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Production delta already published"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(c9): expose safe persisted MIDI input"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Clean tree
+        run: git diff --exit-code && test -z "$(git status --porcelain)"

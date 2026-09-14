@@ -22,10 +22,12 @@
 #include "../help_dialog_frames.h"
 #include "../ui_widgets.h"
 #include "../midi_device_profile_ui.h"
+#include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
+namespace InputUi = GroovePuterUi::MidiInputUi;
 std::string generateMemorableName() {
   static const char* adjectives[] = {
     "bright", "calm", "clear", "cosmic", "crisp", "deep", "dusty", "electric",
@@ -150,7 +152,7 @@ void sectionRange(int section, int& first, int& last) {
       return;
     case 3: // midi
       first = (int)ProjectPage::MainFocus::MidiDevice;
-      last = (int)ProjectPage::MainFocus::MidiDevice;
+      last = (int)ProjectPage::MainFocus::MidiInputTarget;
       return;
     default:
       first = 0;
@@ -606,7 +608,7 @@ void ProjectPage::ensureSelectionVisible(int visibleRows) {
 void ProjectPage::ensureMainFocusVisible(int visibleRows) {
   if (visibleRows < 1) visibleRows = 1;
   const int focus = static_cast<int>(main_focus_);
-  const int maxFocus = static_cast<int>(MainFocus::LedFlash);
+  const int maxFocus = static_cast<int>(MainFocus::MidiInputTarget);
   if (main_scroll_ < 0) main_scroll_ = 0;
   if (main_scroll_ > maxFocus) main_scroll_ = maxFocus;
   if (focus < main_scroll_) {
@@ -927,6 +929,18 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
 }
 
 
+bool ProjectPage::adjustMidiInput(int delta) {
+    const auto current = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+    auto next = current;
+    if (main_focus_ == MainFocus::MidiInputEnabled) next = InputUi::stepEnabled(current);
+    else if (main_focus_ == MainFocus::MidiInputChannel) next = InputUi::stepChannel(current, delta);
+    else if (main_focus_ == MainFocus::MidiInputTarget) next = InputUi::stepTarget(current, delta);
+    else return false;
+    if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
+        UI::showToast("MIDI input save failed", 1400);
+    return true;
+}
+
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
@@ -1242,6 +1256,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         case GROOVEPUTER_RIGHT: {
             const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
             auto& led = mini_acid_.sceneManager().currentScene().led;
+            if (main_focus_ == MainFocus::MidiInputEnabled ||
+                main_focus_ == MainFocus::MidiInputChannel ||
+                main_focus_ == MainFocus::MidiInputTarget) {
+                return adjustMidiInput(right ? 1 : -1);
+            }
             if (main_focus_ == MainFocus::MidiDevice) {
                 const auto pending =
                     GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1354,6 +1373,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (key == '\n' || key == '\r') {
+        if (main_focus_ == MainFocus::MidiInputEnabled ||
+            main_focus_ == MainFocus::MidiInputChannel ||
+            main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
         if (main_focus_ == MainFocus::MidiDevice) {
             const auto pending =
                 GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1655,13 +1677,26 @@ void ProjectPage::draw(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
         break;
       case MainFocus::MidiDevice: {
-        const auto pending =
-            GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
-        const auto selected = ProfileUi::profileFromPreview(
-            midi_profile_preview_, pending);
+        const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+        const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
         std::snprintf(line, sizeof(line), "Device     <%s>%s",
-                      ProfileUi::shortName(selected),
-                      selected != pending ? "*" : "");
+                      ProfileUi::shortName(selected), selected != pending ? "*" : "");
+        break;
+      }
+      case MainFocus::MidiInputEnabled: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        std::snprintf(line, sizeof(line), "MIDI Input <%s>", InputUi::enabledName(input.enabled));
+        break;
+      }
+      case MainFocus::MidiInputChannel: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        char channel[12]; InputUi::formatChannel(input, channel, sizeof(channel));
+        std::snprintf(line, sizeof(line), "Input Ch   <%s>", channel);
+        break;
+      }
+      case MainFocus::MidiInputTarget: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        std::snprintf(line, sizeof(line), "Input To   <%s>", InputUi::targetName(input.target));
         break;
       }
     }
@@ -1701,7 +1736,10 @@ void ProjectPage::draw(IGfx& gfx) {
     } else {
       std::snprintf(midi1, sizeof(midi1), "Apply:ACTIVE");
     }
-    std::snprintf(midi2, sizeof(midi2), "Tab:Section  </>:Edit");
+    const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+    char inputChannel[10]; InputUi::formatChannel(input, inputChannel, sizeof(inputChannel));
+    std::snprintf(midi2, sizeof(midi2), "In:%s %s>%s",
+                  InputUi::enabledName(input.enabled), inputChannel, InputUi::targetName(input.target));
     const char* midiLines[3] = {midi0, midi1, midi2};
     Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, midiLines, 3);
   } else {
@@ -1732,7 +1770,7 @@ int ProjectPage::lastFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
-  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiInputTarget;
   return 0;
 }
 
@@ -1741,7 +1779,7 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
-  if (sectionIdx == 3) return f == ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::MidiDevice && f <= ProjectPage::MainFocus::MidiInputTarget;
   return false;
 }
 
