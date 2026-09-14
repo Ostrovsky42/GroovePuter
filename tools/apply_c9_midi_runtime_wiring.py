@@ -195,8 +195,8 @@ s = replace_once(
     s,
     'void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);\n',
     'void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);\n\n'
-    'GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig();\n'
-    'bool setCardputerMidiInputRoutingConfig(\n'
+    'GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig();\n'
+    'bool applyCardputerMidiInputRuntimeRoutingConfig(\n'
     '    const GroovePuterMidi::MidiInputRoutingConfig& config);\n',
     "service input config declarations")
 p.write_text(s)
@@ -206,10 +206,10 @@ s = p.read_text()
 s = replace_once(
     s,
     'void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {\n',
-    'GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig() {\n'
+    'GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig() {\n'
     '    return g_inputDispatcher.config();\n'
     '}\n\n'
-    'bool setCardputerMidiInputRoutingConfig(\n'
+    'bool applyCardputerMidiInputRuntimeRoutingConfig(\n'
     '        const GroovePuterMidi::MidiInputRoutingConfig& config) {\n'
     '    return g_inputDispatcher.setConfig(config);\n'
     '}\n\n'

@@ -38,8 +38,8 @@ bool registerCardputerUsbMidiSink(
 // not write USB itself; MidiDispatchTask remains the only consumer/USB owner.
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);
 
-GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig();
-bool setCardputerMidiInputRoutingConfig(
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig();
+bool applyCardputerMidiInputRuntimeRoutingConfig(
     const GroovePuterMidi::MidiInputRoutingConfig& config);
 
 // Publishes the predicted playback start for one generated audio block. The

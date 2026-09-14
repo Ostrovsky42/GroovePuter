@@ -233,6 +233,10 @@ GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
 bool g_usbInputMounted = false;
+portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
+GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
+uint32_t g_requestedInputConfigVersion = 0;
+uint32_t g_appliedInputConfigVersion = 0;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
 ExternalMidiTransportEventQueue* g_externalTransportQueue = nullptr;
@@ -468,6 +472,25 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
     }
 }
 
+bool sameMidiInputConfig(const GroovePuterMidi::MidiInputRoutingConfig& lhs,
+                         const GroovePuterMidi::MidiInputRoutingConfig& rhs) {
+    return lhs.enabled == rhs.enabled && lhs.channelMode == rhs.channelMode &&
+           lhs.channel == rhs.channel && lhs.target == rhs.target;
+}
+
+void applyPendingMidiInputConfig() {
+    GroovePuterMidi::MidiInputRoutingConfig requested{};
+    uint32_t requestedVersion = 0;
+    portENTER_CRITICAL(&g_inputConfigMux);
+    requested = g_requestedInputConfig;
+    requestedVersion = g_requestedInputConfigVersion;
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    if (requestedVersion == g_appliedInputConfigVersion) return;
+    if (g_inputDispatcher.setConfig(requested)) {
+        g_appliedInputConfigVersion = requestedVersion;
+    }
+}
+
 void syncUsbMidiInputLifecycle() {
     const bool mounted = g_transport.mounted();
     if (mounted && !g_usbInputMounted) {
@@ -487,6 +510,7 @@ void syncUsbMidiInputLifecycle() {
 void drainIncomingMidiPackets() {
     if (g_externalTransportQueue == nullptr) return;
 
+    applyPendingMidiInputConfig();
     syncUsbMidiInputLifecycle();
     midiEventPacket_t packet{};
     for (std::size_t drained = 0;
@@ -1545,13 +1569,27 @@ bool registerCardputerUsbMidiSink(
     return true;
 }
 
-GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig() {
-    return g_inputDispatcher.config();
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig() {
+    portENTER_CRITICAL(&g_inputConfigMux);
+    const GroovePuterMidi::MidiInputRoutingConfig config = g_requestedInputConfig;
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    return config;
 }
 
-bool setCardputerMidiInputRoutingConfig(
+bool applyCardputerMidiInputRuntimeRoutingConfig(
         const GroovePuterMidi::MidiInputRoutingConfig& config) {
-    return g_inputDispatcher.setConfig(config);
+    if (!GroovePuterMidi::MidiInputDispatcher::isValidConfig(config)) return false;
+    bool changed = false;
+    portENTER_CRITICAL(&g_inputConfigMux);
+    if (!sameMidiInputConfig(g_requestedInputConfig, config)) {
+        g_requestedInputConfig = config;
+        ++g_requestedInputConfigVersion;
+        if (g_requestedInputConfigVersion == 0u) ++g_requestedInputConfigVersion;
+        changed = true;
+    }
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    if (changed) notifyDispatcher();
+    return true;
 }
 
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {

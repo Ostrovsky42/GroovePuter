@@ -134,11 +134,13 @@ private:
         const bool primaryMounted = primary_.mounted();
         if (!primaryMounted) {
             diagnostics_.primaryConsecutiveRejects = 0;
-            primaryCleanupDebtMask_ = 0;
+            // Disconnect ends the stall episode, not the cleanup obligation.
+            // USB must reconcile any DIN-only releases before it regains
+            // authority after reconnect.
         }
 
         bool wasStalled = primaryStalled();
-        if (primaryMounted && wasStalled && primaryCleanupDebtMask_ != 0u) {
+        if (primaryMounted && primaryCleanupDebtMask_ != 0u) {
             // Do not use a normal NoteOn/clock as the recovery probe while the
             // recovered USB endpoint may still hold notes that DIN already
             // released. Reconcile USB first, and only then permit application
@@ -183,7 +185,7 @@ private:
             if (!secondaryResult) ++diagnostics_.secondaryRejected;
         }
 
-        if (!primaryResult && secondaryResult && cleanupCritical && primaryMounted) {
+        if (!primaryResult && secondaryResult && cleanupCritical) {
             primaryCleanupDebtMask_ |= channelMask(channel);
         }
 

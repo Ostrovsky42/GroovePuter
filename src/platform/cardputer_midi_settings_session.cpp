@@ -10,8 +10,10 @@
 
 #include "src/midi/midi_companion_settings_codec.h"
 #include "src/midi/midi_device_profile_runtime.h"
+#include "src/midi/midi_input_settings.h"
 #include "src/midi/midi_pattern_startup_routes.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/platform/cardputer_usb_midi_service.h"
 
 namespace GroovePuterPlatform {
 namespace {
@@ -190,6 +192,70 @@ CardputerMidiSettingsSession& settingsSession() {
     return session;
 }
 
+class CardputerMidiInputSettingsSession {
+public:
+    void initialize() {
+        if (initialized_) return;
+        GroovePuterMidi::MidiInputRoutingConfig loaded =
+            GroovePuterMidi::MidiInputSettings::defaultRoutingConfig();
+        bool decoded = false;
+        Preferences preferences;
+        if (preferences.begin(kNamespace, true)) {
+            if (preferences.isKey(kKey)) {
+                decoded = GroovePuterMidi::MidiInputSettings::decodeRoutingConfig(
+                    preferences.getUInt(kKey, 0u), loaded);
+            }
+            preferences.end();
+        }
+        config_ = loaded;
+        initialized_ = true;
+        const bool applied = applyCardputerMidiInputRuntimeRoutingConfig(config_);
+        Serial.printf("[MIDI-IN] load=%u enabled=%u mode=%u ch=%u target=%u apply=%u\n",
+                      static_cast<unsigned>(decoded ? 1 : 0),
+                      static_cast<unsigned>(config_.enabled ? 1 : 0),
+                      static_cast<unsigned>(config_.channelMode),
+                      static_cast<unsigned>(config_.channel + 1u),
+                      static_cast<unsigned>(config_.target),
+                      static_cast<unsigned>(applied ? 1 : 0));
+    }
+
+    GroovePuterMidi::MidiInputRoutingConfig config() {
+        if (!initialized_) initialize();
+        return config_;
+    }
+
+    bool set(const GroovePuterMidi::MidiInputRoutingConfig& config) {
+        if (!GroovePuterMidi::MidiInputDispatcher::isValidConfig(config)) return false;
+        if (!initialized_) initialize();
+        if (same(config_, config)) return true;
+        Preferences preferences;
+        if (!preferences.begin(kNamespace, false)) return false;
+        const std::size_t written = preferences.putUInt(
+            kKey, GroovePuterMidi::MidiInputSettings::encodeRoutingConfig(config));
+        preferences.end();
+        if (written != sizeof(uint32_t)) return false;
+        if (!applyCardputerMidiInputRuntimeRoutingConfig(config)) return false;
+        config_ = config;
+        return true;
+    }
+
+private:
+    static bool same(const GroovePuterMidi::MidiInputRoutingConfig& a,
+                     const GroovePuterMidi::MidiInputRoutingConfig& b) {
+        return a.enabled == b.enabled && a.channelMode == b.channelMode &&
+               a.channel == b.channel && a.target == b.target;
+    }
+    static constexpr const char* kNamespace = "grooveputer";
+    static constexpr const char* kKey = "midi_in";
+    GroovePuterMidi::MidiInputRoutingConfig config_{};
+    bool initialized_{false};
+};
+
+CardputerMidiInputSettingsSession& inputSettingsSession() {
+    static CardputerMidiInputSettingsSession session;
+    return session;
+}
+
 void CardputerMidiSettingsSession::persistControlChange(
         GroovePuterMidi::TransportClockSource source,
         bool externalFollowEnabled) {
@@ -200,6 +266,19 @@ void CardputerMidiSettingsSession::persistControlChange(
 
 void initializeCardputerMidiSettingsSession() {
     settingsSession().initialize();
+}
+
+void initializeCardputerMidiInputSettings() {
+    inputSettingsSession().initialize();
+}
+
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig() {
+    return inputSettingsSession().config();
+}
+
+bool setCardputerMidiInputRoutingConfig(
+        const GroovePuterMidi::MidiInputRoutingConfig& config) {
+    return inputSettingsSession().set(config);
 }
 
 GroovePuterMidi::MidiDeviceProfile pendingCardputerMidiDeviceProfile() {
