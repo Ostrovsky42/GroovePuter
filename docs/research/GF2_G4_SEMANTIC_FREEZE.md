@@ -2,80 +2,120 @@
 
 ## Status
 
-`SEMANTIC_FREEZE / DOCUMENTATION_ONLY`
+`SEMANTIC_FREEZE_DECISION / DOCUMENTATION_ONLY`
 
-This checkpoint stops further G4 production expansion and records which results of the G4 research line are canonical inputs to the next musical architecture phase, which results are historical evidence, which claims are superseded, and which proven production deltas remain donor material for a later integration root.
+This document stops further G4 production expansion and records which G4 results are durable inputs to the next musical architecture phase, which claims are superseded, which evidence remains historical, and which proven production deltas still exist only as donor material.
 
-This is not a release ratification and does not create `MUSIC-R1` yet.
+This checkpoint does **not** create `MUSIC-R1`, does not change production, and does not declare any active 0.9.12 branch canonical.
 
-## Freeze base
+---
 
-Documentation branch:
+# 1. Repository topology at freeze time
+
+The freeze branch was initially created from C8 only as a convenient documentation base:
 
 ```text
 research/20260914-g4-semantic-freeze
+  initial parent:
+  6897a2434c17c42d4da369f5ea39dce98050c2af
+  feature/20260913-c8-final-build-memory
 ```
 
-Created from the current pre-hardware convergence candidate:
+That C8 point is **not** the newest product lineage and must not be treated as the future MUSIC-R1 root.
+
+The inspected descendant line is:
 
 ```text
-feature/20260913-c8-final-build-memory
-6897a2434c17c42d4da369f5ea39dce98050c2af
-```
-
-`6897a243...` is a direct descendant of:
-
-```text
-integration/20260913-0.9.11-full-convergence-r1
 d09dba481dedfea3411eef6f91a71dd1e9198a4b
+integration/20260913-0.9.11-full-convergence-r1
+        |
+        v
+6897a2434c17c42d4da369f5ea39dce98050c2af
+feature/20260913-c8-final-build-memory
+        |
+        | 28 commits
+        v
+077e0ce10d5ad90ce30479990f49924252d448d7
+fix/20260914-c9-midi-user-closure-r1
+        |
+        | 10 commits
+        v
+860b10afd60eb1a90c1be62bb5baba529c79fdf5
+fix/20260914-c9a-final-stabilization
+        |
+        | 9 commits, current inspected FS1 diagnostic line
+        v
+0da06437da79e5f756f1b994a567ad05cd758d0d
+feature/20260914-fs1-memory-census-m1-m2
 ```
 
-The difference is CI/build-memory closure only. Therefore `6897a243...` is a useful documentation base, but it is **not declared the final MUSIC-R1 root**. MUSIC-R1 must begin from the exact integration SHA that is eventually accepted as the canonical release/material foundation after the remaining hardware/release closure.
+Important interpretation:
 
-## 1. Why G4 stops here
+- `077e0ce1...` adds the later C9 MIDI/user closure work.
+- `860b10af...` contains later C9A product stabilization, including the Melody audible fail-closed/source-toggle work.
+- `0da06437...` is a 0.9.12 FS1 diagnostic descendant. Relative to `860b10af...`, the inspected delta is workflow/test instrumentation rather than a new musical production authority change.
+- therefore there is currently **no basis to name an exact MUSIC-R1 root**.
 
-The original useful question was:
+The next music production branch must start only after the active Material Closure line has produced one accepted exact root.
+
+The freeze branch itself is intentionally documentary and is not a candidate production lineage.
+
+---
+
+# 2. Why G4 stops here
+
+The useful G4 question was:
 
 > Can the generator produce genuinely different musical ideas inside one genre while preserving genre identity?
 
-During G4, the work split into two different activities:
+G4 gradually split into two activities:
 
-1. proving ownership/admission and removing concrete structural contradictions;
-2. trying to encode whole genre identities as small predicates.
+1. finding real ownership/admission/authority defects;
+2. trying to reduce whole genre identities to compact predicates.
 
-The first activity produced durable architecture and production fixes. The second became unreliable when proxies were mistaken for musical identity.
+The first activity produced durable results. The second exposed a failure mode: an implementation proxy can pass every test while still being a poor model of the music.
 
-Therefore the next phase must not continue as a campaign to turn every genre into a `PROVEN` predicate. `REVIEW_REQUIRED` and `UNKNOWN` remain legitimate epistemic states.
-
-The completion target is no longer:
+Therefore the target is no longer:
 
 ```text
-all genre owners -> PROVEN contract
+all owners -> PROVEN genre contract
 ```
 
-It becomes:
+`REVIEW_REQUIRED` and `UNKNOWN` are legitimate outcomes when the musical statement is not yet good enough.
+
+The next architecture target is:
 
 ```text
-genre boundaries
-    -> coherent musical idea
-    -> variation preserving idea anchors
-    -> phrase development of the frozen idea
-    -> material
+GENRE BOUNDARIES
+        |
+        v
+MUSICAL IDEA
+        |
+        +-------------------+
+        |                   |
+        v                   v
+VARIATION                NEW IDEA
+        |
+        v
+PHRASE DEVELOPMENT
+        |
+        v
+MATERIAL
 ```
 
-## 2. Canonical G4 results already integrated into convergence
+---
 
-The current convergence line contains the following production-level G4 results.
+# 3. Canonical G4 results already present in the active descendant line
 
-### 2.1 DnB bass vocabulary compatibility
+## 3.1 DnB bass vocabulary compatibility
 
-Canonical meaning:
+Durable musical result:
 
-- DnB rhythm candidates remain in Breakbeat structural space;
-- the bass vocabulary is compatible with that space;
-- `HalfTimePocket` is a first-class option rather than forcing FourFloor-oriented bass identities through DnB.
+- DnB rhythm ownership remains structurally Breakbeat-oriented;
+- its bass choice space must be compatible with that rhythm domain;
+- `HalfTimePocket` is a legitimate bass organization against faster drum activity.
 
-Current convergence mechanism:
+Integrated mechanism:
 
 ```text
 kBassBreakbeat
@@ -88,13 +128,15 @@ Classification:
 CANONICAL_INTEGRATED
 ```
 
-### 2.2 Phrase-law truthfulness
+This is a useful cross-timescale reference case for MUSIC-R1.
 
-Canonical meaning:
+## 3.2 Phrase-law truthfulness
+
+Durable result:
 
 - Phrase is the causal owner of multi-bar development;
-- a non-Loop phrase-law label is valid only when a real admitted trajectory exists;
-- when no trajectory exists, semantics normalize to `Loop` rather than advertising development that is not physically realized.
+- a selected non-Loop law is truthful only when an admitted trajectory exists;
+- otherwise semantics normalize to `Loop` rather than advertising development that cannot occur.
 
 Classification:
 
@@ -102,17 +144,19 @@ Classification:
 CANONICAL_INTEGRATED
 ```
 
-This result is retained as an important foundation, but it does **not** prove that phrase development is musically rich. It only proves semantic truthfulness between the selected law and available causal trajectory.
+Scope limit:
 
-### 2.3 Dub Techno structural ownership
+This proves semantic truthfulness, not rich phrase development. A truthful `Loop` fallback is still musically shallow if every bar is effectively the same.
 
-Canonical meaning:
+## 3.3 Dub Techno structural ownership
+
+Durable formulation:
 
 ```text
 TECHNO SKELETON + DUB RELATIONSHIP = DUB TECHNO IDEA
 ```
 
-The current convergence admission set retains structural techno-skeleton witnesses and does not admit Dub material merely because timbre or FX could make it sound techno-like.
+The integrated admission correction prevents Dub Techno from being justified only by timbre/FX.
 
 Classification:
 
@@ -120,12 +164,14 @@ Classification:
 CANONICAL_INTEGRATED
 ```
 
-### 2.4 House structural ownership cleanup
+This is the main reference case where relationship/negative space matters more than a single event mask.
 
-Canonical meaning:
+## 3.4 House structural ownership cleanup
 
-- House ownership is not established by label or weighting;
-- the known `FunkHouseBridge` over-broad admission was removed from House BASE while remaining available to legitimate owners.
+Durable result:
+
+- House ownership cannot be established by label or weight;
+- the known over-broad `FunkHouseBridge` admission was removed from House BASE without deleting that vocabulary from legitimate owners.
 
 Classification:
 
@@ -133,72 +179,79 @@ Classification:
 CANONICAL_INTEGRATED
 ```
 
-## 3. Canonical G4 result not yet integrated into convergence
+---
 
-### 3.1 Acid articulation authority restoration
+# 4. Canonical donor still missing from the active descendant line
 
-Canonical authority report:
+## 4.1 Acid articulation authority restoration
+
+Canonical authority branch:
 
 ```text
-branch:
 feature/20260911-01-g4-cc1a-p1-acid-articulation-authority
+```
 
-canonical report commit:
+Canonical report commit:
+
+```text
 6bae461aa1593ef3ef27b537dac7c482976d125c
+```
 
-production fix:
+Production-fix commit:
+
+```text
 fe2697cf55323c735f794c0251e17d817ca3c0cd
 ```
 
-Canonical musical result:
+Durable musical statement:
 
-> Within each shipped Acid owner, the authoritative bass idea space preserves a real choice between independent re-articulation and connected/extended motion.
+> Within each shipped Acid owner, the authoritative bass idea space preserves a genuine choice between independent re-articulation and connected/extended motion.
 
 Production mechanism:
 
 ```text
 kBassAcid =
-  KickLock       70
-  OffbeatPush    90
-  RollingDrive  110
-  SyncopatedHook 75
+  KickLock        70
+  OffbeatPush     90
+  RollingDrive   110
+  SyncopatedHook  75
   SustainAndDrop 100
 ```
 
-and Acid BASE / Chicago Jack / Rolling Acid use that Acid-local vocabulary.
+with Acid BASE / Chicago Jack / Rolling Acid bound to that Acid-local vocabulary.
 
-The result was proven through authoritative materialization, connected lifetime/source-boundary tests, adversarial controls, global ownership refresh and unified ratification.
-
-Important status distinction:
+Ratified status from the authority line:
 
 ```text
 AUTHORITY_RATIFIED
 CAPABILITY_REVIEW_REQUIRED
 ```
 
-The production authority repair is trusted donor material. The abstract global genre contract remains reviewable rather than being promoted merely because the production defect was repaired.
+That distinction is preserved. The production authority repair is trusted donor material; the abstract genre contract is not automatically promoted to global truth.
 
-Current convergence state does not contain `kBassAcid`; therefore this result is classified:
+At the currently inspected active 0.9.12 descendant `0da06437...`, `generation_profile.cpp` still contains `kBassDrive`, `kBassMachine`, `kBassBreakbeat`, etc., but no `kBassAcid` table. Therefore Acid P1 remains:
 
 ```text
 CANONICAL_DONOR_NOT_INTEGRATED
 ```
 
-It must not be forgotten, but it also must not be merged mechanically into the current branch. Re-apply/re-prove it against the future canonical MUSIC-R1 root.
+Do not mechanically merge the historical Acid branch. Re-apply the smallest proven mechanism against the eventual Material Closure root and re-prove it there.
 
-## 4. Canonical measurement infrastructure
+---
 
-### 4.1 Global ownership census
+# 5. Canonical methods, historical numbers
 
-The I6 line established the useful global methodology:
+## 5.1 I6 ownership/reachability method
 
-- owner -> admitted archetype edges are measured explicitly;
-- reachability is measured rather than inferred from declarations;
-- `UNKNOWN` is not silently converted to valid;
-- structural collisions require normalized structural equality, not merely labels or hashes;
-- historical evidence and current freshness are distinct.
+Durable methodology:
 
-The known stable dimensions from the ratified line are:
+- measure owner -> admitted archetype edges explicitly;
+- prove reachability rather than infer it from declarations;
+- never convert `UNKNOWN` into valid;
+- detect structural collisions from normalized structure rather than labels;
+- keep historical evidence distinct from current freshness.
+
+The ratified G4 line had the following stable dimensions:
 
 ```text
 profiles = 33
@@ -212,8 +265,6 @@ admission_orphan = 0
 structural_collision = 0
 ```
 
-These numbers are **historical evidence for the G4 authority line**, not an eternal release invariant. Future MUSIC-R1 work must recompute them against its own exact root instead of copying them into acceptance by assumption.
-
 Classification:
 
 ```text
@@ -221,14 +272,16 @@ CANONICAL_METHOD
 HISTORICAL_NUMERIC_EVIDENCE
 ```
 
-### 4.2 Materialized idea corpus / click-stripped reasoning
+These numbers must be recomputed on the future MUSIC-R1 root. They are not eternal constants.
 
-C0/C0R established a durable evaluation principle:
+## 5.2 Materialized corpus / timbre stripping
 
-- compare materialized structure, not only selected labels;
+Durable method from C0/C0R:
+
+- compare materialized structure, not selected labels;
 - distinguish attack topology from occupancy/lifetime;
-- strip timbre conceptually when testing whether two supposed identities remain structurally distinct;
-- do not call P-level changes new ideas merely because realization changed.
+- conceptually strip timbre when testing identity;
+- do not call P-level realization differences new musical ideas by default.
 
 Classification:
 
@@ -237,13 +290,13 @@ CANONICAL_METHOD
 HISTORICAL_CORPUS
 ```
 
-The old corpus is not a final MUSIC-R1 acceptance corpus because the generator has changed since it was recorded.
+---
 
-## 5. Superseded semantic claims
+# 6. Superseded semantic claims
 
-The following CC1 predicates remain useful historical experiments, but they are **not semantic authority for MUSIC-R1**.
+The first CC1 Acid/Techno/Funk predicates remain useful as historical experiments, but they are not semantic authority for MUSIC-R1.
 
-### 5.1 Old Acid predicate
+## 6.1 Acid proxy — superseded
 
 Historical predicate:
 
@@ -254,17 +307,17 @@ short gate
 + max offset <= 3 sixteenth-note steps
 ```
 
-Why superseded:
+Why it failed as a portable musical contract:
 
-- upstream LaneGrammar metadata was not the authoritative downstream articulation semantics;
-- mixed short+held behavior was incorrectly required per pattern;
-- Kick->Bass Respond was not a universal Acid identity requirement;
-- `<=3` was a grid-specific engineering proxy.
+- LaneGrammar metadata was not the final authoritative downstream articulation semantics;
+- short+held was incorrectly treated as a per-pattern requirement;
+- Kick->Bass Respond was not a universal Acid identity law;
+- `<=3` encoded grid implementation detail.
 
 Replacement lesson:
 
 ```text
-prove authoritative articulation capability in owner-space
+prove authoritative two-sided articulation capability in owner-space
 ```
 
 Classification:
@@ -274,7 +327,7 @@ SUPERSEDED_AS_GENRE_CONTRACT
 HISTORICAL_AS_FAILURE_WITNESS
 ```
 
-### 5.2 Old Techno predicate
+## 6.2 Techno proxy — superseded as final contract
 
 Historical predicate:
 
@@ -284,26 +337,26 @@ progression in {StaticModal, PedalDrone}
 exactly one harmonic event
 ```
 
-Why superseded:
+Why it is insufficient:
 
 - “Techno does not move harmony” is too absolute;
-- the current progression IDs are implementation witnesses, not a musical definition;
-- a one-bar/static-event check cannot establish the role of harmony over musical time.
+- current progression IDs are implementation witnesses, not a musical definition;
+- a one-bar event count does not establish harmonic role over musical time.
 
-The retained research question is stronger:
+Retained MUSIC-R1 research question:
 
-> Is the Techno base **not progression-led**, even when harmonic motion exists?
+> Is the Techno base not progression-led, even when some harmonic motion exists?
 
-This should be tested as a harmonic-role / harmonic-time question, not as a frozen enum whitelist.
+This belongs to harmonic-role / harmonic-time analysis, not an enum whitelist.
 
 Classification:
 
 ```text
 SUPERSEDED_AS_FINAL_CONTRACT
-POTENTIAL_FUTURE_RESEARCH_AXIS
+FUTURE_HARMONIC_ROLE_CASE
 ```
 
-### 5.3 Old Funk/Soul predicate
+## 6.3 Funk/Soul proxy — superseded as final contract
 
 Historical predicate:
 
@@ -311,13 +364,13 @@ Historical predicate:
 Kick lane contains step 0
 ```
 
-Why superseded:
+Why it is insufficient:
 
-- “The One” is not equivalent to one kick onset;
-- metric gravity, return, syncopation and pocket are relational phenomena;
-- the proxy can pass material that does not feel structurally organized around The One.
+- The One is not equivalent to one kick onset;
+- metric gravity, syncopation, pocket and return are relational phenomena;
+- a pattern can contain kick step 0 without being organized around The One.
 
-The retained question is:
+Retained question:
 
 > Does the groove cycle preserve The One as metric gravity / return point?
 
@@ -328,47 +381,51 @@ SUPERSEDED_AS_FINAL_CONTRACT
 FUTURE_ADVERSARIAL_EXAM
 ```
 
-Funk is explicitly **not** a prerequisite for closing G4.
+Funk is not a prerequisite for closing G4.
 
-## 6. Branch/result classification
+---
 
-The following classification controls future archaeology.
+# 7. Branch/result classification
 
 | Line | Meaning | Freeze classification |
 |---|---|---|
 | C0 / C0R materialized corpus | empirical structure / click-collapse discovery | `HISTORICAL_EVIDENCE + CANONICAL_METHOD` |
 | contract-candidate ranking | exploration of possible predicates | `HISTORICAL_RESEARCH` |
-| DnB bass compatibility | real owner-space defect/fix | `CANONICAL_INTEGRATED` |
+| DnB compatibility | real owner-space defect/fix | `CANONICAL_INTEGRATED` |
 | I3 phrase truthfulness | selected law must have causal realization | `CANONICAL_INTEGRATED` |
 | I4 Dub Techno ownership | techno skeleton + dub relationship | `CANONICAL_INTEGRATED` |
 | I5 House ownership | remove over-broad admission | `CANONICAL_INTEGRATED` |
 | I6 global census | ownership/reachability method | `CANONICAL_METHOD`; numbers historical per SHA |
-| CC1 Acid/Techno/Funk first predicates | proxy-contract experiment | `SUPERSEDED_SEMANTICS` |
+| CC1 Acid/Techno/Funk predicates | proxy-contract experiment | `SUPERSEDED_SEMANTICS` |
 | CC1A Acid structural minimum | discovery of authority collapse | `CANONICAL_DIAGNOSIS` |
 | CC1A-P1 Acid authority | real production correction | `CANONICAL_DONOR_NOT_INTEGRATED` |
-| C3/C3A ratification machinery | evidence composition / provenance | `HISTORICAL_VERIFICATION_INFRASTRUCTURE` |
+| C3/C3A ratification machinery | evidence composition/provenance | `HISTORICAL_VERIFICATION_INFRASTRUCTURE` |
+| C9/C9A | later product stabilization, not a new G4 semantic authority | `FOUNDATION_LINEAGE` |
+| 0.9.12 FS1 | active Material Closure diagnostics | `ACTIVE_FOUNDATION_WORK`, not MUSIC-R1 root |
 
-No branch name by itself establishes authority. Exact commits, reports, production diffs and retained tests remain the evidence.
+No branch name alone establishes authority. Exact commits, production diffs, reports and retained tests are the evidence.
 
-## 7. New musical architecture target
+---
 
-The next musical line is not “G4-I7”. It is conceptually `MUSIC-R1` and begins only after the release/material foundation root is canonical.
+# 8. Target model for MUSIC-R1
 
-Target model:
+The next musical line is not `G4-I7`.
+
+Its conceptual model is:
 
 ```text
 GENRE BOUNDARIES
-invariants / prohibitions / relationship constraints
+invariants / prohibitions / relationships
         |
         v
 MUSICAL IDEA
-coherent structural selection
+coherent structural choice
         |
-        +------------------+
-        |                  |
-        v                  v
-VARIATION               NEW IDEA
-preserve anchors         change structural statement
+        +-------------------+
+        |                   |
+        v                   v
+VARIATION                NEW IDEA
+preserve anchors          change structural statement
         |
         v
 PHRASE DEVELOPMENT
@@ -378,15 +435,17 @@ PHRASE DEVELOPMENT
 MATERIAL
 ```
 
-The architecture should first attempt to express this through the existing `GenerationCompositionResult`. A new runtime `MusicalIdea` object is forbidden unless evidence shows that the existing composition result cannot truthfully own idea identity/anchors/development semantics.
+First try to express idea identity and anchors through the existing `GenerationCompositionResult`.
 
-## 8. MUSIC-R1 completion contract
+A new runtime `MusicalIdea` owner is forbidden until evidence shows that the current composition result cannot truthfully represent the required semantics.
 
-The musical line is considered architecturally closed when all of the following are demonstrated on one exact canonical descendant root.
+---
 
-### A. Genre boundary
+# 9. MUSIC-R1 completion contract
 
-Ownership/admission census remains structurally clean:
+The musical architecture line is closed only when the following are demonstrated on one exact accepted descendant of the final Material Closure root.
+
+## A. Genre boundary
 
 ```text
 false_owner = 0
@@ -394,35 +453,46 @@ admission_orphan = 0
 structural_collision = 0
 ```
 
-Representative structural mechanisms are proven; exhaustive “all genres PROVEN” is not required.
+Representative structural mechanisms are proven. Exhaustive `all genres -> PROVEN` is not required.
 
-### B. Idea
+## B. Idea
 
-Within reference genres, multiple structurally different ideas exist.
+Each reference genre can produce multiple structurally different ideas.
 
-A `NEW IDEA` must survive the removal of irrelevant production cues and cannot be defined solely by:
+A `NEW IDEA` cannot be established solely by:
 
 - timbre;
-- instrument choice;
+- instrument;
 - velocity;
 - transposition;
 - FEEL;
 - one-event mutation;
-- candidate weight changes.
+- weighting changes.
 
-### C. Variation
+The difference must survive the relevant timbre-stripped structural comparison.
 
-P1/P2/P3 or their successor semantics preserve identifiable idea anchors while changing realization magnitude.
+## C. Variation
 
-Variation must not silently reroll a new musical idea.
+P1/P2/P3 or successor semantics change realization while preserving identifiable idea anchors.
 
-### D. Phrase development
+Variation must not silently reroll a different idea.
 
-2/4/8-bar material is development of one frozen idea, not independent per-bar rerolls.
+## D. Phrase development
 
-### E. Temporal depth
+2/4/8-bar material develops one frozen idea.
 
-Musical activity/development is meaningfully distributed across multiple time levels:
+Forbidden failure mode:
+
+```text
+bar 0 = idea A
+bar 1 = unrelated reroll
+bar 2 = unrelated reroll
+bar 3 = unrelated reroll
+```
+
+## E. Temporal depth
+
+Meaningful activity/development exists across more than one time layer:
 
 ```text
 step
@@ -433,34 +503,41 @@ bar
 8-bar
 ```
 
-### F. Harmonic time
+## F. Harmonic time
 
-Where harmony is identity-relevant, harmonic rhythm is evaluated in musical/physical time as well as bar counts. Integer bar distance alone is insufficient across very different tempos.
+Where harmony matters, harmonic rhythm is evaluated in physical/musical time as well as bar counts.
 
-### G. Perceptual/adversarial check
+The same `{0,8}` bar-domain representation cannot be assumed musically equivalent at radically different BPM.
 
-Structural evidence is checked against rendered/listening evidence and a timbre-stripped representation. Neither listening alone nor static labels alone establish correctness.
+## G. Perceptual/adversarial validation
 
-### H. Architecture constraints
+Use both:
+
+- rendered/listening evidence;
+- timbre-stripped structural evidence.
+
+Neither listening alone nor declarative labels alone establish correctness.
+
+## H. Architecture constraints
 
 Do not introduce:
 
 - runtime `ReferenceGenre` hacks;
 - one special production branch per genre;
-- generic genre-rule DSL;
-- ML genre classifier;
-- continuous `IDEA`/`MORPH` engineering knob;
-- duplicate sequencer/Phrase runtime.
+- a generic genre-rule DSL;
+- an ML genre classifier;
+- a continuous engineering-facing `IDEA`/`MORPH` knob;
+- duplicate sequencer/Phrase runtime ownership.
 
-### I. Integration
+## I. Integration
 
-All accepted music production changes exist on one exact descendant of the canonical material/release root with exact-head verification.
+All accepted music production changes live on one exact descendant of the accepted Material Closure root with exact-head verification.
 
-## 9. Reference genres for MUSIC-R1
+---
 
-Use a small, orthogonal set rather than attempting all genres at once.
+# 10. Reference genres for MUSIC-R1
 
-Recommended minimum:
+Use a small orthogonal set:
 
 ```text
 Acid
@@ -476,48 +553,50 @@ Techno
   harmonic role / not progression-led
 ```
 
-Funk/Soul is retained as a later adversarial exam for metric gravity / pocket, not as a prerequisite.
+Funk/Soul is retained as a later adversarial exam for metric gravity/pocket.
 
-## 10. Required order after freeze
+---
 
-### Phase 0 — finish the foundation root
+# 11. Required execution order
 
-Do not start MUSIC-R1 production from this research branch.
+## Phase 0 — finish Material Closure
 
-Finish the existing release/material closure and identify one exact canonical integration SHA.
+Do not start MUSIC-R1 production from the semantic-freeze branch, C8, C9, C9A, or an active FS1 diagnostic head merely because it is newest.
 
-### Phase 1 — donor reconciliation
+First obtain one exact accepted Material Closure root.
 
-Against that exact root:
+## Phase 1 — donor reconciliation
 
-1. inventory which G4 canonical production mechanisms are already present;
+Against that root:
+
+1. inventory which canonical G4 production mechanisms are physically present;
 2. re-apply only missing proven donors;
 3. Acid P1 is the known missing donor at freeze time;
-4. run current ownership/reachability and retained runtime gates;
-5. no mechanical merge of historical G4 branches.
+4. rerun current ownership/reachability and retained runtime gates;
+5. do not mechanically merge historical G4 branches.
 
-### Phase 2 — idea / variation baseline
+## Phase 2 — idea / variation baseline
 
-Build a fresh materialized corpus for Acid, DnB, Dub Techno and Techno and answer:
+Build a fresh corpus for Acid, DnB, Dub Techno and Techno and answer:
 
 ```text
-what is the structural fingerprint of one idea?
+what is one idea's structural fingerprint?
 which fields are anchors?
 which changes are variation?
-which changes mean a new idea?
+which changes constitute a new idea?
 ```
 
-No new runtime owner until the corpus demonstrates the need.
+Do not add a new runtime owner before this evidence exists.
 
-### Phase 3 — phrase development
+## Phase 3 — phrase development
 
-Prove causal 2/4/8-bar development of frozen ideas and measure activity across time levels.
+Prove causal 2/4/8-bar development of frozen ideas and measure activity distribution across time layers.
 
-### Phase 4 — harmonic-time case
+## Phase 4 — harmonic-role / harmonic-time case
 
-Use Techno as the primary test of harmonic role rather than the obsolete `NO_HARMONIC_MOTION` predicate.
+Use Techno to test “not progression-led” rather than resurrecting `NO_HARMONIC_MOTION`.
 
-### Phase 5 — perceptual calibration
+## Phase 5 — perceptual calibration
 
 Only after structural correctness:
 
@@ -526,33 +605,37 @@ Only after structural correctness:
 - weight calibration;
 - genre-specific tuning.
 
-Weights are calibration, not ownership proof.
+Weights calibrate probability. They do not establish ownership.
 
-## 11. Explicit non-goals of the freeze
+---
+
+# 12. Explicit non-goals of this freeze
 
 This checkpoint does not:
 
 - change `src/**`;
-- modify tests or workflow semantics;
+- change tests or workflow semantics;
 - merge Acid P1;
-- reopen G4-I6 numeric freshness;
-- promote any `REVIEW_REQUIRED` contract;
+- reopen I6 historical freshness;
+- promote a `REVIEW_REQUIRED` contract;
 - claim Techno or Funk are fully modeled;
 - create MUSIC-R1 production code;
-- declare C8 the final release root.
+- declare C8/C9/C9A/FS1 canonical merely because they are later commits.
 
-## 12. Decision
+---
 
-G4 is frozen as a successful research/authority phase.
+# 13. Decision
 
-Its durable legacy is:
+G4 stops as a research/authority phase.
+
+Its durable lessons are:
 
 ```text
 OWNERSHIP BEFORE WEIGHTING
 
 materialized structure before labels
 
-prohibitions/relationships before genre adjectives
+prohibitions and relationships before genre adjectives
 
 authoritative downstream behavior before upstream metadata
 
@@ -561,8 +644,6 @@ variation != new idea
 phrase development != per-bar reroll
 ```
 
-The next musical architecture problem is no longer “prove more genre predicates”.
+The next musical problem is:
 
-It is:
-
-> Define and prove the boundary between Genre, Musical Idea, Variation and Phrase Development on top of one canonical Material/release root.
+> Define and prove the boundary between Genre, Musical Idea, Variation and Phrase Development on top of one accepted Material Closure root.
