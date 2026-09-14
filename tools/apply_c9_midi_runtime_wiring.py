@@ -28,10 +28,10 @@ s = replace_once(
     s,
     'MidiControlEventQueue g_controlQueue;\n',
     'MidiControlEventQueue g_controlQueue;\n'
-    'MidiInputQueue g_inputQueue;\n'
-    'MidiInputParser g_inputParser;\n'
-    'MidiIoState g_midiIoState;\n'
-    'MidiInputDispatcher g_inputDispatcher;\n'
+    'GroovePuterMidi::MidiInputQueue g_inputQueue;\n'
+    'GroovePuterMidi::MidiInputParser g_inputParser;\n'
+    'GroovePuterMidi::MidiIoState g_midiIoState;\n'
+    'GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;\n'
     'bool g_usbInputMounted = false;\n',
     "midi input globals")
 old_drain = '''void drainIncomingMidiPackets() {
@@ -89,13 +89,13 @@ new_drain = '''void syncUsbMidiInputLifecycle() {
     if (mounted && !g_usbInputMounted) {
         g_midiIoState.usbAttached();
         g_midiIoState.usbReady(true, true);
-        g_inputParser.reset(InputSession{
-            InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = true;
     } else if (!mounted && g_usbInputMounted) {
         g_midiIoState.usbDetached();
-        g_inputParser.reset(InputSession{
-            InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = false;
     }
 }
@@ -142,7 +142,7 @@ void drainIncomingMidiPackets() {
 
         const uint8_t raw[4] = {
             packet.header, packet.byte1, packet.byte2, packet.byte3};
-        const ParseResult parsed = g_inputParser.usbPacket(raw, micros());
+        const GroovePuterMidi::ParseResult parsed = g_inputParser.usbPacket(raw, micros());
         if (parsed.hasInput) {
             if (!g_inputQueue.tryPush(parsed.input)) {
                 ++g_diagnostics.externalRxIgnored;
@@ -159,12 +159,12 @@ s = replace_once(
     s,
     '    g_patternQueue = &patternQueue;\n    g_externalTransportQueue = &externalTransportQueue;\n',
     '    g_patternQueue = &patternQueue;\n    g_externalTransportQueue = &externalTransportQueue;\n'
-    '    g_midiIoState.setRoutes(MidiRoutes{true, false, true, true});\n'
-    '    g_midiIoState.requestUsbRole(UsbRole::Device);\n'
+    '    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});\n'
+    '    g_midiIoState.requestUsbRole(GroovePuterMidi::UsbRole::Device);\n'
     '    g_midiIoState.boot();\n'
     '    g_inputDispatcher.bind(router, g_midiIoState);\n'
-    '    g_inputParser.reset(InputSession{\n'
-    '        InputSource::Usb, g_midiIoState.usbInputGeneration()});\n',
+    '    g_inputParser.reset(GroovePuterMidi::InputSession{\n'
+    '        GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});\n',
     "register input runtime")
 p.write_text(s)
 
