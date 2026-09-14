@@ -1,0 +1,36 @@
+name: 0.9.12 FS2A Current Next Causality
+
+on:
+  push:
+    branches:
+      - feature/20260914-fs2a-current-next-causality
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fs2a-red-green:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove checkout and production root
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor 860b10afd60eb1a90c1be62bb5baba529c79fdf5 HEAD
+          printf 'checkout_sha=%s\n' "$(git rev-parse HEAD)"
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsdl2-dev libsdl2-gfx-dev
+
+      - name: FS2A current-next causality
+        run: bash tests/run_fs2a_current_next_causality_tests.sh
