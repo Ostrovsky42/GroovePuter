@@ -92,6 +92,16 @@ jobs:
             echo "source_contract=src/phrase/runtime_synth_events.h"
           } | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/m1-m2-size-contract.txt"
 
+      - name: Install SDL host-test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
       - name: Run M2 ownership host proof
         shell: bash
         run: |
