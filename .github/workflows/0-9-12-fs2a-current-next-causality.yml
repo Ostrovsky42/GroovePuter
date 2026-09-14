@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  fs2a-red-green:
+  fs2a-verification:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout exact branch SHA
         uses: actions/checkout@v4
@@ -26,11 +27,66 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           git merge-base --is-ancestor 860b10afd60eb1a90c1be62bb5baba529c79fdf5 HEAD
           printf 'checkout_sha=%s\n' "$(git rev-parse HEAD)"
+          printf 'production_root=%s\n' 860b10afd60eb1a90c1be62bb5baba529c79fdf5
 
       - name: Install host dependencies
+        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libsdl2-dev libsdl2-gfx-dev
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
 
       - name: FS2A current-next causality
         run: bash tests/run_fs2a_current_next_causality_tests.sh
+
+      - name: M4 primitive regression
+        run: bash tests/run_m4_next_material_tests.sh
+
+      - name: Material identity regression
+        run: bash tests/run_0_9_11_c1a_material_identity_foundation.sh
+
+      - name: Working identity regression
+        run: bash tests/run_0_9_11_m_working_a2b_mwk_tests.sh
+
+      - name: Working manual pattern edit regression
+        run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+
+      - name: Working manual retarget regression
+        run: bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
+
+      - name: FS2A scope and durability audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=860b10afd60eb1a90c1be62bb5baba529c79fdf5
+
+          mapfile -t prod_changed < <(git diff --name-only "$base"..HEAD -- src)
+          printf 'production_changed=%s\n' "${prod_changed[*]}"
+          test "${#prod_changed[@]}" -eq 2
+          printf '%s\n' "${prod_changed[@]}" | grep -Fx 'src/dsp/miniacid_engine.cpp'
+          printf '%s\n' "${prod_changed[@]}" | grep -Fx 'src/dsp/miniacid_engine.h'
+
+          ! git diff --name-only "$base"..HEAD | grep -E '^src/state/(melody_storage|melody_promotion)'
+          ! git diff --name-only "$base"..HEAD | grep -E '^src/ui/'
+          ! git diff --name-only "$base"..HEAD | grep -E '(^|/)(song|project).*\.(cpp|h)$'
+          ! git diff "$base"..HEAD -- src | grep -E '^\+.*(commitSelectedScene|MelodyPromotion|filesystem|fopen\(|SD\.|ACCEPT)'
+          ! git diff "$base"..HEAD -- src | grep -E '^\+.*new[[:space:]]+.*RuntimeSynthEventBuffer'
+          git diff --check "$base"..HEAD
+
+      - name: Temporary infrastructure is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e tools/fs2a_apply_green.py
+          test ! -e .github/workflows/0-9-12-fs2a-green-apply.yml
+
+      - name: Clean tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          printf 'verified_sha=%s\n' "$(git rev-parse HEAD)"
