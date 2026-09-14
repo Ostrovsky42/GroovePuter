@@ -442,6 +442,14 @@ public:
   PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
   const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(
       int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* readableWorkingMelody(
+      int voiceIndex) const {
+    return readableWorkingMelody_(voiceIndex);
+  }
+  const PhraseRuntime::RuntimeSynthEventBuffer* retainedWorkingMelody(
+      int voiceIndex) const {
+    return retainedWorkingMelody_(voiceIndex);
+  }
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -458,6 +466,10 @@ private:
   uint16_t phraseRelativeTick_(int voiceIndex, uint32_t absoluteTick) const;
   const PhraseRuntime::RuntimeSynthEvent* phraseEventAt_(
       int voiceIndex, uint32_t absoluteTick) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* readableWorkingMelody_(
+      int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* retainedWorkingMelody_(
+      int voiceIndex) const;
   void consumePatternPlaybackActions_(
       int synthIdx,
       const PhraseRuntime::RuntimeSynthPlaybackActions& actions);

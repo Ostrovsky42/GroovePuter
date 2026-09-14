@@ -755,11 +755,15 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   }
   if (source_control_ && source_control_->isFocused()) {
     // One owner for the switch: ALT+R on the editor reaches the same code.
-    PhraseSourceToggle::toggle(mini_acid_,
-                               [&](const std::function<void()>& body) {
-                                 withAudioGuard(body);
-                               },
-                               voice_index_);
+    const auto result = PhraseSourceToggle::toggle(
+        mini_acid_,
+        [&](const std::function<void()>& body) {
+          withAudioGuard(body);
+        },
+        voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected) {
+      UI::showToast("MAKE MELODY FIRST", 1500);
+    }
     return;
   }
   if (make_phrase_control_ && make_phrase_control_->isFocused()) {

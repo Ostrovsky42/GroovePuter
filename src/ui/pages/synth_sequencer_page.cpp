@@ -248,13 +248,18 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
 
   UI::publishShellFeelOverlay(false);
 
-  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
-  if (!PhraseNotesProjection::validate(phrase)) {
+  const auto* melody = mini_acid_.readableWorkingMelody(voice_index_);
+  if (!melody) {
+    const bool isMelodyMaterial =
+        mini_acid_.activeMaterial(voice_index_).kind ==
+        GroovePuterMaterial::MaterialKind::Melody;
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(bounds.x + 4, bounds.y + 20, "MELODY UNREADABLE");
+    gfx.drawText(bounds.x + 4, bounds.y + 20,
+                 isMelodyMaterial ? "MELODY UNREADABLE" : "NO MELODY");
     UI::drawStandardFooter(gfx, "CTRL+Z UNDO", "");
     return;
   }
+  const auto& phrase = *melody;
 
   phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
   const uint16_t cursorTick = PhraseNotesCursor::tick(phrase_cursor_);
@@ -448,13 +453,18 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor::Black());
   UI::publishShellFeelOverlay(false);
 
-  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
-  if (!PhraseNotesProjection::validate(phrase)) {
+  const auto* melody = mini_acid_.readableWorkingMelody(voice_index_);
+  if (!melody) {
+    const bool isMelodyMaterial =
+        mini_acid_.activeMaterial(voice_index_).kind ==
+        GroovePuterMaterial::MaterialKind::Melody;
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(bounds.x + 4, bounds.y + 20, "MELODY UNREADABLE");
+    gfx.drawText(bounds.x + 4, bounds.y + 20,
+                 isMelodyMaterial ? "MELODY UNREADABLE" : "NO MELODY");
     UI::drawStandardFooter(gfx, "CTRL+Z UNDO", "");
     return;
   }
+  const auto& phrase = *melody;
 
   phrase_selection_ = PhraseSelectionState::resolve(phrase, phrase_selection_);
   if (!phrase_selection_.active) {
@@ -961,6 +971,8 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
     if (result == PhraseSourceToggle::Result::MadePhrase) {
       UI::showToast("SOURCE: MELODY", 1000);
+    } else if (result == PhraseSourceToggle::Result::Rejected) {
+      UI::showToast("MAKE MELODY FIRST", 1500);
     } else {
       UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
                             MiniAcid::SequencedSource::Phrase

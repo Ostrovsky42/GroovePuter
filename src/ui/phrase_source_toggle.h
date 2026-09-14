@@ -40,11 +40,21 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
                         MiniAcid::SequencedSource::Phrase;
 
+  // Pattern -> Melody is allowed ONLY if a valid retained Melody already exists
+  // in working storage. An empty or unmaterialized storage must be rejected so
+  // no out-of-bounds or non-existent material can become the sounding owner.
+  if (!onPhrase && engine.retainedWorkingMelody(voiceIndex) == nullptr) {
+    return Result::Rejected;
+  }
+
   GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
   receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
   receipt.source =
       static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
-  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+  const auto* retained = engine.retainedWorkingMelody(voiceIndex);
+  if (retained != nullptr) {
+    receipt.before = *retained;
+  }
 
   Result result = Result::Rejected;
   const auto apply = [&]() {
@@ -57,11 +67,14 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
                                           MiniAcid::SequencedSource::Pattern);
                 result = Result::SwitchedToPattern;
               } else {
-                // SOURCE is selection only. An empty Phrase is a valid target;
-                // only MAKE PHRASE is allowed to materialize Pattern content.
                 engine.setSequencedSource(voiceIndex,
                                           MiniAcid::SequencedSource::Phrase);
-                result = Result::SwitchedToPhrase;
+                if (engine.currentSequencedSource(voiceIndex) ==
+                    MiniAcid::SequencedSource::Phrase) {
+                  result = Result::SwitchedToPhrase;
+                } else {
+                  result = Result::Rejected;
+                }
               }
             });
     if (!committed) result = Result::Rejected;

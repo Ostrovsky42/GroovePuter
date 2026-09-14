@@ -83,6 +83,13 @@ class WorkingMaterialStorage {
   SynthPattern& pattern() { return payload_.pattern; }
   const SynthPattern& pattern() const { return payload_.pattern; }
 
+  MelodyBuffer* melodyIfHeld() {
+    return holdsMelody() ? &payload_.melody : nullptr;
+  }
+  const MelodyBuffer* melodyIfHeld() const {
+    return holdsMelody() ? &payload_.melody : nullptr;
+  }
+
   MelodyBuffer& melody() { return payload_.melody; }
   const MelodyBuffer& melody() const { return payload_.melody; }
 

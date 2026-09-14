@@ -45,16 +45,21 @@ int main() {
     pattern.steps[4].note = 43;
   }
 
-  // 1. First use converts: material appears and the voice moves to PHRASE.
+  // 1. First toggle without material is rejected; makePhrase converts.
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Pattern,
          "voice did not start on PATTERN");
-  PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
+  expect(PhraseSourceToggle::toggle(engine, nullptr, kSynthA) ==
+             PhraseSourceToggle::Result::Rejected,
+         "toggle without material was not rejected");
+  expect(PhraseSourceToggle::makePhrase(engine, nullptr, kSynthA),
+         "makePhrase failed");
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Phrase,
-         "first toggle did not reach PHRASE");
-  expect(engine.currentPhraseBuffer(kSynthA).count > 0,
-         "first toggle produced no material");
+         "makePhrase did not reach PHRASE");
+  expect(engine.retainedWorkingMelody(kSynthA) != nullptr &&
+         engine.retainedWorkingMelody(kSynthA)->count > 0,
+         "makePhrase produced no material");
 
   // 2. Editing the material and toggling twice must return it untouched. This
   //    is the invariant that makes the switch safe to use casually: it is a
@@ -67,7 +72,8 @@ int main() {
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Pattern,
          "toggle did not return to PATTERN");
-  expect(engine.currentPhraseBuffer(kSynthA).count > 0,
+  expect(engine.retainedWorkingMelody(kSynthA) != nullptr &&
+         engine.retainedWorkingMelody(kSynthA)->count > 0,
          "returning to PATTERN destroyed the material");
 
   PhraseSourceToggle::toggle(engine, nullptr, kSynthA);
@@ -78,7 +84,7 @@ int main() {
   expect(engine.currentSequencedSource(kSynthB) ==
              MiniAcid::SequencedSource::Pattern,
          "toggling synth A moved synth B");
-  expect(engine.currentPhraseBuffer(kSynthB).count == 0,
+  expect(!engine.workingMaterial_[kSynthB].holdsMelody(),
          "toggling synth A wrote material into synth B");
 
   // 4. An out-of-range voice changes nothing at all.
@@ -97,6 +103,7 @@ int main() {
       body();
       ranInside = true;
     };
+    PhraseSourceToggle::makePhrase(engine, nullptr, kSynthB);
     const auto before = engine.currentSequencedSource(kSynthB);
     PhraseSourceToggle::toggle(engine, guard, kSynthB);
     expect(guardCalls == 1, "the audio guard was not used");
