@@ -41,6 +41,9 @@ jobs:
       - name: FS2A current-next causality
         run: bash tests/run_fs2a_current_next_causality_tests.sh
 
+      - name: FS2A raw-stage causal unbind
+        run: bash tests/run_fs2a_raw_stage_unbind_tests.sh
+
       - name: M4 primitive regression
         run: bash tests/run_m4_next_material_tests.sh
 
