@@ -27,12 +27,12 @@ if ! bash "${ROOT_DIR}/tests/test_c9_midi_user_surface.sh"; then
 fi
 
 for marker in \
-  'stage=post-create' \
-  'stage=restore-end' \
-  'stage=transition-enter-end' \
-  'stage=frame-status-begin' \
-  'stage=frame-tick-begin' \
-  'stage=frame-draw-begin'; do
+  '"post-create"' \
+  '"restore-end"' \
+  '"transition-enter-end"' \
+  '"frame-status-begin"' \
+  '"frame-tick-begin"' \
+  '"frame-draw-begin"'; do
   if ! grep -Fq -- "${marker}" "${ROOT_DIR}/src/ui/miniacid_display.cpp"; then
     echo "C9 CRASH TRACE RED: missing ${marker}"
     status=1
