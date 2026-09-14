@@ -1,0 +1,194 @@
+name: 0.9.12 FS1D M2 Runtime Residency
+
+on:
+  push:
+    branches:
+      - feature/20260914-fs1-memory-census-m1-m2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fs1d-runtime-residency-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove authoritative production root and FS1D freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=860b10afd60eb1a90c1be62bb5baba529c79fdf5
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor "${ROOT}" HEAD
+          git diff --exit-code "${ROOT}" HEAD -- \
+            src scripts firmware platform_sdl GroovePuter.ino scenes.h
+          mkdir -p build/fs1d-evidence
+          {
+            echo "authoritative_root=${ROOT}"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "checkpoint=FS1D_M2_RUNTIME_RESIDENCY_RATIFICATION"
+            echo "production_semantics_delta=NONE"
+            echo "end_to_end_next=NOT_IMPLEMENTED"
+          } | tee build/fs1d-evidence/provenance.txt
+          git diff --name-status "${ROOT}" HEAD \
+            | tee build/fs1d-evidence/verification-delta.txt
+
+      - name: Prove read-only diagnostic source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/test_fs1d_pending_residency_instrumentation.py \
+            | tee build/fs1d-evidence/source-proof.log
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Fetch exact ESP-IDF source object for FS1B link candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDF_COMMIT=858a988d6eb90f54661abe282c523879c6ad0116
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin "${IDF_COMMIT}"
+          git -C "$HOME/esp-idf" cat-file -e "${IDF_COMMIT}^{commit}"
+
+      - name: Build exact product reference with accepted FS1B link
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/fs1d-product" \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+            | tee build/fs1d-evidence/product-build.log
+
+      - name: Build FS1D read-only diagnostic image
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/fs1d-diagnostic" \
+            bash tests/fs1d/build_pending_residency.sh --warnings all \
+            | tee build/fs1d-evidence/diagnostic-build.log
+
+      - name: Compare product and diagnostic static resource picture
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODUCT_ELF="${GITHUB_WORKSPACE}/build/fs1d-product/GroovePuter.ino.elf"
+          DIAG_ELF="${GITHUB_WORKSPACE}/build/fs1d-diagnostic/GroovePuter.ino.elf"
+          test -f "${PRODUCT_ELF}"
+          test -f "${DIAG_ELF}"
+
+          MEMORY_BASELINE_IMAGE_KIND=product \
+            bash scripts/report_cardputer_memory_baseline.sh "${PRODUCT_ELF}" \
+            | tee build/fs1d-evidence/product-memory-report.log
+          MEMORY_BASELINE_IMAGE_KIND=fs1d-read-only-diagnostic \
+            bash scripts/report_cardputer_memory_baseline.sh "${DIAG_ELF}" \
+            | tee build/fs1d-evidence/diagnostic-memory-report.log
+
+          product_fixed="$(awk '/^fixed DRAM:/ {print $3}' build/fs1d-evidence/product-memory-report.log)"
+          diag_fixed="$(awk '/^fixed DRAM:/ {print $3}' build/fs1d-evidence/diagnostic-memory-report.log)"
+          test -n "${product_fixed}"
+          test -n "${diag_fixed}"
+          delta=$((diag_fixed - product_fixed))
+          {
+            echo "product_fixed_dram_bytes=${product_fixed}"
+            echo "diagnostic_fixed_dram_bytes=${diag_fixed}"
+            echo "diagnostic_fixed_dram_delta_bytes=${delta}"
+            echo "note=reported_not_thresholded; FS1D acceptance uses observed runtime stability"
+          } | tee build/fs1d-evidence/instrumentation-static-delta.txt
+
+      - name: Prove candidate-only FatFs in both final links
+        shell: bash
+        run: |
+          set -euo pipefail
+          for build in fs1d-product fs1d-diagnostic; do
+            MAP="${GITHUB_WORKSPACE}/build/${build}/.arduino-build/GroovePuter.ino.map"
+            test -f "${MAP}"
+            grep -Fq "fatfs-dynbuffers/libfatfs.a" "${MAP}"
+            if grep -Fq "/lib/libfatfs.a" "${MAP}"; then
+              echo "stock FatFs survived into ${build}" >&2
+              exit 1
+            fi
+          done
+          echo "product_and_diagnostic_candidate_fatfs=PASS" \
+            | tee build/fs1d-evidence/fs1b-link-proof.txt
+
+      - name: Write bounded hardware procedure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > build/fs1d-evidence/HARDWARE_PROCEDURE.txt <<'EOF'
+          FS1D — M2 RUNTIME RESIDENCY RATIFICATION
+
+          This image is an observer, not a NEXT prototype.
+          Do not create a synthetic NEXT workload, synthetic SD load, or staging loop.
+
+          1. Flash build/fs1d-diagnostic/GroovePuter.ino.bin to Cardputer ADV.
+          2. Cold boot with the normal SD/runtime setup.
+          3. Capture serial output at 115200 and keep every [FS1D_SAMPLE] line.
+          4. Wait for normal runtime stabilization; use the first stable sample as T0.
+          5. Record an idle sample (T1).
+          6. Start transport and normal Pattern/Melody playback; record T2.
+          7. Navigate ordinary UI pages; record T3.
+          8. Continue normal playback for several minutes. Existing MIDI may be exercised,
+             but it is optional. Do not invoke a synthetic NEXT path. Record T4.
+          9. Stop transport and record a final stable sample T5.
+          10. Preserve the complete serial log for verdict analysis.
+
+          Required observations:
+            pendingA_present=1
+            pendingB_present=1
+            pending_distinct=1
+            pendingA_address stable T0..T5
+            pendingB_address stable T0..T5
+            free_internal reaches a stable runtime plateau without progressive floor loss
+            minimum_free_internal is treated as a watermark, not a value that must recover
+            largest_internal shows no progressive collapse
+            task_stack_hwm_bytes remains acceptable (production AudioTask HWM)
+            audio_underruns delta attributable to FS1D = 0
+
+          FS1D does not ratify end-to-end NEXT preparation/load timing or stack cost.
+          EOF
+          sed -i 's/^          //' build/fs1d-evidence/HARDWARE_PROCEDURE.txt
+
+      - name: Record firmware fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          find build/fs1d-product build/fs1d-diagnostic -maxdepth 1 -type f \
+            \( -name '*.elf' -o -name '*.bin' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | tee build/fs1d-evidence/SHA256SUMS.txt
+          test -s build/fs1d-evidence/SHA256SUMS.txt
+
+      - name: Prove verification left tracked checkout clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload FS1D hardware diagnostic bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: grooveputer-0.9.12-fs1d-runtime-residency-${{ github.sha }}
+          path: |
+            build/fs1d-diagnostic/
+            build/fs1d-evidence/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
