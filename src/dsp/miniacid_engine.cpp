@@ -4138,6 +4138,13 @@ bool MiniAcid::stagePendingMaterial(
     if (!RuntimePhraseEdit::validate(*melody)) return false;
     *pending.melody = *melody;
   }
+  // The lower M4 primitive has no proof that its payload was prepared
+  // against the upper FS2A CURRENT identity/version. A successful raw stage
+  // therefore becomes explicitly unbound; prepareNextMelody() re-binds only
+  // after staging succeeds and it has captured the exact canonical basis.
+  pending.lifecycleBound = false;
+  pending.preparedFor = {};
+  pending.acceptedVersion = {};
   pending.slot = slot;
   pending.kind = kind;
   pending.queued = true;
