@@ -1,0 +1,132 @@
+name: 0.9.11 C9 Exact FS1B 077e0ce1
+
+on:
+  push:
+    branches:
+      - verification/20260914-c9-fs1b-077e0ce1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: 077e0ce10d5ad90ce30479990f49924252d448d7
+  C8_ROOT: 6897a2434c17c42d4da369f5ea39dce98050c2af
+
+jobs:
+  build-exact-c9-fs1b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact published C9 production SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 077e0ce10d5ad90ce30479990f49924252d448d7
+          fetch-depth: 0
+
+      - name: Prove exact target and C8 lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
+          git merge-base --is-ancestor "${C8_ROOT}" "${TARGET_SHA}"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          printf 'target=%s\nc8_root=%s\n' "${TARGET_SHA}" "${C8_ROOT}"
+
+      - name: Re-run focused C9 MIDI contracts on exact target
+        run: bash tests/run_c9_midi_repair_tests.sh
+
+      - name: Preserve C4 MIDI lifecycle contracts on exact target
+        run: bash tests/run_0_9_11_c4_midi_convergence_tests.sh
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Fetch exact ESP-IDF source object for FS1B
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDF_COMMIT=858a988d6eb90f54661abe282c523879c6ad0116
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin "${IDF_COMMIT}"
+          git -C "$HOME/esp-idf" cat-file -e "${IDF_COMMIT}^{commit}"
+
+      - name: Build exact-target flash-safe Cardputer ADV FS1B image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/build/c9-fs1b-evidence"
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c9-fs1b-cardputer-product" \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+            | tee "${GITHUB_WORKSPACE}/build/c9-fs1b-evidence/build.log"
+
+      - name: Report and enforce exact-target Cardputer DRAM budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF="${GITHUB_WORKSPACE}/build/c9-fs1b-cardputer-product/GroovePuter.ino.elf"
+          test -f "${ELF}"
+          bash scripts/report_cardputer_memory_baseline.sh "${ELF}" \
+            | tee "${GITHUB_WORKSPACE}/build/c9-fs1b-evidence/memory-report.log"
+          bash scripts/check_cardputer_dram_budget.sh "${ELF}" \
+            | tee "${GITHUB_WORKSPACE}/build/c9-fs1b-evidence/dram-budget.log"
+
+      - name: Prove final link uses candidate-only FatFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c9-fs1b-cardputer-product"
+          MAP="${BUILD_PATH}/.arduino-build/GroovePuter.ino.map"
+          test -f "${MAP}"
+          grep -Fq "fatfs-dynbuffers/libfatfs.a" "${MAP}"
+          if grep -Fq "/lib/libfatfs.a" "${MAP}"; then
+            echo "Stock FatFs archive survived into final link map" >&2
+            exit 1
+          fi
+          echo "FS1B final artifact: candidate FatFs present, stock FatFs absent" \
+            | tee "${GITHUB_WORKSPACE}/build/c9-fs1b-evidence/fs1b-link-proof.txt"
+
+      - name: Record exact firmware fingerprints and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/c9-fs1b-cardputer-product"
+          EVIDENCE_PATH="${GITHUB_WORKSPACE}/build/c9-fs1b-evidence"
+          {
+            echo "target_commit=${TARGET_SHA}"
+            echo "checked_out_commit=$(git rev-parse HEAD)"
+            echo "verification_ref=${GITHUB_REF}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "workflow_sha=${GITHUB_SHA}"
+          } | tee "${EVIDENCE_PATH}/provenance.txt"
+          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
+          find "${BUILD_PATH}" -maxdepth 1 -type f \( -name '*.elf' -o -name '*.bin' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | tee "${EVIDENCE_PATH}/SHA256SUMS.txt"
+          test -s "${EVIDENCE_PATH}/SHA256SUMS.txt"
+
+      - name: Upload exact 077e0ce1 flashable artifact and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: grooveputer-0.9.11-c9-077e0ce10d5ad90ce30479990f49924252d448d7
+          path: |
+            build/c9-fs1b-cardputer-product/
+            build/c9-fs1b-evidence/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Prove verification did not mutate tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${TARGET_SHA}"
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
