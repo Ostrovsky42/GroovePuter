@@ -1,0 +1,134 @@
+name: 0.9.12 FS1 Memory Census M1 M2
+
+on:
+  push:
+    branches:
+      - feature/20260914-fs1-memory-census-m1-m2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fs1-memory-census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove authoritative root and verification-only delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=860b10afd60eb1a90c1be62bb5baba529c79fdf5
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor "${ROOT}" HEAD
+          git diff --exit-code "${ROOT}" HEAD -- src tests scripts firmware platform_sdl GroovePuter.ino scenes.h
+
+      - name: Prove M1 M2 payload-size contract from production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'static_assert(sizeof(RuntimeSynthEventBuffer) == 1284' src/phrase/runtime_synth_events.h
+          grep -Fq 'sizeof(WorkingMaterialStorage::MelodyBuffer)' src/state/working_material_storage.h
+          mkdir -p "${GITHUB_WORKSPACE}/build/fs1-census-evidence"
+          {
+            echo "runtime_synth_event_buffer_bytes=1284"
+            echo "m1_shared_pending_bytes=1284"
+            echo "m2_per_voice_pending_bytes=2568"
+            echo "m2_minus_m1_bytes=1284"
+            echo "source_contract=src/phrase/runtime_synth_events.h"
+          } | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/m1-m2-size-contract.txt"
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Fetch exact ESP-IDF source object for FS1B
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDF_COMMIT=858a988d6eb90f54661abe282c523879c6ad0116
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin "${IDF_COMMIT}"
+          git -C "$HOME/esp-idf" cat-file -e "${IDF_COMMIT}^{commit}"
+
+      - name: Build exact-head FS1B Cardputer ADV image
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/fs1-census-cardputer" \
+            bash scripts/build_cardputer_dynbuffers.sh --warnings all \
+            | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/build.log"
+
+      - name: Report and enforce exact-head Cardputer DRAM budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF="${GITHUB_WORKSPACE}/build/fs1-census-cardputer/GroovePuter.ino.elf"
+          bash scripts/report_cardputer_memory_baseline.sh "${ELF}" \
+            | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/memory-report.log"
+          bash scripts/check_cardputer_dram_budget.sh "${ELF}" \
+            | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/dram-budget.log"
+
+      - name: Prove final link still uses FS1B candidate FatFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/fs1-census-cardputer"
+          MAP="${BUILD_PATH}/.arduino-build/GroovePuter.ino.map"
+          test -f "${MAP}"
+          grep -Fq "fatfs-dynbuffers/libfatfs.a" "${MAP}"
+          if grep -Fq "/lib/libfatfs.a" "${MAP}"; then
+            echo "Stock FatFs archive survived into final link map" >&2
+            exit 1
+          fi
+          echo "FS1B final artifact: candidate FatFs present, stock FatFs absent" \
+            | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/fs1b-link-proof.txt"
+
+      - name: Record provenance and fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=860b10afd60eb1a90c1be62bb5baba529c79fdf5
+          BUILD_PATH="${GITHUB_WORKSPACE}/build/fs1-census-cardputer"
+          EVIDENCE_PATH="${GITHUB_WORKSPACE}/build/fs1-census-evidence"
+          {
+            echo "authoritative_root=${ROOT}"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "checkpoint=FS1_MEMORY_CENSUS_M1_M2"
+            echo "production_delta=NONE"
+          } | tee "${EVIDENCE_PATH}/provenance.txt"
+          find "${BUILD_PATH}" -maxdepth 1 -type f \( -name '*.elf' -o -name '*.bin' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | tee "${EVIDENCE_PATH}/SHA256SUMS.txt"
+          test -s "${EVIDENCE_PATH}/SHA256SUMS.txt"
+
+      - name: Upload FS1 memory census evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: grooveputer-0.9.12-fs1-memory-census-${{ github.sha }}
+          path: |
+            build/fs1-census-cardputer/
+            build/fs1-census-evidence/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Prove verification did not mutate tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
