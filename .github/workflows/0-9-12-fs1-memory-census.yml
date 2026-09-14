@@ -1,4 +1,4 @@
-name: 0.9.12 FS1 Memory Census M1 M2
+name: 0.9.12 FS1 M2 Ratification
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  fs1-memory-census:
+  fs1-m2-ratification:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -19,14 +19,63 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Prove authoritative root and verification-only delta
+      - name: Prove authoritative root and production-only delta
         shell: bash
         run: |
           set -euo pipefail
           ROOT=860b10afd60eb1a90c1be62bb5baba529c79fdf5
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           git merge-base --is-ancestor "${ROOT}" HEAD
-          git diff --exit-code "${ROOT}" HEAD -- src tests scripts firmware platform_sdl GroovePuter.ino scenes.h
+          # FS1C may strengthen tests and verification workflow, but production
+          # must remain byte-for-byte identical to the accepted 0.9.11 root.
+          git diff --exit-code "${ROOT}" HEAD -- \
+            src scripts firmware platform_sdl GroovePuter.ino scenes.h
+
+      - name: Discover exact production M2 call graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE_PATH="${GITHUB_WORKSPACE}/build/fs1-census-evidence"
+          mkdir -p "${EVIDENCE_PATH}"
+          OUT="${EVIDENCE_PATH}/m2-production-callgraph.txt"
+          : > "${OUT}"
+
+          for symbol in \
+            stagePendingMaterial \
+            hasPendingMaterial \
+            pendingMaterialAddress \
+            activatePendingMaterial; do
+            echo "=== ${symbol} ===" | tee -a "${OUT}"
+            git grep -n -F "${symbol}(" -- src GroovePuter.ino \
+              | tee -a "${OUT}" || true
+          done
+
+          stage_files="$(git grep -l -F 'stagePendingMaterial(' -- src GroovePuter.ino || true)"
+          activate_files="$(git grep -l -F 'activatePendingMaterial(' -- src GroovePuter.ino || true)"
+          external_stage="$(printf '%s\n' "${stage_files}" \
+            | grep -v -E '^src/dsp/miniacid_engine\.(h|cpp)$' \
+            | sed '/^$/d' || true)"
+          external_activate="$(printf '%s\n' "${activate_files}" \
+            | grep -v -E '^src/dsp/miniacid_engine\.(h|cpp)$' \
+            | sed '/^$/d' || true)"
+
+          {
+            echo "ENGINE_M2_PRIMITIVE=PRESENT"
+            if [[ -z "${external_stage}" && -z "${external_activate}" ]]; then
+              echo "END_TO_END_NEXT_PRODUCER=NOT_PRESENT"
+              echo "UPPER_PREPARE_LOAD_PATH=NOT_PRESENT"
+              echo "UPPER_PATH_RUNTIME_SYNTH_EVENT_BUFFER_TEMPORARIES=NOT_APPLICABLE"
+            else
+              echo "END_TO_END_NEXT_PRODUCER=PRESENT_OR_REQUIRES_REVIEW"
+              echo "external_stage_files=${external_stage//$'\n'/,}"
+              echo "external_activate_files=${external_activate//$'\n'/,}"
+            fi
+          } | tee -a "${OUT}"
+
+          echo "=== RuntimeSynthEventBuffer engine ownership ===" | tee -a "${OUT}"
+          git grep -n -F 'RuntimeSynthEventBuffer' -- \
+            src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp \
+            | tee -a "${OUT}" || true
 
       - name: Prove M1 M2 payload-size contract from production source
         shell: bash
@@ -42,6 +91,13 @@ jobs:
             echo "m2_minus_m1_bytes=1284"
             echo "source_contract=src/phrase/runtime_synth_events.h"
           } | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/m1-m2-size-contract.txt"
+
+      - name: Run M2 ownership host proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/run_m4_next_material_tests.sh \
+            | tee "${GITHUB_WORKSPACE}/build/fs1-census-evidence/m2-ownership-host-test.log"
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -106,7 +162,7 @@ jobs:
             echo "commit=${GITHUB_SHA}"
             echo "ref=${GITHUB_REF}"
             echo "workflow_run=${GITHUB_RUN_ID}"
-            echo "checkpoint=FS1_MEMORY_CENSUS_M1_M2"
+            echo "checkpoint=FS1_M2_RATIFICATION"
             echo "production_delta=NONE"
           } | tee "${EVIDENCE_PATH}/provenance.txt"
           find "${BUILD_PATH}" -maxdepth 1 -type f \( -name '*.elf' -o -name '*.bin' \) -print0 \
@@ -115,10 +171,10 @@ jobs:
             | tee "${EVIDENCE_PATH}/SHA256SUMS.txt"
           test -s "${EVIDENCE_PATH}/SHA256SUMS.txt"
 
-      - name: Upload FS1 memory census evidence
+      - name: Upload FS1 M2 ratification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: grooveputer-0.9.12-fs1-memory-census-${{ github.sha }}
+          name: grooveputer-0.9.12-fs1-m2-ratification-${{ github.sha }}
           path: |
             build/fs1-census-cardputer/
             build/fs1-census-evidence/
