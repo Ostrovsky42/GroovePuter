@@ -633,6 +633,13 @@ bool PerformPage::handleEvent(UIEvent& event) {
     // modifier combination passes through to the global shortcuts.
     const bool toolsArrow = toolsLayerVisible_ && !event.ctrl && !event.alt &&
                             UIInput::navCode(event) != 0;
+    const bool isAltO = event.alt && !event.ctrl && !event.meta &&
+                        (event.key == 'o' || event.key == 'O' ||
+                         event.scancode == GROOVEPUTER_O);
+    if (isAltO) {
+        cycleOutput(1);
+        return true;
+    }
     if ((event.ctrl || event.alt || event.meta) && !toolsArrow) return false;
 
     const bool tabPressed =
@@ -839,7 +846,7 @@ void PerformPage::drawContent(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "USB MIDI READY - PRESS PLAY");
     } else if (!noteMode) {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "NOTE MODE OFF | N ENABLE");
+        std::snprintf(line, sizeof(line), "NOTE MODE OFF | N ENABLE | ALT+O OUT");
     } else if (miniAcid_.isPlaying() && !drums && active >= 0) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
