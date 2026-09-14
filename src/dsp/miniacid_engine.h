@@ -4,6 +4,7 @@
 
 #include "src/state/material_slot.h"
 #include "src/state/material_slot_access.h"
+#include "src/state/material_version.h"
 #include "src/state/working_material_storage.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -177,6 +178,36 @@ public:
   // Called on a musical boundary. A value copy and two assignments: no
   // allocation, no I/O, nothing that can fail halfway.
   void activatePendingMaterial();
+
+  // FS2A: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
+  // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
+  // to the exact accepted reference/version it was prepared against.
+  enum class NextPrepareResult : uint8_t {
+    Prepared = 0,
+    Replaced,
+    InvalidVoice,
+    InvalidCandidate,
+    RejectedCurrentDirty,
+    UnsupportedCurrentState,
+    PendingUnavailable,
+  };
+
+  enum class NextActivationResult : uint8_t {
+    Activated = 0,
+    InvalidVoice,
+    NoPending,
+    UnboundPending,
+    RejectedReferenceMismatch,
+    RejectedCanonicalChanged,
+    RejectedCurrentDirty,
+    UnsupportedCurrentState,
+  };
+
+  NextPrepareResult prepareNextMelody(
+      int voiceIndex,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  bool cancelNextMaterial(int voiceIndex);
+  NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -495,6 +526,15 @@ private:
   int clamp303Note(int note) const;
   bool current303MaterialReference_(
       int voiceIndex, GroovePuterMaterial::MaterialReference& out) const;
+  enum class CurrentNextState : uint8_t {
+    CleanAcceptedPattern = 0,
+    DirtyCurrent,
+    UnsupportedCurrentState,
+  };
+  CurrentNextState classifyCurrentForNext_(
+      int voiceIndex, GroovePuterMaterial::MaterialReference& reference,
+      GroovePuterMaterial::MaterialVersionToken& acceptedVersion) const;
+  bool activatePendingMaterialForVoice_(int voiceIndex);
   const SynthPattern& synthPattern(int synthIndex) const;
   SynthPattern& editSynthPattern(int synthIndex);
   const DrumPattern& drumPattern(int drumVoiceIndex) const;
@@ -582,6 +622,12 @@ private:
     GroovePuterMaterial::MaterialKind kind =
         GroovePuterMaterial::MaterialKind::Pattern;
     bool queued = false;
+
+    // FS2A causal stamp. These are metadata only; the existing Melody
+    // buffer remains the sole NEXT musical payload owner.
+    GroovePuterMaterial::MaterialReference preparedFor{};
+    GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+    bool lifecycleBound = false;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};

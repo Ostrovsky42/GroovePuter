@@ -3969,6 +3969,160 @@ bool MiniAcid::hasPendingMaterial(int voiceIndex) const {
   return pendingMaterial_[voiceIndex].queued;
 }
 
+MiniAcid::CurrentNextState MiniAcid::classifyCurrentForNext_(
+    int voiceIndex, GroovePuterMaterial::MaterialReference& reference,
+    GroovePuterMaterial::MaterialVersionToken& acceptedVersion) const {
+  using GroovePuterMaterial::MaterialKind;
+
+  reference = {};
+  acceptedVersion = {};
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return CurrentNextState::UnsupportedCurrentState;
+  }
+
+  const int idx = clamp303Voice(voiceIndex);
+  if (!current303MaterialReference_(idx, reference)) {
+    return CurrentNextState::UnsupportedCurrentState;
+  }
+
+  const Scene& scene = sceneManager_.currentScene();
+  const int residentSlot = GroovePuterMaterial::residentSlotFor(reference.address);
+  if (GroovePuterMaterial::residentKind(scene, idx, residentSlot) !=
+      MaterialKind::Pattern) {
+    // Accepted Melody requires filesystem resolution to prove canonical bytes.
+    // FS2A deliberately performs no SD I/O in the NEXT lifecycle gate.
+    return CurrentNextState::UnsupportedCurrentState;
+  }
+
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (bank < 0 || bank >= kBankCount || pattern < 0 ||
+      pattern >= Bank<SynthPattern>::kPatterns) {
+    return CurrentNextState::UnsupportedCurrentState;
+  }
+
+  const SynthPattern& accepted = idx == 0
+      ? scene.synthABanks[bank].patterns[pattern]
+      : scene.synthBBanks[bank].patterns[pattern];
+  acceptedVersion = GroovePuterMaterial::versionForPattern(accepted);
+
+  const auto& working = workingMaterial_[idx];
+  if (working.empty()) return CurrentNextState::CleanAcceptedPattern;
+  if (working.holdsMelody()) return CurrentNextState::DirtyCurrent;
+  if (!working.patternMatches(reference)) {
+    // Retained Working that cannot be proven to belong to CURRENT is not safe
+    // to overwrite. Fail closed instead of guessing from address alone.
+    return CurrentNextState::UnsupportedCurrentState;
+  }
+  if (GroovePuterMaterial::versionForPattern(working.pattern()) !=
+      acceptedVersion) {
+    return CurrentNextState::DirtyCurrent;
+  }
+  return CurrentNextState::CleanAcceptedPattern;
+}
+
+MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
+    int voiceIndex,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return NextPrepareResult::InvalidVoice;
+  }
+  if (!RuntimePhraseEdit::validate(melody)) {
+    return NextPrepareResult::InvalidCandidate;
+  }
+
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (pending.melody == nullptr) {
+    return NextPrepareResult::PendingUnavailable;
+  }
+
+  GroovePuterMaterial::MaterialReference reference{};
+  GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+  const CurrentNextState state =
+      classifyCurrentForNext_(voiceIndex, reference, acceptedVersion);
+  if (state == CurrentNextState::DirtyCurrent) {
+    return NextPrepareResult::RejectedCurrentDirty;
+  }
+  if (state != CurrentNextState::CleanAcceptedPattern) {
+    return NextPrepareResult::UnsupportedCurrentState;
+  }
+
+  const bool replacingLifecycleCandidate =
+      pending.queued && pending.lifecycleBound;
+
+  // stagePendingMaterial validates/copies before publishing queued metadata, so
+  // causal metadata is replaced only after the new payload is fully staged.
+  if (!stagePendingMaterial(
+          voiceIndex, static_cast<uint16_t>(reference.address.globalSlot),
+          GroovePuterMaterial::MaterialKind::Melody, &melody)) {
+    return NextPrepareResult::PendingUnavailable;
+  }
+
+  pending.preparedFor = reference;
+  pending.acceptedVersion = acceptedVersion;
+  pending.lifecycleBound = true;
+  return replacingLifecycleCandidate ? NextPrepareResult::Replaced
+                                     : NextPrepareResult::Prepared;
+}
+
+bool MiniAcid::cancelNextMaterial(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (!pending.queued || !pending.lifecycleBound) return false;
+
+  pending.queued = false;
+  pending.lifecycleBound = false;
+  pending.preparedFor = {};
+  pending.acceptedVersion = {};
+  return true;
+}
+
+MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
+    int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return NextActivationResult::InvalidVoice;
+  }
+
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (!pending.queued) return NextActivationResult::NoPending;
+  if (!pending.lifecycleBound) return NextActivationResult::UnboundPending;
+
+  GroovePuterMaterial::MaterialReference currentReference{};
+  if (!current303MaterialReference_(voiceIndex, currentReference)) {
+    return NextActivationResult::UnsupportedCurrentState;
+  }
+  if (currentReference.address != pending.preparedFor.address ||
+      currentReference.id != pending.preparedFor.id) {
+    return NextActivationResult::RejectedReferenceMismatch;
+  }
+
+  GroovePuterMaterial::MaterialReference provenReference{};
+  GroovePuterMaterial::MaterialVersionToken currentVersion{};
+  const CurrentNextState state =
+      classifyCurrentForNext_(voiceIndex, provenReference, currentVersion);
+  if (state == CurrentNextState::UnsupportedCurrentState) {
+    return NextActivationResult::UnsupportedCurrentState;
+  }
+  if (currentVersion != pending.acceptedVersion) {
+    return NextActivationResult::RejectedCanonicalChanged;
+  }
+  if (state == CurrentNextState::DirtyCurrent) {
+    return NextActivationResult::RejectedCurrentDirty;
+  }
+
+  if (pending.kind != GroovePuterMaterial::MaterialKind::Melody ||
+      pending.melody == nullptr) {
+    return NextActivationResult::UnboundPending;
+  }
+
+  // Boundary publication is bounded: value copy into the existing Working
+  // owner, runtime descriptor publication, then candidate-state clear.
+  if (!activatePendingMaterialForVoice_(voiceIndex)) {
+    return NextActivationResult::UnboundPending;
+  }
+  return NextActivationResult::Activated;
+}
+
 bool MiniAcid::stagePendingMaterial(
     int voiceIndex, uint16_t slot, GroovePuterMaterial::MaterialKind kind,
     const PhraseRuntime::RuntimeSynthEventBuffer* melody) {
@@ -3990,16 +4144,23 @@ bool MiniAcid::stagePendingMaterial(
   return true;
 }
 
+bool MiniAcid::activatePendingMaterialForVoice_(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  if (!pending.queued) return false;
+  if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
+      pending.melody != nullptr) {
+    workingMaterial_[voiceIndex].storeMelody(*pending.melody);
+  }
+  publishActiveMaterial(voiceIndex, pending.slot, pending.kind);
+  pending.queued = false;
+  pending.lifecycleBound = false;
+  return true;
+}
+
 void MiniAcid::activatePendingMaterial() {
   for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
-    PendingMaterial& pending = pendingMaterial_[voice];
-    if (!pending.queued) continue;
-    if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
-        pending.melody != nullptr) {
-      workingMaterial_[voice].storeMelody(*pending.melody);
-    }
-    publishActiveMaterial(voice, pending.slot, pending.kind);
-    pending.queued = false;
+    (void)activatePendingMaterialForVoice_(voice);
   }
 }
 
