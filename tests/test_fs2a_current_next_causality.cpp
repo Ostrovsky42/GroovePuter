@@ -14,6 +14,7 @@
 
 #include "src/audio/pattern_paging.h"
 #include "src/input/musical_event_queue.h"
+#include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
 
 SerialMock Serial;
@@ -21,6 +22,7 @@ SDMock SD;
 
 namespace {
 
+using GroovePuterMaterial::MaterialId;
 using GroovePuterMaterial::MaterialKind;
 using GroovePuterMaterial::MaterialReference;
 using GroovePuterMaterial::MaterialVersionToken;
@@ -87,6 +89,11 @@ struct Fixture {
   MiniAcid engine{44100.0f, nullptr};
   MusicalEventQueue queue{};
 
+  static MaterialId fixtureMaterialId(int voice, int resident) {
+    return MaterialId{static_cast<uint32_t>(
+        1 + voice * Scene::kMaterialSlotsPerVoice + resident)};
+  }
+
   Fixture() {
     engine.setBpm(120.0f);
     assert(engine.rebuildPatternRuntimeEventBank());
@@ -95,11 +102,23 @@ struct Fixture {
     engine.playing = true;
     engine.tickPhaseAccum_ = 0;
 
-    MaterialReference a{};
-    MaterialReference b{};
-    assert(engine.current303MaterialReference_(0, a));
-    assert(engine.current303MaterialReference_(1, b));
-    assert(a.id.valid() && b.id.valid());
+    // A host fixture has no project bootstrap/migration step, so construct the
+    // same canonical identity reality production requires before asking for a
+    // trusted MaterialReference. Every resident slot is a Pattern with a
+    // stable, non-zero identity; retarget tests can therefore move to another
+    // resident slot without falling back into legacy/unassigned identity.
+    Scene& scene = engine.sceneManager_.currentScene();
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+      for (int resident = 0; resident < Scene::kMaterialSlotsPerVoice;
+           ++resident) {
+        scene.materialSlots[voice][resident].kind = MaterialKind::Pattern;
+        scene.materialSlots[voice][resident].id =
+            fixtureMaterialId(voice, resident);
+      }
+    }
+
+    assertCanonicalReality(0);
+    assertCanonicalReality(1);
   }
 
   MaterialReference reference(int voice) const {
@@ -123,6 +142,22 @@ struct Fixture {
     const Scene& scene = engine.sceneManager_.currentScene();
     return voice == 0 ? scene.synthABanks[bank].patterns[pattern]
                       : scene.synthBBanks[bank].patterns[pattern];
+  }
+
+  void assertCanonicalReality(int voice) const {
+    const MaterialReference ref = reference(voice);
+    assert(ref.address.voice == static_cast<uint8_t>(voice));
+    const int resident = GroovePuterMaterial::residentSlotFor(ref.address);
+    assert(GroovePuterMaterial::residentSlotInRange(voice, resident));
+    const Scene& scene = engine.sceneManager_.currentScene();
+    const auto& descriptor = scene.materialSlots[voice][resident];
+    assert(descriptor.kind == MaterialKind::Pattern);
+    assert(descriptor.id.valid());
+    assert(descriptor.id == ref.id);
+    assert(versionForPattern(canonical(voice)).valid());
+    if (engine.workingMaterial_[voice].holdsPattern()) {
+      assert(engine.workingMaterial_[voice].patternMatches(ref));
+    }
   }
 
   void setAcceptedKind(int voice, MaterialKind kind) {
@@ -349,16 +384,24 @@ int main() {
   }
 
   // 9. Same identity is still not enough: changing accepted bytes changes the
-  //    canonical VersionToken and rejects the stale candidate.
+  //    canonical VersionToken and rejects the stale candidate without
+  //    destroying it or publishing anything.
   {
     Fixture fixture;
     const auto ref = fixture.reference(0);
+    const SynthPattern acceptedB = fixture.canonical(1);
+    const auto refB = fixture.reference(1);
+    const auto activeA = fixture.engine.activeMaterial(0);
+    const auto activeB = fixture.engine.activeMaterial(1);
     expect(fixture.engine.prepareNextMelody(0, melodyWithNote(66)) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before canonical-version race");
+    const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
+    const auto priorReference = fixture.engine.pendingMaterial_[0].preparedFor;
     const auto oldVersion = fixture.engine.pendingMaterial_[0].acceptedVersion;
     SynthPattern& accepted = fixture.canonical(0);
     accepted.steps[0].accent = !accepted.steps[0].accent;
+    const SynthPattern changedAccepted = accepted;
     expect(sameReference(fixture.reference(0), ref),
            "canonical-version test accidentally changed identity");
     expect(versionForPattern(accepted) != oldVersion,
@@ -367,10 +410,25 @@ int main() {
     expect(fixture.engine.activateNextMaterialAtBoundary(0) ==
                MiniAcid::NextActivationResult::RejectedCanonicalChanged,
            "stale canonical-version candidate activated");
-    expect(fixture.engine.hasPendingMaterial(0),
-           "canonical-version rejection destroyed NEXT");
-    expect(fixture.engine.activeMaterial(0).kind == MaterialKind::Pattern,
-           "canonical-version rejection replaced CURRENT/runtime");
+    expect(fixture.engine.hasPendingMaterial(0) &&
+               fixture.engine.pendingMaterial_[0].lifecycleBound &&
+               sameMelody(*fixture.engine.pendingMaterial_[0].melody,
+                          priorPayload) &&
+               sameReference(fixture.engine.pendingMaterial_[0].preparedFor,
+                             priorReference) &&
+               fixture.engine.pendingMaterial_[0].acceptedVersion == oldVersion,
+           "canonical-version rejection destroyed NEXT or causal stamp");
+    expect(fixture.engine.workingMaterial_[0].empty() &&
+               fixture.engine.activeMaterial(0).kind == activeA.kind &&
+               fixture.engine.activeMaterial(0).slot == activeA.slot &&
+               samePattern(fixture.canonical(0), changedAccepted),
+           "canonical-version rejection published or changed CURRENT");
+    expect(sameReference(fixture.reference(1), refB) &&
+               samePattern(fixture.canonical(1), acceptedB) &&
+               fixture.engine.activeMaterial(1).kind == activeB.kind &&
+               fixture.engine.activeMaterial(1).slot == activeB.slot &&
+               !fixture.engine.hasPendingMaterial(1),
+           "canonical-version rejection changed voice B");
   }
 
   // 10. Accepted Melody is explicitly unsupported in this slice. No SD lookup
@@ -394,6 +452,110 @@ int main() {
                              priorReference) &&
                fixture.engine.pendingMaterial_[0].acceptedVersion == priorVersion,
            "unsupported state destroyed previous NEXT");
+  }
+
+  // 11. Zero is not a weak identity. If canonical identity becomes invalid,
+  //     a request fails closed before it can replace CURRENT or an existing
+  //     valid NEXT.
+  {
+    Fixture fixture;
+    const SynthPattern acceptedA = fixture.canonical(0);
+    const SynthPattern acceptedB = fixture.canonical(1);
+    const auto refA = fixture.reference(0);
+    const auto refB = fixture.reference(1);
+    const auto activeA = fixture.engine.activeMaterial(0);
+    const auto activeB = fixture.engine.activeMaterial(1);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(72)) ==
+               MiniAcid::NextPrepareResult::Prepared,
+           "fixture could not create prior NEXT for invalid-ID test");
+    const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
+    const auto priorReference = fixture.engine.pendingMaterial_[0].preparedFor;
+    const auto priorVersion = fixture.engine.pendingMaterial_[0].acceptedVersion;
+
+    const int resident = GroovePuterMaterial::residentSlotFor(refA.address);
+    auto& descriptor =
+        fixture.engine.sceneManager_.currentScene().materialSlots[0][resident];
+    descriptor.id = MaterialId{};
+    expect(!descriptor.id.valid(),
+           "invalid-ID fixture did not install zero MaterialId");
+
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(73)) ==
+               MiniAcid::NextPrepareResult::UnsupportedCurrentState,
+           "invalid canonical identity did not fail closed");
+    expect(fixture.engine.workingMaterial_[0].empty() &&
+               fixture.engine.activeMaterial(0).kind == activeA.kind &&
+               fixture.engine.activeMaterial(0).slot == activeA.slot,
+           "invalid-ID rejection changed CURRENT/runtime");
+    expect(samePattern(fixture.canonical(0), acceptedA) &&
+               !descriptor.id.valid(),
+           "invalid-ID rejection mutated canonical payload/identity");
+    expect(fixture.engine.hasPendingMaterial(0) &&
+               fixture.engine.pendingMaterial_[0].lifecycleBound &&
+               sameMelody(*fixture.engine.pendingMaterial_[0].melody,
+                          priorPayload) &&
+               sameReference(fixture.engine.pendingMaterial_[0].preparedFor,
+                             priorReference) &&
+               fixture.engine.pendingMaterial_[0].acceptedVersion == priorVersion,
+           "invalid-ID rejection destroyed existing NEXT");
+    expect(sameReference(fixture.reference(1), refB) &&
+               samePattern(fixture.canonical(1), acceptedB) &&
+               fixture.engine.activeMaterial(1).kind == activeB.kind &&
+               fixture.engine.activeMaterial(1).slot == activeB.slot &&
+               !fixture.engine.hasPendingMaterial(1),
+           "invalid-ID rejection changed voice B");
+  }
+
+  // 12. Address reuse is not identity reuse. A prepared OLD_ID candidate must
+  //     not publish if the same address now names NEW_ID (ABA/stale identity).
+  {
+    Fixture fixture;
+    const SynthPattern acceptedA = fixture.canonical(0);
+    const SynthPattern acceptedB = fixture.canonical(1);
+    const auto oldRef = fixture.reference(0);
+    const auto refB = fixture.reference(1);
+    const auto activeA = fixture.engine.activeMaterial(0);
+    const auto activeB = fixture.engine.activeMaterial(1);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(74)) ==
+               MiniAcid::NextPrepareResult::Prepared,
+           "prepare failed before ABA identity race");
+    const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
+    const auto priorReference = fixture.engine.pendingMaterial_[0].preparedFor;
+    const auto priorVersion = fixture.engine.pendingMaterial_[0].acceptedVersion;
+
+    const int resident = GroovePuterMaterial::residentSlotFor(oldRef.address);
+    auto& descriptor =
+        fixture.engine.sceneManager_.currentScene().materialSlots[0][resident];
+    const MaterialId replacementId{0xF0000001u};
+    assert(replacementId.valid() && replacementId != oldRef.id);
+    descriptor.id = replacementId;
+
+    const auto newRef = fixture.reference(0);
+    expect(newRef.address == oldRef.address && newRef.id == replacementId,
+           "ABA fixture did not preserve address while replacing identity");
+    expect(fixture.engine.activateNextMaterialAtBoundary(0) ==
+               MiniAcid::NextActivationResult::RejectedReferenceMismatch,
+           "stale-ID candidate published after address reuse");
+    expect(fixture.engine.workingMaterial_[0].empty() &&
+               fixture.engine.activeMaterial(0).kind == activeA.kind &&
+               fixture.engine.activeMaterial(0).slot == activeA.slot,
+           "stale-ID rejection changed CURRENT/runtime");
+    expect(samePattern(fixture.canonical(0), acceptedA) &&
+               descriptor.id == replacementId,
+           "stale-ID rejection mutated canonical payload/new identity");
+    expect(fixture.engine.hasPendingMaterial(0) &&
+               fixture.engine.pendingMaterial_[0].lifecycleBound &&
+               sameMelody(*fixture.engine.pendingMaterial_[0].melody,
+                          priorPayload) &&
+               sameReference(fixture.engine.pendingMaterial_[0].preparedFor,
+                             priorReference) &&
+               fixture.engine.pendingMaterial_[0].acceptedVersion == priorVersion,
+           "stale-ID rejection destroyed NEXT or causal stamp");
+    expect(sameReference(fixture.reference(1), refB) &&
+               samePattern(fixture.canonical(1), acceptedB) &&
+               fixture.engine.activeMaterial(1).kind == activeB.kind &&
+               fixture.engine.activeMaterial(1).slot == activeB.slot &&
+               !fixture.engine.hasPendingMaterial(1),
+           "stale-ID rejection changed voice B");
   }
 
   if (g_failures == 0) {
