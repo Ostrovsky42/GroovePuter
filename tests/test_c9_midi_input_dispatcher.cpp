@@ -87,17 +87,75 @@ void defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes() {
     assert(sink.events.size() == 1u && sink.events[0].type == MusicalEventType::NoteOn);
 
     io.usbDetached();
-    // service() must notice the input-generation boundary and release owners
-    // even when no new packet arrives; otherwise a detached keyboard can leave
-    // the internal synth sounding forever.
     assert(dispatcher.service(queue) == 0u);
     assert(sink.events.size() == 2u);
     assert(sink.events[1].type == MusicalEventType::NoteOff);
+}
+
+void reconfigurationReleasesNotesOwnedByPreviousPolicy() {
+    MusicalEventRouter router;
+    CaptureSink sink;
+    assert(router.addSink(sink));
+
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputDispatcher dispatcher(router, io);
+
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.channelMode = MidiInputChannelMode::Omni;
+    config.target = MidiInputTarget::SynthA;
+    assert(dispatcher.setConfig(config));
+
+    MidiInputEvent on{InputKey{InputSource::Usb, io.usbInputGeneration(), 2, 60},
+                      InputKind::NoteOn, 100, 100};
+    assert(queue.tryPush(on));
+    assert(dispatcher.service(queue) == 1u);
+    assert(sink.events.back().type == MusicalEventType::NoteOn);
+    assert(sink.events.back().target == MusicalEventTarget::SynthA);
+
+    MidiInputRoutingConfig disabled = config;
+    disabled.enabled = false;
+    assert(dispatcher.setConfig(disabled));
+    assert(sink.events.back().type == MusicalEventType::NoteOff);
+    assert(sink.events.back().target == MusicalEventTarget::SynthA);
+
+    MidiInputRoutingConfig channelConfig = config;
+    channelConfig.channelMode = MidiInputChannelMode::Single;
+    channelConfig.channel = 2;
+    assert(dispatcher.setConfig(channelConfig));
+    on.id.key = 62;
+    assert(queue.tryPush(on));
+    assert(dispatcher.service(queue) == 1u);
+    assert(sink.events.back().type == MusicalEventType::NoteOn);
+
+    MidiInputRoutingConfig otherChannel = channelConfig;
+    otherChannel.channel = 3;
+    assert(dispatcher.setConfig(otherChannel));
+    assert(sink.events.back().type == MusicalEventType::NoteOff);
+    assert(sink.events.back().target == MusicalEventTarget::SynthA);
+    assert(sink.events.back().note == 62u);
+
+    MidiInputRoutingConfig synthA = config;
+    assert(dispatcher.setConfig(synthA));
+    on.id.key = 64;
+    assert(queue.tryPush(on));
+    assert(dispatcher.service(queue) == 1u);
+    assert(sink.events.back().type == MusicalEventType::NoteOn);
+    assert(sink.events.back().target == MusicalEventTarget::SynthA);
+
+    MidiInputRoutingConfig synthB = synthA;
+    synthB.target = MidiInputTarget::SynthB;
+    assert(dispatcher.setConfig(synthB));
+    assert(sink.events.back().type == MusicalEventType::NoteOff);
+    assert(sink.events.back().target == MusicalEventTarget::SynthA);
+    assert(sink.events.back().note == 64u);
 }
 }  // namespace
 
 int main() {
     usbNoteOnOffReachesConfiguredMusicalTarget();
     defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes();
+    reconfigurationReleasesNotesOwnedByPreviousPolicy();
     return 0;
 }
