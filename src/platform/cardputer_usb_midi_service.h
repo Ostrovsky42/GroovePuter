@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "src/midi/midi_input_dispatcher.h"
+
 class MusicalEventRouter;
 class MusicalEventQueue;
 class ScheduledSmfMidiEventQueue;
@@ -35,6 +37,10 @@ bool registerCardputerUsbMidiSink(
 // Registers the separate SPSC queue produced by SmfPlayerTask. The queue does
 // not write USB itself; MidiDispatchTask remains the only consumer/USB owner.
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);
+
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig();
+bool setCardputerMidiInputRoutingConfig(
+    const GroovePuterMidi::MidiInputRoutingConfig& config);
 
 // Publishes the predicted playback start for one generated audio block. The
 // dispatcher combines this anchor with scheduled frame offsets for Pattern,

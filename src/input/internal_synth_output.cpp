@@ -17,7 +17,8 @@ uint8_t clampInternalLiveNote(uint8_t note) {
 bool isPerformanceSource(MusicalEventSource source) {
     return source == MusicalEventSource::PerformanceKeyboard ||
            source == MusicalEventSource::PerformanceKeyboardPoly ||
-           source == MusicalEventSource::Arpeggiator;
+           source == MusicalEventSource::Arpeggiator ||
+           source == MusicalEventSource::MidiInput;
 }
 
 bool isInternalMonoPerformanceSource(MusicalEventSource source) {

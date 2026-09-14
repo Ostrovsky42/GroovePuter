@@ -17,6 +17,10 @@
 #include "src/input/musical_event_router.h"
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
+#include "src/midi/midi_input_dispatcher.h"
+#include "src/midi/midi_input_parser.h"
+#include "src/midi/midi_input_queue.h"
+#include "src/midi/midi_io_state.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
@@ -224,6 +228,11 @@ UsbMidiOutput g_output(
         true,
     });
 MidiControlEventQueue g_controlQueue;
+GroovePuterMidi::MidiInputQueue g_inputQueue;
+GroovePuterMidi::MidiInputParser g_inputParser;
+GroovePuterMidi::MidiIoState g_midiIoState;
+GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
+bool g_usbInputMounted = false;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
 ExternalMidiTransportEventQueue* g_externalTransportQueue = nullptr;
@@ -459,54 +468,74 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
     }
 }
 
+void syncUsbMidiInputLifecycle() {
+    const bool mounted = g_transport.mounted();
+    if (mounted && !g_usbInputMounted) {
+        g_midiIoState.usbAttached();
+        g_midiIoState.usbReady(true, true);
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_usbInputMounted = true;
+    } else if (!mounted && g_usbInputMounted) {
+        g_midiIoState.usbDetached();
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_usbInputMounted = false;
+    }
+}
+
 void drainIncomingMidiPackets() {
     if (g_externalTransportQueue == nullptr) return;
 
+    syncUsbMidiInputLifecycle();
     midiEventPacket_t packet{};
     for (std::size_t drained = 0;
          drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
          ++drained) {
         ExternalMidiTransportEventType type{};
-        if (!GroovePuterMidi::parseUsbMidiRealtimeTransport(
+        if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
                 packet.header, packet.byte1, type)) {
-            ++g_diagnostics.externalRxIgnored;
-            continue;
-        }
-        if (GroovePuterMidi::transportClockRuntime().source() !=
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-            ++g_diagnostics.externalRxMasterIgnored;
+            if (GroovePuterMidi::transportClockRuntime().source() !=
+                GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+                ++g_diagnostics.externalRxMasterIgnored;
+                continue;
+            }
+
+            const uint32_t receivedAtMicros = micros();
+            switch (type) {
+                case ExternalMidiTransportEventType::Clock:
+                    ++g_externalRxPulseOrdinal;
+                    if (g_externalTransportQueue->tryPushClock(
+                            receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        ++g_diagnostics.externalRxClock;
+                    }
+                    break;
+                case ExternalMidiTransportEventType::Start:
+                case ExternalMidiTransportEventType::Continue:
+                case ExternalMidiTransportEventType::Stop:
+                    if (g_externalTransportQueue->tryPushCritical(
+                            type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        if (type == ExternalMidiTransportEventType::Start) ++g_diagnostics.externalRxStart;
+                        else if (type == ExternalMidiTransportEventType::Continue) ++g_diagnostics.externalRxContinue;
+                        else ++g_diagnostics.externalRxStop;
+                    }
+                    break;
+            }
             continue;
         }
 
-        const uint32_t receivedAtMicros = micros();
-        switch (type) {
-            case ExternalMidiTransportEventType::Clock:
-                ++g_externalRxPulseOrdinal;
-                if (g_externalTransportQueue->tryPushClock(
-                        receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxClock;
-                }
-                break;
-            case ExternalMidiTransportEventType::Start:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStart;
-                }
-                break;
-            case ExternalMidiTransportEventType::Continue:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxContinue;
-                }
-                break;
-            case ExternalMidiTransportEventType::Stop:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStop;
-                }
-                break;
+        const uint8_t raw[4] = {
+            packet.header, packet.byte1, packet.byte2, packet.byte3};
+        const GroovePuterMidi::ParseResult parsed = g_inputParser.usbPacket(raw, micros());
+        if (parsed.hasInput) {
+            if (!g_inputQueue.tryPush(parsed.input)) {
+                ++g_diagnostics.externalRxIgnored;
+            }
+            continue;
         }
+        ++g_diagnostics.externalRxIgnored;
     }
+    (void)g_inputDispatcher.service(g_inputQueue, kMidiRxDrainBudget);
 }
 
 bool deadlineFor(uint32_t blockSequence,
@@ -1470,6 +1499,12 @@ bool registerCardputerUsbMidiSink(
 
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
+    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
+    g_midiIoState.requestUsbRole(GroovePuterMidi::UsbRole::Device);
+    g_midiIoState.boot();
+    g_inputDispatcher.bind(router, g_midiIoState);
+    g_inputParser.reset(GroovePuterMidi::InputSession{
+        GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
         Serial.println("[MIDI-INIT] router sink registration failed");
@@ -1508,6 +1543,15 @@ bool registerCardputerUsbMidiSink(
         static_cast<unsigned>(
             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     return true;
+}
+
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig() {
+    return g_inputDispatcher.config();
+}
+
+bool setCardputerMidiInputRoutingConfig(
+        const GroovePuterMidi::MidiInputRoutingConfig& config) {
+    return g_inputDispatcher.setConfig(config);
 }
 
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {
