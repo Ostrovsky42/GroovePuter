@@ -12,6 +12,7 @@ INO = ROOT / "GroovePuter.ino"
 
 instrument_text = INSTRUMENT.read_text(encoding="utf-8")
 build_text = BUILD.read_text(encoding="utf-8")
+source_text = INO.read_text(encoding="utf-8")
 
 required = (
     "pendingMaterialAddress(0)",
@@ -39,11 +40,14 @@ for needle in required:
 
 # The verifier must remain an observer. These tokens would indicate that the
 # diagnostic itself started constructing the future NEXT path or a stress load.
+# MELODY_CENSUS_TICK is intentionally not checked here because the instrumenter
+# uses the existing production call as a patch anchor. Its before/after count is
+# checked below instead, which proves the FS1D probe did not add a census call.
 for forbidden in (
     "RuntimeSynthEventBuffer",
     "stagePendingMaterial(",
     "activatePendingMaterial(",
-    "MELODY_CENSUS_TICK(",
+    "GROOVEPUTER_MELODY_CENSUS",
     "heap_caps_malloc",
     "malloc(",
     "calloc(",
@@ -75,6 +79,8 @@ if instrumented.count("[FS1D_SAMPLE]") != 1:
     raise SystemExit("FS1D sample formatter must be injected exactly once")
 if instrumented.count("pollFs1dPendingResidency();") != 1:
     raise SystemExit("FS1D poll hook must be injected exactly once")
+if instrumented.count("MELODY_CENSUS_TICK(") != source_text.count("MELODY_CENSUS_TICK("):
+    raise SystemExit("FS1D must not add or remove the existing melody-census call")
 if "15000" not in instrumented:
     raise SystemExit("FS1D telemetry must remain low-rate")
 
