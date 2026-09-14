@@ -1,13 +1,9 @@
-// M4: asking for the next material, and getting it on a musical boundary.
+// M4 / FS1C: ratify the engine's per-voice pending-material primitive.
 //
-// The gesture stays fast -- press Q, the request is taken immediately -- while
-// the work it implies does not happen where it would be heard. Preparation is
-// control-side and may read a file; activation is a value copy at a bar line,
-// with no allocation and no I/O.
-//
-// The census measured 12-18 ms to load a melody against a 2000 ms bar at
-// 120 BPM, so there is room to prepare properly rather than racing. What that
-// margin buys is the rule below: nothing half-prepared ever becomes audible.
+// This test deliberately does NOT claim that 0.9.11 contains an end-to-end
+// NEXT request -> prepare/load -> stage producer. It proves only the layer that
+// actually exists in the release root: two independent pending buffers,
+// fail-closed staging, and boundary activation into the matching voice.
 
 #include <cassert>
 #include <cstdint>
@@ -68,9 +64,8 @@ struct Fixture {
 }  // namespace
 
 int main() {
-  // 1. The buffers are allocated once, on the heap, because 2 x 1284 does not
-  //    fit the static budget. If that allocation fails, NEXT is unavailable --
-  //    and says so, rather than half working.
+  // 1. The buffers are allocated once, on the heap. Both voices must own a
+  //    different address and repeated use must not reallocate either slot.
   {
     Fixture fixture;
     expect(fixture.engine.pendingMaterialReady(),
@@ -89,10 +84,12 @@ int main() {
     }
     expect(fixture.engine.pendingMaterialAddress(0) == first,
            "the pending buffer moved during use, so it is being reallocated");
+    expect(fixture.engine.pendingMaterialAddress(1) == second,
+           "the idle voice pending buffer moved during other-voice churn");
   }
 
-  // 2. Staging prepares; it does not activate. Between the press and the bar
-  //    line the voice must still be playing exactly what it was.
+  // 2. Staging prepares; it does not activate. Until the boundary, active
+  //    material must remain exactly what it was.
   {
     Fixture fixture;
     const auto melody = melodyWithNote(60);
@@ -105,8 +102,7 @@ int main() {
            "a staged request was not remembered");
   }
 
-  // 3. Activation is what makes it audible, and it moves the whole thing:
-  //    slot, kind and material together.
+  // 3. Activation moves slot, kind and payload together into the same voice.
   {
     Fixture fixture;
     const auto melody = melodyWithNote(64);
@@ -124,8 +120,8 @@ int main() {
   }
 
   // 4. Two voices queued before the same boundary both arrive on it. Making
-  //    the second wait an extra bar would be a limitation invented by an
-  //    allocator, not by music.
+  //    the second wait an extra bar would be an allocator limitation, not a
+  //    musical rule.
   {
     Fixture fixture;
     const auto a = melodyWithNote(60);
@@ -141,7 +137,8 @@ int main() {
            "the two voices received each other's melodies");
   }
 
-  // 5. A Pattern request needs no melody, and must not carry one.
+  // 5. A Pattern request needs no melody, and must not destroy the retained
+  //    Working melody buffer while changing the active kind.
   {
     Fixture fixture;
     const auto melody = melodyWithNote(60);
@@ -158,9 +155,9 @@ int main() {
            "a Pattern request destroyed the melody material");
   }
 
-  // 6. A Melody request with nothing prepared is refused outright. This is the
-  //    failed-load case, and the rule is that ACTIVE does not move and the
-  //    request is dropped -- never a partial activation.
+  // 6. A Melody request with nothing prepared is refused outright. With no
+  //    older request queued, ACTIVE remains unchanged and nothing becomes
+  //    pending.
   {
     Fixture fixture;
     const auto melody = melodyWithNote(60);
@@ -178,8 +175,7 @@ int main() {
            "a refused request still moved what is playing");
   }
 
-  // 7. Activating with nothing queued is a no-op, because the boundary comes
-  //    round on every bar whether or not anyone pressed anything.
+  // 7. Activating with nothing queued is a no-op.
   {
     Fixture fixture;
     const auto melody = melodyWithNote(71);
@@ -193,10 +189,126 @@ int main() {
            "an empty boundary changed what is playing");
   }
 
+  // 8. FS1C adversarial ownership: staging B cannot change queued A; replacing
+  //    A cannot change B; a failed replacement of A preserves both the last
+  //    valid A request and B. At the boundary each voice receives its own
+  //    latest valid musical decision.
+  {
+    Fixture fixture;
+    const auto a1 = melodyWithNote(60);
+    const auto a2 = melodyWithNote(62);
+    const auto b1 = melodyWithNote(67);
+    auto invalidA = melodyWithNote(72);
+    invalidA.count = PhraseRuntime::kMaxSynthEvents + 1;
+
+    expect(fixture.engine.stagePendingMaterial(0, 3, MaterialKind::Melody, &a1),
+           "initial A staging failed");
+    expect(fixture.engine.stagePendingMaterial(1, 4, MaterialKind::Melody, &b1),
+           "B staging failed after A was already queued");
+    expect(fixture.engine.hasPendingMaterial(0) &&
+               fixture.engine.hasPendingMaterial(1),
+           "staging the second voice cancelled the first");
+    expect(fixture.engine.pendingMaterial_[0].melody->events[0].note == 60,
+           "B staging overwrote A payload");
+    expect(fixture.engine.pendingMaterial_[1].melody->events[0].note == 67,
+           "B pending payload is not its own value");
+
+    expect(fixture.engine.stagePendingMaterial(0, 5, MaterialKind::Melody, &a2),
+           "restaging A failed");
+    expect(fixture.engine.pendingMaterial_[0].slot == 5 &&
+               fixture.engine.pendingMaterial_[0].melody->events[0].note == 62,
+           "restaging A did not replace only A");
+    expect(fixture.engine.pendingMaterial_[1].slot == 4 &&
+               fixture.engine.pendingMaterial_[1].melody->events[0].note == 67,
+           "restaging A changed B");
+
+    expect(!fixture.engine.stagePendingMaterial(0, 9, MaterialKind::Melody,
+                                                nullptr),
+           "null A restage was accepted");
+    expect(!fixture.engine.stagePendingMaterial(0, 9, MaterialKind::Melody,
+                                                &invalidA),
+           "invalid A restage was accepted");
+    expect(fixture.engine.hasPendingMaterial(0) &&
+               fixture.engine.pendingMaterial_[0].slot == 5 &&
+               fixture.engine.pendingMaterial_[0].melody->events[0].note == 62,
+           "failed A restage destroyed the last valid A decision");
+    expect(fixture.engine.hasPendingMaterial(1) &&
+               fixture.engine.pendingMaterial_[1].slot == 4 &&
+               fixture.engine.pendingMaterial_[1].melody->events[0].note == 67,
+           "failed A restage changed B");
+
+    fixture.engine.activatePendingMaterial();
+    expect(fixture.engine.activeMaterial(0).slot == 5 &&
+               fixture.engine.currentPhraseBuffer(0).events[0].note == 62,
+           "A did not receive its latest valid pending material");
+    expect(fixture.engine.activeMaterial(1).slot == 4 &&
+               fixture.engine.currentPhraseBuffer(1).events[0].note == 67,
+           "B did not survive A replacement/failure path");
+    expect(!fixture.engine.hasPendingMaterial(0) &&
+               !fixture.engine.hasPendingMaterial(1),
+           "activation did not clear the two requests independently");
+  }
+
+  // 9. Allocation-failure fault injection: if one voice has no pending buffer,
+  //    staging that voice fails closed and never borrows or aliases the other
+  //    voice's storage. The healthy voice remains independently activatable.
+  {
+    Fixture fixture;
+    auto* savedA = fixture.engine.pendingMaterial_[0].melody;
+    auto* savedB = fixture.engine.pendingMaterial_[1].melody;
+    const auto a = melodyWithNote(60);
+    const auto b = melodyWithNote(67);
+
+    fixture.engine.pendingMaterial_[0].melody = nullptr;
+    expect(!fixture.engine.pendingMaterialReady(),
+           "readiness stayed true with A allocation missing");
+    expect(!fixture.engine.stagePendingMaterial(0, 3, MaterialKind::Melody, &a),
+           "A staging succeeded without A storage");
+    expect(fixture.engine.stagePendingMaterial(1, 4, MaterialKind::Melody, &b),
+           "missing A storage blocked healthy B staging");
+    expect(fixture.engine.pendingMaterialAddress(0) == nullptr &&
+               fixture.engine.pendingMaterialAddress(1) == savedB,
+           "missing A aliased or replaced B storage");
+    fixture.engine.activatePendingMaterial();
+    expect(fixture.engine.activeMaterial(0).kind == MaterialKind::Pattern,
+           "failed A staging changed A active material");
+    expect(fixture.engine.activeMaterial(1).kind == MaterialKind::Melody &&
+               fixture.engine.currentPhraseBuffer(1).events[0].note == 67,
+           "healthy B did not activate while A storage was missing");
+    fixture.engine.pendingMaterial_[0].melody = savedA;
+  }
+
+  {
+    Fixture fixture;
+    auto* savedA = fixture.engine.pendingMaterial_[0].melody;
+    auto* savedB = fixture.engine.pendingMaterial_[1].melody;
+    const auto a = melodyWithNote(60);
+    const auto b = melodyWithNote(67);
+
+    fixture.engine.pendingMaterial_[1].melody = nullptr;
+    expect(!fixture.engine.pendingMaterialReady(),
+           "readiness stayed true with B allocation missing");
+    expect(fixture.engine.stagePendingMaterial(0, 3, MaterialKind::Melody, &a),
+           "missing B storage blocked healthy A staging");
+    expect(!fixture.engine.stagePendingMaterial(1, 4, MaterialKind::Melody, &b),
+           "B staging succeeded without B storage");
+    expect(fixture.engine.pendingMaterialAddress(0) == savedA &&
+               fixture.engine.pendingMaterialAddress(1) == nullptr,
+           "missing B aliased or replaced A storage");
+    fixture.engine.activatePendingMaterial();
+    expect(fixture.engine.activeMaterial(0).kind == MaterialKind::Melody &&
+               fixture.engine.currentPhraseBuffer(0).events[0].note == 60,
+           "healthy A did not activate while B storage was missing");
+    expect(fixture.engine.activeMaterial(1).kind == MaterialKind::Pattern,
+           "failed B staging changed B active material");
+    fixture.engine.pendingMaterial_[1].melody = savedB;
+  }
+
   if (g_failures == 0) {
-    std::printf("M4 next material: PASS\n");
+    std::printf("M4 / FS1C pending ownership: PASS\n");
     return 0;
   }
-  std::fprintf(stderr, "M4 next material: %d failure(s)\n", g_failures);
+  std::fprintf(stderr, "M4 / FS1C pending ownership: %d failure(s)\n",
+               g_failures);
   return 1;
 }
