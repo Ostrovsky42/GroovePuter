@@ -1647,6 +1647,12 @@ void SceneManager::loadDefaultScene() {
       scene_->songs[i].reverse = false;
   }
 
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene_->materialSlots[voice][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
+    }
+  }
+
   for (int b = 0; b < kBankCount; ++b) {
     for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
       for (int v = 0; v < DrumPatternSet::kVoices; ++v) {

@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "src/platform/log.h"
 #include "src/state/material_publication_record.h"
 #include "src/state/material_slot_access.h"
 #include "src/state/melody_store.h"
@@ -42,15 +43,33 @@ class SdFileSystem : public FileSystem {
  public:
   bool available() const override { return true; }
   bool exists(const char* path) const override { return SD.exists(path); }
+  static bool createDirectoriesRecursive(const std::string& dirPath) {
+    if (dirPath.empty() || dirPath == "/" || SD.exists(dirPath.c_str())) {
+      return true;
+    }
+    size_t pos = 1;
+    while ((pos = dirPath.find('/', pos)) != std::string::npos) {
+      std::string sub = dirPath.substr(0, pos);
+      if (!sub.empty() && sub != "/" && !SD.exists(sub.c_str())) {
+        if (!SD.mkdir(sub.c_str())) return false;
+      }
+      ++pos;
+    }
+    return SD.exists(dirPath.c_str()) || SD.mkdir(dirPath.c_str());
+  }
+
   bool write(const char* path, const uint8_t* data, size_t length) override {
     std::string p(path);
     auto pos = p.find_last_of('/');
     if (pos != std::string::npos) {
       std::string dir = p.substr(0, pos);
-      if (!SD.exists(dir.c_str())) SD.mkdir(dir.c_str());
+      createDirectoriesRecursive(dir);
     }
     File f = SD.open(path, FILE_WRITE);
-    if (!f) return false;
+    if (!f) {
+      LOG_DEBUG("[SdFileSystem::write] SD.open(%s, FILE_WRITE) FAILED\n", path);
+      return false;
+    }
     const size_t written = f.write(data, length);
     f.flush();
     f.close();
@@ -265,8 +284,12 @@ inline Error commitMelodyCandidate(
   if (!MelodyStore::encode(candidate, encoded, nextGen)) return Error::EncodeFailed;
 
   const std::string targetPath = slotPath(project, address, targetSlot);
+  LOG_DEBUG("[MELODY_CANDIDATE] address={v:%u, g:%u} activeSlot=%d currentGen=%u targetSlot=%d nextGen=%u path=%s\n",
+            address.voice, address.globalSlot, static_cast<int>(activeSlot), currentGen,
+            static_cast<int>(targetSlot), nextGen, targetPath.c_str());
   fs.remove(targetPath.c_str());
   if (!fs.write(targetPath.c_str(), encoded.data(), encoded.size())) {
+    LOG_DEBUG("[MELODY_CANDIDATE] fs.write FAILED path=%s\n", targetPath.c_str());
     return Error::WriteFailed;
   }
 
@@ -278,6 +301,9 @@ inline Error commitMelodyCandidate(
       !MelodyStore::decode(verify.data(), verify.size(), restored, &restoredGen) ||
       restoredGen != nextGen ||
       !sameMelody(candidate, restored)) {
+    LOG_DEBUG("[MELODY_CANDIDATE] verify FAILED: read=%d restoredGen=%u expectedGen=%u same=%d\n",
+              fs.exists(targetPath.c_str()) ? 1 : 0, restoredGen, nextGen,
+              sameMelody(candidate, restored) ? 1 : 0);
     fs.remove(targetPath.c_str());
     return Error::VerifyFailed;
   }

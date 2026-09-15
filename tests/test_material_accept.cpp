@@ -65,6 +65,10 @@ void test_pattern_accept_and_cold_boot() {
     assert(engine.current303BankIndex(0) == 0);
     assert(engine.display303LocalPatternIndex(0) == 0);
 
+    // Test Case A: Clean accept on untouched pattern returns AlreadyClean
+    assert(engine.workingMaterial_[0].empty());
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::AlreadyClean);
+
     Scene& scene = engine.sceneManager().currentScene();
     if (!scene.materialSlots[0][0].id.valid()) {
       scene.materialSlots[0][0].id = PatternPagingService::allocateMaterialId();
@@ -156,10 +160,7 @@ void test_melody_accept_and_cold_boot() {
     engine.init();
 
     Scene& scene = engine.sceneManager().currentScene();
-    if (!scene.materialSlots[0][0].id.valid()) {
-      scene.materialSlots[0][0].id = PatternPagingService::allocateMaterialId();
-      scene.materialSlots[0][0].kind = MaterialKind::Pattern;
-    }
+    assert(!scene.materialSlots[0][0].id.valid());
 
     engine.workingMaterial_[0].storeMelody(expectedMelody);
     assert(engine.workingMaterial_[0].holdsMelody());

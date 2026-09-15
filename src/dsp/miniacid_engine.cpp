@@ -4449,20 +4449,24 @@ bool MiniAcid::undoMaterialWorking(int voiceIndex) {
 }
 
 MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
+  LOG_DEBUG("[ACCEPT] voice=%d\n", voiceIndex);
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    LOG_DEBUG("[ACCEPT] stage=preflight result=InvalidVoice\n");
     return AcceptResult::InvalidVoice;
   }
   const int idx = clamp303Voice(voiceIndex);
 
   auto& working = workingMaterial_[idx];
-  if (working.empty()) {
-    return AcceptResult::NoWorkingMaterial;
-  }
+  const char* workingType = working.holdsPattern() ? "pattern" : (working.holdsMelody() ? "melody" : "none");
+  LOG_DEBUG("[ACCEPT] working=%s\n", workingType);
+  const bool dirty = hasModifiedWorking303Pattern(idx) || working.holdsMelody();
+  LOG_DEBUG("[ACCEPT] dirty=%d\n", dirty ? 1 : 0);
 
-  GroovePuterMaterial::MaterialReference reference{};
-  if (!current303MaterialReference_(idx, reference)) {
-    return AcceptResult::UnsupportedCurrentState;
+  if (working.empty()) {
+    LOG_DEBUG("[ACCEPT] stage=preflight result=AlreadyClean\n");
+    return AcceptResult::AlreadyClean;
   }
+  LOG_DEBUG("[ACCEPT] stage=preflight result=OK\n");
 
   const int page = currentPageIndex();
   const int bank = current303BankIndex(idx);
@@ -4470,19 +4474,52 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
   if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||
       bank >= kBankCount || pattern < 0 ||
       pattern >= Bank<SynthPattern>::kPatterns) {
+    LOG_DEBUG("[ACCEPT] stage=resolve result=PageOrBankMismatch page=%d pageIdent=%d bank=%d pat=%d\n",
+              page, patternRuntimeBank_.pageIdentity(), bank, pattern);
     return AcceptResult::UnsupportedCurrentState;
   }
+
+  const int globalSlot = songPatternFromPageBankIndex(page, bank, pattern);
+  if (globalSlot < 0 || globalSlot >= kMaxGlobalPatterns || globalSlot > 0xff) {
+    LOG_DEBUG("[ACCEPT] stage=resolve result=InvalidGlobalSlot\n");
+    return AcceptResult::UnsupportedCurrentState;
+  }
+
+  const GroovePuterMaterial::MaterialAddress address{
+      static_cast<uint8_t>(idx), static_cast<uint8_t>(globalSlot)};
+  if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
+    LOG_DEBUG("[ACCEPT] stage=resolve result=NotResident\n");
+    return AcceptResult::UnsupportedCurrentState;
+  }
+
+  Scene& scene = sceneManager_.currentScene();
+  const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+  const auto existingId = GroovePuterMaterial::residentId(scene, idx, residentSlot);
+  const GroovePuterMaterial::MaterialReference reference{address, existingId};
+  LOG_DEBUG("[ACCEPT] ref.address={voice:%u, globalSlot:%u}\n",
+            reference.address.voice, reference.address.globalSlot);
+  LOG_DEBUG("[ACCEPT] ref.id=%u\n", reference.id.value);
+  LOG_DEBUG("[ACCEPT] stage=resolve result=OK\n");
 
   const std::string& proj = PatternPagingService::currentProjectName();
 
   // 1. If Working holds a Pattern
   if (working.holdsPattern()) {
-    if (!working.patternMatches(reference)) {
-      return AcceptResult::UnsupportedCurrentState;
+    if (existingId.valid()) {
+      if (!working.patternMatches(reference)) {
+        LOG_DEBUG("[ACCEPT] stage=validate result=RefMismatch\n");
+        return AcceptResult::UnsupportedCurrentState;
+      }
+    } else {
+      const auto stored = working.patternReference();
+      if (stored.id.valid() ||
+          (stored.address != address && stored.address.voice != 0xFF)) {
+        LOG_DEBUG("[ACCEPT] stage=validate result=UnassignedRefMismatch\n");
+        return AcceptResult::UnsupportedCurrentState;
+      }
     }
 
     const SynthPattern candidate = working.pattern();
-    Scene& scene = sceneManager_.currentScene();
     const SynthPattern& accepted = (idx == 0)
         ? scene.synthABanks[bank].patterns[pattern]
         : scene.synthBBanks[bank].patterns[pattern];
@@ -4490,13 +4527,18 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
     if (GroovePuterMaterial::versionForPattern(candidate) ==
         GroovePuterMaterial::versionForPattern(accepted)) {
       working.clear();
+      LOG_DEBUG("[ACCEPT] stage=validate result=AlreadyClean\n");
       return AcceptResult::AlreadyClean;
     }
+    LOG_DEBUG("[ACCEPT] stage=validate result=OK\n");
 
     if (!PatternPagingService::commitPatternCandidate(
             page, scene, idx, bank, pattern, candidate)) {
+      LOG_DEBUG("[ACCEPT] stage=page_candidate result=CommitFailed\n");
       return AcceptResult::CommitFailed;
     }
+    LOG_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
+    LOG_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
 
     const auto sourceBefore = currentSequencedSource(idx);
     working.clear();
@@ -4527,6 +4569,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       }
     }
 
+    LOG_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
     return AcceptResult::Accepted;
   }
 
@@ -4534,28 +4577,31 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
   if (working.holdsMelody()) {
     const auto candidate = working.melody();
     if (!RuntimePhraseEdit::validate(candidate)) {
+      LOG_DEBUG("[ACCEPT] stage=validate result=InvalidCandidate\n");
       return AcceptResult::InvalidCandidate;
     }
+    LOG_DEBUG("[ACCEPT] stage=validate result=OK\n");
 
-    Scene& scene = sceneManager_.currentScene();
     const size_t slotOffset = static_cast<size_t>(bank * Bank<SynthPattern>::kPatterns + pattern);
     GroovePuterMaterial::MaterialId candidateId = scene.materialSlots[idx][slotOffset].id;
     if (!candidateId.valid()) {
       candidateId = PatternPagingService::allocateMaterialId();
-      if (!candidateId.valid()) return AcceptResult::CommitFailed;
+      if (!candidateId.valid()) {
+        LOG_DEBUG("[ACCEPT] stage=melody_payload result=AllocIdFailed\n");
+        return AcceptResult::CommitFailed;
+      }
     }
 
     uint32_t melodyGen = 0;
     auto& fs = MelodyPromotion::defaultFileSystem();
-    const GroovePuterMaterial::MaterialAddress address{
-        static_cast<uint8_t>(idx),
-        static_cast<uint8_t>(reference.address.globalSlot)
-    };
     const auto melodyErr = MelodyPromotion::commitMelodyCandidate(
         fs, proj, address, candidate, melodyGen);
     if (melodyErr != MelodyPromotion::Error::None) {
+      LOG_DEBUG("[ACCEPT] stage=melody_payload result=CommitMelodyFailed err=%d gen=%u proj=%s\n",
+                static_cast<int>(melodyErr), melodyGen, proj.c_str());
       return AcceptResult::CommitFailed;
     }
+    LOG_DEBUG("[ACCEPT] stage=melody_payload result=OK gen=%u\n", melodyGen);
 
     if (!PatternPagingService::commitMelodyDescriptor(
             page, scene, idx, bank, pattern, candidateId)) {
@@ -4564,8 +4610,12 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
           ? GroovePuterMaterial::PublicationSlot::SlotB
           : GroovePuterMaterial::PublicationSlot::SlotA;
       fs.remove(MelodyPromotion::slotPath(proj, address, targetSlot).c_str());
+      LOG_DEBUG("[ACCEPT] stage=page_candidate result=CommitMelodyDescriptorFailed page=%d activeSlot=%d\n",
+                page, static_cast<int>(activeSlot));
       return AcceptResult::CommitFailed;
     }
+    LOG_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
+    LOG_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
 
     const auto sourceBefore = currentSequencedSource(idx);
     setSequencedSource(idx, sourceBefore);
@@ -4580,9 +4630,11 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       }
     }
 
+    LOG_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
     return AcceptResult::Accepted;
   }
 
+  LOG_DEBUG("[ACCEPT] stage=validate result=UnsupportedCurrentState\n");
   return AcceptResult::UnsupportedCurrentState;
 }
 

@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_PLATFORM_LOG_H
+#define GROOVEPUTER_SRC_PLATFORM_LOG_H
 
 // Logging layer for both Arduino (ESP32) and Desktop/SDL builds.
 // Usage:
@@ -45,3 +47,4 @@
       std::printf("[Mem] Heap monitoring not implemented for SDL build.\n");
   }
 #endif
+#endif // GROOVEPUTER_SRC_PLATFORM_LOG_H

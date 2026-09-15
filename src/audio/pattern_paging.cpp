@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "../platform/cardputer_material_publication_session.h"
+#include "../platform/log.h"
 
 namespace {
 
@@ -973,10 +974,18 @@ bool PatternPagingService::commitPageCandidate(
     header.materialIdBytes = static_cast<uint32_t>(kMaterialIdsSize);
     header.storageGeneration = nextGen;
 
+    if (!ensureProjectDirectory(proj)) {
+        LOG_DEBUG("[commitPageCandidate] ensureProjectDirectory(%s) FAILED\n", proj.c_str());
+        return false;
+    }
+
     const std::string targetPath = slotPathFor(proj, pageIndex, targetSlot);
     removeIfExists(targetPath);
     File file = SD.open(targetPath.c_str(), FILE_WRITE);
-    if (!file) return false;
+    if (!file) {
+        LOG_DEBUG("[commitPageCandidate] SD.open(%s, FILE_WRITE) FAILED\n", targetPath.c_str());
+        return false;
+    }
 
     bool wrote = writeAll(file, &header, sizeof(header));
     for (int b = 0; b < kBankCount; ++b) {
@@ -1002,6 +1011,7 @@ bool PatternPagingService::commitPageCandidate(
     file.flush();
     file.close();
     if (!wrote) {
+        LOG_DEBUG("[commitPageCandidate] writeAll FAILED path=%s\n", targetPath.c_str());
         removeIfExists(targetPath);
         return false;
     }
@@ -1011,6 +1021,8 @@ bool PatternPagingService::commitPageCandidate(
     uint32_t verifiedGen = 0;
     if (!readAndValidatePage(targetPath, staging, &verifiedGen) ||
         verifiedGen != nextGen) {
+        LOG_DEBUG("[commitPageCandidate] readAndValidatePage FAILED path=%s verifiedGen=%u expectedGen=%u\n",
+                  targetPath.c_str(), verifiedGen, nextGen);
         removeIfExists(targetPath);
         return false;
     }
@@ -1019,12 +1031,14 @@ bool PatternPagingService::commitPageCandidate(
             ? staging.synthABanks[bank].patterns[pattern]
             : staging.synthBBanks[bank].patterns[pattern];
         if (std::memcmp(&stagedPat, candidatePattern, sizeof(SynthPattern)) != 0) {
+            LOG_DEBUG("[commitPageCandidate] candidatePattern compare FAILED path=%s\n", targetPath.c_str());
             removeIfExists(targetPath);
             return false;
         }
     }
     if (staging.materialSlots[voice][slotOffset].kind != candidateKind ||
         staging.materialSlots[voice][slotOffset].id != candidateId) {
+        LOG_DEBUG("[commitPageCandidate] descriptor compare FAILED path=%s\n", targetPath.c_str());
         removeIfExists(targetPath);
         return false;
     }
@@ -1039,9 +1053,13 @@ bool PatternPagingService::commitPageCandidate(
     pubRecord.checksum = GroovePuterMaterial::checksumPublicationRecord(pubRecord);
 
     if (!GroovePuterPlatform::saveMaterialPublication(proj, pageIndex, pubRecord)) {
+        LOG_DEBUG("[commitPageCandidate] saveMaterialPublication FAILED proj=%s page=%d slot=%d gen=%u\n",
+                  proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
         removeIfExists(targetPath);
         return false;
     }
+    LOG_DEBUG("[commitPageCandidate] OK proj=%s page=%d slot=%d gen=%u\n",
+              proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
 
     // Infallible RAM updates
     if (candidatePattern) {
