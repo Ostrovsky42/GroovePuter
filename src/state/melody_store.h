@@ -18,18 +18,23 @@
 // at a time, little-endian, behind a header with magic, version, counts and an
 // integrity check.
 //
-// Everything here is about not trusting the bytes. A melody that fails any
-// check must leave the melody already in memory untouched -- a half-read file
-// replacing good music is the worst outcome available at this boundary.
+// Version 2 appends storageGeneration (4 bytes) to the header for dual-generation
+// A/B durability.
 namespace MelodyStore {
 
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 
 constexpr uint8_t kMagic[4] = {'G', 'P', 'M', 'L'};
-constexpr uint16_t kVersion = 1;
+constexpr uint16_t kVersion = 2;
+constexpr uint16_t kVersion1 = 1;
+constexpr uint16_t kVersion2 = 2;
 
 // magic(4) version(2) headerSize(2) eventCount(2) lengthTicks(2) crc32(4)
-constexpr size_t kHeaderBytes = 16;
+constexpr size_t kHeaderBytesV1 = 16;
+// magic(4) version(2) headerSize(2) eventCount(2) lengthTicks(2) crc32(4) storageGeneration(4)
+constexpr size_t kHeaderBytesV2 = 20;
+constexpr size_t kHeaderBytes = kHeaderBytesV2;
+
 // startTick(2) durationSubticks(2) note velocity probability flags fx fxParam
 constexpr size_t kEventBytes = 10;
 
@@ -65,7 +70,7 @@ inline uint32_t crc32(const uint8_t* data, size_t length) {
   return ~crc;
 }
 
-inline bool encode(const Buffer& melody, std::vector<uint8_t>& out) {
+inline bool encode(const Buffer& melody, std::vector<uint8_t>& out, uint32_t storageGeneration = 0) {
   // The runtime divides by lengthTicks in the onset path, so an illegal value
   // must never reach a file, let alone come back out of one.
   if (!RuntimePhraseEdit::validLengthTicks(melody.lengthTicks)) return false;
@@ -86,37 +91,46 @@ inline bool encode(const Buffer& melody, std::vector<uint8_t>& out) {
   }
 
   out.clear();
-  out.reserve(kHeaderBytes + payload.size());
+  out.reserve(kHeaderBytesV2 + payload.size());
   out.insert(out.end(), kMagic, kMagic + 4);
-  put16(out, kVersion);
-  put16(out, static_cast<uint16_t>(kHeaderBytes));
+  put16(out, kVersion2);
+  put16(out, static_cast<uint16_t>(kHeaderBytesV2));
   put16(out, melody.count);
   put16(out, melody.lengthTicks);
   put32(out, crc32(payload.data(), payload.size()));
+  put32(out, storageGeneration);
   out.insert(out.end(), payload.begin(), payload.end());
   return true;
 }
 
 // Decodes into a scratch value first and only publishes on success, so a
 // rejected file cannot leave the target half-written.
-inline bool decode(const uint8_t* data, size_t length, Buffer& out) {
-  if (data == nullptr || length < kHeaderBytes) return false;
+inline bool decode(const uint8_t* data, size_t length, Buffer& out, uint32_t* outGeneration = nullptr) {
+  if (data == nullptr || length < kHeaderBytesV1) return false;
   if (std::memcmp(data, kMagic, 4) != 0) return false;
-  if (read16(data + 4) != kVersion) return false;
+  const uint16_t version = read16(data + 4);
+  if (version != kVersion1 && version != kVersion2) return false;
   const uint16_t headerBytes = read16(data + 6);
-  if (headerBytes != kHeaderBytes) return false;
+  if (version == kVersion1 && headerBytes != kHeaderBytesV1) return false;
+  if (version == kVersion2 && headerBytes != kHeaderBytesV2) return false;
+  if (length < headerBytes) return false;
 
   const uint16_t count = read16(data + 8);
   const uint16_t lengthTicks = read16(data + 10);
   const uint32_t crc = read32(data + 12);
+  uint32_t generation = 0;
+  if (version == kVersion2) {
+    generation = read32(data + 16);
+  }
+  if (outGeneration) *outGeneration = generation;
 
   if (count > PhraseRuntime::kMaxSynthEvents) return false;
   if (!RuntimePhraseEdit::validLengthTicks(lengthTicks)) return false;
 
   const size_t payloadBytes = static_cast<size_t>(count) * kEventBytes;
-  if (length != kHeaderBytes + payloadBytes) return false;
+  if (length != headerBytes + payloadBytes) return false;
 
-  const uint8_t* payload = data + kHeaderBytes;
+  const uint8_t* payload = data + headerBytes;
   if (crc32(payload, payloadBytes) != crc) return false;
 
   Buffer decoded{};

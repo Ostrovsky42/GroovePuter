@@ -2,6 +2,8 @@
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
+#include "src/state/material_version.h"
+#include "src/state/melody_promotion.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -2830,13 +2832,52 @@ void MiniAcid::loadSceneFromStorage() {
         sceneStorage_->readSceneAuto(sceneManager_)) {
       lastSceneLoadRecoveredAutosave_ = true;
       LOG_PRINTLN("  - loadSceneFromStorage: recovered autosave");
+      PatternPagingService::loadPage(0, sceneManager_.currentScene());
+      hydrateAcceptedMaterialAtBoot_();
       return;
     }
-    if (sceneStorage_->readScene(sceneManager_)) return;
+    if (sceneStorage_->readScene(sceneManager_)) {
+      PatternPagingService::loadPage(0, sceneManager_.currentScene());
+      hydrateAcceptedMaterialAtBoot_();
+      return;
+    }
     LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
   }
   sceneManager_.loadDefaultScene();
+  PatternPagingService::loadPage(0, sceneManager_.currentScene());
+  hydrateAcceptedMaterialAtBoot_();
 }
+
+void MiniAcid::hydrateAcceptedMaterialAtBoot_() {
+  const std::string& proj = PatternPagingService::currentProjectName();
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const int bank = current303BankIndex(idx);
+    const int pattern = display303LocalPatternIndex(idx);
+    if (bank < 0 || bank >= kBankCount || pattern < 0 ||
+        pattern >= Bank<SynthPattern>::kPatterns) {
+      continue;
+    }
+    const int slot = bank * Bank<SynthPattern>::kPatterns + pattern;
+    const auto kind = sceneManager_.currentScene().materialSlots[idx][slot].kind;
+    publishActiveMaterial(idx, static_cast<uint16_t>(slot), kind);
+    if (kind == GroovePuterMaterial::MaterialKind::Melody) {
+      setSequencedSource(idx, SequencedSource::Phrase);
+      PhraseRuntime::RuntimeSynthEventBuffer loaded{};
+      const GroovePuterMaterial::MaterialAddress addr{
+          static_cast<uint8_t>(idx),
+          static_cast<uint8_t>(slot)
+      };
+      if (MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                        proj, addr, loaded)) {
+        workingMaterial_[idx].storeMelody(loaded);
+      }
+    } else {
+      setSequencedSource(idx, SequencedSource::Pattern);
+      workingMaterial_[idx].clear();
+    }
+  }
+}
+
 
 bool MiniAcid::saveSceneToStorage() {
   if (!sceneStorage_) return false;
@@ -4406,6 +4447,145 @@ bool MiniAcid::undoMaterialWorking(int voiceIndex) {
   owner.clear();
   return true;
 }
+
+MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return AcceptResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+
+  auto& working = workingMaterial_[idx];
+  if (working.empty()) {
+    return AcceptResult::NoWorkingMaterial;
+  }
+
+  GroovePuterMaterial::MaterialReference reference{};
+  if (!current303MaterialReference_(idx, reference)) {
+    return AcceptResult::UnsupportedCurrentState;
+  }
+
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||
+      bank >= kBankCount || pattern < 0 ||
+      pattern >= Bank<SynthPattern>::kPatterns) {
+    return AcceptResult::UnsupportedCurrentState;
+  }
+
+  const std::string& proj = PatternPagingService::currentProjectName();
+
+  // 1. If Working holds a Pattern
+  if (working.holdsPattern()) {
+    if (!working.patternMatches(reference)) {
+      return AcceptResult::UnsupportedCurrentState;
+    }
+
+    const SynthPattern candidate = working.pattern();
+    Scene& scene = sceneManager_.currentScene();
+    const SynthPattern& accepted = (idx == 0)
+        ? scene.synthABanks[bank].patterns[pattern]
+        : scene.synthBBanks[bank].patterns[pattern];
+
+    if (GroovePuterMaterial::versionForPattern(candidate) ==
+        GroovePuterMaterial::versionForPattern(accepted)) {
+      working.clear();
+      return AcceptResult::AlreadyClean;
+    }
+
+    if (!PatternPagingService::commitPatternCandidate(
+            page, scene, idx, bank, pattern, candidate)) {
+      return AcceptResult::CommitFailed;
+    }
+
+    const auto sourceBefore = currentSequencedSource(idx);
+    working.clear();
+    setSequencedSource(idx, sourceBefore);
+    publishActiveMaterial(idx, static_cast<uint16_t>(reference.address.globalSlot),
+                          GroovePuterMaterial::MaterialKind::Pattern);
+
+    const auto recipe = genreManager_.getGrooveRecipe();
+    int swingPct = static_cast<int>(scene.feel.swingPct);
+    if (swingPct < 50) swingPct = 50;
+    if (swingPct > 75) swingPct = 75;
+    PhraseRuntime::PatternProjectionSettings settings{};
+    settings.synthIndex = static_cast<uint8_t>(idx);
+    settings.gateLengthRatio = recipe.gateLengthRatio;
+    settings.swingPercent = static_cast<uint8_t>(swingPct);
+    const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+    settings.swingEnabled = (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+    (void)patternRuntimeBank_.refresh(static_cast<uint8_t>(idx),
+                                     static_cast<uint8_t>(bank),
+                                     static_cast<uint8_t>(pattern),
+                                     candidate, settings);
+
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
+      GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+      if (owner.read(GroovePuterUndo::UndoKind::RuntimePhrase, receipt) && receipt.voiceIndex == idx) {
+        owner.clear();
+      }
+    }
+
+    return AcceptResult::Accepted;
+  }
+
+  // 2. If Working holds a Melody
+  if (working.holdsMelody()) {
+    const auto candidate = working.melody();
+    if (!RuntimePhraseEdit::validate(candidate)) {
+      return AcceptResult::InvalidCandidate;
+    }
+
+    Scene& scene = sceneManager_.currentScene();
+    const size_t slotOffset = static_cast<size_t>(bank * Bank<SynthPattern>::kPatterns + pattern);
+    GroovePuterMaterial::MaterialId candidateId = scene.materialSlots[idx][slotOffset].id;
+    if (!candidateId.valid()) {
+      candidateId = PatternPagingService::allocateMaterialId();
+      if (!candidateId.valid()) return AcceptResult::CommitFailed;
+    }
+
+    uint32_t melodyGen = 0;
+    auto& fs = MelodyPromotion::defaultFileSystem();
+    const GroovePuterMaterial::MaterialAddress address{
+        static_cast<uint8_t>(idx),
+        static_cast<uint8_t>(reference.address.globalSlot)
+    };
+    const auto melodyErr = MelodyPromotion::commitMelodyCandidate(
+        fs, proj, address, candidate, melodyGen);
+    if (melodyErr != MelodyPromotion::Error::None) {
+      return AcceptResult::CommitFailed;
+    }
+
+    if (!PatternPagingService::commitMelodyDescriptor(
+            page, scene, idx, bank, pattern, candidateId)) {
+      const auto activeSlot = PatternPagingService::activePublicationSlot(page);
+      const auto targetSlot = (activeSlot == GroovePuterMaterial::PublicationSlot::SlotA)
+          ? GroovePuterMaterial::PublicationSlot::SlotB
+          : GroovePuterMaterial::PublicationSlot::SlotA;
+      fs.remove(MelodyPromotion::slotPath(proj, address, targetSlot).c_str());
+      return AcceptResult::CommitFailed;
+    }
+
+    const auto sourceBefore = currentSequencedSource(idx);
+    setSequencedSource(idx, sourceBefore);
+    publishActiveMaterial(idx, static_cast<uint16_t>(reference.address.globalSlot),
+                          GroovePuterMaterial::MaterialKind::Melody);
+
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
+      GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+      if (owner.read(GroovePuterUndo::UndoKind::RuntimePhrase, receipt) && receipt.voiceIndex == idx) {
+        owner.clear();
+      }
+    }
+
+    return AcceptResult::Accepted;
+  }
+
+  return AcceptResult::UnsupportedCurrentState;
+}
+
 
 bool MiniAcid::stagePendingMaterial(
     int voiceIndex, uint16_t slot, GroovePuterMaterial::MaterialKind kind,

@@ -2,15 +2,20 @@
 #define GROOVEPUTER_SRC_AUDIO_PATTERN_PAGING_H
 
 #include "../../scenes.h"
+#include "../state/material_publication_record.h"
 #include <cstdint>
 #include <string>
 
 class PatternPagingService {
 public:
+    // Version 6 introduces dual-generation A/B ping-pong storage with
+    // storageGeneration counter and NVS publication record.
     // Version 5 persists the complete MaterialSlotDescriptor (kind + stable
     // MaterialId). Version 4 persisted kind only; version 3 predates material
     // metadata entirely. Legacy pages decode with id=0 so identity fails closed.
-    static constexpr uint16_t kFormatVersion = 5;
+    static constexpr uint16_t kDualGenFormatVersion = 6;
+    static constexpr uint16_t kFormatVersion = 6;
+    static constexpr uint16_t kLegacyV5FormatVersion = 5;
     static constexpr uint16_t kKindOnlyFormatVersion = 4;
     static constexpr uint16_t kLegacyFormatVersion = 3;
 
@@ -30,6 +35,39 @@ public:
     // previous page file, and a failed load leaves Scene unchanged.
     static bool savePage(int pageIndex, const Scene& scene);
     static bool loadPage(int pageIndex, Scene& scene);
+
+    // Atomically commit a page candidate (pattern or descriptor) to the inactive dual-generation slot,
+    // readback-verify, write NVS publication record, and update scene RAM infallibly.
+    static bool commitPageCandidate(int pageIndex,
+                                    Scene& scene,
+                                    int voice,
+                                    int bank,
+                                    int pattern,
+                                    const SynthPattern* candidatePattern,
+                                    GroovePuterMaterial::MaterialKind candidateKind,
+                                    GroovePuterMaterial::MaterialId candidateId);
+
+    static bool commitPatternCandidate(int pageIndex,
+                                       Scene& scene,
+                                       int voice,
+                                       int bank,
+                                       int pattern,
+                                       const SynthPattern& candidatePattern);
+
+    static bool commitMelodyDescriptor(int pageIndex,
+                                       Scene& scene,
+                                       int voice,
+                                       int bank,
+                                       int pattern,
+                                       GroovePuterMaterial::MaterialId candidateId);
+
+    // Query active slot and generation from publication record / inspected headers
+    static std::string slotPath(int pageIndex, GroovePuterMaterial::PublicationSlot slot);
+    static std::string slotPathForProject(const std::string& projectName,
+                                          int pageIndex,
+                                          GroovePuterMaterial::PublicationSlot slot);
+    static uint32_t activeStorageGeneration(int pageIndex);
+    static GroovePuterMaterial::PublicationSlot activePublicationSlot(int pageIndex);
 
     // Restore the previous validated page version created by savePage().
     // Used by multi-page import transactions when a later page fails.

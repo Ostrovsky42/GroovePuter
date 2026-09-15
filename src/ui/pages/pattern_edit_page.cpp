@@ -23,6 +23,7 @@
 #include "../../state/scene_revision.h"
 #include "../../state/undo_owner.h"
 #include "../../state/undo_receipts.h"
+#include "../material_accept_ux.h"
 #include "../key_normalize.h"
 
 namespace UI {
@@ -586,6 +587,10 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
+    return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
+  }
+
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return handleEventLegacy(ui_event);
   }

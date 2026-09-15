@@ -2,10 +2,18 @@
 #ifndef GROOVEPUTER_SRC_STATE_MELODY_PROMOTION_H
 #define GROOVEPUTER_SRC_STATE_MELODY_PROMOTION_H
 
+#if defined(ARDUINO)
+#include <Arduino.h>
+#include <SD.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#endif
+
 #include <cstdio>
 #include <string>
 #include <vector>
 
+#include "src/state/material_publication_record.h"
 #include "src/state/material_slot_access.h"
 #include "src/state/melody_store.h"
 
@@ -30,6 +38,45 @@ struct FileSystem {
   virtual bool remove(const char* path) = 0;
 };
 
+class SdFileSystem : public FileSystem {
+ public:
+  bool available() const override { return true; }
+  bool exists(const char* path) const override { return SD.exists(path); }
+  bool write(const char* path, const uint8_t* data, size_t length) override {
+    std::string p(path);
+    auto pos = p.find_last_of('/');
+    if (pos != std::string::npos) {
+      std::string dir = p.substr(0, pos);
+      if (!SD.exists(dir.c_str())) SD.mkdir(dir.c_str());
+    }
+    File f = SD.open(path, FILE_WRITE);
+    if (!f) return false;
+    const size_t written = f.write(data, length);
+    f.flush();
+    f.close();
+    return written == length;
+  }
+  bool read(const char* path, std::vector<uint8_t>& out) const override {
+    File f = SD.open(path, FILE_READ);
+    if (!f) return false;
+    out.resize(f.size());
+    const size_t readCount = f.read(out.data(), out.size());
+    f.close();
+    return readCount == out.size();
+  }
+  bool rename(const char* from, const char* to) override {
+    return SD.rename(from, to);
+  }
+  bool remove(const char* path) override {
+    return !SD.exists(path) || SD.remove(path);
+  }
+};
+
+inline FileSystem& defaultFileSystem() {
+  static SdFileSystem fs;
+  return fs;
+}
+
 enum class Error : uint8_t {
   None = 0,
   NoStorage,
@@ -53,6 +100,17 @@ inline std::string slotPath(const std::string& project,
   return "/projects/" + project + buffer;
 }
 
+inline std::string slotPath(const std::string& project,
+                            GroovePuterMaterial::MaterialAddress address,
+                            GroovePuterMaterial::PublicationSlot slot) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "/melody/v%u_g%03u_%c.gpml",
+                static_cast<unsigned>(address.voice),
+                static_cast<unsigned>(address.globalSlot),
+                GroovePuterMaterial::publicationSlotSuffix(slot));
+  return "/projects/" + project + buffer;
+}
+
 inline std::string finalPath(
     const std::string& project,
     GroovePuterMaterial::MaterialAddress address) {
@@ -72,6 +130,13 @@ inline std::string slotPath(const std::string& project, int voice, int slot,
   return slotPath(project,
                   {static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)},
                   extension);
+}
+
+inline std::string slotPath(const std::string& project, int voice, int slot,
+                            GroovePuterMaterial::PublicationSlot pubSlot) {
+  return slotPath(project,
+                  {static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)},
+                  pubSlot);
 }
 
 inline std::string finalPath(const std::string& project, int voice, int slot) {
@@ -101,15 +166,56 @@ inline bool sameMelody(const Buffer& a, const Buffer& b) {
 
 inline bool loadMaterial(
     const FileSystem& fs, const std::string& project,
-    GroovePuterMaterial::MaterialAddress address, Buffer& out) {
+    GroovePuterMaterial::MaterialAddress address, Buffer& out,
+    uint32_t* outGeneration = nullptr) {
   if (!fs.available() || !GroovePuterMaterial::materialAddressInRange(address)) {
     return false;
   }
+
+  // 1. Check dual-generation slots A and B
+  const std::string pathA = slotPath(project, address, GroovePuterMaterial::PublicationSlot::SlotA);
+  const std::string pathB = slotPath(project, address, GroovePuterMaterial::PublicationSlot::SlotB);
+  uint32_t genA = 0, genB = 0;
+  Buffer bufA{}, bufB{};
+  bool validA = false, validB = false;
+
+  std::vector<uint8_t> blobA;
+  if (fs.exists(pathA.c_str()) && fs.read(pathA.c_str(), blobA)) {
+    validA = MelodyStore::decode(blobA.data(), blobA.size(), bufA, &genA);
+  }
+  std::vector<uint8_t> blobB;
+  if (fs.exists(pathB.c_str()) && fs.read(pathB.c_str(), blobB)) {
+    validB = MelodyStore::decode(blobB.data(), blobB.size(), bufB, &genB);
+  }
+
+  if (validA && validB) {
+    if (genA >= genB) {
+      out = bufA;
+      if (outGeneration) *outGeneration = genA;
+      return true;
+    } else {
+      out = bufB;
+      if (outGeneration) *outGeneration = genB;
+      return true;
+    }
+  }
+  if (validA) {
+    out = bufA;
+    if (outGeneration) *outGeneration = genA;
+    return true;
+  }
+  if (validB) {
+    out = bufB;
+    if (outGeneration) *outGeneration = genB;
+    return true;
+  }
+
+  // 2. Fallback to legacy single file
   const std::string path = finalPath(project, address);
   if (!fs.exists(path.c_str())) return false;
   std::vector<uint8_t> blob;
   if (!fs.read(path.c_str(), blob)) return false;
-  return MelodyStore::decode(blob.data(), blob.size(), out);
+  return MelodyStore::decode(blob.data(), blob.size(), out, outGeneration);
 }
 
 inline bool loadResident(const FileSystem& fs, const std::string& project,
@@ -120,15 +226,72 @@ inline bool loadResident(const FileSystem& fs, const std::string& project,
       {static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)}, out);
 }
 
+inline Error commitMelodyCandidate(
+    FileSystem& fs, const std::string& project,
+    GroovePuterMaterial::MaterialAddress address,
+    const Buffer& candidate,
+    uint32_t& committedGeneration) {
+  if (!fs.available()) return Error::NoStorage;
+  if (!GroovePuterMaterial::materialAddressInRange(address)) return Error::BadSlot;
+
+  // Probe active slot and generation
+  const std::string pathA = slotPath(project, address, GroovePuterMaterial::PublicationSlot::SlotA);
+  const std::string pathB = slotPath(project, address, GroovePuterMaterial::PublicationSlot::SlotB);
+  uint32_t genA = 0, genB = 0;
+  Buffer temp{};
+  std::vector<uint8_t> blob;
+  bool validA = fs.exists(pathA.c_str()) && fs.read(pathA.c_str(), blob) &&
+                MelodyStore::decode(blob.data(), blob.size(), temp, &genA);
+  bool validB = fs.exists(pathB.c_str()) && fs.read(pathB.c_str(), blob) &&
+                MelodyStore::decode(blob.data(), blob.size(), temp, &genB);
+
+  GroovePuterMaterial::PublicationSlot activeSlot = GroovePuterMaterial::PublicationSlot::None;
+  uint32_t currentGen = 0;
+  if (validA && validB) {
+    if (genA >= genB) { activeSlot = GroovePuterMaterial::PublicationSlot::SlotA; currentGen = genA; }
+    else { activeSlot = GroovePuterMaterial::PublicationSlot::SlotB; currentGen = genB; }
+  } else if (validA) {
+    activeSlot = GroovePuterMaterial::PublicationSlot::SlotA; currentGen = genA;
+  } else if (validB) {
+    activeSlot = GroovePuterMaterial::PublicationSlot::SlotB; currentGen = genB;
+  }
+
+  const auto targetSlot = (activeSlot == GroovePuterMaterial::PublicationSlot::SlotA)
+      ? GroovePuterMaterial::PublicationSlot::SlotB
+      : GroovePuterMaterial::PublicationSlot::SlotA;
+  const uint32_t nextGen = currentGen + 1;
+
+  std::vector<uint8_t> encoded;
+  if (!MelodyStore::encode(candidate, encoded, nextGen)) return Error::EncodeFailed;
+
+  const std::string targetPath = slotPath(project, address, targetSlot);
+  fs.remove(targetPath.c_str());
+  if (!fs.write(targetPath.c_str(), encoded.data(), encoded.size())) {
+    return Error::WriteFailed;
+  }
+
+  // Readback verify
+  std::vector<uint8_t> verify;
+  Buffer restored{};
+  uint32_t restoredGen = 0;
+  if (!fs.read(targetPath.c_str(), verify) ||
+      !MelodyStore::decode(verify.data(), verify.size(), restored, &restoredGen) ||
+      restoredGen != nextGen ||
+      !sameMelody(candidate, restored)) {
+    fs.remove(targetPath.c_str());
+    return Error::VerifyFailed;
+  }
+
+  committedGeneration = nextGen;
+  return Error::None;
+}
+
 inline Error promoteResident(
     FileSystem& fs, const std::string& project, Scene& scene,
     const GroovePuterMaterial::MaterialReference& reference, int residentSlot,
     const Buffer& candidate) {
   using namespace GroovePuterMaterial;
 
-  // Identity is admission authority. It is checked before storage availability,
-  // encoding, temp creation, or any other operation that could publish a stale
-  // candidate under a replacement material.
   if (!reference.id.valid()) return Error::InvalidReference;
 
   const MaterialAddress address = reference.address;
@@ -143,7 +306,6 @@ inline Error promoteResident(
     return Error::IdentityMismatch;
   }
 
-  // Existing M2b transaction semantics begin here and remain unchanged.
   if (!fs.available()) return Error::NoStorage;
 
   if (residentKind(scene, address.voice, residentSlot) == MaterialKind::Melody) {
@@ -153,13 +315,11 @@ inline Error promoteResident(
   std::vector<uint8_t> blob;
   if (!MelodyStore::encode(candidate, blob)) return Error::EncodeFailed;
 
-  // Durable locator is global; runtime lookup remains resident.
   const std::string temp = tempPath(project, address);
   if (!fs.write(temp.c_str(), blob.data(), blob.size())) {
     return Error::WriteFailed;
   }
 
-  // Read back what was actually stored, not what we meant to store.
   std::vector<uint8_t> verify;
   Buffer restored{};
   if (!fs.read(temp.c_str(), verify) ||
@@ -175,18 +335,12 @@ inline Error promoteResident(
     return Error::PublishFailed;
   }
 
-  // Last. Durable publication is complete before the resident descriptor moves.
   if (!setResidentKind(scene, address.voice, residentSlot, MaterialKind::Melody)) {
     return Error::BadSlot;
   }
   return Error::None;
 }
 
-// Bare-address mutation entry points remain source-compatible only so an older
-// caller fails closed instead of silently publishing against whichever identity
-// happens to occupy the coordinate now. They cannot manufacture a fresh
-// MaterialReference from current state because doing so would recreate the ABA
-// bug A2-B closes.
 inline Error promoteResident(
     FileSystem& fs, const std::string& project, Scene& scene,
     GroovePuterMaterial::MaterialAddress address, int residentSlot,

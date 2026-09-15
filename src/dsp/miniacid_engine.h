@@ -232,6 +232,18 @@ public:
   MaterialLengthResult setMaterialLength(int voiceIndex, uint8_t targetBars);
   bool undoMaterialWorking(int voiceIndex);
 
+  // 0.9.12 Material Closure: Material Working ACCEPT transaction.
+  enum class AcceptResult : uint8_t {
+    Accepted = 0,
+    AlreadyClean,
+    NoWorkingMaterial,
+    InvalidVoice,
+    InvalidCandidate,
+    UnsupportedCurrentState,
+    CommitFailed,
+  };
+  AcceptResult acceptMaterialWorking(int voiceIndex);
+
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -738,6 +750,7 @@ private:
   bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();
+  void hydrateAcceptedMaterialAtBoot_();
   bool saveSceneToStorage();
   void applySceneStateFromManager();
   void syncSceneStateToManager();

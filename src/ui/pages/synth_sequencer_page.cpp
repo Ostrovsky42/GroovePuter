@@ -31,6 +31,7 @@
 #include "../ui_input.h"
 #include "../ui_theme.h"
 #include "../undo_ux.h"
+#include "../material_accept_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
@@ -925,6 +926,10 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
+    return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
+  }
+
   const bool phraseNotes =
       synth_tab_ == SynthTab::Notes &&
       mini_acid_.currentSequencedSource(voice_index_) ==

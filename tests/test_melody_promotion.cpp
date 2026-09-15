@@ -23,6 +23,8 @@
 namespace {
 
 using GroovePuterMaterial::MaterialKind;
+using GroovePuterMaterial::MaterialId;
+using GroovePuterMaterial::MaterialReference;
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 
 int g_failures = 0;
@@ -83,6 +85,14 @@ const std::string kProject = "projectA";
 constexpr int kVoice = 0;
 constexpr int kSlot = 5;
 
+inline MaterialReference ensureRef(Scene& scene, int voice, int slot, uint32_t idVal = 101) {
+  scene.materialSlots[voice][slot].id = MaterialId{idVal};
+  return MaterialReference{
+      {static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)},
+      MaterialId{idVal}
+  };
+}
+
 }  // namespace
 
 int main() {
@@ -92,8 +102,9 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
+    const auto ref = ensureRef(scene, kVoice, kSlot);
     const Buffer candidate = makeCandidate();
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, candidate);
     expect(error == Error::None, "a valid promotion was refused");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -117,7 +128,8 @@ int main() {
     FakeFs fs;
     fs.present = false;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, makeCandidate());
     expect(error == Error::NoStorage, "promotion without storage was allowed");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -131,7 +143,8 @@ int main() {
     FakeFs fs;
     fs.failWrite = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, makeCandidate());
     expect(error == Error::WriteFailed, "a failed write was not reported");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -148,7 +161,8 @@ int main() {
     FakeFs fs;
     fs.corruptOnRead = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, makeCandidate());
     expect(error == Error::VerifyFailed, "a corrupted read-back was accepted");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -165,7 +179,8 @@ int main() {
     FakeFs fs;
     fs.failRename = true;
     Scene scene{};
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, makeCandidate());
     expect(error == Error::PublishFailed, "a failed publish was not reported");
     expect(GroovePuterMaterial::residentKind(scene, kVoice, kSlot) ==
@@ -180,11 +195,12 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, kProject, scene, kVoice, kSlot,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, ref, kSlot,
                                            makeCandidate());
     Buffer edited = makeCandidate();
     edited.events[0].note = 71;
-    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, kVoice,
+    const Error error = MelodyPromotion::promoteResident(fs, kProject, scene, ref,
                                                          kSlot, edited);
     expect(error == Error::AlreadyMelody,
            "an already promoted slot was promoted again");
@@ -199,7 +215,8 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, kProject, scene, 0, 1, makeCandidate());
+    const auto refA = ensureRef(scene, 0, 1, 201);
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, refA, 1, makeCandidate());
     expect(GroovePuterMaterial::residentKind(scene, 1, 1) ==
                MaterialKind::Pattern,
            "promoting synth A promoted the same slot on synth B");
@@ -216,7 +233,8 @@ int main() {
   {
     FakeFs fs;
     Scene scene{};
-    (void)MelodyPromotion::promoteResident(fs, kProject, scene, kVoice, kSlot,
+    const auto ref = ensureRef(scene, kVoice, kSlot);
+    (void)MelodyPromotion::promoteResident(fs, kProject, scene, ref, kSlot,
                                            makeCandidate());
     fs.remove(MelodyPromotion::finalPath(kProject, kVoice, kSlot).c_str());
     Buffer loaded{};
@@ -231,16 +249,18 @@ int main() {
     FakeFs fs;
     Scene sceneA{};
     Scene sceneB{};
+    const auto refA = ensureRef(sceneA, kVoice, kSlot, 301);
+    const auto refB = ensureRef(sceneB, kVoice, kSlot, 302);
 
     Buffer melodyA = makeCandidate();
     melodyA.events[0].note = 60;
     Buffer melodyB = makeCandidate();
     melodyB.events[0].note = 72;
 
-    expect(MelodyPromotion::promoteResident(fs, "projectA", sceneA, kVoice,
+    expect(MelodyPromotion::promoteResident(fs, "projectA", sceneA, refA,
                                             kSlot, melodyA) == Error::None,
            "project A promotion failed");
-    expect(MelodyPromotion::promoteResident(fs, "projectB", sceneB, kVoice,
+    expect(MelodyPromotion::promoteResident(fs, "projectB", sceneB, refB,
                                             kSlot, melodyB) == Error::None,
            "project B promotion failed, so the slot was already taken");
 

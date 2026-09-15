@@ -7,6 +7,8 @@
 #include "../../platform_sdl/arduino_compat.h"
 #endif
 
+#include "../platform/cardputer_material_publication_session.h"
+
 namespace {
 constexpr char kPatternRootDirectory[] = "/patterns";
 
@@ -31,6 +33,9 @@ bool PatternPagingService::clearProjectPages(const std::string& projectName) {
         ok = removeIfPresent(mainPath) && ok;
         ok = removeIfPresent(mainPath + ".tmp") && ok;
         ok = removeIfPresent(mainPath + ".bak") && ok;
+        ok = removeIfPresent(slotPathForProject(projectName, page, GroovePuterMaterial::PublicationSlot::SlotA)) && ok;
+        ok = removeIfPresent(slotPathForProject(projectName, page, GroovePuterMaterial::PublicationSlot::SlotB)) && ok;
+        GroovePuterPlatform::clearMaterialPublication(projectName, page);
     }
     return ok;
 }
