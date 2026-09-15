@@ -51,7 +51,7 @@ jobs:
         run: bash tests/run_m4_next_material_tests.sh
 
       - name: Material identity regression
-        run: bash tests/run_0_9_11_c1a_material_identity_foundation_tests.sh
+        run: bash tests/run_0_9_11_c1a_material_identity_foundation.sh
 
       - name: Working identity regression
         run: bash tests/run_0_9_11_m_working_identity_tests.sh
