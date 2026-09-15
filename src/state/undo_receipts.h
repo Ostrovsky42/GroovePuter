@@ -10,6 +10,7 @@
 
 #include "../../scenes.h"
 #include "../phrase/runtime_synth_events.h"
+#include "material_identity.h"
 #include "undo_owner.h"
 
 namespace GroovePuterUndo {
@@ -172,6 +173,10 @@ struct RuntimePhraseUndoPayload {
   uint8_t voiceIndex{0};
   uint8_t source{0};
   PhraseRuntime::RuntimeSynthEventBuffer before{};
+  uint8_t representation{0};  // 0 = Pattern, 1 = Melody
+  bool wasDirty{false};
+  SynthPattern patternBefore{};
+  GroovePuterMaterial::MaterialReference reference{};
 };
 
 static_assert(std::is_trivially_copyable<RuntimePhraseUndoPayload>::value,

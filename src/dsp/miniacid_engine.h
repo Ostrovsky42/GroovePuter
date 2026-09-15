@@ -220,6 +220,18 @@ public:
   };
   DiscardResult discardCurrentMaterial(int voiceIndex);
 
+  // 0.9.12 Material Closure: Material Working LENGTH ownership (FS2B-L1).
+  enum class MaterialLengthResult : uint8_t {
+    Changed = 0,
+    Unchanged,
+    InvalidVoice,
+    InvalidLength,
+    WouldTruncate,
+    UnsupportedCurrentState,
+  };
+  MaterialLengthResult setMaterialLength(int voiceIndex, uint8_t targetBars);
+  bool undoMaterialWorking(int voiceIndex);
+
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;

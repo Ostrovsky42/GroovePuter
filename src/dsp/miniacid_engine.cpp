@@ -1,5 +1,7 @@
 #include "miniacid_engine.h"
 #include "src/phrase/runtime_phrase_edit.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -4191,6 +4193,218 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
       GroovePuterMaterial::MaterialKind::Pattern);
   workingMaterial_[idx].clear();
   return DiscardResult::Discarded;
+}
+
+MiniAcid::MaterialLengthResult MiniAcid::setMaterialLength(
+    int voiceIndex, uint8_t targetBars) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return MaterialLengthResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+
+  if (targetBars != 1 && targetBars != 2 && targetBars != 4 && targetBars != 8) {
+    return MaterialLengthResult::InvalidLength;
+  }
+
+  GroovePuterMaterial::MaterialReference reference{};
+  GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+  const CurrentNextState state =
+      classifyCurrentForNext_(idx, reference, acceptedVersion);
+  if (state == CurrentNextState::UnsupportedCurrentState) {
+    return MaterialLengthResult::UnsupportedCurrentState;
+  }
+
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||
+      bank >= kBankCount || pattern < 0 ||
+      pattern >= Bank<SynthPattern>::kPatterns) {
+    return MaterialLengthResult::UnsupportedCurrentState;
+  }
+
+  const Scene& scene = sceneManager_.currentScene();
+  const SynthPattern& accepted =
+      idx == 0 ? scene.synthABanks[bank].patterns[pattern]
+               : scene.synthBBanks[bank].patterns[pattern];
+  if (GroovePuterMaterial::versionForPattern(accepted) != acceptedVersion) {
+    return MaterialLengthResult::UnsupportedCurrentState;
+  }
+
+  const bool isMelody =
+      workingMaterial_[idx].holdsMelody() ||
+      activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Melody;
+  const uint8_t currentBars = isMelody
+      ? static_cast<uint8_t>(
+            workingMaterial_[idx].melody().lengthTicks / PhraseRuntime::kTicksPerBar)
+      : 1;
+
+  if (targetBars == currentBars) {
+    return MaterialLengthResult::Unchanged;
+  }
+
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(idx);
+  receipt.source = static_cast<uint8_t>(currentSequencedSource(idx));
+  receipt.reference = reference;
+  receipt.wasDirty = (state == CurrentNextState::DirtyCurrent);
+
+  PhraseRuntime::RuntimeSynthEventBuffer candidate{};
+
+  if (isMelody) {
+    receipt.representation = 1;
+    receipt.before = workingMaterial_[idx].melody();
+    candidate = workingMaterial_[idx].melody();
+
+    const auto editResult = RuntimePhraseEdit::setLengthBars(candidate, targetBars);
+    if (editResult == RuntimePhraseEdit::LengthEditResult::NoChange) {
+      return MaterialLengthResult::Unchanged;
+    }
+    if (editResult == RuntimePhraseEdit::LengthEditResult::Rejected) {
+      if (targetBars < currentBars) {
+        return MaterialLengthResult::WouldTruncate;
+      }
+      return MaterialLengthResult::UnsupportedCurrentState;
+    }
+  } else {
+    // Current is Pattern (1 bar). Target is 2, 4, or 8 bars.
+    receipt.representation = 0;
+    receipt.patternBefore = workingMaterial_[idx].holdsPattern()
+        ? workingMaterial_[idx].pattern()
+        : accepted;
+    receipt.before.lengthTicks = PhraseRuntime::kTicksPerBar;
+    receipt.before.count = 0;
+
+    const SynthPattern& sourcePattern = receipt.patternBefore;
+    const auto recipe = genreManager_.getGrooveRecipe();
+    int swingPct = static_cast<int>(scene.feel.swingPct);
+    if (swingPct < 50) swingPct = 50;
+    if (swingPct > 75) swingPct = 75;
+
+    PhraseRuntime::PatternProjectionSettings settings{};
+    settings.synthIndex = static_cast<uint8_t>(idx);
+    settings.gateLengthRatio = recipe.gateLengthRatio;
+    settings.swingPercent = static_cast<uint8_t>(swingPct);
+    const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+    settings.swingEnabled =
+        (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+    if (PhraseRuntime::projectPatternToRuntimeEvents(
+            sourcePattern, settings, candidate) !=
+        PhraseRuntime::PatternProjectionStatus::Ready) {
+      return MaterialLengthResult::UnsupportedCurrentState;
+    }
+
+    const uint32_t phraseEndSubtick =
+        static_cast<uint32_t>(candidate.lengthTicks) *
+        PhraseRuntime::kSubticksPerTick;
+    for (uint16_t i = 0; i < candidate.count; ++i) {
+      auto& event = candidate.events[i];
+      const uint32_t startSubtick =
+          static_cast<uint32_t>(event.startTick) *
+          PhraseRuntime::kSubticksPerTick;
+      if (startSubtick >= phraseEndSubtick) {
+        return MaterialLengthResult::UnsupportedCurrentState;
+      }
+      const uint32_t maxDuration = phraseEndSubtick - startSubtick;
+      if (event.durationSubticks > maxDuration) {
+        event.durationSubticks = static_cast<uint16_t>(maxDuration);
+      }
+    }
+
+    if (RuntimePhraseEdit::setLengthBars(candidate, targetBars) !=
+        RuntimePhraseEdit::LengthEditResult::Changed) {
+      return MaterialLengthResult::UnsupportedCurrentState;
+    }
+  }
+
+  if (!RuntimePhraseEdit::validate(candidate)) {
+    return MaterialLengthResult::UnsupportedCurrentState;
+  }
+
+  bool committed = false;
+  auto& undo = GroovePuterUndo::undoOwner();
+  const bool published = undo.commitRuntimePrepared(
+      GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+        workingMaterial_[idx].storeMelody(candidate);
+        setSequencedSource(idx, SequencedSource::Phrase);
+        publishActiveMaterial(
+            idx, static_cast<uint16_t>(reference.address.globalSlot),
+            GroovePuterMaterial::MaterialKind::Melody);
+        committed = true;
+      });
+
+  if (!published || !committed) {
+    return MaterialLengthResult::UnsupportedCurrentState;
+  }
+  return MaterialLengthResult::Changed;
+}
+
+bool MiniAcid::undoMaterialWorking(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+
+  auto& owner = GroovePuterUndo::undoOwner();
+  if (!owner.hasUndo() ||
+      owner.kind() != GroovePuterUndo::UndoKind::RuntimePhrase) {
+    return false;
+  }
+
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  if (!owner.read(GroovePuterUndo::UndoKind::RuntimePhrase, receipt)) {
+    return false;
+  }
+  if (receipt.voiceIndex != idx) {
+    return false;
+  }
+
+  if (receipt.representation == 0) {
+    if (receipt.wasDirty) {
+      workingMaterial_[idx].storePattern(receipt.patternBefore, receipt.reference);
+    } else {
+      workingMaterial_[idx].clear();
+    }
+    setSequencedSource(idx, static_cast<SequencedSource>(receipt.source));
+    publishActiveMaterial(
+        idx, static_cast<uint16_t>(receipt.reference.address.globalSlot),
+        GroovePuterMaterial::MaterialKind::Pattern);
+
+    const int page = currentPageIndex();
+    const int bank = current303BankIndex(idx);
+    const int pattern = display303LocalPatternIndex(idx);
+    if (patternRuntimeBank_.pageIdentity() == page && bank >= 0 &&
+        bank < kBankCount && pattern >= 0 &&
+        pattern < Bank<SynthPattern>::kPatterns) {
+      const Scene& scene = sceneManager_.currentScene();
+      const SynthPattern& patternToRefresh = receipt.wasDirty
+          ? receipt.patternBefore
+          : (idx == 0 ? scene.synthABanks[bank].patterns[pattern]
+                      : scene.synthBBanks[bank].patterns[pattern]);
+      const auto recipe = genreManager_.getGrooveRecipe();
+      int swingPct = static_cast<int>(scene.feel.swingPct);
+      if (swingPct < 50) swingPct = 50;
+      if (swingPct > 75) swingPct = 75;
+      PhraseRuntime::PatternProjectionSettings settings{};
+      settings.synthIndex = static_cast<uint8_t>(idx);
+      settings.gateLengthRatio = recipe.gateLengthRatio;
+      settings.swingPercent = static_cast<uint8_t>(swingPct);
+      const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+      settings.swingEnabled =
+          (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+      (void)patternRuntimeBank_.refresh(
+          static_cast<uint8_t>(idx), static_cast<uint8_t>(bank),
+          static_cast<uint8_t>(pattern), patternToRefresh, settings);
+    }
+  } else {
+    workingMaterial_[idx].storeMelody(receipt.before);
+    setSequencedSource(idx, static_cast<SequencedSource>(receipt.source));
+    publishActiveMaterial(
+        idx, static_cast<uint16_t>(receipt.reference.address.globalSlot),
+        GroovePuterMaterial::MaterialKind::Melody);
+  }
+
+  owner.clear();
+  return true;
 }
 
 bool MiniAcid::stagePendingMaterial(
