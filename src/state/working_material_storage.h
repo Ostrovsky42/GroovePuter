@@ -60,6 +60,8 @@ class WorkingMaterialStorage {
     new (&payload_.melody) MelodyBuffer(value);
   }
 
+  void clear() { markEmpty(); }
+
   bool empty() const { return tagIs(kEmptyTagByte); }
   bool holdsPattern() const { return tagIs(kPatternTagByte); }
   bool holdsMelody() const { return !empty() && !holdsPattern(); }

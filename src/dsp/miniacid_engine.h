@@ -208,6 +208,18 @@ public:
       const PhraseRuntime::RuntimeSynthEventBuffer& melody);
   bool cancelNextMaterial(int voiceIndex);
   NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
+
+  // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.
+  // First slice resolves accepted Pattern from RAM only; accepted Melody stays
+  // fail-closed until its durable resolver is part of the closure.
+  enum class DiscardResult : uint8_t {
+    Discarded = 0,
+    AlreadyClean,
+    InvalidVoice,
+    UnsupportedCurrentState,
+  };
+  DiscardResult discardCurrentMaterial(int voiceIndex);
+
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;

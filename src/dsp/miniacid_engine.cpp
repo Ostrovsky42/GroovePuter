@@ -4123,6 +4123,76 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
   return NextActivationResult::Activated;
 }
 
+MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return DiscardResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+
+  GroovePuterMaterial::MaterialReference reference{};
+  GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+  const CurrentNextState state =
+      classifyCurrentForNext_(idx, reference, acceptedVersion);
+  if (state == CurrentNextState::UnsupportedCurrentState) {
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  // A genuinely clean Pattern already projects ACCEPTED directly. Keep this
+  // path a strict no-op, including NEXT and runtime state.
+  if (state == CurrentNextState::CleanAcceptedPattern &&
+      workingMaterial_[idx].empty() &&
+      activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Pattern) {
+    return DiscardResult::AlreadyClean;
+  }
+
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||
+      bank >= kBankCount || pattern < 0 ||
+      pattern >= Bank<SynthPattern>::kPatterns) {
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  const Scene& scene = sceneManager_.currentScene();
+  const SynthPattern& accepted =
+      idx == 0 ? scene.synthABanks[bank].patterns[pattern]
+               : scene.synthBBanks[bank].patterns[pattern];
+  if (GroovePuterMaterial::versionForPattern(accepted) != acceptedVersion) {
+    // The canonical basis must remain the exact one proven by the classifier.
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  const auto recipe = genreManager_.getGrooveRecipe();
+  int swingPct = static_cast<int>(scene.feel.swingPct);
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(idx);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // Refresh is prepare-then-publish internally. Do the only fallible audible
+  // operation before clearing Working or changing source ownership.
+  if (patternRuntimeBank_.refresh(
+          static_cast<uint8_t>(idx), static_cast<uint8_t>(bank),
+          static_cast<uint8_t>(pattern), accepted, settings) !=
+      PhraseRuntime::PatternBankRefreshStatus::Ready) {
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  setSequencedSource(idx, SequencedSource::Pattern);
+  publishActiveMaterial(
+      idx, static_cast<uint16_t>(reference.address.globalSlot),
+      GroovePuterMaterial::MaterialKind::Pattern);
+  workingMaterial_[idx].clear();
+  return DiscardResult::Discarded;
+}
+
 bool MiniAcid::stagePendingMaterial(
     int voiceIndex, uint16_t slot, GroovePuterMaterial::MaterialKind kind,
     const PhraseRuntime::RuntimeSynthEventBuffer* melody) {
