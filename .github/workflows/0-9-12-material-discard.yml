@@ -12,7 +12,7 @@ permissions:
 jobs:
   discard-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout exact branch SHA
         uses: actions/checkout@v4
@@ -40,3 +40,53 @@ jobs:
 
       - name: Material DISCARD contract
         run: bash tests/run_material_discard_tests.sh
+
+      - name: FS2A current-next regression
+        run: bash tests/run_fs2a_current_next_causality_tests.sh
+
+      - name: FS2A raw-stage regression
+        run: bash tests/run_fs2a_raw_stage_unbind_tests.sh
+
+      - name: M4 primitive regression
+        run: bash tests/run_m4_next_material_tests.sh
+
+      - name: Material identity regression
+        run: bash tests/run_0_9_11_c1a_material_identity_foundation_tests.sh
+
+      - name: Working identity regression
+        run: bash tests/run_0_9_11_m_working_identity_tests.sh
+
+      - name: Working manual Pattern edit regression
+        run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+
+      - name: Working manual retarget regression
+        run: bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
+
+      - name: DISCARD scope audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t production < <(git diff --name-only 80aec6a43c2db5b28f19742a1ac95c8ca0150b01...HEAD -- src)
+          printf 'production_delta=%s\n' "${production[*]}"
+          printf '%s\n' "${production[@]}" | grep -Fx 'src/dsp/miniacid_engine.cpp'
+          printf '%s\n' "${production[@]}" | grep -Fx 'src/dsp/miniacid_engine.h'
+          printf '%s\n' "${production[@]}" | grep -Fx 'src/state/working_material_storage.h'
+          test "${#production[@]}" -eq 3
+          ! git diff 80aec6a43c2db5b28f19742a1ac95c8ca0150b01...HEAD -- src | grep -E '^\+.*(filesystem|fopen\(|SD\.|MelodyPromotion|commitSelectedScene|ACCEPT)'
+          ! printf '%s\n' "${production[@]}" | grep -E '^src/ui/'
+          ! printf '%s\n' "${production[@]}" | grep -E '^src/state/(melody_storage|melody_promotion)'
+
+      - name: Temporary builder is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/0-9-12-material-discard-green-builder.yml
+
+      - name: Clean tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=no)"
+          printf 'final_sha=%s\n' "$(git rev-parse HEAD)"
