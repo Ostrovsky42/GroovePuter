@@ -1,0 +1,115 @@
+name: 0.9.12 Material DISCARD Green Builder
+
+on:
+  push:
+    branches:
+      - feature/20260915-material-discard
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout triggering branch SHA
+        uses: actions/checkout@v4
+        with:
+          ref: feature/20260915-material-discard
+          fetch-depth: 0
+
+      - name: Prove exact trigger SHA and FS2A parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor 80aec6a43c2db5b28f19742a1ac95c8ca0150b01 HEAD
+
+      - name: Apply minimal DISCARD production slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          storage = Path('src/state/working_material_storage.h')
+          text = storage.read_text()
+          old = '''  bool empty() const { return tagIs(kEmptyTagByte); }\n  bool holdsPattern() const { return tagIs(kPatternTagByte); }\n'''
+          new = '''  void clear() { markEmpty(); }\n\n  bool empty() const { return tagIs(kEmptyTagByte); }\n  bool holdsPattern() const { return tagIs(kPatternTagByte); }\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'working storage anchor count={text.count(old)}')
+          storage.write_text(text.replace(old, new, 1))
+
+          header = Path('src/dsp/miniacid_engine.h')
+          text = header.read_text()
+          old = '''  bool cancelNextMaterial(int voiceIndex);\n  NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);\n  float getStepProgress() const;\n'''
+          new = '''  bool cancelNextMaterial(int voiceIndex);\n  NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);\n\n  // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.\n  // First slice resolves accepted Pattern from RAM only; accepted Melody stays\n  // fail-closed until its durable resolver is part of the closure.\n  enum class DiscardResult : uint8_t {\n    Discarded = 0,\n    AlreadyClean,\n    InvalidVoice,\n    UnsupportedCurrentState,\n  };\n  DiscardResult discardCurrentMaterial(int voiceIndex);\n\n  float getStepProgress() const;\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'engine header anchor count={text.count(old)}')
+          header.write_text(text.replace(old, new, 1))
+
+          cpp = Path('src/dsp/miniacid_engine.cpp')
+          text = cpp.read_text()
+          old = '''  return NextActivationResult::Activated;\n}\n\nbool MiniAcid::stagePendingMaterial(\n'''
+          new = '''  return NextActivationResult::Activated;\n}\n\nMiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {\n  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {\n    return DiscardResult::InvalidVoice;\n  }\n  const int idx = clamp303Voice(voiceIndex);\n\n  GroovePuterMaterial::MaterialReference reference{};\n  GroovePuterMaterial::MaterialVersionToken acceptedVersion{};\n  const CurrentNextState state =\n      classifyCurrentForNext_(idx, reference, acceptedVersion);\n  if (state == CurrentNextState::UnsupportedCurrentState) {\n    return DiscardResult::UnsupportedCurrentState;\n  }\n\n  // A genuinely clean Pattern already projects ACCEPTED directly. Keep this\n  // path a strict no-op, including NEXT and runtime state.\n  if (state == CurrentNextState::CleanAcceptedPattern &&\n      workingMaterial_[idx].empty() &&\n      activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Pattern) {\n    return DiscardResult::AlreadyClean;\n  }\n\n  const int page = currentPageIndex();\n  const int bank = current303BankIndex(idx);\n  const int pattern = display303LocalPatternIndex(idx);\n  if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||\n      bank >= kBankCount || pattern < 0 ||\n      pattern >= Bank<SynthPattern>::kPatterns) {\n    return DiscardResult::UnsupportedCurrentState;\n  }\n\n  const Scene& scene = sceneManager_.currentScene();\n  const SynthPattern& accepted =\n      idx == 0 ? scene.synthABanks[bank].patterns[pattern]\n               : scene.synthBBanks[bank].patterns[pattern];\n  if (GroovePuterMaterial::versionForPattern(accepted) != acceptedVersion) {\n    // The canonical basis must remain the exact one proven by the classifier.\n    return DiscardResult::UnsupportedCurrentState;\n  }\n\n  const auto recipe = genreManager_.getGrooveRecipe();\n  int swingPct = static_cast<int>(scene.feel.swingPct);\n  if (swingPct < 50) swingPct = 50;\n  if (swingPct > 75) swingPct = 75;\n\n  PhraseRuntime::PatternProjectionSettings settings{};\n  settings.synthIndex = static_cast<uint8_t>(idx);\n  settings.gateLengthRatio = recipe.gateLengthRatio;\n  settings.swingPercent = static_cast<uint8_t>(swingPct);\n  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;\n  settings.swingEnabled =\n      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;\n\n  // Refresh is prepare-then-publish internally. Do the only fallible audible\n  // operation before clearing Working or changing source ownership.\n  if (patternRuntimeBank_.refresh(\n          static_cast<uint8_t>(idx), static_cast<uint8_t>(bank),\n          static_cast<uint8_t>(pattern), accepted, settings) !=\n      PhraseRuntime::PatternBankRefreshStatus::Ready) {\n    return DiscardResult::UnsupportedCurrentState;\n  }\n\n  setSequencedSource(idx, SequencedSource::Pattern);\n  publishActiveMaterial(\n      idx, static_cast<uint16_t>(reference.address.globalSlot),\n      GroovePuterMaterial::MaterialKind::Pattern);\n  workingMaterial_[idx].clear();\n  return DiscardResult::Discarded;\n}\n\nbool MiniAcid::stagePendingMaterial(\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'engine cpp anchor count={text.count(old)}')
+          cpp.write_text(text.replace(old, new, 1))
+          PY
+
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          printf 'changed=%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 3
+          printf '%s\n' "${changed[@]}" | grep -Fx 'src/dsp/miniacid_engine.cpp'
+          printf '%s\n' "${changed[@]}" | grep -Fx 'src/dsp/miniacid_engine.h'
+          printf '%s\n' "${changed[@]}" | grep -Fx 'src/state/working_material_storage.h'
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: DISCARD contract GREEN
+        run: bash tests/run_material_discard_tests.sh
+
+      - name: FS2A current-next regression
+        run: bash tests/run_fs2a_current_next_causality_tests.sh
+
+      - name: FS2A raw-stage regression
+        run: bash tests/run_fs2a_raw_stage_unbind_tests.sh
+
+      - name: M4 primitive regression
+        run: bash tests/run_m4_next_material_tests.sh
+
+      - name: Working manual Pattern edit regression
+        run: bash tests/run_0_9_11_m_working_manual_pattern_edit_tests.sh
+
+      - name: Working manual retarget regression
+        run: bash tests/run_0_9_11_m_working_manual_retarget_tests.sh
+
+      - name: Scope audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! git diff -- src | grep -E '^\+.*(filesystem|fopen\(|SD\.|MelodyPromotion|commitSelectedScene|ACCEPT)'
+          ! git diff --name-only | grep -E '^src/ui/'
+          ! git diff --name-only | grep -E '^src/state/(melody_storage|melody_promotion)'
+          git diff --check
+
+      - name: Commit production slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/dsp/miniacid_engine.cpp src/dsp/miniacid_engine.h src/state/working_material_storage.h
+          git commit -m 'feat: add Material DISCARD command'
+          git push origin HEAD:feature/20260915-material-discard
