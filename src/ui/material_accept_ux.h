@@ -15,14 +15,9 @@ inline bool isAcceptEvent(const UIEvent& event) {
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
 
-  // Alt+A or Ctrl+A (A = Accept)
-  if ((event.alt || event.ctrl) && (key == 'a' || event.scancode == GROOVEPUTER_A)) {
-    return true;
-  }
-
-  // Ctrl+Enter or Meta+Enter
-  if ((event.ctrl || event.meta) &&
-      (event.key == '\n' || event.key == '\r')) {
+  // Alt+Enter, Ctrl+Enter or Meta+Enter (Enter = Accept)
+  if ((event.alt || event.ctrl || event.meta) &&
+      (event.key == '\n' || event.key == '\r' || event.key == 0x0A || event.key == 0x0D)) {
     return true;
   }
 
