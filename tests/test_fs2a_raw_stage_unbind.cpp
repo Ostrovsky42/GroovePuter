@@ -71,7 +71,8 @@ int main() {
   const auto activeBefore = engine.activeMaterial(0);
 
   const auto lifecycleCandidate = melodyWithNote(60);
-  assert(engine.prepareNextMelody(0, lifecycleCandidate) ==
+  const auto basis = engine.captureCurrentPreparationBasis(0);
+  assert(engine.prepareNextMelody(0, lifecycleCandidate, basis) ==
          MiniAcid::NextPrepareResult::Prepared);
   assert(engine.pendingMaterial_[0].lifecycleBound);
 

@@ -195,8 +195,8 @@ int main() {
     const auto ref = fixture.reference(0);
     const auto version = versionForPattern(accepted);
     const auto melody = melodyWithNote(72);
-
-    expect(fixture.engine.prepareNextMelody(0, melody) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melody, basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "fixture NEXT prepare must succeed");
     expect(fixture.engine.activateNextMaterialAtBoundary(0) ==
@@ -298,7 +298,8 @@ int main() {
   {
     Fixture fixture;
     const auto next = melodyWithNote(67);
-    expect(fixture.engine.prepareNextMelody(0, next) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, next, basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "pending-preservation fixture NEXT prepare must succeed");
     const auto pendingRef = fixture.engine.pendingMaterial_[0].preparedFor;

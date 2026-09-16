@@ -182,8 +182,9 @@ int main() {
     const auto activeA = fixture.engine.activeMaterial(0);
     const auto activeB = fixture.engine.activeMaterial(1);
     const auto candidate = melodyWithNote(60);
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
 
-    expect(fixture.engine.prepareNextMelody(0, candidate) ==
+    expect(fixture.engine.prepareNextMelody(0, candidate, basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "clean prepare did not return Prepared");
     expect(fixture.engine.hasPendingMaterial(0),
@@ -212,10 +213,12 @@ int main() {
     Fixture fixture;
     const auto a1 = melodyWithNote(61);
     const auto a2 = melodyWithNote(65);
-    expect(fixture.engine.prepareNextMelody(0, a1) ==
+    const auto basis1 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, a1, basis1) ==
                MiniAcid::NextPrepareResult::Prepared,
            "first prepare failed");
-    expect(fixture.engine.prepareNextMelody(0, a2) ==
+    const auto basis2 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, a2, basis2) ==
                MiniAcid::NextPrepareResult::Replaced,
            "valid replacement did not return Replaced");
     expect(fixture.engine.pendingMaterial_[0].melody != nullptr &&
@@ -229,14 +232,16 @@ int main() {
     Fixture fixture;
     const auto a1 = melodyWithNote(62);
     const auto bad = invalidMelody();
-    expect(fixture.engine.prepareNextMelody(0, a1) ==
+    const auto basis1 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, a1, basis1) ==
                MiniAcid::NextPrepareResult::Prepared,
            "fixture could not prepare prior NEXT");
     const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
     const auto priorReference = fixture.engine.pendingMaterial_[0].preparedFor;
     const auto priorVersion = fixture.engine.pendingMaterial_[0].acceptedVersion;
 
-    expect(fixture.engine.prepareNextMelody(0, bad) ==
+    const auto basis2 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, bad, basis2) ==
                MiniAcid::NextPrepareResult::InvalidCandidate,
            "invalid replacement was not rejected");
     expect(fixture.engine.hasPendingMaterial(0) &&
@@ -249,12 +254,13 @@ int main() {
            "failed replacement destroyed prior valid NEXT or binding");
   }
 
-  // 4. Dirty CURRENT rejects a new request and preserves both the edit and an
-  //    already-valid NEXT.
+  // 4. Dirty CURRENT rejects a stale request prepared from before the edit,
+  //    preserving both the edit and an already-valid NEXT.
   {
     Fixture fixture;
     const auto next = melodyWithNote(63);
-    expect(fixture.engine.prepareNextMelody(0, next) ==
+    const auto basisBeforeEdit = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, next, basisBeforeEdit) ==
                MiniAcid::NextPrepareResult::Prepared,
            "fixture could not prepare prior NEXT");
     const auto priorNext = *fixture.engine.pendingMaterial_[0].melody;
@@ -265,9 +271,14 @@ int main() {
            "Working Pattern edit was not dirty");
     const SynthPattern dirty = *fixture.engine.currentWorking303Pattern(0);
 
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(66)) ==
-               MiniAcid::NextPrepareResult::RejectedCurrentDirty,
-           "dirty CURRENT did not reject NEXT request");
+    // 0.9.12 invariant: rejected any prepare when CURRENT was dirty (RejectedCurrentDirty).
+    // 0.9.13 M0 invariant: dirty CURRENT is a valid preparation basis; but a candidate
+    // prepared against the pre-edit basis is now stale and rejected with StalePreparationBasis.
+    // Why safe: the dirty Working Pattern edit is preserved, existing NEXT is preserved,
+    // and canonical commit state is unchanged.
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(66), basisBeforeEdit) ==
+               MiniAcid::NextPrepareResult::StalePreparationBasis,
+           "stale basis prepare did not reject with StalePreparationBasis");
     expect(fixture.engine.currentWorking303Pattern(0) != nullptr &&
                samePattern(*fixture.engine.currentWorking303Pattern(0), dirty),
            "dirty CURRENT was changed by rejected prepare");
@@ -283,10 +294,12 @@ int main() {
     const SynthPattern acceptedA = fixture.canonical(0);
     const SynthPattern acceptedB = fixture.canonical(1);
     const auto b = melodyWithNote(69);
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(64)) ==
+    const auto basisA = fixture.engine.captureCurrentPreparationBasis(0);
+    const auto basisB = fixture.engine.captureCurrentPreparationBasis(1);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(64), basisA) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare A failed before cancel test");
-    expect(fixture.engine.prepareNextMelody(1, b) ==
+    expect(fixture.engine.prepareNextMelody(1, b, basisB) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare B failed before cancel test");
     const auto bStamp = fixture.engine.pendingMaterial_[1].acceptedVersion;
@@ -314,7 +327,8 @@ int main() {
     const auto ref = fixture.reference(0);
     const SynthPattern accepted = fixture.canonical(0);
     const MaterialVersionToken acceptedVersion = versionForPattern(accepted);
-    expect(fixture.engine.prepareNextMelody(0, candidate) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, candidate, basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before activation");
 
@@ -341,17 +355,23 @@ int main() {
     Fixture fixture;
     const auto a = melodyWithNote(60);
     const auto b = melodyWithNote(67);
-    expect(fixture.engine.prepareNextMelody(0, a) ==
+    const auto basisA = fixture.engine.captureCurrentPreparationBasis(0);
+    const auto basisB = fixture.engine.captureCurrentPreparationBasis(1);
+    expect(fixture.engine.prepareNextMelody(0, a, basisA) ==
                MiniAcid::NextPrepareResult::Prepared &&
-               fixture.engine.prepareNextMelody(1, b) ==
+           fixture.engine.prepareNextMelody(1, b, basisB) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before dirty-at-boundary race");
     expect(fixture.engine.adjustWorking303StepNote(0, 1, 1),
            "could not dirty A after prepare");
     const SynthPattern dirtyA = *fixture.engine.currentWorking303Pattern(0);
 
+    // 0.9.12 invariant: any dirty CURRENT at boundary was rejected as RejectedCurrentDirty.
+    // 0.9.13 M0 invariant: boundary activation checks basis equality; CURRENT edit causes
+    // basis mismatch which returns RejectedCanonicalChanged (stale basis rejected).
+    // Why safe: edit is preserved, candidate remains queued, uncommitted.
     expect(fixture.engine.activateNextMaterialAtBoundary(0) ==
-               MiniAcid::NextActivationResult::RejectedCurrentDirty,
+               MiniAcid::NextActivationResult::RejectedCanonicalChanged,
            "dirty-at-boundary A was activated");
     expect(fixture.engine.hasPendingMaterial(0) &&
                samePattern(*fixture.engine.currentWorking303Pattern(0), dirtyA),
@@ -365,7 +385,8 @@ int main() {
   {
     Fixture fixture;
     const auto preparedFor = fixture.reference(0);
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(65)) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(65), basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before retarget race");
     const int currentPattern = fixture.engine.display303LocalPatternIndex(0);
@@ -393,7 +414,12 @@ int main() {
     const auto refB = fixture.reference(1);
     const auto activeA = fixture.engine.activeMaterial(0);
     const auto activeB = fixture.engine.activeMaterial(1);
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(66)) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    // 0.9.12 invariant: prepare NextMelody captured CURRENT silently at publication.
+    // 0.9.13 M0 invariant: basis is captured before candidate preparation and passed explicitly;
+    // changing canonical pattern bytes changes current basis version and rejects activation with RejectedCanonicalChanged.
+    // Why safe: candidate remains queued and uncommitted, canonical pattern and CURRENT are preserved.
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(66), basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before canonical-version race");
     const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
@@ -435,7 +461,8 @@ int main() {
   //     is smuggled into prepare/activation to prove its canonical bytes.
   {
     Fixture fixture;
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(68)) ==
+    const auto basis1 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(68), basis1) ==
                MiniAcid::NextPrepareResult::Prepared,
            "fixture could not create prior NEXT");
     const auto prior = *fixture.engine.pendingMaterial_[0].melody;
@@ -443,7 +470,13 @@ int main() {
     const auto priorVersion = fixture.engine.pendingMaterial_[0].acceptedVersion;
     fixture.setAcceptedKind(0, MaterialKind::Melody);
 
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(71)) ==
+    // 0.9.12 invariant: accepted (resident) Melody failed closed as UnsupportedCurrentState.
+    // 0.9.13 M0 invariant: accepted resident Melody still fails closed as UnsupportedCurrentState
+    // because resident Melody requires filesystem resolution (no SD I/O in NEXT lifecycle);
+    // however runtime CURRENT Melody in Working is supported as a valid preparation basis.
+    // Why safe: preserved fail-closed behavior for unsupported resident Melody state.
+    const auto basis2 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(71), basis2) ==
                MiniAcid::NextPrepareResult::UnsupportedCurrentState,
            "accepted Melody did not fail closed as unsupported");
     expect(fixture.engine.hasPendingMaterial(0) &&
@@ -465,7 +498,8 @@ int main() {
     const auto refB = fixture.reference(1);
     const auto activeA = fixture.engine.activeMaterial(0);
     const auto activeB = fixture.engine.activeMaterial(1);
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(72)) ==
+    const auto basis1 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(72), basis1) ==
                MiniAcid::NextPrepareResult::Prepared,
            "fixture could not create prior NEXT for invalid-ID test");
     const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;
@@ -479,7 +513,8 @@ int main() {
     expect(!descriptor.id.valid(),
            "invalid-ID fixture did not install zero MaterialId");
 
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(73)) ==
+    const auto basis2 = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(73), basis2) ==
                MiniAcid::NextPrepareResult::UnsupportedCurrentState,
            "invalid canonical identity did not fail closed");
     expect(fixture.engine.workingMaterial_[0].empty() &&
@@ -515,7 +550,8 @@ int main() {
     const auto refB = fixture.reference(1);
     const auto activeA = fixture.engine.activeMaterial(0);
     const auto activeB = fixture.engine.activeMaterial(1);
-    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(74)) ==
+    const auto basis = fixture.engine.captureCurrentPreparationBasis(0);
+    expect(fixture.engine.prepareNextMelody(0, melodyWithNote(74), basis) ==
                MiniAcid::NextPrepareResult::Prepared,
            "prepare failed before ABA identity race");
     const auto priorPayload = *fixture.engine.pendingMaterial_[0].melody;

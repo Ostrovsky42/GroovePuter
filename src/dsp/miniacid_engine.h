@@ -6,6 +6,36 @@
 #include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
 #include "src/state/working_material_storage.h"
+
+namespace GroovePuterMaterial {
+
+// M0: Causal basis representing the exact runtime CURRENT from which a candidate
+// was derived. Captured before private preparation begins and checked at publication.
+struct PreparationBasis {
+  MaterialReference reference{};
+  MaterialKind kind = MaterialKind::Pattern;
+  MaterialVersionToken version{};
+
+  constexpr bool valid() const {
+    return reference.id.valid() && version.valid();
+  }
+
+  friend inline bool operator==(const PreparationBasis& lhs,
+                                const PreparationBasis& rhs) {
+    return lhs.reference.address == rhs.reference.address &&
+           lhs.reference.id == rhs.reference.id &&
+           lhs.kind == rhs.kind &&
+           lhs.version == rhs.version;
+  }
+
+  friend inline bool operator!=(const PreparationBasis& lhs,
+                                const PreparationBasis& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
+}  // namespace GroovePuterMaterial
+
 #include <stddef.h>
 #include <stdint.h>
 #include <atomic>
@@ -179,9 +209,9 @@ public:
   // allocation, no I/O, nothing that can fail halfway.
   void activatePendingMaterial();
 
-  // FS2A: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
+  // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
-  // to the exact accepted reference/version it was prepared against.
+  // to the exact preparation basis it was prepared against.
   enum class NextPrepareResult : uint8_t {
     Prepared = 0,
     Replaced,
@@ -190,6 +220,7 @@ public:
     RejectedCurrentDirty,
     UnsupportedCurrentState,
     PendingUnavailable,
+    StalePreparationBasis,
   };
 
   enum class NextActivationResult : uint8_t {
@@ -203,9 +234,14 @@ public:
     UnsupportedCurrentState,
   };
 
+  using PreparationBasis = GroovePuterMaterial::PreparationBasis;
+
+  PreparationBasis captureCurrentPreparationBasis(int voiceIndex) const;
+
   NextPrepareResult prepareNextMelody(
       int voiceIndex,
-      const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+      const PreparationBasis& basis);
   bool cancelNextMaterial(int voiceIndex);
   NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
 
@@ -659,10 +695,12 @@ private:
         GroovePuterMaterial::MaterialKind::Pattern;
     bool queued = false;
 
-    // FS2A causal stamp. These are metadata only; the existing Melody
+    // FS2A/M0 causal stamp. These are metadata only; the existing Melody
     // buffer remains the sole NEXT musical payload owner.
     GroovePuterMaterial::MaterialReference preparedFor{};
     GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+    GroovePuterMaterial::MaterialKind basisKind =
+        GroovePuterMaterial::MaterialKind::Pattern;
     bool lifecycleBound = false;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};

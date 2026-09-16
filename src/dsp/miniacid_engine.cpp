@@ -4064,9 +4064,62 @@ MiniAcid::CurrentNextState MiniAcid::classifyCurrentForNext_(
   return CurrentNextState::CleanAcceptedPattern;
 }
 
+MiniAcid::PreparationBasis MiniAcid::captureCurrentPreparationBasis(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return PreparationBasis{};
+  }
+  const int idx = clamp303Voice(voiceIndex);
+  GroovePuterMaterial::MaterialReference reference{};
+  if (!current303MaterialReference_(idx, reference)) {
+    return PreparationBasis{};
+  }
+
+  const auto& working = workingMaterial_[idx];
+  if (working.holdsMelody()) {
+    const auto* melody = working.melodyIfHeld();
+    if (melody == nullptr || !RuntimePhraseEdit::validate(*melody)) {
+      return PreparationBasis{};
+    }
+    return {reference, GroovePuterMaterial::MaterialKind::Melody,
+            GroovePuterMaterial::versionForMelody(*melody)};
+  }
+
+  if (working.holdsPattern()) {
+    if (!working.patternMatches(reference)) {
+      return PreparationBasis{};
+    }
+    return {reference, GroovePuterMaterial::MaterialKind::Pattern,
+            GroovePuterMaterial::versionForPattern(working.pattern())};
+  }
+
+  // working is empty: CURRENT is the accepted Pattern
+  const Scene& scene = sceneManager_.currentScene();
+  const int residentSlot =
+      GroovePuterMaterial::residentSlotFor(reference.address);
+  if (GroovePuterMaterial::residentKind(scene, idx, residentSlot) !=
+      GroovePuterMaterial::MaterialKind::Pattern) {
+    return PreparationBasis{};
+  }
+
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (bank < 0 || bank >= kBankCount || pattern < 0 ||
+      pattern >= Bank<SynthPattern>::kPatterns) {
+    return PreparationBasis{};
+  }
+
+  const SynthPattern& accepted = idx == 0
+      ? scene.synthABanks[bank].patterns[pattern]
+      : scene.synthBBanks[bank].patterns[pattern];
+  return {reference, GroovePuterMaterial::MaterialKind::Pattern,
+          GroovePuterMaterial::versionForPattern(accepted)};
+}
+
 MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
     int voiceIndex,
-    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+    const PreparationBasis& basis) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
     return NextPrepareResult::InvalidVoice;
   }
@@ -4079,15 +4132,13 @@ MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
     return NextPrepareResult::PendingUnavailable;
   }
 
-  GroovePuterMaterial::MaterialReference reference{};
-  GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
-  const CurrentNextState state =
-      classifyCurrentForNext_(voiceIndex, reference, acceptedVersion);
-  if (state == CurrentNextState::DirtyCurrent) {
-    return NextPrepareResult::RejectedCurrentDirty;
-  }
-  if (state != CurrentNextState::CleanAcceptedPattern) {
+  const PreparationBasis actualBasis =
+      captureCurrentPreparationBasis(voiceIndex);
+  if (!actualBasis.valid()) {
     return NextPrepareResult::UnsupportedCurrentState;
+  }
+  if (!basis.valid() || actualBasis != basis) {
+    return NextPrepareResult::StalePreparationBasis;
   }
 
   const bool replacingLifecycleCandidate =
@@ -4096,13 +4147,15 @@ MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
   // stagePendingMaterial validates/copies before publishing queued metadata, so
   // causal metadata is replaced only after the new payload is fully staged.
   if (!stagePendingMaterial(
-          voiceIndex, static_cast<uint16_t>(reference.address.globalSlot),
+          voiceIndex,
+          static_cast<uint16_t>(actualBasis.reference.address.globalSlot),
           GroovePuterMaterial::MaterialKind::Melody, &melody)) {
     return NextPrepareResult::PendingUnavailable;
   }
 
-  pending.preparedFor = reference;
-  pending.acceptedVersion = acceptedVersion;
+  pending.preparedFor = actualBasis.reference;
+  pending.basisKind = actualBasis.kind;
+  pending.acceptedVersion = actualBasis.version;
   pending.lifecycleBound = true;
   return replacingLifecycleCandidate ? NextPrepareResult::Replaced
                                      : NextPrepareResult::Prepared;
@@ -4116,6 +4169,7 @@ bool MiniAcid::cancelNextMaterial(int voiceIndex) {
   pending.queued = false;
   pending.lifecycleBound = false;
   pending.preparedFor = {};
+  pending.basisKind = GroovePuterMaterial::MaterialKind::Pattern;
   pending.acceptedVersion = {};
   return true;
 }
@@ -4130,27 +4184,20 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
   if (!pending.queued) return NextActivationResult::NoPending;
   if (!pending.lifecycleBound) return NextActivationResult::UnboundPending;
 
-  GroovePuterMaterial::MaterialReference currentReference{};
-  if (!current303MaterialReference_(voiceIndex, currentReference)) {
+  const PreparationBasis currentBasis =
+      captureCurrentPreparationBasis(voiceIndex);
+  if (!currentBasis.valid()) {
     return NextActivationResult::UnsupportedCurrentState;
   }
-  if (currentReference.address != pending.preparedFor.address ||
-      currentReference.id != pending.preparedFor.id) {
+
+  if (currentBasis.reference.address != pending.preparedFor.address ||
+      currentBasis.reference.id != pending.preparedFor.id) {
     return NextActivationResult::RejectedReferenceMismatch;
   }
 
-  GroovePuterMaterial::MaterialReference provenReference{};
-  GroovePuterMaterial::MaterialVersionToken currentVersion{};
-  const CurrentNextState state =
-      classifyCurrentForNext_(voiceIndex, provenReference, currentVersion);
-  if (state == CurrentNextState::UnsupportedCurrentState) {
-    return NextActivationResult::UnsupportedCurrentState;
-  }
-  if (currentVersion != pending.acceptedVersion) {
+  if (currentBasis.kind != pending.basisKind ||
+      currentBasis.version != pending.acceptedVersion) {
     return NextActivationResult::RejectedCanonicalChanged;
-  }
-  if (state == CurrentNextState::DirtyCurrent) {
-    return NextActivationResult::RejectedCurrentDirty;
   }
 
   if (pending.kind != GroovePuterMaterial::MaterialKind::Melody ||
