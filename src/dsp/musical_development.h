@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "src/phrase/runtime_synth_events.h"
+#include "src/phrase/runtime_phrase_edit.h"
 #include "src/dsp/genre_manager.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/generation/tonal/scale_catalog.h"
@@ -99,12 +100,33 @@ struct DevelopmentRequest {
   bool forceDisplaceTheOne = false; // For negative witness testing
 };
 
+enum class DevelopmentDisposition : uint8_t {
+  Reject = 0,
+  Hold,
+  Publish,
+};
+
 struct DevelopmentResult {
   bool success = false;
   PhraseRuntime::RuntimeSynthEventBuffer candidate{};
   DevelopmentEvidence evidence{};
   DevelopmentClassification classification{};
+  DevelopmentDisposition disposition = DevelopmentDisposition::Reject;
 };
+
+inline DevelopmentDisposition evaluateDisposition(
+    const DevelopmentClassification& classification) {
+  if (classification.genre == GenreResult::Fail) {
+    return DevelopmentDisposition::Reject;
+  }
+  if (classification.genre == GenreResult::Unknown) {
+    return DevelopmentDisposition::Reject;
+  }
+  if (classification.genre == GenreResult::Pass) {
+    return DevelopmentDisposition::Publish;
+  }
+  return DevelopmentDisposition::Reject;
+}
 
 inline bool hasEventOnTheOne(const PhraseRuntime::RuntimeSynthEventBuffer& buf) {
   for (uint16_t i = 0; i < buf.count; ++i) {
@@ -120,13 +142,7 @@ inline void transformRevoice(
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Revoice;
-  evidence.harmony.harmonicSupport = TriState::Pass;
-  evidence.harmony.rootPreserved = true;
-  evidence.harmony.scaleDegreesValid = true;
-  evidence.harmony.pitchClassesPreserved = true;
 
-  // Genuine REVOICE: transforms vertical register realization / octave voicing while
-  // preserving exact harmonic pitch-class identity (note % 12), scale degrees, and root.
   const int octaveDelta = (request.octaveShift != 0) ? (request.octaveShift * 12) : 12;
 
   for (uint16_t i = 0; i < candidate.count; ++i) {
@@ -141,53 +157,40 @@ inline void transformRevoice(
     if (newPitch != ev.note) {
       evidence.harmony.pitchDeltaSemitones = static_cast<int8_t>(newPitch - ev.note);
       ev.note = static_cast<uint8_t>(newPitch);
-      evidence.harmony.pitchesChanged = true;
     }
   }
+
+  // Derive evidence from observed musical facts
+  bool allPitchClassesPreserved = true;
+  bool anyPitchChanged = false;
+  for (uint16_t i = 0; i < candidate.count; ++i) {
+    if ((candidate.events[i].note % 12) != (source.events[i].note % 12)) {
+      allPitchClassesPreserved = false;
+    }
+    if (candidate.events[i].note != source.events[i].note) {
+      anyPitchChanged = true;
+    }
+  }
+  evidence.harmony.pitchesChanged = anyPitchChanged;
+  evidence.harmony.pitchClassesPreserved = allPitchClassesPreserved;
+  evidence.harmony.rootPreserved = allPitchClassesPreserved;
+  evidence.harmony.scaleDegreesValid = allPitchClassesPreserved;
+  evidence.harmony.harmonicSupport = allPitchClassesPreserved ? TriState::Pass : TriState::Fail;
+  evidence.harmony.cadence = TriState::Unknown;
+  evidence.harmony.harmonicFunction = TriState::Unknown;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
 inline void transformExtend(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const DevelopmentRequest& request,
+    const DevelopmentRequest& /*request*/,
     PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Extend;
-  evidence.harmony.harmonicSupport = TriState::Pass;
-  evidence.harmony.rootPreserved = true;
-  evidence.harmony.scaleDegreesValid = true;
-
-  if (candidate.count > 0 && candidate.count < PhraseRuntime::kMaxSynthEvents) {
-    // Genuine EXTEND: adds harmonic upper extension (7th or 9th scale degree)
-    // relative to the harmonic root key, enriching the harmonic shell.
-    const auto baseEvent = candidate.events[0];
-    const uint16_t newStart = baseEvent.startTick + 12; // weak-beat / offbeat placement
-    if (newStart < candidate.lengthTicks) {
-      auto& newEv = candidate.events[candidate.count];
-      newEv = baseEvent;
-      newEv.startTick = newStart;
-      newEv.durationSubticks = 12 * PhraseRuntime::kSubticksPerTick;
-
-      // Calculate harmonic 7th degree (degree 6) or 9th degree (degree 1 + octave)
-      const int extensionSemitone = GroovePuterRhythm::scaleDegreeToSemitone(
-          request.scaleType, 6);
-      int pitch = static_cast<int>(request.rootKey) + 36 + extensionSemitone;
-      while (pitch > 84) pitch -= 12;
-      while (pitch < 24) pitch += 12;
-
-      newEv.note = static_cast<uint8_t>(pitch);
-      newEv.velocity = 80;
-      candidate.count++;
-
-      evidence.harmony.pitchesChanged = true;
-      evidence.harmony.pitchClassesPreserved = false;
-      evidence.harmony.extensionsAdded = true;
-      evidence.rhythm.onsetsChanged = true;
-      evidence.rhythm.densityDelta = 1;
-    }
-  }
-  evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
+  evidence.harmony.cadence = TriState::Unknown;
+  evidence.harmony.harmonicFunction = TriState::Unknown;
+  // EXTEND is deferred in 0.9.13: repository lacks authoritative production tonal root context.
 }
 
 inline void transformDisplace(
@@ -197,30 +200,32 @@ inline void transformDisplace(
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Displace;
-  evidence.rhythm.metricAlignment = TriState::Pass;
 
   const bool genreGuardsTheOne =
       request.requireTheOne ||
       request.genreId == static_cast<uint8_t>(GenerativeMode::FunkSoul);
 
+  bool anyOnsetChanged = false;
   for (uint16_t i = 0; i < candidate.count; ++i) {
     auto& ev = candidate.events[i];
     if (ev.startTick == 0 && genreGuardsTheOne && !request.forceDisplaceTheOne) {
-      // Funk / The One: downbeat anchor is strictly preserved
+      // Funk / The One: downbeat anchor is preserved
       continue;
     }
     const uint16_t newStart = (ev.startTick + request.displaceTicks) % candidate.lengthTicks;
     if (newStart != ev.startTick) {
       ev.startTick = newStart;
-      evidence.rhythm.onsetsChanged = true;
+      anyOnsetChanged = true;
     }
   }
+  evidence.rhythm.onsetsChanged = anyOnsetChanged;
+  evidence.rhythm.metricAlignment = TriState::Pass;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
 inline void transformThin(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const DevelopmentRequest& request,
+    const DevelopmentRequest& /*request*/,
     PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     DevelopmentEvidence& evidence) {
   evidence.transformation = TransformationKind::Thin;
@@ -230,7 +235,6 @@ inline void transformThin(
 
   for (uint16_t i = 0; i < source.count; ++i) {
     const auto& ev = source.events[i];
-    // Keep The One and every second note
     if (ev.startTick == 0 || (i % 2 == 0)) {
       candidate.events[candidate.count++] = ev;
     }
@@ -244,41 +248,46 @@ inline void transformThin(
 
 inline void transformHold(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const DevelopmentRequest& request,
+    const DevelopmentRequest& /*request*/,
     PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Hold;
-  evidence.bass.contourPreserved = TriState::Pass;
 
+  int16_t totalDurationDelta = 0;
   for (uint16_t i = 0; i < candidate.count; ++i) {
     auto& ev = candidate.events[i];
-    const uint16_t extended = ev.durationSubticks * 2;
-    if (extended > ev.durationSubticks) {
+    const uint16_t beforeDur = ev.durationSubticks;
+    const uint16_t extended = beforeDur * 2;
+    if (extended > beforeDur) {
       ev.durationSubticks = extended;
       evidence.bass.durationsExtended = true;
       evidence.bass.articulationChanged = true;
-      evidence.bass.durationDeltaSubticks = static_cast<int16_t>(extended - ev.durationSubticks);
+      totalDurationDelta += static_cast<int16_t>(extended - beforeDur);
     }
   }
+  evidence.bass.durationDeltaSubticks = totalDurationDelta;
+  evidence.bass.contourPreserved = TriState::Pass;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
 inline void transformConnect(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const DevelopmentRequest& request,
+    const DevelopmentRequest& /*request*/,
     PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Connect;
-  evidence.bass.contourPreserved = TriState::Pass;
 
   for (uint16_t i = 0; i < candidate.count; ++i) {
     auto& ev = candidate.events[i];
-    ev.flags |= PhraseRuntime::kEventSlide;
-    evidence.bass.slidesAdded = true;
-    evidence.bass.articulationChanged = true;
+    if ((ev.flags & PhraseRuntime::kEventSlide) == 0) {
+      ev.flags |= PhraseRuntime::kEventSlide;
+      evidence.bass.slidesAdded = true;
+      evidence.bass.articulationChanged = true;
+    }
   }
+  evidence.bass.contourPreserved = TriState::Pass;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -289,7 +298,6 @@ inline void transformMove(
     DevelopmentEvidence& evidence) {
   candidate = source;
   evidence.transformation = TransformationKind::Move;
-  evidence.bass.contourPreserved = TriState::Pass;
 
   for (uint16_t i = 0; i < candidate.count; ++i) {
     auto& ev = candidate.events[i];
@@ -302,6 +310,7 @@ inline void transformMove(
       evidence.bass.articulationChanged = true;
     }
   }
+  evidence.bass.contourPreserved = TriState::Pass;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -309,24 +318,30 @@ inline DevelopmentClassification evaluateClassificationAndG4(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
     const PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     const DevelopmentEvidence& evidence,
-    const DevelopmentRequest& request) {
+    const DevelopmentRequest& request,
+    const PhraseRuntime::RuntimeSynthEventBuffer* sourceAnchor = nullptr) {
   DevelopmentClassification classification{};
   classification.temporalRole = TemporalRoleResult::Unknown;
+
+  if (request.transformation == TransformationKind::Extend) {
+    classification.genre = GenreResult::Fail;
+    classification.failureReason = "EXTEND DEFERRED: NO TONAL ROOT AUTHORITY";
+    classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    return classification;
+  }
 
   // 1. G4 Structural Constraints
   // Bounded metric gravity witness for Funk/Soul:
   // If the source motif established metric gravity with a downbeat anchor (The One at step 0),
-  // Funk metric gravity forbids displacing or eliminating it.
-  // Note: This is a bounded witness predicate for metric gravity preservation, NOT an assertion
-  // that every lane across all genres must contain an onset at index 0.
+  // candidate must not destroy that protected anchor.
   const bool genreRequiresTheOne =
       request.requireTheOne ||
       request.genreId == static_cast<uint8_t>(GenerativeMode::FunkSoul);
 
   const bool sourceHadTheOne = hasEventOnTheOne(source);
-  if (genreRequiresTheOne && sourceHadTheOne && !evidence.rhythm.theOnePreserved) {
+  if (genreRequiresTheOne && sourceHadTheOne && !hasEventOnTheOne(candidate)) {
     classification.genre = GenreResult::Fail;
-    classification.failureReason = "G4: The One metric gravity witness failed (step 0 downbeat anchor lost)";
+    classification.failureReason = "G4: Funk downbeat metric anchor destroyed";
     classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
     return classification;
   }
@@ -349,15 +364,40 @@ inline DevelopmentClassification evaluateClassificationAndG4(
   // G4 constraint passed
   classification.genre = GenreResult::Pass;
 
-  // 2. Idea Continuity Evaluation
-  if (evidence.harmony.pitchesChanged && evidence.rhythm.onsetsChanged) {
-    classification.idea = GroovePuterMaterial::IdeaClassification::NewIdea;
-  } else if (evidence.harmony.pitchesChanged ||
-             evidence.rhythm.onsetsChanged ||
-             evidence.bass.articulationChanged) {
-    classification.idea = GroovePuterMaterial::IdeaClassification::Variation;
+  // 2. Idea Continuity Evaluation: compares against predecessor AND source anchor
+  if (sourceAnchor != nullptr && sourceAnchor->count > 0) {
+    bool anchorPitchDiff = false;
+    bool anchorOnsetDiff = false;
+    if (candidate.count != sourceAnchor->count) {
+      anchorOnsetDiff = true;
+    }
+    for (uint16_t i = 0; i < candidate.count && i < sourceAnchor->count; ++i) {
+      if ((candidate.events[i].note % 12) != (sourceAnchor->events[i].note % 12)) {
+        anchorPitchDiff = true;
+      }
+      if (candidate.events[i].startTick != sourceAnchor->events[i].startTick) {
+        anchorOnsetDiff = true;
+      }
+    }
+    if (anchorPitchDiff && anchorOnsetDiff) {
+      classification.idea = GroovePuterMaterial::IdeaClassification::NewIdea;
+    } else if (evidence.harmony.pitchesChanged ||
+               evidence.rhythm.onsetsChanged ||
+               evidence.bass.articulationChanged) {
+      classification.idea = GroovePuterMaterial::IdeaClassification::Variation;
+    } else {
+      classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
+    }
   } else {
-    classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    if (evidence.harmony.pitchesChanged && evidence.rhythm.onsetsChanged) {
+      classification.idea = GroovePuterMaterial::IdeaClassification::NewIdea;
+    } else if (evidence.harmony.pitchesChanged ||
+               evidence.rhythm.onsetsChanged ||
+               evidence.bass.articulationChanged) {
+      classification.idea = GroovePuterMaterial::IdeaClassification::Variation;
+    } else {
+      classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
+    }
   }
 
   return classification;
@@ -365,8 +405,18 @@ inline DevelopmentClassification evaluateClassificationAndG4(
 
 inline DevelopmentResult developCandidate(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const DevelopmentRequest& request) {
+    const DevelopmentRequest& request,
+    const PhraseRuntime::RuntimeSynthEventBuffer* sourceAnchor = nullptr) {
   DevelopmentResult result{};
+  if (!RuntimePhraseEdit::validate(source)) {
+    result.classification.genre = GenreResult::Fail;
+    result.classification.failureReason = "Source validation failed";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
+    result.success = false;
+    return result;
+  }
+
   DevelopmentEvidence& ev = result.evidence;
 
   switch (request.transformation) {
@@ -397,9 +447,19 @@ inline DevelopmentResult developCandidate(
       break;
   }
 
+  if (!RuntimePhraseEdit::validate(result.candidate)) {
+    result.classification.genre = GenreResult::Fail;
+    result.classification.failureReason = "Candidate validation failed";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
+    result.success = false;
+    return result;
+  }
+
   result.classification = evaluateClassificationAndG4(
-      source, result.candidate, ev, request);
-  result.success = (result.classification.genre == GenreResult::Pass);
+      source, result.candidate, ev, request, sourceAnchor);
+  result.disposition = evaluateDisposition(result.classification);
+  result.success = (result.disposition == DevelopmentDisposition::Publish);
   return result;
 }
 
@@ -418,10 +478,32 @@ inline DevelopmentResult growMaterial(
     GrowthMode mode,
     const DevelopmentRequest& request) {
   DevelopmentResult result{};
+  if (!RuntimePhraseEdit::validate(source)) {
+    result.classification.genre = GenreResult::Fail;
+    result.classification.failureReason = "Source validation failed";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
+    result.success = false;
+    return result;
+  }
+
   if (targetBars != 1 && targetBars != 2 && targetBars != 4 && targetBars != 8) {
     result.success = false;
     result.classification.genre = GenreResult::Fail;
     result.classification.failureReason = "G4: Invalid target bar count for material growth";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
+    return result;
+  }
+
+  if (mode == GrowthMode::Develop) {
+    // Truthful growth: multi-bar development is explicitly deferred in 0.9.13
+    result.success = false;
+    result.classification.genre = GenreResult::Fail;
+    result.classification.failureReason = "DEVELOP GROWTH DEFERRED: REQUIRES MULTI-BAR PHRASE ENGINE";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.classification.temporalRole = TemporalRoleResult::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
     return result;
   }
 
@@ -435,20 +517,11 @@ inline DevelopmentResult growMaterial(
   }
 
   if (targetBars > 1) {
-    PhraseRuntime::RuntimeSynthEventBuffer variation = source;
-    if (mode == GrowthMode::Develop) {
-      const auto dev = developCandidate(source, request);
-      if (!dev.success) {
-        return dev; // G4 rejection propagated fail-closed!
-      }
-      variation = dev.candidate;
-      result.evidence = dev.evidence;
-      result.classification = dev.classification;
-    } else {
-      result.evidence.transformation = TransformationKind::None;
-      result.classification.genre = GenreResult::Pass;
-      result.classification.idea = GroovePuterMaterial::IdeaClassification::Variation;
-    }
+    const PhraseRuntime::RuntimeSynthEventBuffer& variation = source;
+    result.evidence.transformation = TransformationKind::None;
+    result.classification.genre = GenreResult::Pass;
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
+    result.classification.temporalRole = TemporalRoleResult::Pass;
 
     const uint8_t sourceBars = static_cast<uint8_t>(source.lengthTicks / PhraseRuntime::kTicksPerBar);
     const uint8_t startBar = sourceBars == 0 ? 1 : sourceBars;
@@ -462,10 +535,12 @@ inline DevelopmentResult growMaterial(
     }
   } else {
     result.classification.genre = GenreResult::Pass;
-    result.classification.idea = GroovePuterMaterial::IdeaClassification::Variation;
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
+    result.classification.temporalRole = TemporalRoleResult::Pass;
   }
 
-  result.success = (result.classification.genre == GenreResult::Pass);
+  result.disposition = evaluateDisposition(result.classification);
+  result.success = (result.disposition == DevelopmentDisposition::Publish);
   return result;
 }
 
@@ -485,7 +560,7 @@ struct DevelopmentProvenance {
 inline const char* transformationName(TransformationKind kind) {
   switch (kind) {
     case TransformationKind::Revoice: return "REVOICE";
-    case TransformationKind::Extend: return "EXTEND";
+    case TransformationKind::Extend: return "EXTEND (DEFERRED)";
     case TransformationKind::Displace: return "DISPLACE";
     case TransformationKind::Thin: return "THIN";
     case TransformationKind::Hold: return "HOLD";
@@ -503,8 +578,17 @@ inline const char* genreResultName(GenreResult gr) {
   }
 }
 
+inline const char* temporalRoleName(TemporalRoleResult tr) {
+  switch (tr) {
+    case TemporalRoleResult::Pass: return "PASS";
+    case TemporalRoleResult::Fail: return "FAIL";
+    default: return "UNKNOWN";
+  }
+}
+
 inline const char* ideaName(GroovePuterMaterial::IdeaClassification idea) {
   switch (idea) {
+    case GroovePuterMaterial::IdeaClassification::Preserved: return "PRESERVED";
     case GroovePuterMaterial::IdeaClassification::Variation: return "VARIATION";
     case GroovePuterMaterial::IdeaClassification::NewIdea: return "NEW_IDEA";
     default: return "UNKNOWN";
@@ -521,7 +605,7 @@ inline void formatProvenance(
       "REQUEST: %s\n"
       "SOURCE: V%u:S%u (id:%u rev:%u)\n"
       "CHANGES: pitch=%s onset=%s artic=%s slides=%s densityDelta=%d theOne=%s\n"
-      "CLASSIFICATION: idea=%s genre=%s temporal=UNKNOWN%s%s",
+      "CLASSIFICATION: idea=%s genre=%s temporal=%s%s%s",
       transformationName(prov.requestKind),
       prov.sourceBasis.reference.address.voice,
       prov.sourceBasis.reference.address.globalSlot,
@@ -535,6 +619,7 @@ inline void formatProvenance(
       prov.evidence.rhythm.theOnePreserved ? "PRESERVED" : "LOST",
       ideaName(prov.classification.idea),
       genreResultName(prov.classification.genre),
+      temporalRoleName(prov.classification.temporalRole),
       prov.classification.failureReason ? " REASON: " : "",
       prov.classification.failureReason ? prov.classification.failureReason : "");
 }

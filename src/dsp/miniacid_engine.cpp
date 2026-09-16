@@ -2083,6 +2083,18 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
+    // Musical bar boundary: activate queued GO requests
+    for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
+      if (goQueued_[synth]) {
+        goQueued_[synth] = false;
+        if (pendingMaterial_[synth].queued &&
+            pendingMaterial_[synth].lifecycleBound &&
+            goQueuedGeneration_[synth] == pendingGeneration_[synth]) {
+          activateNextMaterialAtBoundary(synth);
+        }
+      }
+    }
+
     // Keep the accepted BAR_START pending owner and Song ordering intact.
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
@@ -4155,6 +4167,11 @@ MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
     return NextPrepareResult::PendingUnavailable;
   }
 
+  pendingGeneration_[voiceIndex]++;
+  if (goQueued_[voiceIndex] && goQueuedGeneration_[voiceIndex] != pendingGeneration_[voiceIndex]) {
+    goQueued_[voiceIndex] = false;
+  }
+
   pending.preparedFor = actualBasis.reference;
   pending.basisKind = actualBasis.kind;
   pending.acceptedVersion = actualBasis.version;
@@ -4166,7 +4183,10 @@ MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
 
 bool MiniAcid::cancelNextMaterial(int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
-  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  const int idx = clamp303Voice(voiceIndex);
+  cancelGoQueue(idx);
+  pendingGeneration_[idx]++;
+  PendingMaterial& pending = pendingMaterial_[idx];
   if (!pending.queued || !pending.lifecycleBound) return false;
 
   pending.queued = false;
@@ -4174,8 +4194,95 @@ bool MiniAcid::cancelNextMaterial(int voiceIndex) {
   pending.preparedFor = {};
   pending.basisKind = GroovePuterMaterial::MaterialKind::Pattern;
   pending.acceptedVersion = {};
-  pending.ideaClassification = GroovePuterMaterial::IdeaClassification::Variation;
+  pending.ideaClassification = GroovePuterMaterial::IdeaClassification::Unknown;
   return true;
+}
+
+bool MiniAcid::acquireWorkingMelodySource(
+    int voiceIndex,
+    PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+
+  // If working holds Melody, use it directly without reinterpreting union
+  if (workingMaterial_[idx].holdsMelody()) {
+    const auto* melody = workingMaterial_[idx].melodyIfHeld();
+    if (melody != nullptr && RuntimePhraseEdit::validate(*melody) && melody->count > 0) {
+      outBuffer = *melody;
+      return true;
+    }
+    return false;
+  }
+
+  // Working is Pattern or Empty (i.e. accepted Pattern is active).
+  // Project activeSynthPattern into outBuffer privately without mutating CURRENT!
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  int swingPct = static_cast<int>(scene.feel.swingPct);
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(idx);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  if (PhraseRuntime::projectPatternToRuntimeEvents(
+          activeSynthPattern(idx), settings, outBuffer) !=
+      PhraseRuntime::PatternProjectionStatus::Ready) {
+    return false;
+  }
+
+  const uint32_t phraseEndSubtick =
+      static_cast<uint32_t>(outBuffer.lengthTicks) *
+      PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < outBuffer.count; ++i) {
+    auto& event = outBuffer.events[i];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    if (startSubtick >= phraseEndSubtick) {
+      return false;
+    }
+    const uint32_t maxDuration = phraseEndSubtick - startSubtick;
+    if (event.durationSubticks > maxDuration) {
+      event.durationSubticks = static_cast<uint16_t>(maxDuration);
+    }
+  }
+
+  return RuntimePhraseEdit::validate(outBuffer) && outBuffer.count > 0;
+}
+
+MiniAcid::GoRequestResult MiniAcid::requestGoNextMaterial(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return GoRequestResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+  if (!pendingMaterial_[idx].queued || !pendingMaterial_[idx].lifecycleBound) {
+    return GoRequestResult::NoPendingMaterial;
+  }
+  if (!playing) {
+    const auto res = activateNextMaterialAtBoundary(idx);
+    return (res == NextActivationResult::Activated)
+        ? GoRequestResult::ActivatedImmediately
+        : GoRequestResult::Failed;
+  }
+  goQueued_[idx] = true;
+  goQueuedGeneration_[idx] = pendingGeneration_[idx];
+  return GoRequestResult::Queued;
+}
+
+bool MiniAcid::isGoQueued(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return goQueued_[clamp303Voice(voiceIndex)];
+}
+
+void MiniAcid::cancelGoQueue(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
+  goQueued_[clamp303Voice(voiceIndex)] = false;
 }
 
 MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
@@ -4187,17 +4294,8 @@ MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
   }
   const int idx = clamp303Voice(voiceIndex);
 
-  const PhraseRuntime::RuntimeSynthEventBuffer* sourceMelody =
-      readableWorkingMelody_(idx);
-  if (sourceMelody == nullptr || sourceMelody->count == 0) {
-    if (currentPhraseBuffer(idx).count > 0) {
-      sourceMelody = &currentPhraseBuffer(idx);
-    } else if (makePhrase(idx)) {
-      sourceMelody = &currentPhraseBuffer(idx);
-    }
-  }
-
-  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+  PhraseRuntime::RuntimeSynthEventBuffer sourceBuffer{};
+  if (!acquireWorkingMelodySource(idx, sourceBuffer)) {
     return NextPrepareResult::UnsupportedCurrentState;
   }
 
@@ -4206,7 +4304,13 @@ MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
     return NextPrepareResult::UnsupportedCurrentState;
   }
 
-  const auto dev = GroovePuterDevelopment::developCandidate(*sourceMelody, request);
+  if (!hasSourceAnchorSnapshot_[idx]) {
+    sourceAnchorSnapshot_[idx] = sourceBuffer;
+    hasSourceAnchorSnapshot_[idx] = true;
+  }
+
+  const auto* anchorPtr = hasSourceAnchorSnapshot_[idx] ? &sourceAnchorSnapshot_[idx] : nullptr;
+  const auto dev = GroovePuterDevelopment::developCandidate(sourceBuffer, request, anchorPtr);
   if (outResult != nullptr) {
     *outResult = dev;
   }
@@ -4229,17 +4333,8 @@ MiniAcid::NextPrepareResult MiniAcid::growWorkingMaterial(
   }
   const int idx = clamp303Voice(voiceIndex);
 
-  const PhraseRuntime::RuntimeSynthEventBuffer* sourceMelody =
-      readableWorkingMelody_(idx);
-  if (sourceMelody == nullptr || sourceMelody->count == 0) {
-    if (currentPhraseBuffer(idx).count > 0) {
-      sourceMelody = &currentPhraseBuffer(idx);
-    } else if (makePhrase(idx)) {
-      sourceMelody = &currentPhraseBuffer(idx);
-    }
-  }
-
-  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+  PhraseRuntime::RuntimeSynthEventBuffer sourceBuffer{};
+  if (!acquireWorkingMelodySource(idx, sourceBuffer)) {
     return NextPrepareResult::UnsupportedCurrentState;
   }
 
@@ -4249,7 +4344,7 @@ MiniAcid::NextPrepareResult MiniAcid::growWorkingMaterial(
   }
 
   const auto dev = GroovePuterDevelopment::growMaterial(
-      *sourceMelody, targetBars, mode, request);
+      sourceBuffer, targetBars, mode, request);
   if (outResult != nullptr) {
     *outResult = dev;
   }
@@ -4277,6 +4372,13 @@ MiniAcid::PreparationBasis MiniAcid::predecessor(int voiceIndex) const {
     return developmentLineage_[idx].predecessorBasis;
   }
   return captureCurrentPreparationBasis(idx);
+}
+
+const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::sourceAnchorSnapshot(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  const int idx = clamp303Voice(voiceIndex);
+  return hasSourceAnchorSnapshot_[idx] ? &sourceAnchorSnapshot_[idx] : nullptr;
 }
 
 MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
@@ -4337,6 +4439,9 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
     receipt.before.count = 0;
   }
 
+  receipt.lineageBefore = developmentLineage_[idx];
+  receipt.hadSourceAnchorSnapshot = hasSourceAnchorSnapshot_[idx];
+
   const PreparationBasis preparedBasis{
       pending.preparedFor, pending.basisKind, pending.acceptedVersion};
   const auto classification = pending.ideaClassification;
@@ -4354,9 +4459,17 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
         if (classification == GroovePuterMaterial::IdeaClassification::NewIdea) {
           developmentLineage_[idx].sourceAnchorBasis =
               captureCurrentPreparationBasis(idx);
+          sourceAnchorUndoSnapshot_[idx] = sourceAnchorSnapshot_[idx];
+          hasSourceAnchorUndoSnapshot_[idx] = hasSourceAnchorSnapshot_[idx];
+          sourceAnchorSnapshot_[idx] = *pending.melody;
+          hasSourceAnchorSnapshot_[idx] = true;
         } else {
           if (!developmentLineage_[idx].sourceAnchorBasis.valid()) {
             developmentLineage_[idx].sourceAnchorBasis = preparedBasis;
+          }
+          if (!hasSourceAnchorSnapshot_[idx] && pending.melody != nullptr) {
+            sourceAnchorSnapshot_[idx] = *pending.melody;
+            hasSourceAnchorSnapshot_[idx] = true;
           }
         }
         committed = true;
@@ -4436,6 +4549,9 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
       GroovePuterMaterial::MaterialKind::Pattern);
   workingMaterial_[idx].clear();
   developmentLineage_[idx] = {};
+  hasSourceAnchorSnapshot_[idx] = false;
+  hasSourceAnchorUndoSnapshot_[idx] = false;
+  cancelGoQueue(idx);
   return DiscardResult::Discarded;
 }
 
@@ -4647,10 +4763,10 @@ bool MiniAcid::undoMaterialWorking(int voiceIndex) {
         GroovePuterMaterial::MaterialKind::Melody);
   }
 
-  if (receipt.representation == 0 && !receipt.wasDirty) {
-    developmentLineage_[idx] = {};
-  } else {
-    developmentLineage_[idx].predecessorBasis = captureCurrentPreparationBasis(idx);
+  developmentLineage_[idx] = receipt.lineageBefore;
+  hasSourceAnchorSnapshot_[idx] = receipt.hadSourceAnchorSnapshot;
+  if (receipt.hadSourceAnchorSnapshot) {
+    sourceAnchorSnapshot_[idx] = sourceAnchorUndoSnapshot_[idx];
   }
 
   owner.clear();

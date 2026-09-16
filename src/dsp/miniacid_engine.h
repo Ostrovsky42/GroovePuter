@@ -5,49 +5,8 @@
 #include "src/state/material_slot.h"
 #include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
+#include "src/state/material_lineage.h"
 #include "src/state/working_material_storage.h"
-
-namespace GroovePuterMaterial {
-
-// M1: Idea Classification for musical development.
-enum class IdeaClassification : uint8_t {
-  Unknown = 0,
-  Variation,
-  NewIdea,
-};
-
-// M0: Causal basis representing the exact runtime CURRENT from which a candidate
-// was derived. Captured before private preparation begins and checked at publication.
-struct PreparationBasis {
-  MaterialReference reference{};
-  MaterialKind kind = MaterialKind::Pattern;
-  MaterialVersionToken version{};
-
-  constexpr bool valid() const {
-    return reference.id.valid() && version.valid();
-  }
-
-  friend inline bool operator==(const PreparationBasis& lhs,
-                                const PreparationBasis& rhs) {
-    return lhs.reference.address == rhs.reference.address &&
-           lhs.reference.id == rhs.reference.id &&
-           lhs.kind == rhs.kind &&
-           lhs.version == rhs.version;
-  }
-
-  friend inline bool operator!=(const PreparationBasis& lhs,
-                                const PreparationBasis& rhs) {
-    return !(lhs == rhs);
-  }
-};
-
-// M1: Lineage tracking for musical development.
-struct DevelopmentLineage {
-  PreparationBasis sourceAnchorBasis{};
-  PreparationBasis predecessorBasis{};
-};
-
-}  // namespace GroovePuterMaterial
 
 namespace GroovePuterDevelopment {
 struct DevelopmentRequest;
@@ -257,14 +216,29 @@ public:
 
   PreparationBasis captureCurrentPreparationBasis(int voiceIndex) const;
 
+  enum class GoRequestResult : uint8_t {
+    Failed = 0,
+    InvalidVoice,
+    NoPendingMaterial,
+    Queued,
+    ActivatedImmediately,
+  };
+
   NextPrepareResult prepareNextMelody(
       int voiceIndex,
       const PhraseRuntime::RuntimeSynthEventBuffer& melody,
       const PreparationBasis& basis,
       GroovePuterMaterial::IdeaClassification classification =
-          GroovePuterMaterial::IdeaClassification::Variation);
+          GroovePuterMaterial::IdeaClassification::Unknown);
   bool cancelNextMaterial(int voiceIndex);
   NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
+
+  GoRequestResult requestGoNextMaterial(int voiceIndex);
+  bool isGoQueued(int voiceIndex) const;
+  void cancelGoQueue(int voiceIndex);
+  bool acquireWorkingMelodySource(
+      int voiceIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const;
 
   NextPrepareResult developWorkingMaterial(
       int voiceIndex,
@@ -280,6 +254,7 @@ public:
 
   PreparationBasis sourceAnchor(int voiceIndex) const;
   PreparationBasis predecessor(int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* sourceAnchorSnapshot(int voiceIndex) const;
 
   // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.
   // First slice resolves accepted Pattern from RAM only; accepted Melody stays
@@ -739,11 +714,19 @@ private:
         GroovePuterMaterial::MaterialKind::Pattern;
     bool lifecycleBound = false;
     GroovePuterMaterial::IdeaClassification ideaClassification =
-        GroovePuterMaterial::IdeaClassification::Variation;
+        GroovePuterMaterial::IdeaClassification::Unknown;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
+
+  bool goQueued_[NUM_303_VOICES]{false, false};
+  uint32_t goQueuedGeneration_[NUM_303_VOICES]{0, 0};
+  uint32_t pendingGeneration_[NUM_303_VOICES]{0, 0};
+  PhraseRuntime::RuntimeSynthEventBuffer sourceAnchorSnapshot_[NUM_303_VOICES]{};
+  PhraseRuntime::RuntimeSynthEventBuffer sourceAnchorUndoSnapshot_[NUM_303_VOICES]{};
+  bool hasSourceAnchorSnapshot_[NUM_303_VOICES]{false, false};
+  bool hasSourceAnchorUndoSnapshot_[NUM_303_VOICES]{false, false};
 
   bool songMode_;
   int drumCycleIndex_;

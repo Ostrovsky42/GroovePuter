@@ -11,6 +11,7 @@
 #include "../../scenes.h"
 #include "../phrase/runtime_synth_events.h"
 #include "material_identity.h"
+#include "material_lineage.h"
 #include "undo_owner.h"
 
 namespace GroovePuterUndo {
@@ -177,6 +178,8 @@ struct RuntimePhraseUndoPayload {
   bool wasDirty{false};
   SynthPattern patternBefore{};
   GroovePuterMaterial::MaterialReference reference{};
+  GroovePuterMaterial::DevelopmentLineage lineageBefore{};
+  bool hadSourceAnchorSnapshot{false};
 };
 
 static_assert(std::is_trivially_copyable<RuntimePhraseUndoPayload>::value,

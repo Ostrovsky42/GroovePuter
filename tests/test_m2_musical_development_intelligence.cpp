@@ -142,7 +142,9 @@ int main() {
   }
 
   // -------------------------------------------------------------------------
-  // 2. HARMONY VERTICAL: EXTEND
+  // -------------------------------------------------------------------------
+  // 2. HARMONY VERTICAL: EXTEND (DEFERRED)
+  //    Tonal root authority is not modeled; EXTEND must fail closed.
   // -------------------------------------------------------------------------
   {
     const auto source = melodyWithTwoNotes(36, 40);
@@ -151,13 +153,11 @@ int main() {
     req.rootKey = 0; // C root
 
     const auto dev = developCandidate(source, req);
-    expect(dev.success, "1.2: Extend development must succeed");
-    expect(dev.candidate.count == 3, "1.2: Extend must add an extension event");
-    expect(dev.evidence.rhythm.densityDelta == 1, "1.2: Density delta must be +1");
-    expect(dev.evidence.harmony.pitchesChanged, "1.2: Pitches changed must be true");
-    expect(dev.evidence.harmony.extensionsAdded, "1.2: Extensions added must be true");
-    expect(dev.classification.genre == GenreResult::Pass, "1.2: Genre must pass");
-    expect(dev.classification.idea == IdeaClassification::NewIdea, "1.2: Extend must classify as NewIdea");
+    expect(!dev.success, "1.2: Extend development must be deferred fail-closed");
+    expect(dev.classification.genre == GenreResult::Fail, "1.2: Genre must fail for deferred Extend");
+    expect(dev.classification.failureReason != nullptr &&
+           std::strstr(dev.classification.failureReason, "EXTEND DEFERRED") != nullptr,
+           "1.2: Failure reason must state EXTEND DEFERRED");
   }
 
   // -------------------------------------------------------------------------
@@ -409,31 +409,17 @@ int main() {
     expect(resRepeat.candidate.events[2].note == source.events[0].note,
            "5.1: Repeated note must match source note");
 
-    // DEVELOP: A A' (2 bars, Bar 1 is developed variation)
+    // DEVELOP: Multi-bar develop growth is explicitly deferred fail-closed
     DevelopmentRequest reqDevelop{};
     reqDevelop.transformation = TransformationKind::Revoice;
     reqDevelop.degreeShift = 2;
     const auto resDevelop = growMaterial(source, 2, GrowthMode::Develop, reqDevelop);
-    expect(resDevelop.success, "5.2: Grow Develop 2 bars must succeed");
-    expect(resDevelop.candidate.lengthTicks == 2 * PhraseRuntime::kTicksPerBar,
-           "5.2: Target length must be 2 bars");
-    expect(resDevelop.candidate.count == 4, "5.2: Develop must produce 4 events");
-    expect(resDevelop.candidate.events[0].note == source.events[0].note,
-           "5.2: Bar 0 must retain original note");
-    expect(resDevelop.candidate.events[2].note != source.events[0].note,
-           "5.2: Bar 1 must contain developed variation A'");
-    expect(resDevelop.candidate.events[2].startTick == 384,
-           "5.2: Bar 1 event starts at tick 384");
-
-    // Negative witness: G4 rejection during develop growth fails closed
-    DevelopmentRequest reqG4Fail{};
-    reqG4Fail.transformation = TransformationKind::Displace;
-    reqG4Fail.genreId = static_cast<uint8_t>(GenerativeMode::FunkSoul);
-    reqG4Fail.forceDisplaceTheOne = true;
-    const auto resFail = growMaterial(source, 2, GrowthMode::Develop, reqG4Fail);
-    expect(!resFail.success, "5.3: Growth must fail closed if variation violates G4");
-    expect(resFail.classification.genre == GenreResult::Fail,
-           "5.3: G4 failure must be recorded");
+    expect(!resDevelop.success, "5.2: Grow Develop 2 bars must be deferred fail-closed");
+    expect(resDevelop.classification.genre == GenreResult::Fail,
+           "5.2: Develop growth genre must be Fail");
+    expect(resDevelop.classification.failureReason != nullptr &&
+           std::strstr(resDevelop.classification.failureReason, "DEFERRED") != nullptr,
+           "5.2: Failure reason must state DEFERRED");
 
     // Invalid bar length: 3 bars is not supported (only 1, 2, 4, 8)
     const auto resInvalid = growMaterial(source, 3, GrowthMode::Repeat, reqRepeat);
@@ -503,9 +489,9 @@ int main() {
            "7.1: Activate developed candidate must succeed");
     expect(!fixture.engine.hasPendingMaterial(0), "7.1: Pending must be cleared after GO");
 
-    // 14.2 growWorkingMaterial directly from production engine API
+    // 14.2 growWorkingMaterial directly from production engine API (Repeat mode)
     const auto growPrep = fixture.engine.growWorkingMaterial(
-        0, 2, GrowthMode::Develop, req, &devResult);
+        0, 2, GrowthMode::Repeat, req, &devResult);
     expect(growPrep == MiniAcid::NextPrepareResult::Prepared, "7.2: growWorkingMaterial must prepare NEXT 2B");
     expect(fixture.engine.hasPendingMaterial(0), "7.2: Voice 0 must have pending grown material");
     expect(fixture.engine.activateNextMaterialAtBoundary(0) ==

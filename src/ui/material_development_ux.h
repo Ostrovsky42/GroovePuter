@@ -66,8 +66,14 @@ inline bool handleDevelop(
     if (result.classification.idea ==
         GroovePuterMaterial::IdeaClassification::NewIdea) {
       UI::showToast("NEXT READY: NEW IDEA", 1400);
-    } else {
+    } else if (result.classification.idea ==
+               GroovePuterMaterial::IdeaClassification::Variation) {
       UI::showToast("NEXT READY: VARIATION", 1400);
+    } else if (result.classification.idea ==
+               GroovePuterMaterial::IdeaClassification::Preserved) {
+      UI::showToast("NEXT READY: PRESERVED", 1400);
+    } else {
+      UI::showToast("NEXT READY: UNKNOWN", 1400);
     }
     return true;
   }
@@ -85,8 +91,12 @@ inline bool handleGo(MiniAcid& engine, int voiceIndex) {
     UI::showToast("NO NEXT MATERIAL", 1000);
     return true;
   }
-  const auto result = engine.activateNextMaterialAtBoundary(voiceIndex);
-  if (result == MiniAcid::NextActivationResult::Activated) {
+  const auto req = engine.requestGoNextMaterial(voiceIndex);
+  if (req == MiniAcid::GoRequestResult::Queued) {
+    UI::showToast("GO: QUEUED", 1200);
+    return true;
+  }
+  if (req == MiniAcid::GoRequestResult::ActivatedImmediately) {
     UI::showToast("GO: ACTIVATED", 1200);
     return true;
   }

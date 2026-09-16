@@ -279,15 +279,17 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
           : PhraseNotesSelection::Selection{};
   const IGfxColor voiceColor = synthTabColor(voice_index_);
   const bool hasPending = mini_acid_.hasPendingMaterial(voice_index_);
+  const bool isQueued = mini_acid_.isGoQueued(voice_index_);
 
   gfx.setTextColor(hasPending ? COLOR_ACCENT : voiceColor);
-  gfx.drawText(bounds.x + 4, bounds.y, hasPending ? "NEXT READY" : "MATERIAL");
+  const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : "MATERIAL");
+  gfx.drawText(bounds.x + 4, bounds.y, statusText);
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u/%u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  const int whereX = bounds.x + 4 + textWidth(gfx, hasPending ? "NEXT READY" : "MATERIAL") + 10;
+  const int whereX = bounds.x + 4 + textWidth(gfx, statusText) + 10;
   gfx.drawText(whereX, bounds.y, where);
   gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:MELODY");
   char grid[16];
@@ -443,11 +445,17 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   }
 
   gfx.setTextColor(COLOR_LABEL);
-  if (mini_acid_.hasPendingMaterial(voice_index_)) {
+  if (isQueued) {
+    gfx.drawText(bounds.x + 4, bounds.y + 84,
+                 "GO QUEUED: AT BOUNDARY  ESC: CANCEL");
+    UI::drawStandardFooter(gfx,
+                           "GO QUEUED: ACTIVATES AT NEXT BAR BOUNDARY",
+                           "ESC TO CANCEL QUEUED GO");
+  } else if (hasPending) {
     gfx.drawText(bounds.x + 4, bounds.y + 84,
                  "ENTER: GO  ESC: CANCEL  ^Z: UNDO");
     UI::drawStandardFooter(gfx,
-                           "NEXT READY: ENTER TO ACTIVATE AT BOUNDARY",
+                           "NEXT READY: ENTER TO QUEUE GO AT BOUNDARY",
                            "ESC TO CANCEL CANDIDATE");
   } else {
     gfx.drawText(bounds.x + 4, bounds.y + 84,
