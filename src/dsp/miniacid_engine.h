@@ -9,6 +9,13 @@
 
 namespace GroovePuterMaterial {
 
+// M1: Idea Classification for musical development.
+enum class IdeaClassification : uint8_t {
+  Unknown = 0,
+  Variation,
+  NewIdea,
+};
+
 // M0: Causal basis representing the exact runtime CURRENT from which a candidate
 // was derived. Captured before private preparation begins and checked at publication.
 struct PreparationBasis {
@@ -34,7 +41,19 @@ struct PreparationBasis {
   }
 };
 
+// M1: Lineage tracking for musical development.
+struct DevelopmentLineage {
+  PreparationBasis sourceAnchorBasis{};
+  PreparationBasis predecessorBasis{};
+};
+
 }  // namespace GroovePuterMaterial
+
+namespace GroovePuterDevelopment {
+struct DevelopmentRequest;
+struct DevelopmentResult;
+enum class GrowthMode : uint8_t;
+}  // namespace GroovePuterDevelopment
 
 #include <stddef.h>
 #include <stdint.h>
@@ -241,9 +260,26 @@ public:
   NextPrepareResult prepareNextMelody(
       int voiceIndex,
       const PhraseRuntime::RuntimeSynthEventBuffer& melody,
-      const PreparationBasis& basis);
+      const PreparationBasis& basis,
+      GroovePuterMaterial::IdeaClassification classification =
+          GroovePuterMaterial::IdeaClassification::Variation);
   bool cancelNextMaterial(int voiceIndex);
   NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
+
+  NextPrepareResult developWorkingMaterial(
+      int voiceIndex,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr);
+
+  NextPrepareResult growWorkingMaterial(
+      int voiceIndex,
+      uint8_t targetBars,
+      GroovePuterDevelopment::GrowthMode mode,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr);
+
+  PreparationBasis sourceAnchor(int voiceIndex) const;
+  PreparationBasis predecessor(int voiceIndex) const;
 
   // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.
   // First slice resolves accepted Pattern from RAM only; accepted Melody stays
@@ -702,9 +738,12 @@ private:
     GroovePuterMaterial::MaterialKind basisKind =
         GroovePuterMaterial::MaterialKind::Pattern;
     bool lifecycleBound = false;
+    GroovePuterMaterial::IdeaClassification ideaClassification =
+        GroovePuterMaterial::IdeaClassification::Variation;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
+  GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 
   bool songMode_;
   int drumCycleIndex_;

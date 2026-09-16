@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "src/dsp/musical_development.h"
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
@@ -4119,7 +4120,8 @@ MiniAcid::PreparationBasis MiniAcid::captureCurrentPreparationBasis(
 MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
     int voiceIndex,
     const PhraseRuntime::RuntimeSynthEventBuffer& melody,
-    const PreparationBasis& basis) {
+    const PreparationBasis& basis,
+    GroovePuterMaterial::IdeaClassification classification) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
     return NextPrepareResult::InvalidVoice;
   }
@@ -4156,6 +4158,7 @@ MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(
   pending.preparedFor = actualBasis.reference;
   pending.basisKind = actualBasis.kind;
   pending.acceptedVersion = actualBasis.version;
+  pending.ideaClassification = classification;
   pending.lifecycleBound = true;
   return replacingLifecycleCandidate ? NextPrepareResult::Replaced
                                      : NextPrepareResult::Prepared;
@@ -4171,7 +4174,109 @@ bool MiniAcid::cancelNextMaterial(int voiceIndex) {
   pending.preparedFor = {};
   pending.basisKind = GroovePuterMaterial::MaterialKind::Pattern;
   pending.acceptedVersion = {};
+  pending.ideaClassification = GroovePuterMaterial::IdeaClassification::Variation;
   return true;
+}
+
+MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
+    int voiceIndex,
+    const GroovePuterDevelopment::DevelopmentRequest& request,
+    GroovePuterDevelopment::DevelopmentResult* outResult) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return NextPrepareResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+
+  const PhraseRuntime::RuntimeSynthEventBuffer* sourceMelody =
+      readableWorkingMelody_(idx);
+  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+    if (currentPhraseBuffer(idx).count > 0) {
+      sourceMelody = &currentPhraseBuffer(idx);
+    } else if (makePhrase(idx)) {
+      sourceMelody = &currentPhraseBuffer(idx);
+    }
+  }
+
+  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+    return NextPrepareResult::UnsupportedCurrentState;
+  }
+
+  const PreparationBasis basis = captureCurrentPreparationBasis(idx);
+  if (!basis.valid()) {
+    return NextPrepareResult::UnsupportedCurrentState;
+  }
+
+  const auto dev = GroovePuterDevelopment::developCandidate(*sourceMelody, request);
+  if (outResult != nullptr) {
+    *outResult = dev;
+  }
+  if (!dev.success) {
+    return NextPrepareResult::InvalidCandidate;
+  }
+
+  return prepareNextMelody(
+      idx, dev.candidate, basis, dev.classification.idea);
+}
+
+MiniAcid::NextPrepareResult MiniAcid::growWorkingMaterial(
+    int voiceIndex,
+    uint8_t targetBars,
+    GroovePuterDevelopment::GrowthMode mode,
+    const GroovePuterDevelopment::DevelopmentRequest& request,
+    GroovePuterDevelopment::DevelopmentResult* outResult) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return NextPrepareResult::InvalidVoice;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+
+  const PhraseRuntime::RuntimeSynthEventBuffer* sourceMelody =
+      readableWorkingMelody_(idx);
+  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+    if (currentPhraseBuffer(idx).count > 0) {
+      sourceMelody = &currentPhraseBuffer(idx);
+    } else if (makePhrase(idx)) {
+      sourceMelody = &currentPhraseBuffer(idx);
+    }
+  }
+
+  if (sourceMelody == nullptr || sourceMelody->count == 0) {
+    return NextPrepareResult::UnsupportedCurrentState;
+  }
+
+  const PreparationBasis basis = captureCurrentPreparationBasis(idx);
+  if (!basis.valid()) {
+    return NextPrepareResult::UnsupportedCurrentState;
+  }
+
+  const auto dev = GroovePuterDevelopment::growMaterial(
+      *sourceMelody, targetBars, mode, request);
+  if (outResult != nullptr) {
+    *outResult = dev;
+  }
+  if (!dev.success) {
+    return NextPrepareResult::InvalidCandidate;
+  }
+
+  return prepareNextMelody(
+      idx, dev.candidate, basis, dev.classification.idea);
+}
+
+MiniAcid::PreparationBasis MiniAcid::sourceAnchor(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return {};
+  const int idx = clamp303Voice(voiceIndex);
+  if (developmentLineage_[idx].sourceAnchorBasis.valid()) {
+    return developmentLineage_[idx].sourceAnchorBasis;
+  }
+  return captureCurrentPreparationBasis(idx);
+}
+
+MiniAcid::PreparationBasis MiniAcid::predecessor(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return {};
+  const int idx = clamp303Voice(voiceIndex);
+  if (developmentLineage_[idx].predecessorBasis.valid()) {
+    return developmentLineage_[idx].predecessorBasis;
+  }
+  return captureCurrentPreparationBasis(idx);
 }
 
 MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
@@ -4180,12 +4285,13 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
     return NextActivationResult::InvalidVoice;
   }
 
-  PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  const int idx = clamp303Voice(voiceIndex);
+  PendingMaterial& pending = pendingMaterial_[idx];
   if (!pending.queued) return NextActivationResult::NoPending;
   if (!pending.lifecycleBound) return NextActivationResult::UnboundPending;
 
   const PreparationBasis currentBasis =
-      captureCurrentPreparationBasis(voiceIndex);
+      captureCurrentPreparationBasis(idx);
   if (!currentBasis.valid()) {
     return NextActivationResult::UnsupportedCurrentState;
   }
@@ -4205,9 +4311,58 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
     return NextActivationResult::UnboundPending;
   }
 
-  // Boundary publication is bounded: value copy into the existing Working
-  // owner, runtime descriptor publication, then candidate-state clear.
-  if (!activatePendingMaterialForVoice_(voiceIndex)) {
+  // Session lifecycle single-slot Undo receipt.
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(idx);
+  receipt.source = static_cast<uint8_t>(currentSequencedSource(idx));
+  receipt.reference = currentBasis.reference;
+
+  if (workingMaterial_[idx].holdsMelody()) {
+    receipt.representation = 1;
+    receipt.before = workingMaterial_[idx].melody();
+    receipt.wasDirty = true;
+  } else {
+    receipt.representation = 0;
+    receipt.wasDirty = workingMaterial_[idx].holdsPattern();
+    if (receipt.wasDirty) {
+      receipt.patternBefore = workingMaterial_[idx].pattern();
+    } else {
+      const int bank = current303BankIndex(idx);
+      const int pattern = display303LocalPatternIndex(idx);
+      const Scene& scene = sceneManager_.currentScene();
+      receipt.patternBefore = idx == 0 ? scene.synthABanks[bank].patterns[pattern]
+                                       : scene.synthBBanks[bank].patterns[pattern];
+    }
+    receipt.before.lengthTicks = PhraseRuntime::kTicksPerBar;
+    receipt.before.count = 0;
+  }
+
+  const PreparationBasis preparedBasis{
+      pending.preparedFor, pending.basisKind, pending.acceptedVersion};
+  const auto classification = pending.ideaClassification;
+
+  bool committed = false;
+  auto& undo = GroovePuterUndo::undoOwner();
+  const bool published = undo.commitRuntimePrepared(
+      GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+        if (!activatePendingMaterialForVoice_(idx)) {
+          return;
+        }
+
+        // Lineage tracking:
+        developmentLineage_[idx].predecessorBasis = preparedBasis;
+        if (classification == GroovePuterMaterial::IdeaClassification::NewIdea) {
+          developmentLineage_[idx].sourceAnchorBasis =
+              captureCurrentPreparationBasis(idx);
+        } else {
+          if (!developmentLineage_[idx].sourceAnchorBasis.valid()) {
+            developmentLineage_[idx].sourceAnchorBasis = preparedBasis;
+          }
+        }
+        committed = true;
+      });
+
+  if (!published || !committed) {
     return NextActivationResult::UnboundPending;
   }
   return NextActivationResult::Activated;
@@ -4280,6 +4435,7 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
       idx, static_cast<uint16_t>(reference.address.globalSlot),
       GroovePuterMaterial::MaterialKind::Pattern);
   workingMaterial_[idx].clear();
+  developmentLineage_[idx] = {};
   return DiscardResult::Discarded;
 }
 
@@ -4491,6 +4647,12 @@ bool MiniAcid::undoMaterialWorking(int voiceIndex) {
         GroovePuterMaterial::MaterialKind::Melody);
   }
 
+  if (receipt.representation == 0 && !receipt.wasDirty) {
+    developmentLineage_[idx] = {};
+  } else {
+    developmentLineage_[idx].predecessorBasis = captureCurrentPreparationBasis(idx);
+  }
+
   owner.clear();
   return true;
 }
@@ -4589,6 +4751,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
 
     const auto sourceBefore = currentSequencedSource(idx);
     working.clear();
+    developmentLineage_[idx] = {};
     setSequencedSource(idx, sourceBefore);
     publishActiveMaterial(idx, static_cast<uint16_t>(reference.address.globalSlot),
                           GroovePuterMaterial::MaterialKind::Pattern);
@@ -4668,6 +4831,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
     setSequencedSource(idx, sourceBefore);
     publishActiveMaterial(idx, static_cast<uint16_t>(reference.address.globalSlot),
                           GroovePuterMaterial::MaterialKind::Melody);
+    developmentLineage_[idx] = {};
 
     auto& owner = GroovePuterUndo::undoOwner();
     if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
@@ -4721,6 +4885,7 @@ bool MiniAcid::activatePendingMaterialForVoice_(int voiceIndex) {
   if (pending.kind == GroovePuterMaterial::MaterialKind::Melody &&
       pending.melody != nullptr) {
     workingMaterial_[voiceIndex].storeMelody(*pending.melody);
+    setSequencedSource(voiceIndex, SequencedSource::Phrase);
   }
   publishActiveMaterial(voiceIndex, pending.slot, pending.kind);
   pending.queued = false;

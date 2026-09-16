@@ -32,6 +32,7 @@
 #include "../ui_theme.h"
 #include "../undo_ux.h"
 #include "../material_accept_ux.h"
+#include "../material_development_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
@@ -277,15 +278,16 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
                 true, phrase_selection_.eventIndex, {}}
           : PhraseNotesSelection::Selection{};
   const IGfxColor voiceColor = synthTabColor(voice_index_);
+  const bool hasPending = mini_acid_.hasPendingMaterial(voice_index_);
 
-  gfx.setTextColor(voiceColor);
-  gfx.drawText(bounds.x + 4, bounds.y, "MATERIAL");
+  gfx.setTextColor(hasPending ? COLOR_ACCENT : voiceColor);
+  gfx.drawText(bounds.x + 4, bounds.y, hasPending ? "NEXT READY" : "MATERIAL");
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u/%u",
                 static_cast<unsigned>(viewport.focusBar) + 1u,
                 static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  const int whereX = bounds.x + 4 + textWidth(gfx, "MATERIAL") + 10;
+  const int whereX = bounds.x + 4 + textWidth(gfx, hasPending ? "NEXT READY" : "MATERIAL") + 10;
   gfx.drawText(whereX, bounds.y, where);
   gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:MELODY");
   char grid[16];
@@ -441,12 +443,19 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   }
 
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4, bounds.y + 84,
-               "ENTER ADD  J JOIN  BS DEL  ^Z UNDO");
-
-  UI::drawStandardFooter(gfx,
-                         "SPACE LISTEN/STOP  U/D HIGHER LOWER",
-                         "L/R PICK SOUND  ALT+L/R SHORTER LONGER");
+  if (mini_acid_.hasPendingMaterial(voice_index_)) {
+    gfx.drawText(bounds.x + 4, bounds.y + 84,
+                 "ENTER: GO  ESC: CANCEL  ^Z: UNDO");
+    UI::drawStandardFooter(gfx,
+                           "NEXT READY: ENTER TO ACTIVATE AT BOUNDARY",
+                           "ESC TO CANCEL CANDIDATE");
+  } else {
+    gfx.drawText(bounds.x + 4, bounds.y + 84,
+                 "D DEVELOP  ENTER ADD  BS DEL  ^Z UNDO");
+    UI::drawStandardFooter(gfx,
+                           "SPACE LISTEN/STOP  U/D HIGHER LOWER",
+                           "L/R PICK SOUND  ALT+L/R SHORTER LONGER");
+  }
 }
 
 void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
@@ -926,8 +935,25 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleCancel(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
+  }
   if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
     return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Revoice);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isVaryEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Connect);
   }
 
   const bool phraseNotes =

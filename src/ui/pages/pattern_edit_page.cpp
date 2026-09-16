@@ -24,6 +24,7 @@
 #include "../../state/undo_owner.h"
 #include "../../state/undo_receipts.h"
 #include "../material_accept_ux.h"
+#include "../material_development_ux.h"
 #include "../key_normalize.h"
 
 namespace UI {
@@ -587,12 +588,30 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  if (GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleCancel(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
+  }
   if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
     return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
   }
 
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return handleEventLegacy(ui_event);
+  }
+
+  if (GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event) && !note_entry_mode_) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Revoice);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isVaryEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Connect);
   }
 
   char key = ui_event.key;
