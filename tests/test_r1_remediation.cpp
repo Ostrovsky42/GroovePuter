@@ -68,11 +68,13 @@ void testRepeatPreserved() {
   auto res = GroovePuterDevelopment::growMaterial(phrase, 2, GroovePuterDevelopment::GrowthMode::Repeat, req);
   expect(res.classification.idea == GroovePuterMaterial::IdeaClassification::Preserved,
          "REPEAT growth must classify idea as Preserved");
-  expect(res.classification.genre == GroovePuterDevelopment::GenreResult::Pass,
-         "REPEAT growth genre result must be Pass");
-  expect(res.classification.temporalRole == GroovePuterDevelopment::TemporalRoleResult::Pass,
-         "REPEAT growth temporal role must be Pass");
-  expect(res.success, "REPEAT growth must succeed");
+  expect(res.classification.genre == GroovePuterDevelopment::GenreResult::Unknown,
+         "REPEAT growth genre result must be Unknown");
+  expect(res.classification.temporalRole == GroovePuterDevelopment::TemporalRoleResult::Unknown,
+         "REPEAT growth temporal role must be Unknown");
+  expect(res.disposition == GroovePuterDevelopment::DevelopmentDisposition::Publish,
+         "REPEAT growth policy disposition must be Publish");
+  expect(res.success, "REPEAT growth must succeed via policy");
 }
 
 // 3. Witness DEVELOP growth is explicitly deferred

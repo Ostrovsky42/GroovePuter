@@ -27,6 +27,12 @@ enum class TransformationKind : uint8_t {
   Move,
 };
 
+enum class GrowthMode : uint8_t {
+  None = 0,
+  Repeat,
+  Develop,
+};
+
 enum class TriState : uint8_t {
   Unknown = 0,
   Pass,
@@ -47,9 +53,9 @@ enum class TemporalRoleResult : uint8_t {
 
 struct HarmonyEvidence {
   bool pitchesChanged = false;
-  bool rootPreserved = true;
-  bool scaleDegreesValid = true;
-  bool pitchClassesPreserved = true;
+  TriState rootPreserved = TriState::Unknown;
+  TriState scaleDegreesValid = TriState::Unknown;
+  bool pitchClassesPreserved = false;
   bool extensionsAdded = false;
   int8_t pitchDeltaSemitones = 0;
   TriState harmonicSupport = TriState::Unknown;
@@ -115,12 +121,16 @@ struct DevelopmentResult {
 };
 
 inline DevelopmentDisposition evaluateDisposition(
-    const DevelopmentClassification& classification) {
+    const DevelopmentClassification& classification,
+    GrowthMode growthMode = GrowthMode::None) {
   if (classification.genre == GenreResult::Fail) {
     return DevelopmentDisposition::Reject;
   }
-  if (classification.genre == GenreResult::Unknown) {
-    return DevelopmentDisposition::Reject;
+  // Policy: explicit user-requested exact REPEAT growth preserves source material
+  // without modifying its genre nature, and is permitted to publish.
+  if (growthMode == GrowthMode::Repeat &&
+      classification.idea == GroovePuterMaterial::IdeaClassification::Preserved) {
+    return DevelopmentDisposition::Publish;
   }
   if (classification.genre == GenreResult::Pass) {
     return DevelopmentDisposition::Publish;
@@ -173,8 +183,8 @@ inline void transformRevoice(
   }
   evidence.harmony.pitchesChanged = anyPitchChanged;
   evidence.harmony.pitchClassesPreserved = allPitchClassesPreserved;
-  evidence.harmony.rootPreserved = allPitchClassesPreserved;
-  evidence.harmony.scaleDegreesValid = allPitchClassesPreserved;
+  evidence.harmony.rootPreserved = TriState::Unknown;
+  evidence.harmony.scaleDegreesValid = TriState::Unknown;
   evidence.harmony.harmonicSupport = allPitchClassesPreserved ? TriState::Pass : TriState::Fail;
   evidence.harmony.cadence = TriState::Unknown;
   evidence.harmony.harmonicFunction = TriState::Unknown;
@@ -219,7 +229,7 @@ inline void transformDisplace(
     }
   }
   evidence.rhythm.onsetsChanged = anyOnsetChanged;
-  evidence.rhythm.metricAlignment = TriState::Pass;
+  evidence.rhythm.metricAlignment = TriState::Unknown;
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -229,7 +239,7 @@ inline void transformThin(
     PhraseRuntime::RuntimeSynthEventBuffer& candidate,
     DevelopmentEvidence& evidence) {
   evidence.transformation = TransformationKind::Thin;
-  evidence.rhythm.metricAlignment = TriState::Pass;
+  evidence.rhythm.metricAlignment = TriState::Unknown;
   candidate.lengthTicks = source.lengthTicks;
   candidate.count = 0;
 
@@ -244,6 +254,23 @@ inline void transformThin(
     evidence.rhythm.onsetsChanged = true;
   }
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
+}
+
+inline TriState evaluateContourPreservation(
+    const PhraseRuntime::RuntimeSynthEventBuffer& source,
+    const PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+  if (source.count != candidate.count) return TriState::Fail;
+  if (source.count <= 1) return TriState::Pass;
+  for (uint16_t i = 1; i < source.count; ++i) {
+    const int srcDelta = static_cast<int>(source.events[i].note) -
+                         static_cast<int>(source.events[i - 1].note);
+    const int candDelta = static_cast<int>(candidate.events[i].note) -
+                          static_cast<int>(candidate.events[i - 1].note);
+    const int srcDir = (srcDelta > 0) - (srcDelta < 0);
+    const int candDir = (candDelta > 0) - (candDelta < 0);
+    if (srcDir != candDir) return TriState::Fail;
+  }
+  return TriState::Pass;
 }
 
 inline void transformHold(
@@ -267,7 +294,7 @@ inline void transformHold(
     }
   }
   evidence.bass.durationDeltaSubticks = totalDurationDelta;
-  evidence.bass.contourPreserved = TriState::Pass;
+  evidence.bass.contourPreserved = evaluateContourPreservation(source, candidate);
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -287,7 +314,7 @@ inline void transformConnect(
       evidence.bass.articulationChanged = true;
     }
   }
-  evidence.bass.contourPreserved = TriState::Pass;
+  evidence.bass.contourPreserved = evaluateContourPreservation(source, candidate);
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -310,7 +337,7 @@ inline void transformMove(
       evidence.bass.articulationChanged = true;
     }
   }
-  evidence.bass.contourPreserved = TriState::Pass;
+  evidence.bass.contourPreserved = evaluateContourPreservation(source, candidate);
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -466,12 +493,6 @@ inline DevelopmentResult developCandidate(
 // ---------------------------------------------------------------------------
 // Node D: Material Growth (REPEAT / DEVELOP)
 // ---------------------------------------------------------------------------
-enum class GrowthMode : uint8_t {
-  None = 0,
-  Repeat,
-  Develop,
-};
-
 inline DevelopmentResult growMaterial(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
     uint8_t targetBars,
@@ -519,9 +540,9 @@ inline DevelopmentResult growMaterial(
   if (targetBars > 1) {
     const PhraseRuntime::RuntimeSynthEventBuffer& variation = source;
     result.evidence.transformation = TransformationKind::None;
-    result.classification.genre = GenreResult::Pass;
+    result.classification.genre = GenreResult::Unknown;
     result.classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
-    result.classification.temporalRole = TemporalRoleResult::Pass;
+    result.classification.temporalRole = TemporalRoleResult::Unknown;
 
     const uint8_t sourceBars = static_cast<uint8_t>(source.lengthTicks / PhraseRuntime::kTicksPerBar);
     const uint8_t startBar = sourceBars == 0 ? 1 : sourceBars;
@@ -534,12 +555,12 @@ inline DevelopmentResult growMaterial(
       }
     }
   } else {
-    result.classification.genre = GenreResult::Pass;
+    result.classification.genre = GenreResult::Unknown;
     result.classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
-    result.classification.temporalRole = TemporalRoleResult::Pass;
+    result.classification.temporalRole = TemporalRoleResult::Unknown;
   }
 
-  result.disposition = evaluateDisposition(result.classification);
+  result.disposition = evaluateDisposition(result.classification, GrowthMode::Repeat);
   result.success = (result.disposition == DevelopmentDisposition::Publish);
   return result;
 }
@@ -553,9 +574,26 @@ struct DevelopmentProvenance {
   GroovePuterMaterial::PreparationBasis sourceBasis{};
   DevelopmentEvidence evidence{};
   DevelopmentClassification classification{};
+  DevelopmentDisposition disposition = DevelopmentDisposition::Reject;
 
   bool valid() const { return sourceBasis.valid(); }
 };
+
+inline const char* growthModeName(GrowthMode mode) {
+  switch (mode) {
+    case GrowthMode::Repeat: return "REPEAT";
+    case GrowthMode::Develop: return "DEVELOP (DEFERRED)";
+    default: return "NONE";
+  }
+}
+
+inline const char* dispositionName(DevelopmentDisposition disp) {
+  switch (disp) {
+    case DevelopmentDisposition::Publish: return "PUBLISH";
+    case DevelopmentDisposition::Hold: return "HOLD";
+    default: return "REJECT";
+  }
+}
 
 inline const char* transformationName(TransformationKind kind) {
   switch (kind) {
@@ -600,12 +638,27 @@ inline void formatProvenance(
     char* buffer,
     size_t bufferSize) {
   if (buffer == nullptr || bufferSize == 0) return;
+  if (prov.growthMode != GrowthMode::None) {
+    std::snprintf(
+        buffer, bufferSize,
+        "REQUEST: %s\n"
+        "IDEA: %s\n"
+        "GENRE: %s\n"
+        "TEMPORAL: %s\n"
+        "POLICY: %s",
+        growthModeName(prov.growthMode),
+        ideaName(prov.classification.idea),
+        genreResultName(prov.classification.genre),
+        temporalRoleName(prov.classification.temporalRole),
+        dispositionName(prov.disposition));
+    return;
+  }
   std::snprintf(
       buffer, bufferSize,
       "REQUEST: %s\n"
       "SOURCE: V%u:S%u (id:%u rev:%u)\n"
       "CHANGES: pitch=%s onset=%s artic=%s slides=%s densityDelta=%d theOne=%s\n"
-      "CLASSIFICATION: idea=%s genre=%s temporal=%s%s%s",
+      "CLASSIFICATION: idea=%s genre=%s temporal=%s policy=%s%s%s",
       transformationName(prov.requestKind),
       prov.sourceBasis.reference.address.voice,
       prov.sourceBasis.reference.address.globalSlot,
@@ -620,6 +673,7 @@ inline void formatProvenance(
       ideaName(prov.classification.idea),
       genreResultName(prov.classification.genre),
       temporalRoleName(prov.classification.temporalRole),
+      dispositionName(prov.disposition),
       prov.classification.failureReason ? " REASON: " : "",
       prov.classification.failureReason ? prov.classification.failureReason : "");
 }

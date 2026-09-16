@@ -131,7 +131,7 @@ int main() {
     expect(dev.success, "1.1: Revoice development must succeed");
     expect(dev.evidence.harmony.pitchesChanged, "1.1: Revoice must change pitches");
     expect(dev.evidence.harmony.pitchClassesPreserved, "1.1: Revoice must preserve harmonic pitch classes");
-    expect(dev.evidence.harmony.rootPreserved, "1.1: Revoice must preserve root");
+    expect(dev.evidence.harmony.rootPreserved == TriState::Unknown, "1.1: Root preservation must be Unknown without tonal root authority");
     expect(!dev.evidence.rhythm.onsetsChanged, "1.1: Revoice must not change onsets");
     expect(!dev.evidence.bass.durationsExtended, "1.1: Revoice must not extend durations");
     expect(dev.classification.genre == GenreResult::Pass, "1.1: Genre must pass");
