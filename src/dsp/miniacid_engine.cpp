@@ -250,6 +250,7 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion303Enabled(false),
     distortion3032Enabled(false),
     bpmValue(100.0f),
+    projectBpmValue(100.0f),
     currentStepIndex(-1),
     tickPhaseAccum_(0),
     tickPhaseInc_(0),
@@ -433,6 +434,7 @@ void MiniAcid::reset() {
   distortion303Enabled = false;
   distortion3032Enabled = false;
   bpmValue = 100.0f;
+  projectBpmValue = 100.0f;
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
@@ -710,11 +712,12 @@ int MiniAcid::liveNote(int synthIndex) const {
 }
 
 void MiniAcid::setBpm(float bpm) {
-  bpmValue = bpm;
-  if (bpmValue < 10.0f)
-    bpmValue = 10.0f;
-  if (bpmValue > 250.0f)
-    bpmValue = 250.0f;
+  projectBpmValue = bpm;
+  if (projectBpmValue < 10.0f)
+    projectBpmValue = 10.0f;
+  if (projectBpmValue > 250.0f)
+    projectBpmValue = 250.0f;
+  bpmValue = projectBpmValue;
   updateTickIncrement();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
@@ -3164,7 +3167,7 @@ void MiniAcid::applyFeelTimingFromScene_() {
 
 void MiniAcid::syncSceneStateToManager() {
   if (!GroovePuterRhythm::QuantizedGenerationDetail::hasPendingFullGenerationActivation(*this)) {
-    sceneManager_.setBpm(bpmValue);
+    sceneManager_.setBpm(projectBpmValue);
   }
   sceneManager_.setDrumEngineName(drumEngineName_);
   sceneManager_.setSynthEngineName(0, currentSynthEngineName(0));

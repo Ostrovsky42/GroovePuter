@@ -673,7 +673,12 @@ private:
 
   int currentTimingOffset_ = 0;
 
+  // bpmValue is the effective tempo driving the audio transport. It may be
+  // temporarily projected from external MIDI Clock. projectBpmValue is the
+  // durable musician-owned project tempo and is the only value Scene sync may
+  // persist.
   volatile float bpmValue;
+  float projectBpmValue;
   volatile int currentStepIndex;
   uint64_t tickPhaseAccum_ = 0;
   uint64_t tickPhaseInc_ = 0;
