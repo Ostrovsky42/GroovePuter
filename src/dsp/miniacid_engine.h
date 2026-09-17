@@ -135,6 +135,12 @@ public:
 
   void setBpm(float bpm);
   void setExternalClockBpm(float bpm);
+  // Resyncs the effective render tempo back to the durable project tempo.
+  // Call exactly once when clock ownership returns from external follow:
+  // setExternalClockBpm() never touches projectBpmValue, so nothing else
+  // restores bpmValue on its own, and it would otherwise stay at the last
+  // followed tempo until the next explicit setBpm() call or a reboot.
+  void restoreProjectBpm();
   float bpm() const;
   float sampleRate() const;
   bool isPlaying() const;

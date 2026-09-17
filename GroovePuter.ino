@@ -116,6 +116,15 @@ void audioTask(void *param) {
       GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
           externalClock.estimate, g_externalClockFollower.failureCount());
 
+      // Clock ownership just returned from external follow: setExternalClockBpm()
+      // only ever wrote the effective tempo, never the project tempo, so nothing
+      // else resyncs it back. Without this, the engine keeps rendering at the
+      // last followed BPM until the next explicit tempo edit or a reboot.
+      if (externalClock.sourceChanged &&
+          clockSource != GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+        g_miniAcid->restoreProjectBpm();
+      }
+
       bool restartFromBeginning = true;
       if (clockSource ==
           GroovePuterMidi::TransportClockSource::SeqtrakExternal) {

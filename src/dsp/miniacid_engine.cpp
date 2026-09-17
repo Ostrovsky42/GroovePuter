@@ -730,6 +730,13 @@ void MiniAcid::setExternalClockBpm(float bpm) {
   delay3032.setBpm(bpmValue);
 }
 
+void MiniAcid::restoreProjectBpm() {
+  bpmValue = projectBpmValue;
+  updateTickIncrement();
+  delay303.setBpm(bpmValue);
+  delay3032.setBpm(bpmValue);
+}
+
 void MiniAcid::setMasterOutputHighCutHz(float hz) {
   float nyquist = sampleRateValue * 0.5f - 200.0f;
   if (nyquist < 4000.0f) nyquist = 4000.0f;
