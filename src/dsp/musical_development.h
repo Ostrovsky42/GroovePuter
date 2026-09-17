@@ -3,6 +3,7 @@
 #define GROOVEPUTER_DSP_MUSICAL_DEVELOPMENT_H
 
 #include <cstdint>
+#include <climits>
 #include <cstring>
 
 #include "src/phrase/runtime_synth_events.h"
@@ -287,19 +288,29 @@ inline void transformHold(
   candidate = source;
   evidence.transformation = TransformationKind::Hold;
 
-  int16_t totalDurationDelta = 0;
+  int32_t totalDurationDelta = 0;
+  const uint32_t phraseEndSubticks =
+      static_cast<uint32_t>(candidate.lengthTicks) * PhraseRuntime::kSubticksPerTick;
   for (uint16_t i = 0; i < candidate.count; ++i) {
     auto& ev = candidate.events[i];
     const uint16_t beforeDur = ev.durationSubticks;
-    const uint16_t extended = beforeDur * 2;
+    const uint32_t startSubticks =
+        static_cast<uint32_t>(ev.startTick) * PhraseRuntime::kSubticksPerTick;
+    const uint32_t remaining = startSubticks < phraseEndSubticks
+        ? phraseEndSubticks - startSubticks
+        : 0;
+    const uint32_t doubled = static_cast<uint32_t>(beforeDur) * 2u;
+    const uint16_t extended = static_cast<uint16_t>(
+        doubled < remaining ? doubled : remaining);
     if (extended > beforeDur) {
       ev.durationSubticks = extended;
       evidence.bass.durationsExtended = true;
       evidence.bass.articulationChanged = true;
-      totalDurationDelta += static_cast<int16_t>(extended - beforeDur);
+      totalDurationDelta += static_cast<int32_t>(extended) - beforeDur;
     }
   }
-  evidence.bass.durationDeltaSubticks = totalDurationDelta;
+  evidence.bass.durationDeltaSubticks = static_cast<int16_t>(
+      totalDurationDelta > INT16_MAX ? INT16_MAX : totalDurationDelta);
   evidence.bass.contourPreserved = evaluateContourPreservation(source, candidate);
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
@@ -554,10 +565,22 @@ inline DevelopmentResult growMaterial(
   }
 
   const uint16_t targetLengthTicks = static_cast<uint16_t>(targetBars) * PhraseRuntime::kTicksPerBar;
+  const uint8_t sourceBars = static_cast<uint8_t>(
+      source.lengthTicks / PhraseRuntime::kTicksPerBar);
+  if (sourceBars == 0 || sourceBars > targetBars) {
+    result.success = false;
+    result.classification.genre = GenreResult::Fail;
+    result.classification.failureReason = "GROWTH TARGET MUST NOT SHORTEN SOURCE";
+    result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    result.disposition = DevelopmentDisposition::Reject;
+    return result;
+  }
   result.candidate.lengthTicks = targetLengthTicks;
   result.candidate.count = 0;
 
-  // Copy initial source events for the first bar / segment
+  // Copy the full source phrase once, then repeat that phrase as a unit. A
+  // two-bar source must repeat every two bars, never as overlapping one-bar
+  // copies of itself.
   for (uint16_t i = 0; i < source.count && result.candidate.count < PhraseRuntime::kMaxSynthEvents; ++i) {
     result.candidate.events[result.candidate.count++] = source.events[i];
   }
@@ -569,11 +592,18 @@ inline DevelopmentResult growMaterial(
     result.classification.idea = GroovePuterMaterial::IdeaClassification::Preserved;
     result.classification.temporalRole = TemporalRoleResult::Unknown;
 
-    const uint8_t sourceBars = static_cast<uint8_t>(source.lengthTicks / PhraseRuntime::kTicksPerBar);
-    const uint8_t startBar = sourceBars == 0 ? 1 : sourceBars;
-    for (uint8_t bar = startBar; bar < targetBars; ++bar) {
+    for (uint8_t bar = sourceBars; bar < targetBars;
+         bar = static_cast<uint8_t>(bar + sourceBars)) {
       const uint16_t barOffsetTicks = static_cast<uint16_t>(bar) * PhraseRuntime::kTicksPerBar;
-      for (uint16_t i = 0; i < variation.count && result.candidate.count < PhraseRuntime::kMaxSynthEvents; ++i) {
+      for (uint16_t i = 0; i < variation.count; ++i) {
+        if (result.candidate.count >= PhraseRuntime::kMaxSynthEvents) {
+          result.success = false;
+          result.classification.genre = GenreResult::Fail;
+          result.classification.failureReason = "GROWTH EXCEEDS EVENT CAPACITY";
+          result.classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+          result.disposition = DevelopmentDisposition::Reject;
+          return result;
+        }
         auto ev = variation.events[i];
         ev.startTick += barOffsetTicks;
         result.candidate.events[result.candidate.count++] = ev;
