@@ -168,9 +168,10 @@ public:
   // 2000 ms bar at 120 BPM -- room to prepare properly instead of racing. What
   // that margin buys is that nothing half-prepared ever becomes audible.
   //
-  // The buffers are heap-allocated once at startup: 2 x 1284 bytes does not fit
-  // the static budget, and one fixed allocation is not the fragmentation that
-  // brought this device down before. If it fails, NEXT is simply unavailable.
+  // Session material buffers are allocated once at startup. They exceed the
+  // Cardputer's fixed DRAM budget but are never allocated on the audio path or
+  // churned during a session. If this bounded reservation fails, preparation
+  // is refused instead of presenting a partial material workflow.
   bool initPendingMaterial();
   bool pendingMaterialReady() const;
   const void* pendingMaterialAddress(int voiceIndex) const;
@@ -728,10 +729,15 @@ private:
   bool goQueued_[NUM_303_VOICES]{false, false};
   uint32_t goQueuedGeneration_[NUM_303_VOICES]{0, 0};
   uint32_t pendingGeneration_[NUM_303_VOICES]{0, 0};
-  PhraseRuntime::RuntimeSynthEventBuffer sourceAnchorSnapshot_[NUM_303_VOICES]{};
-  PhraseRuntime::RuntimeSynthEventBuffer sourceAnchorUndoSnapshot_[NUM_303_VOICES]{};
+  // Source anchors are session history, not firmware-resident state. Keep the
+  // fixed four-buffer reservation off permanent DRAM; construction reserves it
+  // once and all material operations fail closed if it is unavailable.
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer[]> sourceAnchorSnapshot_;
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer[]> sourceAnchorUndoSnapshot_;
   bool hasSourceAnchorSnapshot_[NUM_303_VOICES]{false, false};
   bool hasSourceAnchorUndoSnapshot_[NUM_303_VOICES]{false, false};
+
+  bool sourceAnchorMemoryReady_() const;
 
   bool songMode_;
   int drumCycleIndex_;

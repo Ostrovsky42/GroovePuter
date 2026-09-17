@@ -272,10 +272,8 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
 
-  // One allocation, at construction, for the NEXT preparation buffers. They do
-  // not fit the static budget, and a single fixed block is not the churn that
-  // brought this device down. Failure leaves NEXT unavailable rather than
-  // half-working.
+  // One bounded reservation, at construction, for the session-only NEXT and
+  // source-anchor history. It never occurs on the audio path.
   (void)initPendingMaterial();
   
   // Initialize Drum FX
@@ -4008,7 +4006,15 @@ bool MiniAcid::initPendingMaterial() {
         new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer();
     if (pendingMaterial_[voice].melody == nullptr) return false;
   }
-  return true;
+  if (!sourceAnchorSnapshot_) {
+    sourceAnchorSnapshot_.reset(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer[NUM_303_VOICES]);
+  }
+  if (!sourceAnchorUndoSnapshot_) {
+    sourceAnchorUndoSnapshot_.reset(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer[NUM_303_VOICES]);
+  }
+  return sourceAnchorMemoryReady_();
 }
 
 bool MiniAcid::pendingMaterialReady() const {
@@ -4016,6 +4022,10 @@ bool MiniAcid::pendingMaterialReady() const {
     if (pendingMaterial_[voice].melody == nullptr) return false;
   }
   return true;
+}
+
+bool MiniAcid::sourceAnchorMemoryReady_() const {
+  return sourceAnchorSnapshot_ != nullptr && sourceAnchorUndoSnapshot_ != nullptr;
 }
 
 const void* MiniAcid::pendingMaterialAddress(int voiceIndex) const {
@@ -4297,6 +4307,14 @@ MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
   }
   const int idx = clamp303Voice(voiceIndex);
 
+  if (!sourceAnchorMemoryReady_()) {
+    if (outResult != nullptr) {
+      *outResult = {};
+      outResult->classification.failureReason = "MATERIAL MEMORY UNAVAILABLE";
+    }
+    return NextPrepareResult::PendingUnavailable;
+  }
+
   PhraseRuntime::RuntimeSynthEventBuffer sourceBuffer{};
   if (!acquireWorkingMelodySource(idx, sourceBuffer)) {
     return NextPrepareResult::UnsupportedCurrentState;
@@ -4380,6 +4398,7 @@ MiniAcid::PreparationBasis MiniAcid::predecessor(int voiceIndex) const {
 const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::sourceAnchorSnapshot(
     int voiceIndex) const {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  if (!sourceAnchorMemoryReady_()) return nullptr;
   const int idx = clamp303Voice(voiceIndex);
   return hasSourceAnchorSnapshot_[idx] ? &sourceAnchorSnapshot_[idx] : nullptr;
 }
@@ -4413,6 +4432,9 @@ MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(
 
   if (pending.kind != GroovePuterMaterial::MaterialKind::Melody ||
       pending.melody == nullptr) {
+    return NextActivationResult::UnboundPending;
+  }
+  if (!sourceAnchorMemoryReady_()) {
     return NextActivationResult::UnboundPending;
   }
 
