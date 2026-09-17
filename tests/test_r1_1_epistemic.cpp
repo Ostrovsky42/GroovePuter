@@ -74,7 +74,8 @@ void testConnectContourPreserved() {
          "CONNECT contour preservation must be Pass when pitch sequence is preserved");
 }
 
-// 5. Witness MOVE contour detects inversion and does not fabricate Pass
+// 5. Witness MOVE contour detects inversion, does not fabricate Pass, and
+//    is fail-closed rejected before it could ever reach NEXT.
 void testMoveContourDetectsInversion() {
   // Source: Note 0 is G4 (67), Note 1 is B5 (83). Ascending contour (67 < 83).
   // With +1 octave shift (12 semitones):
@@ -89,6 +90,93 @@ void testMoveContourDetectsInversion() {
   auto dev = GroovePuterDevelopment::developCandidate(phrase, req);
   expect(dev.evidence.bass.contourPreserved == GroovePuterDevelopment::TriState::Fail,
          "MOVE with octave wrap inverting direction must report contourPreserved = Fail");
+  // A broken instance of the command is not a creative outcome: it must be
+  // rejected fail-closed, not silently classified as a NEW_IDEA and staged.
+  expect(!dev.success, "MOVE with broken contour must not succeed");
+  expect(dev.disposition == GroovePuterDevelopment::DevelopmentDisposition::Reject,
+         "MOVE with broken contour must be Rejected, not Published");
+  expect(dev.classification.genre == GroovePuterDevelopment::GenreResult::Fail,
+         "MOVE with broken contour must fail G4");
+  expect(dev.classification.failureReason != nullptr &&
+             std::strstr(dev.classification.failureReason, "contour") != nullptr,
+         "Failure reason must legibly name the contour break");
+}
+
+// 5b. Sanity: MOVE without register wrap keeps contourPreserved = Pass and
+//     still publishes normally. The gate must not over-reject.
+void testMoveContourPreservedPublishes() {
+  auto phrase = makeTestPhrase(48, 55); // C3 -> G3, no wrap at +1 octave
+  GroovePuterDevelopment::DevelopmentRequest req{};
+  req.transformation = GroovePuterDevelopment::TransformationKind::Move;
+  req.octaveShift = 1;
+  auto dev = GroovePuterDevelopment::developCandidate(phrase, req);
+  expect(dev.evidence.bass.contourPreserved == GroovePuterDevelopment::TriState::Pass,
+         "Normal MOVE must report contourPreserved = Pass");
+  expect(dev.success, "Normal MOVE must still succeed");
+  expect(dev.disposition == GroovePuterDevelopment::DevelopmentDisposition::Publish,
+         "Normal MOVE must still be Published");
+}
+
+// 5c. Witness REVOICE carries the same contour promise as MOVE: a register
+//     wrap that inverts direction must reject REVOICE too, not just MOVE.
+void testRevoiceContourGateRejects() {
+  auto phrase = makeTestPhrase(67, 83); // same wrap geometry as MOVE's witness
+  GroovePuterDevelopment::DevelopmentRequest req{};
+  req.transformation = GroovePuterDevelopment::TransformationKind::Revoice;
+  req.octaveShift = 1;
+  auto dev = GroovePuterDevelopment::developCandidate(phrase, req);
+  expect(dev.evidence.bass.contourPreserved == GroovePuterDevelopment::TriState::Fail,
+         "REVOICE with octave wrap inverting direction must report contourPreserved = Fail");
+  expect(!dev.success, "REVOICE with broken contour must not succeed");
+  expect(dev.classification.genre == GroovePuterDevelopment::GenreResult::Fail,
+         "REVOICE with broken contour must fail G4");
+  expect(dev.classification.failureReason != nullptr &&
+             std::strstr(dev.classification.failureReason, "contour") != nullptr,
+         "Failure reason must legibly name the contour break");
+}
+
+// 5d. Witness HOLD and CONNECT never trip the contour gate: they never touch
+//     pitch, so contourPreserved must remain Pass and both must publish.
+void testHoldConnectNeverTripContourGate() {
+  auto phrase = makeTestPhrase(67, 83); // same notes that break MOVE/REVOICE
+  GroovePuterDevelopment::DevelopmentRequest reqHold{};
+  reqHold.transformation = GroovePuterDevelopment::TransformationKind::Hold;
+  auto devHold = GroovePuterDevelopment::developCandidate(phrase, reqHold);
+  expect(devHold.evidence.bass.contourPreserved == GroovePuterDevelopment::TriState::Pass,
+         "HOLD never changes pitch: contourPreserved must be Pass");
+  expect(devHold.success, "HOLD must publish");
+
+  GroovePuterDevelopment::DevelopmentRequest reqConnect{};
+  reqConnect.transformation = GroovePuterDevelopment::TransformationKind::Connect;
+  auto devConnect = GroovePuterDevelopment::developCandidate(phrase, reqConnect);
+  expect(devConnect.evidence.bass.contourPreserved == GroovePuterDevelopment::TriState::Pass,
+         "CONNECT never changes pitch: contourPreserved must be Pass");
+  expect(devConnect.success, "CONNECT must publish");
+}
+
+// 5e. Witness provenance reports the contour field, verifiably distinct from
+//     BROKEN, so a rejection is explainable, not just a raw failureReason.
+void testProvenanceReportsContour() {
+  auto phrase = makeTestPhrase(67, 83);
+  GroovePuterDevelopment::DevelopmentRequest req{};
+  req.transformation = GroovePuterDevelopment::TransformationKind::Move;
+  req.octaveShift = 1;
+  auto dev = GroovePuterDevelopment::developCandidate(phrase, req);
+
+  GroovePuterDevelopment::DevelopmentProvenance prov{};
+  prov.requestKind = req.transformation;
+  prov.sourceBasis.reference.id.value = 1; // valid() needs a non-zero id
+  prov.sourceBasis.version.low = 1;
+  prov.evidence = dev.evidence;
+  prov.classification = dev.classification;
+  prov.disposition = dev.disposition;
+
+  char buf[512]{};
+  GroovePuterDevelopment::formatProvenance(prov, buf, sizeof(buf));
+  expect(std::strstr(buf, "contour=BROKEN") != nullptr,
+         "Provenance must report contour=BROKEN for the rejected MOVE");
+  expect(std::strstr(buf, "genre=FAIL") != nullptr,
+         "Provenance must report the resulting genre=FAIL");
 }
 
 // 6. Witness REPEAT does not fabricate Genre PASS or Temporal PASS
@@ -148,6 +236,10 @@ int main() {
   testHoldContourPreserved();
   testConnectContourPreserved();
   testMoveContourDetectsInversion();
+  testMoveContourPreservedPublishes();
+  testRevoiceContourGateRejects();
+  testHoldConnectNeverTripContourGate();
+  testProvenanceReportsContour();
   testRepeatClassificationTruth();
   testRevoiceRootPreservedUnknown();
   testProvenanceReportsUnknownTruth();

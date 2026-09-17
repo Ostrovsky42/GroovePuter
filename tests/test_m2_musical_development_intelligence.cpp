@@ -499,6 +499,71 @@ int main() {
            "7.2: Activate grown candidate must succeed");
   }
 
+  // -------------------------------------------------------------------------
+  // 15. MANDATORY CONTOUR REJECTION WITNESS:
+  //     MOVE promises to preserve melodic contour. A register-wrap that
+  //     inverts it is a broken instance of the command, not a creative
+  //     result, and must fail closed before ever reaching NEXT.
+  // -------------------------------------------------------------------------
+  {
+    Fixture fixture;
+    const auto a0Basis = fixture.basis(0);
+
+    // G4 -> B5, ascending. +1 octave wraps B5's copy down past C2, inverting
+    // the direction to descending.
+    const auto source = melodyWithTwoNotes(67, 83);
+    fixture.engine.prepareNextMelody(0, source, a0Basis, IdeaClassification::Variation);
+    fixture.engine.activateNextMaterialAtBoundary(0);
+    const auto a1Basis = fixture.basis(0);
+
+    DevelopmentRequest req{};
+    req.transformation = TransformationKind::Move;
+    req.octaveShift = 1;
+
+    DevelopmentResult devResult{};
+    const auto prep = fixture.engine.developWorkingMaterial(0, req, &devResult);
+
+    expect(!devResult.success, "8.1: MOVE with broken contour must not succeed");
+    expect(devResult.evidence.bass.contourPreserved == TriState::Fail,
+           "8.1: contourPreserved must report Fail");
+    expect(devResult.classification.genre == GenreResult::Fail,
+           "8.1: G4 must reject the broken-contour candidate");
+    expect(devResult.classification.failureReason != nullptr &&
+               std::strstr(devResult.classification.failureReason, "contour") != nullptr,
+           "8.1: Failure reason must legibly name the contour break");
+    expect(prep != MiniAcid::NextPrepareResult::Prepared &&
+               prep != MiniAcid::NextPrepareResult::Replaced,
+           "8.1: developWorkingMaterial must not report NEXT prepared");
+    expect(!fixture.engine.hasPendingMaterial(0),
+           "8.1: Broken-contour candidate must NOT reach NEXT");
+    expect(fixture.basis(0) == a1Basis,
+           "8.1: CURRENT basis must remain untouched after rejection");
+  }
+
+  // -------------------------------------------------------------------------
+  // 16. Sanity: MOVE without register wrap still reaches NEXT.
+  // -------------------------------------------------------------------------
+  {
+    Fixture fixture;
+    const auto a0Basis = fixture.basis(0);
+    const auto source = melodyWithTwoNotes(36, 40); // no wrap at +1 octave
+    fixture.engine.prepareNextMelody(0, source, a0Basis, IdeaClassification::Variation);
+    fixture.engine.activateNextMaterialAtBoundary(0);
+
+    DevelopmentRequest req{};
+    req.transformation = TransformationKind::Move;
+    req.octaveShift = 1;
+
+    DevelopmentResult devResult{};
+    const auto prep = fixture.engine.developWorkingMaterial(0, req, &devResult);
+    expect(prep == MiniAcid::NextPrepareResult::Prepared,
+           "8.2: Normal MOVE must reach NEXT");
+    expect(devResult.evidence.bass.contourPreserved == TriState::Pass,
+           "8.2: contourPreserved must report Pass for a normal MOVE");
+    expect(fixture.engine.hasPendingMaterial(0),
+           "8.2: Normal MOVE candidate must be staged as NEXT");
+  }
+
   if (g_failures == 0) {
     std::printf("M2 musical development intelligence: PASS\n");
     return 0;

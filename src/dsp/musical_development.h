@@ -145,6 +145,28 @@ inline bool hasEventOnTheOne(const PhraseRuntime::RuntimeSynthEventBuffer& buf) 
   return false;
 }
 
+// Contour is the sequence of up/down melodic directions between consecutive
+// onsets. A transformation that claims to preserve it (REVOICE, HOLD,
+// CONNECT, MOVE) must not silently flip that direction, e.g. via register
+// wrap folding a high note back below a low one. This is observed from the
+// actual candidate bytes, never assumed from the transformation's intent.
+inline TriState evaluateContourPreservation(
+    const PhraseRuntime::RuntimeSynthEventBuffer& source,
+    const PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+  if (source.count != candidate.count) return TriState::Fail;
+  if (source.count <= 1) return TriState::Pass;
+  for (uint16_t i = 1; i < source.count; ++i) {
+    const int srcDelta = static_cast<int>(source.events[i].note) -
+                         static_cast<int>(source.events[i - 1].note);
+    const int candDelta = static_cast<int>(candidate.events[i].note) -
+                          static_cast<int>(candidate.events[i - 1].note);
+    const int srcDir = (srcDelta > 0) - (srcDelta < 0);
+    const int candDir = (candDelta > 0) - (candDelta < 0);
+    if (srcDir != candDir) return TriState::Fail;
+  }
+  return TriState::Pass;
+}
+
 inline void transformRevoice(
     const PhraseRuntime::RuntimeSynthEventBuffer& source,
     const DevelopmentRequest& request,
@@ -188,6 +210,7 @@ inline void transformRevoice(
   evidence.harmony.harmonicSupport = allPitchClassesPreserved ? TriState::Pass : TriState::Fail;
   evidence.harmony.cadence = TriState::Unknown;
   evidence.harmony.harmonicFunction = TriState::Unknown;
+  evidence.bass.contourPreserved = evaluateContourPreservation(source, candidate);
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
 }
 
@@ -254,23 +277,6 @@ inline void transformThin(
     evidence.rhythm.onsetsChanged = true;
   }
   evidence.rhythm.theOnePreserved = hasEventOnTheOne(candidate);
-}
-
-inline TriState evaluateContourPreservation(
-    const PhraseRuntime::RuntimeSynthEventBuffer& source,
-    const PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
-  if (source.count != candidate.count) return TriState::Fail;
-  if (source.count <= 1) return TriState::Pass;
-  for (uint16_t i = 1; i < source.count; ++i) {
-    const int srcDelta = static_cast<int>(source.events[i].note) -
-                         static_cast<int>(source.events[i - 1].note);
-    const int candDelta = static_cast<int>(candidate.events[i].note) -
-                          static_cast<int>(candidate.events[i - 1].note);
-    const int srcDir = (srcDelta > 0) - (srcDelta < 0);
-    const int candDir = (candDelta > 0) - (candDelta < 0);
-    if (srcDir != candDir) return TriState::Fail;
-  }
-  return TriState::Pass;
 }
 
 inline void transformHold(
@@ -376,6 +382,25 @@ inline DevelopmentClassification evaluateClassificationAndG4(
   if (candidate.count == 0) {
     classification.genre = GenreResult::Fail;
     classification.failureReason = "G4: density reduced to zero (all onsets eliminated)";
+    classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
+    return classification;
+  }
+
+  // G4: REVOICE, HOLD, CONNECT and MOVE carry a contour-preservation promise
+  // by name -- a musician asking to move/hold/connect/revoice a line expects
+  // its melodic shape intact. If register-wrap folding (or any other cause)
+  // actually inverted that shape, the candidate is a broken instance of the
+  // requested operation, not a creative outcome, and must not reach NEXT.
+  const bool transformationPromisesContour =
+      request.transformation == TransformationKind::Revoice ||
+      request.transformation == TransformationKind::Hold ||
+      request.transformation == TransformationKind::Connect ||
+      request.transformation == TransformationKind::Move;
+  if (transformationPromisesContour &&
+      evidence.bass.contourPreserved == TriState::Fail) {
+    classification.genre = GenreResult::Fail;
+    classification.failureReason =
+        "G4: melodic contour broken by register wrap -- command not honored";
     classification.idea = GroovePuterMaterial::IdeaClassification::Unknown;
     return classification;
   }
@@ -616,6 +641,14 @@ inline const char* genreResultName(GenreResult gr) {
   }
 }
 
+inline const char* contourName(TriState ts) {
+  switch (ts) {
+    case TriState::Pass: return "PRESERVED";
+    case TriState::Fail: return "BROKEN";
+    default: return "UNKNOWN";
+  }
+}
+
 inline const char* temporalRoleName(TemporalRoleResult tr) {
   switch (tr) {
     case TemporalRoleResult::Pass: return "PASS";
@@ -657,7 +690,7 @@ inline void formatProvenance(
       buffer, bufferSize,
       "REQUEST: %s\n"
       "SOURCE: V%u:S%u (id:%u rev:%u)\n"
-      "CHANGES: pitch=%s onset=%s artic=%s slides=%s densityDelta=%d theOne=%s\n"
+      "CHANGES: pitch=%s onset=%s artic=%s slides=%s densityDelta=%d theOne=%s contour=%s\n"
       "CLASSIFICATION: idea=%s genre=%s temporal=%s policy=%s%s%s",
       transformationName(prov.requestKind),
       prov.sourceBasis.reference.address.voice,
@@ -670,6 +703,7 @@ inline void formatProvenance(
       prov.evidence.bass.slidesAdded ? "ADDED" : "NONE",
       prov.evidence.rhythm.densityDelta,
       prov.evidence.rhythm.theOnePreserved ? "PRESERVED" : "LOST",
+      contourName(prov.evidence.bass.contourPreserved),
       ideaName(prov.classification.idea),
       genreResultName(prov.classification.genre),
       temporalRoleName(prov.classification.temporalRole),
