@@ -588,17 +588,19 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  // Resolve modified commands before their unmodified base key. This keeps
+  // Alt/Ctrl/Meta+Enter from falling through to GO while NEXT is available.
+  if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
+    return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
+  }
   if (GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
     return GroovePuterMaterialDevelopmentUx::handleCancel(mini_acid_, voice_index_);
   }
   if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
     return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
-  }
-  if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
-    return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
-  }
-  if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
-    return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
   }
 
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {

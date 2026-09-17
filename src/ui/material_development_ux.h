@@ -31,14 +31,19 @@ inline bool isVaryEvent(const UIEvent& event) {
 inline bool isGoEvent(const UIEvent& event, const MiniAcid& engine, int voiceIndex) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (!engine.hasPendingMaterial(voiceIndex)) return false;
+  // Enter without modifiers is the only GO gesture. Modified Enter belongs to
+  // ACCEPT and must never activate NEXT as a side effect.
+  if (event.alt || event.ctrl || event.meta) return false;
   return (event.key == '\n' || event.key == '\r' || event.key == 0x0A || event.key == 0x0D);
 }
 
 inline bool isCancelEvent(const UIEvent& event, const MiniAcid& engine, int voiceIndex) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (!engine.hasPendingMaterial(voiceIndex)) return false;
-  return (event.key == 0x1B || event.key == '\b' || event.key == 0x7F ||
-          event.scancode == GROOVEPUTER_ESCAPE);
+  // Plain Escape is intentionally narrow: Alt+Backspace/Delete is DISCARD,
+  // and destructive actions must not be inferred from editing keys.
+  if (event.alt || event.ctrl || event.meta) return false;
+  return event.key == 0x1B || event.scancode == GROOVEPUTER_ESCAPE;
 }
 
 inline bool isDiscardEvent(const UIEvent& event) {
@@ -65,24 +70,22 @@ inline bool handleDevelop(
       prepareResult == MiniAcid::NextPrepareResult::Replaced) {
     if (result.classification.idea ==
         GroovePuterMaterial::IdeaClassification::NewIdea) {
-      UI::showToast("NEXT READY: NEW IDEA", 1400);
+      UI::showToast("NEXT READY: NEW MATERIAL", 1400);
     } else if (result.classification.idea ==
                GroovePuterMaterial::IdeaClassification::Variation) {
       UI::showToast("NEXT READY: VARIATION", 1400);
     } else if (result.classification.idea ==
                GroovePuterMaterial::IdeaClassification::Preserved) {
-      UI::showToast("NEXT READY: PRESERVED", 1400);
+      UI::showToast("NEXT READY: REFINED", 1400);
     } else {
-      UI::showToast("NEXT READY: UNKNOWN", 1400);
+      UI::showToast("NEXT READY", 1400);
     }
     return true;
   }
 
-  if (result.classification.failureReason != nullptr) {
-    UI::showToast(result.classification.failureReason, 1500);
-  } else {
-    UI::showToast("DEVELOP: REJECTED", 1200);
-  }
+  // G4/internal classifier diagnostics remain available in logs and tests;
+  // the instrument tells the player the actionable outcome instead.
+  UI::showToast("NEXT NOT READY", 1200);
   return true;
 }
 
@@ -106,8 +109,13 @@ inline bool handleGo(MiniAcid& engine, int voiceIndex) {
 
 inline bool handleCancel(MiniAcid& engine, int voiceIndex) {
   if (!engine.hasPendingMaterial(voiceIndex)) return false;
+  if (engine.isGoQueued(voiceIndex)) {
+    engine.cancelGoQueue(voiceIndex);
+    UI::showToast("GO DISARMED: NEXT KEPT", 1200);
+    return true;
+  }
   const bool cancelled = engine.cancelNextMaterial(voiceIndex);
-  UI::showToast(cancelled ? "NEXT CANCELLED" : "CANCEL FAILED", 1000);
+  UI::showToast(cancelled ? "NEXT DISCARDED" : "NEXT CANCEL FAILED", 1000);
   return true;
 }
 
