@@ -1169,6 +1169,21 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   }
 
   int nav = UIInput::navCode(ui_event);
+  // Cardputer reserves the ; , . / physical positions for arrows, so the old
+  // Alt+, / Alt+. Top/End shortcuts are not hardware-reachable. Keep plain
+  // Alt+Up/Down for value editing and use the explicit Ctrl+Alt chord for the
+  // long-distance Song jump.
+  if (ui_event.ctrl && ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    if (nav == GROOVEPUTER_UP) {
+      moveCursorToRow(0);
+      showToast("Top", 500);
+    } else {
+      moveCursorToRow(mini_acid_.songLength() - 1);
+      showToast("End", 500);
+    }
+    return true;
+  }
   if (ui_event.alt && (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
     int delta = nav == GROOVEPUTER_UP ? 1 : -1;
     if (cursorOnPlayheadLabel()) return adjustSongPlayhead(delta);
@@ -1226,18 +1241,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       break;
   }
   
-  // Home/End via Alt + < / > (prevent accidental jumps with plain comma/dot)
-  if (ui_event.alt && (ui_event.key == '<' || ui_event.key == ',')) {
-     moveCursorToRow(0);
-     showToast("Top", 500);
-     return true;
-  }
-  if (ui_event.alt && (ui_event.key == '>' || ui_event.key == '.')) {
-     moveCursorToRow(mini_acid_.songLength() - 1);
-     showToast("End", 500);
-     return true;
-  }
-
   if (handled) return true;
 
   char key = ui_event.key;
