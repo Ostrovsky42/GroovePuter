@@ -37,13 +37,12 @@ IGfxColor scaleColor(IGfxColor base, uint8_t brightness) {
                    static_cast<uint32_t>(b));
 }
 
-const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
+const char* drumVoiceLabel(const std::string& engine, int voice) {
   // Keep the established eight-voice data order. These are semantic display
   // names only; no drum routing, pattern storage, or keyboard mapping changes.
   static const char* const kDefault[NUM_DRUM_VOICES] =
       {"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"};
   if (voice < 0 || voice >= NUM_DRUM_VOICES) return "----";
-  const std::string& engine = miniAcid.currentDrumEngineName();
   if (engine == "606") {
     if (voice == 6) return "9CYM";
     if (voice == 7) return "0---";
@@ -117,13 +116,14 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
 
 void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& layout) {
   const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  const std::string engine = mini_acid_.currentDrumEngineName();
   drawStepNumbers(gfx, layout.grid_x, layout.cell_w, layout.bounds_y, COLOR_LABEL);
   for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
     int labelStripeH = layout.stripe_h;
     if (labelStripeH < 3) labelStripeH = 3;
     int ly = layout.grid_y + v * labelStripeH + (labelStripeH - gfx.fontHeight()) / 2;
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+    gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
   }
   gfx.setTextColor(COLOR_WHITE);
 
@@ -175,6 +175,7 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
 
 void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
       const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  const std::string engine = mini_acid_.currentDrumEngineName();
     drawStepNumbers(gfx,
                     layout.grid_x,
                     layout.cell_w,
@@ -183,7 +184,7 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
@@ -229,6 +230,7 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
 
 void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& layout) {
       const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  const std::string engine = mini_acid_.currentDrumEngineName();
     drawStepNumbers(gfx,
                     layout.grid_x,
                     layout.cell_w,
@@ -237,7 +239,7 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
