@@ -100,16 +100,17 @@ inline void cycleFx(SynthPattern& pattern, int stepIndex) {
   // Synth runtime currently has an audible Retrig consumer but no meaningful
   // oscillator-level Reverse consumer. Keep F musician-facing: OFF <-> RETRIG.
   // A freshly enabled retrig must never be R0 (inaudible).
-  if (step.fx == static_cast<uint8_t>(StepFx::Retrig)) {
+  if (step.fx == static_cast<uint8_t>(StepFx::Retrig) &&
+      step.fxParam >= 1 && step.fxParam <= kMaxRetrigCount) {
     step.fx = static_cast<uint8_t>(StepFx::None);
     step.fxParam = 0;
     return;
   }
 
+  // Dead/legacy synth FX states (including R0 and old Reverse) normalize to
+  // one immediately audible bounded operation on the first F press.
   step.fx = static_cast<uint8_t>(StepFx::Retrig);
-  if (step.fxParam < 1 || step.fxParam > kMaxRetrigCount) {
-    step.fxParam = kDefaultRetrigCount;
-  }
+  step.fxParam = kDefaultRetrigCount;
 }
 
 inline void adjustFxParam(SynthPattern& pattern, int stepIndex, int delta) {
