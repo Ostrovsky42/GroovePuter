@@ -18,7 +18,7 @@ def main() -> None:
         'constexpr int kLaneLabelWidth = 24;' in grid
         and 'constexpr int kStepHeaderHeight = 8;' in grid
         and 'layout.grid_x = bounds.x + labelWidth;' in grid
-        and 'layout.grid_y = layout.accent_y;' in grid,
+        and 'layout.grid_y = bounds.y + kStepHeaderHeight;' in grid,
         "drum grid must reserve numbered lane labels and the top step header",
     )
     require(
