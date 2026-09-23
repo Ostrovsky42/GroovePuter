@@ -1521,24 +1521,6 @@ void MiniAcid::toggleDrumStep(int voiceIndex, int stepIndex) {
   value.accent = false;
 }
 
-void MiniAcid::toggleDrumAccentStep(int stepIndex) {
-  int step = stepIndex;
-  if (step < 0) step = 0;
-  if (step >= DrumPattern::kSteps) step = DrumPattern::kSteps - 1;
-  DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
-  bool anyAccent = false;
-  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-    if (patternSet.voices[v].steps[step].accent) {
-      anyAccent = true;
-      break;
-    }
-  }
-  bool newAccent = !anyAccent;
-  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-    patternSet.voices[v].steps[step].accent = newAccent;
-  }
-}
-
 void MiniAcid::setDrumAccentStep(int voiceIndex, int stepIndex, bool accent) {
   int voice = clampDrumVoice(voiceIndex);
   int step = stepIndex;
