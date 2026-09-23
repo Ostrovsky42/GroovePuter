@@ -48,7 +48,7 @@ The active page gets first refusal before global fallbacks.
 | `ASDFGHJKL` | Lower manual |
 | `N` | NOTE mode ON/OFF |
 | `\` | Cycle output target |
-| `,` / `.` | Previous / next scale |
+| `,` / `.` | Previous / next scale on SDL/external keyboard; Cardputer uses PERFORMANCE TOOLS -> KEY -> SCALE with Left/Right |
 | `-` / `=` | Octave down / up |
 | `Tab` | Open PERFORMANCE TOOLS (or cycle context when open) |
 
