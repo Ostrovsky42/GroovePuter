@@ -32,6 +32,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Attest exact source SHA
+        run: |
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "EXPECTED_SHA=${expected}"
+          echo "ACTUAL_SHA=${actual}"
+          test "${actual}" = "${expected}"
       - name: Run focused interaction tests
         run: bash tests/run_instrument_interaction_closure_tests.sh
 
@@ -39,6 +48,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Attest exact source SHA
+        run: |
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "EXPECTED_SHA=${expected}"
+          echo "ACTUAL_SHA=${actual}"
+          test "${actual}" = "${expected}"
       - name: Install SDL dependencies
         run: |
           sudo apt-get update
