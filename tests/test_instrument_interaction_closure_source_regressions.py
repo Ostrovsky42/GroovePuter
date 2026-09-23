@@ -10,6 +10,7 @@ GRID_H = (ROOT / "src/ui/components/drum_sequencer_grid.h").read_text(encoding="
 GRID = (ROOT / "src/ui/components/drum_sequencer_grid.cpp").read_text(encoding="utf-8")
 DRUM = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
+SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -90,7 +91,16 @@ def main() -> None:
     require(
         '{"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"}'
         in GRID,
-        "drum lanes must expose direct 3..0 mute mapping",
+        "default drum lanes must expose direct 3..0 mute mapping",
+    )
+    require(
+        'engine == "SP12"' in GRID
+        and 'return "0RIM";' in GRID
+        and 'return "9CLP";' in GRID
+        and 'currentDrumEngineName() == "SP12"' in SKETCH
+        and "toggleMuteClap()" in SKETCH
+        and "toggleMuteRim()" in SKETCH,
+        "SP12 grid labels must mirror its swapped 9/0 global mute bindings",
     )
     require("drawAccentLabel" not in GRID and "onToggleAccent" not in GRID_H,
             "obsolete aggregate ACC-row UI must stay removed")
