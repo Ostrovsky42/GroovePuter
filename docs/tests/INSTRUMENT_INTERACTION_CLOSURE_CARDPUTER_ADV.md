@@ -183,7 +183,7 @@ PASS:
 
 - all eight logical lane rows fit on-screen;
 - the bottom lane is visible;
-- normal engines show:
+- default engines show:
 
       3KIK
       4SNR
@@ -194,6 +194,8 @@ PASS:
       9RIM
       0CLP
 
+- SP12 reflects its actual global mute swap: voice 6 is `0RIM`, voice 7 is
+  `9CLP`;
 - TR-606 keeps its engine-specific final-lane meaning while retaining the 9/0
   mute-number mapping.
 
@@ -234,6 +236,13 @@ PASS:
 - no invisible accent state is created;
 - toast says `ACCENT: ADD HIT`.
 
+5. Accent a hit, remove that hit with Enter, then add it again with Enter.
+
+PASS:
+
+- the re-added hit starts unaccented;
+- no old accent silently reappears.
+
 Repeat once on Snare or another voice.
 
 Record:
@@ -242,6 +251,7 @@ Record:
     ACCENT_AUDIBLE=
     ACCENT_MARKER_VISIBLE=
     ACCENT_EMPTY_FAIL_CLOSED=
+    ACCENT_REMOVE_READD_CLEAN=
 
 ## 8. Theme/layout check
 
