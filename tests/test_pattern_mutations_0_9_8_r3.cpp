@@ -126,6 +126,15 @@ void testArticulationAndFx() {
   cycleFx(pattern, 2);
   assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
   assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Retrig);
+  pattern.steps[2].fxParam = 255;
+  assert(effectiveRetrigCount(pattern.steps[2]) == kMaxRetrigCount);
+  pattern.steps[2].fxParam = 0;
+  assert(effectiveRetrigCount(pattern.steps[2]) == 0);
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::None);
+  pattern.steps[2].fxParam = 255;
+  assert(effectiveRetrigCount(pattern.steps[2]) == 0);
 }
 
 void testRotation() {
