@@ -71,8 +71,9 @@ def main() -> None:
     require("StepFx::Retrig" in cycle and "StepFx::Reverse" not in cycle,
             "synth F must toggle Retrig only, not expose unsupported Reverse")
     adjust = between(PREPARE, "inline void adjustFxParam", "inline void rotate")
-    require("value < 1" in adjust and "value > kMaxRetrigCount" in adjust,
-            "synth retrig count must remain in 1..8")
+    require("clampRetrigCount(step.fxParam)" in adjust
+            and "value < 1" in adjust and "value > kMaxRetrigCount" in adjust,
+            "synth retrig adjustment must start from effective R1..R8 value")
     require('"F           Retrig on/off"' in HELP
             and '"Alt+Up/Dn   Retrig count 1..8"' in HELP,
             "on-device help must describe the actual retrig contract")
