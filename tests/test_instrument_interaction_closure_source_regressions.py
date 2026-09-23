@@ -183,6 +183,11 @@ def main() -> None:
         "Hub must use per-hit accent with empty-cell fail-closed semantics",
     )
     require(
+        "cb.onToggle = [this](int step, int voice)" in HUB
+        and "toggleDrumStep(voice, step)" in HUB,
+        "Hub must honor Drum grid callback order (step, voice)",
+    )
+    require(
         '"RETRIG OFF"' in PATTERN_PAGE
         and '"RETRIG R%u"' in PATTERN_PAGE,
         "Retrig edits need theme-independent musician feedback",
