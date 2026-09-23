@@ -92,7 +92,7 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard au
     (void)gfx;
 
     DrumSequencerGridComponent::Callbacks cb;
-    cb.onToggle = [this](int voice, int step) {
+    cb.onToggle = [this](int step, int voice) {
         withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
     };
     cb.cursorStep = [this]() { return stepCursor_; };
