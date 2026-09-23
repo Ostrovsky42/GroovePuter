@@ -15,20 +15,20 @@ def main() -> None:
     )
 
     require(
-        'constexpr int kLaneLabelWidth = 20;' in grid
+        'constexpr int kLaneLabelWidth = 24;' in grid
         and 'constexpr int kStepHeaderHeight = 8;' in grid
         and 'layout.grid_x = bounds.x + labelWidth;' in grid
-        and 'layout.accent_y = bounds.y + kStepHeaderHeight;' in grid,
-        "drum grid must reserve independent left-label and top-step-number areas",
+        and 'layout.grid_y = layout.accent_y;' in grid,
+        "drum grid must reserve numbered lane labels and the top step header",
     )
     require(
-        '{"KIK", "SNR", "HH1", "HH2", "PR1", "PR2", "RIM", "CLP"}' in grid,
-        "the established eight drum voices must have semantic lane labels",
+        '{"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"}' in grid,
+        "drum lanes must expose their matching global mute digits",
     )
     require(
         'if (miniAcid.currentDrumEngineName() == "606")' in grid
-        and 'if (voice == 6) return "CYM";' in grid
-        and 'if (voice == 7) return "---";' in grid,
+        and 'if (voice == 6) return "9CYM";' in grid
+        and 'if (voice == 7) return "0---";' in grid,
         "TR-606-specific lane meaning must remain explicit",
     )
     require(
@@ -38,9 +38,10 @@ def main() -> None:
         "all visual styles must use compact one-glyph step headers 1..9,0..6",
     )
     require(
-        'drawAccentLabel(gfx' in grid
-        and grid.count('drawAccentLabel(gfx') == 3,
-        "the accent row must stay identifiable after adding lane labels",
+        'drawAccentLabel(gfx' not in grid
+        and 'hit && stepData.accent' in grid
+        and 'bounds.h - kStepHeaderHeight' in grid,
+        "accent must be rendered per hit and the removed ACC row must return height to all eight lanes",
     )
     require(
         'if (ui_event.x < layout.grid_x || ui_event.x >= layout.grid_right) return false;' in grid,
