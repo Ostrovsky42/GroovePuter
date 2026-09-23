@@ -58,6 +58,33 @@ int main() {
   assert(!shouldDispatchWord(duplicateTab, empty, true, duplicateTabValue));
   assert(duplicateTabValue == '\t');
 
+  struct ArrowShadowCase {
+    uint8_t hid;
+    char punctuation;
+  };
+  const ArrowShadowCase arrowShadows[] = {
+      {kCardputerArrowUpHid, ';'},
+      {kCardputerArrowLeftHid, ','},
+      {kCardputerArrowDownHid, '.'},
+      {kCardputerArrowRightHid, '/'},
+  };
+  for (const auto& shadow : arrowShadows) {
+    FakeKeysState duplicateArrow{};
+    duplicateArrow.hid_keys = {shadow.hid};
+    duplicateArrow.word = {shadow.punctuation};
+    char duplicateArrowValue = duplicateArrow.word.front();
+    assert(!shouldDispatchWord(
+        duplicateArrow, empty, true, duplicateArrowValue));
+    assert(duplicateArrowValue == shadow.punctuation);
+
+    FakeKeysState punctuationOnly{};
+    punctuationOnly.word = {shadow.punctuation};
+    char punctuationOnlyValue = punctuationOnly.word.front();
+    assert(shouldDispatchWord(
+        punctuationOnly, empty, true, punctuationOnlyValue));
+    assert(punctuationOnlyValue == shadow.punctuation);
+  }
+
   char heldWordTabValue = wordOnlyTab.word.front();
   assert(!shouldDispatchWord(wordOnlyTab, wordOnlyTab, true, heldWordTabValue));
   assert(heldWordTabValue == '\t');
