@@ -3892,8 +3892,22 @@ void MiniAcid::triggerSynthStep_(
   patternRetrigEvent_[synthIdx] = event;
   if (event.fx == static_cast<uint8_t>(StepFx::Retrig) && event.fxParam > 0) {
     retrig.countRemaining = event.fxParam;
-    retrig.interval = static_cast<int>(samplesPerStep_ / (event.fxParam + 1));
-    if (retrig.interval < 1) retrig.interval = 1;
+
+    // Rn means N audible retriggers of this onset. RuntimeSynthPlaybackState
+    // correctly refuses to retrigger a note after its gate has released, so
+    // schedule the requested repeats inside the event's actual gate instead of
+    // across the whole 16th-step. Cap long/tied events to one physical step:
+    // step FX belongs to this step, not to the following one.
+    constexpr uint32_t kSubticksPerStep =
+        24u * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick);
+    const uint32_t gateSubticks = std::max<uint32_t>(
+        1u, std::min<uint32_t>(event.durationSubticks, kSubticksPerStep));
+    const float gateFraction =
+        static_cast<float>(gateSubticks) / static_cast<float>(kSubticksPerStep);
+    const int retrigSpanSamples =
+        std::max(1, static_cast<int>(samplesPerStep_ * gateFraction));
+    retrig.interval =
+        std::max(1, retrigSpanSamples / (static_cast<int>(event.fxParam) + 1));
     retrig.counter = retrig.interval;
     retrig.active = true;
   }
