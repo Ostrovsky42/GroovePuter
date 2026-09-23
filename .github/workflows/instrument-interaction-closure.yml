@@ -1,0 +1,28 @@
+name: Instrument interaction closure
+
+on:
+  pull_request:
+    paths:
+      - 'src/input/cardputer_input_edges.h'
+      - 'src/state/synth_pattern_edit.h'
+      - 'src/dsp/miniacid_engine.cpp'
+      - 'src/ui/components/drum_sequencer_grid.*'
+      - 'src/ui/pages/drum_sequencer_page_legacy.h'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/global_help_content.h'
+      - 'tests/test_cardputer_input_edges.cpp'
+      - 'tests/test_pattern_mutations_0_9_8_r3.cpp'
+      - 'tests/test_instrument_interaction_closure_source_regressions.py'
+      - 'tests/test_drum_grid_labels_source_regressions.py'
+      - 'tests/test_hub_song_drum_ui_source_regressions.py'
+      - 'tests/run_instrument_interaction_closure_tests.sh'
+      - '.github/workflows/instrument-interaction-closure.yml'
+  workflow_dispatch:
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run focused interaction tests
+        run: bash tests/run_instrument_interaction_closure_tests.sh
