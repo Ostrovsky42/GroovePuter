@@ -71,6 +71,24 @@ inline bool shouldDispatchWord(const KeysState& current,
                                WordChar& value) {
   const WordChar rawValue = value;
 
+  // Cardputer arrow legends occupy punctuation keys. Some M5Cardputer
+  // versions report one physical arrow twice: once as the canonical HID arrow
+  // and once through KeysState::word as its punctuation shadow. Never dispatch
+  // that shadow as a second musical command (e.g. UP + ';' in NOTE ENTRY).
+  uint8_t shadowArrowHid = 0;
+  if (rawValue == static_cast<WordChar>(';')) {
+    shadowArrowHid = kCardputerArrowUpHid;
+  } else if (rawValue == static_cast<WordChar>(',')) {
+    shadowArrowHid = kCardputerArrowLeftHid;
+  } else if (rawValue == static_cast<WordChar>('.')) {
+    shadowArrowHid = kCardputerArrowDownHid;
+  } else if (rawValue == static_cast<WordChar>('/')) {
+    shadowArrowHid = kCardputerArrowRightHid;
+  }
+  if (shadowArrowHid != 0 && containsHid(current, shadowArrowHid)) {
+    return false;
+  }
+
   // M5Cardputer library versions differ: dedicated Tab can appear only in
   // KeysState::word or in both word and HID 0x2B. Preserve a word-only Tab
   // through the control-character filter and suppress the duplicate word copy
