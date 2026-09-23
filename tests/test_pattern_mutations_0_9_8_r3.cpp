@@ -130,6 +130,11 @@ void testArticulationAndFx() {
   pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Retrig);
   pattern.steps[2].fxParam = 255;
   assert(effectiveRetrigCount(pattern.steps[2]) == kMaxRetrigCount);
+  adjustFxParam(pattern, 2, -1);
+  assert(pattern.steps[2].fxParam == kMaxRetrigCount - 1);
+  pattern.steps[2].fxParam = 255;
+  adjustFxParam(pattern, 2, 1);
+  assert(pattern.steps[2].fxParam == kMaxRetrigCount);
   pattern.steps[2].fxParam = 0;
   assert(effectiveRetrigCount(pattern.steps[2]) == 0);
   pattern.steps[2].fx = static_cast<uint8_t>(StepFx::None);
