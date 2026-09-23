@@ -11,6 +11,8 @@ GRID = (ROOT / "src/ui/components/drum_sequencer_grid.cpp").read_text(encoding="
 DRUM = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 PATTERN_PAGE = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
+HUB = (ROOT / "src/ui/pages/sequencer_hub_page.cpp").read_text(encoding="utf-8")
+SONG = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
 SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
 
@@ -28,22 +30,35 @@ def between(text: str, start: str, end: str) -> str:
 
 
 def main() -> None:
-    # One physical Cardputer arrow may appear as HID + punctuation word.
-    # The punctuation shadow must never become a second musical command.
-    for punctuation, hid_name in (
-        (";", "kCardputerArrowUpHid"),
-        (",", "kCardputerArrowLeftHid"),
-        (".", "kCardputerArrowDownHid"),
-        ("/", "kCardputerArrowRightHid"),
+    # Cardputer ADV reserves four punctuation positions as physical arrows.
+    # Both plain and Shift word glyphs from those keys are shadows of the HID
+    # navigation event and must never become a second command.
+    for plain, shifted, hid_name, hid_hex, scan in (
+        (";", ":", "kCardputerArrowUpHid", "0x33", "GROOVEPUTER_UP"),
+        (",", "<", "kCardputerArrowLeftHid", "0x36", "GROOVEPUTER_LEFT"),
+        (".", ">", "kCardputerArrowDownHid", "0x37", "GROOVEPUTER_DOWN"),
+        ("/", "?", "kCardputerArrowRightHid", "0x38", "GROOVEPUTER_RIGHT"),
     ):
         require(
-            f"rawValue == static_cast<WordChar>('{punctuation}')" in EDGES
+            f"rawValue == static_cast<WordChar>('{plain}')" in EDGES
+            and f"rawValue == static_cast<WordChar>('{shifted}')" in EDGES
             and f"shadowArrowHid = {hid_name};" in EDGES,
-            f"missing Cardputer arrow shadow mapping for {punctuation}",
+            f"missing Cardputer arrow-only mapping for {plain}/{shifted}",
+        )
+        require(
+            f"hid == {hid_hex}" in SKETCH and f"evt.scancode = {scan};" in SKETCH,
+            f"physical Cardputer HID {hid_hex} must remain canonical {scan}",
         )
     require(
         "shadowArrowHid != 0 && containsHid(current, shadowArrowHid)" in EDGES,
-        "arrow punctuation must be suppressed only when the matching HID arrow exists",
+        "word glyphs from Cardputer arrow positions must be suppressed beside their HID",
+    )
+    require(
+        "ui_event.ctrl && ui_event.alt" in SONG
+        and "nav == GROOVEPUTER_UP" in SONG
+        and "nav == GROOVEPUTER_DOWN" in SONG
+        and "moveCursorToRow(0)" in SONG,
+        "Song Top/End must use reachable Ctrl+Alt+Up/Down instead of arrow punctuation",
     )
 
     # Synth F is now one musician-facing effect: audible retrigger. Reverse is
@@ -63,7 +78,7 @@ def main() -> None:
             "on-device help must describe the actual retrig contract")
     retrig_param_owner = between(
         PATTERN_PAGE,
-        "// F and its parameter adjustment are one Pattern-owned edit contract.",
+        "// On Cardputer the physical punctuation/arrow keys can carry meta=true",
         "// Global navigation, pattern rotation and meta note editing keep their",
     )
     require(
@@ -98,9 +113,9 @@ def main() -> None:
         "Rn retriggers must be scheduled inside the active event gate",
     )
     require(
-        "std::clamp(static_cast<int>(event.fxParam), 1, 8)" in trigger
+        "PatternEdit::clampRetrigCount(event.fxParam)" in trigger
         and "retrig.countRemaining = retrigCount;" in trigger,
-        "legacy persisted retrig values must be bounded to R1..R8 at execution",
+        "legacy persisted retrig values must use the shared R1..R8 execution bound",
     )
 
     # Drum grid must fit all eight lanes and map visible names to global mute
@@ -151,6 +166,25 @@ def main() -> None:
         DRUM.count("value.hit = !value.hit;") == 2
         and DRUM.count("value.accent = false;") >= 2,
         "drum hit toggle must clear accent so remove/re-add cannot resurrect hidden accent",
+    )
+    engine_toggle = between(
+        ENGINE, "void MiniAcid::toggleDrumStep(", "void MiniAcid::toggleDrumAccentStep")
+    require(
+        "value.hit = !value.hit;" in engine_toggle
+        and "value.accent = false;" in engine_toggle,
+        "engine-level Drum hit toggle must clear accent for Hub and every other caller",
+    )
+    require(
+        "onToggleAccent" not in HUB
+        and "toggleDrumAccentStep(stepCursor_)" not in HUB
+        and HUB.count('UI::showToast("ACCENT: ADD HIT", 900);') >= 2
+        and HUB.count("setDrumAccentStep(") >= 2,
+        "Hub must use per-hit accent with empty-cell fail-closed semantics",
+    )
+    require(
+        '"RETRIG OFF"' in PATTERN_PAGE
+        and '"RETRIG R%u"' in PATTERN_PAGE,
+        "Retrig edits need theme-independent musician feedback",
     )
 
     print("Instrument interaction closure source regressions: OK")
