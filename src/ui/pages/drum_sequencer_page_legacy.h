@@ -192,8 +192,12 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
     drum_step_cursor_ = step;
     drum_voice_cursor_ = voice;
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
@@ -690,8 +694,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       int step = activeDrumStep();
       int voice = activeDrumVoice();
       commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
     }
     return true;
