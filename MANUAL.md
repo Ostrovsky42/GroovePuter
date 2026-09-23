@@ -130,6 +130,7 @@ NK[M]  MORE
 - `Alt+[` / `Alt+]`: pattern page;
 - arrows: step cursor;
 - `N`: NOTE ENTRY on/off;
+- `C` inside NOTE ENTRY: repeat the last entered pitch on the current step;
 - `F`: toggle audible step retrigger; enabling starts at `R2`;
 - `Alt+Up/Down`: adjust retrigger count `1..8` while retrigger is active;
 - `G`: reroll only the selected Synth A or Synth B lane when NOTE ENTRY is off.
