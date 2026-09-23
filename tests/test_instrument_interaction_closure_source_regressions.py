@@ -78,6 +78,12 @@ def main() -> None:
         and "patternPlaybackState_[1].acceptRetrigger(patternRetrigEvent_[1])" in ENGINE,
         "both synth voices must consume prepared retriggers",
     )
+    require(
+        "event.durationSubticks" in trigger
+        and "kSubticksPerStep" in trigger
+        and "retrigSpanSamples" in trigger,
+        "Rn retriggers must be scheduled inside the active event gate",
+    )
 
     # Drum grid must fit all eight lanes and map visible names to global mute
     # digits. Accent is an individual hit property, not an aggregate ACC row.
@@ -102,6 +108,12 @@ def main() -> None:
             "drum A must toggle only the selected hit accent")
     require("for (int v" not in accent,
             "drum A must not accent the entire time column")
+
+    require(
+        DRUM.count("value.hit = !value.hit;") == 2
+        and DRUM.count("value.accent = false;") >= 2,
+        "drum hit toggle must clear accent so remove/re-add cannot resurrect hidden accent",
+    )
 
     print("Instrument interaction closure source regressions: OK")
 
