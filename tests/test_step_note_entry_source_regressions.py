@@ -43,11 +43,11 @@ require("mini_acid_.clear303Step" not in backspace_block and
         "editCurrentSynthPattern" not in backspace_block,
         "NOTE ENTRY Backspace must not bypass R3 through a live Pattern mutator")
 
-repeat_start = CPP.index("if (key == ';' || key == ':')")
+repeat_start = CPP.index("if (lowerKey == 'c')")
 repeat_end = CPP.index("if (handleNoteEntryKey(key))", repeat_start)
 repeat_block = CPP[repeat_start:repeat_end]
 require("last_entered_note_" in repeat_block,
-        "semicolon must recall the last entered note")
+        "C must recall the last entered note on Cardputer")
 require("advanceNoteEntryCursor();" not in repeat_block,
         "repeat-last must not move the cursor before Enter")
 
