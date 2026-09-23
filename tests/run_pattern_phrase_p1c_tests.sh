@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 BASE_SHA="2860f99d254baa96e06d48b3a52d3e729c2e707a"
+CANDIDATE_BASE_SHA="${P1C_CANDIDATE_BASE_SHA:-HEAD^}"
 TMP="${TMPDIR:-/tmp}/grooveputer_pattern_phrase_p1c"
 P0_BUILD="$ROOT/build/pattern-phrase-p1c-p0"
 mkdir -p "$TMP" "$P0_BUILD"
@@ -96,7 +97,9 @@ build_and_run g++ "$TMP/p1c-ubsan" \
 printf '%s\n' 'P1C UBSan: PASS'
 
 python3 tests/test_pattern_phrase_p1c_source_contract.py
-git diff --check "$BASE_SHA"...HEAD
+git cat-file -e "${CANDIDATE_BASE_SHA}^{commit}"
+git diff --check "${CANDIDATE_BASE_SHA}"..HEAD
+git diff --check
 printf '%s\n' 'P1C scheduler source firewall: PASS'
 printf '%s\n' 'P1C Performance firewall: PASS'
 printf '%s\n' 'PATTERN/PHRASE P1C focused gate: PASS'
