@@ -168,7 +168,7 @@ def main() -> None:
         "drum hit toggle must clear accent so remove/re-add cannot resurrect hidden accent",
     )
     engine_toggle = between(
-        ENGINE, "void MiniAcid::toggleDrumStep(", "void MiniAcid::toggleDrumAccentStep")
+        ENGINE, "void MiniAcid::toggleDrumStep(", "void MiniAcid::setDrumAccentStep")
     require(
         "value.hit = !value.hit;" in engine_toggle
         and "value.accent = false;" in engine_toggle,
@@ -176,7 +176,8 @@ def main() -> None:
     )
     require(
         "onToggleAccent" not in HUB
-        and "toggleDrumAccentStep(stepCursor_)" not in HUB
+        and "toggleDrumAccentStep" not in HUB
+        and "toggleDrumAccentStep" not in ENGINE
         and HUB.count('UI::showToast("ACCENT: ADD HIT", 900);') >= 2
         and HUB.count("setDrumAccentStep(") >= 2,
         "Hub must use per-hit accent with empty-cell fail-closed semantics",
