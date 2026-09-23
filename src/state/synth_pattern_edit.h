@@ -95,6 +95,16 @@ inline void setSlide(SynthPattern& pattern, int stepIndex, bool slide) {
 constexpr uint8_t kDefaultRetrigCount = 2;
 constexpr uint8_t kMaxRetrigCount = 8;
 
+inline uint8_t clampRetrigCount(uint8_t raw) {
+  if (raw == 0) return 0;
+  return raw > kMaxRetrigCount ? kMaxRetrigCount : raw;
+}
+
+inline uint8_t effectiveRetrigCount(const SynthStep& step) {
+  if (step.fx != static_cast<uint8_t>(StepFx::Retrig)) return 0;
+  return clampRetrigCount(step.fxParam);
+}
+
 inline void cycleFx(SynthPattern& pattern, int stepIndex) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
   // Synth runtime currently has an audible Retrig consumer but no meaningful
