@@ -95,19 +95,29 @@ void testArticulationAndFx() {
 
   cycleFx(pattern, 2);
   assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
-  cycleFx(pattern, 2);
-  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Reverse));
-  cycleFx(pattern, 2);
-  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::None));
-
-  pattern.steps[2].fxParam = 255;
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+  adjustFxParam(pattern, 2, 1);
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount + 1);
+  pattern.steps[2].fxParam = kMaxRetrigCount;
   const SynthPattern high = pattern;
   adjustFxParam(pattern, 2, 1);
   assert(samePattern(pattern, high));
-  pattern.steps[2].fxParam = 0;
+  pattern.steps[2].fxParam = 1;
   const SynthPattern low = pattern;
   adjustFxParam(pattern, 2, -1);
   assert(samePattern(pattern, low));
+
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::None));
+  assert(pattern.steps[2].fxParam == 0);
+
+  // Legacy persisted Reverse is not a supported synth effect. Pressing F
+  // converts it into the audible Retrig contract instead of exposing RV again.
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Reverse);
+  pattern.steps[2].fxParam = 0;
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
 }
 
 void testRotation() {
