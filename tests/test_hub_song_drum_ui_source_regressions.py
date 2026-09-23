@@ -60,8 +60,8 @@ def main() -> None:
             and "smfTrackLevelState().levelFor" in queue,
             "MIDI level scaling must happen in the queue consumer before USB ownership")
 
-    require('{"KIK", "SNR", "HH1", "HH2", "PR1", "PR2", "RIM", "CLP"}' in drum,
-            "drum lanes must use equal three-glyph labels")
+    require('{"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"}' in drum,
+            "drum lanes must show the mute digit next to the semantic label")
     require("((step + 1) % 10)" in drum,
             "drum step headers must stay one glyph wide after step 9")
 
