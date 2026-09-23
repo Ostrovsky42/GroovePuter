@@ -587,28 +587,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       handled = true;
       break;
     case GROOVEPUTER_UP:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, 1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(-1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(-1);
+      handled = true;
       break;
     case GROOVEPUTER_DOWN:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, -1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(1);
+      handled = true;
       break;
     default:
       break;
@@ -812,10 +800,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
   if (key_f) {
-    ensureStepFocus();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
-    return true;
+    // Public PatternEditPage::handleEvent()/handleEventLegacy() own Synth FX
+    // mutation. Never let the retained unowned body mutate it directly.
+    return false;
   }
   if (key_c && ui_event.ctrl) {
     ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
