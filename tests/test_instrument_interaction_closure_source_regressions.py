@@ -10,6 +10,7 @@ GRID_H = (ROOT / "src/ui/components/drum_sequencer_grid.h").read_text(encoding="
 GRID = (ROOT / "src/ui/components/drum_sequencer_grid.cpp").read_text(encoding="utf-8")
 DRUM = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
+PATTERN_PAGE = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
 
@@ -60,6 +61,17 @@ def main() -> None:
     require('"F           Retrig on/off"' in HELP
             and '"Alt+Up/Dn   Retrig count 1..8"' in HELP,
             "on-device help must describe the actual retrig contract")
+    retrig_param_owner = between(
+        PATTERN_PAGE,
+        "// F and its parameter adjustment are one Pattern-owned edit contract.",
+        "// Global navigation, pattern rotation and meta note editing keep their",
+    )
+    require(
+        "commitPatternMutation" in retrig_param_owner
+        and "adjustFxParam(pattern, step, delta)" in retrig_param_owner
+        and "mini_acid_.adjust303StepFxParam" not in retrig_param_owner,
+        "Alt+Up/Down retrig count must use the same Pattern owner/runtime refresh as F",
+    )
 
     # Prove Retrig is not merely a label: projected SynthStep FX reaches the
     # current audio runtime and arms the existing retrigger state.
