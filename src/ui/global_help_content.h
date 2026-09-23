@@ -52,6 +52,8 @@ constexpr const char* kSynthALines[] = {
     "Ctrl+1/2    Bank A/B (direct)",
     "Alt+[ / ]   Pattern page",
     "Arrows      Move cursor",
+    "N           NOTE ENTRY on/off",
+    "C           Repeat last note in NOTE",
     "Shift/Ctrl+Arrows Select area",
     "A/Z         Note +/-",
     "S/X         Octave +/-",
