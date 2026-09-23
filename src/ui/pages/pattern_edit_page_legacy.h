@@ -1071,7 +1071,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     gfx.setTextColor(note >= 0 ? COLOR_BLACK : COLOR_WHITE);
     gfx.drawText(tx, ty, note_label);
   }
-  UI::drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK Alt[]:PAGE");
+  UI::drawStandardFooter(gfx, "ARROWS Q-I:PAT F:RTG", "C1/2:BANK Alt[]:PAGE");
 }
 
 void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
@@ -1251,13 +1251,13 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
     RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
 
-    uint8_t fx = pattern.steps[i].fx;
-    if (fx != 0) {
+    const uint8_t retrigCount =
+        GroovePuterUndo::PatternEdit::effectiveRetrigCount(pattern.steps[i]);
+    if (retrigCount != 0) {
         gfx.setTextColor(IGfxColor(NEON_YELLOW));
-        if (fx == (uint8_t)StepFx::Retrig) {
-            char buf[8]; snprintf(buf, sizeof(buf), "R%d", pattern.steps[i].fxParam);
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
-        }
+        char buf[8];
+        snprintf(buf, sizeof(buf), "R%u", static_cast<unsigned>(retrigCount));
+        gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
     }
   }
 
@@ -1455,8 +1455,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
   UI::drawStandardFooter(
       gfx,
-      "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "Q-I:PAT  B:Bank  Alt[]:PG");
+      "A/Z:Note F:RTG AltUD:#",
+      "Q-I:PAT B:Bank Alt[]:PG");
 #else
   drawMinimalStyle(gfx);
 #endif
