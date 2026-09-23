@@ -26,10 +26,16 @@ def main() -> None:
         "drum lanes must expose their matching global mute digits",
     )
     require(
-        'if (miniAcid.currentDrumEngineName() == "606")' in grid
+        'engine == "606"' in grid
         and 'if (voice == 6) return "9CYM";' in grid
         and 'if (voice == 7) return "0---";' in grid,
         "TR-606-specific lane meaning must remain explicit",
+    )
+    require(
+        'engine == "SP12"' in grid
+        and 'if (voice == 6) return "0RIM";' in grid
+        and 'if (voice == 7) return "9CLP";' in grid,
+        "SP12 lane labels must follow the swapped global 9/0 mute bindings",
     )
     require(
         'void drawStepNumbers(' in grid
