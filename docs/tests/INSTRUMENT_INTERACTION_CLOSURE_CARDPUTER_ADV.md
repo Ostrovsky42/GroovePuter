@@ -108,7 +108,9 @@ On Cardputer ADV the physical `; : , < . > / ?` positions are reserved for
 navigation arrows. Do not expect those punctuation glyphs as standalone
 Cardputer text input; SDL remains a separate keyboard backend.
 
-Also verify normal letter note-entry keys still enter notes.
+Also verify normal letter note-entry keys still enter notes. Press `C` after
+entering a pitch and verify it repeats that last pitch on the current step;
+`;/: ` are not the Cardputer repeat-last binding anymore.
 
 Record:
 
@@ -117,6 +119,7 @@ Record:
     NOTE_DOWN=
     NOTE_RIGHT=
     NOTE_ENTRY_LETTERS=
+    NOTE_REPEAT_LAST_C=
     SHIFT_ARROW_SHADOWS=
 
 ## 5. Synth Pattern Retrig
