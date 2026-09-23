@@ -141,7 +141,7 @@ Inside NOTE ENTRY, `G` remains note input.
 
 ## DRUMS
 
-Lane labels include their direct mute keys: `3KIK 4SNR 5HH1 6HH2 7PR1 8PR2 9RIM 0CLP`. Accent is shown on the individual hit cell; there is no separate aggregate ACC row.\n\n| Key | Action |
+Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6HH2 7PR1 8PR2 9RIM 0CLP`; SP12 follows its global swap as `0RIM 9CLP`. Accent is shown on the individual hit cell; there is no separate aggregate ACC row.\n\n| Key | Action |
 |---|---|
 | `Tab` | Sequencer / automation subpage |
 | `Q..I` | Pattern 1..8 |
