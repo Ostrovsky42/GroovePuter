@@ -16,6 +16,7 @@ on:
       - 'GroovePuter.ino'
       - 'src/ui/global_help_content.h'
       - 'tests/test_cardputer_input_edges.cpp'
+      - 'tests/test_step_note_entry_source_regressions.py'
       - 'tests/test_pattern_mutations_0_9_8_r3.cpp'
       - 'tests/test_instrument_interaction_closure_source_regressions.py'
       - 'tests/test_drum_grid_labels_source_regressions.py'
