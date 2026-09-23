@@ -104,6 +104,10 @@ PASS:
 
 Repeat with Left, Down and Right.
 
+On Cardputer ADV the physical `; : , < . > / ?` positions are reserved for
+navigation arrows. Do not expect those punctuation glyphs as standalone
+Cardputer text input; SDL remains a separate keyboard backend.
+
 Also verify normal letter note-entry keys still enter notes.
 
 Record:
@@ -113,6 +117,7 @@ Record:
     NOTE_DOWN=
     NOTE_RIGHT=
     NOTE_ENTRY_LETTERS=
+    SHIFT_ARROW_SHADOWS=
 
 ## 5. Synth Pattern Retrig
 
