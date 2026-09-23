@@ -83,7 +83,8 @@ def main() -> None:
     )
     require(
         "commitPatternMutation" in retrig_param_owner
-        and "adjustFxParam(pattern, step, delta)" in retrig_param_owner
+        and "PatternEdit::adjustFxParam(" in retrig_param_owner
+        and "pattern, step, delta" in retrig_param_owner
         and "mini_acid_.adjust303StepFxParam" not in retrig_param_owner,
         "Alt+Up/Down retrig count must use the same Pattern owner/runtime refresh as F",
     )
