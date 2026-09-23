@@ -126,7 +126,9 @@ inline void cycleFx(SynthPattern& pattern, int stepIndex) {
 inline void adjustFxParam(SynthPattern& pattern, int stepIndex, int delta) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
   if (step.fx != static_cast<uint8_t>(StepFx::Retrig)) return;
-  int value = static_cast<int>(step.fxParam) + delta;
+  int value = static_cast<int>(clampRetrigCount(step.fxParam));
+  if (value == 0) value = kDefaultRetrigCount;
+  value += delta;
   if (value < 1) value = 1;
   if (value > kMaxRetrigCount) value = kMaxRetrigCount;
   step.fxParam = static_cast<uint8_t>(value);
