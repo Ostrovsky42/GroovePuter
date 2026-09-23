@@ -137,7 +137,7 @@ def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
     require("PageStaging" not in paging and "g_stagingPage" not in paging,
             "pattern paging must not retain a second 22 KiB static staging buffer")
     require("Scene& staging = sceneTransactionScratch();" in paging and
-            "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+            "readAndValidatePage(const std::string& path, Scene& staging," in paging,
             "page validation must use the shared scene transaction scratch")
 
 

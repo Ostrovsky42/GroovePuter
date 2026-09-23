@@ -18,6 +18,15 @@ printf '%s\n' 'P1C current dev base verified: PASS'
 
 python3 tests/test_pattern_phrase_p0_source_contract.py
 
+P0_CXXFLAGS=(-std=c++17 -Wall -Wextra -Werror -I.)
+g++ "${P0_CXXFLAGS[@]}" tests/test_tee_midi_transport.cpp \
+  -o "$P0_BUILD/tee-midi-transport"
+"$P0_BUILD/tee-midi-transport"
+g++ "${P0_CXXFLAGS[@]}" tests/test_c9_tee_recovery.cpp \
+  -o "$P0_BUILD/tee-midi-recovery"
+"$P0_BUILD/tee-midi-recovery"
+printf '%s\n' 'P1C USB/DIN tee owner and recovery contract: PASS'
+
 SDL_DIR="$ROOT/platform_sdl"
 DEFAULT_SOURCES="$(make -C "$SDL_DIR" -pn 2>/dev/null | sed -n 's/^SOURCES := //p' | head -n 1)"
 if [[ -z "$DEFAULT_SOURCES" ]]; then

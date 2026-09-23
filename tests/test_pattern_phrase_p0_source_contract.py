@@ -5,7 +5,6 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGINE = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 SCENES = (ROOT / "scenes.h").read_text(encoding="utf-8")
 SYNTH_UI = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
-TEE = (ROOT / "src/midi/tee_midi_transport.h").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -72,11 +71,4 @@ require(
     and "case SynthTab::More:" in SYNTH_UI,
     "current NOTES/KNOBS/MORE Tab contract changed",
 )
-require(
-    "TeeMidiTransport" in TEE
-    and "single musical owner" in TEE
-    and "Both wires receive byte-identical" in TEE,
-    "post-#419 USB/DIN tee ownership contract changed",
-)
-
 print("P0 source contract: owner-aware Song cleanup barrier=RATIFIED")
