@@ -1270,8 +1270,6 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
         if (fx == (uint8_t)StepFx::Retrig) {
             char buf[8]; snprintf(buf, sizeof(buf), "R%d", pattern.steps[i].fxParam);
             gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
-        } else if (fx == (uint8_t)StepFx::Reverse) {
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,"RV")/2, dotY - 8, "RV");
         }
     }
   }
@@ -1280,7 +1278,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 5. Footer (consistent with header)
   UI::drawStandardFooter(gfx,
-                     "A/Z:Nt F:FX Alt+Arw:Prm",
+                     "A/Z:Nt F:RTG AltUD:#",
                      "Q-I:PAT B:Bank Alt[]:PG");
 
   // NO scanlines - clean and readable
