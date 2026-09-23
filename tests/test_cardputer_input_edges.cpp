@@ -60,29 +60,25 @@ int main() {
 
   struct ArrowShadowCase {
     uint8_t hid;
-    char punctuation;
+    char plain;
+    char shifted;
   };
   const ArrowShadowCase arrowShadows[] = {
-      {kCardputerArrowUpHid, ';'},
-      {kCardputerArrowLeftHid, ','},
-      {kCardputerArrowDownHid, '.'},
-      {kCardputerArrowRightHid, '/'},
+      {kCardputerArrowUpHid, ';', ':'},
+      {kCardputerArrowLeftHid, ',', '<'},
+      {kCardputerArrowDownHid, '.', '>'},
+      {kCardputerArrowRightHid, '/', '?'},
   };
   for (const auto& shadow : arrowShadows) {
-    FakeKeysState duplicateArrow{};
-    duplicateArrow.hid_keys = {shadow.hid};
-    duplicateArrow.word = {shadow.punctuation};
-    char duplicateArrowValue = duplicateArrow.word.front();
-    assert(!shouldDispatchWord(
-        duplicateArrow, empty, true, duplicateArrowValue));
-    assert(duplicateArrowValue == shadow.punctuation);
-
-    FakeKeysState punctuationOnly{};
-    punctuationOnly.word = {shadow.punctuation};
-    char punctuationOnlyValue = punctuationOnly.word.front();
-    assert(shouldDispatchWord(
-        punctuationOnly, empty, true, punctuationOnlyValue));
-    assert(punctuationOnlyValue == shadow.punctuation);
+    for (const char wordValue : {shadow.plain, shadow.shifted}) {
+      FakeKeysState physicalArrow{};
+      physicalArrow.hid_keys = {shadow.hid};
+      physicalArrow.word = {wordValue};
+      char dispatchedWord = physicalArrow.word.front();
+      assert(!shouldDispatchWord(
+          physicalArrow, empty, true, dispatchedWord));
+      assert(dispatchedWord == wordValue);
+    }
   }
 
   char heldWordTabValue = wordOnlyTab.word.front();
