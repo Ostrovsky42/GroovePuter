@@ -97,6 +97,11 @@ def main() -> None:
         and "retrigSpanSamples" in trigger,
         "Rn retriggers must be scheduled inside the active event gate",
     )
+    require(
+        "std::clamp(static_cast<int>(event.fxParam), 1, 8)" in trigger
+        and "retrig.countRemaining = retrigCount;" in trigger,
+        "legacy persisted retrig values must be bounded to R1..R8 at execution",
+    )
 
     # Drum grid must fit all eight lanes and map visible names to global mute
     # digits. Accent is an individual hit property, not an aggregate ACC row.
@@ -108,11 +113,22 @@ def main() -> None:
     require(
         'engine == "SP12"' in GRID
         and 'return "0RIM";' in GRID
-        and 'return "9CLP";' in GRID
-        and 'currentDrumEngineName() == "SP12"' in SKETCH
-        and "toggleMuteClap()" in SKETCH
-        and "toggleMuteRim()" in SKETCH,
-        "SP12 grid labels must mirror its swapped 9/0 global mute bindings",
+        and 'return "9CLP";' in GRID,
+        "SP12 grid labels must expose the swapped 9/0 mute bindings",
+    )
+    mute9 = between(SKETCH, "} else if (c == '9') {", "} else if (c == '0') {")
+    mute0 = between(SKETCH, "} else if (c == '0') {", "} else if (c == 'k' || c == 'K') {")
+    require(
+        'currentDrumEngineName() == "SP12"' in mute9
+        and "toggleMuteClap()" in mute9
+        and "toggleMuteRim()" in mute9,
+        "global key 9 must map SP12->Clap and non-SP12->Rim",
+    )
+    require(
+        'currentDrumEngineName() == "SP12"' in mute0
+        and "toggleMuteRim()" in mute0
+        and "toggleMuteClap()" in mute0,
+        "global key 0 must map SP12->Rim and non-SP12->Clap",
     )
     require("drawAccentLabel" not in GRID and "onToggleAccent" not in GRID_H,
             "obsolete aggregate ACC-row UI must stay removed")
