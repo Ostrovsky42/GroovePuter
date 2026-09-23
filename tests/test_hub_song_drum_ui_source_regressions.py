@@ -37,6 +37,15 @@ def main() -> None:
             "single-cell copy must retain the exact composite pattern reference")
     require("mini_acid_.setSongPattern(row, track, patternIndex);" in song,
             "single-cell paste must restore the exact composite pattern reference")
+    require("ui_event.ctrl && ui_event.alt" in song
+            and "nav == GROOVEPUTER_UP" in song
+            and "nav == GROOVEPUTER_DOWN" in song
+            and 'showToast("Top", 500)' in song
+            and 'showToast("End", 500)' in song,
+            "Song top/end must use reachable Ctrl+Alt+Up/Down on Cardputer")
+    require("ui_event.key == '<'" not in song
+            and "ui_event.key == '>'" not in song,
+            "Song must not retain unreachable Alt punctuation top/end bindings")
 
     require("sceneManager_.setTrackVolume((int)id, volume);" in engine,
             "internal Hub volume must mutate scene-owned track volume state")
@@ -64,6 +73,16 @@ def main() -> None:
             "drum lanes must show the mute digit next to the semantic label")
     require("((step + 1) % 10)" in drum,
             "drum step headers must stay one glyph wide after step 9")
+    require("cb.onToggle = [this](int step, int voice)" in hub
+            and "toggleDrumStep(voice, step)" in hub,
+            "Hub must honor Drum grid callback order (step, voice)")
+    require("toggleDrumAccentStep" not in hub
+            and hub.count('UI::showToast("ACCENT: ADD HIT", 900);') >= 2
+            and hub.count("setDrumAccentStep(") >= 2,
+            "Hub Drum accent must be per-hit and fail closed on empty cells")
+    require("value.hit = !value.hit;" in engine
+            and "value.accent = false;" in engine,
+            "engine Drum topology toggle must clear hidden accent")
 
     print("Hub/Song/drum UI source regressions: OK")
 
