@@ -156,7 +156,7 @@ P             shared P1/P2/P3 selector
 ```
 
 Pattern navigation remains `Q..I`, bank A/B and pattern page selection. The lane
-labels include the matching global mute keys (`3KIK .. 0CLP`). `A` toggles accent
+labels include the matching global mute keys (`3KIK .. 0CLP`; SP12 uses `0RIM / 9CLP`). `A` toggles accent
 only on the selected existing hit, and the accent marker is drawn on that hit rather
 than in a separate aggregate ACC row.
 
