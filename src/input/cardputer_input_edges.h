@@ -71,18 +71,22 @@ inline bool shouldDispatchWord(const KeysState& current,
                                WordChar& value) {
   const WordChar rawValue = value;
 
-  // Cardputer arrow legends occupy punctuation keys. Some M5Cardputer
-  // versions report one physical arrow twice: once as the canonical HID arrow
-  // and once through KeysState::word as its punctuation shadow. Never dispatch
-  // that shadow as a second musical command (e.g. UP + ';' in NOTE ENTRY).
+  // Cardputer ADV reserves these four physical punctuation positions as
+  // navigation arrows. The same key may also appear in KeysState::word, with
+  // either its plain or Shift glyph. HID is the canonical hardware event;
+  // suppress every word shadow from that same physical key.
   uint8_t shadowArrowHid = 0;
-  if (rawValue == static_cast<WordChar>(';')) {
+  if (rawValue == static_cast<WordChar>(';') ||
+      rawValue == static_cast<WordChar>(':')) {
     shadowArrowHid = kCardputerArrowUpHid;
-  } else if (rawValue == static_cast<WordChar>(',')) {
+  } else if (rawValue == static_cast<WordChar>(',') ||
+             rawValue == static_cast<WordChar>('<')) {
     shadowArrowHid = kCardputerArrowLeftHid;
-  } else if (rawValue == static_cast<WordChar>('.')) {
+  } else if (rawValue == static_cast<WordChar>('.') ||
+             rawValue == static_cast<WordChar>('>')) {
     shadowArrowHid = kCardputerArrowDownHid;
-  } else if (rawValue == static_cast<WordChar>('/')) {
+  } else if (rawValue == static_cast<WordChar>('/') ||
+             rawValue == static_cast<WordChar>('?')) {
     shadowArrowHid = kCardputerArrowRightHid;
   }
   if (shadowArrowHid != 0 && containsHid(current, shadowArrowHid)) {
