@@ -144,7 +144,7 @@ def main() -> None:
     public_generate = between(
         CPP,
         "// Outside NOTE ENTRY, plain G rerolls only this physical synth voice",
-        "// Global navigation, pattern rotation/FX editing")
+        "if (!note_entry_mode_ && ui_event.alt &&")
     require("regenerateSynthWithQuantizedCommit" in public_generate and
             "PendingNextBar" in public_generate,
             "R3 must preserve quantized generation / next-bar activation behavior")
