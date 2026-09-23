@@ -1569,18 +1569,18 @@ void MiniAcid::cycle303StepFx(int voiceIndex, int stepIndex) {
   SynthPattern& pattern = editSynthPattern(idx);
   SynthStep& value = pattern.steps[step];
 
-  if (value.fx == static_cast<uint8_t>(StepFx::Retrig)) {
+  if (value.fx == static_cast<uint8_t>(StepFx::Retrig) &&
+      value.fxParam >= 1 && value.fxParam <= kMaxRetrigCount) {
     value.fx = static_cast<uint8_t>(StepFx::None);
     value.fxParam = 0;
     return;
   }
 
   // Reverse remains valid for sampled drums, but oscillator synth playback has
-  // no defined Reverse consumer. The synth edit API exposes audible Retrig only.
+  // no defined Reverse consumer. Dead/legacy synth FX states, including R0,
+  // normalize to an audible bounded Retrig on the first F press.
   value.fx = static_cast<uint8_t>(StepFx::Retrig);
-  if (value.fxParam < 1 || value.fxParam > kMaxRetrigCount) {
-    value.fxParam = kDefaultRetrigCount;
-  }
+  value.fxParam = kDefaultRetrigCount;
 }
 
 void MiniAcid::adjust303StepFxParam(int voiceIndex, int stepIndex, int delta) {
