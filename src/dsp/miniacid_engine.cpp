@@ -5,6 +5,7 @@
 #include "src/state/undo_receipts.h"
 #include "src/state/material_version.h"
 #include "src/state/melody_promotion.h"
+#include "src/state/synth_pattern_edit.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -882,22 +883,6 @@ const bool* MiniAcid::patternClapSteps() const {
   refreshDrumCache(kDrumClapVoice);
   return drumHitCache_[kDrumClapVoice];
 }
-const bool* MiniAcid::patternDrumAccentSteps() const {
-  int pat = songPatternIndexForTrack(SongTrack::Drums);
-  const DrumPatternSet& set = pat >= 0 ? sceneManager_.getDrumPatternSet(pat)
-                                       : kEmptyDrumPatternSet;
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    bool accent = false;
-    for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-      if (set.voices[v].steps[i].accent) {
-        accent = true;
-        break;
-      }
-    }
-    drumStepAccentCache_[i] = accent;
-  }
-  return drumStepAccentCache_;
-}
 const bool* MiniAcid::patternKickAccentSteps() const {
   refreshDrumCache(kDrumKickVoice);
   return drumAccentCache_[kDrumKickVoice];
@@ -1531,7 +1516,9 @@ void MiniAcid::toggleDrumStep(int voiceIndex, int stepIndex) {
   if (step < 0) step = 0;
   if (step >= DrumPattern::kSteps) step = DrumPattern::kSteps - 1;
   DrumPattern& pattern = editDrumPattern(voice);
-  pattern.steps[step].hit = !pattern.steps[step].hit;
+  DrumStep& value = pattern.steps[step];
+  value.hit = !value.hit;
+  value.accent = false;
 }
 
 void MiniAcid::toggleDrumAccentStep(int stepIndex) {
@@ -1562,8 +1549,8 @@ void MiniAcid::setDrumAccentStep(int voiceIndex, int stepIndex, bool accent) {
 }
 
 void MiniAcid::cycle303StepFx(int voiceIndex, int stepIndex) {
-  constexpr uint8_t kDefaultRetrigCount = 2;
-  constexpr uint8_t kMaxRetrigCount = 8;
+  using GroovePuterUndo::PatternEdit::kDefaultRetrigCount;
+  using GroovePuterUndo::PatternEdit::kMaxRetrigCount;
   int idx = clamp303Voice(voiceIndex);
   int step = clamp303Step(stepIndex);
   SynthPattern& pattern = editSynthPattern(idx);
@@ -1584,7 +1571,7 @@ void MiniAcid::cycle303StepFx(int voiceIndex, int stepIndex) {
 }
 
 void MiniAcid::adjust303StepFxParam(int voiceIndex, int stepIndex, int delta) {
-  constexpr uint8_t kMaxRetrigCount = 8;
+  using GroovePuterUndo::PatternEdit::kMaxRetrigCount;
   int idx = clamp303Voice(voiceIndex);
   int step = clamp303Step(stepIndex);
   SynthPattern& pattern = editSynthPattern(idx);
@@ -3894,8 +3881,8 @@ void MiniAcid::triggerSynthStep_(
     // Legacy projects could persist the old 0..255 parameter range. Execution
     // follows the new bounded musician-facing contract even before the user
     // edits that step.
-    const int retrigCount =
-        std::clamp(static_cast<int>(event.fxParam), 1, 8);
+    const int retrigCount = static_cast<int>(
+        GroovePuterUndo::PatternEdit::clampRetrigCount(event.fxParam));
     retrig.countRemaining = retrigCount;
 
     // Rn means N audible retriggers of this onset. RuntimeSynthPlaybackState
