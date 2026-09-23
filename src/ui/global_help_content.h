@@ -269,7 +269,7 @@ constexpr const char* kPerformLines[] = {
     "ASDFGHJKL   Lower note manual",
     "N           NOTE mode ON/OFF",
     "\\           Cycle output target",
-    ", / .       Previous/next scale",
+    "Scale       KEY tools row + L/R",
     "- / =       Octave down/up",
     "X           Panic live target",
     "Tab         PERFORMANCE TOOLS / next",
