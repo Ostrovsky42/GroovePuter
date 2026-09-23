@@ -469,7 +469,6 @@ public:
   void toggle303AccentStep(int voiceIndex, int stepIndex);
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
-  void toggleDrumAccentStep(int stepIndex);
   void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
 
   void cycle303StepFx(int voiceIndex, int stepIndex);
