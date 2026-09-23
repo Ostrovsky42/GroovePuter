@@ -20,6 +20,11 @@ python3 tests/test_hub_song_drum_ui_source_regressions.py
   -o "${BUILD_DIR}/test_cardputer_input_edges"
 "${BUILD_DIR}/test_cardputer_input_edges"
 
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  tests/test_song_input_policy.cpp \
+  -o "${BUILD_DIR}/test_song_input_policy"
+"${BUILD_DIR}/test_song_input_policy"
+
 "${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
   tests/test_pattern_mutations_0_9_8_r3.cpp \
   -o "${BUILD_DIR}/test_pattern_mutations"
