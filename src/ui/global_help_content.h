@@ -83,7 +83,7 @@ constexpr const char* kSynthBLines[] = {
     "Alt+Arrows  Rotate/parameter edit",
     "Alt/Ctrl+A  Accent",
     "Alt/Ctrl+S  Slide",
-    "F           Cycle step FX",
+    "F           Retrig on/off",
     "R/Bksp/Del  Clear step (REST)",
     "Alt+Bksp    Clear whole pattern",
     "G           Randomize pattern",
