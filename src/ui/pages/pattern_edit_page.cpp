@@ -743,8 +743,21 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Global navigation, pattern rotation/FX editing and meta note editing keep
-  // their existing behavior. Only unmodified/selection arrows are grid-owned.
+  // F and its parameter adjustment are one Pattern-owned edit contract.
+  // Cardputer arrows may also carry meta=true because their legends live on
+  // Fn-modified punctuation keys; Alt remains the explicit FX modifier.
+  if (!note_entry_mode_ && ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    ensureStepFocus();
+    const int step = activePatternStep();
+    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
+    commitPatternMutation(
+        [&](SynthPattern& pattern) { adjustFxParam(pattern, step, delta); });
+    return true;
+  }
+
+  // Global navigation, pattern rotation and meta note editing keep their
+  // existing behavior. Only unmodified/selection arrows are grid-owned.
   if (UIInput::isGlobalNav(ui_event)) {
     return handleEventLegacy(ui_event);
   }
