@@ -1,3 +1,5 @@
+#include "song_input_policy.h"
+
 namespace {
 char normalizedSongR4Key(const UIEvent& event) {
   char key = event.key;
@@ -239,8 +241,18 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   }
 
   const int nav = UIInput::navCode(ui_event);
-  if (ui_event.alt && (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) &&
-      !cursorOnPlayheadLabel()) {
+  const bool verticalArrow =
+      nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
+  const auto altVerticalRoute =
+      GroovePuterSongInput::classifyAltVerticalRoute(
+          ui_event.alt, ui_event.ctrl, verticalArrow,
+          cursorOnPlayheadLabel());
+  if (altVerticalRoute ==
+      GroovePuterSongInput::AltVerticalRoute::DelegateLegacy) {
+    return handleEventLegacyUnowned(ui_event);
+  }
+  if (altVerticalRoute ==
+      GroovePuterSongInput::AltVerticalRoute::PatternAdjust) {
     bool valid = false;
     const SongTrack track = trackForColumn(cursorTrack(), valid);
     if (!valid) return false;
