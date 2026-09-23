@@ -127,16 +127,18 @@ Test Synth A first:
 2. Focus the sounding step.
 3. Press F once.
 
-PASS:
+PASS in every visual theme:
 
-- marker becomes R2, never R0 or RV;
+- toast says `RETRIG R2`, never `R0` or `RV`;
+- Retro may additionally draw an `R2` step marker;
 - the selected onset is audibly retriggered.
 
 4. Press Alt+Up repeatedly.
 
 PASS:
 
-- marker increases up to R8;
+- toast increases up to `RETRIG R8`;
+- Retro marker, when visible, matches the effective toast value;
 - retrigger density audibly increases;
 - value never exceeds R8.
 
@@ -144,8 +146,9 @@ PASS:
 
 PASS:
 
-- value stops at R1;
-- it never reaches R0 while Retrig is active.
+- toast stops at `RETRIG R1`;
+- it never reaches R0 while Retrig is active;
+- Alt+Up/Down on a step without Retrig says `RETRIG OFF` and does not edit pitch.
 
 6. Press F again.
 
