@@ -199,14 +199,13 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
   callbacks.onToggleAccent = [this](int step) {
     focusGrid();
     drum_step_cursor_ = step;
+    const int voice = activeDrumVoice();
+    const DrumPatternSet& current =
+        mini_acid_.sceneManager().getCurrentDrumPattern();
+    if (!current.voices[voice].steps[step].hit) return;
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      pattern.voices[voice].steps[step].accent =
+          !pattern.voices[voice].steps[step].accent;
     });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
@@ -748,15 +747,17 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   if (key_a) {
     focusGrid();
-    int step = activeDrumStep();
+    const int step = activeDrumStep();
+    const int voice = activeDrumVoice();
+    const DrumPatternSet& current =
+        mini_acid_.sceneManager().getCurrentDrumPattern();
+    if (!current.voices[voice].steps[step].hit) {
+      UI::showToast("ACCENT: ADD HIT", 800);
+      return true;
+    }
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      pattern.voices[voice].steps[step].accent =
+          !pattern.voices[voice].steps[step].accent;
     });
     return true;
   }
