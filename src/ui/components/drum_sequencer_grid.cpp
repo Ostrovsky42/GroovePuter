@@ -43,9 +43,17 @@ const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
   static const char* const kDefault[NUM_DRUM_VOICES] =
       {"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"};
   if (voice < 0 || voice >= NUM_DRUM_VOICES) return "----";
-  if (miniAcid.currentDrumEngineName() == "606") {
+  const std::string& engine = miniAcid.currentDrumEngineName();
+  if (engine == "606") {
     if (voice == 6) return "9CYM";
     if (voice == 7) return "0---";
+  }
+  // The global Cardputer mute map deliberately swaps the last two digits for
+  // SP12: 9 owns Clap and 0 owns Rim. The grid label must describe the actual
+  // key binding, not the default logical voice order.
+  if (engine == "SP12") {
+    if (voice == 6) return "0RIM";
+    if (voice == 7) return "9CLP";
   }
   return kDefault[voice];
 }
