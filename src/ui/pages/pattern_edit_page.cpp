@@ -695,7 +695,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
 
-    if (key == ';' || key == ':') {
+    // Cardputer reserves ;/: as the physical Up-arrow position. C is the
+    // reachable NOTE ENTRY command for copying the last entered pitch to the
+    // current step; Ctrl+C remains the normal clipboard command outside this
+    // unmodified local branch.
+    if (lowerKey == 'c') {
       if (last_entered_note_ >= 0) {
         const int step = activePatternStep();
         writeNoteEntryStep(step, last_entered_note_, false);
@@ -713,7 +717,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
     // Any other local command ends hold inference so a later press cannot be
     // mistaken for a held-key repeat. The last entered pitch is intentionally
-    // retained so ';' can still recall it after navigation.
+    // retained so C can still recall it after navigation.
     resetNoteHoldTracking();
   }
 
