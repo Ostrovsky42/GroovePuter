@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -647,9 +648,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Cardputer ADV emits the physical arrow legends through Fn-modified
-  // punctuation HID codes, so those events carry meta=true. NOTE ENTRY owns
-  // arrow scancodes explicitly before the legacy/meta router can reject them.
+  // Cardputer ADV reserves four punctuation-key positions as physical arrows.
+  // Fn may additionally set meta=true, but HID navigation is authoritative in
+  // either case. NOTE ENTRY owns the arrow scancode before legacy/meta routing.
   if (note_entry_mode_ && gridArrow && !ui_event.alt && !ui_event.ctrl) {
     focus_ = Focus::Steps;
     if (has_selection_) clearSelection();
