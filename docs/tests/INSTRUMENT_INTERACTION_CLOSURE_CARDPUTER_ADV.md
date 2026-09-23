@@ -110,7 +110,7 @@ Cardputer text input; SDL remains a separate keyboard backend.
 
 Also verify normal letter note-entry keys still enter notes. Press `C` after
 entering a pitch and verify it repeats that last pitch on the current step;
-`;/: ` are not the Cardputer repeat-last binding anymore.
+`;/:` are not the Cardputer repeat-last binding anymore.
 
 Record:
 
