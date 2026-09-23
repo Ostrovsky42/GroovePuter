@@ -196,18 +196,6 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
           !pattern.voices[voice].steps[step].hit;
     });
   };
-  callbacks.onToggleAccent = [this](int step) {
-    focusGrid();
-    drum_step_cursor_ = step;
-    const int voice = activeDrumVoice();
-    const DrumPatternSet& current =
-        mini_acid_.sceneManager().getCurrentDrumPattern();
-    if (!current.voices[voice].steps[step].hit) return;
-    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].accent =
-          !pattern.voices[voice].steps[step].accent;
-    });
-  };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
   callbacks.cursorVoice = [this]() { return activeDrumVoice(); };
   callbacks.gridFocused = [this]() { return !patternRowFocused() && !bankRowFocused(); };
