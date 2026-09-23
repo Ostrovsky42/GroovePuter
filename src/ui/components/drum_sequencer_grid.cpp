@@ -289,18 +289,13 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   if (layout.cell_w < 1) layout.cell_w = 1;
 
   // Accent is a property of an individual hit, rendered inside its cell.
-  // Removing the old aggregate ACC row gives all eight voices the full height
-  // below the step header and keeps the last lane visible on 240x135.
-  layout.accent_h = 0;
-  layout.accent_gap = 0;
-
+  // The full height below the step header belongs to the eight drum lanes.
   layout.grid_x = bounds.x + labelWidth;
   const int available_h = std::max(1, bounds.h - kStepHeaderHeight);
   layout.stripe_h = available_h / NUM_DRUM_VOICES;
   if (layout.stripe_h < 1) layout.stripe_h = 1;
 
-  layout.accent_y = bounds.y + kStepHeaderHeight;
-  layout.grid_y = layout.accent_y;
+  layout.grid_y = bounds.y + kStepHeaderHeight;
 
   layout.grid_w = layout.cell_w * SEQ_STEPS;
   layout.grid_h = layout.stripe_h * NUM_DRUM_VOICES;
@@ -308,7 +303,6 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   layout.grid_right = layout.grid_x + layout.grid_w;
   layout.grid_bottom = layout.grid_y + layout.grid_h;
 
-  layout.accent_bottom = layout.accent_y + layout.accent_h;
 
   return true;
 }
