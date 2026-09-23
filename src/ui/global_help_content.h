@@ -175,7 +175,7 @@ constexpr const char* kSongLines[] = {
     "Ctrl+Alt+W/S Jump 32 rows",
     "Alt+Q/E/R/T Save markers 1..4",
     "Ctrl+Alt+Q/E/R/T Jump markers",
-    "Alt+,/.     Song top/end",
+    "Ctrl+Alt+U/D Song top/end",
     "Bksp/Tab    Clear cell",
     "Alt+Bksp    Clear full Song",
 };
