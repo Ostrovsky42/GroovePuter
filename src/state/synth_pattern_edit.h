@@ -92,24 +92,32 @@ inline void setSlide(SynthPattern& pattern, int stepIndex, bool slide) {
   pattern.steps[clampStep(stepIndex)].slide = slide;
 }
 
+constexpr uint8_t kDefaultRetrigCount = 2;
+constexpr uint8_t kMaxRetrigCount = 8;
+
 inline void cycleFx(SynthPattern& pattern, int stepIndex) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
-  uint8_t current = step.fx;
-  if (current == static_cast<uint8_t>(StepFx::None)) {
-    current = static_cast<uint8_t>(StepFx::Retrig);
-  } else if (current == static_cast<uint8_t>(StepFx::Retrig)) {
-    current = static_cast<uint8_t>(StepFx::Reverse);
-  } else {
-    current = static_cast<uint8_t>(StepFx::None);
+  // Synth runtime currently has an audible Retrig consumer but no meaningful
+  // oscillator-level Reverse consumer. Keep F musician-facing: OFF <-> RETRIG.
+  // A freshly enabled retrig must never be R0 (inaudible).
+  if (step.fx == static_cast<uint8_t>(StepFx::Retrig)) {
+    step.fx = static_cast<uint8_t>(StepFx::None);
+    step.fxParam = 0;
+    return;
   }
-  step.fx = current;
+
+  step.fx = static_cast<uint8_t>(StepFx::Retrig);
+  if (step.fxParam < 1 || step.fxParam > kMaxRetrigCount) {
+    step.fxParam = kDefaultRetrigCount;
+  }
 }
 
 inline void adjustFxParam(SynthPattern& pattern, int stepIndex, int delta) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
+  if (step.fx != static_cast<uint8_t>(StepFx::Retrig)) return;
   int value = static_cast<int>(step.fxParam) + delta;
-  if (value < 0) value = 0;
-  if (value > 255) value = 255;
+  if (value < 1) value = 1;
+  if (value > kMaxRetrigCount) value = kMaxRetrigCount;
   step.fxParam = static_cast<uint8_t>(value);
 }
 
