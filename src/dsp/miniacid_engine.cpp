@@ -1562,26 +1562,39 @@ void MiniAcid::setDrumAccentStep(int voiceIndex, int stepIndex, bool accent) {
 }
 
 void MiniAcid::cycle303StepFx(int voiceIndex, int stepIndex) {
+  constexpr uint8_t kDefaultRetrigCount = 2;
+  constexpr uint8_t kMaxRetrigCount = 8;
   int idx = clamp303Voice(voiceIndex);
   int step = clamp303Step(stepIndex);
   SynthPattern& pattern = editSynthPattern(idx);
-  uint8_t current = pattern.steps[step].fx;
-  // Cycle: None -> Retrig -> Reverse -> None
-  if (current == (uint8_t)StepFx::None) current = (uint8_t)StepFx::Retrig;
-  else if (current == (uint8_t)StepFx::Retrig) current = (uint8_t)StepFx::Reverse;
-  else current = (uint8_t)StepFx::None;
-  pattern.steps[step].fx = current;
+  SynthStep& value = pattern.steps[step];
+
+  if (value.fx == static_cast<uint8_t>(StepFx::Retrig)) {
+    value.fx = static_cast<uint8_t>(StepFx::None);
+    value.fxParam = 0;
+    return;
+  }
+
+  // Reverse remains valid for sampled drums, but oscillator synth playback has
+  // no defined Reverse consumer. The synth edit API exposes audible Retrig only.
+  value.fx = static_cast<uint8_t>(StepFx::Retrig);
+  if (value.fxParam < 1 || value.fxParam > kMaxRetrigCount) {
+    value.fxParam = kDefaultRetrigCount;
+  }
 }
 
 void MiniAcid::adjust303StepFxParam(int voiceIndex, int stepIndex, int delta) {
+  constexpr uint8_t kMaxRetrigCount = 8;
   int idx = clamp303Voice(voiceIndex);
   int step = clamp303Step(stepIndex);
   SynthPattern& pattern = editSynthPattern(idx);
-  int val = pattern.steps[step].fxParam;
-  val += delta;
-  if (val < 0) val = 0;
-  if (val > 255) val = 255;
-  pattern.steps[step].fxParam = (uint8_t)val;
+  SynthStep& value = pattern.steps[step];
+  if (value.fx != static_cast<uint8_t>(StepFx::Retrig)) return;
+
+  int count = static_cast<int>(value.fxParam) + delta;
+  if (count < 1) count = 1;
+  if (count > kMaxRetrigCount) count = kMaxRetrigCount;
+  value.fxParam = static_cast<uint8_t>(count);
 }
 
 TB303Voice* MiniAcid::tb303Voice(int voiceIndex) {
