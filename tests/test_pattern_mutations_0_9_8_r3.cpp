@@ -111,6 +111,14 @@ void testArticulationAndFx() {
   assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::None));
   assert(pattern.steps[2].fxParam == 0);
 
+  // Legacy persisted R0 is a dead synth state. First F normalizes it to the
+  // audible bounded contract rather than spending a press on another no-op.
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Retrig);
+  pattern.steps[2].fxParam = 0;
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+
   // Legacy persisted Reverse is not a supported synth effect. Pressing F
   // converts it into the audible Retrig contract instead of exposing RV again.
   pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Reverse);
