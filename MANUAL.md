@@ -225,7 +225,9 @@ ownership.
 ## 8. PERFORM and PERFORMANCE TOOLS
 
 MIDI KEYBOARD provides the live scale-aware QWERTY performance surface. `Tab` opens
-PERFORMANCE TOOLS:
+PERFORMANCE TOOLS. On Cardputer ADV the physical comma/period positions are
+navigation arrows, so change SCALE from the KEY tools row with `Left/Right`;
+the `, / .` shortcuts remain SDL/external-keyboard compatibility only:
 
 | Key | Tool |
 |---|---|
