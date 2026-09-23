@@ -41,6 +41,23 @@ def main() -> None:
     require("modifierActivated" in helper and "modifierReleased" in helper,
             "modifier edges must be detected independently of key count")
 
+    for plain, shifted, hid_name, hid_hex, scan in (
+        (";", ":", "kCardputerArrowUpHid", "0x33", "GROOVEPUTER_UP"),
+        (",", "<", "kCardputerArrowLeftHid", "0x36", "GROOVEPUTER_LEFT"),
+        (".", ">", "kCardputerArrowDownHid", "0x37", "GROOVEPUTER_DOWN"),
+        ("/", "?", "kCardputerArrowRightHid", "0x38", "GROOVEPUTER_RIGHT"),
+    ):
+        require(
+            f"rawValue == static_cast<WordChar>('{plain}')" in helper
+            and f"rawValue == static_cast<WordChar>('{shifted}')" in helper
+            and f"shadowArrowHid = {hid_name};" in helper,
+            f"Cardputer arrow key must suppress both {plain} and {shifted} word shadows",
+        )
+        require(
+            f"hid == {hid_hex}" in sketch and f"evt.scancode = {scan};" in sketch,
+            f"Cardputer arrow HID {hid_hex} must remain canonical navigation",
+        )
+
     require("isCardputerArrowHid" in helper and
             "mayArmRepeatForPhysicalKey" in helper,
             "physical Cardputer HID+word arrows need centralized repeat arming")
