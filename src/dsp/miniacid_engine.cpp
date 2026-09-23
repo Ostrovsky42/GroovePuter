@@ -3891,7 +3891,12 @@ void MiniAcid::triggerSynthStep_(
   retrig.active = false;
   patternRetrigEvent_[synthIdx] = event;
   if (event.fx == static_cast<uint8_t>(StepFx::Retrig) && event.fxParam > 0) {
-    retrig.countRemaining = event.fxParam;
+    // Legacy projects could persist the old 0..255 parameter range. Execution
+    // follows the new bounded musician-facing contract even before the user
+    // edits that step.
+    const int retrigCount =
+        std::clamp(static_cast<int>(event.fxParam), 1, 8);
+    retrig.countRemaining = retrigCount;
 
     // Rn means N audible retriggers of this onset. RuntimeSynthPlaybackState
     // correctly refuses to retrigger a note after its gate has released, so
@@ -3907,7 +3912,7 @@ void MiniAcid::triggerSynthStep_(
     const int retrigSpanSamples =
         std::max(1, static_cast<int>(samplesPerStep_ * gateFraction));
     retrig.interval =
-        std::max(1, retrigSpanSamples / (static_cast<int>(event.fxParam) + 1));
+        std::max(1, retrigSpanSamples / (retrigCount + 1));
     retrig.counter = retrig.interval;
     retrig.active = true;
   }
