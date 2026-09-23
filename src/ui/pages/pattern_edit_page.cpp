@@ -315,17 +315,6 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     }
   }
 
-  if (ui_event.alt &&
-      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
-    ensureStepFocus();
-    const int step = activePatternStep();
-    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
-    commitPatternMutation([&](SynthPattern& pattern) {
-      adjustFxParam(pattern, step, delta);
-    });
-    return true;
-  }
-
   const bool keyA = lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A;
   const bool keyS = lowerKey == 's' || ui_event.scancode == GROOVEPUTER_S;
   const bool keyZ = lowerKey == 'z' || ui_event.scancode == GROOVEPUTER_Z;
@@ -475,8 +464,24 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   if (keyF) {
     ensureStepFocus();
     const int step = activePatternStep();
-    commitPatternMutation(
-        [&](SynthPattern& pattern) { cycleFx(pattern, step); });
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          cycleFx(pattern, step);
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (retrigCount == 0) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
     return true;
   }
 
@@ -743,16 +748,40 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // F and its parameter adjustment are one Pattern-owned edit contract.
-  // Cardputer arrows may also carry meta=true because their legends live on
-  // Fn-modified punctuation keys; Alt remains the explicit FX modifier.
+  // On Cardputer the physical punctuation/arrow keys can carry meta=true
+  // through Fn. Resolve Alt+vertical-arrow here before the retained meta-note
+  // branch so Alt+Fn+Up/Down cannot accidentally edit pitch. Plain Alt+Up/Down
+  // uses this same owner as well, leaving one authoritative Retrig-count path.
   if (!note_entry_mode_ && ui_event.alt &&
       (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
     ensureStepFocus();
     const int step = activePatternStep();
     const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
-    commitPatternMutation(
-        [&](SynthPattern& pattern) { adjustFxParam(pattern, step, delta); });
+    bool retrigActive = false;
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          retrigActive =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]) != 0;
+          if (retrigActive) {
+            GroovePuterUndo::PatternEdit::adjustFxParam(
+                pattern, step, delta);
+          }
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (!retrigActive) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
     return true;
   }
 
