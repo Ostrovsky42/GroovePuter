@@ -24,6 +24,7 @@ on:
       - 'tests/test_step_note_entry_source_regressions.py'
       - 'tests/test_song_input_policy.cpp'
       - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
+      - 'tests/test_pattern_generation_owner_0_9_9_source.py'
       - 'tests/test_pattern_mutations_0_9_8_r3.cpp'
       - 'tests/test_instrument_interaction_closure_source_regressions.py'
       - 'tests/test_drum_grid_labels_source_regressions.py'

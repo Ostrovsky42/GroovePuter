@@ -12,6 +12,7 @@ python3 tests/test_instrument_interaction_closure_source_regressions.py
 python3 tests/test_cardputer_input_source_regressions.py
 python3 tests/test_step_note_entry_source_regressions.py
 python3 tests/test_pattern_mutations_0_9_8_r3_source_regressions.py
+python3 tests/test_pattern_generation_owner_0_9_9_source.py
 python3 tests/test_drum_grid_labels_source_regressions.py
 python3 tests/test_hub_song_drum_ui_source_regressions.py
 
