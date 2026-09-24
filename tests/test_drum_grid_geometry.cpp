@@ -22,15 +22,14 @@ int main() {
 
   // Pages hand the grid bounds that run to the bottom of the 135px screen.
   // Hardware showed the last lanes (9RIM/0CLP) under the HUD/footer.
-  const int minimalY = 30;  // below the Minimal pattern/bank bars
-  assert(gridBottom(minimalY, Layout::SCREEN_H - minimalY) <= kShellBottom);
+  // All styles put pattern 1..8 and bank A/B in one selector row directly
+  // below the shell header; the grid starts at y=28.
+  const int gridY = 28;
+  assert(gridBottom(gridY, Layout::SCREEN_H - gridY) <= kShellBottom);
 
-  const int retroAmberY = 36;  // Retro/Amber: BK selector ends at y+36
-  assert(gridBottom(retroAmberY, Layout::SCREEN_H - retroAmberY) <= kShellBottom);
-
-  // An 8px lane keeps the 8px lane labels from overlapping each other.
-  assert(DrumGridGeometry::laneHeight(retroAmberY, Layout::SCREEN_H - retroAmberY,
-                                      kStepHeader, kLanes) >= 8);
+  // The shared selector row buys every lane 9px: 8px labels get a 1px gap.
+  assert(DrumGridGeometry::laneHeight(gridY, Layout::SCREEN_H - gridY,
+                                      kStepHeader, kLanes) >= 9);
 
   // Bounds that already end above the shell band are left untouched.
   assert(DrumGridGeometry::laneHeight(20, 48, kStepHeader, kLanes) == 5);

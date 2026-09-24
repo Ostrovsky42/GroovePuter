@@ -33,7 +33,9 @@ bool PatternSelectionBarComponent::computeLayout(IGfx& gfx, Layout& layout) cons
   layout.bounds_w = bounds.w;
   if (layout.bounds_w <= 0) return false;
 
-  layout.label_h = gfx.fontHeight();
+  // An empty label means the caller places the bar inside a shared row and
+  // no separate caption line is reserved.
+  layout.label_h = label_.empty() ? 0 : gfx.fontHeight();
   layout.label_y = layout.bounds_y;
   layout.columns = state_.columns > 0 ? state_.columns : 8;
   if (layout.columns < 1) layout.columns = 1;
@@ -41,13 +43,14 @@ bool PatternSelectionBarComponent::computeLayout(IGfx& gfx, Layout& layout) cons
   layout.pattern_size = (layout.bounds_w - layout.spacing * (layout.columns - 1) - 2) / layout.columns;
   if (layout.pattern_size < 12) layout.pattern_size = 12;
   layout.pattern_height = layout.pattern_size / 2;
-  layout.row_y = layout.label_y + layout.label_h + 1;
+  layout.row_y = layout.label_y + (layout.label_h > 0 ? layout.label_h + 1 : 0);
 
   int count = state_.pattern_count;
   if (count < 1) count = 1;
   layout.rows = (count + layout.columns - 1) / layout.columns;
   layout.row_spacing = layout.rows > 1 ? 2 : 0;
-  layout.bar_height = layout.label_h + 1 + layout.rows * layout.pattern_height +
+  layout.bar_height = (layout.row_y - layout.label_y) +
+                      layout.rows * layout.pattern_height +
                       (layout.rows - 1) * layout.row_spacing;
   return true;
 }
@@ -90,8 +93,10 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
 
   const auto& palette = getPalette(g_currentTheme);
 
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(layout.bounds_x, layout.label_y, label_.c_str());
+  if (!label_.empty()) {
+    gfx.setTextColor(palette.muted);
+    gfx.drawText(layout.bounds_x, layout.label_y, label_.c_str());
+  }
   gfx.setTextColor(palette.ink);
 
   bool songMode = state_.song_mode;
