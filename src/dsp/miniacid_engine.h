@@ -194,6 +194,26 @@ public:
   // allocation, no I/O, nothing that can fail halfway.
   void activatePendingMaterial();
 
+  // M2 slot navigation for a voice playing MELODY: Q..I / B move only between
+  // slots that hold an accepted Melody. The payload is read from SD outside
+  // the audio guard (prepareMelodySlot) and swapped in under it
+  // (activateMelodySlot). Unsaved Working edits are never discarded.
+  enum class MelodySlotResult : uint8_t {
+    Ready,
+    AlreadyCurrent,
+    NoMelody,
+    Unsaved,
+    LoadFailed,
+    Unavailable,
+  };
+  bool isMelodySlot(int voiceIndex, int bankIndex, int patternIndex) const;
+  bool hasUnsavedWorkingMelody(int voiceIndex) const;
+  MelodySlotResult prepareMelodySlot(
+      int voiceIndex, int bankIndex, int patternIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& out) const;
+  bool activateMelodySlot(int voiceIndex, int bankIndex, int patternIndex,
+                          const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+
   // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
   // to the exact preparation basis it was prepared against.
@@ -726,6 +746,13 @@ private:
         GroovePuterMaterial::IdeaClassification::Unknown;
   };
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
+  // Version of the Melody last loaded from / accepted into savedMelodySlot_.
+  // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
+  GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};
+  int16_t savedMelodySlot_[NUM_303_VOICES]{-1, -1};
+  void recordSavedMelody_(int voiceIndex, int globalSlot,
+                          const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  int current303GlobalSlot_(int voiceIndex) const;
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 
