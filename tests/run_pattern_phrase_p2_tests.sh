@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 BASE_SHA="fa552763d34e0172ceed1d07913743165d9a5867"
+# shellcheck source=tests/lib/candidate_base.sh
+source "$ROOT/tests/lib/candidate_base.sh"
+CANDIDATE_BASE_SHA="$(resolve_candidate_base "${P2_CANDIDATE_BASE_SHA:-}")"
 TMP="${TMPDIR:-/tmp}/grooveputer_pattern_phrase_p2"
 mkdir -p "$TMP"
 
@@ -109,5 +112,9 @@ build_suite g++ ubsan \
   -fsanitize=undefined -fno-sanitize-recover=undefined > /dev/null
 printf '%s\n' 'P2 UBSan: PASS'
 
-git diff --check "$BASE_SHA"...HEAD
+# Scope the whitespace gate to the candidate. Diffing from the historical
+# BASE_SHA flagged whitespace in files the candidate never touched.
+git cat-file -e "${CANDIDATE_BASE_SHA}^{commit}"
+git diff --check "${CANDIDATE_BASE_SHA}"..HEAD
+git diff --check
 printf '%s\n' 'PATTERN/PHRASE P2 focused gate: PASS'
