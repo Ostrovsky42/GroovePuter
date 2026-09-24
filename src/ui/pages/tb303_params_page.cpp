@@ -761,8 +761,10 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
           withAudioGuard(body);
         },
         voice_index_);
-    if (result == PhraseSourceToggle::Result::Rejected) {
-      UI::showToast("MAKE MELODY FIRST", 1500);
+    if (result == PhraseSourceToggle::Result::MadePhrase) {
+      UI::showToast("MELODY <- STEPS", 1200);
+    } else if (result == PhraseSourceToggle::Result::Rejected) {
+      UI::showToast("MELODY FAILED", 1500);
     }
     return;
   }

@@ -5,9 +5,11 @@
 //                               RuntimePhraseEdit::validate(melody)
 // 2. Audible path (phraseEventAt_, phraseRelativeTick_, currentPhrasePlayTick)
 //    operates ONLY through readableWorkingMelody_().
-// 3. Pattern -> Melody via SOURCE switch is permitted ONLY if a valid retained
-//    Melody already exists in working storage; otherwise REJECTED, source remains
-//    Pattern, and no Melody notes can sound.
+// 3. Pattern -> Melody via SOURCE switch never activates missing or invalid
+//    material: with no retained Melody it materializes the steps through
+//    MAKE PHRASE (validated before it can sound); if that fails it is
+//    REJECTED, source remains Pattern, and no Melody notes can sound. The
+//    engine itself still refuses setSequencedSource(Phrase) without a Melody.
 // 4. stagePendingMaterial() validates candidate with RuntimePhraseEdit::validate().
 // 5. Sentinels 0xFEFEFEFE (EMPTY) and 0xFFFFFFFF (PATTERN) never leak into
 //    event playback or count/lengthTicks.
@@ -86,7 +88,7 @@ void test_working_material_storage_sentinel_isolation() {
   }
 }
 
-void test_empty_working_source_toggle_rejected() {
+void test_empty_working_source_toggle_fail_closed() {
   MiniAcid engine{44100.0f, nullptr};
   constexpr int kVoice = 0;
 
@@ -96,15 +98,7 @@ void test_empty_working_source_toggle_rejected() {
   expect(engine.workingMaterial_[kVoice].empty(),
          "initial working material is not empty");
 
-  // SOURCE toggle must be REJECTED when no valid melody exists.
-  const auto result = PhraseSourceToggle::toggle(engine, nullptr, kVoice);
-  expect(result == PhraseSourceToggle::Result::Rejected,
-         "empty working storage allowed SOURCE switch to Melody");
-  expect(engine.currentSequencedSource(kVoice) ==
-             MiniAcid::SequencedSource::Pattern,
-         "voice source changed despite rejection");
-
-  // Direct engine call must also enforce the invariant and refuse the switch.
+  // The engine itself must refuse the switch while no Melody exists.
   engine.setSequencedSource(kVoice, MiniAcid::SequencedSource::Phrase);
   expect(engine.currentSequencedSource(kVoice) ==
              MiniAcid::SequencedSource::Pattern,
@@ -123,9 +117,28 @@ void test_empty_working_source_toggle_rejected() {
 
   // Restore active material
   engine.activeMaterial_[kVoice].kind = GroovePuterMaterial::MaterialKind::Pattern;
+
+  // SOURCE with no Melody materializes the steps instead of refusing, and
+  // the result must satisfy invariant 1 before it becomes audible.
+  const auto result = PhraseSourceToggle::toggle(engine, nullptr, kVoice);
+  if (result == PhraseSourceToggle::Result::MadePhrase) {
+    expect(engine.currentSequencedSource(kVoice) ==
+               MiniAcid::SequencedSource::Phrase,
+           "made Melody did not become the source");
+    expect(engine.workingMaterial_[kVoice].holdsMelody() &&
+               RuntimePhraseEdit::validate(
+                   *engine.workingMaterial_[kVoice].melodyIfHeld()),
+           "SOURCE activated a Melody that is not valid");
+  } else {
+    expect(result == PhraseSourceToggle::Result::Rejected,
+           "SOURCE with no Melody returned an unexpected result");
+    expect(engine.currentSequencedSource(kVoice) ==
+               MiniAcid::SequencedSource::Pattern,
+           "voice source changed despite rejection");
+  }
 }
 
-void test_pattern_working_source_toggle_rejected() {
+void test_pattern_working_source_toggle_materializes() {
   MiniAcid engine{44100.0f, nullptr};
   constexpr int kVoice = 0;
 
@@ -141,13 +154,6 @@ void test_pattern_working_source_toggle_rejected() {
   expect(engine.workingMaterial_[kVoice].holdsPattern(),
          "working material does not hold pattern");
 
-  const auto result = PhraseSourceToggle::toggle(engine, nullptr, kVoice);
-  expect(result == PhraseSourceToggle::Result::Rejected,
-         "toggle allowed switch to Melody when working storage only holds Pattern");
-  expect(engine.currentSequencedSource(kVoice) ==
-             MiniAcid::SequencedSource::Pattern,
-         "source moved away from Pattern");
-
   // Direct engine call refused
   engine.setSequencedSource(kVoice, MiniAcid::SequencedSource::Phrase);
   expect(engine.currentSequencedSource(kVoice) ==
@@ -161,6 +167,20 @@ void test_pattern_working_source_toggle_rejected() {
   expect(engine.phraseEventAt_(kVoice, 0) == nullptr,
          "phraseEventAt_ produced event from Pattern storage");
   engine.activeMaterial_[kVoice].kind = GroovePuterMaterial::MaterialKind::Pattern;
+
+  // SOURCE converts the steps into a validated Melody (same path as MAKE
+  // PHRASE) rather than activating the Pattern storage as a Melody.
+  const auto result = PhraseSourceToggle::toggle(engine, nullptr, kVoice);
+  expect(result == PhraseSourceToggle::Result::MadePhrase,
+         "SOURCE did not materialize the steps");
+  expect(engine.workingMaterial_[kVoice].holdsMelody() &&
+             RuntimePhraseEdit::validate(
+                 *engine.workingMaterial_[kVoice].melodyIfHeld()) &&
+             engine.workingMaterial_[kVoice].melodyIfHeld()->count == 2,
+         "SOURCE-made Melody does not carry the two Pattern notes");
+  expect(engine.currentSequencedSource(kVoice) ==
+             MiniAcid::SequencedSource::Phrase,
+         "SOURCE-made Melody did not become the source");
 }
 
 void test_valid_melody_lifecycle() {
@@ -280,8 +300,8 @@ void test_stage_pending_material_validation() {
 
 int main() {
   test_working_material_storage_sentinel_isolation();
-  test_empty_working_source_toggle_rejected();
-  test_pattern_working_source_toggle_rejected();
+  test_empty_working_source_toggle_fail_closed();
+  test_pattern_working_source_toggle_materializes();
   test_valid_melody_lifecycle();
   test_corrupt_melody_fail_closed();
   test_stage_pending_material_validation();

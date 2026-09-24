@@ -58,6 +58,7 @@ inline IGfxColor synthTabColor(int voiceIndex) {
 }
 
 // ALT+R switches between the two retained representations of one material.
+// With no Melody yet it first makes one from the steps (MELODY <- STEPS).
 // The runtime still owns Pattern/Phrase internally; the UI exposes only the
 // musical source truth: STEPS or MELODY.
 uint32_t audibleEndTick(
@@ -1101,9 +1102,9 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
     const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
     if (result == PhraseSourceToggle::Result::MadePhrase) {
-      UI::showToast("SOURCE: MELODY", 1000);
+      UI::showToast("MELODY <- STEPS", 1200);
     } else if (result == PhraseSourceToggle::Result::Rejected) {
-      UI::showToast("MAKE MELODY FIRST", 1500);
+      UI::showToast("MELODY FAILED", 1500);
     } else {
       UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
                             MiniAcid::SequencedSource::Phrase

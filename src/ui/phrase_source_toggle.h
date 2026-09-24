@@ -12,10 +12,12 @@
 // U4B9: the single owner of PATTERN/PHRASE source selection and the explicit
 // MAKE PHRASE gesture.
 //
-// SOURCE is deliberately a pure source switch. It never projects Pattern
-// material as a side effect, including when the Phrase buffer is empty.
-// MAKE PHRASE is the distinct one-way materialization command. Both actions
-// retain the same bounded Runtime Phrase undo ownership and AudioGuard path.
+// SOURCE switches between existing materials and never re-projects a Melody
+// that already exists, so edits made on the Melody can not be overwritten by
+// the steps. When the voice has no Melody yet, SOURCE is also the entry
+// gesture: it materializes the current steps through the MAKE PHRASE owner
+// (validated, one-way, undoable) and lands on MELODY. Both actions retain the
+// same bounded Runtime Phrase undo ownership and AudioGuard path.
 //
 // The receipt carries the source as well as the material, so Ctrl+Z restores
 // PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
@@ -31,6 +33,38 @@ enum class Result : uint8_t {
   SwitchedToPattern,
 };
 
+// Explicit one-way musical gesture from Pattern. Unlike SOURCE, this command
+// owns materialization. A voice already on Phrase is left untouched so edited
+// material cannot be silently re-projected.
+inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
+                       int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  if (engine.currentSequencedSource(voiceIndex) ==
+      MiniAcid::SequencedSource::Phrase) {
+    return true;
+  }
+
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
+  receipt.source =
+      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
+  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+
+  bool made = false;
+  const auto apply = [&]() {
+    const bool committed =
+        GroovePuterUndo::undoOwner().commitRuntimePrepared(
+            GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+              made = engine.makePhrase(voiceIndex);
+            });
+    if (!committed) made = false;
+  };
+
+  if (audioGuard) audioGuard(apply);
+  else apply();
+  return made;
+}
+
 inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
                      int voiceIndex) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
@@ -40,11 +74,13 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
                         MiniAcid::SequencedSource::Phrase;
 
-  // Pattern -> Melody is allowed ONLY if a valid retained Melody already exists
-  // in working storage. An empty or unmaterialized storage must be rejected so
-  // no out-of-bounds or non-existent material can become the sounding owner.
+  // No Melody yet: materialize the steps through MAKE PHRASE instead of
+  // refusing. makePhrase() validates the candidate before it becomes the
+  // sounding owner, so an invalid or non-existent Melody still never plays;
+  // if materialization fails the voice stays on PATTERN.
   if (!onPhrase && engine.retainedWorkingMelody(voiceIndex) == nullptr) {
-    return Result::Rejected;
+    return makePhrase(engine, audioGuard, voiceIndex) ? Result::MadePhrase
+                                                     : Result::Rejected;
   }
 
   GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
@@ -83,38 +119,6 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   if (audioGuard) audioGuard(apply);
   else apply();
   return result;
-}
-
-// Explicit one-way musical gesture from Pattern. Unlike SOURCE, this command
-// owns materialization. A voice already on Phrase is left untouched so edited
-// material cannot be silently re-projected.
-inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
-                       int voiceIndex) {
-  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
-  if (engine.currentSequencedSource(voiceIndex) ==
-      MiniAcid::SequencedSource::Phrase) {
-    return true;
-  }
-
-  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
-  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
-  receipt.source =
-      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
-  receipt.before = engine.currentPhraseBuffer(voiceIndex);
-
-  bool made = false;
-  const auto apply = [&]() {
-    const bool committed =
-        GroovePuterUndo::undoOwner().commitRuntimePrepared(
-            GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
-              made = engine.makePhrase(voiceIndex);
-            });
-    if (!committed) made = false;
-  };
-
-  if (audioGuard) audioGuard(apply);
-  else apply();
-  return made;
 }
 
 }  // namespace PhraseSourceToggle
