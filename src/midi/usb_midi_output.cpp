@@ -7,6 +7,8 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
     : transport_(transport),
       config_(config),
       pendingChannelPanics_(0),
+      patternSlideReady_(0),
+      patternPortamentoOn_(0),
       patternStartupRoutesBound_(false),
       performanceStartupRoutesComplete_(false),
       seqtrakReceiverModeControl_(true),
@@ -244,13 +246,61 @@ void UsbMidiOutput::ensurePerformanceReceiverMode(
         return;
     }
 
+    const uint8_t channel = generatedChannel(target);
     if (transport_.sendControlChange(
-            generatedChannel(target),
+            channel,
             kSeqtrakMonoPolyController,
             polyphonic ? kSeqtrakPolyValue : kSeqtrakMonoValue)) {
         transport_.flush();
     }
     performanceReceiverMode_[targetIndex] = desired;
+    // The receiver mode on this channel is no longer the one Pattern slide
+    // established; send MONO again before the next Pattern slide.
+    patternSlideReady_ &= static_cast<uint16_t>(~(1u << channel));
+}
+
+void UsbMidiOutput::applyPatternSlide(uint8_t channel, bool slide) {
+    // CC26 is a SEQTRAK vendor parameter; only a profile that advertises it may
+    // switch the receiver. Nothing is sent for a Pattern that never slides.
+    if (!seqtrakReceiverModeControl_ || !mounted_) return;
+    const uint16_t bit = static_cast<uint16_t>(1u << clampChannel(channel));
+
+    if (slide && (patternSlideReady_ & bit) == 0) {
+        if (!transport_.sendControlChange(
+                channel, kSeqtrakMonoPolyController, kSeqtrakMonoValue) ||
+            !transport_.sendControlChange(
+                channel, kPortamentoTimeController,
+                kSeqtrakSlidePortamentoTime)) {
+            return;  // retry on the next slide note
+        }
+        patternSlideReady_ |= bit;
+        for (MusicalEventTarget target :
+             {MusicalEventTarget::SynthA, MusicalEventTarget::SynthB,
+              MusicalEventTarget::Dx}) {
+            const int index = generatedTargetIndex(target);
+            if (index >= 0 && generatedChannel(target) == channel) {
+                performanceReceiverMode_[index] = PerformanceReceiverMode::Mono;
+            }
+        }
+    }
+
+    const bool on = (patternPortamentoOn_ & bit) != 0;
+    if (slide == on) return;
+    if (!transport_.sendControlChange(
+            channel, kPortamentoSwitchController, slide ? 1u : 0u)) {
+        return;
+    }
+    if (slide) {
+        patternPortamentoOn_ |= bit;
+    } else {
+        patternPortamentoOn_ &= static_cast<uint16_t>(~bit);
+    }
+    transport_.flush();
+}
+
+void UsbMidiOutput::releasePatternPortamento(uint8_t channel) {
+    // Stop/cleanup must not leave SEQTRAK gliding for the user's own playing.
+    applyPatternSlide(channel, false);
 }
 
 bool UsbMidiOutput::generatedNoteActive(int targetIndex, uint8_t note) const {
@@ -797,6 +847,9 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
 
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         if (lanes_[i].source != source || lanes_[i].target != target) continue;
+        if (source == MusicalEventSource::PatternPlayer) {
+            releasePatternPortamento(lanes_[i].channel);
+        }
         requestChannelPanic(lanes_[i].channel);
         if (target == MusicalEventTarget::Drums) {
             releasePercussiveLane(lanes_[i]);
@@ -967,6 +1020,9 @@ bool UsbMidiOutput::releasePendingChannelPanics() {
 }
 
 void UsbMidiOutput::clearActiveState() {
+    // After (re)connection the receiver state is unknown again.
+    patternSlideReady_ = 0;
+    patternPortamentoOn_ = 0;
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanes_[i].activeNote = -1;
         lanes_[i].activeCount = 0;
@@ -1042,6 +1098,10 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     switch (event.type) {
         case MusicalEventType::NoteOn:
+            if (event.source == MusicalEventSource::PatternPlayer) {
+                applyPatternSlide(
+                    lane->channel, (event.flags & kMusicalEventSlide) != 0);
+            }
             replaceActiveNote(*lane, event.note, event.velocity);
             break;
         case MusicalEventType::NoteOff:

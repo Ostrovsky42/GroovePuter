@@ -331,6 +331,19 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_usb_midi_output"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_pattern_midi_articulation.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  "${ROOT_DIR}/src/midi/midi_companion_settings.cpp" \
+  -o "${BUILD_DIR}/test_pattern_midi_articulation"
+
+"${BUILD_DIR}/test_pattern_midi_articulation"
+
 # Dual-endpoint foundation: sparse note ownership and the DIN/UART transport.
 "${CXX}" \
   -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \

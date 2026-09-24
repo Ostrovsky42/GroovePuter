@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <memory>
 #include <new>
 #include <string>
 
@@ -642,13 +643,18 @@ void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
 
 void MiniAcid::publishPatternNoteOn_(int synthIdx,
                                      uint8_t note,
-                                     uint8_t velocity) {
+                                     uint8_t velocity,
+                                     bool accent,
+                                     bool slide) {
   const int idx = clamp303Voice(synthIdx);
   patternOwnedMask_.fetch_or(
       static_cast<uint8_t>(1u << idx), std::memory_order_release);
   if (!patternEventQueue_) return;
-  if (velocity < 1) velocity = 1;
-  if (velocity > 127) velocity = 127;
+  // MIDI has no accent message; receivers (SEQTRAK included) read accent as a
+  // louder note. The internal voice gets the accent flag via startNote().
+  const int wireVelocity = static_cast<int>(velocity) +
+      (accent ? kPatternMidiAccentVelocityBoost : 0);
+  velocity = static_cast<uint8_t>(std::clamp(wireVelocity, 1, 127));
   const MusicalEventTarget target = idx == 0
       ? MusicalEventTarget::SynthA
       : MusicalEventTarget::SynthB;
@@ -659,6 +665,7 @@ void MiniAcid::publishPatternNoteOn_(int synthIdx,
       0,
       note,
       velocity,
+      slide ? kMusicalEventSlide : uint8_t{0},
   };
   if (patternEventQueue_->tryPush(event)) {
     patternMidiNotes_[idx] = static_cast<int16_t>(note);
@@ -2873,6 +2880,7 @@ void MiniAcid::hydrateAcceptedMaterialAtBoot_() {
       if (MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
                                         proj, addr, loaded)) {
         workingMaterial_[idx].storeMelody(loaded);
+        recordSavedMelody_(idx, current303GlobalSlot_(idx), loaded);
       }
     } else {
       setSequencedSource(idx, SequencedSource::Pattern);
@@ -3761,7 +3769,7 @@ void MiniAcid::consumePatternPlaybackActions_(
           synthVoices_[idx]->startNote(
               noteToFreq(event.note), accent, slide, event.velocity);
         }
-        publishPatternNoteOn_(idx, event.note, event.velocity);
+        publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
             idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
             sceneManager_.currentScene().led);
@@ -3774,7 +3782,7 @@ void MiniAcid::consumePatternPlaybackActions_(
           synthVoices_[idx]->startNote(
               noteToFreq(event.note), accent, slide, event.velocity);
         }
-        publishPatternNoteOn_(idx, event.note, event.velocity);
+        publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
             idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
             sceneManager_.currentScene().led);
@@ -4520,6 +4528,12 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
   }
   const int idx = clamp303Voice(voiceIndex);
 
+  // A slot whose ACCEPTED truth is a Melody restores that Melody from SD. The
+  // NEXT classifier deliberately does no SD I/O and cannot resolve it.
+  if (isMelodySlot(idx, current303BankIndex(idx), display303LocalPatternIndex(idx))) {
+    return discardToAcceptedMelody_(idx);
+  }
+
   GroovePuterMaterial::MaterialReference reference{};
   GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
   const CurrentNextState state =
@@ -4581,6 +4595,36 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
       idx, static_cast<uint16_t>(reference.address.globalSlot),
       GroovePuterMaterial::MaterialKind::Pattern);
   workingMaterial_[idx].clear();
+  developmentLineage_[idx] = {};
+  hasSourceAnchorSnapshot_[idx] = false;
+  hasSourceAnchorUndoSnapshot_[idx] = false;
+  cancelGoQueue(idx);
+  return DiscardResult::Discarded;
+}
+
+MiniAcid::DiscardResult MiniAcid::discardToAcceptedMelody_(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> accepted(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!accepted || !loadCurrentSlotMelody(idx, *accepted)) {
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  const int globalSlot = current303GlobalSlot_(idx);
+  const auto* working = workingMaterial_[idx].melodyIfHeld();
+  if (working != nullptr &&
+      activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Melody &&
+      GroovePuterMaterial::versionForMelody(*working) ==
+          GroovePuterMaterial::versionForMelody(*accepted)) {
+    recordSavedMelody_(idx, globalSlot, *accepted);
+    return DiscardResult::AlreadyClean;
+  }
+
+  workingMaterial_[idx].storeMelody(*accepted);
+  publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot),
+                        GroovePuterMaterial::MaterialKind::Melody);
+  setSequencedSource(idx, SequencedSource::Phrase);
+  recordSavedMelody_(idx, globalSlot, *accepted);
   developmentLineage_[idx] = {};
   hasSourceAnchorSnapshot_[idx] = false;
   hasSourceAnchorUndoSnapshot_[idx] = false;
@@ -4980,6 +5024,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
     setSequencedSource(idx, sourceBefore);
     publishActiveMaterial(idx, static_cast<uint16_t>(reference.address.globalSlot),
                           GroovePuterMaterial::MaterialKind::Melody);
+    recordSavedMelody_(idx, reference.address.globalSlot, candidate);
     developmentLineage_[idx] = {};
 
     auto& owner = GroovePuterUndo::undoOwner();
@@ -5053,6 +5098,155 @@ void MiniAcid::publishActiveMaterial(int voiceIndex, uint16_t slot,
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
   activeMaterial_[voiceIndex].slot = slot;
   activeMaterial_[voiceIndex].kind = kind;
+}
+
+int MiniAcid::current303GlobalSlot_(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return -1;
+  const int idx = clamp303Voice(voiceIndex);
+  return songPatternFromPageBankIndex(currentPageIndex(),
+                                      current303BankIndex(idx),
+                                      display303LocalPatternIndex(idx));
+}
+
+void MiniAcid::recordSavedMelody_(
+    int voiceIndex, int globalSlot,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
+  savedMelodySlot_[voiceIndex] = static_cast<int16_t>(globalSlot);
+  savedMelodyVersion_[voiceIndex] = GroovePuterMaterial::versionForMelody(melody);
+}
+
+bool MiniAcid::isMelodySlot(int voiceIndex, int bankIndex,
+                            int patternIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES || bankIndex < 0 ||
+      bankIndex >= kBankCount || patternIndex < 0 ||
+      patternIndex >= Bank<SynthPattern>::kPatterns) {
+    return false;
+  }
+  const int residentSlot = bankIndex * Bank<SynthPattern>::kPatterns + patternIndex;
+  return GroovePuterMaterial::residentKind(sceneManager_.currentScene(),
+                                           clamp303Voice(voiceIndex),
+                                           residentSlot) ==
+         GroovePuterMaterial::MaterialKind::Melody;
+}
+
+bool MiniAcid::hasUnsavedWorkingMelody(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  const auto* melody = workingMaterial_[idx].melodyIfHeld();
+  if (melody == nullptr) return false;
+  // A Melody counts as saved only if it is byte-for-byte the one last loaded
+  // from, or accepted into, the slot the voice is on right now. Anything else
+  // (a fresh MAKE MELODY, an edit, a Melody carried onto another slot) is
+  // unsaved and must not be dropped by a slot switch.
+  return savedMelodySlot_[idx] != current303GlobalSlot_(idx) ||
+         GroovePuterMaterial::versionForMelody(*melody) !=
+             savedMelodyVersion_[idx];
+}
+
+MiniAcid::MelodySlotResult MiniAcid::loadSlotMelody_(
+    int voiceIndex, int bankIndex, int patternIndex,
+    PhraseRuntime::RuntimeSynthEventBuffer& out) const {
+  const int idx = clamp303Voice(voiceIndex);
+  if (!isMelodySlot(idx, bankIndex, patternIndex)) {
+    return MelodySlotResult::NoMelody;
+  }
+  const int page = currentPageIndex();
+  const int globalSlot = songPatternFromPageBankIndex(page, bankIndex, patternIndex);
+  if (globalSlot < 0 || globalSlot > 0xff) return MelodySlotResult::Unavailable;
+  const GroovePuterMaterial::MaterialAddress address{
+      static_cast<uint8_t>(idx), static_cast<uint8_t>(globalSlot)};
+  if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
+    return MelodySlotResult::Unavailable;
+  }
+  if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                     PatternPagingService::currentProjectName(),
+                                     address, out) ||
+      !RuntimePhraseEdit::validate(out)) {
+    return MelodySlotResult::LoadFailed;
+  }
+  return MelodySlotResult::Ready;
+}
+
+MiniAcid::MelodySlotResult MiniAcid::prepareMelodySlot(
+    int voiceIndex, int bankIndex, int patternIndex,
+    PhraseRuntime::RuntimeSynthEventBuffer& out) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES || bankIndex < 0 ||
+      bankIndex >= kBankCount || patternIndex < 0 ||
+      patternIndex >= Bank<SynthPattern>::kPatterns) {
+    return MelodySlotResult::Unavailable;
+  }
+  const int idx = clamp303Voice(voiceIndex);
+  if (current303BankIndex(idx) == bankIndex &&
+      display303LocalPatternIndex(idx) == patternIndex) {
+    return MelodySlotResult::AlreadyCurrent;
+  }
+  if (hasUnsavedWorkingMelody(idx)) return MelodySlotResult::Unsaved;
+  return loadSlotMelody_(idx, bankIndex, patternIndex, out);
+}
+
+bool MiniAcid::loadCurrentSlotMelody(
+    int voiceIndex, PhraseRuntime::RuntimeSynthEventBuffer& out) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  return loadSlotMelody_(idx, current303BankIndex(idx),
+                         display303LocalPatternIndex(idx), out) ==
+         MelodySlotResult::Ready;
+}
+
+void MiniAcid::releaseSavedWorkingMelody_(int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return;
+  const int idx = clamp303Voice(voiceIndex);
+  if (!workingMaterial_[idx].holdsMelody()) return;
+  workingMaterial_[idx].clear();
+  setSequencedSource(idx, SequencedSource::Pattern);
+  savedMelodySlot_[idx] = -1;
+  savedMelodyVersion_[idx] = {};
+  // A Runtime Phrase receipt of the previous slot must not come back here.
+  auto& owner = GroovePuterUndo::undoOwner();
+  if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
+    GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+    if (owner.read(GroovePuterUndo::UndoKind::RuntimePhrase, receipt) &&
+        receipt.voiceIndex == idx) {
+      owner.clear();
+    }
+  }
+}
+
+bool MiniAcid::activateMelodySlot(
+    int voiceIndex, int bankIndex, int patternIndex,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  if (!RuntimePhraseEdit::validate(melody)) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (hasUnsavedWorkingMelody(idx)) return false;
+
+  if (current303BankIndex(idx) != bankIndex) set303BankIndex(idx, bankIndex);
+  set303PatternIndex(idx, patternIndex);
+  if (current303BankIndex(idx) != bankIndex ||
+      display303LocalPatternIndex(idx) != patternIndex) {
+    return false;
+  }
+
+  const int globalSlot = current303GlobalSlot_(idx);
+  workingMaterial_[idx].storeMelody(melody);
+  publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot),
+                        GroovePuterMaterial::MaterialKind::Melody);
+  setSequencedSource(idx, SequencedSource::Phrase);
+  recordSavedMelody_(idx, globalSlot, melody);
+  developmentLineage_[idx] = {};
+
+  // A retained Runtime Phrase receipt describes the previous slot's Melody;
+  // replaying it here would write that Melody into this slot.
+  auto& owner = GroovePuterUndo::undoOwner();
+  if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::RuntimePhrase) {
+    GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+    if (owner.read(GroovePuterUndo::UndoKind::RuntimePhrase, receipt) &&
+        receipt.voiceIndex == idx) {
+      owner.clear();
+    }
+  }
+  return true;
 }
 
 const MiniAcid::ActiveMaterial& MiniAcid::activeMaterial(int voiceIndex) const {

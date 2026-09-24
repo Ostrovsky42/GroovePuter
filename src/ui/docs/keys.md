@@ -115,6 +115,9 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
+| `Alt+R` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first |
+| `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
+| `B` on MELODY | Same slot position in the other bank, with the same rules |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |

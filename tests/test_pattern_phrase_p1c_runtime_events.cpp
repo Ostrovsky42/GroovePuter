@@ -203,6 +203,38 @@ void testInvalidSynthIsFailureAtomic() {
 
 }  // namespace
 
+void testSlideHoldsPreviousGateIntoAdjacentNote() {
+  SynthPattern pattern = emptyPattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = 62;
+  pattern.steps[1].slide = true;
+
+  RuntimeSynthEventBuffer out{};
+  assert(projectPatternToRuntimeEvents(pattern, settingsFor(0), out) ==
+         PatternProjectionStatus::Ready);
+  assert(out.count == 2);
+  // The gate alone (0.5 x 0.85 of a step) ends before step 1. A slide into
+  // step 1 keeps note 60 sounding until 62 starts, so playback can glide.
+  assert(out.events[0].durationSubticks == 24u * kSubticksPerTick);
+  assert(out.events[1].durationSubticks == expectedBaseDuration(0, 0.5f));
+  std::puts("P1-S1 PASS: slide keeps the previous gate open into the next step");
+}
+
+void testSlideAcrossRestDoesNotBridge() {
+  SynthPattern pattern = emptyPattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[2].note = 62;
+  pattern.steps[2].slide = true;
+
+  RuntimeSynthEventBuffer out{};
+  assert(projectPatternToRuntimeEvents(pattern, settingsFor(0), out) ==
+         PatternProjectionStatus::Ready);
+  assert(out.count == 2);
+  // A rest between the notes ends the phrase: there is nothing to slide from.
+  assert(out.events[0].durationSubticks == expectedBaseDuration(0, 0.5f));
+  std::puts("P1-S2 PASS: slide never bridges a rest");
+}
+
 int main() {
   testAbiAndCapacity();
   testSimpleProjectionAndArticulation();
@@ -213,6 +245,8 @@ int main() {
   testExpiredTieDoesNotRevive();
   testNextOnsetClipsMonophonicLifetime();
   testInvalidSynthIsFailureAtomic();
+  testSlideHoldsPreviousGateIntoAdjacentNote();
+  testSlideAcrossRestDoesNotBridge();
   std::puts("PATTERN/PHRASE P1 runtime events: OK");
   return 0;
 }

@@ -45,21 +45,20 @@ int main() {
     pattern.steps[4].note = 43;
   }
 
-  // 1. First toggle without material is rejected; makePhrase converts.
+  // 1. First toggle without material converts the steps (Alt+R is also the
+  //    entry gesture) and lands on PHRASE with validated material.
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Pattern,
          "voice did not start on PATTERN");
   expect(PhraseSourceToggle::toggle(engine, nullptr, kSynthA) ==
-             PhraseSourceToggle::Result::Rejected,
-         "toggle without material was not rejected");
-  expect(PhraseSourceToggle::makePhrase(engine, nullptr, kSynthA),
-         "makePhrase failed");
+             PhraseSourceToggle::Result::MadePhrase,
+         "toggle without material did not make a Melody");
   expect(engine.currentSequencedSource(kSynthA) ==
              MiniAcid::SequencedSource::Phrase,
-         "makePhrase did not reach PHRASE");
+         "toggle-made Melody did not reach PHRASE");
   expect(engine.retainedWorkingMelody(kSynthA) != nullptr &&
          engine.retainedWorkingMelody(kSynthA)->count > 0,
-         "makePhrase produced no material");
+         "toggle-made Melody has no material");
 
   // 2. Editing the material and toggling twice must return it untouched. This
   //    is the invariant that makes the switch safe to use casually: it is a
