@@ -92,11 +92,8 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard au
     (void)gfx;
 
     DrumSequencerGridComponent::Callbacks cb;
-    cb.onToggle = [this](int voice, int step) {
+    cb.onToggle = [this](int step, int voice) {
         withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
-    };
-    cb.onToggleAccent = [this](int step) {
-        withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
     };
     cb.cursorStep = [this]() { return stepCursor_; };
     cb.cursorVoice = [this]() { return voiceCursor_; };
@@ -940,7 +937,18 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
             return true;
         }
         if (lower == 'a') {
-            withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(stepCursor_); });
+            const int voice = getDrumVoiceIndex(selectedTrack_);
+            const DrumStep& current =
+                mini_acid_.sceneManager().getCurrentDrumPattern()
+                    .voices[voice].steps[stepCursor_];
+            if (!current.hit) {
+                UI::showToast("ACCENT: ADD HIT", 900);
+                return true;
+            }
+            const bool nextAccent = !current.accent;
+            withAudioGuard([&]() {
+                mini_acid_.setDrumAccentStep(voice, stepCursor_, nextAccent);
+            });
             return true;
         }
     }
@@ -1213,8 +1221,17 @@ bool SequencerHubPage::handleGridEdit(UIEvent& e) {
     }
 
     if (lower == 'a' && isDrumTrack(selectedTrack_)) {
+        const DrumStep& current =
+            mini_acid_.sceneManager().getCurrentDrumPattern()
+                .voices[voiceCursor_].steps[stepCursor_];
+        if (!current.hit) {
+            UI::showToast("ACCENT: ADD HIT", 900);
+            return true;
+        }
+        const bool nextAccent = !current.accent;
         withAudioGuard([&]() {
-            mini_acid_.toggleDrumAccentStep(stepCursor_);
+            mini_acid_.setDrumAccentStep(
+                voiceCursor_, stepCursor_, nextAccent);
         });
         return true;
     }

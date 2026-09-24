@@ -71,6 +71,28 @@ inline bool shouldDispatchWord(const KeysState& current,
                                WordChar& value) {
   const WordChar rawValue = value;
 
+  // Cardputer ADV reserves these four physical punctuation positions as
+  // navigation arrows. The same key may also appear in KeysState::word, with
+  // either its plain or Shift glyph. HID is the canonical hardware event;
+  // suppress every word shadow from that same physical key.
+  uint8_t shadowArrowHid = 0;
+  if (rawValue == static_cast<WordChar>(';') ||
+      rawValue == static_cast<WordChar>(':')) {
+    shadowArrowHid = kCardputerArrowUpHid;
+  } else if (rawValue == static_cast<WordChar>(',') ||
+             rawValue == static_cast<WordChar>('<')) {
+    shadowArrowHid = kCardputerArrowLeftHid;
+  } else if (rawValue == static_cast<WordChar>('.') ||
+             rawValue == static_cast<WordChar>('>')) {
+    shadowArrowHid = kCardputerArrowDownHid;
+  } else if (rawValue == static_cast<WordChar>('/') ||
+             rawValue == static_cast<WordChar>('?')) {
+    shadowArrowHid = kCardputerArrowRightHid;
+  }
+  if (shadowArrowHid != 0 && containsHid(current, shadowArrowHid)) {
+    return false;
+  }
+
   // M5Cardputer library versions differ: dedicated Tab can appear only in
   // KeysState::word or in both word and HID 0x2B. Preserve a word-only Tab
   // through the control-character filter and suppress the duplicate word copy

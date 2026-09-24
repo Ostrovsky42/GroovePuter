@@ -15,6 +15,7 @@
 #include "../components/label_option.h"
 #include "../components/pattern_selection_bar.h"
 #include "../components/drum_sequencer_grid.h"
+#include "../screen_geometry.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
 #include "../ui_widgets.h"
@@ -166,7 +167,9 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
   drum_pattern_cursor_ = drumIdx;
   bank_index_ = mini_acid_.currentDrumBankIndex();
   bank_cursor_ = bank_index_;
-  pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERN");
+  // Pattern and bank share one row (no caption line) so the eight drum lanes
+  // get the recovered height.
+  pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("");
   bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
   pattern_callbacks.onSelect = [this](int index) {
@@ -192,21 +195,12 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
     drum_step_cursor_ = step;
     drum_voice_cursor_ = voice;
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
-    });
-  };
-  callbacks.onToggleAccent = [this](int step) {
-    focusGrid();
-    drum_step_cursor_ = step;
-    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
@@ -703,8 +697,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       int step = activeDrumStep();
       int voice = activeDrumVoice();
       commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
     }
     return true;
@@ -748,15 +746,17 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   if (key_a) {
     focusGrid();
-    int step = activeDrumStep();
+    const int step = activeDrumStep();
+    const int voice = activeDrumVoice();
+    const DrumPatternSet& current =
+        mini_acid_.sceneManager().getCurrentDrumPattern();
+    if (!current.voices[voice].steps[step].hit) {
+      UI::showToast("ACCENT: ADD HIT", 800);
+      return true;
+    }
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      pattern.voices[voice].steps[step].accent =
+          !pattern.voices[voice].steps[step].accent;
     });
     return true;
   }
@@ -878,10 +878,6 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   pattern_state.show_cursor = patternFocus;
   pattern_state.song_mode = songMode;
   pattern_bar_->setState(pattern_state);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, 0});
-  int pattern_bar_h = pattern_bar_->barHeight(gfx);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, pattern_bar_h});
-  pattern_bar_->draw(gfx);
 
   BankSelectionBarComponent::State bank_state;
   bank_state.bank_count = kBankCount;
@@ -890,10 +886,21 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   bank_state.show_cursor = bankFocus;
   bank_state.song_mode = songMode;
   bank_bar_->setState(bank_state);
-  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, 0});
-  int bank_bar_h = bank_bar_->barHeight(gfx);
-  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, bank_bar_h});
+
+  // One selector row directly below the shell header: patterns 1..8 on the
+  // left, BANK A/B right-aligned. The shell header owns y < CONTENT.y.
+  const int row_y = std::max(body_y, Layout::CONTENT.y);
+  const int bank_w = bank_bar_->barWidth(gfx);
+  const int pattern_w = std::max(1, w - bank_w - 6);
+  pattern_bar_->setBoundaries(Rect{x, row_y, pattern_w, 0});
+  const int pattern_bar_h = pattern_bar_->barHeight(gfx);
+  pattern_bar_->setBoundaries(Rect{x, row_y, pattern_w, pattern_bar_h});
+  pattern_bar_->draw(gfx);
+  bank_bar_->setBoundaries(Rect{x, row_y, w, 0});
+  const int bank_bar_h = bank_bar_->barHeight(gfx);
+  bank_bar_->setBoundaries(Rect{x, row_y, w, bank_bar_h});
   bank_bar_->draw(gfx);
+  const int selector_h = std::max(pattern_bar_h, bank_bar_h) + 2;
 
   // Page Indicator
   char pageBuf[8];
@@ -909,8 +916,8 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - 24, y + 2, pageBuf);
 
-  int grid_y = body_y + pattern_bar_h + bank_bar_h;
-  int grid_h = body_h - (pattern_bar_h + bank_bar_h);
+  int grid_y = row_y + selector_h;
+  int grid_h = (y + h) - grid_y;
   if (grid_h <= 0) {
     if (grid_component_) {
       grid_component_->setBoundaries(Rect{0, 0, 0, 0});
@@ -943,7 +950,8 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
     
     retro::SelectorConfig pCfg;
-    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    // PTRN and BK share one row directly below the shell header.
+    pCfg.x = x + 4; pCfg.y = y + 16; pCfg.w = w - 8 - 52 - 2; pCfg.h = 10;
     pCfg.label = "PTRN";
     pCfg.count = Bank<DrumPatternSet>::kPatterns;
     pCfg.selected = selectedPattern;
@@ -953,7 +961,7 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     retro::drawSelector(gfx, pCfg);
 
     retro::SelectorConfig bCfg;
-    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.x = x + w - 52; bCfg.y = y + 16; bCfg.w = 48; bCfg.h = 10;
     bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
@@ -963,8 +971,10 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     retro::drawSelector(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12; // footer is 12
+    // The shared PTRN/BK row ends at y+26. The grid component itself stops
+    // above the shell-owned performance HUD/footer band.
+    int grid_y = y + 28;
+    int grid_h = h - 28;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
@@ -990,7 +1000,8 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
 
     amber::SelectionBarConfig pCfg;
-    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    // PTRN and BK share one row directly below the shell header.
+    pCfg.x = x + 4; pCfg.y = y + 16; pCfg.w = w - 8 - 52 - 2; pCfg.h = 10;
     pCfg.label = "PTRN";
     pCfg.count = Bank<DrumPatternSet>::kPatterns;
     pCfg.selected = selectedPattern;
@@ -999,7 +1010,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     amber::drawSelectionBar(gfx, pCfg);
 
     amber::SelectionBarConfig bCfg;
-    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.x = x + w - 52; bCfg.y = y + 16; bCfg.w = 48; bCfg.h = 10;
     bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
@@ -1008,8 +1019,10 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     amber::drawSelectionBar(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12;
+    // The shared PTRN/BK row ends at y+26. The grid component itself stops
+    // above the shell-owned performance HUD/footer band.
+    int grid_y = y + 28;
+    int grid_h = h - 28;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 

@@ -48,7 +48,7 @@ The active page gets first refusal before global fallbacks.
 | `ASDFGHJKL` | Lower manual |
 | `N` | NOTE mode ON/OFF |
 | `\` | Cycle output target |
-| `,` / `.` | Previous / next scale |
+| `,` / `.` | Previous / next scale on SDL/external keyboard; Cardputer uses PERFORMANCE TOOLS -> KEY -> SCALE with Left/Right |
 | `-` / `=` | Octave down / up |
 | `Tab` | Open PERFORMANCE TOOLS (or cycle context when open) |
 
@@ -115,6 +115,9 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
+| `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
+| `F` | Toggle audible step Retrig (starts at R2) |
+| `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
 | `G` | Reroll only the selected synth lane when NOTE ENTRY is OFF |
 | `Ctrl+C/V` | Copy / Paste |
 
@@ -139,6 +142,8 @@ Inside NOTE ENTRY, `G` remains note input.
 
 ## DRUMS
 
+Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6HH2 7PR1 8PR2 9RIM 0CLP`; SP12 follows its global swap as `0RIM 9CLP`. Accent is shown on the individual hit cell; there is no separate aggregate ACC row.
+
 | Key | Action |
 |---|---|
 | `Tab` | Sequencer / automation subpage |
@@ -146,8 +151,8 @@ Inside NOTE ENTRY, `G` remains note input.
 | `B` | Toggle bank A/B |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move grid cursor |
-| `Enter` | Toggle hit |
-| `A` | Toggle accent |
+| `Enter` | Toggle selected hit |
+| `A` | Toggle accent on the selected existing hit only |
 | `G` | Drums-only strong generation at current P-level |
 | `Ctrl+G` | Randomize focused drum voice |
 | `Alt+G` | Full-pattern CHAOS |

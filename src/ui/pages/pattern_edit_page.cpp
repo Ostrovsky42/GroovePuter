@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -315,17 +316,6 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     }
   }
 
-  if (ui_event.alt &&
-      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
-    ensureStepFocus();
-    const int step = activePatternStep();
-    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
-    commitPatternMutation([&](SynthPattern& pattern) {
-      adjustFxParam(pattern, step, delta);
-    });
-    return true;
-  }
-
   const bool keyA = lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A;
   const bool keyS = lowerKey == 's' || ui_event.scancode == GROOVEPUTER_S;
   const bool keyZ = lowerKey == 'z' || ui_event.scancode == GROOVEPUTER_Z;
@@ -475,8 +465,24 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   if (keyF) {
     ensureStepFocus();
     const int step = activePatternStep();
-    commitPatternMutation(
-        [&](SynthPattern& pattern) { cycleFx(pattern, step); });
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          cycleFx(pattern, step);
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (retrigCount == 0) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
     return true;
   }
 
@@ -642,9 +648,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Cardputer ADV emits the physical arrow legends through Fn-modified
-  // punctuation HID codes, so those events carry meta=true. NOTE ENTRY owns
-  // arrow scancodes explicitly before the legacy/meta router can reject them.
+  // Cardputer ADV reserves four punctuation-key positions as physical arrows.
+  // Fn may additionally set meta=true, but HID navigation is authoritative in
+  // either case. NOTE ENTRY owns the arrow scancode before legacy/meta routing.
   if (note_entry_mode_ && gridArrow && !ui_event.alt && !ui_event.ctrl) {
     focus_ = Focus::Steps;
     if (has_selection_) clearSelection();
@@ -690,7 +696,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
 
-    if (key == ';' || key == ':') {
+    // Cardputer reserves ;/: as the physical Up-arrow position. C is the
+    // reachable NOTE ENTRY command for copying the last entered pitch to the
+    // current step; Ctrl+C remains the normal clipboard command outside this
+    // unmodified local branch.
+    if (lowerKey == 'c') {
       if (last_entered_note_ >= 0) {
         const int step = activePatternStep();
         writeNoteEntryStep(step, last_entered_note_, false);
@@ -708,7 +718,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
     // Any other local command ends hold inference so a later press cannot be
     // mistaken for a held-key repeat. The last entered pitch is intentionally
-    // retained so ';' can still recall it after navigation.
+    // retained so C can still recall it after navigation.
     resetNoteHoldTracking();
   }
 
@@ -743,8 +753,45 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Global navigation, pattern rotation/FX editing and meta note editing keep
-  // their existing behavior. Only unmodified/selection arrows are grid-owned.
+  // On Cardputer the physical punctuation/arrow keys can carry meta=true
+  // through Fn. Resolve Alt+vertical-arrow here before the retained meta-note
+  // branch so Alt+Fn+Up/Down cannot accidentally edit pitch. Plain Alt+Up/Down
+  // uses this same owner as well, leaving one authoritative Retrig-count path.
+  if (!note_entry_mode_ && ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    ensureStepFocus();
+    const int step = activePatternStep();
+    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
+    bool retrigActive = false;
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          retrigActive =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]) != 0;
+          if (retrigActive) {
+            GroovePuterUndo::PatternEdit::adjustFxParam(
+                pattern, step, delta);
+          }
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (!retrigActive) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
+    return true;
+  }
+
+  // Global navigation, pattern rotation and meta note editing keep their
+  // existing behavior. Only unmodified/selection arrows are grid-owned.
   if (UIInput::isGlobalNav(ui_event)) {
     return handleEventLegacy(ui_event);
   }

@@ -337,7 +337,6 @@ public:
   const bool* patternHighTomSteps() const;
   const bool* patternRimSteps() const;
   const bool* patternClapSteps() const;
-  const bool* patternDrumAccentSteps() const;
   const bool* patternKickAccentSteps() const;
   const bool* patternSnareAccentSteps() const;
   const bool* patternHatAccentSteps() const;
@@ -470,7 +469,6 @@ public:
   void toggle303AccentStep(int voiceIndex, int stepIndex);
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
-  void toggleDrumAccentStep(int stepIndex);
   void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
 
   void cycle303StepFx(int voiceIndex, int stepIndex);
@@ -657,7 +655,6 @@ private:
   mutable bool synthSlideCache_[NUM_303_VOICES][SEQ_STEPS];
   mutable bool drumHitCache_[NUM_DRUM_VOICES][SEQ_STEPS];
   mutable bool drumAccentCache_[NUM_DRUM_VOICES][SEQ_STEPS];
-  mutable bool drumStepAccentCache_[SEQ_STEPS];
 
   VocalMixer vocalMixer_;
   VoiceCompressor voiceCompressor_;

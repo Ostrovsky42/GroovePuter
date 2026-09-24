@@ -587,28 +587,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       handled = true;
       break;
     case GROOVEPUTER_UP:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, 1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(-1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(-1);
+      handled = true;
       break;
     case GROOVEPUTER_DOWN:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, -1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(1);
+      handled = true;
       break;
     default:
       break;
@@ -812,10 +800,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
   if (key_f) {
-    ensureStepFocus();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
-    return true;
+    // Public PatternEditPage::handleEvent()/handleEventLegacy() own Synth FX
+    // mutation. Never let the retained unowned body mutate it directly.
+    return false;
   }
   if (key_c && ui_event.ctrl) {
     ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
@@ -1084,7 +1071,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     gfx.setTextColor(note >= 0 ? COLOR_BLACK : COLOR_WHITE);
     gfx.drawText(tx, ty, note_label);
   }
-  UI::drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK Alt[]:PAGE");
+  UI::drawStandardFooter(gfx, "ARROWS Q-I:PAT F:RTG", "C1/2:BANK Alt[]:PAGE");
 }
 
 void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
@@ -1264,15 +1251,13 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
     RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
 
-    uint8_t fx = pattern.steps[i].fx;
-    if (fx != 0) {
+    const uint8_t retrigCount =
+        GroovePuterUndo::PatternEdit::effectiveRetrigCount(pattern.steps[i]);
+    if (retrigCount != 0) {
         gfx.setTextColor(IGfxColor(NEON_YELLOW));
-        if (fx == (uint8_t)StepFx::Retrig) {
-            char buf[8]; snprintf(buf, sizeof(buf), "R%d", pattern.steps[i].fxParam);
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
-        } else if (fx == (uint8_t)StepFx::Reverse) {
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,"RV")/2, dotY - 8, "RV");
-        }
+        char buf[8];
+        snprintf(buf, sizeof(buf), "R%u", static_cast<unsigned>(retrigCount));
+        gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
     }
   }
 
@@ -1280,7 +1265,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 5. Footer (consistent with header)
   UI::drawStandardFooter(gfx,
-                     "A/Z:Nt F:FX Alt+Arw:Prm",
+                     "A/Z:Nt F:RTG AltUD:#",
                      "Q-I:PAT B:Bank Alt[]:PG");
 
   // NO scanlines - clean and readable
@@ -1470,8 +1455,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
   UI::drawStandardFooter(
       gfx,
-      "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "Q-I:PAT  B:Bank  Alt[]:PG");
+      "A/Z:Note F:RTG AltUD:#",
+      "Q-I:PAT B:Bank Alt[]:PG");
 #else
   drawMinimalStyle(gfx);
 #endif

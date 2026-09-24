@@ -58,6 +58,29 @@ int main() {
   assert(!shouldDispatchWord(duplicateTab, empty, true, duplicateTabValue));
   assert(duplicateTabValue == '\t');
 
+  struct ArrowShadowCase {
+    uint8_t hid;
+    char plain;
+    char shifted;
+  };
+  const ArrowShadowCase arrowShadows[] = {
+      {kCardputerArrowUpHid, ';', ':'},
+      {kCardputerArrowLeftHid, ',', '<'},
+      {kCardputerArrowDownHid, '.', '>'},
+      {kCardputerArrowRightHid, '/', '?'},
+  };
+  for (const auto& shadow : arrowShadows) {
+    for (const char wordValue : {shadow.plain, shadow.shifted}) {
+      FakeKeysState physicalArrow{};
+      physicalArrow.hid_keys = {shadow.hid};
+      physicalArrow.word = {wordValue};
+      char dispatchedWord = physicalArrow.word.front();
+      assert(!shouldDispatchWord(
+          physicalArrow, empty, true, dispatchedWord));
+      assert(dispatchedWord == wordValue);
+    }
+  }
+
   char heldWordTabValue = wordOnlyTab.word.front();
   assert(!shouldDispatchWord(wordOnlyTab, wordOnlyTab, true, heldWordTabValue));
   assert(heldWordTabValue == '\t');

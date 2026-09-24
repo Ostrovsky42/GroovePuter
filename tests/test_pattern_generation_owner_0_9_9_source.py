@@ -83,7 +83,7 @@ require(g_block.index("undoOwner().commitPrepared(") <
 # its internal COMMIT/ACTIVATE lifecycle, not its musical entry point or
 # PendingNextBar UI result.
 plain_start = page.index("// Outside NOTE ENTRY, plain G rerolls only this physical synth voice")
-plain_end = page.index("// Global navigation, pattern rotation/FX editing", plain_start)
+plain_end = page.index("if (!note_entry_mode_ && ui_event.alt &&", plain_start)
 plain_g = page[plain_start:plain_end]
 require("regenerateSynthWithQuantizedCommit" in plain_g,
         "plain G must preserve the B1 quantized generator")

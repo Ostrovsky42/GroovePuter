@@ -130,6 +130,9 @@ NK[M]  MORE
 - `Alt+[` / `Alt+]`: pattern page;
 - arrows: step cursor;
 - `N`: NOTE ENTRY on/off;
+- `C` inside NOTE ENTRY: repeat the last entered pitch on the current step;
+- `F`: toggle audible step retrigger; enabling starts at `R2`;
+- `Alt+Up/Down`: adjust retrigger count `1..8` while retrigger is active;
 - `G`: reroll only the selected Synth A or Synth B lane when NOTE ENTRY is off.
 
 Selected-lane `G` uses the active Genre/Variant/Rhythm/P-level/harmony composition
@@ -153,8 +156,10 @@ Ctrl+Alt+G    Stage 12 phrase audition/probe
 P             shared P1/P2/P3 selector
 ```
 
-Pattern navigation remains `Q..I`, bank A/B and pattern page selection. Editing owns
-its own cursor, accent and selection commands.
+Pattern navigation remains `Q..I`, bank A/B and pattern page selection. The lane
+labels include the matching global mute keys (`3KIK .. 0CLP`; SP12 uses `0RIM / 9CLP`). `A` toggles accent
+only on the selected existing hit, and the accent marker is drawn on that hit rather
+than in a separate aggregate ACC row.
 
 ## 5. Pattern identity and project storage
 
@@ -220,7 +225,9 @@ ownership.
 ## 8. PERFORM and PERFORMANCE TOOLS
 
 MIDI KEYBOARD provides the live scale-aware QWERTY performance surface. `Tab` opens
-PERFORMANCE TOOLS:
+PERFORMANCE TOOLS. On Cardputer ADV the physical comma/period positions are
+navigation arrows, so change SCALE from the KEY tools row with `Left/Right`;
+the `, / .` shortcuts remain SDL/external-keyboard compatibility only:
 
 | Key | Tool |
 |---|---|

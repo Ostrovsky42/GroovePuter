@@ -41,8 +41,8 @@ Notes:
 - `Ctrl+1..8`: switch edit page `1..8`
 - `Alt+Q/E/R/T`: save row marker `1..4`
 - `Ctrl+Alt+Q/E/R/T`: jump to marker `1..4`
-- `Alt+<` / `Alt+,`: jump to row `001`
-- `Alt+>` / `Alt+.`: jump to song end
+- `Ctrl+Alt+Up`: jump to row `001`
+- `Ctrl+Alt+Down`: jump to song end
 
 ## Generation
 - `G`: generate current cell
