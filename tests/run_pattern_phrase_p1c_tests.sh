@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 BASE_SHA="2860f99d254baa96e06d48b3a52d3e729c2e707a"
+# shellcheck source=tests/lib/candidate_base.sh
+source "$ROOT/tests/lib/candidate_base.sh"
+CANDIDATE_BASE_SHA="$(resolve_candidate_base "${P1C_CANDIDATE_BASE_SHA:-}")"
 TMP="${TMPDIR:-/tmp}/grooveputer_pattern_phrase_p1c"
 P0_BUILD="$ROOT/build/pattern-phrase-p1c-p0"
 mkdir -p "$TMP" "$P0_BUILD"
@@ -17,6 +20,15 @@ fi
 printf '%s\n' 'P1C current dev base verified: PASS'
 
 python3 tests/test_pattern_phrase_p0_source_contract.py
+
+P0_CXXFLAGS=(-std=c++17 -Wall -Wextra -Werror -I.)
+g++ "${P0_CXXFLAGS[@]}" tests/test_tee_midi_transport.cpp \
+  -o "$P0_BUILD/tee-midi-transport"
+"$P0_BUILD/tee-midi-transport"
+g++ "${P0_CXXFLAGS[@]}" tests/test_c9_tee_recovery.cpp \
+  -o "$P0_BUILD/tee-midi-recovery"
+"$P0_BUILD/tee-midi-recovery"
+printf '%s\n' 'P1C USB/DIN tee owner and recovery contract: PASS'
 
 SDL_DIR="$ROOT/platform_sdl"
 DEFAULT_SOURCES="$(make -C "$SDL_DIR" -pn 2>/dev/null | sed -n 's/^SOURCES := //p' | head -n 1)"
@@ -87,7 +99,9 @@ build_and_run g++ "$TMP/p1c-ubsan" \
 printf '%s\n' 'P1C UBSan: PASS'
 
 python3 tests/test_pattern_phrase_p1c_source_contract.py
-git diff --check "$BASE_SHA"...HEAD
+git cat-file -e "${CANDIDATE_BASE_SHA}^{commit}"
+git diff --check "${CANDIDATE_BASE_SHA}"..HEAD
+git diff --check
 printf '%s\n' 'P1C scheduler source firewall: PASS'
 printf '%s\n' 'P1C Performance firewall: PASS'
 printf '%s\n' 'PATTERN/PHRASE P1C focused gate: PASS'
