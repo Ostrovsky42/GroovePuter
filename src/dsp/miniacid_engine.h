@@ -58,6 +58,8 @@ static const int SAMPLE_RATE = kSampleRate;        // Hz
 static const int AUDIO_BUFFER_SAMPLES = kBlockFrames; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
 static const int kPPQN = 96;                 // Pulses Per Quarter Note
+// Velocity added to an accented Pattern note on the MIDI wire (clamped to 127).
+static const int kPatternMidiAccentVelocityBoost = 30;
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
@@ -596,7 +598,11 @@ private:
   void hardBarrierPatternPlayback_();
   void cleanupLiveNotesForTransportBarrier_(uint8_t patternAuthorityAtEntry);
   uint32_t currentAbsoluteSubtick_() const;
-  void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
+  void publishPatternNoteOn_(int synthIdx,
+                             uint8_t note,
+                             uint8_t velocity,
+                             bool accent,
+                             bool slide);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);

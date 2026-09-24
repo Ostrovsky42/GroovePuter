@@ -118,14 +118,30 @@ void foldLegacyLifetime(const SynthPattern& pattern,
     return;
   }
 
+  // Step that currently holds this lifetime: the origin, then any TIE that
+  // extended it. Slide legato is only defined into the immediately next step.
+  uint8_t holdingStep = tokens.values[originIndex].stepIndex;
+
   for (uint8_t offset = 1; offset <= tokens.count; ++offset) {
     const uint8_t tokenIndex =
         static_cast<uint8_t>((originIndex + offset) % tokens.count);
     const TriggerToken& token = tokens.values[tokenIndex];
     const uint32_t tokenTime =
         absoluteTokenSubtick(tokens, originIndex, tokenIndex);
+    const bool nextStep =
+        token.stepIndex ==
+        static_cast<uint8_t>((holdingStep + 1u) % SynthPattern::kSteps);
 
     if (token.note >= 0) {
+      // TB-303 slide: the gate of the preceding note stays high until the
+      // sliding note starts, so the common owner emits Release -> Start in
+      // one batch and the voice glides legato instead of re-attacking. The
+      // gate length alone is always shorter than a step, so without this the
+      // slide flag could never take effect.
+      if (nextStep && pattern.steps[token.stepIndex].slide && tokenTime > end) {
+        end = tokenTime;
+      }
+
       // A note token is not necessarily a sounding onset. Ghost/probability are
       // resolved later by the runtime executor in their legacy RNG order. If
       // this lifetime has already expired, nothing later may resurrect it.
@@ -141,6 +157,7 @@ void foldLegacyLifetime(const SynthPattern& pattern,
       // Conditional onset may be rejected at runtime. Keep the old lifetime
       // alive and continue scanning so a later TIE can still extend it. If the
       // onset is accepted, the common P2 owner performs Release -> Start there.
+      holdingStep = token.stepIndex;
       continue;
     }
 
@@ -149,6 +166,7 @@ void foldLegacyLifetime(const SynthPattern& pattern,
       // natural expiry no later token may revive the old note.
       if (tokenTime > end) break;
       end += baseDuration;
+      holdingStep = token.stepIndex;
     }
   }
 

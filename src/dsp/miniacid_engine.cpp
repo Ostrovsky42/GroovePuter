@@ -642,13 +642,18 @@ void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
 
 void MiniAcid::publishPatternNoteOn_(int synthIdx,
                                      uint8_t note,
-                                     uint8_t velocity) {
+                                     uint8_t velocity,
+                                     bool accent,
+                                     bool slide) {
   const int idx = clamp303Voice(synthIdx);
   patternOwnedMask_.fetch_or(
       static_cast<uint8_t>(1u << idx), std::memory_order_release);
   if (!patternEventQueue_) return;
-  if (velocity < 1) velocity = 1;
-  if (velocity > 127) velocity = 127;
+  // MIDI has no accent message; receivers (SEQTRAK included) read accent as a
+  // louder note. The internal voice gets the accent flag via startNote().
+  const int wireVelocity = static_cast<int>(velocity) +
+      (accent ? kPatternMidiAccentVelocityBoost : 0);
+  velocity = static_cast<uint8_t>(std::clamp(wireVelocity, 1, 127));
   const MusicalEventTarget target = idx == 0
       ? MusicalEventTarget::SynthA
       : MusicalEventTarget::SynthB;
@@ -659,6 +664,7 @@ void MiniAcid::publishPatternNoteOn_(int synthIdx,
       0,
       note,
       velocity,
+      slide ? kMusicalEventSlide : uint8_t{0},
   };
   if (patternEventQueue_->tryPush(event)) {
     patternMidiNotes_[idx] = static_cast<int16_t>(note);
@@ -3761,7 +3767,7 @@ void MiniAcid::consumePatternPlaybackActions_(
           synthVoices_[idx]->startNote(
               noteToFreq(event.note), accent, slide, event.velocity);
         }
-        publishPatternNoteOn_(idx, event.note, event.velocity);
+        publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
             idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
             sceneManager_.currentScene().led);
@@ -3774,7 +3780,7 @@ void MiniAcid::consumePatternPlaybackActions_(
           synthVoices_[idx]->startNote(
               noteToFreq(event.note), accent, slide, event.velocity);
         }
-        publishPatternNoteOn_(idx, event.note, event.velocity);
+        publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
             idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
             sceneManager_.currentScene().led);

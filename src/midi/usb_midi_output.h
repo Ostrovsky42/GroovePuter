@@ -43,6 +43,11 @@ public:
     static constexpr uint8_t kSeqtrakMonoPolyController = 26;
     static constexpr uint8_t kSeqtrakMonoValue = 0;
     static constexpr uint8_t kSeqtrakPolyValue = 1;
+    // Pattern slide on SEQTRAK SYNTH tracks: portamento glides only in MONO,
+    // and PORTAMENTO TIME 0 means off (SEQTRAK User Guide 18.3.1).
+    static constexpr uint8_t kPortamentoTimeController = 5;
+    static constexpr uint8_t kPortamentoSwitchController = 65;
+    static constexpr uint8_t kSeqtrakSlidePortamentoTime = 24;
 
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
                            UsbMidiRouteConfig config = {});
@@ -125,6 +130,8 @@ private:
     uint8_t generatedChannel(MusicalEventTarget target) const;
     void ensurePerformanceReceiverMode(MusicalEventTarget target,
                                        bool polyphonic);
+    void applyPatternSlide(uint8_t channel, bool slide);
+    void releasePatternPortamento(uint8_t channel);
     bool generatedNoteActive(int targetIndex, uint8_t note) const;
     bool generatedNotePendingRelease(int targetIndex, uint8_t note) const;
     void setGeneratedNoteActive(int targetIndex, uint8_t note, bool active);
@@ -182,6 +189,10 @@ private:
     uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
     uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
     uint16_t pendingChannelPanics_;
+    // Per wire channel: MONO + portamento time sent for Pattern slide, and
+    // whether PORTAMENTO SWITCH is currently on.
+    uint16_t patternSlideReady_;
+    uint16_t patternPortamentoOn_;
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;
