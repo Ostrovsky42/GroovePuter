@@ -8,6 +8,8 @@ on:
       - 'src/dsp/miniacid_engine.cpp'
       - 'src/dsp/miniacid_engine.h'
       - 'src/ui/components/drum_sequencer_grid.*'
+      - 'src/ui/components/drum_grid_geometry.h'
+      - 'tests/test_drum_grid_geometry.cpp'
       - 'src/ui/pages/drum_sequencer_page_legacy.h'
       - 'src/ui/pages/pattern_edit_page.cpp'
       - 'src/ui/pages/pattern_edit_page_legacy.h'

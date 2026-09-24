@@ -46,8 +46,9 @@ def main() -> None:
     require(
         'drawAccentLabel(gfx' not in grid
         and 'hit && stepData.accent' in grid
-        and 'bounds.h - kStepHeaderHeight' in grid,
-        "accent must be rendered per hit and the removed ACC row must return height to all eight lanes",
+        and 'drawAccentFrame(gfx' in grid
+        and 'DrumGridGeometry::laneHeight(' in grid,
+        "accent must be rendered per hit and lane height must come from the shell-aware geometry helper",
     )
     require(
         'if (ui_event.x < layout.grid_x || ui_event.x >= layout.grid_right) return false;' in grid,

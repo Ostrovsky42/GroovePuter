@@ -960,8 +960,10 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     retro::drawSelector(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12; // footer is 12
+    // The BK selector ends at y+36. The grid component itself stops above the
+    // shell-owned performance HUD/footer band, so pass the remaining height.
+    int grid_y = y + 36;
+    int grid_h = h - 36;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
@@ -1005,8 +1007,10 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     amber::drawSelectionBar(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12;
+    // The BK selector ends at y+36. The grid component itself stops above the
+    // shell-owned performance HUD/footer band, so pass the remaining height.
+    int grid_y = y + 36;
+    int grid_h = h - 36;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 

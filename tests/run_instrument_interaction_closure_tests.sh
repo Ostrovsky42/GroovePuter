@@ -30,4 +30,9 @@ python3 tests/test_hub_song_drum_ui_source_regressions.py
   -o "${BUILD_DIR}/test_pattern_mutations"
 "${BUILD_DIR}/test_pattern_mutations"
 
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  tests/test_drum_grid_geometry.cpp \
+  -o "${BUILD_DIR}/test_drum_grid_geometry"
+"${BUILD_DIR}/test_drum_grid_geometry"
+
 echo "Instrument interaction closure focused tests: PASS"
