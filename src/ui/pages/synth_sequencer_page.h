@@ -64,6 +64,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void drawPhraseRoll(IGfx& gfx);
   void drawPhraseList(IGfx& gfx);
   bool handlePhraseNotesEvent(UIEvent& ui_event);
+  bool handleMelodySlotKey(UIEvent& ui_event);
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;

@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <memory>
+#include <new>
 
 #include "pattern_edit_page.h"
 #include "tb303_params_page.h"
@@ -292,7 +294,31 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   gfx.setTextColor(COLOR_LABEL);
   const int whereX = bounds.x + 4 + textWidth(gfx, statusText) + 10;
   gfx.drawText(whereX, bounds.y, where);
-  gfx.drawText(whereX + textWidth(gfx, where) + 8, bounds.y, "PLAY:MELODY");
+
+  // Melody slot map of the current bank, right-aligned: the digit marks a slot
+  // holding an accepted Melody (reachable with Q..I), '.' an empty one, and
+  // the current slot is highlighted. The map wins over the PLAY label when the
+  // line is too short for both.
+  const int bank = mini_acid_.current303BankIndex(voice_index_);
+  const int currentPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
+  const int glyphW = textWidth(gfx, "0");
+  const int mapW = glyphW * (1 + Bank<SynthPattern>::kPatterns);
+  const int mapX = bounds.x + bounds.w - 4 - mapW;
+  gfx.setTextColor(COLOR_LABEL);
+  char bankLabel[2] = {static_cast<char>('A' + (bank < 0 ? 0 : bank)), 0};
+  gfx.drawText(mapX, bounds.y, bankLabel);
+  for (int slot = 0; slot < Bank<SynthPattern>::kPatterns; ++slot) {
+    const bool melody = mini_acid_.isMelodySlot(voice_index_, bank, slot);
+    char glyph[2] = {melody ? static_cast<char>('1' + slot) : '.', 0};
+    gfx.setTextColor(slot == currentPattern ? voiceColor
+                                            : (melody ? COLOR_WHITE : COLOR_LABEL));
+    gfx.drawText(mapX + glyphW * (1 + slot), bounds.y, glyph);
+  }
+  gfx.setTextColor(COLOR_LABEL);
+  const int playX = whereX + textWidth(gfx, where) + 8;
+  if (playX + textWidth(gfx, "PLAY:MELODY") + 6 <= mapX) {
+    gfx.drawText(playX, bounds.y, "PLAY:MELODY");
+  }
   char grid[16];
   std::snprintf(grid, sizeof(grid), "GRID %s",
                 PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
@@ -609,6 +635,70 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   UI::drawStandardFooter(gfx,
                          "SPACE LISTEN/STOP  L/R HIGHER LOWER",
                          "U/D PICK SOUND  ALT+L/R SHORTER LONGER");
+}
+
+// On MELODY, Q..I pick a slot of the current bank and B the same slot in the
+// other bank -- but only slots that hold an accepted Melody. Unsaved Working
+// edits block the move instead of being dropped.
+bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN || ui_event.alt ||
+      ui_event.ctrl || ui_event.meta) {
+    return false;
+  }
+  if (mini_acid_.songModeEnabled()) return false;
+
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  int bank = mini_acid_.current303BankIndex(voice_index_);
+  int pattern = mini_acid_.display303LocalPatternIndex(voice_index_);
+  if (lower == 'b' || ui_event.scancode == GROOVEPUTER_B) {
+    bank = (bank + 1) % kBankCount;
+  } else {
+    const int target = qwertyToPatternIndex(lower);
+    if (target < 0) return false;
+    pattern = target;
+  }
+
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> melody(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!melody) {
+    UI::showToast("MELODY LOAD FAILED", 1200);
+    return true;
+  }
+
+  using Result = MiniAcid::MelodySlotResult;
+  switch (mini_acid_.prepareMelodySlot(voice_index_, bank, pattern, *melody)) {
+    case Result::AlreadyCurrent:
+      return true;
+    case Result::NoMelody:
+      UI::showToast("NO MELODY", 900);
+      return true;
+    case Result::Unsaved:
+      UI::showToast("ALT+ENTER SAVE", 1200);
+      return true;
+    case Result::LoadFailed:
+    case Result::Unavailable:
+      UI::showToast("MELODY LOAD FAILED", 1200);
+      return true;
+    case Result::Ready:
+      break;
+  }
+
+  bool activated = false;
+  const auto apply = [&]() {
+    activated = mini_acid_.activateMelodySlot(voice_index_, bank, pattern, *melody);
+  };
+  if (audio_guard_) audio_guard_(apply);
+  else apply();
+  phrase_cursor_ = PhraseNotesCursor::clamp(
+      phrase_cursor_, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
+
+  char toast[20];
+  std::snprintf(toast, sizeof(toast), "MELODY %c%d",
+                static_cast<char>('A' + bank), pattern + 1);
+  UI::showToast(activated ? toast : "MELODY LOAD FAILED", 900);
+  return true;
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
@@ -1025,6 +1115,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  if (phraseNotes && handleMelodySlotKey(ui_event)) return true;
   if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;
 
   if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event) &&

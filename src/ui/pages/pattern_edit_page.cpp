@@ -846,6 +846,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
+      if (mini_acid_.hasUnsavedWorkingMelody(voice_index_) &&
+          patternIdx != mini_acid_.display303LocalPatternIndex(voice_index_)) {
+        UI::showToast("ALT+ENTER SAVE", 1200);
+        return true;
+      }
       setPatternCursor(patternIdx);
       withAudioGuard([&]() {
         mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);

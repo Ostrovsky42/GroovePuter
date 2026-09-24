@@ -150,6 +150,10 @@ void PatternEditPage::setBankIndex(int bankIndex) {
   if (bankIndex < 0) bankIndex = 0;
   if (bankIndex >= kBankCount) bankIndex = kBankCount - 1;
   if (bank_index_ == bankIndex) return;
+  if (mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+    UI::showToast("ALT+ENTER SAVE", 1200);
+    return;
+  }
   bank_index_ = bankIndex;
   withAudioGuard([&]() { mini_acid_.tryManual303BankSwitch(voice_index_, bank_index_); });
 }
