@@ -27,6 +27,10 @@ enum class MusicalEventTarget : uint8_t {
     Dx,
 };
 
+// Articulation hints carried by a NoteOn. Sinks that do not understand them
+// ignore the byte; NoteOff and AllNotesOff never carry them.
+constexpr uint8_t kMusicalEventSlide = 1u << 0;
+
 // channel is a zero-based logical channel. Internal synth outputs ignore it.
 // USB MIDI synth targets map to configured physical channels. For Drums,
 // channel selects the logical live lane or Pattern drum voice consumed by the
@@ -38,6 +42,7 @@ struct MusicalEvent {
     uint8_t channel{0};
     uint8_t note{0};
     uint8_t velocity{0};
+    uint8_t flags{0};
 };
 
 #endif  // GROOVEPUTER_MUSICAL_EVENT_H
