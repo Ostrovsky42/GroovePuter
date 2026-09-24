@@ -13,6 +13,7 @@
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/audio/pattern_paging.h"
 #include "src/state/melody_promotion.h"
+#include "src/ui/phrase_source_toggle.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -141,6 +142,47 @@ int main() {
   // 7. Selecting the current slot is a no-op.
   assert(engine.prepareMelodySlot(0, 1, 1, *loaded) == Result::AlreadyCurrent);
   std::puts("MSLOT-7 PASS: current slot is a no-op");
+
+  // 8. Reported bug: saved Melody on Q, back to STEPS, move to another slot,
+  //    Alt+R. The new slot must get a Melody of its OWN steps, not Q's.
+  assert(engine.prepareMelodySlot(0, 0, 0, *loaded) == Result::Ready);
+  assert(engine.activateMelodySlot(0, 0, 0, *loaded));
+  assert(!engine.hasUnsavedWorkingMelody(0));
+  assert(PhraseSourceToggle::toggle(engine, nullptr, 0) ==
+         PhraseSourceToggle::Result::SwitchedToPattern);
+  {
+    SynthPattern& slot4 = engine.sceneManager().currentScene().synthABanks[0].patterns[4];
+    for (auto& step : slot4.steps) step = SynthStep{};
+    slot4.steps[0].note = 72;
+    slot4.steps[8].note = 75;
+  }
+  assert(engine.tryManual303TargetSwitch(0, 4));
+  assert(!engine.workingMaterial_[0].holdsMelody());
+  assert(PhraseSourceToggle::toggle(engine, nullptr, 0) ==
+         PhraseSourceToggle::Result::MadePhrase);
+  const Buffer& made = engine.workingMaterial_[0].melody();
+  assert(made.count == 2 && made.events[0].note == 72 && made.events[1].note == 75);
+  assert(engine.hasUnsavedWorkingMelody(0));
+  std::puts("MSLOT-8 PASS: Alt+R on a new slot uses that slot's steps, not the previous Melody");
+
+  // 9. On STEPS an unsaved Melody blocks the slot switch; after ACCEPT the
+  //    saved Melody stays on SD and Working follows the slot.
+  assert(PhraseSourceToggle::toggle(engine, nullptr, 0) ==
+         PhraseSourceToggle::Result::SwitchedToPattern);
+  assert(!engine.tryManual303TargetSwitch(0, 2));
+  assert(engine.display303LocalPatternIndex(0) == 4);
+  assert(engine.workingMaterial_[0].holdsMelody());
+  assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::Accepted);
+  assert(engine.tryManual303TargetSwitch(0, 2));
+  assert(!engine.workingMaterial_[0].holdsMelody());
+  std::puts("MSLOT-9 PASS: STEPS slot switch blocks unsaved and releases saved Melody");
+
+  // 10. Alt+R on a slot that already holds an accepted Melody loads it.
+  assert(PhraseSourceToggle::toggle(engine, nullptr, 0) ==
+         PhraseSourceToggle::Result::SwitchedToPhrase);
+  assert(sameNotes(engine.workingMaterial_[0].melody(), melodyE));
+  assert(!engine.hasUnsavedWorkingMelody(0));
+  std::puts("MSLOT-10 PASS: Alt+R on a Melody slot loads its saved Melody");
 
   std::puts("M2 melody slot navigation: PASS");
   return 0;

@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <new>
 
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/undo_owner.h"
@@ -79,6 +81,24 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   // sounding owner, so an invalid or non-existent Melody still never plays;
   // if materialization fails the voice stays on PATTERN.
   if (!onPhrase && engine.retainedWorkingMelody(voiceIndex) == nullptr) {
+    // A slot that already holds an accepted Melody plays that Melody; only a
+    // slot without one is materialized from its own steps.
+    const int bank = engine.current303BankIndex(voiceIndex);
+    const int pattern = engine.display303LocalPatternIndex(voiceIndex);
+    if (engine.isMelodySlot(voiceIndex, bank, pattern)) {
+      std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> saved(
+          new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+      if (!saved || !engine.loadCurrentSlotMelody(voiceIndex, *saved)) {
+        return Result::Rejected;
+      }
+      bool activated = false;
+      const auto activate = [&]() {
+        activated = engine.activateMelodySlot(voiceIndex, bank, pattern, *saved);
+      };
+      if (audioGuard) audioGuard(activate);
+      else activate();
+      return activated ? Result::SwitchedToPhrase : Result::Rejected;
+    }
     return makePhrase(engine, audioGuard, voiceIndex) ? Result::MadePhrase
                                                      : Result::Rejected;
   }

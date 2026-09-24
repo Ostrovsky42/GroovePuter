@@ -213,6 +213,9 @@ public:
       PhraseRuntime::RuntimeSynthEventBuffer& out) const;
   bool activateMelodySlot(int voiceIndex, int bankIndex, int patternIndex,
                           const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  // The accepted Melody of the slot the voice is on now (SD read, no guard).
+  bool loadCurrentSlotMelody(int voiceIndex,
+                             PhraseRuntime::RuntimeSynthEventBuffer& out) const;
 
   // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
@@ -753,6 +756,12 @@ private:
   void recordSavedMelody_(int voiceIndex, int globalSlot,
                           const PhraseRuntime::RuntimeSynthEventBuffer& melody);
   int current303GlobalSlot_(int voiceIndex) const;
+  MelodySlotResult loadSlotMelody_(int voiceIndex, int bankIndex,
+                                   int patternIndex,
+                                   PhraseRuntime::RuntimeSynthEventBuffer& out) const;
+  // Working Melody belongs to the slot it was made on or loaded from. After a
+  // slot change a saved one (it is on SD) leaves Working with that slot.
+  void releaseSavedWorkingMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 
@@ -1085,10 +1094,15 @@ inline bool MiniAcid::tryManual303TargetSwitch(
     return true;
   }
   if (hasModifiedWorking303Pattern(idx)) return false;
+  // An unsaved Working Melody belongs to the current slot: moving away would
+  // silently carry it onto another slot or lose it.
+  if (hasUnsavedWorkingMelody(idx)) return false;
   set303BankIndex(idx, bankIndex);
   set303PatternIndex(idx, patternIndex);
-  return current303BankIndex(idx) == bankIndex &&
-         display303LocalPatternIndex(idx) == patternIndex;
+  const bool moved = current303BankIndex(idx) == bankIndex &&
+                     display303LocalPatternIndex(idx) == patternIndex;
+  if (moved) releaseSavedWorkingMelody_(idx);
+  return moved;
 }
 
 inline bool MiniAcid::tryManual303TargetSwitch(
