@@ -45,7 +45,16 @@ public:
                                     int pattern,
                                     const SynthPattern* candidatePattern,
                                     GroovePuterMaterial::MaterialKind candidateKind,
-                                    GroovePuterMaterial::MaterialId candidateId);
+                                    GroovePuterMaterial::MaterialId candidateId,
+                                    bool publishResident = true);
+
+    // Complete only the infallible resident update after a verified deferred
+    // commit. The caller must exclude the audio reader at this boundary.
+    static void publishPageCandidateRam(
+        int pageIndex, Scene& scene, int voice, int bank, int pattern,
+        const SynthPattern* candidatePattern,
+        GroovePuterMaterial::MaterialKind candidateKind,
+        GroovePuterMaterial::MaterialId candidateId);
 
     static bool commitPatternCandidate(int pageIndex,
                                        Scene& scene,

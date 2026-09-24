@@ -348,6 +348,43 @@ int main() {
            "invalid voice must fail without aliasing voice A/B");
   }
 
+  // 8. A legacy/unassigned Pattern may be promoted before its first ACCEPT.
+  // DISCARD must still restore that same resident Pattern, not strand Working.
+  {
+    Fixture fixture;
+    const auto accepted = fixture.canonical(0);
+    const int resident = fixture.currentResident(0);
+    fixture.engine.sceneManager_.currentScene().materialSlots[0][resident].id =
+        MaterialId{};
+
+    expect(fixture.engine.makePhrase(0),
+           "unassigned Pattern MAKE PHRASE must create Melody Working");
+    expect(fixture.engine.workingMaterial_[0].holdsMelody(),
+           "MAKE PHRASE must leave Melody Working before DISCARD");
+    expect(fixture.engine.discardCurrentMaterial(0) ==
+               MiniAcid::DiscardResult::Discarded,
+           "unassigned Pattern MAKE PHRASE then DISCARD must restore Pattern");
+    expect(fixture.engine.workingMaterial_[0].empty() &&
+               fixture.engine.activeMaterial(0).kind == MaterialKind::Pattern &&
+               samePattern(fixture.canonical(0), accepted),
+           "unassigned DISCARD must preserve accepted Pattern and clear Working");
+  }
+
+  // 9. MAKE PHRASE Working belongs to the source slot, not whatever slot is
+  // selected later. DISCARD must not restore an unrelated accepted Pattern.
+  {
+    Fixture fixture;
+    expect(fixture.engine.makePhrase(0),
+           "bound Pattern MAKE PHRASE must create Melody Working");
+    fixture.engine.sceneManager_.setCurrentSynthPatternIndex(0, 1);
+    expect(fixture.engine.discardCurrentMaterial(0) ==
+               MiniAcid::DiscardResult::UnsupportedCurrentState,
+           "DISCARD after slot change must reject unrelated Pattern");
+    expect(fixture.engine.workingMaterial_[0].holdsMelody() &&
+               fixture.engine.activeMaterial(0).kind == MaterialKind::Melody,
+           "rejected DISCARD must preserve Melody CURRENT");
+  }
+
   if (g_failures != 0) {
     std::fprintf(stderr, "DISCARD contract: %d failure(s)\n", g_failures);
     return 1;

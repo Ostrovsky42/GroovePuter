@@ -41,6 +41,20 @@ int main() {
     std::this_thread::yield();
   }
 
+  // A control-side storage transaction may let rendering continue while it
+  // performs I/O, then reacquire exclusion for bounded RAM publication.
+  gate.lockControl();
+  const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
+  assert(gate.openControlIoWindow());
+  while (blocks.load(std::memory_order_acquire) == beforeIo) {
+    std::this_thread::yield();
+  }
+  assert(gate.closeControlIoWindow());
+  const uint32_t afterIo = blocks.load(std::memory_order_acquire);
+  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  assert(blocks.load(std::memory_order_acquire) == afterIo);
+  gate.unlockControl();
+
   running.store(false, std::memory_order_release);
   gate.setAudioTaskActive(false);
   audio.join();

@@ -908,7 +908,8 @@ bool PatternPagingService::commitPageCandidate(
     int pattern,
     const SynthPattern* candidatePattern,
     GroovePuterMaterial::MaterialKind candidateKind,
-    GroovePuterMaterial::MaterialId candidateId) {
+    GroovePuterMaterial::MaterialId candidateId,
+    bool publishResident) {
     if (!validPageIndex(pageIndex) || !ensureDirectory()) return false;
     if (voice < 0 || voice >= Scene::kMaterialVoices) return false;
     if (bank < 0 || bank >= kBankCount) return false;
@@ -1061,7 +1062,20 @@ bool PatternPagingService::commitPageCandidate(
     LOG_DEBUG("[commitPageCandidate] OK proj=%s page=%d slot=%d gen=%u\n",
               proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
 
-    // Infallible RAM updates
+    if (publishResident) {
+        publishPageCandidateRam(pageIndex, scene, voice, bank, pattern,
+                                candidatePattern, candidateKind, candidateId);
+    }
+    return true;
+}
+
+void PatternPagingService::publishPageCandidateRam(
+    int pageIndex, Scene& scene, int voice, int bank, int pattern,
+    const SynthPattern* candidatePattern,
+    GroovePuterMaterial::MaterialKind candidateKind,
+    GroovePuterMaterial::MaterialId candidateId) {
+    const size_t slotOffset = static_cast<size_t>(
+        bank * Bank<SynthPattern>::kPatterns + pattern);
     if (candidatePattern) {
         if (voice == 0) {
             scene.synthABanks[bank].patterns[pattern] = *candidatePattern;
@@ -1072,7 +1086,6 @@ bool PatternPagingService::commitPageCandidate(
     scene.materialSlots[voice][slotOffset].kind = candidateKind;
     scene.materialSlots[voice][slotOffset].id = candidateId;
     activePageIndexStorage() = pageIndex;
-    return true;
 }
 
 bool PatternPagingService::commitPatternCandidate(
@@ -1228,4 +1241,3 @@ bool PatternPagingService::clearProjectPages() {
     if (cleared) activePageIndexStorage() = 0;
     return cleared;
 }
-
