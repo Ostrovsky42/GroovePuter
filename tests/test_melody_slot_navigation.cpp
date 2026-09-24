@@ -184,6 +184,17 @@ int main() {
   assert(!engine.hasUnsavedWorkingMelody(0));
   std::puts("MSLOT-10 PASS: Alt+R on a Melody slot loads its saved Melody");
 
+  // 11. DISCARD on a Melody slot restores the accepted Melody from SD
+  //     (it used to fail closed with "DISCARD: FAILED").
+  engine.workingMaterial_[0].melodyIfHeld()->events[0].note = 99;
+  assert(engine.hasUnsavedWorkingMelody(0));
+  assert(engine.discardCurrentMaterial(0) == MiniAcid::DiscardResult::Discarded);
+  assert(sameNotes(engine.workingMaterial_[0].melody(), melodyE));
+  assert(!engine.hasUnsavedWorkingMelody(0));
+  assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
+  assert(engine.discardCurrentMaterial(0) == MiniAcid::DiscardResult::AlreadyClean);
+  std::puts("MSLOT-11 PASS: DISCARD restores the accepted Melody of the slot");
+
   std::puts("M2 melody slot navigation: PASS");
   return 0;
 }

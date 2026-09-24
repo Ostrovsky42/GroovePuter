@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <memory>
 #include <new>
 #include <string>
 
@@ -4521,6 +4522,12 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
   }
   const int idx = clamp303Voice(voiceIndex);
 
+  // A slot whose ACCEPTED truth is a Melody restores that Melody from SD. The
+  // NEXT classifier deliberately does no SD I/O and cannot resolve it.
+  if (isMelodySlot(idx, current303BankIndex(idx), display303LocalPatternIndex(idx))) {
+    return discardToAcceptedMelody_(idx);
+  }
+
   GroovePuterMaterial::MaterialReference reference{};
   GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
   const CurrentNextState state =
@@ -4582,6 +4589,36 @@ MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int voiceIndex) {
       idx, static_cast<uint16_t>(reference.address.globalSlot),
       GroovePuterMaterial::MaterialKind::Pattern);
   workingMaterial_[idx].clear();
+  developmentLineage_[idx] = {};
+  hasSourceAnchorSnapshot_[idx] = false;
+  hasSourceAnchorUndoSnapshot_[idx] = false;
+  cancelGoQueue(idx);
+  return DiscardResult::Discarded;
+}
+
+MiniAcid::DiscardResult MiniAcid::discardToAcceptedMelody_(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> accepted(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!accepted || !loadCurrentSlotMelody(idx, *accepted)) {
+    return DiscardResult::UnsupportedCurrentState;
+  }
+
+  const int globalSlot = current303GlobalSlot_(idx);
+  const auto* working = workingMaterial_[idx].melodyIfHeld();
+  if (working != nullptr &&
+      activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Melody &&
+      GroovePuterMaterial::versionForMelody(*working) ==
+          GroovePuterMaterial::versionForMelody(*accepted)) {
+    recordSavedMelody_(idx, globalSlot, *accepted);
+    return DiscardResult::AlreadyClean;
+  }
+
+  workingMaterial_[idx].storeMelody(*accepted);
+  publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot),
+                        GroovePuterMaterial::MaterialKind::Melody);
+  setSequencedSource(idx, SequencedSource::Phrase);
+  recordSavedMelody_(idx, globalSlot, *accepted);
   developmentLineage_[idx] = {};
   hasSourceAnchorSnapshot_[idx] = false;
   hasSourceAnchorUndoSnapshot_[idx] = false;

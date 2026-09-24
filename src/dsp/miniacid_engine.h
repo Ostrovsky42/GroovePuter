@@ -287,8 +287,8 @@ public:
   const PhraseRuntime::RuntimeSynthEventBuffer* sourceAnchorSnapshot(int voiceIndex) const;
 
   // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.
-  // First slice resolves accepted Pattern from RAM only; accepted Melody stays
-  // fail-closed until its durable resolver is part of the closure.
+  // Accepted Pattern resolves from RAM; accepted Melody resolves from its slot
+  // on SD (M2), so DISCARD on a Melody slot restores the saved Melody.
   enum class DiscardResult : uint8_t {
     Discarded = 0,
     AlreadyClean,
@@ -762,6 +762,7 @@ private:
   // Working Melody belongs to the slot it was made on or loaded from. After a
   // slot change a saved one (it is on SD) leaves Working with that slot.
   void releaseSavedWorkingMelody_(int voiceIndex);
+  DiscardResult discardToAcceptedMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 

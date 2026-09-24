@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
@@ -147,6 +148,17 @@ struct Fixture {
 }  // namespace
 
 int main() {
+  // DISCARD of an accepted Melody resolves it from SD. Use a private empty
+  // storage root so files left in the working directory by other suites can
+  // never decide an outcome here.
+  {
+    const auto root = std::filesystem::temp_directory_path() / "gp_test_material_discard";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root);
+    SD.setRoot(root);
+  }
+
   // 1. Dirty Pattern Working is discarded back to exact accepted Pattern.
   {
     Fixture fixture;
@@ -268,8 +280,9 @@ int main() {
            "invalid-ID rejection must not mutate canonical bytes");
   }
 
-  // 5. Accepted Melody is deliberately unsupported in the RAM-only first
-  //    slice; rejection preserves CURRENT instead of performing filesystem I/O.
+  // 5. An accepted Melody that cannot be resolved from its slot on SD (here:
+  //    the kind says Melody but no payload exists) fails closed and preserves
+  //    CURRENT. A readable accepted Melody is restored (MSLOT-11).
   {
     Fixture fixture;
     expect(fixture.engine.adjustWorking303StepNote(0, 0, 1),
@@ -282,7 +295,7 @@ int main() {
 
     expect(fixture.engine.discardCurrentMaterial(0) ==
                MiniAcid::DiscardResult::UnsupportedCurrentState,
-           "accepted Melody must fail closed in DISCARD first slice");
+           "unreadable accepted Melody must fail closed in DISCARD");
     expect(fixture.engine.workingMaterial_[0].holdsPattern() &&
                samePattern(fixture.engine.workingMaterial_[0].pattern(), dirty),
            "unsupported accepted kind must preserve Working");
