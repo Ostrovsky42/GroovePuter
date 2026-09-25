@@ -1230,7 +1230,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(TEXT_PRIMARY));
     }
 
-    if (hasNote) {
+    if (hasNote || note == -2) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
       IGfxColor baseColor = retroVoiceColor(voice_index_);
@@ -1429,7 +1429,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(AmberTheme::NEON_YELLOW));
     }
 
-    if (hasNote) {
+    if (hasNote || note == -2) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
 
