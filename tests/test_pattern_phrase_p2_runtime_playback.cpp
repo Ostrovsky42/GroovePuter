@@ -41,6 +41,15 @@ PhraseRuntime::PatternProjectionSettings longGateSettings() {
   return settings;
 }
 
+PhraseRuntime::PatternProjectionSettings shortGateSettings() {
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 0.5f;
+  return settings;
+}
+
 SynthPattern conditionalLifetimePattern(uint8_t probability,
                                         bool ghost,
                                         bool tieAfterConditional) {
@@ -66,6 +75,154 @@ PhraseRuntime::RuntimeSynthEventBuffer project(
              pattern, longGateSettings(), projected) ==
          PhraseRuntime::PatternProjectionStatus::Ready);
   return projected;
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer projectShortGate(
+    const SynthPattern& pattern) {
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, shortGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  return projected;
+}
+
+SynthPattern emptyShortGatePattern() {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+  return pattern;
+}
+
+void testAdjacentTieExtendsShortGateThroughTiedStep() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, shortGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  assert(projected.count == 1);
+
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  const RuntimeSynthEvent& note = projected.events[0];
+  // NOTE at step 0 followed by TIE at step 1 is one continuous event through
+  // the end of the tied step; it is not a second onset at the tie boundary.
+  assert(note.durationSubticks == 2u * stepSubticks);
+
+  RuntimeSynthPlaybackState state{};
+  const auto onset = state.acceptOnset(note, 0);
+  assert(onset.count == 1);
+  requireAction(onset, 0, RuntimeSynthPlaybackActionType::Start, 60);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  assert(state.active());
+  assert(state.activeNote() == 60);
+  assert(state.releaseDue(2u * stepSubticks).count == 1);
+  assert(!state.active());
+}
+
+void testAdjacentTieChainHasOneOnsetAndOneFinalRelease() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = -2;
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  assert(projected.events[0].durationSubticks == 3u * stepSubticks);
+
+  RuntimeSynthPlaybackState state{};
+  const auto onset = state.acceptOnset(projected.events[0], 0);
+  assert(onset.count == 1);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  assert(state.releaseDue(2u * stepSubticks).count == 0);
+  const auto release = state.releaseDue(3u * stepSubticks);
+  assert(release.count == 1);
+  requireAction(release, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  assert(!state.active());
+}
+
+void testRestBlocksLaterTieAndOrphanTieHasNoOnset() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[2].note = -2;  // Step 1 is REST.
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+  SynthPattern withoutTie = emptyShortGatePattern();
+  withoutTie.steps[0].note = 60;
+  const auto baseline = projectShortGate(withoutTie);
+  assert(projected.events[0].durationSubticks ==
+         baseline.events[0].durationSubticks);
+
+  SynthPattern orphan = emptyShortGatePattern();
+  orphan.steps[0].note = -2;
+  const auto orphanProjection = projectShortGate(orphan);
+  assert(orphanProjection.count == 0);
+  RuntimeSynthPlaybackState orphanState{};
+  assert(orphanState.releaseDue(100000).count == 0);
+  assert(!orphanState.active());
+}
+
+void testFollowingNoteStartsAtTiedStepBoundary() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = 67;
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 2);
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  assert(projected.events[0].durationSubticks == 2u * stepSubticks);
+  assert(projected.events[1].note == 67);
+
+  RuntimeSynthPlaybackState state{};
+  const auto first = state.acceptOnset(projected.events[0], 0);
+  assert(first.count == 1);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  const auto replacement = state.acceptOnset(
+      projected.events[1], 2u * stepSubticks);
+  assert(replacement.count == 2);
+  requireAction(replacement, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(replacement, 1, RuntimeSynthPlaybackActionType::Start, 67);
+}
+
+void testTieRemainsDistinctFromSlide() {
+  SynthPattern tied = emptyShortGatePattern();
+  tied.steps[0].note = 60;
+  tied.steps[1].note = -2;
+  const auto tieProjection = projectShortGate(tied);
+  assert(tieProjection.count == 1);
+  assert((tieProjection.events[0].flags & PhraseRuntime::kEventSlide) == 0);
+
+  SynthPattern sliding = emptyShortGatePattern();
+  sliding.steps[0].note = 60;
+  sliding.steps[1].note = 67;
+  sliding.steps[1].slide = true;
+  const auto slideProjection = projectShortGate(sliding);
+  assert(slideProjection.count == 2);
+  assert((slideProjection.events[1].flags & PhraseRuntime::kEventSlide) != 0);
+  assert(tieProjection.events[0].note == 60);
+  assert(slideProjection.events[1].note == 67);
+}
+
+void testTieCannotOutliveHardBarrier() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(projected.events[0], 0);
+  const auto barrier = state.hardBarrier();
+  assert(barrier.count == 1);
+  requireAction(barrier, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  assert(state.releaseDue(projected.events[0].durationSubticks).count == 0);
+  assert(!state.active());
 }
 
 void testFirstOnsetStartsAndOwnsDeadline() {
@@ -179,7 +336,7 @@ void testProbabilityZeroOnsetMustNotPreclipTiedLifetime() {
       static_cast<uint32_t>(conditional.startTick) *
       PhraseRuntime::kSubticksPerTick;
   assert(conditional.probability == 0);
-  assert(first.durationSubticks > conditionalStart);
+  assert(first.durationSubticks >= conditionalStart);
 }
 
 void testAcceptedConditionalOnsetReleasesThenStarts() {
@@ -193,7 +350,7 @@ void testAcceptedConditionalOnsetReleasesThenStarts() {
       PhraseRuntime::kSubticksPerTick;
   assert(conditional.probability < 100);
   assert((conditional.flags & PhraseRuntime::kEventGhost) != 0);
-  assert(first.durationSubticks > conditionalStart);
+  assert(first.durationSubticks >= conditionalStart);
 
   RuntimeSynthPlaybackState state{};
   (void)state.acceptOnset(first, 0);
@@ -251,6 +408,12 @@ void testPlaybackStateIsFixedAndTriviallyCopyable() {
 }  // namespace
 
 int main() {
+  testAdjacentTieExtendsShortGateThroughTiedStep();
+  testAdjacentTieChainHasOneOnsetAndOneFinalRelease();
+  testRestBlocksLaterTieAndOrphanTieHasNoOnset();
+  testFollowingNoteStartsAtTiedStepBoundary();
+  testTieRemainsDistinctFromSlide();
+  testTieCannotOutliveHardBarrier();
   testFirstOnsetStartsAndOwnsDeadline();
   testReplacingOnsetReleasesBeforeStart();
   testNaturalExpiryReleasesExactlyOnce();

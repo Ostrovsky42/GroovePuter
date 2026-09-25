@@ -175,7 +175,6 @@ if source_changed:
         "isGuaranteedOnset",
         "!step.ghost",
         "step.probability >= 100",
-        "if (tokenTime >= end) break;",
         "if (tokenTime > end) break;",
     ):
         require(required in source_text,

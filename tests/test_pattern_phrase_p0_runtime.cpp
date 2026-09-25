@@ -467,6 +467,53 @@ void testLegacyTieCrossingSymptom() {
   std::puts("P0-D PASS: legacy TIE can extend an already-active gate across 384");
 }
 
+void testAdjacentTieKeepsInternalAndPatternMidiOwnershipForSynth(int synth) {
+  RuntimeFixture f;
+  editPattern(f, synth, 0, {0, 60, 1, -2});
+  editPattern(f, 1 - synth, 0, {});
+  f.engine.set303PatternIndex(synth, 0);
+  f.engine.songMode_ = false;
+  f.engine.sceneManager_.setSongMode(false);
+  f.engine.playing = true;
+
+  f.beginRender();
+  processTick(f, 0);   // One pitched onset.
+  processTick(f, 24);  // TIE is a continuation token, not another onset.
+  assert(f.runtimeActive(synth));
+  assert(f.noteHeld(synth));
+
+  const uint32_t tieBoundary =
+      24u * PhraseRuntime::kSubticksPerTick;
+  const auto atTieBoundary =
+      f.engine.patternPlaybackState_[synth].releaseDue(tieBoundary);
+  assert(atTieBoundary.count == 0);
+  f.engine.consumePatternPlaybackActions_(synth, atTieBoundary);
+  assert(f.runtimeActive(synth));
+  assert(f.noteHeld(synth));
+
+  const uint32_t tiedStepEnd =
+      48u * PhraseRuntime::kSubticksPerTick;
+  const auto finalRelease =
+      f.engine.patternPlaybackState_[synth].releaseDue(tiedStepEnd);
+  assert(finalRelease.count == 1);
+  f.engine.consumePatternPlaybackActions_(synth, finalRelease);
+  assert(!f.runtimeActive(synth));
+  assert(!f.noteHeld(synth));
+  f.endRender();
+  f.dispatchLikeProduction();
+
+  assert(countWire(f.usb.packets, WireType::NoteOn, channelForSynth(synth)) == 1);
+  assert(countWire(f.usb.packets, WireType::NoteOff, channelForSynth(synth)) == 1);
+  assert(countWire(f.usb.packets, WireType::ControlChange, channelForSynth(synth)) == 0);
+  f.assertEndpointParity();
+}
+
+void testAdjacentTieIsOneContinuousPatternMidiAndInternalNote() {
+  testAdjacentTieKeepsInternalAndPatternMidiOwnershipForSynth(0);
+  testAdjacentTieKeepsInternalAndPatternMidiOwnershipForSynth(1);
+  std::puts("P0-TIE PASS: one internal/MIDI note spans adjacent TIE without CC");
+}
+
 void configureSwing(RuntimeFixture& f, int synth, uint8_t swingPct) {
   Scene& scene = f.engine.sceneManager_.currentScene();
   scene.feel.swingPct = swingPct;
@@ -559,6 +606,7 @@ int main() {
   testExact384TickBoundary();
   testSongBoundaryCleanupDivergence();
   testLegacyTieCrossingSymptom();
+  testAdjacentTieIsOneContinuousPatternMidiAndInternalNote();
   testSwingPlusMicrotimingWrapsLateStep();
   testNegativeMicrotimingWrapsStepZero();
   std::puts("PATTERN/PHRASE P0 runtime characterization: OK");

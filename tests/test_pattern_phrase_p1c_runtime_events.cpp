@@ -134,7 +134,7 @@ void testNegativeMicrotimingWrap() {
   std::puts("P1-E PASS: step0 negative microtiming wraps to tick 361");
 }
 
-void testLegacyTieBecomesCrossBoundaryDuration() {
+void testAdjacentTieCrossesBarAndLastsThroughTiedStep() {
   SynthPattern pattern = emptyPattern();
   pattern.steps[15].note = 60;
   pattern.steps[15].timing = 23;
@@ -146,14 +146,15 @@ void testLegacyTieBecomesCrossBoundaryDuration() {
          PatternProjectionStatus::Ready);
   assert(out.count == 1);
   const RuntimeSynthEvent& event = out.events[0];
-  const uint16_t base = expectedBaseDuration(0, 0.5f);
   assert(event.startTick == 383);
-  assert(event.durationSubticks == static_cast<uint16_t>(base * 2u));
+  // The shifted TIE begins two ticks after step 15 and owns through the
+  // scheduled boundary of following step 1 at tick 408.
+  assert(event.durationSubticks == 25u * kSubticksPerTick);
   const uint32_t endSubtick =
       static_cast<uint32_t>(event.startTick) * kSubticksPerTick +
       event.durationSubticks;
   assert(endSubtick > static_cast<uint32_t>(kTicksPerBar) * kSubticksPerTick);
-  std::puts("P1-F PASS: legacy TIE crossing is one explicit-duration event");
+  std::puts("P1-F PASS: adjacent TIE crossing owns through the tied step");
 }
 
 void testExpiredTieDoesNotRevive() {
@@ -241,7 +242,7 @@ int main() {
   testSynthGateScaling();
   testSwingAndMicrotimingWrap();
   testNegativeMicrotimingWrap();
-  testLegacyTieBecomesCrossBoundaryDuration();
+  testAdjacentTieCrossesBarAndLastsThroughTiedStep();
   testExpiredTieDoesNotRevive();
   testNextOnsetClipsMonophonicLifetime();
   testInvalidSynthIsFailureAtomic();

@@ -31,6 +31,18 @@ int swingDelayTicks(const PatternProjectionSettings& settings) {
       std::lround((static_cast<float>(swing) - 50.0f) * 24.0f / 50.0f));
 }
 
+int triggerTickForStep(const SynthPattern& pattern,
+                       const PatternProjectionSettings& settings,
+                       uint8_t stepIndex) {
+  const int swing = settings.swingEnabled && ((stepIndex & 1u) != 0u)
+      ? swingDelayTicks(settings)
+      : 0;
+  const int nominalTick = static_cast<int>(stepIndex) * 24;
+  return (nominalTick + swing +
+          static_cast<int>(pattern.steps[stepIndex].timing) + kTicksPerBar) %
+         kTicksPerBar;
+}
+
 uint16_t baseGateDurationSubticks(const PatternProjectionSettings& settings) {
   float gate = settings.gateLengthRatio;
   if (!std::isfinite(gate) || gate < 0.1f) gate = 0.5f;
@@ -52,19 +64,14 @@ TriggerTokenBuffer collectTriggerTokens(
     const SynthPattern& pattern,
     const PatternProjectionSettings& settings) {
   TriggerTokenBuffer tokens{};
-  const int swingDelay = swingDelayTicks(settings);
 
   for (uint16_t barTick = 0; barTick < kTicksPerBar; ++barTick) {
     const int nominalStep = static_cast<int>(barTick / 24u);
     for (int scanned = nominalStep - 1; scanned <= nominalStep + 1; ++scanned) {
       const int stepIndex = (scanned + SynthPattern::kSteps) % SynthPattern::kSteps;
       const SynthStep& step = pattern.steps[stepIndex];
-      const int swing =
-          settings.swingEnabled && ((stepIndex & 1) != 0) ? swingDelay : 0;
-      const int nominalTick = stepIndex * 24;
-      const int triggerTick =
-          (nominalTick + swing + static_cast<int>(step.timing) + kTicksPerBar) %
-          kTicksPerBar;
+      const int triggerTick = triggerTickForStep(
+          pattern, settings, static_cast<uint8_t>(stepIndex));
       if (triggerTick != static_cast<int>(barTick)) continue;
       if (step.note < -2) continue;
       if (step.note == -1) continue;
@@ -105,6 +112,7 @@ bool isGuaranteedOnset(const SynthPattern& pattern,
 }
 
 void foldLegacyLifetime(const SynthPattern& pattern,
+                        const PatternProjectionSettings& settings,
                         const TriggerTokenBuffer& tokens,
                         uint8_t originIndex,
                         uint16_t baseDuration,
@@ -144,8 +152,10 @@ void foldLegacyLifetime(const SynthPattern& pattern,
 
       // A note token is not necessarily a sounding onset. Ghost/probability are
       // resolved later by the runtime executor in their legacy RNG order. If
-      // this lifetime has already expired, nothing later may resurrect it.
-      if (tokenTime >= end) break;
+      // it lies strictly after expiry, nothing later may resurrect this note.
+      // At the exact boundary a conditional onset may be rejected; keep
+      // scanning so a following adjacent TIE can preserve the current owner.
+      if (tokenTime > end) break;
 
       if (isGuaranteedOnset(pattern, token)) {
         // Guaranteed future onset will definitely replace the old monophonic
@@ -162,11 +172,25 @@ void foldLegacyLifetime(const SynthPattern& pattern,
     }
 
     if (token.note == -2) {
-      // Preserve legacy TIE-at-deadline behavior, but once the tie lies after
-      // natural expiry no later token may revive the old note.
-      if (tokenTime > end) break;
-      end += baseDuration;
-      holdingStep = token.stepIndex;
+      if (nextStep) {
+        // TIE is a continuation of the immediately preceding source step, not
+        // a new onset. Keep the current pitch owned through the tied step and
+        // release at the following source-step boundary. This intentionally
+        // extends short gates whose natural deadline precedes the TIE token.
+        const int nextTick = triggerTickForStep(
+            pattern,
+            settings,
+            static_cast<uint8_t>((token.stepIndex + 1u) % SynthPattern::kSteps));
+        int ticksUntilNextStep = nextTick - static_cast<int>(token.tick);
+        if (ticksUntilNextStep <= 0) ticksUntilNextStep += kTicksPerBar;
+        const uint32_t tieEnd = tokenTime +
+            static_cast<uint32_t>(ticksUntilNextStep) * kSubticksPerTick;
+        if (tieEnd > end) end = tieEnd;
+        holdingStep = token.stepIndex;
+      } else if (tokenTime >= end) {
+        // A non-adjacent TIE cannot bridge a REST or revive an expired note.
+        break;
+      }
     }
   }
 
@@ -222,6 +246,7 @@ PatternProjectionStatus projectPatternToRuntimeEventsImpl(
   for (uint16_t eventIndex = 0; eventIndex < candidate.count; ++eventIndex) {
     foldLegacyLifetime(
         pattern,
+        settings,
         tokens,
         eventTokenIndices[eventIndex],
         baseDuration,

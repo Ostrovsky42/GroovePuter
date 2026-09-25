@@ -88,6 +88,7 @@ int main() {
   testExact384TickBoundary();
   testSongBoundaryCleanupConverges();
   testLegacyTieCrossingSymptom();
+  testAdjacentTieIsOneContinuousPatternMidiAndInternalNote();
   testSwingPlusMicrotimingWrapsLateStep();
   testNegativeMicrotimingWrapsStepZero();
   std::puts("PATTERN/PHRASE P0 runtime owner-cleanup ratification: OK");
