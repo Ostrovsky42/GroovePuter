@@ -5272,13 +5272,20 @@ MiniAcid::MelodySlotResult MiniAcid::loadSlotMelody_(
   if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
     return MelodySlotResult::Unavailable;
   }
-  if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
-                                     PatternPagingService::currentProjectName(),
-                                     address, out) ||
-      !RuntimePhraseEdit::validate(out)) {
-    return MelodySlotResult::LoadFailed;
-  }
-  return MelodySlotResult::Ready;
+  // UI events run inside the audio mutation gate. Like ACCEPT, let audio keep
+  // running while storage is read: the read only fills the caller's buffer,
+  // and every caller publishes engine state after the window is closed. If
+  // no window can be opened (nested control scope) the read still happens,
+  // just with audio held.
+  const bool windowOpen = playing && acceptAudioMutationGate_ != nullptr &&
+                          acceptAudioMutationGate_->openControlIoWindow();
+  const bool loaded =
+      MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                    PatternPagingService::currentProjectName(),
+                                    address, out) &&
+      RuntimePhraseEdit::validate(out);
+  if (windowOpen) acceptAudioMutationGate_->closeControlIoWindow();
+  return loaded ? MelodySlotResult::Ready : MelodySlotResult::LoadFailed;
 }
 
 MiniAcid::MelodySlotResult MiniAcid::prepareMelodySlot(

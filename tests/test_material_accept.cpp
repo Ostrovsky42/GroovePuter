@@ -547,6 +547,18 @@ void test_live_pattern_accept_keeps_audio_advancing() {
                        sizeof(retained)) == 0);
     engine.songMode_ = false;
   }
+  {
+    // M2: DISCARD of an accepted Melody reads it back from SD. Like ACCEPT,
+    // that read must not hold audio: blocks keep advancing, and the restored
+    // Melody is the accepted one, not the unsaved edit.
+    AudioMutationScope scope(gate);
+    engine.workingMaterial_[0].melody().events[0].note = 57;
+    const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
+    assert(engine.discardCurrentMaterial(0) == MiniAcid::DiscardResult::Discarded);
+    assert(blocks.load(std::memory_order_acquire) > beforeIo);
+    assert(engine.workingMaterial_[0].melody().events[0].note != 57);
+    assert(!engine.hasUnsavedWorkingMelody(0));
+  }
   running.store(false, std::memory_order_release);
   gate.setAudioTaskActive(false);
   audio.join();
