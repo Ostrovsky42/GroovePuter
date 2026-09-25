@@ -34,6 +34,8 @@ void clearPattern(SynthPattern& pattern) {
 int main() {
   constexpr int kSynthA = 0;
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  (void)engine.rebuildPatternRuntimeEventBank();
 
   SynthPattern& pattern = engine.editSynthPattern(kSynthA);
   clearPattern(pattern);

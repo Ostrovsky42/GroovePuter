@@ -90,6 +90,8 @@ void test_working_material_storage_sentinel_isolation() {
 
 void test_empty_working_source_toggle_fail_closed() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
   constexpr int kVoice = 0;
 
   expect(engine.currentSequencedSource(kVoice) ==
@@ -140,6 +142,8 @@ void test_empty_working_source_toggle_fail_closed() {
 
 void test_pattern_working_source_toggle_materializes() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
   constexpr int kVoice = 0;
 
   SynthPattern& pattern = engine.editSynthPattern(kVoice);
@@ -185,6 +189,8 @@ void test_pattern_working_source_toggle_materializes() {
 
 void test_valid_melody_lifecycle() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
   constexpr int kVoice = 0;
 
   SynthPattern& pattern = engine.editSynthPattern(kVoice);
@@ -242,6 +248,8 @@ void test_valid_melody_lifecycle() {
 
 void test_corrupt_melody_fail_closed() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
   constexpr int kVoice = 0;
 
   // Store invalid melody (lengthTicks = 0, count = 999)
@@ -267,6 +275,8 @@ void test_corrupt_melody_fail_closed() {
 
 void test_stage_pending_material_validation() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
   expect(engine.initPendingMaterial(), "initPendingMaterial failed");
   constexpr int kVoice = 0;
 

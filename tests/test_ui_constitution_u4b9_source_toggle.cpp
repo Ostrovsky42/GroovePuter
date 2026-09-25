@@ -38,6 +38,8 @@ constexpr int kSynthB = 1;
 
 int main() {
   MiniAcid engine{44100.0f, nullptr};
+  // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+  expect(engine.rebuildPatternRuntimeEventBank(), "runtime Pattern bank must build");
 
   {
     SynthPattern& pattern = engine.editSynthPattern(kSynthA);
