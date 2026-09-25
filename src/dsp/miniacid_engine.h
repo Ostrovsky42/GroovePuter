@@ -111,6 +111,8 @@ enum class MiniAcidParamId : uint8_t {
   Count
 };
 
+class AudioMutationGate;
+
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
@@ -322,6 +324,9 @@ public:
     CommitFailed,
   };
   AcceptResult acceptMaterialWorking(int voiceIndex);
+  void setAcceptAudioMutationGate(AudioMutationGate* gate) {
+    acceptAudioMutationGate_ = gate;
+  }
 
   float getStepProgress() const;
   float transportPhaseSteps() const;
@@ -770,6 +775,15 @@ private:
   void releaseSavedWorkingMelody_(int voiceIndex);
   DiscardResult discardToAcceptedMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
+  AudioMutationGate* acceptAudioMutationGate_ = nullptr;
+  // MAKE PHRASE can start from a legacy Pattern with no MaterialId. Keep only
+  // its source proof (never another payload) so DISCARD cannot retarget it.
+  struct MakePhraseSourceBasis {
+    GroovePuterMaterial::MaterialAddress address{};
+    GroovePuterMaterial::MaterialId id{};
+    GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+    bool valid = false;
+  } makePhraseSourceBasis_[NUM_303_VOICES]{};
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 
   bool goQueued_[NUM_303_VOICES]{false, false};

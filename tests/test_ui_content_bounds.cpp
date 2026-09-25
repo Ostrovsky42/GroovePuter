@@ -303,6 +303,8 @@ int main() {
   // hints were clipped on screen before anyone noticed.
   {
     MiniAcid engine(kTestSampleRate, nullptr);
+    // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+    (void)engine.rebuildPatternRuntimeEventBank();
     RecordingGfx gfx;
     SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
     page.onEnter(0);
@@ -331,6 +333,8 @@ int main() {
   // roll's hints got clipped twice before anyone noticed.
   {
     MiniAcid engine(kTestSampleRate, nullptr);
+    // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
+    (void)engine.rebuildPatternRuntimeEventBank();
     RecordingGfx gfx;
     SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
     page.onEnter(0);

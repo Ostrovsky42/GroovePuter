@@ -3,6 +3,9 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <atomic>
+#include <thread>
+#include "src/audio/audio_mutation_gate.h"
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
@@ -445,6 +448,122 @@ void test_accept_preserves_audible_and_playback_state() {
   std::puts("  Melody ACCEPT: sequencedSource, representation, and audible bytes strictly invariant: PASS");
 }
 
+void test_page_disk_commit_without_early_ram_publication() {
+  setupTestDirectory("gp_test_page_deferred_publish");
+  const std::string proj = "deferred_proj";
+  GroovePuterPlatform::clearMaterialPublication(proj, 0);
+  assert(PatternPagingService::setProjectName(proj));
+
+  Scene scene{};
+  scene.materialSlots[0][0].kind = MaterialKind::Pattern;
+  scene.materialSlots[0][0].id = MaterialId{7001};
+  scene.synthABanks[0].patterns[0].steps[0].note = 48;
+  SynthPattern candidate = scene.synthABanks[0].patterns[0];
+  candidate.steps[0].note = 72;
+
+  assert(PatternPagingService::commitPageCandidate(
+      0, scene, 0, 0, 0, &candidate, MaterialKind::Pattern,
+      MaterialId{7001}, false));
+  assert(scene.synthABanks[0].patterns[0].steps[0].note == 48);
+  Scene loaded{};
+  assert(PatternPagingService::loadPage(0, loaded));
+  assert(loaded.synthABanks[0].patterns[0].steps[0].note == 72);
+  PatternPagingService::publishPageCandidateRam(
+      0, scene, 0, 0, 0, &candidate, MaterialKind::Pattern,
+      MaterialId{7001});
+  assert(scene.synthABanks[0].patterns[0].steps[0].note == 72);
+}
+
+void test_live_pattern_accept_keeps_audio_advancing() {
+  setupTestDirectory("gp_test_live_accept_audio");
+  assert(PatternPagingService::setProjectName("live_accept_proj"));
+  MiniAcid engine{44100.0f, nullptr};
+  Scene& scene = engine.sceneManager().currentScene();
+  scene.materialSlots[0][0].kind = MaterialKind::Pattern;
+  scene.materialSlots[0][0].id = MaterialId{7002};
+  scene.synthABanks[0].patterns[0].steps[0].note = 48;
+  assert(engine.rebuildPatternRuntimeEventBank());
+  SynthPattern candidate = scene.synthABanks[0].patterns[0];
+  candidate.steps[0].note = 72;
+  engine.workingMaterial_[0].storePattern(
+      candidate, MaterialReference{{0, 0}, MaterialId{7002}});
+  engine.playing = true;
+
+  AudioMutationGate gate;
+  engine.setAcceptAudioMutationGate(&gate);
+  std::atomic<bool> running{true};
+  std::atomic<uint32_t> blocks{0};
+  gate.setAudioTaskActive(true);
+  std::thread audio([&] {
+    while (running.load(std::memory_order_acquire)) {
+      gate.waitAtAudioBoundary();
+      blocks.fetch_add(1, std::memory_order_relaxed);
+      std::this_thread::yield();
+    }
+  });
+  while (blocks.load(std::memory_order_acquire) < 10) {
+    std::this_thread::yield();
+  }
+  {
+    AudioMutationScope scope(gate);
+    const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::Accepted);
+    assert(blocks.load(std::memory_order_acquire) > beforeIo);
+    assert(scene.synthABanks[0].patterns[0].steps[0].note == 72);
+  }
+  {
+    AudioMutationScope scope(gate);
+    assert(engine.setMaterialLength(0, 2) ==
+           MiniAcid::MaterialLengthResult::Changed);
+    const auto audibleBefore = engine.workingMaterial_[0].melody();
+    const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::Accepted);
+    assert(blocks.load(std::memory_order_acquire) > beforeIo);
+    assert(scene.materialSlots[0][0].kind == MaterialKind::Melody);
+    assert(std::memcmp(&audibleBefore, &engine.workingMaterial_[0].melody(),
+                       sizeof(audibleBefore)) == 0);
+  }
+  {
+    AudioMutationScope scope(gate);
+    auto& melody = engine.workingMaterial_[0].melody();
+    melody.events[0].note = 55;
+    const auto retained = melody;
+    const auto descriptor = scene.materialSlots[0][0];
+    SD.setRoot("/proc");
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::CommitFailed);
+    SD.setRoot(std::filesystem::current_path());
+    assert(scene.materialSlots[0][0].id == descriptor.id &&
+           scene.materialSlots[0][0].kind == descriptor.kind);
+    assert(std::memcmp(&retained, &engine.workingMaterial_[0].melody(),
+                       sizeof(retained)) == 0);
+  }
+  {
+    AudioMutationScope scope(gate);
+    engine.songMode_ = true;
+    const auto retained = engine.workingMaterial_[0].melody();
+    assert(engine.acceptMaterialWorking(0) ==
+           MiniAcid::AcceptResult::UnsupportedCurrentState);
+    assert(std::memcmp(&retained, &engine.workingMaterial_[0].melody(),
+                       sizeof(retained)) == 0);
+    engine.songMode_ = false;
+  }
+  {
+    // M2: DISCARD of an accepted Melody reads it back from SD. Like ACCEPT,
+    // that read must not hold audio: blocks keep advancing, and the restored
+    // Melody is the accepted one, not the unsaved edit.
+    AudioMutationScope scope(gate);
+    engine.workingMaterial_[0].melody().events[0].note = 57;
+    const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
+    assert(engine.discardCurrentMaterial(0) == MiniAcid::DiscardResult::Discarded);
+    assert(blocks.load(std::memory_order_acquire) > beforeIo);
+    assert(engine.workingMaterial_[0].melody().events[0].note != 57);
+    assert(!engine.hasUnsavedWorkingMelody(0));
+  }
+  running.store(false, std::memory_order_release);
+  gate.setAudioTaskActive(false);
+  audio.join();
+}
+
 } // namespace
 
 int main() {
@@ -457,6 +576,8 @@ int main() {
   test_fault_matrix_power_loss();
   test_scoped_undo_invalidation();
   test_accept_preserves_audible_and_playback_state();
+  test_page_disk_commit_without_early_ram_publication();
+  test_live_pattern_accept_keeps_audio_advancing();
 
   std::puts("==================================================");
   std::puts("   ALL MATERIAL ACCEPT TESTS PASSED SUCCESSFULLY! ");
@@ -467,4 +588,3 @@ int main() {
   }
   return 0;
 }
-

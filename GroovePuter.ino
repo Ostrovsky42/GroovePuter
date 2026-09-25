@@ -479,6 +479,7 @@ void setup() {
       static_cast<AudioMutationGate*>(context)->unlockControl();
   };
   g_miniDisplay->setAudioGuard(guard);
+  g_miniAcid->setAcceptAudioMutationGate(&g_audioMutationGate);
   
   Serial.println("7c. UI setAudioRecorder");
   // Initialize audio recorder (done after other initialization to avoid boot issues)
