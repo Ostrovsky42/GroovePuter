@@ -45,6 +45,8 @@ require(NOTES.index("activeMelodyForDisplay(voiceIndex)") <
 
 require('"NEXT BUSY: SONG"' in UX,
         "Song NEXT reservation needs an explicit user-visible refusal")
+require('"GO: FAILED"' in UX,
+        "stale or otherwise rejected GO needs an explicit user-visible outcome")
 for toast in (
     "PROJECT LOADED; NEXT CLEARED",
     "BLANK PROJECT; NEXT CLEARED",
