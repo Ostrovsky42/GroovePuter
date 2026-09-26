@@ -125,10 +125,13 @@ inline bool handleCancel(MiniAcid& engine, int voiceIndex) {
 }
 
 inline bool handleDiscard(MiniAcid& engine, int voiceIndex) {
+  const bool hadQueuedGo = engine.isGoQueued(voiceIndex);
   const auto result = engine.discardCurrentMaterial(voiceIndex);
   switch (result) {
     case MiniAcid::DiscardResult::Discarded:
-      UI::showToast("DISCARD: RESTORED", 1200);
+      UI::showToast(hadQueuedGo ? "DISCARD: RESTORED; GO DISARMED"
+                                : "DISCARD: RESTORED",
+                    hadQueuedGo ? 1500 : 1200);
       return true;
     case MiniAcid::DiscardResult::AlreadyClean:
       UI::showToast("DISCARD: ALREADY CLEAN", 1000);
