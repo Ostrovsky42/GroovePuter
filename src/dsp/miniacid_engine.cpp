@@ -2217,7 +2217,15 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
         if (pendingMaterial_[synth].queued &&
             pendingMaterial_[synth].lifecycleBound &&
             goQueuedGeneration_[synth] == pendingGeneration_[synth]) {
-          activateNextMaterialAtBoundary(synth);
+          const auto activation = activateNextMaterialAtBoundary(synth);
+          if (activation == NextActivationResult::Activated && songMode_ &&
+              workingMelodyUnsaved_(synth)) {
+            // User GO has just published a new dirty CURRENT. In Song mode that
+            // voice is held immediately, not one control-service pass later.
+            // This is only the Song read-model state; Material remains the sole
+            // owner of the newly activated Working Melody.
+            songVoiceState_[synth] = SongVoiceState::Held;
+          }
         }
       }
     }
