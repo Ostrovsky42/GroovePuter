@@ -587,6 +587,51 @@ int main() {
     std::puts("USS-12 PASS: ACCEPT after STOP rejoins Song");
   }
 
+  // 12b. ACCEPT publishes the exact dirty CURRENT that a user NEXT was
+  //      prepared against. Its MaterialId and version therefore remain a valid
+  //      preparation basis: STOP preserves queued GO, ACCEPT preserves that GO,
+  //      and the next boundary can still activate it rather than silently
+  //      invalidating the promise.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, melodyY);
+    writeSong(engine, {kY});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    engine.serviceSongMaterial();
+
+    engine.workingMaterial_[0].melodyIfHeld()->events[0].note = 93;
+    assert(engine.hasUnsavedWorkingMelody(0));
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(98, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Variation) ==
+           MiniAcid::NextPrepareResult::Prepared);
+
+    engine.start();
+    assert(engine.requestGoNextMaterial(0) ==
+           MiniAcid::GoRequestResult::Queued);
+    engine.stop();
+    assert(engine.isGoQueued(0));
+    assert(engine.hasPendingMaterial(0));
+
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::Accepted);
+    assert(engine.isGoQueued(0));
+    assert(engine.captureCurrentPreparationBasis(0) == basis);
+
+    engine.start();
+    ++engine.currentTick_;
+    engine.advanceTick();
+    assert(!engine.isGoQueued(0));
+    assert(engine.workingMaterial_[0].melody().events[0].note == 98);
+    assert(engine.songVoiceHeld(0));
+    engine.stop();
+    std::puts("USS-12b PASS: ACCEPT preserves a still-valid queued GO");
+  }
+
   std::puts("Unified Song slots: PASS");
   return 0;
 }
