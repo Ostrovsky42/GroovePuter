@@ -491,12 +491,7 @@ int main() {
     engine.init();
     engine.setSongMode(false);
     acceptMelody(engine, kY, melodyY);
-    engine.set303PatternIndex(0, kY);
-    assert(engine.loadCurrentSlotMelody(0, engine.workingMaterial_[0].melody()));
-    engine.publishActiveMaterial(
-        0, static_cast<uint16_t>(kY),
-        GroovePuterMaterial::MaterialKind::Melody);
-    engine.recordSavedMelody_(0, kY, engine.workingMaterial_[0].melody());
+    assert(engine.workingMaterial_[0].holdsMelody());
     engine.workingMaterial_[0].melodyIfHeld()->events[0].note = 96;
     assert(engine.hasUnsavedWorkingMelody(0));
 
