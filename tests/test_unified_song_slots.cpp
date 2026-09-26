@@ -482,6 +482,44 @@ int main() {
     std::puts("USS-9c PASS: stale user NEXT cannot arm a silently failing GO");
   }
 
+  // 9d. DISCARD is an explicit CURRENT mutation. If GO is already armed,
+  //     DISCARD disarms that promise rather than letting it fail silently at a
+  //     later boundary; the user NEXT payload itself remains intact.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, melodyY);
+    engine.set303PatternIndex(0, kY);
+    assert(engine.loadCurrentSlotMelody(0, engine.workingMaterial_[0].melody()));
+    engine.publishActiveMaterial(
+        0, static_cast<uint16_t>(kY),
+        GroovePuterMaterial::MaterialKind::Melody);
+    engine.recordSavedMelody_(0, kY, engine.workingMaterial_[0].melody());
+    engine.workingMaterial_[0].melodyIfHeld()->events[0].note = 96;
+    assert(engine.hasUnsavedWorkingMelody(0));
+
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(97, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Variation) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    engine.playing = true;
+    assert(engine.requestGoNextMaterial(0) ==
+           MiniAcid::GoRequestResult::Queued);
+    engine.playing = false;
+    assert(engine.isGoQueued(0));
+    assert(engine.hasPendingMaterial(0));
+
+    assert(engine.discardCurrentMaterial(0) ==
+           MiniAcid::DiscardResult::Discarded);
+    assert(!engine.isGoQueued(0));
+    assert(engine.hasPendingMaterial(0));
+    assert(engine.pendingMaterial_[0].melody->events[0].note == 97);
+    std::puts("USS-9d PASS: DISCARD disarms GO explicitly and preserves NEXT");
+  }
+
   // 10. Project replacement is a canonical boundary. The engine invalidates
   //     old user NEXT/GO; ProjectPage provides the visible outcome.
   {
