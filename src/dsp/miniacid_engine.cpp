@@ -4458,6 +4458,20 @@ MiniAcid::GoRequestResult MiniAcid::requestGoNextMaterial(int voiceIndex) {
   if (!pendingMaterial_[idx].queued || !pendingMaterial_[idx].lifecycleBound) {
     return GoRequestResult::NoPendingMaterial;
   }
+
+  const PendingMaterial& pending = pendingMaterial_[idx];
+  const PreparationBasis currentBasis = captureCurrentPreparationBasis(idx);
+  const PreparationBasis preparedBasis{
+      pending.preparedFor, pending.basisKind, pending.acceptedVersion};
+  // NEXT may have been prepared while Song was on material that did not need
+  // the shared buffer, then become stale after a later Pattern transition.
+  // Refuse GO before arming the bar-boundary promise; keep NEXT intact so the
+  // user gets the existing visible GO: FAILED outcome instead of a silent
+  // boundary-time rejection.
+  if (!currentBasis.valid() || currentBasis != preparedBasis) {
+    return GoRequestResult::Failed;
+  }
+
   if (!playing) {
     const auto res = activateNextMaterialAtBoundary(idx);
     return (res == NextActivationResult::Activated)
