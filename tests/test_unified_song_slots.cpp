@@ -271,6 +271,207 @@ int main() {
     std::puts("USS-5 PASS: a Melody on the first row sounds from its first event");
   }
 
+  // 6. A user NEXT prepared before START owns the shared buffer. Song prefetch
+  //    cannot overwrite it or disarm GO; GO wins the bar boundary and Song then
+  //    observes the dirty CURRENT as Held.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, melodyY);
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kX, kY});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(88, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Variation) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    const uint32_t generation = engine.pendingGeneration_[0];
+    engine.start();
+    engine.serviceSongMaterial();
+    assert(engine.hasPendingMaterial(0));
+    assert(engine.pendingGeneration_[0] == generation);
+    assert(engine.pendingMaterial_[0].melody->events[0].note == 88);
+    assert(engine.requestGoNextMaterial(0) == MiniAcid::GoRequestResult::Queued);
+    engine.serviceSongMaterial();
+    assert(engine.isGoQueued(0));
+    engine.currentTick_ = 383;
+    ++engine.currentTick_;
+    engine.advanceTick();
+    assert(!engine.isGoQueued(0));
+    assert(engine.workingMaterial_[0].melody().events[0].note == 88);
+    assert(engine.songVoiceHeld(0));
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Held);
+    engine.stop();
+    std::puts("USS-6 PASS: user NEXT/GO survives Song contention");
+  }
+
+  // 7. Without GO, a different Melody row waits rather than relabelling CURRENT
+  //    or destroying user NEXT. Cancelling NEXT releases the shared buffer.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kX, kY});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(90, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Unknown) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    engine.start();
+    engine.serviceSongMaterial();
+    engine.setSongPosition(1);
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Awaiting);
+    assert(engine.display303PatternIndex(0) == kX);
+    assert(engine.hasPendingMaterial(0));
+    assert(engine.activeMelodyForDisplay(0) == nullptr);
+    assert(engine.cancelNextMaterial(0));
+    assert(engine.songMaterialServiceDue());
+    engine.serviceSongMaterial();
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Melody);
+    assert(engine.display303PatternIndex(0) == kY);
+    engine.stop();
+    std::puts("USS-7 PASS: user NEXT blocks Song explicitly until released");
+  }
+
+  // 8. Y | Y with a two-bar Melody continues phase into its second bar.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, makeMelody(60, 2));
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kY, kY});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    const auto bars = play(engine, 2);
+    printBars("USS-8", bars);
+    assert(bars[0].first == 60);
+    assert(bars[1].first == 70);
+    assert((bars[1].notes == std::set<int>{70, 72, 74, 76}));
+    std::puts("USS-8 PASS: repeated Melody slot continues phase");
+  }
+
+  // 9. Row edit/seek/STOP/PAUSE discard only Song-owned preparation.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kX, kY});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    engine.start();
+    engine.serviceSongMaterial();
+    assert(engine.pendingMaterial_[0].songRow == 1);
+    engine.setSongPattern(1, SongTrack::SynthA, kZ);
+    assert(engine.pendingMaterial_[0].songRow < 0);
+    assert(!engine.pendingMaterial_[0].queued);
+    engine.stop();
+
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(91, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Unknown) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    engine.setSongPosition(0);
+    assert(engine.hasPendingMaterial(0));
+    engine.start();
+    engine.pauseTransport();
+    assert(engine.hasPendingMaterial(0));
+    engine.stop();
+    assert(engine.hasPendingMaterial(0));
+    std::puts("USS-9 PASS: transport/navigation invalidates Song NEXT only");
+  }
+
+  // 10. Project replacement is a canonical boundary. The engine invalidates
+  //     old user NEXT/GO; ProjectPage provides the visible outcome.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(92, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Unknown) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    engine.playing = true;
+    assert(engine.requestGoNextMaterial(0) == MiniAcid::GoRequestResult::Queued);
+    engine.playing = false;
+    assert(engine.isGoQueued(0));
+    assert(engine.createNewSceneWithName("next_boundary_project"));
+    assert(!engine.hasPendingMaterial(0));
+    assert(!engine.isGoQueued(0));
+    std::puts("USS-10 PASS: project change invalidates old NEXT/GO");
+  }
+
+  // 11. Melody descriptor with no payload fails closed. Pattern bytes under
+  //     that slot are neither rendered as active material nor triggered.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    constexpr int kMissing = 4;
+    writePattern(engine, kMissing, 77);
+    engine.sceneManager().currentScene().materialSlots[0][kMissing].kind =
+        GroovePuterMaterial::MaterialKind::Melody;
+    assert(engine.rebuildPatternRuntimeEventBank());
+    writeSong(engine, {kMissing});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    engine.serviceSongMaterial();
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::LoadFailed);
+    assert(engine.activeMelodyForDisplay(0) == nullptr);
+    const auto bars = play(engine, 1);
+    printBars("USS-11", bars);
+    assert(bars[0].notes.empty());
+    std::puts("USS-11 PASS: load failure is visible and stale Pattern is silent");
+  }
+
+  // 12. ACCEPT keeps its existing Song contract: refused during transport,
+  //     accepted after STOP; service then rejoins the current row.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, melodyY);
+    writeSong(engine, {kY, kZ});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    engine.serviceSongMaterial();
+    engine.workingMaterial_[0].melodyIfHeld()->events[0].note = 93;
+    engine.start();
+    engine.setSongPosition(1);
+    assert(engine.songVoiceHeld(0));
+    assert(engine.acceptMaterialWorking(0) ==
+           MiniAcid::AcceptResult::UnsupportedCurrentState);
+    engine.stop();
+    assert(engine.acceptMaterialWorking(0) == MiniAcid::AcceptResult::Accepted);
+    engine.serviceSongMaterial();
+    assert(engine.display303PatternIndex(0) == kZ);
+    std::puts("USS-12 PASS: ACCEPT after STOP rejoins Song");
+  }
+
   std::puts("Unified Song slots: PASS");
   return 0;
 }

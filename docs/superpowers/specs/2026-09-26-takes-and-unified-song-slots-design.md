@@ -105,12 +105,18 @@ like `loadSlotMelody_()`.
    `advanceSongPlayhead()` (`peekNextSongRow_()`), and a Melody slot there is
    loaded into `pendingMaterial_[voice]` tagged with `songRow`.
 
-NEXT ownership during Song playback: the NEXT buffer belongs to the Song only
-where the Song needs it, i.e. the next row brings the voice a **different
-Melody** slot. There `prepareNextMelody()` refuses (`UnsupportedCurrentState`),
-and a user NEXT still queued when the Song needs the buffer is cancelled with
-its GO. Everywhere else the development workflow (NEXT/GO) keeps working in
-Song mode. This matters: the default scene starts with Song mode ON
+NEXT arbitration during Song playback keeps one physical buffer and an explicit
+priority rule. A lifecycle-bound **user NEXT reserves the shared buffer**; Song
+never overwrites it and never disarms its GO. If GO is already queued, the
+existing bar-boundary order remains `GO -> Song row`: the user candidate becomes
+CURRENT first and the row then observes the dirty Working Melody as **Held**. If
+GO is not queued and the row needs a different Melody, that voice becomes
+**Awaiting** (silent) while retaining the old CURRENT identity; cancelling or
+activating user NEXT releases the contention and Song catches up. Conversely,
+when Song already needs the free buffer for an upcoming different Melody,
+`prepareNextMelody()` refuses with `UnsupportedCurrentState` and the UI reports
+`NEXT BUSY: SONG`. Everywhere else the development workflow (NEXT/GO) keeps
+working in Song mode. This matters: the default scene starts with Song mode ON
 (`scenes.cpp`, loop rows 0..7), so a blanket "no NEXT while Song plays" rule
 would have disabled development on a fresh device (caught by the H5 restart
 suite). A user NEXT activated by GO makes CURRENT dirty, so at the next row the
@@ -159,7 +165,9 @@ after a Q..I move. A held voice stays on its own slot with its unsaved Melody.
   load completes; until then the voice is awaiting (silent), not wrong.
 - ACCEPT is still refused while Song plays (`UnsupportedCurrentState`). A held
   voice is saved by stopping and pressing Alt+Enter, or dropped with DISCARD.
-- UI: no Song-page marker for Melody cells / held / awaiting voices yet.
+- Pattern-mode START still sets `currentTick_ = 383`, so a 2-bar Melody can
+  begin at its second bar under Pattern mode's existing global phase. Song mode
+  is row-relative and is not affected. Keep this as a separate follow-up.
 
 ---
 

@@ -383,10 +383,15 @@ void ProjectPage::drawConfirmClearDialog(IGfx& gfx) {
 }
 
 bool ProjectPage::clearProject() {
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   withAudioGuard([&]() {
     mini_acid_.sceneManager().wipeToZero();
+    mini_acid_.invalidateSessionNextForProjectChange();
   });
-  UI::showToast("Project cleared to zero");
+  UI::showToast(hadUserNext ? "PROJECT CLEARED; NEXT CLEARED"
+                            : "Project cleared to zero");
   closeDialog();
   return true;
 }
@@ -625,6 +630,9 @@ bool ProjectPage::loadSceneAtSelection() {
   if (scenes_.empty()) return true;
   if (selection_index_ < 0 || selection_index_ >= static_cast<int>(scenes_.size())) return true;
   bool loaded = false;
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   std::string name = scenes_[selection_index_];
   withAudioGuard([&]() {
     loaded = mini_acid_.loadSceneByName(name);
@@ -632,9 +640,12 @@ bool ProjectPage::loadSceneAtSelection() {
   if (loaded) {
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
       GroovePuterState::markSceneMutated();
-      UI::showToast("Recovered unsaved project", 1800);
+      UI::showToast(hadUserNext ? "RECOVERED; NEXT CLEARED"
+                                : "Recovered unsaved project",
+                    1800);
     } else {
       GroovePuterState::markSceneLoadSucceeded();
+      if (hadUserNext) UI::showToast("PROJECT LOADED; NEXT CLEARED", 1600);
     }
     closeDialog();
   } else {
@@ -671,6 +682,9 @@ bool ProjectPage::saveCurrentScene() {
 bool ProjectPage::createNewScene() {
   randomizeSaveName();
   bool created = false;
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   const std::string name = save_name_;
   withAudioGuard([&]() {
     created = mini_acid_.createNewSceneWithName(name);
@@ -678,7 +692,8 @@ bool ProjectPage::createNewScene() {
   if (created) {
     GroovePuterState::markSceneSaveSucceeded();
     refreshScenes();
-    UI::showToast("Blank project created");
+    UI::showToast(hadUserNext ? "BLANK PROJECT; NEXT CLEARED"
+                              : "Blank project created");
   } else {
     UI::showToast("New project save failed");
   }

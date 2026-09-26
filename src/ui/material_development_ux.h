@@ -85,7 +85,12 @@ inline bool handleDevelop(
 
   // G4/internal classifier diagnostics remain available in logs and tests;
   // the instrument tells the player the actionable outcome instead.
-  UI::showToast("NEXT NOT READY", 1200);
+  if (prepareResult == MiniAcid::NextPrepareResult::UnsupportedCurrentState &&
+      engine.songNeedsNextBuffer(voiceIndex)) {
+    UI::showToast("NEXT BUSY: SONG", 1200);
+  } else {
+    UI::showToast("NEXT NOT READY", 1200);
+  }
   return true;
 }
 

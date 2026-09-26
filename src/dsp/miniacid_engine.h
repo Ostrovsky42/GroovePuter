@@ -234,6 +234,32 @@ public:
   // Melody is unsaved.
   bool songVoiceHeld(int voiceIndex) const;
 
+  // Read-only Song/material projection for UI and deterministic tests. These
+  // values do not own or mutate musical material.
+  enum class SongCellMaterialKind : uint8_t {
+    Empty = 0,
+    Pattern,
+    Melody,
+    Unknown,
+  };
+  enum class SongVoiceDisplayState : uint8_t {
+    Pattern = 0,
+    Melody,
+    Held,
+    Awaiting,
+    LoadFailed,
+  };
+  SongCellMaterialKind songCellMaterialKind(int voiceIndex,
+                                            int16_t globalSlot) const;
+  SongVoiceDisplayState songVoiceDisplayState(int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* activeMelodyForDisplay(
+      int voiceIndex) const;
+  bool songNeedsNextBuffer(int voiceIndex) const;
+
+  // Project/Scene replacement is a canonical-truth boundary. Session NEXT
+  // prepared against the old project cannot survive it.
+  bool invalidateSessionNextForProjectChange();
+
   // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
   // to the exact preparation basis it was prepared against.
@@ -794,6 +820,9 @@ private:
   void dropRuntimePhraseReceiptFor_(int voiceIndex);
   void restoreSlotMaterialAfterSong_(int voiceIndex);
   void dropSongPreparedNext_();
+  void invalidateSongPreparedNext_(int voiceIndex = -1, int row = -1);
+  bool userOwnsNext_(int voiceIndex) const;
+  void silenceAwaitingSongVoice_(int voiceIndex);
 
   // Unified Song slots (see serviceSongMaterial()).
   enum class SongVoiceState : uint8_t {

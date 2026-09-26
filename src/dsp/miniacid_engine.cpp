@@ -529,14 +529,62 @@ void MiniAcid::start() {
   }
 }
 
+void MiniAcid::invalidateSongPreparedNext_(int voiceIndex, int row) {
+  for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
+    if (voiceIndex >= 0 && synth != voiceIndex) continue;
+    PendingMaterial& pending = pendingMaterial_[synth];
+    if (pending.songRow < 0) continue;
+    if (row >= 0 && pending.songRow != row) continue;
+    pending.queued = false;
+    pending.songRow = -1;
+    pending.lifecycleBound = false;
+    pending.preparedFor = {};
+    pending.acceptedVersion = {};
+  }
+}
+
 void MiniAcid::dropSongPreparedNext_() {
   // A Song-prepared NEXT was read from canonical while the transport ran. Once
   // it stops, canonical may change (ACCEPT), so the next START prepares again.
+  invalidateSongPreparedNext_();
+}
+
+bool MiniAcid::userOwnsNext_(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const PendingMaterial& pending = pendingMaterial_[voiceIndex];
+  return pending.queued && pending.songRow < 0 && pending.lifecycleBound;
+}
+
+bool MiniAcid::invalidateSessionNextForProjectChange() {
+  bool invalidatedUser = false;
   for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
     PendingMaterial& pending = pendingMaterial_[synth];
-    if (pending.songRow < 0) continue;
+    invalidatedUser =
+        invalidatedUser || (pending.queued && pending.songRow < 0) ||
+        goQueued_[synth];
     pending.queued = false;
     pending.songRow = -1;
+    pending.lifecycleBound = false;
+    pending.preparedFor = {};
+    pending.acceptedVersion = {};
+    goQueued_[synth] = false;
+    ++pendingGeneration_[synth];
+  }
+  return invalidatedUser;
+}
+
+void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  publishPatternNoteOff_(idx);
+  patternPlaybackState_[idx] = {};
+  patternRetrigEvent_[idx] = {};
+  if (idx == 0) {
+    gateCountdownA_ = 0;
+    retrigA_ = {};
+  } else {
+    gateCountdownB_ = 0;
+    retrigB_ = {};
   }
 }
 
@@ -1040,12 +1088,22 @@ void MiniAcid::setSongPosition(int position) {
   sceneManager_.setSongPosition(pos);
   songBarIndex_ = -1;
   if (!playing) songPlayheadPosition_ = pos;
+  invalidateSongPreparedNext_();
   songLoadFailedSlot_[0] = songLoadFailedSlot_[1] = -1;
   if (songMode_) applySongPositionSelection();
 }
 
 void MiniAcid::setSongPattern(int position, SongTrack track, int16_t patternIndex) {
   sceneManager_.setSongPattern(position, track, patternIndex);
+  if (activeSongSlot() == songPlaybackSlot_) {
+    if (track == SongTrack::SynthA) {
+      invalidateSongPreparedNext_(0, position);
+      songLoadFailedSlot_[0] = -1;
+    } else if (track == SongTrack::SynthB) {
+      invalidateSongPreparedNext_(1, position);
+      songLoadFailedSlot_[1] = -1;
+    }
+  }
   if (songMode_ && position == currentSongPosition() &&
       activeSongSlot() == songPlaybackSlot_) {
     applySongPositionSelection();
@@ -1054,6 +1112,15 @@ void MiniAcid::setSongPattern(int position, SongTrack track, int16_t patternInde
 
 void MiniAcid::clearSongPattern(int position, SongTrack track) {
   sceneManager_.clearSongPattern(position, track);
+  if (activeSongSlot() == songPlaybackSlot_) {
+    if (track == SongTrack::SynthA) {
+      invalidateSongPreparedNext_(0, position);
+      songLoadFailedSlot_[0] = -1;
+    } else if (track == SongTrack::SynthB) {
+      invalidateSongPreparedNext_(1, position);
+      songLoadFailedSlot_[1] = -1;
+    }
+  }
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   if (songMode_ && position == pos &&
@@ -1091,6 +1158,8 @@ void MiniAcid::setSongPlaybackSlot(int slot) {
   if (slot < 0) slot = 0;
   if (slot > 1) slot = 1;
   if (songPlaybackSlot_ == slot) return;
+  invalidateSongPreparedNext_();
+  songLoadFailedSlot_[0] = songLoadFailedSlot_[1] = -1;
   songPlaybackSlot_ = slot;
   songBarIndex_ = -1;
   if (songMode_) applySongPositionSelection();
@@ -1108,8 +1177,16 @@ void MiniAcid::setLiveMixMode(bool enabled) {
 void MiniAcid::toggleLiveMixMode() { setLiveMixMode(!liveMixMode_); }
 void MiniAcid::mergeSongs() { sceneManager_.mergeSongs(); }
 void MiniAcid::alternateSongs() { sceneManager_.alternateSongs(); }
-void MiniAcid::insertSongRow(int position) { sceneManager_.insertSongRow(position); }
-void MiniAcid::deleteSongRow(int position) { sceneManager_.deleteSongRow(position); }
+void MiniAcid::insertSongRow(int position) {
+  sceneManager_.insertSongRow(position);
+  invalidateSongPreparedNext_();
+  songLoadFailedSlot_[0] = songLoadFailedSlot_[1] = -1;
+}
+void MiniAcid::deleteSongRow(int position) {
+  sceneManager_.deleteSongRow(position);
+  invalidateSongPreparedNext_();
+  songLoadFailedSlot_[0] = songLoadFailedSlot_[1] = -1;
+}
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
 bool MiniAcid::isSongReverse() const { return sceneManager_.isSongReverse(); }
 void MiniAcid::queueSongReverseToggle() {
@@ -1121,7 +1198,10 @@ bool MiniAcid::hasPendingSongReverseToggle() const { return false; }
 int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   if (songMode_) {
-    if (songVoiceState_[idx] == SongVoiceState::Held) return songVoiceSlot_[idx];
+    if (songVoiceState_[idx] == SongVoiceState::Held ||
+        songVoiceState_[idx] == SongVoiceState::Awaiting) {
+      return songVoiceSlot_[idx];
+    }
     int pos = clampSongPosition(sceneManager_.getSongPosition());
     int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos,
                                                    idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
@@ -2185,7 +2265,10 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     // PHRASE addresses onsets in phrase-relative time and resolves once per
     // tick, at the nominal step, so the per-step A -> B -> drums draw order is
     // untouched. PATTERN keeps its bar-local source-step scan verbatim.
-    if (activeMaterial_[0].kind == GroovePuterMaterial::MaterialKind::Melody) {
+    if (songMode_ && songVoiceState_[0] == SongVoiceState::Awaiting) {
+      // Deliberately silent while Song waits for the requested material.
+    } else if (activeMaterial_[0].kind ==
+               GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
         if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
                 phraseEventAt_(0, absoluteTick)) {
@@ -2197,7 +2280,10 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
                eventA != nullptr && eventA->startTick == barTick) {
       triggerSynthStep_(0, *eventA, absoluteStartSubtick);
     }
-    if (activeMaterial_[1].kind == GroovePuterMaterial::MaterialKind::Melody) {
+    if (songMode_ && songVoiceState_[1] == SongVoiceState::Awaiting) {
+      // Deliberately silent while Song waits for the requested material.
+    } else if (activeMaterial_[1].kind ==
+               GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
         if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
                 phraseEventAt_(1, absoluteTick)) {
@@ -2848,6 +2934,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     return false;
   }
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
+  invalidateSessionNextForProjectChange();
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
   const int residentPage = PatternPagingService::activePageIndex();
@@ -2887,7 +2974,10 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
     return false;
   }
   setCurrentPage(static_cast<int8_t>(residentPage));
-  if (saveSceneToStorage()) return true;
+  if (saveSceneToStorage()) {
+    invalidateSessionNextForProjectChange();
+    return true;
+  }
 
   sceneStorage_->setCurrentSceneName(previousName);
   return false;
@@ -5637,6 +5727,7 @@ bool MiniAcid::activateSongMelody_(int voiceIndex, int16_t globalSlot) {
   if (!activatePendingMaterialForVoice_(idx)) return false;
   pending.songRow = -1;
   recordSavedMelody_(idx, globalSlot, workingMaterial_[idx].melody());
+  songVoiceSlot_[idx] = globalSlot;
   developmentLineage_[idx] = {};
   dropRuntimePhraseReceiptFor_(idx);
   return true;
@@ -5647,65 +5738,71 @@ bool MiniAcid::activateSongMelody_(int voiceIndex, int16_t globalSlot) {
 // leaves the voice Awaiting for serviceSongMaterial().
 void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot) {
   const int idx = clamp303Voice(voiceIndex);
-  // An unsaved Working Melody keeps its voice and its slot. Moving the slot
-  // would make ACCEPT write the edit into the row's slot; replacing Working
-  // would lose it silently. While held, the voice reports songVoiceSlot_ as
-  // its slot (display303PatternIndex), not the row's.
   if (workingMelodyUnsaved_(idx)) {
     songVoiceState_[idx] = SongVoiceState::Held;
     return;
   }
-  songVoiceSlot_[idx] = globalSlot;
+
+  if (songVoiceInSync_(idx, globalSlot)) {
+    songVoiceState_[idx] = SongVoiceState::InSync;
+    return;
+  }
 
   const int bankRegister = idx + 1;
   if (globalSlot < 0) {
     sceneManager_.setCurrentBankIndex(bankRegister, patternModeSynthBankIndex_[idx]);
     sceneManager_.setCurrentSynthPatternIndex(idx, patternModeSynthPatternIndex_[idx]);
     releaseSavedWorkingMelody_(idx);
-    songVoiceState_[idx] = SongVoiceState::InSync;
-    return;
-  }
-  int bank = songPatternBank(globalSlot);
-  if (bank < 0) bank = 0;
-  if (bank >= kBankCount) bank = kBankCount - 1;
-  sceneManager_.setCurrentBankIndex(bankRegister, bank);
-  sceneManager_.setCurrentSynthPatternIndex(idx, songPatternIndexInBank(globalSlot));
-
-  // Same Melody as the previous row: keep playing it through (no reload, no
-  // phase reset), so a long Melody can span consecutive rows.
-  if (songVoiceInSync_(idx, globalSlot)) {
+    songVoiceSlot_[idx] = globalSlot;
     songVoiceState_[idx] = SongVoiceState::InSync;
     return;
   }
 
-  // The descriptors describe the resident page only. Until the row's page is
-  // loaded its kind is unknown, and playing the old page's slot would be wrong.
+  // Do not relabel CURRENT while Song is only waiting for a different slot.
+  // User NEXT remains bound to the CURRENT truth it was prepared against.
   if (songPatternPage(globalSlot) != currentPageIndex()) {
-    releaseSavedWorkingMelody_(idx);
     songVoiceState_[idx] = SongVoiceState::Awaiting;
+    silenceAwaitingSongVoice_(idx);
     return;
   }
 
   const int residentSlot = globalSlot % kPatternsPerPage;
-  if (GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                        residentSlot) !=
-      GroovePuterMaterial::MaterialKind::Melody) {
+  const bool wantsMelody =
+      GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
+                                        residentSlot) ==
+      GroovePuterMaterial::MaterialKind::Melody;
+  if (wantsMelody && userOwnsNext_(idx)) {
+    songVoiceState_[idx] = SongVoiceState::Awaiting;
+    silenceAwaitingSongVoice_(idx);
+    return;
+  }
+
+  int bank = songPatternBank(globalSlot);
+  if (bank < 0) bank = 0;
+  if (bank >= kBankCount) bank = kBankCount - 1;
+
+  if (!wantsMelody) {
+    sceneManager_.setCurrentBankIndex(bankRegister, bank);
+    sceneManager_.setCurrentSynthPatternIndex(idx, songPatternIndexInBank(globalSlot));
     releaseSavedWorkingMelody_(idx);
     publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot),
                           GroovePuterMaterial::MaterialKind::Pattern);
+    songVoiceSlot_[idx] = globalSlot;
     songVoiceState_[idx] = SongVoiceState::InSync;
     return;
   }
 
   if (activateSongMelody_(idx, globalSlot)) {
+    sceneManager_.setCurrentBankIndex(bankRegister, bank);
+    sceneManager_.setCurrentSynthPatternIndex(idx, songPatternIndexInBank(globalSlot));
     songPhaseResetPending_[idx] = true;
     songVoiceState_[idx] = SongVoiceState::InSync;
     return;
   }
-  // Silent rather than wrong: neither the Pattern steps that lie under a Melody
-  // slot nor the previous row's Melody may sound here.
-  releaseSavedWorkingMelody_(idx);
+
+  // Fail closed: no stale Pattern or previous Melody may trigger while awaiting.
   songVoiceState_[idx] = SongVoiceState::Awaiting;
+  silenceAwaitingSongVoice_(idx);
 }
 
 bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSlot) {
@@ -5720,15 +5817,16 @@ bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSl
     pending.songRow = static_cast<int8_t>(row);
     return true;
   }
-  // While the Song drives a voice it is that voice's only NEXT producer; a user
-  // candidate the Song needs is cancelled together with its GO. The buffer is
-  // unqueued before the read so the audio thread never activates it half-written.
+  // User NEXT is an explicit reservation of the shared buffer. Song may wait,
+  // but may never erase it or disarm its queued GO.
+  if (userOwnsNext_(idx) || goQueued_[idx]) return false;
+
+  // An older Song prefetch is session-only and may be replaced by Song.
   pending.queued = false;
   pending.songRow = -1;
   pending.lifecycleBound = false;
   pending.preparedFor = {};
   pending.acceptedVersion = {};
-  goQueued_[idx] = false;
   if (songLoadFailedSlot_[idx] == globalSlot) return false;
   if (loadSlotMelody_(idx, songPatternBank(globalSlot),
                       songPatternIndexInBank(globalSlot), *pending.melody) !=
@@ -5811,6 +5909,10 @@ bool MiniAcid::songMaterialServiceDue() const {
       if (!workingMelodyUnsaved_(idx)) return true;
       continue;
     }
+    if (songVoiceState_[idx] == SongVoiceState::Awaiting &&
+        userOwnsNext_(idx)) {
+      continue;
+    }
     if (songLoadFailedSlot_[idx] == slot && slot >= 0) continue;
     if (songVoiceState_[idx] != SongVoiceState::InSync ||
         !songVoiceInSync_(idx, slot)) {
@@ -5831,6 +5933,7 @@ bool MiniAcid::songMaterialServiceDue() const {
       continue;
     }
     const PendingMaterial& pending = pendingMaterial_[idx];
+    if (userOwnsNext_(idx)) continue;
     if (songLoadFailedSlot_[idx] == nextSlot) continue;
     if (!pending.queued || pending.songRow < 0 ||
         pending.slot != static_cast<uint16_t>(nextSlot)) {
@@ -5843,4 +5946,61 @@ bool MiniAcid::songMaterialServiceDue() const {
 bool MiniAcid::songVoiceHeld(int voiceIndex) const {
   if (!songMode_ || voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   return songVoiceState_[voiceIndex] == SongVoiceState::Held;
+}
+
+MiniAcid::SongCellMaterialKind MiniAcid::songCellMaterialKind(
+    int voiceIndex, int16_t globalSlot) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES || globalSlot < 0) {
+    return SongCellMaterialKind::Empty;
+  }
+  if (songPatternPage(globalSlot) != currentPageIndex()) {
+    return SongCellMaterialKind::Unknown;
+  }
+  const int residentSlot = globalSlot % kPatternsPerPage;
+  const auto kind = GroovePuterMaterial::residentKind(
+      sceneManager_.currentScene(), voiceIndex, residentSlot);
+  return kind == GroovePuterMaterial::MaterialKind::Melody
+      ? SongCellMaterialKind::Melody
+      : SongCellMaterialKind::Pattern;
+}
+
+MiniAcid::SongVoiceDisplayState MiniAcid::songVoiceDisplayState(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
+    return SongVoiceDisplayState::Pattern;
+  }
+  if (songMode_) {
+    if (songVoiceState_[voiceIndex] == SongVoiceState::Held) {
+      return SongVoiceDisplayState::Held;
+    }
+    if (songVoiceState_[voiceIndex] == SongVoiceState::Awaiting) {
+      const int row = clampSongPosition(sceneManager_.getSongPosition());
+      const int16_t slot = songSynthSlotAt_(voiceIndex, row);
+      if (slot >= 0 && songLoadFailedSlot_[voiceIndex] == slot) {
+        return SongVoiceDisplayState::LoadFailed;
+      }
+      return SongVoiceDisplayState::Awaiting;
+    }
+  }
+  return activeMaterial_[voiceIndex].kind ==
+                 GroovePuterMaterial::MaterialKind::Melody
+      ? SongVoiceDisplayState::Melody
+      : SongVoiceDisplayState::Pattern;
+}
+
+const PhraseRuntime::RuntimeSynthEventBuffer*
+MiniAcid::activeMelodyForDisplay(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  const auto state = songVoiceDisplayState(voiceIndex);
+  if (state == SongVoiceDisplayState::Awaiting ||
+      state == SongVoiceDisplayState::LoadFailed ||
+      state == SongVoiceDisplayState::Pattern) {
+    return nullptr;
+  }
+  return workingMaterial_[voiceIndex].melodyIfHeld();
+}
+
+bool MiniAcid::songNeedsNextBuffer(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return songNeedsNext_(voiceIndex);
 }

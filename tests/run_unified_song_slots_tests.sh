@@ -29,3 +29,5 @@ fi
 popd >/dev/null
 
 "$BUILD/test_unified_song_slots"
+
+python3 tests/test_unified_song_slots_display_source.py
