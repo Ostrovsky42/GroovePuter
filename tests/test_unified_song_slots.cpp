@@ -400,6 +400,42 @@ int main() {
     std::puts("USS-9 PASS: transport/navigation invalidates Song NEXT only");
   }
 
+  // 9b. Seek/row application while GO is armed must not mutate CURRENT and make
+  //     the queued candidate stale. The visible state is WAIT until the bar.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kX, kZ});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(94, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Variation) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    engine.start();
+    assert(engine.requestGoNextMaterial(0) ==
+           MiniAcid::GoRequestResult::Queued);
+    engine.setSongPosition(1);
+    assert(engine.isGoQueued(0));
+    assert(engine.hasPendingMaterial(0));
+    assert(engine.display303PatternIndex(0) == kX);
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Awaiting);
+    engine.currentTick_ = 383;
+    ++engine.currentTick_;
+    engine.advanceTick();
+    assert(!engine.isGoQueued(0));
+    assert(engine.workingMaterial_[0].holdsMelody());
+    assert(engine.workingMaterial_[0].melody().events[0].note == 94);
+    engine.stop();
+    std::puts("USS-9b PASS: armed GO survives Song seek until boundary");
+  }
+
   // 10. Project replacement is a canonical boundary. The engine invalidates
   //     old user NEXT/GO; ProjectPage provides the visible outcome.
   {

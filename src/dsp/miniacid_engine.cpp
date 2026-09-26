@@ -5748,6 +5748,15 @@ void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot) {
     return;
   }
 
+  // A queued user GO has already promised this NEXT candidate the next bar
+  // boundary. Song must not mutate CURRENT before that promise is settled,
+  // otherwise the preparation basis becomes stale and GO is silently lost.
+  if (goQueued_[idx] && userOwnsNext_(idx)) {
+    songVoiceState_[idx] = SongVoiceState::Awaiting;
+    silenceAwaitingSongVoice_(idx);
+    return;
+  }
+
   const int bankRegister = idx + 1;
   if (globalSlot < 0) {
     sceneManager_.setCurrentBankIndex(bankRegister, patternModeSynthBankIndex_[idx]);
