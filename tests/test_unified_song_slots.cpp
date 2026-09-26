@@ -436,6 +436,52 @@ int main() {
     std::puts("USS-9b PASS: armed GO survives Song seek until boundary");
   }
 
+  // 9c. A user NEXT can legitimately survive a Song transition that does not
+  //     need the shared buffer (for example Melody -> Pattern). That changes
+  //     CURRENT and therefore makes the old preparation basis stale. A later GO
+  //     must be rejected visibly before it is queued; the NEXT payload itself is
+  //     preserved for explicit user cancellation/replacement.
+  {
+    PatternPagingService::setProjectName(proj);
+    MiniAcid engine{44100.0f, &storage};
+    engine.init();
+    engine.setSongMode(false);
+    acceptMelody(engine, kY, melodyY);
+    engine.set303PatternIndex(0, kX);
+    engine.releaseSavedWorkingMelody_(0);
+    writeSong(engine, {kY, kZ});
+    engine.setSongMode(true);
+    engine.setSongPosition(0);
+    engine.serviceSongMaterial();
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Melody);
+
+    const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(engine.prepareNextMelody(
+               0, makeMelody(95, 1), basis,
+               GroovePuterMaterial::IdeaClassification::Variation) ==
+           MiniAcid::NextPrepareResult::Prepared);
+    assert(engine.hasPendingMaterial(0));
+
+    engine.start();
+    engine.currentTick_ = 383;
+    ++engine.currentTick_;
+    engine.advanceTick();
+    assert(engine.display303PatternIndex(0) == kZ);
+    assert(engine.songVoiceDisplayState(0) ==
+           MiniAcid::SongVoiceDisplayState::Pattern);
+    assert(engine.hasPendingMaterial(0));
+    assert(!engine.isGoQueued(0));
+
+    assert(engine.requestGoNextMaterial(0) ==
+           MiniAcid::GoRequestResult::Failed);
+    assert(!engine.isGoQueued(0));
+    assert(engine.hasPendingMaterial(0));
+    assert(engine.pendingMaterial_[0].melody->events[0].note == 95);
+    engine.stop();
+    std::puts("USS-9c PASS: stale user NEXT cannot arm a silently failing GO");
+  }
+
   // 10. Project replacement is a canonical boundary. The engine invalidates
   //     old user NEXT/GO; ProjectPage provides the visible outcome.
   {
