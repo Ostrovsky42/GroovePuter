@@ -50,6 +50,15 @@ void writePattern(MiniAcid& engine, int slot, int8_t note) {
   for (int s = 0; s < 16; s += 4) pattern.steps[s].note = note;
 }
 
+void bindAcceptedPatternIdentity(MiniAcid& engine, int slot) {
+  auto& descriptor = engine.sceneManager().currentScene().materialSlots[0][slot];
+  descriptor.kind = GroovePuterMaterial::MaterialKind::Pattern;
+  if (!descriptor.id.valid()) {
+    descriptor.id = PatternPagingService::allocateMaterialId();
+  }
+  assert(descriptor.id.valid());
+}
+
 void acceptMelody(MiniAcid& engine, int slot, const Buffer& melody) {
   if (engine.current303BankIndex(0) != 0) engine.set303BankIndex(0, 0);
   engine.set303PatternIndex(0, slot);
@@ -139,6 +148,8 @@ int main() {
     engine.setSongMode(false);
     writePattern(engine, kX, 40);
     writePattern(engine, kZ, 50);
+    bindAcceptedPatternIdentity(engine, kX);
+    bindAcceptedPatternIdentity(engine, kZ);
     acceptMelody(engine, kY, melodyY);
     // Leave the voice on a Pattern slot, the way a user finishes editing.
     engine.set303PatternIndex(0, kX);
