@@ -186,6 +186,20 @@ jobs:
       - name: Check fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
 
+      - name: Build authoritative FS1B dynamic-FatFs image
+        run: bash scripts/build_cardputer_dynbuffers.sh --warnings all
+
+      - name: Re-check authoritative FS1B DRAM and record hashes
+        run: |
+          bash scripts/check_cardputer_dram_budget.sh \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+          test -f build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+          test -f build/cardputer-adv-dynbuffers/GroovePuter.ino.bin
+          echo "FS1B_SHA256"
+          sha256sum \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.elf \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.bin
+
   cardputer-adv-seqtrak-midi-only-build:
     runs-on: ubuntu-latest
     steps:
