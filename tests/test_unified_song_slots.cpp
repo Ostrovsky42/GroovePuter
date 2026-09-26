@@ -279,13 +279,17 @@ int main() {
     MiniAcid engine{44100.0f, &storage};
     engine.init();
     engine.setSongMode(false);
+    // Both rows have accepted identities. The test is about pre-START
+    // ownership contention, not the older FS2A rule that NEXT requires a
+    // valid MaterialId on its preparation basis.
+    acceptMelody(engine, 3, makeMelody(70, 1));
     acceptMelody(engine, kY, melodyY);
-    engine.set303PatternIndex(0, kX);
-    engine.releaseSavedWorkingMelody_(0);
-    writeSong(engine, {kX, kY});
+    writeSong(engine, {kY, 3});
     engine.setSongMode(true);
     engine.setSongPosition(0);
+    engine.serviceSongMaterial();
     const auto basis = engine.captureCurrentPreparationBasis(0);
+    assert(basis.valid());
     assert(engine.prepareNextMelody(
                0, makeMelody(88, 1), basis,
                GroovePuterMaterial::IdeaClassification::Variation) ==
