@@ -589,3 +589,7 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_generation_stage13_tests.sh"
+
+# Unified Song slots: ownership, exact Pattern/Melody playback and display source contract.
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_unified_song_slots_tests.sh"

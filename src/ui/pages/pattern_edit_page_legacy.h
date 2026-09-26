@@ -940,6 +940,117 @@ void PatternEditPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) cons
   }
 }
 
+namespace {
+
+bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
+                                    int voiceIndex, const Rect& bounds) {
+  const auto state = engine.songVoiceDisplayState(voiceIndex);
+  if (state == MiniAcid::SongVoiceDisplayState::Pattern) return false;
+
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor(0));
+  const char* status = "MELODY";
+  if (state == MiniAcid::SongVoiceDisplayState::Held) {
+    status = "HOLD: WORKING MELODY";
+  } else if (state == MiniAcid::SongVoiceDisplayState::Awaiting) {
+    status = "WAIT: SONG MELODY";
+  } else if (state == MiniAcid::SongVoiceDisplayState::LoadFailed) {
+    status = "FAIL: MELODY LOAD";
+  }
+  gfx.setTextColor(state == MiniAcid::SongVoiceDisplayState::LoadFailed
+                       ? COLOR_ACCENT
+                       : voiceColor(voiceIndex));
+  gfx.drawText(bounds.x + 3, bounds.y + 3, status);
+
+  const auto* melody = engine.activeMelodyForDisplay(voiceIndex);
+  if (!melody) {
+    gfx.setTextColor(COLOR_GRAY);
+    gfx.drawText(bounds.x + 3, bounds.y + 22, "NO ACTIVE NOTE DATA");
+    UI::drawStandardFooter(gfx, "SONG MATERIAL", "WAIT/CANCEL NEXT OR RETRY");
+    return true;
+  }
+
+  const uint16_t phase = engine.currentPhrasePlayTick(voiceIndex);
+  const uint16_t barStart =
+      static_cast<uint16_t>((phase / PhraseRuntime::kTicksPerBar) *
+                            PhraseRuntime::kTicksPerBar);
+  const uint16_t barEnd = static_cast<uint16_t>(
+      std::min<uint32_t>(melody->lengthTicks,
+                         static_cast<uint32_t>(barStart) +
+                             PhraseRuntime::kTicksPerBar));
+  const int rollX = bounds.x + 4;
+  const int rollY = bounds.y + 18;
+  const int rollW = std::max(8, bounds.w - 8);
+  const int rollH = std::max(20, bounds.h - 34);
+
+  int minPitch = 127;
+  int maxPitch = 0;
+  for (uint16_t i = 0; i < melody->count; ++i) {
+    const auto& event = melody->events[i];
+    const uint32_t durTicks = std::max<uint32_t>(
+        1, (static_cast<uint32_t>(event.durationSubticks) +
+            PhraseRuntime::kSubticksPerTick - 1) /
+               PhraseRuntime::kSubticksPerTick);
+    const uint32_t eventEnd = static_cast<uint32_t>(event.startTick) + durTicks;
+    if (event.startTick >= barEnd || eventEnd <= barStart) continue;
+    minPitch = std::min(minPitch, static_cast<int>(event.note));
+    maxPitch = std::max(maxPitch, static_cast<int>(event.note));
+  }
+  if (minPitch > maxPitch) {
+    minPitch = 60;
+    maxPitch = 60;
+  }
+
+  gfx.drawRect(rollX, rollY, rollW, rollH, COLOR_GRAY);
+  const int pitchSpan = std::max(1, maxPitch - minPitch);
+  for (uint16_t i = 0; i < melody->count; ++i) {
+    const auto& event = melody->events[i];
+    const uint32_t durTicks = std::max<uint32_t>(
+        1, (static_cast<uint32_t>(event.durationSubticks) +
+            PhraseRuntime::kSubticksPerTick - 1) /
+               PhraseRuntime::kSubticksPerTick);
+    const uint32_t eventEnd = static_cast<uint32_t>(event.startTick) + durTicks;
+    if (event.startTick >= barEnd || eventEnd <= barStart) continue;
+    const uint32_t clippedStart =
+        std::max<uint32_t>(event.startTick, barStart) - barStart;
+    const uint32_t clippedEnd =
+        std::min<uint32_t>(eventEnd, barEnd) - barStart;
+    const int ex = rollX + static_cast<int>(
+        clippedStart * static_cast<uint32_t>(rollW - 1) /
+        PhraseRuntime::kTicksPerBar);
+    const int ew = std::max(
+        2, static_cast<int>(
+               std::max<uint32_t>(1, clippedEnd - clippedStart) *
+               static_cast<uint32_t>(rollW - 1) /
+               PhraseRuntime::kTicksPerBar));
+    const int ey = rollY + rollH - 3 -
+        ((static_cast<int>(event.note) - minPitch) * (rollH - 6) / pitchSpan);
+    gfx.fillRect(ex, ey, ew, 3, voiceColor(voiceIndex));
+  }
+
+  const uint16_t phaseInBar =
+      static_cast<uint16_t>(phase % PhraseRuntime::kTicksPerBar);
+  const int playX = rollX + static_cast<int>(
+      static_cast<uint32_t>(phaseInBar) * static_cast<uint32_t>(rollW - 1) /
+      PhraseRuntime::kTicksPerBar);
+  gfx.drawLine(playX, rollY, playX, rollY + rollH - 1, COLOR_WHITE);
+
+  char phaseText[48];
+  std::snprintf(phaseText, sizeof(phaseText), "T:%u/%u BAR:%u",
+                static_cast<unsigned>(phase),
+                static_cast<unsigned>(melody->lengthTicks),
+                static_cast<unsigned>(barStart / PhraseRuntime::kTicksPerBar + 1));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(bounds.x + 3, bounds.y + bounds.h - 22, phaseText);
+  UI::drawStandardFooter(
+      gfx, "MELODY ROLL = ACTIVE MATERIAL",
+      state == MiniAcid::SongVoiceDisplayState::Held
+          ? "Alt+ENT:ACCEPT Alt+X:DISCARD"
+          : "PLAYHEAD = PHRASE PHASE");
+  return true;
+}
+
+}  // namespace
+
 void PatternEditPage::draw(IGfx& gfx) {
   switch (UI::currentStyle) {
     case VisualStyle::RETRO_CLASSIC:
@@ -958,6 +1069,7 @@ void PatternEditPage::draw(IGfx& gfx) {
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
@@ -1082,6 +1194,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 #ifdef USE_RETRO_THEME
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
@@ -1282,6 +1395,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 #ifdef USE_AMBER_THEME
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;

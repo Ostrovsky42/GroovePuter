@@ -62,6 +62,13 @@ jobs:
           ASAN_OPTIONS: "detect_leaks=0"
         run: bash tests/run_generation_stage13_tests.sh
 
+      - name: Install unified Song slot test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
@@ -185,6 +192,30 @@ jobs:
 
       - name: Check fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+      - name: Prepare pinned ESP-IDF source for FS1B
+        run: |
+          rm -rf "$HOME/esp-idf"
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+          git -C "$HOME/esp-idf" checkout --detach FETCH_HEAD
+          test "$(git -C "$HOME/esp-idf" rev-parse HEAD)" = \
+            "858a988d6eb90f54661abe282c523879c6ad0116"
+
+      - name: Build authoritative FS1B dynamic-FatFs image
+        run: bash scripts/build_cardputer_dynbuffers.sh --warnings all
+
+      - name: Re-check authoritative FS1B DRAM and record hashes
+        run: |
+          bash scripts/check_cardputer_dram_budget.sh \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+          test -f build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+          test -f build/cardputer-adv-dynbuffers/GroovePuter.ino.bin
+          echo "FS1B_SHA256"
+          sha256sum \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.elf \
+            build/cardputer-adv-dynbuffers/GroovePuter.ino.bin
 
   cardputer-adv-seqtrak-midi-only-build:
     runs-on: ubuntu-latest
