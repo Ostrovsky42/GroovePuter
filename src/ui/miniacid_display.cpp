@@ -238,6 +238,10 @@ void MiniAcidDisplay::update() {
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
+    // Song rows that name a Melody slot are prepared here, off the audio thread.
+    if (mini_acid_.songMaterialServiceDue()) {
+        withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
+    }
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();

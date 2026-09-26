@@ -221,6 +221,19 @@ public:
   bool loadCurrentSlotMelody(int voiceIndex,
                              PhraseRuntime::RuntimeSynthEventBuffer& out) const;
 
+  // Unified Song slots. A Song cell names a slot; the slot's kind decides
+  // whether the row plays a Pattern or a Melody. Song is a NEXT producer: this
+  // control-side service loads the Melody of the next row into the voice's
+  // NEXT buffer ahead of the boundary and catches up a voice whose current row
+  // could not be activated there. Call from the UI loop under the audio guard.
+  void serviceSongMaterial();
+  // Cheap unguarded hint for the UI loop: whether serviceSongMaterial() has
+  // anything to do, so the audio guard is not taken on every frame.
+  bool songMaterialServiceDue() const;
+  // Song reached a row but kept this voice where it was, because its Working
+  // Melody is unsaved.
+  bool songVoiceHeld(int voiceIndex) const;
+
   // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
   // to the exact preparation basis it was prepared against.
@@ -758,7 +771,12 @@ private:
     bool lifecycleBound = false;
     GroovePuterMaterial::IdeaClassification ideaClassification =
         GroovePuterMaterial::IdeaClassification::Unknown;
+    // Song row this NEXT was prepared for; -1 when Song did not produce it.
+    // int8_t keeps the struct at 32 bytes (Song::kMaxPositions == 128).
+    int8_t songRow = -1;
   };
+  static_assert(Song::kMaxPositions <= 128,
+                "PendingMaterial::songRow is an int8_t row index");
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
@@ -773,6 +791,36 @@ private:
   // Working Melody belongs to the slot it was made on or loaded from. After a
   // slot change a saved one (it is on SD) leaves Working with that slot.
   void releaseSavedWorkingMelody_(int voiceIndex);
+  void dropRuntimePhraseReceiptFor_(int voiceIndex);
+  void restoreSlotMaterialAfterSong_(int voiceIndex);
+  void dropSongPreparedNext_();
+
+  // Unified Song slots (see serviceSongMaterial()).
+  enum class SongVoiceState : uint8_t {
+    InSync,     // the voice plays what the current row names
+    Held,       // unsaved Working Melody: the voice keeps its slot
+    Awaiting,   // the row's Melody is not loaded yet: the voice is silent
+  };
+  SongVoiceState songVoiceState_[NUM_303_VOICES]{};
+  // The slot a voice is bound to in Song mode; a held voice stays on it.
+  int16_t songVoiceSlot_[NUM_303_VOICES]{-1, -1};
+  // Last Song Melody that failed to load; not retried until START.
+  int16_t songLoadFailedSlot_[NUM_303_VOICES]{-1, -1};
+  bool workingMelodyUnsaved_(int voiceIndex) const;
+  // Phrase phase origin. Pattern mode keeps 0 (global phase); Song restarts it
+  // at the first bar of a row whose material changed for the voice.
+  uint32_t melodyPhaseOriginTick_[NUM_303_VOICES]{0, 0};
+  bool songPhaseResetPending_[NUM_303_VOICES]{false, false};
+  uint32_t songRowStartTick_ = 0;
+  void applySongSynthRow_(int voiceIndex, int16_t globalSlot);
+  bool songVoiceInSync_(int voiceIndex, int16_t globalSlot) const;
+  bool activateSongMelody_(int voiceIndex, int16_t globalSlot);
+  bool loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSlot);
+  int peekNextSongRow_() const;
+  bool songNeedsNext_(int voiceIndex) const;
+  int nextSongRowFrom_(int currentPos) const;
+  bool songRowIsPause_(int row) const;
+  int16_t songSynthSlotAt_(int voiceIndex, int row) const;
   DiscardResult discardToAcceptedMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   AudioMutationGate* acceptAudioMutationGate_ = nullptr;
