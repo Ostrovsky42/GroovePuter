@@ -5766,6 +5766,11 @@ void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot) {
   }
 
   if (songVoiceInSync_(idx, globalSlot)) {
+    // Keep the Song read-model anchored to the CURRENT identity even when no
+    // material activation is needed. A later WAIT (for example an armed user
+    // GO followed by a Song seek) must display the retained CURRENT slot, not
+    // an older Song slot.
+    songVoiceSlot_[idx] = globalSlot;
     songVoiceState_[idx] = SongVoiceState::InSync;
     return;
   }
