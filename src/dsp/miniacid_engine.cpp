@@ -5406,9 +5406,13 @@ void MiniAcid::publishActiveMaterial(int voiceIndex, uint16_t slot,
 int MiniAcid::current303GlobalSlot_(int voiceIndex) const {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return -1;
   const int idx = clamp303Voice(voiceIndex);
-  return songPatternFromPageBankIndex(currentPageIndex(),
-                                      current303BankIndex(idx),
-                                      display303LocalPatternIndex(idx));
+  // This is CURRENT identity, not Song/UI selection. In Song mode the display
+  // may already point at a requested row that is still WAITing for ownership;
+  // using it here would falsely relabel CURRENT before the material transition.
+  return songPatternFromPageBankIndex(
+      currentPageIndex(),
+      current303BankIndex(idx),
+      sceneManager_.getCurrentSynthPatternIndex(idx));
 }
 
 void MiniAcid::recordSavedMelody_(
