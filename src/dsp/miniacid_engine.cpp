@@ -1018,7 +1018,10 @@ void MiniAcid::setSongMode(bool enabled) {
       songPhaseResetPending_[idx] = false;
       // A held voice keeps its slot and its unsaved Melody in Pattern mode too.
       if (workingMelodyUnsaved_(idx)) {
-        const int16_t held = songVoiceSlot_[idx];
+        // Working/CURRENT identity is owned by ActiveMaterial, not the Song
+        // row read-model. A held user GO result can outlive a seek, so restoring
+        // Pattern mode must follow the actual CURRENT slot.
+        const int16_t held = static_cast<int16_t>(activeMaterial_[idx].slot);
         songVoiceState_[idx] = SongVoiceState::InSync;
         if (held >= 0) {
           patternModeSynthBankIndex_[idx] = songPatternBank(held);
@@ -1200,7 +1203,9 @@ int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   if (songMode_) {
     if (songVoiceState_[idx] == SongVoiceState::Held ||
         songVoiceState_[idx] == SongVoiceState::Awaiting) {
-      return songVoiceSlot_[idx];
+      // WAIT/HOLD deliberately do not retarget CURRENT to the requested Song
+      // row. Display the actual CURRENT identity, not the row/shadow slot.
+      return static_cast<int16_t>(activeMaterial_[idx].slot);
     }
     int pos = clampSongPosition(sceneManager_.getSongPosition());
     int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos,
