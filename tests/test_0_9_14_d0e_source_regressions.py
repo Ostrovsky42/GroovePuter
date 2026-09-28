@@ -25,6 +25,7 @@ PATTERN_EDIT = read("src/state/synth_pattern_edit.h")
 BASS = read("src/generation/roles/bass_rhythm.h")
 HARMONIC = read("src/generation/roles/harmonic_rhythm.h")
 PROGRESSION = read("src/generation/roles/chord_progression.h")
+STRONG = read("src/generation/migration/strong_rhythm_migration.h")
 IDENTITY = read("src/state/material_identity.h")
 SEM = read("src/dsp/development_semantics.h")
 
@@ -75,6 +76,9 @@ require("materializeOneBar(" in P1R and
 require("return result.status ==" in P1R and
         "StrongRhythmMigrationStatus::Applied" in P1R,
         "D0-E evidence: materializeOneBar no longer drops detailed result")
+require("BassRhythmId bassRhythmId" in STRONG and
+        "BassRhythmPlan bassRhythmPlan" not in STRONG,
+        "D0-E evidence: resolved BassRhythmPlan export seam changed")
 
 # Existing product state is intentionally tiny/coarse, not a Material provenance
 # repository.
