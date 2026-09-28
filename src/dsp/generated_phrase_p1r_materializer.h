@@ -170,6 +170,8 @@ struct MaterializedSynthABarEvidence {
   bool valid = false;
   uint8_t phraseBarOrdinal = 0;
   GroovePuterRhythm::BassRhythmPlan bassRhythm{};
+  // D1-B1: pitch class at each bass attack, from the owner's tonal plan.
+  GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
 };
 
 static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
@@ -201,10 +203,13 @@ inline bool materializeOneBar(
       scratch.drums, scratch.synthA, scratch.synthB);
   const bool applied =
       result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
-  if (applied && result.bassRhythmPlanAvailable) {
+  // Valid only when BOTH required owner results exist (fail closed).
+  if (applied && result.bassRhythmPlanAvailable &&
+      result.bassPitchClassWitnessAvailable) {
     evidence.valid = true;
     evidence.phraseBarOrdinal = phraseBarOrdinal;
     evidence.bassRhythm = result.bassRhythmPlan;
+    evidence.bassPitchClasses = result.bassPitchClassWitness;
   }
   return applied;
 }

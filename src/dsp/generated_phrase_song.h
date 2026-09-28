@@ -370,6 +370,7 @@ inline void applyPreparedPersistent(
         entry.originPatternVersion = GroovePuterMaterial::versionForPattern(
             scene.synthABanks[bank].patterns[index]);
         entry.bassRhythm = barEvidence.bassRhythm;
+        entry.bassPitchClasses = barEvidence.bassPitchClasses;
         entry.harmonicRhythm =
             prepared.p1rExecution.harmonicClock.bars[bar].harmonicRhythm;
         entry.phraseBarOrdinal = static_cast<uint8_t>(bar);

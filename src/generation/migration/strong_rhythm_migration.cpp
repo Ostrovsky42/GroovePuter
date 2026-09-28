@@ -13,6 +13,14 @@ void setStrongRhythmMelodicRequestProbe(
     StrongRhythmMelodicRequestProbe* probe) {
   g_melodicRequestProbe = probe;
 }
+
+namespace {
+StrongRhythmBassTonalPlanProbe* g_bassTonalPlanProbe = nullptr;
+}
+
+void setStrongRhythmBassTonalPlanProbe(StrongRhythmBassTonalPlanProbe* probe) {
+  g_bassTonalPlanProbe = probe;
+}
 #endif
 namespace {
 
@@ -1009,6 +1017,15 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
       return result;
     }
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+    if (g_bassTonalPlanProbe != nullptr) {
+      g_bassTonalPlanProbe->plan = bassTonal.plan;
+      g_bassTonalPlanProbe->captured = true;
+    }
+#endif
+    // D1-B1: origin witness from the exact plan adapted into Synth A above.
+    result.bassPitchClassWitnessAvailable = makeBassPitchClassWitness(
+        bassTonal.plan, bass.plan.onsets, result.bassPitchClassWitness);
     result.bassFeelStatus = applyFeelToSemanticPattern(
         RhythmRole::BassRhythm, bassPitch.plan.onsets, resolvedFeel,
         context.feelAmount, bassRequest.generation, nextSynthA);

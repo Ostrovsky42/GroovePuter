@@ -87,6 +87,9 @@ jobs:
       - name: Run 0.9.14 D1-B generated Synth A origin
         run: bash tests/run_0_9_14_d1b_tests.sh
 
+      - name: Run 0.9.14 D1-B1 pitch-class origin witness
+        run: bash tests/run_0_9_14_d1b1_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 

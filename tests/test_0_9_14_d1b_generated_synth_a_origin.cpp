@@ -538,7 +538,7 @@ void report_sizes() {
               sizeof(GroovePuterMaterial::GeneratedSynthAOriginCandidate),
               sizeof(GeneratedPhraseSong::PreparedPhraseArrangement),
               sizeof(GeneratedPhraseSong::GeneratedPhraseUndoPayload));
-  assert(sizeof(GeneratedSynthAOrigin) <= 320);
+  assert(sizeof(GeneratedSynthAOrigin) <= 352);
   assert(sizeof(GeneratedPhraseSong::PreparedPhraseArrangement) <= 1024);
 }
 

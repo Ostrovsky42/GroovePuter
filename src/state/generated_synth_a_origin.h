@@ -7,6 +7,7 @@
 #include "../generation/roles/bass_rhythm.h"
 #include "../generation/roles/chord_progression.h"
 #include "../generation/roles/harmonic_rhythm.h"
+#include "../generation/tonal/bass_pitch_class_witness.h"
 #include "../generation/tonal/tonal_projector.h"
 #include "material_identity.h"
 #include "material_version.h"
@@ -30,6 +31,11 @@ struct GeneratedSynthABarOrigin {
   MaterialReference material{};
   // versionForPattern() of the Pattern as committed, NOT an identity.
   MaterialVersionToken originPatternVersion{};
+  // D1-B1: exact pitch class of every bass attack, from the owner's tonal
+  // materialization plan. nibble(step) is meaningful iff bassRhythm.onsets
+  // contains step. Says nothing about any later Pattern. (Placed before the
+  // 2-byte-aligned plans so the bar packs into 40 bytes without padding.)
+  GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
   // The exact plan consumed to build this bar's Synth A.
   GroovePuterRhythm::BassRhythmPlan bassRhythm{};
   // Copied from the PREPARE-time harmonic clock projection, never re-derived.
@@ -97,8 +103,8 @@ static_assert(std::is_trivially_copyable<GeneratedSynthABarOrigin>::value,
               "GeneratedSynthABarOrigin must stay fixed-capacity");
 static_assert(std::is_trivially_copyable<GeneratedSynthAOrigin>::value,
               "GeneratedSynthAOrigin must stay fixed-capacity");
-static_assert(sizeof(GeneratedSynthAOrigin) <= 296,
-              "D1-B GeneratedSynthAOrigin exceeded its 296-byte target");
+static_assert(sizeof(GeneratedSynthAOrigin) <= 352,
+              "D1-B1 GeneratedSynthAOrigin exceeded its 352-byte ceiling");
 
 }  // namespace GroovePuterMaterial
 

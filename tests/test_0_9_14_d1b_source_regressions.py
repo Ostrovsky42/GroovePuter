@@ -58,7 +58,7 @@ require("applied && result.bassRhythmPlanAvailable" in seam and
         "D1-B: bar evidence must come from the migration result and only when Applied")
 
 # 3. Sidecar type: bounded, evidence-only, no verdict/analysis vocabulary.
-require("sizeof(GeneratedSynthAOrigin) <= 296" in ORIGIN,
+require("sizeof(GeneratedSynthAOrigin) <= 352" in ORIGIN,
         "D1-B: sidecar size budget assertion missing")
 require("is_trivially_copyable<GeneratedSynthAOrigin>" in ORIGIN,
         "D1-B: sidecar must be trivially copyable")
