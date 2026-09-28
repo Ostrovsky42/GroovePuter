@@ -81,6 +81,13 @@ inline StateRelation relationFromReference(
   return StateRelation::Unknown;
 }
 
+inline bool hasPrimaryDownbeatOnset(const Buffer& buffer) {
+  for (uint16_t i = 0; i < buffer.count; ++i) {
+    if (buffer.events[i].startTick == 0) return true;
+  }
+  return false;
+}
+
 inline bool operationPromisesContour(
     GroovePuterDevelopment::TransformationKind transformation) {
   using GroovePuterDevelopment::TransformationKind;
@@ -156,24 +163,17 @@ inline SemanticFacts adaptLegacyEvidence(
     }
   }
 
-  // Presence of the downbeat anchor is directly observable in this runtime
-  // representation, so the claim can be evaluated without guessing genre.
-  setCapability(facts, CapabilityClaim::MetricAnchorTheOne,
+  // D0-D1: RuntimeSynthEventBuffer can authoritatively answer only the
+  // mechanical question "is there an onset at startTick == 0?". That
+  // observable is not metric hierarchy, The One, Funk pocket, or genre
+  // validity. The capability remains available, but it does not write GENRE.
+  setCapability(facts, CapabilityClaim::PrimaryDownbeatOnsetPresence,
                 CapabilityStatus::Available);
 
-  // A hard genre-bearing violation may reject GENRE even when the rest of the
-  // genre contract is unresolved. Passing this one claim never certifies the
-  // entire genre, unless the caller supplied a complete genreRequirements PASS.
-  const bool genreRequiresTheOne =
-      request.requireTheOne ||
-      request.genreId == static_cast<uint8_t>(GenerativeMode::FunkSoul);
-  const bool sourceHadTheOne =
-      GroovePuterDevelopment::hasEventOnTheOne(source);
-  const bool candidateHasTheOne =
-      GroovePuterDevelopment::hasEventOnTheOne(candidate);
-  if (genreRequiresTheOne && sourceHadTheOne && !candidateHasTheOne) {
-    facts.genre = GenreStatus::Violation;
-  }
+  // Keep SOURCE in the stable adapter signature. D0-D1 deliberately refuses
+  // to manufacture a higher-level verdict from source/candidate downbeat
+  // presence alone.
+  (void)source;
 
   return facts;
 }
