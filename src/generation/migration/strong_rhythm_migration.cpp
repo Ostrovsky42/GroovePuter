@@ -726,6 +726,8 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  result.bassRhythmPlan = bass.plan;
+  result.bassRhythmPlanAvailable = true;
 
   BassPitchBehaviorResult bassPitch{};
   if (context.tonalMaterializationEnabled) {

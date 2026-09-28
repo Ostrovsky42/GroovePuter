@@ -8,6 +8,7 @@
 #include "src/state/generation_request_state.h"
 
 #include <array>
+#include <type_traits>
 #include <cstdint>
 
 namespace GeneratedPhraseP1R {
@@ -161,6 +162,19 @@ inline bool materializePreparedBars(
   return true;
 }
 
+// D1-B: compact owner-derived evidence for one materialized Synth A bar. Valid
+// only when P1R materialization actually Applied AND the bass owner exported
+// its resolved plan; every other path leaves it default (valid == false).
+// Owns no Pattern bytes.
+struct MaterializedSynthABarEvidence {
+  bool valid = false;
+  uint8_t phraseBarOrdinal = 0;
+  GroovePuterRhythm::BassRhythmPlan bassRhythm{};
+};
+
+static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
+              "bar evidence must stay fixed-capacity");
+
 // PMB-P1 bounded materialization: rebuilds the destination-independent pitch
 // source fresh (PMB-A1 proved this is deterministic/idempotent) and
 // materializes exactly one bar into the caller's single reused scratch
@@ -175,7 +189,9 @@ inline bool materializeOneBar(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
-    PhraseGenerator::PhraseBar& scratch) {
+    PhraseGenerator::PhraseBar& scratch,
+    MaterializedSynthABarEvidence& evidence) {
+  evidence = MaterializedSynthABarEvidence{};
   scratch = PhraseGenerator::PhraseBar{};
   if (!prepareDestinationIndependentPitchSource(engine, execution, scratch)) {
     return false;
@@ -183,7 +199,25 @@ inline bool materializeOneBar(
   const auto result = GroovePuterRhythm::materializePreparedPhraseBar(
       execution, phraseBarOrdinal, physicalPatternAddress,
       scratch.drums, scratch.synthA, scratch.synthB);
-  return result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+  const bool applied =
+      result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+  if (applied && result.bassRhythmPlanAvailable) {
+    evidence.valid = true;
+    evidence.phraseBarOrdinal = phraseBarOrdinal;
+    evidence.bassRhythm = result.bassRhythmPlan;
+  }
+  return applied;
+}
+
+inline bool materializeOneBar(
+    MiniAcid& engine,
+    const GroovePuterRhythm::PreparedPhraseExecution& execution,
+    uint8_t phraseBarOrdinal,
+    int16_t physicalPatternAddress,
+    PhraseGenerator::PhraseBar& scratch) {
+  MaterializedSynthABarEvidence ignored{};
+  return materializeOneBar(engine, execution, phraseBarOrdinal,
+                           physicalPatternAddress, scratch, ignored);
 }
 
 inline PreparationDisposition prepare(

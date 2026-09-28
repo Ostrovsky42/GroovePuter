@@ -74,12 +74,10 @@ for token in (
 require("materializeOneBar(" in P1R and
         "materializePreparedPhraseBar(" in P1R,
         "D0-E evidence: P1R commit seam changed")
-require("return result.status ==" in P1R and
-        "StrongRhythmMigrationStatus::Applied" in P1R,
-        "D0-E evidence: materializeOneBar no longer drops detailed result")
-require("BassRhythmId bassRhythmId" in STRONG and
-        "BassRhythmPlan bassRhythmPlan" not in STRONG,
-        "D0-E evidence: resolved BassRhythmPlan export seam changed")
+# (Historical "result dropped / BassRhythmPlan not exported" assertions were
+# gap-state and moved to the D1-B gate, which tests the implemented seam.)
+require("BassRhythmId bassRhythmId" in STRONG,
+        "D0-E evidence: bass id export changed")
 
 # Existing product state is intentionally tiny/coarse, not a Material provenance
 # repository.

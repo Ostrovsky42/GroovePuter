@@ -6,6 +6,7 @@
 #include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
 #include "src/state/material_lineage.h"
+#include "src/state/generated_synth_a_origin.h"
 #include "src/state/working_material_storage.h"
 
 namespace GroovePuterDevelopment {
@@ -288,6 +289,31 @@ public:
   using PreparationBasis = GroovePuterMaterial::PreparationBasis;
 
   PreparationBasis captureCurrentPreparationBasis(int voiceIndex) const;
+
+  // D1-B: read-only session provenance of the latest committed P1R generated
+  // Phrase (Synth A). nullptr when none is known. Historical evidence only:
+  // it is never rewritten by later edits and carries no lineage verdict.
+  const GroovePuterMaterial::GeneratedSynthAOrigin* generatedSynthAOrigin() const {
+    return generatedSynthAOriginValid_ ? &generatedSynthAOrigin_ : nullptr;
+  }
+  const GroovePuterMaterial::GeneratedSynthABarOrigin* findGeneratedSynthAOrigin(
+      GroovePuterMaterial::MaterialReference reference) const {
+    return generatedSynthAOriginValid_ ? generatedSynthAOrigin_.find(reference)
+                                       : nullptr;
+  }
+  // Publication is reserved for GeneratedPhraseSong (enforced by source
+  // regression): call only after the physical generated Material committed.
+  bool publishGeneratedSynthAOrigin(
+      const GroovePuterMaterial::GeneratedSynthAOriginCandidate& candidate) {
+    if (!candidate.complete()) return false;
+    generatedSynthAOrigin_ = candidate.origin;
+    generatedSynthAOriginValid_ = true;
+    return true;
+  }
+  void clearGeneratedSynthAOrigin() {
+    generatedSynthAOrigin_ = GroovePuterMaterial::GeneratedSynthAOrigin{};
+    generatedSynthAOriginValid_ = false;
+  }
 
   enum class GoRequestResult : uint8_t {
     Failed = 0,
@@ -804,6 +830,8 @@ private:
   static_assert(Song::kMaxPositions <= 128,
                 "PendingMaterial::songRow is an int8_t row index");
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
+  GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
+  bool generatedSynthAOriginValid_ = false;
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
   GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};

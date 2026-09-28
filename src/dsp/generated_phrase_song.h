@@ -8,6 +8,7 @@
 #include "src/audio/pattern_paging.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
+#include "src/state/generated_synth_a_origin.h"
 #include "src/state/generation_request_state.h"
 #include "src/state/material_slot_access.h"
 #include "src/state/scene_revision.h"
@@ -299,10 +300,34 @@ inline bool preparedTargetStillCommitSafe(
 // is one synchronous, lease-protected call with no yielding in between, so
 // nothing can mutate the inputs a materializer reads between PREFLIGHT and
 // COMMIT (see docs/contracts/0_9_9_PHRASE_PMB_P1_BOUNDED_PREPARE_COMMIT.md).
+// D1-B: the common part of the unpublished origin candidate comes straight
+// from PREPARE's owner data (never from the generated notes). Per-bar bass
+// evidence is filled during COMMIT; nothing is visible to the engine until
+// commitPrepared succeeds.
+inline GroovePuterMaterial::GeneratedSynthAOriginCandidate
+beginOriginCandidate(const PreparedPhraseArrangement& prepared) {
+  GroovePuterMaterial::GeneratedSynthAOriginCandidate candidate{};
+  if (!prepared.useP1RRoute) {
+    candidate.failed = true;  // Legacy never claims P1R evidence
+    return candidate;
+  }
+  auto& common = candidate.origin.common;
+  common.phraseGenerationIdentity = prepared.p1rExecution.phraseGenerationIdentity;
+  common.barCount = static_cast<uint8_t>(prepared.request.bars);
+  common.rootPitchClass = prepared.p1rExecution.materialization.rootPitchClass;
+  common.scaleTypeValue = prepared.p1rExecution.materialization.scaleTypeValue;
+  common.progressionSource = prepared.p1rExecution.progressionSource;
+  return candidate;
+}
+
+// When `candidate` is non-null and the route is P1R, per-bar origin is filled
+// from the exact evidence the materializer returned for that bar; any bar
+// without valid evidence poisons the candidate (fail closed).
 inline void applyPreparedPersistent(
     MiniAcid& engine,
     Scene& scene,
-    const PreparedPhraseArrangement& prepared) {
+    const PreparedPhraseArrangement& prepared,
+    GroovePuterMaterial::GeneratedSynthAOriginCandidate* candidate = nullptr) {
   Song& song = scene.songs[prepared.songSlot];
   PhraseGenerator::PhraseBar scratch{};
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
@@ -312,10 +337,11 @@ inline void applyPreparedPersistent(
     const int globalPattern = songPatternFromPageBankIndex(
         prepared.request.pageIndex, bank, index);
 
+    GeneratedPhraseP1R::MaterializedSynthABarEvidence barEvidence{};
     if (prepared.useP1RRoute) {
       GeneratedPhraseP1R::materializeOneBar(
           engine, prepared.p1rExecution, static_cast<uint8_t>(bar),
-          static_cast<int16_t>(globalPattern), scratch);
+          static_cast<int16_t>(globalPattern), scratch, barEvidence);
     } else {
       materializeLegacyBar(engine, scene, prepared, bar, scratch);
     }
@@ -329,6 +355,27 @@ inline void applyPreparedPersistent(
         scene, 0, localSlot,
         GroovePuterMaterial::MaterialKind::Pattern,
         prepared.synthAReservation.idAt(static_cast<uint8_t>(bar)));
+
+    if (candidate != nullptr && prepared.useP1RRoute) {
+      const auto id = prepared.synthAReservation.idAt(static_cast<uint8_t>(bar));
+      if (!barEvidence.valid || barEvidence.phraseBarOrdinal != bar ||
+          !id.valid()) {
+        candidate->failed = true;
+      } else {
+        auto& entry = candidate->origin.bars[bar];
+        entry.material = GroovePuterMaterial::MaterialReference{
+            GroovePuterMaterial::MaterialAddress{
+                0, static_cast<uint8_t>(globalPattern)},
+            id};
+        entry.originPatternVersion = GroovePuterMaterial::versionForPattern(
+            scene.synthABanks[bank].patterns[index]);
+        entry.bassRhythm = barEvidence.bassRhythm;
+        entry.harmonicRhythm =
+            prepared.p1rExecution.harmonicClock.bars[bar].harmonicRhythm;
+        entry.phraseBarOrdinal = static_cast<uint8_t>(bar);
+        ++candidate->filledBars;
+      }
+    }
 
     SongPosition& position =
         song.positions[prepared.request.songStart + bar];
@@ -460,6 +507,10 @@ GroovePuterUndo::UndoResult undoLastGeneratedPhrase(
       });
 
   if (result == GroovePuterUndo::UndoResult::Restored) {
+    // D1-B: the undone phrase is the latest generated one, i.e. the one the
+    // sidecar describes. Fail closed to "no rich origin"; an older sidecar is
+    // deliberately not restored (no ~300 B added to the Undo payload).
+    engine.clearGeneratedSynthAOrigin();
     (void)GroovePuterRhythm::PhraseLiveArrangementDetail::
         cancelPendingPhraseActivationForRevision(engine, committedRevision);
   }
@@ -689,6 +740,10 @@ Result generate(
   const GeneratedPhraseUndoPayload before = captureUndo(
       engine.sceneManager().currentScene(), *prepared);
   auto&& applyGuard = guard;
+  // D1-B: unpublished origin candidate (stack, no heap); visible to the engine
+  // only after commitPrepared succeeds below.
+  GroovePuterMaterial::GeneratedSynthAOriginCandidate originCandidate =
+      beginOriginCandidate(*prepared);
 
   if (engine.isPlaying()) {
     if (!GroovePuterRhythm::PhraseLiveArrangementDetail::armPhraseActivation(
@@ -711,7 +766,8 @@ Result generate(
       [&]() {
         const auto apply = [&]() {
           applyPreparedPersistent(
-              engine, engine.sceneManager().currentScene(), *prepared);
+              engine, engine.sceneManager().currentScene(), *prepared,
+              &originCandidate);
         };
         applyGuard(apply);
       });
@@ -725,6 +781,14 @@ Result generate(
     }
     output.status = LifecycleStatus::Busy;
     return output;
+  }
+
+  // D1-B: physical Material committed. Publish P1R origin only if every bar
+  // carried valid owner evidence; a Legacy (or evidence-less) generation makes
+  // "latest generated phrase" provenance-free, so the old sidecar is cleared
+  // rather than left describing a phrase that is no longer the latest.
+  if (!(prepared->useP1RRoute && engine.publishGeneratedSynthAOrigin(originCandidate))) {
+    engine.clearGeneratedSynthAOrigin();
   }
 
   if (!engine.isPlaying()) {

@@ -95,8 +95,9 @@ require("PatternPagingService" in PAGING_H,
         "D1-A Hard rule violated: PatternPagingService must remain canonical MaterialId owner")
 
 # No forbidden provenance sidecars or lineage evaluators leaked in
+# ("GeneratedSynthAOrigin" was forbidden here during D1-A; the D1-B gate now
+# owns its publication contract.)
 forbidden_tokens = (
-    "GeneratedSynthAOrigin",
     "GeneratedSynthADevelopmentOrigin",
     "P0LineageEvaluator",
     "P0PreservationEvaluator",

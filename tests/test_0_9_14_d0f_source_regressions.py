@@ -93,8 +93,7 @@ if result_start >= 0 and result_end > result_start:
     result_block = STRONG_H[result_start:result_end]
     require("BassRhythmId bassRhythmId" in result_block,
             "D0-F evidence: existing bass id export changed")
-    require("BassRhythmPlan" not in result_block,
-            "D0-F prerequisite changed: full BassRhythmPlan already exported")
+    # (gap assertion "plan not exported" moved to D1-B, which tests the seam)
 
 # materializeOneBar currently discards the detailed migration result.
 m1_start = P1R.find("inline bool materializeOneBar(")
@@ -103,11 +102,8 @@ require(m1_start >= 0 and m1_end > m1_start,
         "D0-F evidence: P1R one-bar seam moved")
 if m1_start >= 0 and m1_end > m1_start:
     m1 = P1R[m1_start:m1_end]
-    require("const auto result =" in m1 and
-            "return result.status ==" in m1,
-            "D0-F evidence: one-bar materializer no longer drops detailed result")
-    require("BassRhythmPlan" not in m1,
-            "D0-F prerequisite changed: P1R already exports BassRhythmPlan")
+    require("materializePreparedPhraseBar(" in m1,
+            "D0-F evidence: one-bar materializer no longer calls the migration owner")
 
 # Harmonic WHAT/WHEN and tonal frame are already available before COMMIT.
 for token in (

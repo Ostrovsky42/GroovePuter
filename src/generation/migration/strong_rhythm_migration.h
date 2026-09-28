@@ -190,6 +190,11 @@ struct StrongRhythmMigrationResult {
   GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
   BassRhythmId bassRhythmId = BassRhythmId::Auto;
+  // D1-B: the exact resolved plan that constructed this bar's Synth A (the
+  // same object whose onsets/continuations feed the semantic projection), not
+  // a regenerated look-alike. Valid only when bassRhythmPlanAvailable.
+  BassRhythmPlan bassRhythmPlan{};
+  bool bassRhythmPlanAvailable = false;
   BassPitchBehaviorStatus bassPitchBehaviorStatus =
       BassPitchBehaviorStatus::InvalidRequest;
   BassPitchContourId bassPitchContour = BassPitchContourId::Auto;
