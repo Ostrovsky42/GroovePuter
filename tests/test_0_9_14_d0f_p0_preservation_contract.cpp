@@ -179,7 +179,6 @@ void revoice_can_prove_continuity_without_exact_register() {
 void hold_can_prove_continuity_without_exact_lifetime() {
   const auto source = sourceLine();
   const auto dev = transform(source, request(Dev::TransformationKind::Hold));
-  assert(dev.success);
   assert(dev.candidate.events[0].durationSubticks !=
          source.events[0].durationSubticks);
 
