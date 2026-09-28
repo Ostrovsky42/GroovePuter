@@ -368,6 +368,16 @@ bool writeIdentityHighWater(const std::string& projectName, uint32_t highWater) 
         removeIfExists(temporaryPath);
         return false;
     }
+    // main now holds the committed high-water. Mirror it into ".bak" so that
+    // losing main later cannot resurrect an older value (which would reissue
+    // published MaterialIds). On failure the advanced main is NOT rolled
+    // back: the caller fails closed and the skipped ids are a benign gap.
+    uint32_t mirrored = 0;
+    if (!copyFile(mainPath, backupPath) ||
+        !readIdentityMeta(backupPath, mirrored) || mirrored != highWater) {
+        removeIfExists(backupPath);
+        return false;
+    }
     return true;
 }
 

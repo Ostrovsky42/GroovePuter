@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -354,54 +355,328 @@ void test_checkpoint_undo_descriptor_restoration() {
 }
 
 // ============================================================================
-// FAILURE CASES (F1 - F7)
+// FAILURE CASES (F1 - F7) -- each case below is an executable runtime witness.
+//
+//   F1  occupied Melody descriptor        -> allocator skips slot (generate)
+//   F2  occupied Pattern MaterialId       -> allocator skips slot (generate)
+//   F3  no safe contiguous range          -> typed failure, nothing published
+//   F4  reservation durable write fails   -> generate() fails closed
+//   F5  target invalid before publication -> nothing visible, no ID reserved
+//   F6  Undo                              -> see test_checkpoint_undo_...
+//   F7  stale exact version               -> see test_checkpoint_generation_...
 // ============================================================================
-void test_failure_cases() {
-  SceneStorageSdl storage;
-  const std::string proj = "d1a-failure-test";
-  assert(PatternPagingService::setProjectName(proj));
-  assert(PatternPagingService::clearProjectPages());
 
+const auto kGuard = [](auto&& body) { body(); };
+
+void configureChip(MiniAcid& engine) {
+  configureCleanScene(engine);
+  Scene& scene = engine.sceneManager().currentScene();
+  scene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::Chip);
+  scene.genre.recipe = 0;
+  engine.genreManager().setGenerativeMode(GenerativeMode::Chip);
+  engine.genreManager().setRecipe(0);
+}
+
+// True when nothing generated is visible: physical Synth A/B/Drums empty,
+// Song rows unreferenced, every Material descriptor canonical free.
+bool nothingPublished(const Scene& scene) {
+  for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+    if (!PhraseGenerator::localSlotIsEmpty(scene, slot)) return false;
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+      if (!GroovePuterMaterial::residentSlotIsFree(scene, voice, slot)) {
+        return false;
+      }
+    }
+  }
+  for (int s = 0; s < 2; ++s) {
+    for (const auto& position : scene.songs[s].positions) {
+      for (const auto pattern : position.patterns) {
+        if (pattern != -1) return false;
+      }
+    }
+  }
+  return true;
+}
+
+// The identity high-water is durable and monotonic: a probe allocation is the
+// only public way to observe it. Returns the id handed out by the probe.
+uint32_t probeHighWater() {
+  const auto id = PatternPagingService::allocateMaterialId();
+  assert(id.valid());
+  return id.value;
+}
+
+// Other tests leave their own project directories behind, so pick the meta
+// file that the immediately preceding probe touched (newest mtime).
+std::filesystem::path findIdentityMeta() {
+  std::filesystem::path newest;
+  std::filesystem::file_time_type newestTime{};
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(
+           std::filesystem::current_path())) {
+    if (!entry.is_regular_file() ||
+        entry.path().filename() != "material_id.meta") {
+      continue;
+    }
+    const auto time = entry.last_write_time();
+    if (newest.empty() || time >= newestTime) {
+      newest = entry.path();
+      newestTime = time;
+    }
+  }
+  return newest;
+}
+
+// F1 + F2: real allocator (generate()), not just the predicate. Slot 0 is
+// physically empty but Synth B is Melody; slot 1 is physically empty but
+// Synth A owns a valid MaterialId. Generation must land on slot 2 and leave
+// both occupied descriptors untouched.
+void test_f1_f2_allocator_skips_occupied_descriptors() {
+  SceneStorageSdl storage;
+  assert(PatternPagingService::setProjectName("d1a-f1f2"));
+  assert(PatternPagingService::clearProjectPages());
   MiniAcid engine{kSampleRate, &storage};
   engine.init();
   engine.setSongMode(false);
-  configureCleanScene(engine);
+  configureChip(engine);
   Scene& scene = engine.sceneManager().currentScene();
 
-  // F1 & F2: Descriptor-aware allocator refuses occupied descriptors
-  scene.materialSlots[0][0].kind = MaterialKind::Melody;
-  scene.materialSlots[0][1].id = MaterialId{999};
-  assert(!PhraseGenerator::localSlotIsSafeForPhrase(scene, 0, 0));
-  assert(!PhraseGenerator::localSlotIsSafeForPhrase(scene, 0, 1));
-  // Clean back
-  scene.materialSlots[0][0] = MaterialSlotDescriptor{};
-  scene.materialSlots[0][1] = MaterialSlotDescriptor{};
+  scene.materialSlots[1][0] = MaterialSlotDescriptor{MaterialKind::Melody, MaterialId{}};
+  scene.materialSlots[0][1] = MaterialSlotDescriptor{MaterialKind::Pattern, MaterialId{999}};
 
-  // F3: No safe contiguous range -> generation fails with typed error, no descriptors overwritten
+  const auto result = GeneratedPhraseSong::generate(engine, 1, 0, kGuard);
+  assert(result.status == GeneratedPhraseSong::LifecycleStatus::CommittedNow);
+  assert(result.phrase.firstLocalSlot == 2);
+
+  assert(scene.materialSlots[1][0] ==
+         (MaterialSlotDescriptor{MaterialKind::Melody, MaterialId{}}));
+  assert(PhraseGenerator::localSlotIsEmpty(scene, 0));
+  assert(scene.materialSlots[0][1] ==
+         (MaterialSlotDescriptor{MaterialKind::Pattern, MaterialId{999}}));
+  assert(PhraseGenerator::localSlotIsEmpty(scene, 1));
+  assert(!PhraseGenerator::localSlotIsEmpty(scene, 2));
+  assert(scene.materialSlots[0][2].kind == MaterialKind::Pattern);
+  assert(scene.materialSlots[0][2].id.valid());
+
+  std::puts("D1-A F1/F2: generate() skips occupied descriptors: PASS");
+}
+
+// F3: every slot semantically occupied -> typed failure, zero publication,
+// and no MaterialId reserved (failure happens in PREPARE, before reservation).
+void test_f3_no_safe_range() {
+  SceneStorageSdl storage;
+  assert(PatternPagingService::setProjectName("d1a-f3"));
+  assert(PatternPagingService::clearProjectPages());
+  MiniAcid engine{kSampleRate, &storage};
+  engine.init();
+  engine.setSongMode(false);
+  configureChip(engine);
+  Scene& scene = engine.sceneManager().currentScene();
+
+  const uint32_t before = probeHighWater();
   for (int s = 0; s < Scene::kMaterialSlotsPerVoice; ++s) {
     scene.materialSlots[0][s].kind = MaterialKind::Melody;
   }
-  const auto guard = [](auto&& body) { body(); };
-  auto resultF3 = GeneratedPhraseSong::generate(engine, 4, 0, guard);
-  assert(resultF3.status == GeneratedPhraseSong::LifecycleStatus::Failed);
-  assert(resultF3.phrase.error == PhraseGenerator::PhraseError::NoContiguousPatternSlots);
+  const auto result = GeneratedPhraseSong::generate(engine, 4, 0, kGuard);
+  assert(result.status == GeneratedPhraseSong::LifecycleStatus::Failed);
+  assert(result.phrase.error ==
+         PhraseGenerator::PhraseError::NoContiguousPatternSlots);
   for (int s = 0; s < Scene::kMaterialSlotsPerVoice; ++s) {
-    assert(scene.materialSlots[0][s].kind == MaterialKind::Melody);
-    assert(!scene.materialSlots[0][s].id.valid());
+    assert(scene.materialSlots[0][s] ==
+           (MaterialSlotDescriptor{MaterialKind::Melody, MaterialId{}}));
+    assert(PhraseGenerator::localSlotIsEmpty(scene, s));
   }
+  assert(probeHighWater() == before + 1);  // no id consumed by the failure
 
-  // Reset scene
-  configureCleanScene(engine);
+  std::puts("D1-A F3: no safe contiguous range fails closed: PASS");
+}
 
-  // F5: Target becomes invalid before COMMIT -> fails closed, no descriptors published
+// F4: fault injection at the SDMock filesystem level (no production hook, no
+// mock change). writeIdentityHighWater() first removes "<meta>.tmp"; a
+// NON-EMPTY directory at that path makes SD.remove() fail, so the durable
+// high-water write fails while the committed high-water stays readable.
+void test_f4_reservation_io_failure() {
+  SceneStorageSdl storage;
+  assert(PatternPagingService::setProjectName("d1a-f4"));
+  assert(PatternPagingService::clearProjectPages());
+  MiniAcid engine{kSampleRate, &storage};
+  engine.init();
+  engine.setSongMode(false);
+  configureChip(engine);
+  Scene& scene = engine.sceneManager().currentScene();
+
+  const uint32_t before = probeHighWater();  // creates material_id.meta
+  const std::filesystem::path meta = findIdentityMeta();
+  assert(!meta.empty());
+  const std::filesystem::path blocker = meta.string() + ".tmp";
+  std::filesystem::create_directories(blocker / "blocked");
+
+  // Direct API: fails closed with an invalid reservation.
+  assert(!PatternPagingService::reserveMaterialIds(4).valid());
+  assert(!PatternPagingService::allocateMaterialId().valid());
+
+  // Through the real generate() route.
+  const auto revisionBefore = GroovePuterUndo::undoOwner().committedRevision();
+  assert(nothingPublished(scene));
+  const auto result = GeneratedPhraseSong::generate(engine, 4, 0, kGuard);
+  assert(result.status == GeneratedPhraseSong::LifecycleStatus::Failed);
+  assert(nothingPublished(scene));  // no Pattern, no Song, no descriptor
+  assert(GroovePuterUndo::undoOwner().committedRevision() == revisionBefore);
+  assert(engine.songModeEnabled() == false);  // no transport/song side effects
+
+  // Fault removed: identity service recovers, high-water did not advance.
+  std::filesystem::remove_all(blocker);
+  assert(probeHighWater() == before + 1);
+
+  // And generation succeeds again with IDs beyond the previous high-water.
+  const auto ok = GeneratedPhraseSong::generate(engine, 2, 0, kGuard);
+  assert(ok.status == GeneratedPhraseSong::LifecycleStatus::CommittedNow);
+  const int first = ok.phrase.firstLocalSlot;
+  assert(scene.materialSlots[0][first].id.value > before + 1);
+
+  std::puts("D1-A F4: reservation I/O failure fails closed: PASS");
+}
+
+// F5: the only pre-publication TargetChanged exits of generate() are
+//   (a) the transport/song-slot check at the top, and
+//   (b) preparedTargetStillCommitSafe() after PREPARE.
+// PREPARE -> (b) -> reservation -> COMMIT run synchronously on the calling
+// thread under the write lease, so no interleaving can be injected between
+// (b) and COMMIT without a production hook; (b) is tested at the exact
+// predicate boundary, (a) end-to-end, and the ordering (b < reservation <
+// commitPrepared) is pinned in the source regressions.
+void test_f5_target_invalid_before_publication() {
+  SceneStorageSdl storage;
+  assert(PatternPagingService::setProjectName("d1a-f5"));
+  assert(PatternPagingService::clearProjectPages());
+  MiniAcid engine{kSampleRate, &storage};
+  engine.init();
+  engine.setSongMode(false);
+  configureChip(engine);
+  Scene& scene = engine.sceneManager().currentScene();
+  const uint32_t before = probeHighWater();
+
+  // (a) end-to-end: playing while Song mode is off -> TargetChanged.
+  engine.start();
+  assert(engine.isPlaying());
+  const auto result = GeneratedPhraseSong::generate(engine, 4, 0, kGuard);
+  assert(result.status == GeneratedPhraseSong::LifecycleStatus::TargetChanged);
+  engine.stop();
+  assert(nothingPublished(scene));
+  assert(probeHighWater() == before + 1);
+
+  // (b) predicate boundary: PREPARE alone has no visible effect and consumes
+  // no id; a Scene mutation after PREPARE invalidates the prepared target.
   GeneratedPhraseSong::PreparedPhraseArrangement prepared{};
   assert(GeneratedPhraseSong::prepare(engine, 4, 0, prepared));
+  assert(nothingPublished(scene));
+  assert(!prepared.synthAReservation.valid());
+  assert(probeHighWater() == before + 2);
   assert(GeneratedPhraseSong::preparedTargetStillCommitSafe(engine, prepared));
-  // Invalidate target by occupying row 0
-  scene.songs[0].positions[0].patterns[static_cast<int>(SongTrack::SynthA)] = 99;
+  GroovePuterState::markSceneMutated();
   assert(!GeneratedPhraseSong::preparedTargetStillCommitSafe(engine, prepared));
+  assert(nothingPublished(scene));
 
-  std::puts("D1-A Failure cases F1-F7: PASS");
+  std::puts("D1-A F5: invalid target -> nothing published, no id: PASS");
+}
+
+// B: post-success isolated main-loss recovery. After a fully successful
+// reserveMaterialIds() only material_id.meta is lost/corrupted; ".bak" must
+// hold the LATEST committed high-water so no returned id is ever reissued.
+void test_post_success_main_loss_recovery() {
+  for (int variant = 0; variant < 2; ++variant) {  // 0 = lost, 1 = corrupt
+    assert(PatternPagingService::setProjectName("d1a-mainloss"));
+    assert(PatternPagingService::clearProjectPages());
+    const auto first = PatternPagingService::reserveMaterialIds(3);
+    assert(first.valid());
+    const auto last = PatternPagingService::reserveMaterialIds(4);  // success
+    assert(last.valid());
+    const uint32_t lastId = last.idAt(3).value;
+
+    const std::string meta = std::filesystem::relative(
+        findIdentityMeta(), std::filesystem::current_path()).string();
+    assert(SD.exists((meta + ".bak").c_str()));
+    assert(!SD.exists((meta + ".tmp").c_str()));
+    if (variant == 0) {
+      assert(SD.remove(meta.c_str()));
+    } else {
+      File f = SD.open(meta.c_str(), FILE_WRITE);
+      assert(f);
+      const uint8_t junk[] = {0xDE, 0xAD, 0xBE, 0xEF};
+      assert(f.write(junk, sizeof(junk)) == sizeof(junk));
+      f.close();  // size != MaterialIdentityMeta -> rejected by loader
+    }
+
+    const auto next = PatternPagingService::reserveMaterialIds(2);
+    assert(next.valid());
+    assert(next.first.value > lastId);
+    assert(next.first.value == lastId + 1);  // latest high-water recovered
+    assert(next.first.value > first.idAt(2).value);
+  }
+  std::puts("D1-A B: post-success main-loss recovery: PASS");
+}
+
+// SDMock regression for the host-only pubsetbuf(nullptr, 0) change:
+// read / write / append / seek / rename / high-water metadata recovery.
+void test_sdmock_unbuffered_semantics() {
+  const char* path = "d1a_sdmock/file.bin";
+  const uint8_t head[] = {'a', 'b', 'c'};
+  const uint8_t tail[] = {'d', 'e', 'f'};
+  SD.remove(path);
+
+  { File f = SD.open(path, FILE_WRITE);  // creates
+    assert(f);
+    assert(f.write(head, 3) == 3);
+    f.close(); }
+  { File f = SD.open(path, FILE_WRITE);  // append keeps existing bytes
+    assert(f);
+    assert(f.write(tail, 3) == 3);
+    f.flush();
+    assert(f.size() == 6);  // visible immediately: no hidden buffering
+    f.close(); }
+  { File f = SD.open(path, FILE_READ);
+    assert(f && f.size() == 6);
+    uint8_t all[6] = {};
+    assert(f.read(all, 6) == 6);
+    assert(std::memcmp(all, "abcdef", 6) == 0);
+    assert(f.seek(2));
+    assert(f.read() == 'c');
+    assert(f.position() == 3);
+    assert(f.seek(5));
+    assert(f.read() == 'f');
+    assert(f.read() == -1);
+    f.close(); }
+
+  assert(SD.rename(path, "d1a_sdmock/renamed.bin"));
+  assert(!SD.exists(path));
+  assert(SD.exists("d1a_sdmock/renamed.bin"));
+  { File f = SD.open("d1a_sdmock/renamed.bin", FILE_READ);
+    assert(f && f.size() == 6);
+    f.close(); }
+  assert(SD.remove("d1a_sdmock/renamed.bin"));
+  std::filesystem::remove_all("d1a_sdmock");
+
+  // High-water recovery through the real identity service: the committed
+  // value must survive loss of the main file (falls back to ".bak").
+  assert(PatternPagingService::setProjectName("d1a-sdmock-hw"));
+  assert(PatternPagingService::clearProjectPages());
+  const uint32_t a = probeHighWater();
+  const uint32_t b = probeHighWater();
+  assert(b == a + 1);
+  // SDMock resolves absolute paths against its root, so use a relative one.
+  const std::string meta = std::filesystem::relative(
+      findIdentityMeta(), std::filesystem::current_path()).string();
+  assert(!meta.empty());
+  assert(SD.exists(meta.c_str()));
+  assert(SD.exists((meta + ".bak").c_str()));  // rename-based commit
+  // Crash window of writeIdentityHighWater(): main was renamed to ".bak" but
+  // the new file was not yet renamed into place. The committed value (b) must
+  // be recovered from ".bak" and the next id must not reuse it.
+  assert(SD.remove((meta + ".bak").c_str()));
+  assert(SD.rename(meta.c_str(), (meta + ".bak").c_str()));
+  assert(!SD.exists(meta.c_str()));
+  assert(probeHighWater() == b + 1);
+
+  std::puts("D1-A SDMock unbuffered semantics + high-water recovery: PASS");
 }
 
 }  // namespace
@@ -415,7 +690,12 @@ int main() {
   test_checkpoint_a1_batch_reservation();
   test_checkpoint_generation_and_development_lifecycle();
   test_checkpoint_undo_descriptor_restoration();
-  test_failure_cases();
+  test_f1_f2_allocator_skips_occupied_descriptors();
+  test_f3_no_safe_range();
+  test_f4_reservation_io_failure();
+  test_f5_target_invalid_before_publication();
+  test_sdmock_unbuffered_semantics();
+  test_post_success_main_loss_recovery();
 
   std::filesystem::remove_all("patterns");
   std::filesystem::remove_all("platform_sdl/patterns");

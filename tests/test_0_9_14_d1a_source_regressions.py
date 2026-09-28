@@ -76,6 +76,17 @@ if commit_start >= 0:
     commit_pos = gen_body.find("GroovePuterUndo::undoOwner().commitPrepared")
     require(res_pos >= 0 and commit_pos > res_pos,
             "D1-A I/O Boundary: reserveMaterialIds must execute before commitPrepared critical section")
+    # F5 invariant: PREPARE -> preparedTargetStillCommitSafe -> reservation ->
+    # COMMIT is synchronous under the write lease, so an invalid target must
+    # exit before any id is reserved or anything is published.
+    safe_pos = gen_body.find("preparedTargetStillCommitSafe(engine, *prepared)")
+    require(0 <= safe_pos < res_pos,
+            "D1-A F5: commit-safe revalidation must precede id reservation")
+    safe_block = gen_body[safe_pos:res_pos]
+    require("LifecycleStatus::TargetChanged" in safe_block and "return output;" in safe_block,
+            "D1-A F5: invalid target must return TargetChanged before reservation")
+    require("applyPreparedPersistent" not in gen_body[:commit_pos],
+            "D1-A F5: physical publication must happen only inside commitPrepared")
 
 # Hard ownership rules: PreparationBasis requires valid MaterialId + version
 require("return reference.id.valid() && version.valid();" in LINEAGE,
