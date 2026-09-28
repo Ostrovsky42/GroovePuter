@@ -57,6 +57,11 @@ if safe_start >= 0 and safe_end > safe_start:
     require("materialSlots" not in safe and "residentKind" not in safe,
             "D0-F prerequisite changed: safe-slot predicate is already descriptor-aware")
 
+# A0 future contract must be able to distinguish canonical free descriptors.
+require("MaterialSlotDescriptor" in SONG or "MaterialSlotDescriptor" in LINEAGE or
+        "MaterialSlotDescriptor" in read("src/state/material_slot.h"),
+        "D0-F evidence: canonical MaterialSlotDescriptor type missing")
+
 # Generated Phrase currently writes physical patterns directly but does not
 # establish Material descriptors/ids in the generated commit path.
 apply_start = SONG.find("inline void applyPreparedPersistent(")
