@@ -40,7 +40,7 @@ require("struct MaterialSlotDescriptor" in SLOT and
         "MaterialKind kind" in SLOT and "MaterialId id" in SLOT,
         "D0-E evidence: MaterialSlotDescriptor contract changed")
 require("static_assert(sizeof(WorkingMaterialStorage) <=" in WORKING and
-        "sizeof(PhraseRuntime::RuntimeSynthEventBuffer)" in WORKING,
+        "sizeof(WorkingMaterialStorage::MelodyBuffer)" in WORKING,
         "D0-E evidence: WorkingMaterialStorage no longer bounded by Melody payload")
 require("SemanticProvenance" not in SLOT and
         "DevelopmentBasis" not in SLOT,
