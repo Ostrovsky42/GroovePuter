@@ -129,7 +129,7 @@ void same_local_change_can_be_none_or_development() {
   assert(developmentFacts.trajectory == Sem::TrajectoryRole::Development);
 }
 
-void b7_tiny_genre_violation_does_not_force_new_idea() {
+void b7_downbeat_loss_does_not_overclaim_genre_or_lineage() {
   const auto source = makeLine(48, 0, 52, 96);
   auto candidate = source;
   candidate.events[0].startTick = 12;
@@ -151,7 +151,10 @@ void b7_tiny_genre_violation_does_not_force_new_idea() {
       Sem::adaptLegacyEvidence(source, candidate, evidence, request, in);
 
   assert(facts.lineage == Sem::LineageStatus::Continues);
-  assert(facts.genre == Sem::GenreStatus::Violation);
+  assert(facts.genre == Sem::GenreStatus::Unknown);
+  assert(Sem::capabilityFor(
+             facts, Sem::CapabilityClaim::PrimaryDownbeatOnsetPresence) ==
+         Sem::CapabilityStatus::Available);
   assert(Sem::stateRelationFor(facts, Sem::ReferenceRole::Source) ==
          Sem::StateRelation::Variation);
 }
@@ -248,7 +251,7 @@ int main() {
   exact_repeat_and_return_are_distinct();
   transformed_return_uses_explicit_references();
   same_local_change_can_be_none_or_development();
-  b7_tiny_genre_violation_does_not_force_new_idea();
+  b7_downbeat_loss_does_not_overclaim_genre_or_lineage();
   b8_unavailable_root_capability_stays_local();
   b9_operation_violation_is_not_genre_violation();
   b10_genre_allowed_new_idea_is_representable();
