@@ -4,7 +4,7 @@ Status:
 
     D0-A = REVISE / CLOSED
     D0-B = RED / CONTRACT FROZEN
-    D0-C = OPEN
+    D0-C = GREEN
 
 ## Purpose
 
@@ -68,15 +68,18 @@ No publication result exists in the carrier.
 
 4. Trajectory is accepted only with explicit trajectory context availability.
 
-5. Legacy evidence may contribute narrowly proven facts:
+5. Legacy evidence may contribute only narrowly proven facts:
 
-   - Funk/The One destruction -> GENRE VIOLATION;
    - promised contour failure -> OPERATION VIOLATED;
-   - EXTEND without tonal-root authority -> CAPABILITY UNAVAILABLE.
+   - EXTEND without tonal-root authority -> CAPABILITY UNAVAILABLE;
+   - primary-downbeat onset presence -> capability AVAILABLE.
 
-6. Passing one genre-bearing claim does not certify the entire genre. A hard
-   violation may reject genre locally; ALLOWED requires an explicit complete
-   genre-requirements PASS from the proper owner.
+   D0-D1 supersedes the earlier Funk/The One shortcut: tick-zero onset
+   presence/loss does not by itself write GENRE.
+
+6. GENRE ALLOWED or VIOLATION requires an explicit complete genre-requirements
+   result from the proper owner. One local observable cannot certify or reject
+   the complete genre verdict by itself.
 
 7. UNKNOWN remains local.
 
