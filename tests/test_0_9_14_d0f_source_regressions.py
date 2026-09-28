@@ -85,7 +85,7 @@ require("struct BassRhythmPlan" in BASS and
         "static_assert(sizeof(BassRhythmPlan) <= 8" in BASS,
         "D0-F evidence: compact BassRhythmPlan witness changed")
 result_start = STRONG_H.find("struct StrongRhythmMigrationResult")
-result_end = STRONG_H.find("};", result_start)
+result_end = STRONG_H.find("#ifdef GROOVEPUTER_M1_TEST_PROBE", result_start)
 require(result_start >= 0 and result_end > result_start,
         "D0-F evidence: StrongRhythmMigrationResult moved")
 if result_start >= 0 and result_end > result_start:
