@@ -479,7 +479,14 @@ int main() {
     assert(engine.hasPendingMaterial(0));
 
     engine.start();
+    // START uses songBarIndex_ == -1. The first musical boundary enters bar 0
+    // of the already-selected Y row; only the following boundary advances the
+    // one-bar Song row to Z.
     engine.currentTick_ = 383;
+    ++engine.currentTick_;
+    engine.advanceTick();
+    assert(engine.display303PatternIndex(0) == kY);
+    engine.currentTick_ = 767;
     ++engine.currentTick_;
     engine.advanceTick();
     assert(engine.display303PatternIndex(0) == kZ);
