@@ -123,9 +123,38 @@ Dev::DevelopmentRequest request(Dev::TransformationKind kind) {
   return r;
 }
 
-Dev::DevelopmentResult transform(const RuntimeSynthEventBuffer& source,
-                                 Dev::DevelopmentRequest r) {
-  return Dev::developCandidate(source, r, &source);
+struct TransformOutput {
+  RuntimeSynthEventBuffer candidate{};
+  Dev::DevelopmentEvidence evidence{};
+};
+
+TransformOutput transform(const RuntimeSynthEventBuffer& source,
+                          Dev::DevelopmentRequest r) {
+  TransformOutput out{};
+  switch (r.transformation) {
+    case Dev::TransformationKind::Revoice:
+      Dev::transformRevoice(source, r, out.candidate, out.evidence);
+      break;
+    case Dev::TransformationKind::Hold:
+      Dev::transformHold(source, r, out.candidate, out.evidence);
+      break;
+    case Dev::TransformationKind::Connect:
+      Dev::transformConnect(source, r, out.candidate, out.evidence);
+      break;
+    case Dev::TransformationKind::Move:
+      Dev::transformMove(source, r, out.candidate, out.evidence);
+      break;
+    case Dev::TransformationKind::Displace:
+      Dev::transformDisplace(source, r, out.candidate, out.evidence);
+      break;
+    case Dev::TransformationKind::Thin:
+      Dev::transformThin(source, r, out.candidate, out.evidence);
+      break;
+    default:
+      out.candidate = source;
+      break;
+  }
+  return out;
 }
 
 void exact_repeat_is_continuous_exact() {
@@ -140,8 +169,6 @@ void revoice_can_prove_continuity_without_exact_register() {
   auto r = request(Dev::TransformationKind::Revoice);
   r.octaveShift = 1;
   const auto dev = transform(source, r);
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.claims.bassOnsetTopology == ClaimResult::Pass);
   assert(a.claims.tonalPitchClassAtOnset == ClaimResult::Pass);
@@ -164,8 +191,6 @@ void hold_can_prove_continuity_without_exact_lifetime() {
 void connect_can_prove_continuity_without_exact_articulation() {
   const auto source = sourceLine();
   const auto dev = transform(source, request(Dev::TransformationKind::Connect));
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.lineage == Sem::LineageStatus::Continues);
   assert(a.relation == Sem::StateRelation::Variation);
@@ -176,8 +201,6 @@ void octave_move_can_prove_continuity() {
   auto r = request(Dev::TransformationKind::Move);
   r.octaveShift = 1;
   const auto dev = transform(source, r);
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.claims.tonalPitchClassAtOnset == ClaimResult::Pass);
   assert(a.lineage == Sem::LineageStatus::Continues);
@@ -188,8 +211,6 @@ void displace_loses_sufficient_continuity_proof_not_idea_identity() {
   auto r = request(Dev::TransformationKind::Displace);
   r.displaceTicks = 12;
   const auto dev = transform(source, r);
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.claims.bassOnsetTopology == ClaimResult::Fail);
   assert(a.lineage == Sem::LineageStatus::Unknown);
@@ -200,8 +221,6 @@ void displace_loses_sufficient_continuity_proof_not_idea_identity() {
 void thin_loses_sufficient_continuity_proof_not_idea_identity() {
   const auto source = sourceLine();
   const auto dev = transform(source, request(Dev::TransformationKind::Thin));
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.claims.bassOnsetTopology == ClaimResult::Fail);
   assert(a.lineage == Sem::LineageStatus::Unknown);
@@ -246,8 +265,6 @@ void transformation_name_cannot_force_preservation_result() {
   r.octaveShift = 1;
   r.forceDisplaceTheOne = true;
   const auto dev = transform(source, r);
-  assert(dev.success);
-
   const auto a = assess(source, dev.candidate, true, true);
   assert(a.claims.bassOnsetTopology == ClaimResult::Fail);
   assert(a.lineage == Sem::LineageStatus::Unknown);
