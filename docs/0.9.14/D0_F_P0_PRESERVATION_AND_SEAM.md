@@ -342,11 +342,21 @@ is not semantically free merely because its Pattern bytes are empty.
 Therefore identity closure must begin by making generated-Phrase safe-slot
 selection descriptor-aware.
 
-For generated Synth targets, the future allocator must refuse any destination
-whose existing Material descriptor represents live Material rather than a
-canonical free/default Pattern slot.
+For generated Synth targets, the future allocator must require the canonical
+free descriptor for BOTH synth voices in every destination slot:
+
+    kind = Pattern
+    id   = 0
+
+This is stricter than merely "not Melody". It proves there is no pre-existing
+Material identity to preserve when Phrase generation writes Synth A and Synth B.
 
 This is prerequisite A0. It precedes assigning any new MaterialId.
+
+Because A0 proves the previous descriptors are canonical defaults, generated
+Phrase Undo does not need to grow by storing descriptor snapshots. The future
+identity-closure patch may deterministically restore the affected descriptors
+to their canonical default alongside the already-existing empty Pattern restore.
 
 ## 14. Minimum identity closure for the production seam
 
@@ -382,9 +392,13 @@ The generated commit must establish:
 
 inside the existing generation/Undo publication boundary.
 
-Undo must restore the pre-generation descriptor state together with the
-generated physical slot, or the allocator must prove the target descriptor was
-canonical default/free before generation.
+A0 proves the pre-generation descriptor state is canonical default/free.
+Therefore Undo may restore the generated Synth A descriptor deterministically
+to:
+
+    MaterialSlotDescriptor{}
+
+without carrying another per-bar descriptor snapshot in the Undo payload.
 
 Do not mint an ID inside the D0-F semantic sidecar.
 
