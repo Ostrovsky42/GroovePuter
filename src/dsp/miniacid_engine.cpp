@@ -5904,6 +5904,14 @@ void MiniAcid::serviceSongMaterial() {
       if (songVoiceState_[idx] == SongVoiceState::Awaiting &&
           loadSongMelodyIntoNext_(idx, row, slot) &&
           activateSongMelody_(idx, slot)) {
+        // Publication changed CURRENT to this Song slot. Keep the selector
+        // registers aligned with that identity as the boundary path does;
+        // otherwise START can misclassify a preloaded first-row Melody as
+        // out-of-sync and silence its first event.
+        const int bank = std::clamp(songPatternBank(slot), 0, kBankCount - 1);
+        sceneManager_.setCurrentBankIndex(idx + 1, bank);
+        sceneManager_.setCurrentSynthPatternIndex(
+            idx, songPatternIndexInBank(slot));
         songVoiceState_[idx] = SongVoiceState::InSync;
         // Mid-row: the Melody belongs to the row that is already running.
         if (playing && songBarIndex_ >= 0) {
