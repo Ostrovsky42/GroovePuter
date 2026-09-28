@@ -8,6 +8,10 @@ mkdir -p "$BUILD"
 
 cd "$ROOT"
 
+if ! git cat-file -e "${D0B_HEAD}^{commit}" 2>/dev/null; then
+  git fetch --no-tags --depth=1 origin "$D0B_HEAD"
+fi
+
 echo "== D0-C production-delta boundary =="
 mapfile -t SRC_DELTA < <(git diff --name-only "$D0B_HEAD" -- src/ | sort)
 EXPECTED=(
