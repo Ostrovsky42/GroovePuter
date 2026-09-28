@@ -326,6 +326,28 @@ Development NEXT lifecycle merely because semantic provenance exists.
 
 D0-F explicitly rejects weakening PreparationBasis to address+version.
 
+## 13.1 Descriptor-aware free-slot prerequisite
+
+The current Phrase allocator checks:
+
+    physical Pattern/Drum emptiness
+    + Song references
+
+but does not consult MaterialSlotDescriptor.
+
+Under unified Song slots this matters: an accepted Melody may have no physical
+SynthPattern payload while its slot descriptor still says Melody. Such a slot
+is not semantically free merely because its Pattern bytes are empty.
+
+Therefore identity closure must begin by making generated-Phrase safe-slot
+selection descriptor-aware.
+
+For generated Synth targets, the future allocator must refuse any destination
+whose existing Material descriptor represents live Material rather than a
+canonical free/default Pattern slot.
+
+This is prerequisite A0. It precedes assigning any new MaterialId.
+
 ## 14. Minimum identity closure for the production seam
 
 The future implementation should use the existing Material identity owner:
@@ -476,7 +498,12 @@ as D0-C trajectory verdicts.
 
 ## 21. Production prerequisites identified by D0-F
 
-PREREQUISITE A — MATERIAL IDENTITY CLOSURE
+PREREQUISITE A0 — DESCRIPTOR-AWARE PHRASE SLOT SAFETY
+
+    generated Phrase allocation must not treat an existing Melody/identified
+    Material slot as free merely because physical Pattern bytes are empty.
+
+PREREQUISITE A1 — MATERIAL IDENTITY CLOSURE
 
     generated Synth A bars receive canonical MaterialIds
     under existing PatternPagingService ownership.
@@ -494,7 +521,7 @@ PREREQUISITE D — SESSION ORIGIN PUBLICATION
     successful generated-Phrase COMMIT publishes immutable bounded origin
     evidence; failed/legacy commits do not.
 
-Only after A-D may the actual D path consume the P0 preservation contract.
+Only after A0/A1/B/C/D may the actual D path consume the P0 preservation contract.
 
 ## 22. D0-F acceptance
 
@@ -511,7 +538,9 @@ D0-F is GREEN when:
 8. the minimum owner-evidence extraction seam is explicit;
 9. no production source changes during D0-F;
 10. no PreparationBasis weakening, reverse analysis, or second identity
-    namespace is introduced.
+    namespace is introduced;
+11. the existing descriptor-blind Phrase allocation gap is explicitly carried
+    as a production prerequisite rather than hidden by the provenance sidecar.
 
 After D0-F GREEN, the next production checkpoint should implement prerequisites
 A-D in that order, with Material identity closure tested before semantic session
