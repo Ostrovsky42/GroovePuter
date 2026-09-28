@@ -5,9 +5,11 @@
 #include "generated_phrase_p1r_materializer.h"
 #include "mode_manager.h"
 #include "phrase_generator.h"
+#include "src/audio/pattern_paging.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
 #include "src/state/generation_request_state.h"
+#include "src/state/material_slot_access.h"
 #include "src/state/scene_revision.h"
 #include "src/state/undo_owner.h"
 
@@ -74,9 +76,11 @@ struct PreparedPhraseArrangement {
   PhraseGenerator::PhraseResult result{};
   GroovePuterRhythm::QuantizedGenerationDetail::PatternTarget selectionTarget{};
   uint32_t baseRevision = 0;
-  int songSlot = -1;
-  int audibleSongRow = -1;
-  int firstLocalSlot = -1;
+  int16_t songSlot = -1;
+  int16_t audibleSongRow = -1;
+  int16_t firstLocalSlot = -1;
+  int16_t legacyFlavor = 0;
+  GroovePuterMaterial::MaterialIdReservation synthAReservation{};
   GeneratedPhraseP1R::PreparationEvidence p1r{};
 
   // Route + compact execution carrier, valid for the whole PREPARE->COMMIT
@@ -84,15 +88,18 @@ struct PreparedPhraseArrangement {
   // selected by useP1RRoute; genre is common to both (applyCurrentMigration
   // needs it on the legacy path).
   bool useP1RRoute = false;
-  GroovePuterRhythm::PreparedPhraseExecution p1rExecution{};
-  GenreSettings genre{};
   bool legacyAtlas = false;
   GenreRecipeId legacyRecipe = 0;
   GrooveboxMode legacyMappedMode = GrooveboxMode::Minimal;
-  int legacyFlavor = 0;
+  GroovePuterRhythm::PreparedPhraseExecution p1rExecution{};
+  GenreSettings genre{};
   float legacyBpm = 0.0f;
   GenerativeParams legacyParams{};
   GenreBehavior legacyBehavior{};
+
+  GroovePuterMaterial::MaterialId synthAId(uint8_t bar) const {
+    return synthAReservation.idAt(bar);
+  }
 };
 
 struct GeneratedPhraseUndoPayload {
@@ -317,6 +324,12 @@ inline void applyPreparedPersistent(
     scene.synthBBanks[bank].patterns[index] = scratch.synthB;
     scene.drumBanks[bank].patterns[index] = scratch.drums;
 
+    // D1-A Checkpoint A1: canonical Synth A Material identity publication
+    GroovePuterMaterial::setResidentDescriptor(
+        scene, 0, localSlot,
+        GroovePuterMaterial::MaterialKind::Pattern,
+        prepared.synthAReservation.idAt(static_cast<uint8_t>(bar)));
+
     SongPosition& position =
         song.positions[prepared.request.songStart + bar];
     position.patterns[static_cast<int>(SongTrack::SynthA)] =
@@ -389,6 +402,7 @@ inline void restoreUndo(
     scene.synthABanks[bank].patterns[index] = SynthPattern{};
     scene.synthBBanks[bank].patterns[index] = SynthPattern{};
     scene.drumBanks[bank].patterns[index] = DrumPatternSet{};
+    GroovePuterMaterial::clearResidentDescriptor(scene, 0, localSlot);
   }
   scene.songs[payload.songSlot] = payload.beforeSong;
   scene.feel.patternBars = payload.previousPatternBars;
@@ -660,6 +674,17 @@ Result generate(
     output.status = LifecycleStatus::TargetChanged;
     return output;
   }
+
+  // Pre-commit canonical MaterialId reservation:
+  // Durable SD high-water update occurs OUTSIDE the audio publication critical section.
+  const auto reservation =
+      PatternPagingService::reserveMaterialIds(prepared->request.bars);
+  if (!reservation.valid()) {
+    releaseWriteSlot(lease.slot);
+    output.status = LifecycleStatus::Failed;
+    return output;
+  }
+  prepared->synthAReservation = reservation;
 
   const GeneratedPhraseUndoPayload before = captureUndo(
       engine.sceneManager().currentScene(), *prepared);

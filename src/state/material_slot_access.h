@@ -33,10 +33,40 @@ inline MaterialId residentId(const Scene& scene, int voice, int slot) {
   return scene.materialSlots[voice][slot].id;
 }
 
+inline MaterialSlotDescriptor residentDescriptor(const Scene& scene, int voice, int slot) {
+  if (!residentSlotInRange(voice, slot)) return MaterialSlotDescriptor{};
+  return scene.materialSlots[voice][slot];
+}
+
+inline bool residentSlotIsFree(const Scene& scene, int voice, int slot) {
+  if (!residentSlotInRange(voice, slot)) return false;
+  return isCanonicalFree(scene.materialSlots[voice][slot]);
+}
+
 inline bool setResidentKind(Scene& scene, int voice, int slot,
                             MaterialKind kind) {
   if (!residentSlotInRange(voice, slot)) return false;
   scene.materialSlots[voice][slot].kind = kind;
+  return true;
+}
+
+inline bool setResidentDescriptor(Scene& scene, int voice, int slot,
+                                  MaterialSlotDescriptor descriptor) {
+  if (!residentSlotInRange(voice, slot)) return false;
+  scene.materialSlots[voice][slot] = descriptor;
+  return true;
+}
+
+inline bool setResidentDescriptor(Scene& scene, int voice, int slot,
+                                  MaterialKind kind, MaterialId id) {
+  if (!residentSlotInRange(voice, slot)) return false;
+  scene.materialSlots[voice][slot] = MaterialSlotDescriptor{kind, id};
+  return true;
+}
+
+inline bool clearResidentDescriptor(Scene& scene, int voice, int slot) {
+  if (!residentSlotInRange(voice, slot)) return false;
+  scene.materialSlots[voice][slot] = MaterialSlotDescriptor{};
   return true;
 }
 

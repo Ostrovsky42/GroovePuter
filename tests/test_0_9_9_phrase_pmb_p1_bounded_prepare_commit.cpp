@@ -351,6 +351,14 @@ void* operator new[](std::size_t size) {
   if (!ptr) throw std::bad_alloc();
   return ptr;
 }
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+  if (g_trackingAllocs && size > g_maxTrackedAlloc) g_maxTrackedAlloc = size;
+  return std::malloc(size);
+}
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+  if (g_trackingAllocs && size > g_maxTrackedAlloc) g_maxTrackedAlloc = size;
+  return std::malloc(size);
+}
 void operator delete(void* ptr) noexcept { std::free(ptr); }
 void operator delete(void* ptr, std::size_t) noexcept { std::free(ptr); }
 void operator delete[](void* ptr) noexcept { std::free(ptr); }

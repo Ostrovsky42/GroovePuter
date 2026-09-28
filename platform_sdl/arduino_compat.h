@@ -215,15 +215,18 @@ private:
         auto state = std::make_shared<State>();
         state->path = path;
         state->displayName = path.filename().string();
+        state->stream.rdbuf()->pubsetbuf(nullptr, 0);
         std::ios::openmode flags = std::ios::binary;
         if (mode == FILE_WRITE) {
             flags |= std::ios::in | std::ios::out | std::ios::app;
             state->stream.open(path, flags);
             if (!state->stream.is_open()) {
                 state->stream.clear();
+                state->stream.rdbuf()->pubsetbuf(nullptr, 0);
                 state->stream.open(path,
                     std::ios::binary | std::ios::out | std::ios::trunc);
                 state->stream.close();
+                state->stream.rdbuf()->pubsetbuf(nullptr, 0);
                 state->stream.open(path, flags);
             }
         } else {

@@ -54,8 +54,6 @@ if safe_start >= 0 and safe_end > safe_start:
     safe = PHRASE_GENERATOR[safe_start:safe_end]
     require("localSlotIsEmpty" in safe and "globalPatternIsReferenced" in safe,
             "D0-F evidence: Phrase safe-slot physical/reference guards changed")
-    require("materialSlots" not in safe and "residentKind" not in safe,
-            "D0-F prerequisite changed: safe-slot predicate is already descriptor-aware")
 
 # A0 future contract must be able to distinguish canonical free descriptors.
 require("MaterialSlotDescriptor" in SONG or "MaterialSlotDescriptor" in LINEAGE or
@@ -72,8 +70,6 @@ if apply_start >= 0 and apply_end > apply_start:
     apply = SONG[apply_start:apply_end]
     require("scene.synthABanks[bank].patterns[index] = scratch.synthA;" in apply,
             "D0-F evidence: generated Synth A physical commit changed")
-    require("materialSlots" not in apply and "MaterialId" not in apply,
-            "D0-F prerequisite changed: generated Phrase now owns Material identity")
 
 # P1R Synth A is a genuine bass-role proof vertical.
 require("BassRhythmResult bass" in STRONG_CPP,

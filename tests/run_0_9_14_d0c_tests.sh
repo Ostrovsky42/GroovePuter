@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${ROOT}/build/host-tests/0-9-14-d0c"
 D0B_HEAD="d3c1e41a9613b83d4c6f579a284d6df4b37f4522"
+D0C_HEAD="89635069f15bb116410eb540db6bd147f8f808e5"
 mkdir -p "$BUILD"
 
 cd "$ROOT"
@@ -12,8 +13,12 @@ if ! git cat-file -e "${D0B_HEAD}^{commit}" 2>/dev/null; then
   git fetch --no-tags --depth=1 origin "$D0B_HEAD"
 fi
 
+if ! git cat-file -e "${D0C_HEAD}^{commit}" 2>/dev/null; then
+  git fetch --no-tags --depth=1 origin "$D0C_HEAD"
+fi
+
 echo "== D0-C production-delta boundary =="
-mapfile -t SRC_DELTA < <(git diff --name-only "$D0B_HEAD" -- src/ | sort)
+mapfile -t SRC_DELTA < <(git diff --name-only "$D0B_HEAD" "$D0C_HEAD" -- src/ | sort)
 EXPECTED=(
   "src/dsp/development_semantic_adapter.h"
   "src/dsp/development_semantics.h"

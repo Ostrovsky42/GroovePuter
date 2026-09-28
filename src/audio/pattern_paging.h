@@ -30,6 +30,11 @@ public:
     // clearProjectPages(), so stale references cannot alias new material.
     static GroovePuterMaterial::MaterialId allocateMaterialId();
 
+    // Reserve a contiguous range of bounded [1..8] MaterialIds in the active project namespace.
+    // Exactly one durable high-water update is performed for the batch.
+    // Overflow, invalid count, or I/O failure fail closed and return an invalid reservation.
+    static GroovePuterMaterial::MaterialIdReservation reserveMaterialIds(uint8_t count);
+
     // Persist or load all pattern banks for one logical page. Both operations
     // are transactional from the caller's perspective: a failed save keeps the
     // previous page file, and a failed load leaves Scene unchanged.

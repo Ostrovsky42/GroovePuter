@@ -663,17 +663,25 @@ int PatternPagingService::activePageIndex() {
     return activePageIndexStorage();
 }
 
-GroovePuterMaterial::MaterialId PatternPagingService::allocateMaterialId() {
+GroovePuterMaterial::MaterialIdReservation
+PatternPagingService::reserveMaterialIds(uint8_t count) {
+    if (count == 0 || count > 8) return {};
     if (!ensureDirectory()) return {};
     uint32_t highWater = 0;
     if (!loadIdentityHighWater(activeProjectNameStorage(), highWater)) return {};
-    if (highWater == 0xFFFFFFFFu) return {};
-    const uint32_t next = highWater + 1u;
-    if (next == 0 ||
-        !writeIdentityHighWater(activeProjectNameStorage(), next)) {
+    if (highWater > 0xFFFFFFFFu - count) return {};
+    const uint32_t first = highWater + 1u;
+    if (first == 0) return {};
+    const uint32_t next = highWater + static_cast<uint32_t>(count);
+    if (!writeIdentityHighWater(activeProjectNameStorage(), next)) {
         return {};
     }
-    return GroovePuterMaterial::MaterialId{next};
+    return GroovePuterMaterial::MaterialIdReservation{
+        GroovePuterMaterial::MaterialId{first}, count};
+}
+
+GroovePuterMaterial::MaterialId PatternPagingService::allocateMaterialId() {
+    return reserveMaterialIds(1).first;
 }
 
 bool PatternPagingService::ensureDirectory() {
