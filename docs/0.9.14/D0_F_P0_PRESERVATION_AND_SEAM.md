@@ -375,8 +375,13 @@ For the strict Synth A P0, only generated Synth A requires identity closure.
 
 A later checkpoint may generalize the same closure to Synth B.
 
-Allocated IDs may be leaked if PREPARE later loses its target; monotonic opaque
-identity permits gaps and must never reuse them.
+Allocated IDs may be consumed even if the subsequent COMMIT loses its target
+or UndoOwner refuses publication. Monotonic opaque identity permits such gaps
+and must never reuse them.
+
+ID reservation must not be moved into PREPARE merely to avoid those gaps:
+the canonical allocator mutates durable project high-water state, whereas
+PREPARE must remain private and non-publishing.
 
 ## 15. Material-slot ownership rule
 
@@ -435,8 +440,14 @@ Correct transaction order:
     PREPARE
         resolve P1R semantic evidence
         preflight materialization
-        reserve canonical MaterialIds
         build unpublished origin candidate
+        NO durable MaterialId allocation
+
+    PRE-COMMIT ID RESERVATION
+        revalidate exact target
+        reserve bounded canonical MaterialIds through the existing
+        PatternPagingService identity owner
+        perform the durable high-water update OUTSIDE the audio guard
 
     COMMIT
         materialize each bar
