@@ -26,6 +26,7 @@ BASS = read("src/generation/roles/bass_rhythm.h")
 HARMONIC = read("src/generation/roles/harmonic_rhythm.h")
 PROGRESSION = read("src/generation/roles/chord_progression.h")
 SEM = read("src/dsp/development_semantics.h")
+P0_TEST = read("tests/test_0_9_14_d0f_p0_preservation_contract.cpp")
 
 failures: list[str] = []
 
@@ -150,6 +151,13 @@ for token in (
 require("PrimaryDownbeatOnsetPresence" in SEM and
         "MetricAnchorTheOne" not in SEM,
         "D0-F regression: D0-D1 claim-strength repair lost")
+
+# P0 witnesses must consume transformation primitives but never legacy
+# classification/disposition authority.
+require("developCandidate(" not in P0_TEST and
+        "evaluateClassificationAndG4(" not in P0_TEST and
+        "evaluateDisposition(" not in P0_TEST,
+        "D0-F test imported legacy semantic authority")
 
 # No production workaround is allowed during the D0-F contract checkpoint.
 for forbidden in (
