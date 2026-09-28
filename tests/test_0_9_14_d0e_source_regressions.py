@@ -21,6 +21,7 @@ EXECUTION = read("src/generation/migration/phrase_execution.h")
 P1R = read("src/dsp/generated_phrase_p1r_materializer.h")
 PRODUCT = read("src/state/generated_phrase_product_state.h")
 RUNTIME_EDIT = read("src/phrase/runtime_phrase_edit.h")
+RUNTIME_PROJECTION = read("src/phrase/runtime_synth_events.h")
 PATTERN_EDIT = read("src/state/synth_pattern_edit.h")
 BASS = read("src/generation/roles/bass_rhythm.h")
 HARMONIC = read("src/generation/roles/harmonic_rhythm.h")
@@ -102,6 +103,19 @@ require("struct ChordProgressionSource" in PROGRESSION and
         "D0-E evidence: ChordProgressionSource bounded witness changed")
 require("struct MaterialReference" in IDENTITY,
         "D0-E evidence: MaterialReference binding missing")
+
+# Pattern -> Runtime projection has a second bounded identity surface: physical
+# projection depends on explicit swing/gate settings, while an existing helper
+# can expose authoritative source-step ownership without reverse analysis.
+for token in (
+    "struct PatternProjectionSettings",
+    "swingPercent",
+    "swingEnabled",
+    "gateLengthRatio",
+    "projectPatternToRuntimeEventsWithSourceSteps",
+):
+    require(token in RUNTIME_PROJECTION,
+            f"D0-E evidence: Pattern projection contract missing {token!r}")
 
 # Melody edit boundary carries mechanically useful effect classes.
 require("Pitch is orthogonal to time. This never touches startTick" in RUNTIME_EDIT,
