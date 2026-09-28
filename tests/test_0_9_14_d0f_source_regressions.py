@@ -15,6 +15,7 @@ def read(path: str) -> str:
 
 LINEAGE = read("src/state/material_lineage.h")
 SONG = read("src/dsp/generated_phrase_song.h")
+PHRASE_GENERATOR = read("src/dsp/phrase_generator.h")
 P1R = read("src/dsp/generated_phrase_p1r_materializer.h")
 STRONG_H = read("src/generation/migration/strong_rhythm_migration.h")
 STRONG_CPP = read("src/generation/migration/strong_rhythm_migration.cpp")
@@ -40,6 +41,20 @@ require("if (!current303MaterialReference_(idx, reference))" in ENGINE,
 require("if (!actualBasis.valid())" in ENGINE and
         "return NextPrepareResult::UnsupportedCurrentState;" in ENGINE,
         "D0-F evidence: NEXT lifecycle no longer fails closed on invalid basis")
+
+# Generated Phrase slot selection is currently physical-byte/reference based,
+# not Material-descriptor aware. A physically empty slot may still carry a
+# Melody/Material identity descriptor and therefore is not semantically free.
+safe_start = PHRASE_GENERATOR.find("inline bool localSlotIsSafeForPhrase(")
+safe_end = PHRASE_GENERATOR.find("inline int findSafeContiguousEmptySlots(", safe_start)
+require(safe_start >= 0 and safe_end > safe_start,
+        "D0-F evidence: Phrase safe-slot predicate moved")
+if safe_start >= 0 and safe_end > safe_start:
+    safe = PHRASE_GENERATOR[safe_start:safe_end]
+    require("localSlotIsEmpty" in safe and "globalPatternIsReferenced" in safe,
+            "D0-F evidence: Phrase safe-slot physical/reference guards changed")
+    require("materialSlots" not in safe and "residentKind" not in safe,
+            "D0-F prerequisite changed: safe-slot predicate is already descriptor-aware")
 
 # Generated Phrase currently writes physical patterns directly but does not
 # establish Material descriptors/ids in the generated commit path.
@@ -164,6 +179,7 @@ if failures:
 
 print("D0-F source audit: PASS")
 print("D0-F established prerequisites:")
-print("  1. generated Phrase Synth A needs canonical MaterialId closure")
-print("  2. StrongRhythmMigrationResult must export resolved BassRhythmPlan")
-print("  3. P1R one-bar seam must forward that owner-derived plan")
+print("  A0. generated Phrase safe-slot selection must respect Material descriptors")
+print("  A1. generated Phrase Synth A needs canonical MaterialId closure")
+print("  B. StrongRhythmMigrationResult must export resolved BassRhythmPlan")
+print("  C. P1R one-bar seam must forward that owner-derived plan")
