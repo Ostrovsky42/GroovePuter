@@ -74,8 +74,18 @@ require("CapabilityStatus::Unavailable" in ADAPTER,
         "D0-C adapter cannot represent unavailable capability")
 require("facts.operation = OperationConformance::Violated" in ADAPTER,
         "D0-C adapter does not separate operation violation")
-require("facts.genre = GenreStatus::Violation" in ADAPTER,
-        "D0-C adapter does not represent hard genre violation independently")
+require("return GenreStatus::Violation" in ADAPTER,
+        "D0-C adapter cannot represent explicit genre-requirements failure")
+require("MetricAnchorTheOne" not in SEM and
+        "MetricAnchorTheOne" not in ADAPTER,
+        "D0-D1 overnamed MetricAnchorTheOne claim returned")
+require("PrimaryDownbeatOnsetPresence" in SEM and
+        "PrimaryDownbeatOnsetPresence" in ADAPTER,
+        "D0-D1 truthful downbeat capability claim missing")
+require("hasEventOnTheOne" not in ADAPTER,
+        "D0-D1 adapter still imports legacy The One helper as semantic authority")
+require("genreRequiresTheOne" not in ADAPTER,
+        "D0-D1 downbeat observable still drives a genre shortcut")
 
 # The old classifier is deliberately still present; D0-C wraps rather than
 # pretending its shortcuts became authoritative.
