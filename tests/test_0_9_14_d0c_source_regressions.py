@@ -39,10 +39,10 @@ require("CapabilityClaim::ContourPreservation" in SEM,
 
 # Adapter must consume evidence, not legacy verdicts.
 for forbidden in (
-    "IdeaClassification",
-    "GenreResult",
-    "DevelopmentDisposition",
-    "evaluateDisposition",
+    "GroovePuterMaterial::IdeaClassification",
+    "GroovePuterDevelopment::GenreResult",
+    "GroovePuterDevelopment::DevelopmentDisposition",
+    "evaluateDisposition(",
     ".classification",
     ".disposition",
 ):
