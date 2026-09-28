@@ -70,7 +70,7 @@ enum class CapabilityClaim : uint8_t {
   HarmonicRootPreservation = 0,
   RhythmTopology,
   ContourPreservation,
-  MetricAnchorTheOne,
+  PrimaryDownbeatOnsetPresence,
   Count,
 };
 
@@ -103,7 +103,7 @@ struct SemanticFacts {
       {CapabilityClaim::HarmonicRootPreservation, CapabilityStatus::Unknown},
       {CapabilityClaim::RhythmTopology, CapabilityStatus::Unknown},
       {CapabilityClaim::ContourPreservation, CapabilityStatus::Unknown},
-      {CapabilityClaim::MetricAnchorTheOne, CapabilityStatus::Unknown},
+      {CapabilityClaim::PrimaryDownbeatOnsetPresence, CapabilityStatus::Unknown},
   };
 };
 
