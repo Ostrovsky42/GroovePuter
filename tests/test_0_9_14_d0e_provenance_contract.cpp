@@ -18,7 +18,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <type_traits>
 
 namespace D0E {
@@ -259,12 +258,19 @@ void origin_is_immutable_while_current_applicability_changes() {
   origin.rhythmArchetypeId = 416;
   origin.rootPitchClass = 5;
   origin.phraseBars = 4;
-  const P0GeneratedOriginKey before = origin;
+
+  const uint16_t phraseIdentityBefore = origin.phraseGenerationIdentity;
+  const RhythmArchetypeId archetypeBefore = origin.rhythmArchetypeId;
+  const uint8_t rootBefore = origin.rootPitchClass;
+  const uint8_t phraseBarsBefore = origin.phraseBars;
 
   CurrentClaimApplicability state{};
   applyMutationEffect(state, PitchContent | Duration);
 
-  assert(std::memcmp(&origin, &before, sizeof(origin)) == 0);
+  assert(origin.phraseGenerationIdentity == phraseIdentityBefore);
+  assert(origin.rhythmArchetypeId == archetypeBefore);
+  assert(origin.rootPitchClass == rootBefore);
+  assert(origin.phraseBars == phraseBarsBefore);
   assert(!state.has(TonalContextApplicability));
   assert(!state.has(ArticulationLifetimeApplicability));
 }
