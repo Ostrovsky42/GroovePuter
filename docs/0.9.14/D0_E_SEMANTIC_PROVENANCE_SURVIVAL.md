@@ -293,6 +293,48 @@ Use:
     version
         → proves whether CURRENT still equals a known material state
 
+## 11.1 Pattern origin vs Runtime projection binding
+
+A Pattern's MaterialVersionToken does not fully identify its projected Runtime
+buffer.
+
+`projectPatternToRuntimeEvents()` additionally consumes:
+
+    synthIndex
+    swingPercent
+    swingEnabled
+    gateLengthRatio
+
+Therefore P0 must not assume:
+
+    same PatternVersion
+        → same RuntimeSynthEventBuffer
+
+When Development acquires a Pattern as Working Melody, the session should bind
+both levels:
+
+    ORIGIN MATERIAL BINDING
+        MaterialReference
+        Pattern MaterialVersionToken
+
+    SESSION RUNTIME BINDING
+        versionForMelody(projected working buffer)
+
+This does not require persistence.
+
+The repository also already provides:
+
+    projectPatternToRuntimeEventsWithSourceSteps()
+
+which exposes the physical Pattern step that produced each projected onset.
+This is authoritative projection metadata and may be retained transiently when
+a later P0 evaluator needs logical-step ownership. It is not reverse analysis.
+
+Changing swing/gate context may change physical start/duration while leaving
+the logical Pattern topology intact. Such changes therefore invalidate only
+claims that depend on physical pacing/lifetime, not the immutable origin
+rhythm/archetype evidence by themselves.
+
 ## 12. Typed mutation vs stale-version fallback
 
 The preferred path is:
