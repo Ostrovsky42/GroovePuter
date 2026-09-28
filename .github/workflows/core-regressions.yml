@@ -75,6 +75,9 @@ jobs:
       - name: Run 0.9.14 D0-D1 claim-strength repair
         run: bash tests/run_0_9_14_d0d1_tests.sh
 
+      - name: Run 0.9.14 D0-E provenance survival research
+        run: bash tests/run_0_9_14_d0e_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
