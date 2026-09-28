@@ -69,6 +69,9 @@ jobs:
             libsdl2-dev \
             libsdl2-gfx-dev
 
+      - name: Run 0.9.14 D0-C semantic adapter checkpoint
+        run: bash tests/run_0_9_14_d0c_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
