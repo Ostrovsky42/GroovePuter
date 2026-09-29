@@ -108,3 +108,9 @@ purely rhythmic variation; this is to be judged by ear.
 SDL, Cardputer ADV and SEQTRAK builds. Permanent DRAM unchanged (ADV 189736, SEQTRAK 189680).
 
 **Not done and not claimed:** listening to B1 (eight renders are prepared, mix B), B2 (widening admission), Acid and House, the natural-selection reachability (unchanged: Dub, Funk and others still land on non-admitted archetypes).
+
+## 8. First listening to B1 (one file so far: `broken_techno_ord0`, mix B)
+
+Owner, in his words: the bass is **still quiet against the drums**; changes are audible **but soft**; **at BREAK the change is heard better**.
+Reading: B1 reaches the bass audibly, most clearly where it removes material (BREAK); DEVELOP adds at most one bass attack in two bars, which by design is subtle. The bass level
+at mix B (synths 1.5, drums 0.8; about 11 to 12 dB under the drums by the diagnostic) is still not enough for comfortable listening. Return was not commented on. One file, one listener: not a verdict on the other seven renders or on other archetypes.
