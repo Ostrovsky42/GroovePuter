@@ -328,7 +328,9 @@ void test_displace_and_thin() {
   auto thin = f.develop(Dev::TransformationKind::Thin);
   assert(f.lastResult.success);
   assert(thin.available);
-  assert(thin.preservation.r2BassOnsetTopology == SemStatus::Fail);
+  // D1-C1: THIN changes the event count, so no attack correspondence exists ->
+  // R2 is UNKNOWN (never an invented FAIL).
+  assert(thin.preservation.r2BassOnsetTopology == SemStatus::Unknown);
   assert(thin.preservation.r3PitchClassAtOnset == SemStatus::Unknown);
   expectUnknownLineage(thin);
 }
@@ -380,25 +382,30 @@ void test_current_edits_and_version_witness() {
     assert(obs.preservation.r3PitchClassAtOnset == SemStatus::Fail);
     expectUnknownLineage(obs);
   }
-  {  // K: onset add / remove / move -> R2 FAIL.
+  {  // K: onset add -> UNKNOWN (unclassifiable event); attack remove/move -> R2 FAIL.
     for (int variant = 0; variant < 3; ++variant) {
       Fixture f("d1c-k", GenerativeMode::Acid, 0, 2, 0);
       SynthPattern& p = f.current();
-      if (variant == 0) {  // add an onset on a rest step
+      const StepMask attacks = f.origin().bassRhythm.onsets;
+      int attackStep = -1;
+      for (int st = 15; st >= 0; --st) if (attacks & stepBit(static_cast<uint8_t>(st))) { attackStep = st; break; }
+      assert(attackStep >= 0);
+      if (variant == 0) {  // add an event on a rest step (meaning unknown)
         const int rest = firstRestStep(p);
         assert(rest >= 0);
         p.steps[rest].note = 60;
-      } else if (variant == 1) {  // remove an onset
-        p.steps[lastNoteStep(p)].note = -1;
-      } else {  // move an onset to a rest step
-        const int from = lastNoteStep(p), to = firstRestStep(p);
-        p.steps[to] = p.steps[from];
-        p.steps[from] = SynthStep{};
+      } else if (variant == 1) {  // remove an ATTACK
+        p.steps[attackStep].note = -1;
+      } else {  // move an ATTACK to a rest step
+        const int to = firstRestStep(p);
+        p.steps[to] = p.steps[attackStep];
+        p.steps[attackStep] = SynthStep{};
       }
       auto obs = f.develop(Dev::TransformationKind::Revoice, 1);
       assert(f.lastResult.success);
       assert(obs.available);
-      assert(obs.preservation.r2BassOnsetTopology == SemStatus::Fail);
+      if (variant == 0) assert(obs.preservation.r2BassOnsetTopology == SemStatus::Unknown);
+      else assert(obs.preservation.r2BassOnsetTopology == SemStatus::Fail);
       assert(obs.preservation.r3PitchClassAtOnset == SemStatus::Unknown);
       expectUnknownLineage(obs);
     }

@@ -93,6 +93,12 @@ jobs:
       - name: Run 0.9.14 D1-C P0 preservation evaluator
         run: bash tests/run_0_9_14_d1c_tests.sh
 
+      - name: Run 0.9.14 D1-C1 attack/continuation alignment
+        run: bash tests/run_0_9_14_d1c1_tests.sh
+
+      - name: Run 0.9.14 M0-A musical play baseline
+        run: bash tests/run_0_9_14_m0a_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
