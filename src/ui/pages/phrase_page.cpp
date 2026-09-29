@@ -17,6 +17,48 @@
 #include "src/state/phrase_generation_request_state.h"
 #include "src/state/scene_revision.h"
 
+// Diagnostic image only (-DGROOVEPUTER_P0_CYCLE_PROBE, never set by default): after every
+// growKeptPhrase call, print the control-task stack high-water mark and internal heap state.
+#if defined(GROOVEPUTER_P0_CYCLE_PROBE) && defined(ARDUINO_M5STACK_CARDPUTER)
+#include <Arduino.h>
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+namespace {
+struct CycleProbe {
+  uint32_t stackBefore, freeBefore, largestBefore, startedUs;
+  CycleProbe() {
+    constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    stackBefore = uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t);
+    freeBefore = heap_caps_get_free_size(caps);
+    largestBefore = heap_caps_get_largest_free_block(caps);
+    startedUs = micros();
+  }
+  void report(int status, unsigned bars, bool playing) const {
+    constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    Serial.printf(
+        "[P0-CYCLE-PROBE] status=%d bars=%u playing=%d us=%lu "
+        "stackMinFreeBytes before=%lu after=%lu "
+        "internalFree before=%lu after=%lu largestBlock before=%lu after=%lu minEverFree=%lu\n",
+        status, bars, playing ? 1 : 0, static_cast<unsigned long>(micros() - startedUs),
+        static_cast<unsigned long>(stackBefore),
+        static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+        static_cast<unsigned long>(freeBefore),
+        static_cast<unsigned long>(heap_caps_get_free_size(caps)),
+        static_cast<unsigned long>(largestBefore),
+        static_cast<unsigned long>(heap_caps_get_largest_free_block(caps)),
+        static_cast<unsigned long>(heap_caps_get_minimum_free_size(caps)));
+  }
+};
+}  // namespace
+#define GP_CYCLE_PROBE_BEGIN CycleProbe cycleProbe_;
+#define GP_CYCLE_PROBE_END(result, playing) \
+  cycleProbe_.report(static_cast<int>((result).status), (result).bars, (playing))
+#else
+#define GP_CYCLE_PROBE_BEGIN
+#define GP_CYCLE_PROBE_END(result, playing) ((void)0)
+#endif
+
 namespace {
 
 struct PhrasePalette {
@@ -693,11 +735,15 @@ bool PhrasePage::growKeptPhrase() {
     UI::showToast("MAKE A 4B TAKE TO GROW", 1800);
     return true;
   }
+  GP_CYCLE_PROBE_BEGIN
+  const bool probePlaying = mini_acid_.isPlaying();
   const GeneratedPhraseSong::CycleResult result =
       GeneratedPhraseSong::generateCycle(mini_acid_, [&](auto&& operation) {
         if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
         else operation();
       });
+  GP_CYCLE_PROBE_END(result, probePlaying);
+  (void)probePlaying;
 
   if (result) {
     const char* section = result.developSkipped ? "BREAK ONLY" :
