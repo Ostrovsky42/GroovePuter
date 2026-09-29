@@ -132,6 +132,7 @@ constexpr TrajectoryRef kNonSubtractivePhraseTrajectoryRefs[] = {
 constexpr bool stage12PhraseEnabledId(RhythmArchetypeId id) {
   switch (id) {
     case 404:  // broken_techno
+    case 410:  // steppers (P0 B2 step 1; Acid and House stay excluded by scenario)
     case 420:  // machine_syncopation
     case 712:  // electro_backskip
     case 714:  // electro_gap_push

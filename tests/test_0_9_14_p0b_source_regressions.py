@@ -31,6 +31,23 @@ for token in ("std::vector", "new ", "malloc", "rand(", "std::random", "determin
 # The role realizers themselves are untouched.
 for f in ("bass_rhythm.cpp", "chord_rhythm.cpp"):
     req("BarFunction" not in read("src/generation/roles/" + f), f"{f} must not learn about BarFunction")
+
+# ---- B2: admission is per archetype AND per scenario, in one shared function ----
+ADM = read("src/generation/composition/phrase_evolution_admission.h")
+EXEC = read("src/generation/migration/phrase_execution.cpp")
+BRIDGE = read("src/generation/migration/strong_rhythm_live_bridge.cpp")
+CAT = read("src/generation/rhythm/reference_phrase_catalog_data.h")
+req("GenerativeMode::Acid" in ADM and "GenerativeMode::House" in ADM, "Acid and House must be excluded at scenario level")
+req("phraseEvolutionAdmitted(genre, definition->key)" in EXEC, "phrase execution must use the scenario-level admission")
+req("phraseEvolutionAdmitted(auditionSettings, selection.archetype)" in BRIDGE, "live audition must use the scenario-level admission")
+req("phraseEvolutionAdmitted(engine.sceneManager().currentScene().genre" in read("tools/m0/m0a_corpus.cpp"),
+    "the M0 tool must call the same admission function as production")
+# Archetypes whose hard relationship makes the multi-bar catalog INVALID must never be whitelisted
+# (probe, P0-B2: 401 straight_drive, 402 offbeat_open_hat, 409 one_drop_space, 419 shuffled_4x4).
+for bad in (401, 402, 409, 419):
+    req(not re.search(rf"case {bad}:", CAT), f"archetype {bad} makes the phrase catalog invalid and must not be admitted")
+req(re.search(r"case 410:", CAT) is not None, "steppers (410) is the first B2 archetype")
+
 if fail:
     for m in fail: print("FAIL:", m)
     print(f"0.9.14 P0-B1 source regressions: FAIL ({len(fail)})"); sys.exit(1)

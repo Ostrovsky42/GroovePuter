@@ -17,8 +17,9 @@ def load(path):
 
 pre, post = load(sys.argv[1]), load(sys.argv[2])
 fail = []
-if set(pre) != set(post):
-    fail.append(f"corpus keys differ: {len(set(pre) ^ set(post))} bars only in one dump")
+if not set(pre) <= set(post):
+    fail.append(f"baseline bars disappeared: {len(set(pre) - set(post))}")
+# Bars of archetypes admitted after B1 (P0-B2) are new keys; they are checked by the B2 compare.
 stat = collections.defaultdict(lambda: [0, 0])
 for key in pre:
     if key not in post:

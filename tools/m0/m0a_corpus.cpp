@@ -14,6 +14,7 @@
 
 #include "src/dsp/generated_phrase_song.h"
 #include "src/generation/rhythm/bar_evolution.h"
+#include "src/generation/composition/phrase_evolution_admission.h"
 #include "src/generation/rhythm/reference_phrase_vocabulary.h"
 #include "src/generation/rhythm/reference_vocabulary.h"
 #include "src/state/generation_request_state.h"
@@ -251,7 +252,7 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
     exec.selection.composition.phraseLaw = R::PhraseEvolutionLawId::Loop;
     if (law != R::PhraseEvolutionLawId::Loop) {
       if (requested == R::kNoTrajectoryId || def == nullptr ||
-          !R::ReferenceVocabulary::phraseEvolutionEnabled(def->key)) {
+          !R::phraseEvolutionAdmitted(engine.sceneManager().currentScene().genre, def->key)) {
         out.status = "NOT_APPLICABLE(archetype not admitted to phrase evolution)";
         return false;
       }

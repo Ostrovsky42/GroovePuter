@@ -1,6 +1,6 @@
 # 0.9.14 P0-B — Why development does not reach bass and chords (findings and proposed change)
 
-Status: **B1 implemented (section 7); B2 not started.** Follows the owner's choice of option (b) in `P0_MUSICAL_PLAY_SPEC.md` §9.
+Status: **B1 implemented (section 7); B2 in progress (section 9): steppers admitted.** Follows the owner's choice of option (b) in `P0_MUSICAL_PLAY_SPEC.md` §9.
 Tags: **[OBSERVED]** read from code or measured on the M0 corpus; **[INFERENCE]**; **[OPEN]**.
 
 ## 1. Mechanism
@@ -114,3 +114,21 @@ SDL, Cardputer ADV and SEQTRAK builds. Permanent DRAM unchanged (ADV 189736, SEQ
 Owner, in his words: the bass is **still quiet against the drums**; changes are audible **but soft**; **at BREAK the change is heard better**.
 Reading: B1 reaches the bass audibly, most clearly where it removes material (BREAK); DEVELOP adds at most one bass attack in two bars, which by design is subtle. The bass level
 at mix B (synths 1.5, drums 0.8; about 11 to 12 dB under the drums by the diagnostic) is still not enough for comfortable listening. Return was not commented on. One file, one listener: not a verdict on the other seven renders or on other archetypes.
+
+## 9. B2 step 1: which archetypes can be admitted, and steppers
+
+**Finding that changes the planned order [OBSERVED, probe].** Enabling an archetype in the whitelist re-validates the whole multi-bar catalog. For four archetypes that validation **fails for the
+entire catalog** with `ImpossibleHardRelationship`, because a hard relationship in their grammar cannot be satisfied over 2 or 4 bars: `401 straight_drive` (hard Coincide of kick and bass), `402 offbeat_open_hat`,
+`409 one_drop_space`, `419 shuffled_4x4`. They cannot be admitted without changing their grammar, which would change their Loop output (the compatibility rule forbids that). They are therefore **out of
+this slice**, and `straight_drive` and `offbeat_open_hat`, planned first and fourth, are replaced. Valid candidates: `410 steppers`, `713 funk_house_bridge`, `412 chord_response`, `403 hypnotic_sparse`,
+`411 sparse_skank`, and `711 stacked_quarters` (House, excluded by scenario). The source regression forbids whitelisting the four invalid ids.
+
+**Admission is per archetype and per scenario.** `phraseEvolutionAdmitted(GenreSettings, Archetype)` in `phrase_evolution_admission.h` refuses Acid and House and is called by phrase execution, the live audition
+bridge and the M0 tool alike, so a measurement cannot admit what production refuses.
+
+**Steppers (410), admitted.** Compatibility: all 1384 baseline bars of the golden taken after B1 are unchanged; the only new bars are Dub identities 2, 3, 6, 7 (the identities that select steppers); none in Acid or House.
+Targeted corpus (Dub host, ordinals 0 to 7, P3): bass or chord changes in the cycle **8/8**; bass pitch classes on preserved positions never changed (0 of 8). Stage 12 catalog tests, GF2, PMB-P1 and the full host
+suite pass; existing tests that pinned the old ten-archetype list were updated (catalog test lists, audition source regression). Permanent DRAM unchanged.
+**Listening (owner, two renders at mix C): there is a difference and it sounds good.**
+
+Not done: `funk_house_bridge`, `chord_response`, `hypnotic_sparse`, `sparse_skank` (next, one per commit, with listening); 8-bar phrases; Acid and House.

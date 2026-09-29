@@ -10,10 +10,10 @@ using namespace GroovePuterRhythm;
 namespace {
 
 constexpr RhythmArchetypeId kStage12Ids[] = {
-    404, 413, 414, 415, 416, 417, 418, 420, 712, 714,
+    404, 410, 413, 414, 415, 416, 417, 418, 420, 712, 714,  // 410 steppers: P0 B2 step 1
 };
 constexpr RhythmArchetypeId kSubtractiveStage12Ids[] = {
-    404, 413, 414, 415, 417, 418, 420, 712, 714,
+    404, 410, 413, 414, 415, 417, 418, 420, 712, 714,
 };
 constexpr RhythmArchetypeId kProtectedOneBarIds[] = {
     401, 402, 403, 405, 406, 711,

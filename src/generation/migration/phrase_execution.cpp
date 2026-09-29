@@ -1,5 +1,6 @@
 #include "phrase_execution.h"
 
+#include "../composition/phrase_evolution_admission.h"
 #include "../rhythm/bar_evolution.h"
 #include "../rhythm/reference_phrase_vocabulary.h"
 
@@ -58,7 +59,8 @@ void resetSemanticProbeScratch(PhraseExecutionScratch& scratch) {
 // GF2-I3: a declared law only takes effect where the archetype is admitted to
 // phrase evolution and the trajectory it maps to is eligible at this level.
 // Anything else leaves the phrase on its established per-bar realization.
-TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
+TrajectoryId admittedPhraseTrajectory(const GenreSettings& genre,
+                                      RhythmArchetypeId archetypeId,
                                       PhraseEvolutionLawId law,
                                       RealizationLevel level,
                                       uint8_t phraseBars) {
@@ -69,7 +71,7 @@ TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(archetypeId);
   if (definition == nullptr ||
-      !ReferenceVocabulary::phraseEvolutionEnabled(definition->key)) {
+      !phraseEvolutionAdmitted(genre, definition->key)) {
     return kNoTrajectoryId;
   }
 
@@ -153,7 +155,7 @@ PhraseExecutionStatus preparePhraseExecution(
   const PhraseEvolutionLawId selectedPhraseLaw =
       destination.selection.composition.phraseLaw;
   destination.phraseTrajectory = admittedPhraseTrajectory(
-      destination.selection.composition.rhythmArchetypeId,
+      settings, destination.selection.composition.rhythmArchetypeId,
       selectedPhraseLaw, materialization.level,
       destination.length.effectivePhraseBars);
   if (selectedPhraseLaw != PhraseEvolutionLawId::Loop &&
