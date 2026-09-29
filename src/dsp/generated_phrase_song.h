@@ -8,6 +8,7 @@
 #include "src/audio/pattern_paging.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
+#include "src/state/generated_phrase_recipe.h"
 #include "src/state/generated_synth_a_origin.h"
 #include "src/state/generation_request_state.h"
 #include "src/state/material_slot_access.h"
@@ -327,10 +328,18 @@ inline void applyPreparedPersistent(
     MiniAcid& engine,
     Scene& scene,
     const PreparedPhraseArrangement& prepared,
-    GroovePuterMaterial::GeneratedSynthAOriginCandidate* candidate = nullptr) {
+    GroovePuterMaterial::GeneratedSynthAOriginCandidate* candidate = nullptr,
+    // P0 cycle: bars >= sectionBars come from `secondSection` (bar - sectionBars);
+    // both sections are prepared from one recipe. Null keeps the single-execution shape.
+    const GroovePuterRhythm::PreparedPhraseExecution* secondSection = nullptr,
+    int sectionBars = 0) {
   Song& song = scene.songs[prepared.songSlot];
   PhraseGenerator::PhraseBar scratch{};
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
+    const bool inSecond = secondSection != nullptr && bar >= sectionBars;
+    const GroovePuterRhythm::PreparedPhraseExecution& execution =
+        inSecond ? *secondSection : prepared.p1rExecution;
+    const int sectionBar = inSecond ? bar - sectionBars : bar;
     const int localSlot = prepared.firstLocalSlot + bar;
     const int bank = localSlot / Bank<SynthPattern>::kPatterns;
     const int index = localSlot % Bank<SynthPattern>::kPatterns;
@@ -340,7 +349,7 @@ inline void applyPreparedPersistent(
     GeneratedPhraseP1R::MaterializedSynthABarEvidence barEvidence{};
     if (prepared.useP1RRoute) {
       GeneratedPhraseP1R::materializeOneBar(
-          engine, prepared.p1rExecution, static_cast<uint8_t>(bar),
+          engine, execution, static_cast<uint8_t>(sectionBar),
           static_cast<int16_t>(globalPattern), scratch, barEvidence);
     } else {
       materializeLegacyBar(engine, scene, prepared, bar, scratch);
@@ -358,7 +367,7 @@ inline void applyPreparedPersistent(
 
     if (candidate != nullptr && prepared.useP1RRoute) {
       const auto id = prepared.synthAReservation.idAt(static_cast<uint8_t>(bar));
-      if (!barEvidence.valid || barEvidence.phraseBarOrdinal != bar ||
+      if (!barEvidence.valid || barEvidence.phraseBarOrdinal != sectionBar ||
           !id.valid()) {
         candidate->failed = true;
       } else {
@@ -371,8 +380,7 @@ inline void applyPreparedPersistent(
             scene.synthABanks[bank].patterns[index]);
         entry.bassRhythm = barEvidence.bassRhythm;
         entry.bassPitchClasses = barEvidence.bassPitchClasses;
-        entry.harmonicRhythm =
-            prepared.p1rExecution.harmonicClock.bars[bar].harmonicRhythm;
+        entry.harmonicRhythm = execution.harmonicClock.bars[sectionBar].harmonicRhythm;
         entry.phraseBarOrdinal = static_cast<uint8_t>(bar);
         ++candidate->filledBars;
       }
@@ -391,6 +399,22 @@ inline void applyPreparedPersistent(
       song.length,
       prepared.request.songStart + prepared.request.bars);
   if (prepared.request.forceSingleBarRows) scene.feel.patternBars = 1;
+}
+
+inline GroovePuterMaterial::GeneratedPhraseRecipe recipeFor(
+    MiniAcid& engine,
+    const PreparedPhraseArrangement& prepared) {
+  GroovePuterMaterial::GeneratedPhraseRecipe recipe{};
+  recipe.genre = prepared.p1rExecution.settings;
+  recipe.materialization = prepared.p1rExecution.materialization;
+  recipe.phraseGenerationIdentity = prepared.p1rExecution.phraseGenerationIdentity;
+  recipe.contextFingerprint = GeneratedPhraseP1R::pitchSourceFingerprint(engine);
+  recipe.pageIndex = static_cast<int16_t>(prepared.request.pageIndex);
+  recipe.songSlot = prepared.songSlot;
+  recipe.songStart = static_cast<int16_t>(prepared.request.songStart);
+  recipe.firstLocalSlot = prepared.firstLocalSlot;
+  recipe.bars = static_cast<uint8_t>(prepared.request.bars);
+  return recipe;
 }
 
 inline GeneratedPhraseUndoPayload captureUndo(
@@ -512,6 +536,15 @@ GroovePuterUndo::UndoResult undoLastGeneratedPhrase(
     // sidecar describes. Fail closed to "no rich origin"; an older sidecar is
     // deliberately not restored (no ~300 B added to the Undo payload).
     engine.clearGeneratedSynthAOrigin();
+    // P0: Undo of the phrase itself drops the recipe; Undo of the cycle keeps it so
+    // the action can be repeated.
+    if (const auto* recipe = engine.generatedPhraseRecipe()) {
+      if (current.songStart == recipe->songStart) {
+        engine.clearGeneratedPhraseRecipe();
+      } else if (current.songStart == recipe->cycleSongStart) {
+        engine.setGeneratedPhraseCycleStart(-1);
+      }
+    }
     (void)GroovePuterRhythm::PhraseLiveArrangementDetail::
         cancelPendingPhraseActivationForRevision(engine, committedRevision);
   }
@@ -791,6 +824,12 @@ Result generate(
   if (!(prepared->useP1RRoute && engine.publishGeneratedSynthAOrigin(originCandidate))) {
     engine.clearGeneratedSynthAOrigin();
   }
+  // P0: the recipe of the latest generated phrase; Legacy has none.
+  if (prepared->useP1RRoute) {
+    engine.publishGeneratedPhraseRecipe(recipeFor(engine, *prepared));
+  } else {
+    engine.clearGeneratedPhraseRecipe();
+  }
 
   if (!engine.isPlaying()) {
     releaseWriteSlot(lease.slot);
@@ -806,6 +845,299 @@ Result generate(
   GroovePuterRhythm::PhraseLiveArrangementDetail::completePhraseActivation(
       lease.slot, committedRevision);
   output.status = LifecycleStatus::PendingNextBar;
+  return output;
+}
+
+// ---------------------------------------------------------------------------
+// P0: DEVELOP + BREAK cycle for the kept generated phrase.
+//
+// One engine action, no UI. Both 4-bar sections are prepared from the ONE stored recipe of
+// the kept phrase (never from each other), verified (R0 replay of the kept phrase, R1
+// context), and published as eight bars after it in a single Undo receipt. The kept phrase
+// is not modified. See docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md sections 2-3.
+// ---------------------------------------------------------------------------
+enum class CycleStatus : uint8_t {
+  CommittedNow = 0,
+  PendingNextBar,
+  NoRecipe,             // no generated phrase known (never generated, Undone, Legacy, scene load)
+  CycleAlreadyPublished,
+  NotAdmitted,          // archetype/scenario admits no evolution (Acid, House, no trajectory)
+  DepthNotP3,           // developing a P2 phrase would change law and depth at once
+  ContextChanged,       // R1: genre, tonal or pitch-source context differs from the kept phrase
+  EditedSinceGeneration,  // R0: the kept phrase no longer equals its rebuild
+  NoSafeSlots,
+  RowsOccupied,
+  ReservationFailed,
+  TargetChanged,
+  Busy,
+  Failed,
+};
+
+constexpr uint8_t kCycleSectionBars = 4;
+
+struct CycleResult {
+  CycleStatus status = CycleStatus::Failed;
+  explicit operator bool() const {
+    return status == CycleStatus::CommittedNow ||
+           status == CycleStatus::PendingNextBar;
+  }
+};
+
+inline bool sameGenre(const GenreSettings& a, const GenreSettings& b) {
+  return a.generativeMode == b.generativeMode && a.recipe == b.recipe &&
+         a.morphTarget == b.morphTarget && a.morphAmount == b.morphAmount &&
+         a.rhythmSelectionMode == b.rhythmSelectionMode &&
+         a.rhythmArchetypeId == b.rhythmArchetypeId;
+}
+
+inline bool sameSettingsExceptOrdinal(
+    const GroovePuterRhythm::PhraseExecutionMaterializationSettings& a,
+    const GroovePuterRhythm::PhraseExecutionMaterializationSettings& b) {
+  return a.level == b.level && a.feelProfile == b.feelProfile &&
+         a.feelAmount == b.feelAmount &&
+         a.tonalMaterializationEnabled == b.tonalMaterializationEnabled &&
+         a.rootPitchClass == b.rootPitchClass &&
+         a.scaleTypeValue == b.scaleTypeValue;
+}
+
+// R0: rebuild the kept phrase from the recipe (its original law) into `execution` and compare
+// the canonical musical content of every lane of every bar with what the Song rows play now.
+inline CycleStatus verifyKeptPhrase(
+    MiniAcid& engine,
+    const Scene& scene,
+    const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
+    GroovePuterRhythm::PreparedPhraseExecution& execution) {
+  GroovePuterRhythm::PhraseExecutionScratch scratch{};
+  if (GroovePuterRhythm::preparePhraseExecution(
+          recipe.genre, recipe.materialization, recipe.phraseGenerationIdentity,
+          recipe.bars, scratch, execution) !=
+      GroovePuterRhythm::PhraseExecutionStatus::Ready) {
+    return CycleStatus::EditedSinceGeneration;
+  }
+  const Song& song = scene.songs[recipe.songSlot];
+  PhraseGenerator::PhraseBar rebuilt{};
+  for (uint8_t bar = 0; bar < recipe.bars; ++bar) {
+    const int localSlot = recipe.firstLocalSlot + bar;
+    const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+    const int index = localSlot % Bank<SynthPattern>::kPatterns;
+    const int globalPattern =
+        songPatternFromPageBankIndex(recipe.pageIndex, bank, index);
+    const SongPosition& row = song.positions[recipe.songStart + bar];
+    if (row.patterns[static_cast<int>(SongTrack::SynthA)] != globalPattern ||
+        row.patterns[static_cast<int>(SongTrack::SynthB)] != globalPattern ||
+        row.patterns[static_cast<int>(SongTrack::Drums)] != globalPattern) {
+      return CycleStatus::EditedSinceGeneration;
+    }
+    if (!GeneratedPhraseP1R::materializeOneBar(
+            engine, execution, bar, static_cast<int16_t>(globalPattern), rebuilt)) {
+      return CycleStatus::EditedSinceGeneration;
+    }
+    if (GeneratedPhraseP1R::canonicalBarHash(
+            rebuilt.drums, rebuilt.synthA, rebuilt.synthB) !=
+        GeneratedPhraseP1R::canonicalBarHash(
+            scene.drumBanks[bank].patterns[index],
+            scene.synthABanks[bank].patterns[index],
+            scene.synthBBanks[bank].patterns[index])) {
+      return CycleStatus::EditedSinceGeneration;
+    }
+  }
+  return CycleStatus::CommittedNow;  // "verified"
+}
+
+inline CycleStatus statusForLaw(GroovePuterRhythm::PhraseLawApplyStatus status) {
+  using S = GroovePuterRhythm::PhraseLawApplyStatus;
+  switch (status) {
+    case S::Applied: return CycleStatus::CommittedNow;
+    case S::NotAdmitted:
+    case S::NoEligibleTrajectory: return CycleStatus::NotAdmitted;
+    case S::InvalidContext: return CycleStatus::Failed;
+  }
+  return CycleStatus::Failed;
+}
+
+template <typename Guard>
+CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
+  CycleResult output{};
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  const WriteLease lease = acquireWriteLease();
+  if (lease.slot < 0) {
+    output.status = CycleStatus::Busy;
+    return output;
+  }
+  const auto refuse = [&](CycleStatus status) {
+    releaseWriteSlot(lease.slot);
+    output.status = status;
+    return output;
+  };
+
+  const auto* recipePtr = engine.generatedPhraseRecipe();
+  if (recipePtr == nullptr) return refuse(CycleStatus::NoRecipe);
+  const GroovePuterMaterial::GeneratedPhraseRecipe recipe = *recipePtr;
+  if (recipe.cycleSongStart >= 0) return refuse(CycleStatus::CycleAlreadyPublished);
+
+  SceneManager& scenes = engine.sceneManager();
+  const Scene& scene = scenes.currentScene();
+  if (engine.currentPageIndex() != recipe.pageIndex ||
+      std::clamp(scene.activeSongSlot, 0, 1) != recipe.songSlot) {
+    return refuse(CycleStatus::TargetChanged);
+  }
+  if (engine.isPlaying() &&
+      (!engine.songModeEnabled() ||
+       engine.songPlaybackSlot() != recipe.songSlot)) {
+    return refuse(CycleStatus::TargetChanged);
+  }
+
+  if (recipe.materialization.level !=
+      GroovePuterRhythm::RealizationLevel::P3Transformation) {
+    return refuse(CycleStatus::DepthNotP3);
+  }
+
+  // R1: everything the rebuild reads that the recipe does not store.
+  if (!sameGenre(scene.genre, recipe.genre) ||
+      GeneratedPhraseP1R::pitchSourceFingerprint(engine) != recipe.contextFingerprint ||
+      !sameSettingsExceptOrdinal(
+          GeneratedPhraseP1R::materializationSettingsFor(
+              scene, GroovePuterState::currentGenerationLevel(),
+              recipe.materialization.generationAttemptOrdinal),
+          recipe.materialization)) {
+    return refuse(CycleStatus::ContextChanged);
+  }
+
+  PreparedPhraseArrangement preparedStorage{};
+  PreparedPhraseArrangement* const prepared = &preparedStorage;
+  GroovePuterRhythm::PreparedPhraseExecution breakExecution{};
+
+  // R0 uses the BREAK slot as scratch; it is rebuilt below.
+  const CycleStatus verified = verifyKeptPhrase(engine, scene, recipe, breakExecution);
+  if (verified != CycleStatus::CommittedNow) return refuse(verified);
+
+  const auto* origin = engine.generatedSynthAOrigin();
+  if (origin != nullptr &&
+      (origin->common.phraseGenerationIdentity != recipe.phraseGenerationIdentity ||
+       origin->common.barCount != recipe.bars)) {
+    return refuse(CycleStatus::EditedSinceGeneration);
+  }
+
+  // Both sections from the same recipe; neither depends on the other.
+  GroovePuterRhythm::PhraseExecutionScratch scratch{};
+  const auto build = [&](GroovePuterRhythm::PreparedPhraseExecution& execution,
+                         GroovePuterRhythm::PhraseEvolutionLawId law) {
+    if (GroovePuterRhythm::preparePhraseExecution(
+            recipe.genre, recipe.materialization, recipe.phraseGenerationIdentity,
+            kCycleSectionBars, scratch, execution) !=
+        GroovePuterRhythm::PhraseExecutionStatus::Ready) {
+      return CycleStatus::Failed;
+    }
+    return statusForLaw(GroovePuterRhythm::applyPhraseLawToExecution(execution, law));
+  };
+  CycleStatus built = build(
+      prepared->p1rExecution, GroovePuterRhythm::PhraseEvolutionLawId::DevelopReturn);
+  if (built != CycleStatus::CommittedNow) return refuse(built);
+  built = build(
+      breakExecution, GroovePuterRhythm::PhraseEvolutionLawId::SparseDrift);
+  if (built != CycleStatus::CommittedNow) return refuse(built);
+
+  const int cycleStart = recipe.songStart + recipe.bars;
+  constexpr uint8_t kCycleBars = 2 * kCycleSectionBars;
+  prepared->request.bars = kCycleBars;
+  prepared->request.songStart = cycleStart;
+  prepared->request.pageIndex = recipe.pageIndex;
+  prepared->request.forceSingleBarRows = true;
+  prepared->songSlot = recipe.songSlot;
+  prepared->audibleSongRow = engine.currentSongPosition();
+  prepared->baseRevision = GroovePuterState::sceneRevisionSnapshot().currentRevision;
+  prepared->selectionTarget = captureTarget(scenes);
+  prepared->genre = recipe.genre;
+  prepared->useP1RRoute = true;
+  prepared->result.bars = kCycleBars;
+  prepared->result.songStart = cycleStart;
+
+  if (cycleStart + kCycleBars > Song::kMaxPositions ||
+      !PhraseGenerator::songRowsAreAvailable(
+          scene.songs[recipe.songSlot], cycleStart, kCycleBars)) {
+    return refuse(CycleStatus::RowsOccupied);
+  }
+  prepared->firstLocalSlot = PhraseGenerator::findSafeContiguousEmptySlots(
+      scene, recipe.pageIndex, kCycleBars);
+  if (prepared->firstLocalSlot < 0) return refuse(CycleStatus::NoSafeSlots);
+
+  // PREFLIGHT: prove all eight bars materialize before any destination is touched.
+  {
+    PhraseGenerator::PhraseBar preflightScratch{};
+    for (uint8_t bar = 0; bar < kCycleBars; ++bar) {
+      const bool second = bar >= kCycleSectionBars;
+      const int localSlot = prepared->firstLocalSlot + bar;
+      const int globalPattern = songPatternFromPageBankIndex(
+          recipe.pageIndex,
+          localSlot / Bank<SynthPattern>::kPatterns,
+          localSlot % Bank<SynthPattern>::kPatterns);
+      if (!GeneratedPhraseP1R::materializeOneBar(
+              engine, second ? breakExecution : prepared->p1rExecution,
+              static_cast<uint8_t>(second ? bar - kCycleSectionBars : bar),
+              static_cast<int16_t>(globalPattern), preflightScratch)) {
+        return refuse(CycleStatus::Failed);
+      }
+    }
+  }
+
+  if (!preparedTargetStillCommitSafe(engine, *prepared)) {
+    return refuse(CycleStatus::TargetChanged);
+  }
+
+  const auto reservation = PatternPagingService::reserveMaterialIds(kCycleBars);
+  if (!reservation.valid()) return refuse(CycleStatus::ReservationFailed);
+  prepared->synthAReservation = reservation;
+
+  const GeneratedPhraseUndoPayload before = captureUndo(scene, *prepared);
+  auto&& applyGuard = guard;
+  GroovePuterMaterial::GeneratedSynthAOriginCandidate originCandidate =
+      beginOriginCandidate(*prepared);
+
+  if (engine.isPlaying()) {
+    if (!GroovePuterRhythm::PhraseLiveArrangementDetail::armPhraseActivation(
+            engine, lease.slot, prepared->selectionTarget, prepared->songSlot,
+            cycleStart, kCycleBars, prepared->audibleSongRow)) {
+      return refuse(CycleStatus::TargetChanged);
+    }
+  }
+
+  const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+      GroovePuterUndo::UndoKind::Generation,
+      before,
+      [&]() {
+        const auto apply = [&]() {
+          applyPreparedPersistent(
+              engine, engine.sceneManager().currentScene(), *prepared,
+              &originCandidate, &breakExecution, kCycleSectionBars);
+        };
+        applyGuard(apply);
+      });
+  if (!committed) {
+    if (engine.isPlaying()) {
+      GroovePuterRhythm::PhraseLiveArrangementDetail::abortPhraseActivation(
+          lease.slot, GroovePuterRhythm::QuantizedGenerationStatus::Busy);
+      output.status = CycleStatus::Busy;
+      return output;
+    }
+    return refuse(CycleStatus::Busy);
+  }
+
+  if (!engine.publishGeneratedSynthAOrigin(originCandidate)) {
+    engine.clearGeneratedSynthAOrigin();
+  }
+  engine.setGeneratedPhraseCycleStart(static_cast<int16_t>(cycleStart));
+
+  if (!engine.isPlaying()) {
+    releaseWriteSlot(lease.slot);
+    engine.setSongMode(true);
+    engine.setSongPlaybackSlot(prepared->songSlot);
+    engine.setSongPosition(cycleStart);
+    output.status = CycleStatus::CommittedNow;
+    return output;
+  }
+  GroovePuterRhythm::PhraseLiveArrangementDetail::completePhraseActivation(
+      lease.slot, GroovePuterUndo::undoOwner().committedRevision());
+  output.status = CycleStatus::PendingNextBar;
   return output;
 }
 

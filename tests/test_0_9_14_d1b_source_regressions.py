@@ -112,7 +112,8 @@ require("Origin" not in payload, "D1-B: Undo payload must not carry provenance")
 fill = block(SONG, "if (candidate != nullptr && prepared.useP1RRoute) {", "SongPosition& position")
 for token in ("steps[", ".note", "IdeaClassification", "classif", "similar", "distance"):
     require(token not in fill, f"D1-B: origin fill must not analyse the Pattern ({token!r})")
-require("prepared.p1rExecution.harmonicClock.bars[bar].harmonicRhythm" in fill,
+require("execution.harmonicClock.bars[sectionBar].harmonicRhythm" in fill
+        and "inSecond ? *secondSection : prepared.p1rExecution" in SONG,
         "D1-B: harmonic WHEN must be copied from PREPARE, not re-derived")
 require("versionForPattern(" in fill, "D1-B: origin version must be the committed Pattern's exact version")
 

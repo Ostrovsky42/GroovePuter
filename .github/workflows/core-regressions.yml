@@ -102,6 +102,9 @@ jobs:
       - name: Run 0.9.14 P0-B1 bass and chord follow bar function
         run: bash tests/run_0_9_14_p0b_tests.sh
 
+      - name: Run 0.9.14 P0 DEVELOP+BREAK cycle (product engine path)
+        run: bash tests/run_0_9_14_p0_cycle_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 

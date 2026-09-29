@@ -2922,6 +2922,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // D1-B: session-local generated-origin evidence never survives a scene
   // replacement attempt (MaterialIds are per-project; fail closed).
   clearGeneratedSynthAOrigin();
+  clearGeneratedPhraseRecipe();
   
   // Do not auto-save here: filesystem writes can stall UX/audio path on constrained devices.
   // Scene persistence is explicit via Save/Save As.
@@ -3003,6 +3004,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 void MiniAcid::loadSceneFromStorage() {
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   clearGeneratedSynthAOrigin();  // D1-B: see loadSceneByName
+  clearGeneratedPhraseRecipe();
   lastSceneLoadRecoveredAutosave_ = false;
   if (sceneStorage_) {
     if (sceneStorage_->hasSceneAuto() &&

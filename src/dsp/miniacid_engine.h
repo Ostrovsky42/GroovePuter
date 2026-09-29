@@ -7,6 +7,7 @@
 #include "src/state/material_version.h"
 #include "src/state/material_lineage.h"
 #include "src/state/generated_synth_a_origin.h"
+#include "src/state/generated_phrase_recipe.h"
 #include "src/dsp/p0_preservation_types.h"
 #include "src/state/working_material_storage.h"
 
@@ -314,6 +315,24 @@ public:
   void clearGeneratedSynthAOrigin() {
     generatedSynthAOrigin_ = GroovePuterMaterial::GeneratedSynthAOrigin{};
     generatedSynthAOriginValid_ = false;
+  }
+
+  // P0: rebuild inputs of the latest generated phrase. Same lifecycle as the
+  // origin sidecar except that Undo of the cycle keeps it (GeneratedPhraseSong
+  // decides). Publication is reserved for GeneratedPhraseSong.
+  const GroovePuterMaterial::GeneratedPhraseRecipe* generatedPhraseRecipe() const {
+    return generatedPhraseRecipe_.valid ? &generatedPhraseRecipe_ : nullptr;
+  }
+  void publishGeneratedPhraseRecipe(
+      const GroovePuterMaterial::GeneratedPhraseRecipe& recipe) {
+    generatedPhraseRecipe_ = recipe;
+    generatedPhraseRecipe_.valid = true;
+  }
+  void setGeneratedPhraseCycleStart(int16_t songStart) {
+    if (generatedPhraseRecipe_.valid) generatedPhraseRecipe_.cycleSongStart = songStart;
+  }
+  void clearGeneratedPhraseRecipe() {
+    generatedPhraseRecipe_ = GroovePuterMaterial::GeneratedPhraseRecipe{};
   }
 
   enum class GoRequestResult : uint8_t {
@@ -853,6 +872,7 @@ private:
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
   GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
   bool generatedSynthAOriginValid_ = false;
+  GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
   GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};
