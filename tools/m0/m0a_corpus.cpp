@@ -89,6 +89,7 @@ struct Phrase {
   R::TrajectoryId trajectory = R::kNoTrajectoryId;
   uint8_t rootPc = 0;
   float bpm = 120.0f;
+  float suggestedBpm = 120.0f;  // midpoint of the archetype's catalogued tempo range
   std::vector<BarRec> bar;
 };
 
@@ -233,6 +234,7 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
   out.archetype = def ? def->name : "?";
   out.rootPc = exec.materialization.rootPitchClass;
   out.bpm = engine.bpm();
+  if (def) out.suggestedBpm = 0.5f * (def->suggestedBpmMin + def->suggestedBpmMax);
 
   if (opt.lawOverride >= 0) {
     const auto law = static_cast<R::PhraseEvolutionLawId>(opt.lawOverride);
@@ -658,6 +660,7 @@ int bestOrdinal(const GenreCase& g, uint8_t bars, R::RealizationLevel level, int
 }  // namespace
 
 // =================================================================== main
+#ifndef M0A_NO_MAIN
 int main() {
   const std::string out = outDir();
   std::filesystem::create_directories(out + "/corpus");
@@ -1099,3 +1102,4 @@ int main() {
   std::printf("\nM0-A tool self-checks: %s\n", g_failures == 0 ? "PASS" : "FAIL");
   return g_failures == 0 ? 0 : 1;
 }
+#endif  // M0A_NO_MAIN
