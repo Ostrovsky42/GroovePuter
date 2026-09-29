@@ -1,6 +1,6 @@
 # 0.9.14 P0 — Musical play, first slice (specification only)
 
-Status: **specification, no product code.** Base: `fa326f45` (M0-A). Decision source: `M0_A_MUSICAL_PLAY_BASELINE.md` §11–12.
+Status: **specification; engine path implemented (section 11), no UI.** Base: `fa326f45` (M0-A). Decision source: `M0_A_MUSICAL_PLAY_BASELINE.md` §11–12.
 
 Tags used below: **[OBSERVED]** read from code or measured; **[INFERENCE]** reasoned, not verified; **[OPEN]** needs an owner
 decision or a measurement before build.
@@ -71,10 +71,11 @@ no change for an input on the sampled identities does **not** prove the input is
 
 ### 2.4 Depth
 
-The recipe records the realization depth of A. Trajectory 8 (Break) exists only at P3 and production's default depth is P2. **[OPEN, measure]**
-whether the Loop phrase at P2 and at P3 differ for the same identity (M0-A tool, §7). Until measured, P0 requires A to have been generated at P3
-(otherwise a typed "depth not P3" refusal), because developing a P2 phrase with P3 programmes changes **law and depth at once** and must not be
-described as a law-only change.
+The recipe records the realization depth of A. Trajectory 8 (Break) exists only at P3 and production's default depth is P2.
+**[OBSERVED, section 9]** the Loop phrase for one identity differs between P2 and P3 in most bars, so developing a P2 phrase with P3 programmes would change law
+and depth at once. P0 therefore requires A to have been generated at P3 (typed `DepthNotP3` refusal). The product default (P2) is not changed by this slice.
+**[UX INFERENCE]** Before a user action is connected, the ordinary path must be decided: either the TAKE that precedes it creates A at P3, or developing a P2
+phrase (with an explicit depth change) is supported separately. An action that refuses on default settings is not a finished feature.
 
 ## 3. Commit path and lifecycle
 
@@ -190,7 +191,7 @@ Recommendation: (b), because the same corpus shows the limit is the transformati
 ## 8. Open decisions
 
 1. Choose (a), (b) or (c) from §9 (unanswered); fader values are chosen (mix B) pending a device check; which new-scene paths change.
-2. Whether a P2 phrase can be developed after the §2.4 measurement, or P3 stays required.
+2. Ordinary path for depth (section 2.4 and 11): P3 TAKE, or explicit P2 development. Measurement is done (section 9); the decision before wiring a user action is open.
 3. The identity set beyond 0–7 (the UKG control example).
 4. Later: supporting edited phrases (a future product task, not P0).
 
@@ -199,3 +200,33 @@ Recommendation: (b), because the same corpus shows the limit is the transformati
 At mix B (synths 1.5, drums 0.8) the bass was still too quiet on `broken_techno_ord0`. Owner decision: **mix C (synths 1.5, drums 0.45) as the candidate**, no DSP gain change, DEVELOP strength unchanged
 until the other seven renders are heard. Mix C puts the synth lanes about 8 dB under the drums and the drums about 5 dB under their default level; whether the drums are still strong enough is a listening question.
 Eight cycles at mix C are on the audition page. Device check and new-scene-path identification remain open (spec section 6).
+
+## 11. Engine path: implemented state (`ccd0c6b0`, `80e3d4b1` and later)
+
+**[OBSERVED]** Code: `GeneratedPhraseRecipe` (`src/state/generated_phrase_recipe.h`, 48 B, session-local, in engine state);
+`GeneratedPhraseSong::generateCycle`; `applyPhraseLawToExecution` shared with the M0 tool (golden dumps unchanged, 1464/1464 baseline bars).
+Tests: `tests/run_0_9_14_p0_cycle_tests.sh` (in CI), all other gates green at `80e3d4b1`.
+
+* Recipe = genre settings + materialization settings (level, attempt ordinal, feel, root, scale) + identity + page/slot/rows + R1 fingerprint of the
+  engine-read pitch-source inputs (genre manager recipe/mode/params/behavior, flavor, BPM).
+* R1 also compares the current scene genre and the scene-derived settings with the recipe. R0 rebuilds the kept phrase from the recipe and compares the canonical
+  hash of every lane of every bar with the Song rows (an edit, or a row pointing elsewhere, is refused).
+* Verified on host: A untouched; each section equals an independent rebuild from the same recipe (independent of physical pattern address); eight distinct
+  MaterialIds; origin sidecar of 8 bars; one Undo removes the cycle and keeps the recipe; repeat after Undo gets fresh ids; second call refused
+  (`CycleAlreadyPublished`). Typed refusals covered: no recipe, P2, edited, context (scale, genre, BPM), rows occupied, Undo of A, Acid, AcidRolling, House (each with
+  a recipe present, so `NotAdmitted` is not masked by `NoRecipe`).
+* Live (host, real engine render): `PendingNextBar`, all eight rows present at commit, activation at the bar boundary, nothing left pending; stop or Undo while pending
+  leaves no state and playback never enters the undone rows.
+* Cycle start: when stopped, Song position is set to DEVELOP (first row after A).
+
+**Firmware build (Xtensa, `scripts/build.sh`, loop stack 32768 B) [OBSERVED]:**
+* Permanent DRAM (`.dram0.data + .dram0.bss`): 189736 B before the recipe (`ccd0c6b0`), 189784 B after: **+48 B**, exactly the recipe. `.data` unchanged.
+* Static stack frames (`-fstack-usage`, measured with a temporary call site behind a build flag, not committed, since the cycle is not called from any UI yet):
+  `generateCycle` 5216 B, `verifyKeptPhrase` 2896, `preparePhraseExecution` 1200, `applyPhraseLawToExecution` 704, `materializeOneBar` 160.
+  For comparison `generate` 2576, `prepareWithGenerationAttempt` 1808, `applyPreparedPersistent` 1536.
+  Deepest known chain `generateCycle -> verifyKeptPhrase -> preparePhraseExecution` = about 9.3 KB of static frames before the frames below `preparePhraseExecution`
+  and before the UI/loop frames above; the existing `generate` chain is about 5.6 KB by the same count. These are compile-time frames, **not** a run-time high-water mark.
+  The cycle costs roughly 3.7 KB more stack than `generate`; whether that is safe on the device is unmeasured. Lowest-cost reduction if needed: verify R0 with a
+  smaller scratch, or run R0 before the two executions and the arrangement are live.
+
+**Not verified:** run-time stack high-water on the device, sound of the published cycle on the device, mix C on the device and new-scene defaults.

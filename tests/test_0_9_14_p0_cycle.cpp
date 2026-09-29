@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <set>
+#include <vector>
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
@@ -72,6 +73,7 @@ struct Fixture {
     }
     engine.genreManager().setGenerativeMode(GenerativeMode::Techno);
     engine.genreManager().setRecipe(0);
+    engine.setBpm(120.0f);
     GroovePuterState::setGenerationLevel(level);
   }
   ~Fixture() {
@@ -246,24 +248,106 @@ void testRefusals() {
     CHECK(f.engine.generatedPhraseRecipe() == nullptr);
     CHECK(f.cycle() == CycleStatus::NoRecipe);
   }
-  {
-    // Acid is excluded at scenario level: typed refusal, nothing published.
-    Fixture f("p0-cycle-acid", R::RealizationLevel::P3Transformation);
+  // Acid and House: excluded at scenario level. Each must reach a kept phrase WITH a recipe
+  // (otherwise NoRecipe would mask the exclusion) and then be refused as NotAdmitted, with
+  // nothing published.
+  struct Excluded { GenerativeMode mode; GenreRecipeId recipe; const char* project; };
+  for (const Excluded& e : {Excluded{GenerativeMode::Acid, 6, "p0-cycle-acid"},
+                            Excluded{GenerativeMode::Acid, 7, "p0-cycle-acid-rolling"},
+                            Excluded{GenerativeMode::House, 0, "p0-cycle-house"}}) {
+    Fixture f(e.project, R::RealizationLevel::P3Transformation);
     Scene& s = f.scene();
-    s.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::Acid);
-    s.genre.recipe = 6;
+    s.genre.generativeMode = static_cast<uint8_t>(e.mode);
+    s.genre.recipe = e.recipe;
     s.genre.rhythmSelectionMode = static_cast<uint8_t>(R::RhythmSelectionMode::Auto);
     s.genre.rhythmArchetypeId = 0;
-    f.engine.genreManager().setGenerativeMode(GenerativeMode::Acid);
-    f.engine.genreManager().setRecipe(6);
-    if (f.generateKept() && f.engine.generatedPhraseRecipe() != nullptr) {
-      CHECK(f.cycle() == CycleStatus::NotAdmitted);
-      CHECK(f.scene().songs[0].length == 4);
-    } else {
-      CHECK(f.cycle() == CycleStatus::NoRecipe);
-    }
+    f.engine.genreManager().setGenerativeMode(e.mode);
+    f.engine.genreManager().setRecipe(e.recipe);
+    CHECK(f.generateKept());
+    CHECK(f.engine.generatedPhraseRecipe() != nullptr);
+    CHECK(f.cycle() == CycleStatus::NotAdmitted);
+    CHECK(f.scene().songs[0].length == 4);
+    CHECK(f.engine.generatedPhraseRecipe()->cycleSongStart == -1);
   }
-  std::puts("P0 cycle: typed refusals (P2, edited, context, genre, bpm, rows, undo, Acid): PASS");
+  std::puts("P0 cycle: typed refusals (P2, edited, context, genre, bpm, rows, undo, Acid, AcidRolling, House): PASS");
+}
+
+
+// Live path: the cycle is requested while the kept phrase is playing.
+size_t renderBars(MiniAcid& engine, double bars, int* minRow, int* maxRow) {
+  const size_t perBar = static_cast<size_t>(4.0 * 60.0 / engine.bpm() * kSampleRate);
+  const size_t total = static_cast<size_t>(perBar * bars);
+  std::vector<int16_t> pcm(128);
+  for (size_t at = 0; at < total; at += 128) {
+    engine.generateAudioBuffer(pcm.data(), 128);
+    const int row = engine.currentSongPosition();
+    if (minRow && row < *minRow) *minRow = row;
+    if (maxRow && row > *maxRow) *maxRow = row;
+  }
+  return total;
+}
+
+void startPlaying(Fixture& f) {
+  CHECK(f.engine.rebuildPatternRuntimeEventBank());
+  f.engine.setSongMode(true);
+  f.engine.setSongPlaybackSlot(0);
+  f.engine.setSongPosition(0);
+  f.engine.start();
+  int lo = 99, hi = -1;
+  renderBars(f.engine, 0.4, &lo, &hi);
+  CHECK(f.engine.isPlaying() && hi == 0);
+}
+
+void testLivePendingActivation() {
+  Fixture f("p0-cycle-live", R::RealizationLevel::P3Transformation);
+  CHECK(f.generateKept());
+  startPlaying(f);
+  CHECK(f.cycle() == CycleStatus::PendingNextBar);
+  // Rows are published atomically by the commit: all eight are present at once, never partial.
+  for (int b = 0; b < 8; ++b) {
+    CHECK(f.scene().songs[0].positions[4 + b].patterns[static_cast<int>(SongTrack::Drums)] >= 0);
+  }
+  const uint32_t revision = GroovePuterUndo::undoOwner().committedRevision();
+  CHECK(R::PhraseLiveArrangementDetail::hasPendingPhraseActivationForRevision(f.engine, revision));
+  int lo = 99, hi = -1;
+  renderBars(f.engine, 4.0, &lo, &hi);
+  CHECK(hi >= 4);   // activation moved playback into the cycle
+  CHECK(!R::PhraseLiveArrangementDetail::hasPendingPhraseActivationForRevision(f.engine, revision));
+  f.engine.stop();
+  // resources are free again: a second phrase generation is not Busy
+  CHECK(GeneratedPhraseSong::generate(f.engine, 4, 12, kGuard).status !=
+        LifecycleStatus::Busy);
+  std::puts("P0 cycle live: PendingNextBar activates at the bar boundary, nothing left pending: PASS");
+}
+
+void testLiveStopAndUndoWhilePending() {
+  {
+    Fixture f("p0-cycle-live-stop", R::RealizationLevel::P3Transformation);
+    CHECK(f.generateKept());
+    startPlaying(f);
+    CHECK(f.cycle() == CycleStatus::PendingNextBar);
+    f.engine.stop();
+    CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+          GroovePuterUndo::UndoResult::Restored);
+    const uint32_t revision = GroovePuterUndo::undoOwner().committedRevision();
+    CHECK(!R::PhraseLiveArrangementDetail::hasPendingPhraseActivationForRevision(f.engine, revision));
+    CHECK(f.scene().songs[0].positions[4].patterns[static_cast<int>(SongTrack::Drums)] < 0);
+    CHECK(f.cycle() == CycleStatus::CommittedNow);   // no leaked lease or pending state
+  }
+  {
+    Fixture f("p0-cycle-live-undo", R::RealizationLevel::P3Transformation);
+    CHECK(f.generateKept());
+    startPlaying(f);
+    CHECK(f.cycle() == CycleStatus::PendingNextBar);
+    CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+          GroovePuterUndo::UndoResult::Restored);
+    int lo = 99, hi = -1;
+    renderBars(f.engine, 8.0, &lo, &hi);
+    CHECK(hi < 4);   // playback never entered the undone cycle rows
+    f.engine.stop();
+    CHECK(f.cycle() == CycleStatus::CommittedNow);
+  }
+  std::puts("P0 cycle live: stop / Undo while pending leaves no state and no partial cycle: PASS");
 }
 
 }  // namespace
@@ -272,6 +356,8 @@ int main() {
   testNoRecipe();
   testPublishUndoRepeat();
   testRefusals();
+  testLivePendingActivation();
+  testLiveStopAndUndoWhilePending();
   std::puts("0.9.14 P0 cycle: PASS");
   return 0;
 }
