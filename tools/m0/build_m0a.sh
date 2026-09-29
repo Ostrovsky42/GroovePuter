@@ -21,4 +21,8 @@ if (( ${#SRCS[@]} == 0 )); then echo "M0-A ERROR: failed to resolve SDL source s
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) \
   -o "$OUT/m0a_corpus"
 cd "$ROOT"
-M0_OUT="$OUT" "$OUT/m0a_corpus" | tee "$OUT/m0a_report.txt"
+# The tool writes project pages into its working directory: keep that out of the repository.
+OUT="$(cd "$OUT" && pwd)"
+GP_TOOL_WORK="$(mktemp -d "${TMPDIR:-/tmp}/gp-tool-work.XXXXXX")"
+trap 'rm -rf "$GP_TOOL_WORK"' EXIT
+(cd "$GP_TOOL_WORK" && M0_OUT="$OUT" "$OUT/m0a_corpus" | tee "$OUT/m0a_report.txt")

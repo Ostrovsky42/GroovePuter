@@ -9,7 +9,8 @@ mkdir -p "$BUILD" "$OUT"
 CXX="${CXX:-g++}"
 
 cd "$ROOT"
-trap 'rm -rf "$ROOT/patterns" "$ROOT/platform_sdl/patterns" "$ROOT/projects" "$ROOT/grooveputer_scene_name.txt"' EXIT
+source "$ROOT/tests/lib/isolated_workdir.sh"
+isolated_init
 
 echo "== M0-A product firewall (runtime) =="
 pushd platform_sdl >/dev/null
@@ -27,7 +28,7 @@ if (( ${#SRCS[@]} == 0 )); then echo "M0-A ERROR: failed to resolve SDL source s
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) \
   -o "$BUILD/test_0_9_14_m0a_product_firewall"
 popd >/dev/null
-"$BUILD/test_0_9_14_m0a_product_firewall"
+isolated_run "$BUILD/test_0_9_14_m0a_product_firewall"
 
 echo "== M0-A source regressions =="
 python3 "$ROOT/tests/test_0_9_14_m0a_source_regressions.py"

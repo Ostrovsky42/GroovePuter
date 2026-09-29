@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${1:-$ROOT/build/p0/product_cycle}"
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
 CXX="${CXX:-g++}"
 cd "$ROOT/platform_sdl"
 mapfile -t SRCS < <(
@@ -16,9 +17,12 @@ mapfile -t SRCS < <(
   $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
   "${SRCS[@]}" ../tools/m0/p0_cycle_render.cpp \
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "$OUT/p0_cycle_render"
-cd "$ROOT"
-trap 'rm -rf "$ROOT/patterns" "$ROOT/platform_sdl/patterns" "$ROOT/projects" "$ROOT/grooveputer_scene_name.txt"' EXIT
-P0_CYCLE_OUT="$OUT" "$OUT/p0_cycle_render" 2>&1 | grep -E "ok|rendered|FAIL"
+# The renderer writes project pages ("patterns/", "projects/", scene name file) into its working
+# directory. Run it in a private temporary directory and remove only that directory; never
+# touch the repository tree.
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/p0-cycle-render.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+(cd "$WORK" && P0_CYCLE_OUT="$OUT" "$OUT/p0_cycle_render" 2>&1 | grep -E "ok|rendered|FAIL")
 if command -v ffmpeg >/dev/null; then
   for f in "$OUT"/*.wav; do ffmpeg -y -loglevel error -i "$f" -codec:a libmp3lame -b:a 128k "${f%.wav}.mp3"; done
 fi

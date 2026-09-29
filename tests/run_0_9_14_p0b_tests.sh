@@ -7,6 +7,8 @@ BUILD="$ROOT/build/host-tests/0-9-14-p0b"
 mkdir -p "$BUILD"
 CXX="${CXX:-g++}"
 cd "$ROOT"
+source "$ROOT/tests/lib/isolated_workdir.sh"
+isolated_init
 
 echo "== P0-B1 role transforms (pure, exhaustive properties) =="
 "$CXX" -std=c++17 -Wall -Wextra -I"$ROOT" tests/test_0_9_14_p0b_bar_function_roles.cpp -o "$BUILD/p0b_roles"
@@ -23,6 +25,5 @@ echo "== P0-B2 admission compatibility (baseline: golden after B1, before any ad
 python3 tests/test_0_9_14_p0b2_golden_compare.py tests/golden/p0b_bar_function_golden_b1.tsv "$BUILD/tool/p0b_golden.tsv"
 echo "== P0-B2 step 2 compatibility (baseline: golden after steppers) =="
 python3 tests/test_0_9_14_p0b2_golden_compare.py tests/golden/p0b_bar_function_golden_b2_steppers.tsv "$BUILD/tool/p0b_golden.tsv"
-rm -rf "$ROOT/patterns" "$ROOT/platform_sdl/patterns" "$ROOT/projects" "$ROOT/grooveputer_scene_name.txt"
 
 echo "0.9.14 P0-B (B1 + B2 steps): GREEN"

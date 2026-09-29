@@ -7,7 +7,8 @@ mkdir -p "$BUILD"
 CXX="${CXX:-g++}"
 
 cd "$ROOT"
-trap 'rm -rf "$ROOT/patterns" "$ROOT/platform_sdl/patterns" "$ROOT/projects" "$ROOT/grooveputer_scene_name.txt"' EXIT
+source "$ROOT/tests/lib/isolated_workdir.sh"
+isolated_init
 
 echo "== D1-B1 focused runtime test =="
 pushd platform_sdl >/dev/null
@@ -31,7 +32,7 @@ fi
   -o "$BUILD/test_0_9_14_d1b1_pitch_class_origin"
 popd >/dev/null
 
-"$BUILD/test_0_9_14_d1b1_pitch_class_origin"
+isolated_run "$BUILD/test_0_9_14_d1b1_pitch_class_origin"
 
 echo "== D1-B1 source regressions =="
 python3 "$ROOT/tests/test_0_9_14_d1b1_source_regressions.py"

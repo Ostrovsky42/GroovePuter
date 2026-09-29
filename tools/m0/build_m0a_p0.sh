@@ -22,4 +22,8 @@ mapfile -t SRCS < <(
   -o "$OUT/m0a_p0"
 cd "$ROOT"
 if [[ -n "${M0_P0_BUILD_ONLY:-}" ]]; then exit 0; fi
-M0_P0_OUT="$OUT" "$OUT/m0a_p0" | tee "$OUT/p0_report.txt"
+# The tool writes project pages into its working directory: keep that out of the repository.
+OUT="$(cd "$OUT" && pwd)"
+GP_TOOL_WORK="$(mktemp -d "${TMPDIR:-/tmp}/gp-tool-work.XXXXXX")"
+trap 'rm -rf "$GP_TOOL_WORK"' EXIT
+(cd "$GP_TOOL_WORK" && M0_P0_OUT="$OUT" "$OUT/m0a_p0" | tee "$OUT/p0_report.txt")
