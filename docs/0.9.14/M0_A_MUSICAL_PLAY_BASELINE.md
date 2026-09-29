@@ -3,9 +3,10 @@
 Base: D1-C1 (`feature/20260929-m0-musical-play-baseline`). Nature of this checkpoint:
 **measurement, not redesign.** No production musical behaviour was changed by M0-A.
 
-**Evidence limits, up front.** Everything below is *structural* evidence computed on
-deterministic host corpora. **No human listening has happened yet**; the listening cards
-are prepared but unanswered. Thresholds in the pair comparison are descriptive and
+**Evidence limits, up front.** Sections 1 to 10 are *structural* evidence computed on
+deterministic host corpora, written **before** any listening. Four listening passes by one
+unblinded listener (the project owner, who knew the labels) are recorded in section 11 and
+they, not the structural numbers, drive the decision in section 12. Thresholds in the pair comparison are descriptive and
 arbitrary. Most numbers are for one identity (ordinal 11) or 24/48 sampled identities, not
 the full identity space. Where a claim depends on listening it is marked *(needs ears)*.
 
@@ -239,11 +240,11 @@ That matches the structural data where the changed cells are largest (Dub P3 Dev
 UKG agrees with the structural data the other way: DEVELOP differed in 3/4 drum bars by a few cells and was not heard.
 
 What it does **not** support (keep these separate):
-* **RETURN is not tested as production.** The RETURN section is the kept idea repeated exactly; recognizing an exact
-  repeat is expected. Production's own return (last bar of BREAK) restores rhythm only and was not judged separately.
+* **RETURN was not tested as production in this first pass.** The RETURN section is the kept idea repeated exactly; recognizing an exact
+  repeat is expected. Production's own return (last bar of BREAK) was judged in the fourth pass below.
 * DEVELOP/BREAK here come from a law forced onto a stitched phrase. No user action produces them today.
-* One listener who knew the labels; three of five genres; DnB (173 BPM) excluded; Acid had nothing to judge; the `D`-key files, the one-minute pair
-  and the production return bar are still unheard.
+* One listener who knew the labels; three of five genres; DnB (173 BPM) excluded; Acid had nothing to judge. (The `D`-key files, the one-minute
+  pair, the bass-audibility files and the production return bar were heard in the later passes below.)
 * Q7 (anything beyond the bar level) and Q5 (unpredictability after 30 seconds) remain open.
 
 ### Second listening pass and an audio diagnostic
@@ -259,7 +260,7 @@ Diagnostic on the renders (host, real engine, default faders: every track 1.0, m
 * Consequence: at the default mix, development in bass or harmony is inaudible; what was heard as DEVELOP/BREAK in the first
   pass came from the drum lanes. This is a realization/mix finding, not a preservation finding.
 * Caveat: this is the engine's default mix on a host; the device output stage was not compared.
-  Extra files (`*_drums_down`, `Techno_5_synthA_only_before_after`) test it; they are unheard.
+  The extra files (`*_drums_down`, `Techno_5_synthA_only_before_after`) were heard in the third pass below.
 
 Reading of the two passes together: the `D` key is a dead feature at the default mix; variety across phrases (TAKEs) is what the listener
 finds interesting, and a looping phrase is not. That argues for a related-sections cycle (P0), not for another register operation.
@@ -270,11 +271,11 @@ finds interesting, and a looping phrase is not. That argues for a related-sectio
   it is masked by the drums at the default mix.
 * `Techno_6_sequence_drums_down`: no difference noticed. Expected from the structural data: Techno's P3 development changes only
   drum lanes (bass rhythm, bass pitch, chord: 0 changed bars), so lowering the drums removes the only thing that changed.
-* `Dub_6_sequence_drums_down`: the difference is **clearly audible**. Also expected: Dub's P3 DevelopReturn/SparseDrift change bass
-  and chord attacks, which are exactly what becomes audible when the drums are pulled down.
+* `Dub_6_sequence_drums_down`: the difference is **clearly audible**. Also expected: Dub's P3 SparseDrift (the BREAK section) changes bass
+  and chord attacks (Dub's DevelopReturn changes drums only), which is what becomes audible when the drums are pulled down.
 
 Prediction from structure matched hearing in all three files. Readings: (1) the default mix hides bass/harmony change;
-(2) development that reaches bass and chords is audible and welcome (Dub); development confined to drums is what Techno/UKG offer;
+(2) change that reaches bass and chords is audible and welcome (Dub's BREAK); development confined to drums is what Techno/UKG offer;
 (3) the mix balance is therefore a P0 exit criterion, not polish.
 
 ### Fourth listening pass (production return)
@@ -286,16 +287,14 @@ the whole kept idea. This removes one item from the P0 scope.
 ## 12. Decision
 
 The M0-A decision rule set before listening was: mostly YES on "related but changed" and "recognizably a return" moves the
-answer to IMPLEMENT MUSICAL PLAY P0. Two of three files meet it and the third fails only on DEVELOP strength.
+answer to IMPLEMENT MUSICAL PLAY P0. Two of three files met it; the third failed only on DEVELOP strength.
 
-**M0-A → IMPLEMENT MUSICAL PLAY P0, narrow and conditional** (was: FIX REALIZATION FIRST, provisional).
+**M0-A → IMPLEMENT MUSICAL PLAY P0, narrow and conditional** (was: FIX REALIZATION FIRST, before listening).
 
-* **Scope of the first slice:** one section-level DEVELOP / BREAK / RETURN cycle on the KEPT idea, at 4 bars, using the
-  existing P3 bar-function programmes, for archetypes admitted to phrase evolution. RETURN = the existing Return bar function (heard as a return in the fourth pass); no
-  whole-idea restoration is required for P0. (D1-B/B1 origin evidence can still supply the stored identity used to re-derive the kept idea.)
-* **Realization work moves inside P0 as exit criteria, not before it:** development must reach bass and chord lanes as well as
-  drums, and the default mix must let those lanes be heard (synth lanes are ~16 dB under the drums today) (UKG showed drum-only change is too quiet); Acid and House must be admitted or excluded explicitly; 8-bar phrases exist only for Dub.
-* **What would reverse this:** the still-unheard checks. If the `D`-key files already sound like development, the gap is smaller than measured.
-  If the production return bar (Dub 0:27–0:28) is not heard as a return, RETURN needs more than exposure. If the one-minute pair still
-  feels like it goes nowhere after a DEVELOP/BREAK cycle exists, revisit the model.
-* **Confidence:** moderate-low. One unblinded listener and an ideal RETURN. This is a reason to start a narrow slice, not to declare the model proven.
+* **First slice (no UI):** re-derive the kept generated phrase with a different phrase law and commit a cycle of 4-bar sections
+  (DEVELOP, BREAK with its own Return bar) through the existing generated-phrase transaction. See `P0_MUSICAL_PLAY_SPEC.md`.
+* **RETURN** is the existing `BarFunction::Return` (it is the fourth bar of the SparseDrift programme). It was heard as a return.
+* **Realization work stays inside P0 as exit criteria:** development must reach bass or chord lanes in the included scenarios,
+  and the default mix must let those lanes be heard (synth lanes are about 16 dB under the drums today; faders max at 1.5, about +3.5 dB).
+* **Not established:** the model in general. One unblinded listener, three of five genres, a stitched simulation rather than a product path,
+  a host mix. This justifies a bounded experiment, nothing more.
