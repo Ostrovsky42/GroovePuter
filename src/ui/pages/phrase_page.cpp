@@ -541,6 +541,15 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const auto depth = GroovePuterState::currentGenerationLevel();
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const bool live = hasLiveBarFocus();
+  const auto* recipe = mini_acid_.generatedPhraseRecipe();
+  const auto* cycleOrigin = mini_acid_.generatedSynthAOrigin();
+  const int cycleBars = recipe != nullptr && cycleOrigin != nullptr &&
+          recipe->cycleSongStart >= 0 &&
+          recipe->songSlot == std::clamp(scene.activeSongSlot, 0, 1) &&
+          (cycleOrigin->common.barCount == 4 || cycleOrigin->common.barCount == 8) &&
+          recipe->cycleSongStart + cycleOrigin->common.barCount <=
+              scene.songs[recipe->songSlot].length
+      ? cycleOrigin->common.barCount : 0;
 
   UI::drawStandardHeader(gfx, mini_acid_, "MATERIAL");
 
@@ -618,18 +627,34 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.setTextColor(outcomeColor);
   gfx.drawText(x + 70, LayoutManager::lineY(2), line);
 
+  const auto drawCycleSummary = [&]() {
+    if (cycleBars == 0) return false;
+    std::snprintf(line, sizeof(line), "%s %dB -> SONG %c%d-%d",
+                  cycleBars == 4 ? "BREAK ONLY" : "GROW", cycleBars,
+                  static_cast<char>('A' + recipe->songSlot),
+                  recipe->cycleSongStart + 1,
+                  recipe->cycleSongStart + cycleBars);
+    gfx.setTextColor(palette.accent);
+    gfx.drawText(x, LayoutManager::lineY(3), line);
+    return true;
+  };
+
   if (!live) {
-    gfx.setTextColor(palette.dim);
-    gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
+    if (!drawCycleSummary()) {
+      gfx.setTextColor(palette.dim);
+      gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
+    }
     gfx.drawText(x, LayoutManager::lineY(4), "G CREATES A NEW TAKE");
   } else {
-    std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
-                  static_cast<unsigned>(accepted.bars),
-                  static_cast<char>('A' + accepted.songSlot),
-                  accepted.songStart + 1,
-                  accepted.songStart + accepted.bars);
-    gfx.setTextColor(palette.text);
-    gfx.drawText(x, LayoutManager::lineY(3), line);
+    if (!drawCycleSummary()) {
+      std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
+                    static_cast<unsigned>(accepted.bars),
+                    static_cast<char>('A' + accepted.songSlot),
+                    accepted.songStart + 1,
+                    accepted.songStart + accepted.bars);
+      gfx.setTextColor(palette.text);
+      gfx.drawText(x, LayoutManager::lineY(3), line);
+    }
 
     if (product_bar_cursor_ >= accepted.bars) product_bar_cursor_ = 0;
     const int playingBar = currentGeneratedBar(mini_acid_, accepted);
@@ -659,7 +684,53 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
-                         "G:GEN P:DEPTH ENT:BAR");
+                         "G:TAKE D:GROW P:STYLE");
+}
+
+bool PhrasePage::growKeptPhrase() {
+  const auto* recipe = mini_acid_.generatedPhraseRecipe();
+  if (recipe != nullptr && recipe->bars != GeneratedPhraseSong::kCycleSectionBars) {
+    UI::showToast("MAKE A 4B TAKE TO GROW", 1800);
+    return true;
+  }
+  const GeneratedPhraseSong::CycleResult result =
+      GeneratedPhraseSong::generateCycle(mini_acid_, [&](auto&& operation) {
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
+      });
+
+  if (result) {
+    const char* section = result.developSkipped ? "BREAK ONLY" :
+                          result.breakSkipped ? "DEVELOP ONLY" : "DEVELOP + BREAK";
+    char message[48];
+    std::snprintf(message, sizeof(message), "%s %uB %s", section,
+                  static_cast<unsigned>(result.bars),
+                  result.status == GeneratedPhraseSong::CycleStatus::PendingNextBar
+                      ? "NEXT BAR" : "IN SONG");
+    UI::showToast(message, 1800);
+    invalidatePreview();
+    return true;
+  }
+
+  using S = GeneratedPhraseSong::CycleStatus;
+  const char* message = "CYCLE FAILED";
+  switch (result.status) {
+    case S::NoRecipe: message = "MAKE A 4B TAKE FIRST"; break;
+    case S::CycleAlreadyPublished: message = "CYCLE ALREADY IN SONG"; break;
+    case S::NothingToAdd: message = "NO NEW SECTION"; break;
+    case S::NotAdmitted: message = "THIS STYLE CANNOT GROW"; break;
+    case S::DepthNotP3: message = "SET REWORK, THEN NEW TAKE"; break;
+    case S::ContextChanged: message = "SOURCE CHANGED: NEW TAKE"; break;
+    case S::EditedSinceGeneration: message = "TAKE EDITED: CANNOT GROW"; break;
+    case S::NoSafeSlots: message = "NO FREE PATTERN SLOTS"; break;
+    case S::RowsOccupied: message = "SONG ROWS OCCUPIED"; break;
+    case S::ReservationFailed: message = "MATERIAL IDS UNAVAILABLE"; break;
+    case S::TargetChanged: message = "TARGET CHANGED: RETRY"; break;
+    case S::Busy: message = "WAIT: GENERATION BUSY"; break;
+    default: break;
+  }
+  UI::showToast(message, 1800);
+  return true;
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
@@ -707,6 +778,9 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g') {
     return generatePhraseToSong();
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'd') {
+    return growKeptPhrase();
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
     const auto level = GroovePuterState::cycleGenerationLevel();

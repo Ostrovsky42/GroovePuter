@@ -14,11 +14,44 @@
 #include "src/audio/pattern_paging.h"
 #include "src/dsp/generated_phrase_song.h"
 #include "src/state/generation_request_state.h"
+#include "src/ui/pages/phrase_page.h"
+#include "src/ui/ui_common.h"
 
 SerialMock Serial;
 SDMock SD;
 
 namespace {
+
+class CycleGfx : public IGfx {
+ public:
+  std::vector<std::string> labels;
+  void begin() override {}
+  void clear(IGfxColor) override {}
+  void drawPixel(int, int, IGfxColor) override {}
+  void drawText(int, int, const char* value) override { labels.emplace_back(value ? value : ""); }
+  void drawImage(int, int, const uint16_t*, int, int) override {}
+  void drawRect(int, int, int, int, IGfxColor) override {}
+  void drawCircle(int, int, int, IGfxColor) override {}
+  void drawKnobFace(int, int, int, IGfxColor, IGfxColor) override {}
+  void fillRect(int, int, int, int, IGfxColor) override {}
+  void fillCircle(int, int, int, IGfxColor) override {}
+  void drawLine(int32_t, int32_t, int32_t, int32_t, IGfxColor) override {}
+  void setRotation(int) override {}
+  void setTextColor(IGfxColor) override {}
+  void setTextColor(uint16_t) override {}
+  void setFont(GfxFont) override {}
+  void startWrite() override {}
+  void endWrite() override {}
+  void flush() override {}
+  int textWidth(const char* value) const override { return value ? std::strlen(value) : 0; }
+  int fontHeight() const override { return 8; }
+  int width() const override { return 240; }
+  int height() const override { return 135; }
+  bool shows(const char* phrase) const {
+    for (const auto& label : labels) if (label.find(phrase) != std::string::npos) return true;
+    return false;
+  }
+};
 
 namespace R = GroovePuterRhythm;
 using GeneratedPhraseSong::CycleStatus;
@@ -414,6 +447,63 @@ void testDevelopEqualsKeptIsSkipped() {
   std::puts("P0 cycle: DEVELOP equal to the kept phrase is skipped, BREAK published alone; other identities keep 8 bars: PASS");
 }
 
+void testPhrasePageCycleGesture() {
+  {
+    Fixture f("p0-ui-short", R::RealizationLevel::P3Transformation);
+    CHECK(GeneratedPhraseSong::generate(f.engine, 2, 0, kGuard).status ==
+          LifecycleStatus::CommittedNow);
+    CycleGfx gfx;
+    PhrasePage page(gfx, f.engine, AudioGuard{}, false);
+    UIEvent key{};
+    key.event_type = GROOVEPUTER_KEY_DOWN;
+    key.key = 'd';
+    CHECK(page.handleEvent(key));
+    CHECK(f.scene().songs[0].length == 2);
+    UI::drawToast(gfx);
+    CHECK(gfx.shows("4B TAKE"));
+  }
+  {
+    Fixture f("p0-ui-p2", R::RealizationLevel::P2Variation);
+    CHECK(f.generateKept());
+    CycleGfx gfx;
+    PhrasePage page(gfx, f.engine, AudioGuard{}, false);
+    UIEvent key{};
+    key.event_type = GROOVEPUTER_KEY_DOWN;
+    key.key = 'd';
+    CHECK(page.handleEvent(key));
+    CHECK(f.scene().songs[0].length == 4);
+    UI::drawToast(gfx);
+    CHECK(gfx.shows("REWORK"));
+  }
+  {
+    Fixture f("p0-ui-p3", R::RealizationLevel::P3Transformation);
+    CHECK(f.generateKept());
+    CycleGfx gfx;
+    PhrasePage page(gfx, f.engine, AudioGuard{}, false);
+    UIEvent key{};
+    key.event_type = GROOVEPUTER_KEY_DOWN;
+    key.key = 'd';
+    CHECK(page.handleEvent(key));
+    const auto* recipe = f.engine.generatedPhraseRecipe();
+    CHECK(recipe != nullptr);
+    CHECK(f.scene().songs[0].length == 8 || f.scene().songs[0].length == 12);
+    UI::drawToast(gfx);
+    CHECK(gfx.shows("BREAK") || gfx.shows("DEVELOP"));
+    gfx.labels.clear();
+    page.draw(gfx);
+    CHECK(gfx.shows("GROW 8B") || gfx.shows("BREAK ONLY 4B"));
+    UIEvent undo{};
+    undo.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    undo.app_event_type = GROOVEPUTER_APP_EVENT_UNDO;
+    CHECK(page.handleEvent(undo));
+    CHECK(f.scene().songs[0].length == 4);
+    gfx.labels.clear();
+    page.draw(gfx);
+    CHECK(!gfx.shows("GROW 8B") && !gfx.shows("BREAK ONLY 4B"));
+  }
+  std::puts("P0 cycle: PHRASE D gesture, P2 guidance and one-step Undo: PASS");
+}
+
 }  // namespace
 
 int main() {
@@ -421,6 +511,7 @@ int main() {
   testPublishUndoRepeat();
   testRefusals();
   testDevelopEqualsKeptIsSkipped();
+  testPhrasePageCycleGesture();
   testLivePendingActivation();
   testLiveStopAndUndoWhilePending();
   std::puts("0.9.14 P0 cycle: PASS");

@@ -1,6 +1,6 @@
 # 0.9.14 P0 — Musical play, first slice (specification only)
 
-Status: **specification; engine path implemented (section 11), no UI.** Base: `fa326f45` (M0-A). Decision source: `M0_A_MUSICAL_PLAY_BASELINE.md` §11–12.
+Status: **engine path implemented; MATERIAL page D gesture under verification (section 13); device acceptance open.** Base: `fa326f45` (M0-A). Decision source: `M0_A_MUSICAL_PLAY_BASELINE.md` §11–12.
 
 Tags used below: **[OBSERVED]** read from code or measured; **[INFERENCE]** reasoned, not verified; **[OPEN]** needs an owner
 decision or a measurement before build.
@@ -8,22 +8,22 @@ decision or a measurement before build.
 ## 1. What P0 is
 
 One engine-level action that turns the kept generated phrase into a short arc, so that a player who pressed TAKE once can hear the
-idea developed, broken and returned to, at 4-bar sections, with no UI change.
+idea developed, broken and returned to, at 4-bar sections. Section 13 documents the subsequent UI gesture.
 
-Cycle of 4-bar sections, in order, after the original section A (TAKE, phrase law Loop):
+Cycle of 4-bar sections, in order, after the original section A (TAKE, its naturally selected phrase law):
 
 | Section | Phrase law, depth | Bar functions [OBSERVED, `phraseTrajectoryForLaw`, M0-A corpus] |
 |---|---|---|
-| A (already exists) | Loop | Statement ×4 |
+| A (already exists) | naturally selected | determined by the accepted TAKE; see §12 |
 | DEVELOP | DevelopReturn, P3 | Statement, Build, RepeatWithGhosts, **Turnaround** |
 | BREAK | SparseDrift, P3 | Statement, RepeatWithGhosts, **Break**, **Return** |
 
 * The **Return** bar is the fourth bar of the BREAK section. DEVELOP does not return inside itself; it ends in Turnaround.
 * RETURN acceptance uses that production Return bar. An exact repeat of A (as in the audition renders) is **not** part of acceptance.
   [OBSERVED: the production Return bar was heard as a return, fourth listening pass.]
-* Only the 8 new bars are published (DEVELOP + BREAK). Bounded by the existing `reserveMaterialIds(≤8)` and by a page of 16 slots.
+* Four or eight new bars are published. A section whose programme already equals A is skipped (§12). Bounded by the existing `reserveMaterialIds(≤8)` and by a page of 16 slots.
 
-Non-goals: UI, keys, toasts; KEEP as a workflow; repeated development A → A′ → A″; persistence across sessions; new preservation claims;
+Non-goals: KEEP as a workflow; repeated development A → A′ → A″; persistence across sessions; new preservation claims;
 Genre validation; changing the DSP.
 
 ## 2. Rebuild contract (what "the kept idea" means)
@@ -46,7 +46,7 @@ Cleared on Undo of the phrase, on successful Legacy generation and on scene load
 
 ### 2.2 Replay verification R0 (reproduces the source phrase only)
 
-1. Rebuild the phrase **with the original law** from the stored recipe.
+1. Rebuild the phrase **with its naturally selected law** from the stored recipe.
 2. Compare the rebuilt **canonical musical events of every lane** (Synth A, Synth B, drums) with the phrase currently in the Song rows.
    "Equal" means equal note/hit, step, timing offset, duration, articulation flags, velocity/probability and effect fields as a canonical
    event list, **not** raw memory bytes (padding and service fields are excluded). Any difference → typed refusal; never publish a partly matching arc.
@@ -190,7 +190,7 @@ Recommendation: (b), because the same corpus shows the limit is the transformati
 
 ## 8. Open decisions
 
-1. Choose (a), (b) or (c) from §9 (unanswered); fader values are chosen (mix B) pending a device check; which new-scene paths change.
+1. The historical §9 choice was superseded by the B1/B2 realization changes and the engine path in §11. Mix C is the current audition candidate (§10); new-scene defaults and a device check remain open.
 2. Ordinary path for depth (section 2.4 and 11): P3 TAKE, or explicit P2 development. Measurement is done (section 9); the decision before wiring a user action is open.
 3. The identity set beyond 0–7 (the UKG control example).
 4. Later: supporting edited phrases (a future product task, not P0).
@@ -221,7 +221,7 @@ Tests: `tests/run_0_9_14_p0_cycle_tests.sh` (in CI), all other gates green at `8
 
 **Firmware build (Xtensa, `scripts/build.sh`, loop stack 32768 B) [OBSERVED]:**
 * Permanent DRAM (`.dram0.data + .dram0.bss`): 189736 B before the recipe (`ccd0c6b0`), 189784 B after: **+48 B**, exactly the recipe. `.data` unchanged.
-* Static stack frames (`-fstack-usage`, measured with a temporary call site behind a build flag, not committed, since the cycle is not called from any UI yet):
+* Static stack frames (`-fstack-usage`, measured before the UI gesture using a temporary call site behind a build flag, not committed):
   `generateCycle` 5216 B, `verifyKeptPhrase` 2896, `preparePhraseExecution` 1200, `applyPhraseLawToExecution` 704, `materializeOneBar` 160.
   For comparison `generate` 2576, `prepareWithGenerationAttempt` 1808, `applyPreparedPersistent` 1536.
   Deepest known chain `generateCycle -> verifyKeptPhrase -> preparePhraseExecution` = about 9.3 KB of static frames before the frames below `preparePhraseExecution`
@@ -244,5 +244,12 @@ Section 1 of this document assumed "A = Loop"; that is not what production makes
 * The earlier "empty DEVELOP" is therefore not a missing legal transformation (the ghost-add search, the bass Build/Turnaround add and the protected spaces are not the cause);
   it is a request that names the law A already has.
 
-Not yet decided (owner): what DEVELOP is when A already is DevelopReturn. Options: (a) publish BREAK only (four bars) and say so with a typed status; (b) use RepeatReply for
-DEVELOP (differs from A physically; it is a reply, not a development); (c) leave the repeat and label it. R0 is unaffected: it rebuilds A with its natural law and passes.
+**Resolved in `008ef57`:** when DEVELOP would repeat A, publish BREAK alone (four bars) and return `developSkipped=true`, `bars=4`. Otherwise publish DEVELOP and BREAK (eight bars). When neither section adds anything, return `NothingToAdd`. R0 still rebuilds A with its natural law. The original §1 table's `A = Loop` describes the first stitched audition, not the natural law of a product TAKE.
+
+## 13. MATERIAL page gesture (post-engine UI slice)
+
+On the product MATERIAL page, select **STYLE REWORK** and **LENGTH 4B**, then press **G** to generate a new TAKE. Press **D** while its source context is still valid. D calls the existing `GeneratedPhraseSong::generateCycle` on the UI/control thread; it does not perform musical work in the audio callback. A successful result says `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`, followed by `IN SONG` or `NEXT BAR`. The MATERIAL page keeps a compact cycle and Song-row summary visible while the session recipe and published origin remain live. The existing generated-phrase Undo receipt removes the whole addition in one action and clears the summary. The MATERIAL BANK page keeps its distinct D (derive) command.
+
+A source TAKE at a different length is refused before invoking the cycle, with `MAKE A 4B TAKE TO GROW`. A P2 source is refused by the engine and presented as `SET REWORK, THEN NEW TAKE`; changing STYLE after the TAKE cannot silently convert its already generated material. Other typed failures are shown as brief cause-specific messages. This gesture does not change the default P2 style, persist the session recipe, or claim support for edited A, Acid, or House.
+
+**Device gate remains open:** build the exact UI candidate with FS1B, record ELF/BIN checksum and DRAM, flash that BIN, then test both the eight-bar and four-bar outcomes, bar-boundary activation while playing, Undo, repeated attempt, visible refusals, and stack/heap high-water under repeated cycles. Assess mix C with the physical output separately; a host render does not set new-scene faders.

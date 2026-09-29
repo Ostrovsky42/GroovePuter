@@ -107,6 +107,7 @@ class PhrasePage : public IPage {
 
   void drawProductView(IGfx& gfx);
   bool handleProductEvent(UIEvent& ui_event);
+  bool growKeptPhrase();
   void cycleRequestedLength(int delta);
   void cycleProductBar(int delta);
   bool focusProductBar();
