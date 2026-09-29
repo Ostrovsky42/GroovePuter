@@ -264,6 +264,45 @@ PhraseExecutionStatus preparePhraseExecution(
   return destination.status;
 }
 
+PhraseLawApplyStatus applyPhraseLawToExecution(PreparedPhraseExecution& execution,
+                                               PhraseEvolutionLawId law) {
+  if (execution.status != PhraseExecutionStatus::Ready) {
+    return PhraseLawApplyStatus::InvalidContext;
+  }
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          execution.selection.composition.rhythmArchetypeId);
+  if (definition == nullptr) return PhraseLawApplyStatus::InvalidContext;
+
+  execution.phraseTrajectory = kNoTrajectoryId;
+  execution.phrasePlan = RhythmPhrasePlan{};
+  execution.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
+  if (law == PhraseEvolutionLawId::Loop) return PhraseLawApplyStatus::Applied;
+
+  const uint8_t bars = execution.length.effectivePhraseBars;
+  const TrajectoryId requested = admittedPhraseTrajectory(
+      execution.settings, execution.selection.composition.rhythmArchetypeId,
+      law, execution.materialization.level, bars);
+  if (requested == kNoTrajectoryId) return PhraseLawApplyStatus::NotAdmitted;
+
+  BarEvolutionRequest evolution{};
+  evolution.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
+  evolution.archetypeId = definition->archetypeId;
+  evolution.phraseBars = bars > kMaxPhraseBars ? kMaxPhraseBars : bars;
+  evolution.level = execution.materialization.level;
+  evolution.generation = execution.selection.realizationGeneration;
+  evolution.structuralDensityTarget = execution.selection.structuralDensityTarget;
+  evolution.requestedTrajectoryId = requested;
+  const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
+  if (evolved.status != BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
+    return PhraseLawApplyStatus::NoEligibleTrajectory;
+  }
+  execution.phraseTrajectory = requested;
+  execution.phrasePlan = evolved.plan;
+  execution.selection.composition.phraseLaw = law;
+  return PhraseLawApplyStatus::Applied;
+}
+
 StrongRhythmMigrationResult materializePreparedPhraseBar(
     const PreparedPhraseExecution& prepared,
     uint8_t phraseBarOrdinal,

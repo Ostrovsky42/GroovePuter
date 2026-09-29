@@ -245,34 +245,15 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
   if (def) out.suggestedBpm = 0.5f * (def->suggestedBpmMin + def->suggestedBpmMax);
 
   if (opt.lawOverride >= 0) {
-    const auto law = static_cast<R::PhraseEvolutionLawId>(opt.lawOverride);
-    R::TrajectoryId requested = R::phraseTrajectoryForLaw(law, opt.level);
-    exec.phraseTrajectory = R::kNoTrajectoryId;
-    exec.phrasePlan = R::RhythmPhrasePlan{};
-    exec.selection.composition.phraseLaw = R::PhraseEvolutionLawId::Loop;
-    if (law != R::PhraseEvolutionLawId::Loop) {
-      if (requested == R::kNoTrajectoryId || def == nullptr ||
-          !R::phraseEvolutionAdmitted(engine.sceneManager().currentScene().genre, def->key)) {
-        out.status = "NOT_APPLICABLE(archetype not admitted to phrase evolution)";
-        return false;
-      }
-      R::BarEvolutionRequest ev{};
-      ev.catalog = &R::ReferenceVocabulary::phraseEvolutionCatalog();
-      ev.archetypeId = def->archetypeId;
-      ev.phraseBars = exec.length.effectivePhraseBars > R::kMaxPhraseBars
-          ? R::kMaxPhraseBars : exec.length.effectivePhraseBars;
-      ev.level = opt.level;
-      ev.generation = exec.selection.realizationGeneration;
-      ev.structuralDensityTarget = exec.selection.structuralDensityTarget;
-      ev.requestedTrajectoryId = requested;
-      const auto evolved = R::evolveRhythmPhrase(ev);
-      if (evolved.status != R::BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
-        out.status = "NOT_APPLICABLE(no eligible trajectory for this bar count/level)";
-        return false;
-      }
-      exec.phraseTrajectory = requested;
-      exec.phrasePlan = evolved.plan;
-      exec.selection.composition.phraseLaw = law;
+    // The law is re-applied by the SAME function production uses (single source of truth).
+    const auto status = R::applyPhraseLawToExecution(exec, static_cast<R::PhraseEvolutionLawId>(opt.lawOverride));
+    if (status == R::PhraseLawApplyStatus::NotAdmitted) {
+      out.status = "NOT_APPLICABLE(archetype not admitted to phrase evolution)";
+      return false;
+    }
+    if (status != R::PhraseLawApplyStatus::Applied) {
+      out.status = "NOT_APPLICABLE(no eligible trajectory for this bar count/level)";
+      return false;
     }
   }
   out.law = exec.selection.composition.phraseLaw;

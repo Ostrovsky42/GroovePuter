@@ -40,8 +40,10 @@ CAT = read("src/generation/rhythm/reference_phrase_catalog_data.h")
 req("GenerativeMode::Acid" in ADM and "GenerativeMode::House" in ADM, "Acid and House must be excluded at scenario level")
 req("phraseEvolutionAdmitted(genre, definition->key)" in EXEC, "phrase execution must use the scenario-level admission")
 req("phraseEvolutionAdmitted(auditionSettings, selection.archetype)" in BRIDGE, "live audition must use the scenario-level admission")
-req("phraseEvolutionAdmitted(engine.sceneManager().currentScene().genre" in read("tools/m0/m0a_corpus.cpp"),
-    "the M0 tool must call the same admission function as production")
+req("applyPhraseLawToExecution(" in read("tools/m0/m0a_corpus.cpp"),
+    "the M0 tool must apply phrase laws through the same product helper")
+req("applyPhraseLawToExecution" in EXEC and "= admittedPhraseTrajectory(\n      execution.settings" in EXEC,
+    "the product law helper must go through the shared admission")
 # Archetypes whose hard relationship makes the multi-bar catalog INVALID must never be whitelisted
 # (probe, P0-B2: 401 straight_drive, 402 offbeat_open_hat, 409 one_drop_space, 419 shuffled_4x4).
 for bad in (401, 402, 409, 419):
