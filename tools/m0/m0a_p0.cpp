@@ -142,8 +142,8 @@ int main() {
       const bool retRhythm = sameDrums(ret, a.bar[0]) && ret.a.attacks == a.bar[0].a.attacks && ret.b.attacks == a.bar[0].b.attacks;
       ++agg.n;
       if (cycle) ++agg.pass; else agg.failing.push_back("ord" + std::to_string(o));
-      std::printf("  %-9s ord=%u %-18s DEVELOP d/b/p/c=%d/%d/%d/%d  BREAK d/b/p/c=%d/%d/%d/%d  cycle bass|chord=%s  returnRhythm=%s\n",
-                  name, o, a.archetype.c_str(), sd.drums, sd.bassRhythm, sd.bassPitch, sd.chord, sb.drums, sb.bassRhythm,
+      std::printf("  %-9s ord=%u %-18s bassId=%-14s DEVELOP d/b/p/c=%d/%d/%d/%d  BREAK d/b/p/c=%d/%d/%d/%d  cycle bass|chord=%s  returnRhythm=%s\n",
+                  name, o, a.archetype.c_str(), R::bassRhythmName(a.bar[0].bassId), sd.drums, sd.bassRhythm, sd.bassPitch, sd.chord, sb.drums, sb.bassRhythm,
                   sb.bassPitch, sb.chord, cycle ? "YES" : "no", retRhythm ? "restored" : "differs");
       tsv << name << '\t' << o << '\t' << a.archetype << "\tYES\t" << sd.drums << '\t' << sd.bassRhythm << '\t' << sd.bassPitch
           << '\t' << sd.chord << '\t' << sb.drums << '\t' << sb.bassRhythm << '\t' << sb.bassPitch << '\t' << sb.chord << '\t'
