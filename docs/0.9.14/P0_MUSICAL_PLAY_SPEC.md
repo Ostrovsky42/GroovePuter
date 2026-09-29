@@ -193,3 +193,9 @@ Recommendation: (b), because the same corpus shows the limit is the transformati
 2. Whether a P2 phrase can be developed after the §2.4 measurement, or P3 stays required.
 3. The identity set beyond 0–7 (the UKG control example).
 4. Later: supporting edited phrases (a future product task, not P0).
+
+## 10. Mix update after B1 listening
+
+At mix B (synths 1.5, drums 0.8) the bass was still too quiet on `broken_techno_ord0`. Owner decision: **mix C (synths 1.5, drums 0.45) as the candidate**, no DSP gain change, DEVELOP strength unchanged
+until the other seven renders are heard. Mix C puts the synth lanes about 8 dB under the drums and the drums about 5 dB under their default level; whether the drums are still strong enough is a listening question.
+Eight cycles at mix C are on the audition page. Device check and new-scene-path identification remain open (spec section 6).

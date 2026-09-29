@@ -136,12 +136,13 @@ int main() {
       if (!makePhrase(*g, 4, it.ordinal, oa, a) || !makePhrase(*g, 4, it.ordinal, od, d) || !makePhrase(*g, 4, it.ordinal, ob, b)) continue;
       std::vector<const BarRec*> bars;
       for (const Phrase* ph : {&a, &d, &b}) for (const BarRec& br : ph->bar) bars.push_back(&br);
-      g_mix = MixSettings{1.5f, 1.5f, 0.8f};
+      const bool mixC = std::string(std::getenv("M0_P0_AUDITION_B1")) == "C";
+      g_mix = MixSettings{1.5f, 1.5f, mixC ? 0.45f : 0.8f};
       std::vector<int16_t> pcm; std::string note;
       const bool ok = render(*g, a.suggestedBpm, bars, pcm, note);
       g_mix = MixSettings{};
       const SectionDiff sd = diffAgainst(a, d), sb = diffAgainst(a, b);
-      const std::string name = std::string(it.name) + "_ord" + std::to_string(it.ordinal) + "_B1_mixB";
+      const std::string name = std::string(it.name) + "_ord" + std::to_string(it.ordinal) + (mixC ? "_B1_mixC" : "_B1_mixB");
       writeWav(out + "/audition_b1/" + name + ".wav", pcm);
       std::printf("AUDITION_B1 %-40s bpm=%.0f %.1fs %s DEVELOP d/b/p/c=%d/%d/%d/%d BREAK d/b/p/c=%d/%d/%d/%d pcOnPreserved=%d/%d bassId=%s\n", name.c_str(),
                   a.suggestedBpm, static_cast<double>(pcm.size()) / kRenderRate, ok ? "ok" : "FAILED", sd.drums, sd.bassRhythm, sd.bassPitch, sd.chord,
