@@ -861,6 +861,7 @@ enum class CycleStatus : uint8_t {
   PendingNextBar,
   NoRecipe,             // no generated phrase known (never generated, Undone, Legacy, scene load)
   CycleAlreadyPublished,
+  NothingToAdd,         // both requested sections would repeat the kept phrase
   NotAdmitted,          // archetype/scenario admits no evolution (Acid, House, no trajectory)
   DepthNotP3,           // developing a P2 phrase would change law and depth at once
   ContextChanged,       // R1: genre, tonal or pitch-source context differs from the kept phrase
@@ -877,6 +878,11 @@ constexpr uint8_t kCycleSectionBars = 4;
 
 struct CycleResult {
   CycleStatus status = CycleStatus::Failed;
+  // The kept phrase's own law already is DevelopReturn (or SparseDrift): that section would
+  // repeat it, so it is not published. `bars` is what was published (4 or 8).
+  bool developSkipped = false;
+  bool breakSkipped = false;
+  uint8_t bars = 0;
   explicit operator bool() const {
     return status == CycleStatus::CommittedNow ||
            status == CycleStatus::PendingNextBar;
@@ -1018,7 +1024,12 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
     return refuse(CycleStatus::EditedSinceGeneration);
   }
 
-  // Both sections from the same recipe; neither depends on the other.
+  // The kept phrase carries its OWN natural law (chosen from its identity, never assumed Loop).
+  // `breakExecution` still holds the R0 rebuild of it: remember its programme, then reuse the slot.
+  const auto naturalTrajectory = breakExecution.phraseTrajectory;
+
+  // Both sections come from the same recipe; neither depends on the other. A section whose
+  // programme equals the kept phrase's own would publish a copy of it, so it is skipped.
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
   const auto build = [&](GroovePuterRhythm::PreparedPhraseExecution& execution,
                          GroovePuterRhythm::PhraseEvolutionLawId law) {
@@ -1030,15 +1041,24 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
     }
     return statusForLaw(GroovePuterRhythm::applyPhraseLawToExecution(execution, law));
   };
-  CycleStatus built = build(
-      prepared->p1rExecution, GroovePuterRhythm::PhraseEvolutionLawId::DevelopReturn);
+  using Law = GroovePuterRhythm::PhraseEvolutionLawId;
+  CycleStatus built = build(prepared->p1rExecution, Law::DevelopReturn);
   if (built != CycleStatus::CommittedNow) return refuse(built);
-  built = build(
-      breakExecution, GroovePuterRhythm::PhraseEvolutionLawId::SparseDrift);
+  const bool developSkipped = prepared->p1rExecution.phraseTrajectory == naturalTrajectory;
+
+  GroovePuterRhythm::PreparedPhraseExecution* const breakSlot =
+      developSkipped ? &prepared->p1rExecution : &breakExecution;
+  built = build(*breakSlot, Law::SparseDrift);
   if (built != CycleStatus::CommittedNow) return refuse(built);
+  const bool breakSkipped = breakSlot->phraseTrajectory == naturalTrajectory;
+  if (developSkipped && breakSkipped) return refuse(CycleStatus::NothingToAdd);
+  const bool twoSections = !developSkipped && !breakSkipped;
+  const uint8_t kCycleBars = twoSections ? 2 * kCycleSectionBars : kCycleSectionBars;
+  output.developSkipped = developSkipped;
+  output.breakSkipped = breakSkipped;
+  output.bars = kCycleBars;
 
   const int cycleStart = recipe.songStart + recipe.bars;
-  constexpr uint8_t kCycleBars = 2 * kCycleSectionBars;
   prepared->request.bars = kCycleBars;
   prepared->request.songStart = cycleStart;
   prepared->request.pageIndex = recipe.pageIndex;
@@ -1065,7 +1085,7 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   {
     PhraseGenerator::PhraseBar preflightScratch{};
     for (uint8_t bar = 0; bar < kCycleBars; ++bar) {
-      const bool second = bar >= kCycleSectionBars;
+      const bool second = twoSections && bar >= kCycleSectionBars;
       const int localSlot = prepared->firstLocalSlot + bar;
       const int globalPattern = songPatternFromPageBankIndex(
           recipe.pageIndex,
@@ -1108,7 +1128,8 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
         const auto apply = [&]() {
           applyPreparedPersistent(
               engine, engine.sceneManager().currentScene(), *prepared,
-              &originCandidate, &breakExecution, kCycleSectionBars);
+              &originCandidate, twoSections ? &breakExecution : nullptr,
+              kCycleSectionBars);
         };
         applyGuard(apply);
       });

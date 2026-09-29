@@ -97,6 +97,30 @@ struct Fixture {
   CycleStatus cycle() { return GeneratedPhraseSong::generateCycle(engine, kGuard).status; }
 };
 
+bool naturalLawIs(Fixture& f, R::PhraseEvolutionLawId law) {
+  const auto* recipe = f.engine.generatedPhraseRecipe();
+  CHECK(recipe != nullptr);
+  R::PreparedPhraseExecution execution{};
+  R::PhraseExecutionScratch scratch{};
+  CHECK(R::preparePhraseExecution(recipe->genre, recipe->materialization,
+                                  recipe->phraseGenerationIdentity, recipe->bars, scratch,
+                                  execution) == R::PhraseExecutionStatus::Ready);
+  return execution.selection.composition.phraseLaw == law;
+}
+
+
+// For tests that need the full 8-bar cycle: regenerate the kept phrase (Undo of a fresh phrase is
+// exact) until its own law is not DevelopReturn.
+bool generateKeptFullCycle(Fixture& f) {
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    if (!f.generateKept()) return false;
+    if (!naturalLawIs(f, R::PhraseEvolutionLawId::DevelopReturn)) return true;
+    CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+          GroovePuterUndo::UndoResult::Restored);
+  }
+  return false;
+}
+
 void testNoRecipe() {
   Fixture f("p0-cycle-norecipe", R::RealizationLevel::P3Transformation);
   CHECK(f.engine.generatedPhraseRecipe() == nullptr);
@@ -106,7 +130,7 @@ void testNoRecipe() {
 
 void testPublishUndoRepeat() {
   Fixture f("p0-cycle-publish", R::RealizationLevel::P3Transformation);
-  CHECK(f.generateKept());
+  CHECK(generateKeptFullCycle(f));
   const auto* recipe = f.engine.generatedPhraseRecipe();
   CHECK(recipe != nullptr);
   CHECK(recipe->songStart == 0 && recipe->bars == 4 && recipe->cycleSongStart == -1);
@@ -300,7 +324,7 @@ void startPlaying(Fixture& f) {
 
 void testLivePendingActivation() {
   Fixture f("p0-cycle-live", R::RealizationLevel::P3Transformation);
-  CHECK(f.generateKept());
+  CHECK(generateKeptFullCycle(f));
   startPlaying(f);
   CHECK(f.cycle() == CycleStatus::PendingNextBar);
   // Rows are published atomically by the commit: all eight are present at once, never partial.
@@ -323,7 +347,7 @@ void testLivePendingActivation() {
 void testLiveStopAndUndoWhilePending() {
   {
     Fixture f("p0-cycle-live-stop", R::RealizationLevel::P3Transformation);
-    CHECK(f.generateKept());
+    CHECK(generateKeptFullCycle(f));
     startPlaying(f);
     CHECK(f.cycle() == CycleStatus::PendingNextBar);
     f.engine.stop();
@@ -336,7 +360,7 @@ void testLiveStopAndUndoWhilePending() {
   }
   {
     Fixture f("p0-cycle-live-undo", R::RealizationLevel::P3Transformation);
-    CHECK(f.generateKept());
+    CHECK(generateKeptFullCycle(f));
     startPlaying(f);
     CHECK(f.cycle() == CycleStatus::PendingNextBar);
     CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
@@ -350,12 +374,53 @@ void testLiveStopAndUndoWhilePending() {
   std::puts("P0 cycle live: stop / Undo while pending leaves no state and no partial cycle: PASS");
 }
 
+// The kept phrase's own law is not Loop. When it already is DevelopReturn, DEVELOP would repeat
+// it, so only BREAK is published (four bars) and the result says so.
+void testDevelopEqualsKeptIsSkipped() {
+  bool sawSkip = false, sawFull = false;
+  for (int attempt = 0; attempt < 16 && !(sawSkip && sawFull); ++attempt) {
+    // Fresh project per attempt (the Undo owner holds one receipt); the identity counter is
+    // process-wide, so every attempt gets a new identity.
+    char project[40];
+    std::snprintf(project, sizeof(project), "p0-cycle-skip-%d", attempt);
+    Fixture f(project, R::RealizationLevel::P3Transformation);
+    CHECK(f.generateKept());
+    const bool developNatural = naturalLawIs(f, R::PhraseEvolutionLawId::DevelopReturn);
+    uint64_t kept[4];
+    for (int b = 0; b < 4; ++b) kept[b] = f.rowHash(b);
+    const auto result = GeneratedPhraseSong::generateCycle(f.engine, kGuard);
+    CHECK(result.status == CycleStatus::CommittedNow);
+    if (developNatural) {
+      sawSkip = true;
+      CHECK(result.developSkipped && !result.breakSkipped && result.bars == 4);
+      CHECK(f.scene().songs[0].length == 8);   // kept 4 + BREAK 4
+      // the published section is not a copy of the kept phrase
+      int differing = 0;
+      for (int b = 0; b < 4; ++b) differing += f.rowHash(4 + b) != kept[b];
+      CHECK(differing >= 1);
+      CHECK(f.scene().songs[0].positions[8].patterns[static_cast<int>(SongTrack::Drums)] < 0);
+      const auto* origin = f.engine.generatedSynthAOrigin();
+      CHECK(origin != nullptr && origin->valid() && origin->common.barCount == 4);
+    } else {
+      sawFull = true;
+      CHECK(!result.developSkipped && result.bars == 8);
+    }
+    // One Undo restores the state before the cycle whichever sections were published.
+    CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+          GroovePuterUndo::UndoResult::Restored);
+    CHECK(f.scene().songs[0].length == 4);
+  }
+  CHECK(sawSkip && sawFull);
+  std::puts("P0 cycle: DEVELOP equal to the kept phrase is skipped, BREAK published alone; other identities keep 8 bars: PASS");
+}
+
 }  // namespace
 
 int main() {
   testNoRecipe();
   testPublishUndoRepeat();
   testRefusals();
+  testDevelopEqualsKeptIsSkipped();
   testLivePendingActivation();
   testLiveStopAndUndoWhilePending();
   std::puts("0.9.14 P0 cycle: PASS");

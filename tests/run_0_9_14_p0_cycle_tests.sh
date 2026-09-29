@@ -7,7 +7,8 @@ mkdir -p "$BUILD"
 CXX="${CXX:-g++}"
 
 cd "$ROOT"
-trap 'rm -rf "$ROOT/patterns" "$ROOT/platform_sdl/patterns" "$ROOT/projects"' EXIT
+source "$ROOT/tests/lib/isolated_workdir.sh"
+isolated_init
 
 echo "== P0 cycle: product engine path =="
 pushd platform_sdl >/dev/null
@@ -30,5 +31,5 @@ fi
   -o "$BUILD/test_0_9_14_p0_cycle"
 popd >/dev/null
 
-"$BUILD/test_0_9_14_p0_cycle"
+isolated_run "$BUILD/test_0_9_14_p0_cycle"
 echo "0.9.14 P0 cycle: GREEN"
