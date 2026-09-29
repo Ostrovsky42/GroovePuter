@@ -137,6 +137,10 @@ Owner decision: raise synth levels by default. Constraints:
 * **No DSP gain change in P0.** If faders cannot reach a usable balance, a voice-level gain change is a separate compatibility decision.
 * Host render only until compared on the device; results say so.
 
+**Owner's mix choice (after listening to A, B, C on three identities):** **B, synths 1.5 and drums 0.8** (new-scene defaults candidate). It gives
+about −11…−12 dB synth-minus-drums by the diagnostic, keeps most of the drum level (about −2 dB absolute), and is inside the fader range, so no DSP gain
+change is needed. Still open: a check on the device output stage, and identifying every new-scene creation path (old scenes keep 1.0).
+
 ## 7. Verification (order of work)
 
 1. **Fixed corpus and mix variants with `tools/m0`, before any product path** (`tools/m0/build_m0a_p0.sh`): per genre × ordinals 0–7 at P3, the structural table for
@@ -185,7 +189,7 @@ Recommendation: (b), because the same corpus shows the limit is the transformati
 
 ## 8. Open decisions
 
-1. Choose (a), (b) or (c) from §9; concrete fader values (after listening to mixes B and C); which new-scene paths change.
+1. Choose (a), (b) or (c) from §9 (unanswered); fader values are chosen (mix B) pending a device check; which new-scene paths change.
 2. Whether a P2 phrase can be developed after the §2.4 measurement, or P3 stays required.
 3. The identity set beyond 0–7 (the UKG control example).
 4. Later: supporting edited phrases (a future product task, not P0).
