@@ -1,22 +1,21 @@
-# GroovePuter 0.9.1 Manual
+# GroovePuter 0.9.14 Manual
 
-This manual describes the user-visible Cardputer ADV runtime shipped by the 0.9.1
-release line. Persisted compatibility IDs and old stage documents are not proof that a
-page is still reachable.
+This manual describes the user-facing workflows on the current 0.9.14 development
+line. It focuses on Cardputer ADV controls and notes where the SDL keyboard differs.
+For the exact key-by-key reference use [`src/ui/docs/keys.md`](src/ui/docs/keys.md).
 
-For exact key-by-key behavior use [`src/ui/docs/keys.md`](src/ui/docs/keys.md).
-For the release freeze and acceptance boundary use
-[`docs/releases/0_9_1_RELEASE.md`](docs/releases/0_9_1_RELEASE.md).
+For the current generated musical-play cycle, see
+[`docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md`](docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md).
 
 ## 1. Workflow map
 
-GroovePuter 0.9.1 has **12 active pages** in five workflows:
+Main workflows:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
-SONG:     SONG -> PHRASE -> PHRASE CORE
+SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
 ```
 
@@ -29,12 +28,14 @@ Global navigation:
 - `Alt+H`: page-aware on-device help;
 - `Alt+P`: MIDI Player;
 - `Alt+V`: GENRE;
-- `Alt+W`: waveform overlay except Phrase `Alt+W` REPLACE;
+- `Alt+W`: waveform overlay except MATERIAL BANK `Alt+W` REPLACE;
 - `Alt+X`: LiveMix;
 - `Alt+M`: Song mode;
 - `Alt+\`: public `CARBON <-> CYBER` theme cycle.
 
-The active page receives input before global digit/mute fallbacks.
+The active page receives input before global digit/mute fallbacks. `Alt+H` opens
+page-aware help; use the on-screen page title and footer to confirm the current
+context before using a page-specific shortcut.
 
 ### Compatibility page IDs
 
@@ -47,12 +48,12 @@ Synth A SOUND -> SYNTH A
 Synth B SOUND -> SYNTH B
 ```
 
-There is no active standalone GENERATION, TEXTURE or SOUND workflow page in 0.9.1.
+There is no active standalone GENERATION, TEXTURE or SOUND workflow page.
 Synth sound editing lives in each synth's local `NOTES -> KNOBS -> MORE` tabs.
 
 ## 2. GENRE and FEEL
 
-The release ownership rule is:
+The musical ownership rule is:
 
 ```text
 GENRE != FEEL != GENERATION REQUEST != SOUND
@@ -161,7 +162,7 @@ labels include the matching global mute keys (`3KIK .. 0CLP`; SP12 uses `0RIM / 
 only on the selected existing hit, and the accent marker is drawn on that hit rather
 than in a separate aggregate ACC row.
 
-## 5. Pattern identity and project storage
+## 5. Pattern, Melody and note entry
 
 A pattern address is:
 
@@ -171,15 +172,43 @@ PAGE 1..16 x BANK A/B x SLOT 1..8
 
 Example: `2B7`.
 
-Project-scoped pattern storage prevents one project from silently reusing another
-project's pattern-page namespace. Song/Phrase generation uses safe destination checks
-rather than overwriting referenced material without validation.
+Synth A and Synth B slots can contain either Pattern steps or an accepted Melody.
+On a Synth page, `Alt+R` switches between `STEPS` and `MELODY`. If a slot has no
+Melody yet, switching to MELODY first creates one from its Pattern steps. On the
+MELODY source, `Q..I` selects the accepted Melody in that slot and `B` selects the
+same slot number in the other bank. An empty slot reports `NO MELODY`. If the current
+working Melody has unsaved edits, changing slots asks for `Alt+Enter SAVE` instead of
+silently replacing those edits.
+
+In `STEPS`, press `N` to enable NOTE ENTRY. Note keys enter pitches at the selected
+step. Repeating or holding the same pitch can continue it into the next step as a
+tie; the continuation is not a new note attack. The grid displays a continuation as
+`TI`. `Z` is a pitch key only while NOTE ENTRY is active. Check the selected source
+and step shown on screen before editing.
+
+Pattern address remains `PAGE × BANK × SLOT`, for example `2B7`. Project-scoped
+storage keeps one project's pattern pages separate from another's. Song/Phrase
+generation checks its destination rather than silently overwriting referenced
+material.
 
 ## 6. Song
 
-Song has two arrangement slots, A and B. Horizontal edit navigation is one bounded
-strip across Synth A -> Synth B -> Drums; crossing the outer track edge moves between
-edit Song A/B.
+Song has two arrangement slots, A and B. Each row stores a slot number for a track;
+for Synth A and Synth B, that slot's saved descriptor determines whether playback
+uses Pattern steps or Melody. The row does not store a second copy of the material
+type. A saved arrangement can therefore play Pattern X → Melody Y → Pattern Z
+without manual source switching, including after project reload, when the Melody data
+has been accepted and saved.
+
+During playback the row display identifies a synth as `PAT`, `MEL`, `HOLD`, `WAIT`
+or `FAIL`. A working Melody can keep sounding while it is edited. Use `Alt+Enter`
+to accept the edited Melody or `Alt+X` to discard the edits and return to the saved
+material assigned to the current Song row. Song prepares an upcoming Melody before
+its row boundary. Manual NEXT is refused only when it would conflict with the next
+Song Melody for that synth.
+
+Horizontal edit navigation is one bounded strip across Synth A → Synth B → Drums;
+crossing the outer track edge moves between edit Song A/B.
 
 Important bank/slot controls:
 
@@ -194,10 +223,43 @@ Important bank/slot controls:
 Copy-on-write generation must not silently replace a pattern still referenced by other
 Song/Phrase locations.
 
-## 7. Phrase Core
+Song references a slot; playback resolves the slot's current saved material kind.
+Save after editing/accepting a Melody and assigning the arrangement so its Melody
+data, descriptor and Song rows are available together after reload.
 
-Phrase Core is the second SONG page. It has four saved slots (`A/B/C/D`) and one
-visible Song destination, `TO:`.
+## 7. MATERIAL and Phrase workflows
+
+### MATERIAL — generated Phrase
+
+The `MATERIAL` page creates generated phrases in the Song arrangement. Its request
+fields are `LENGTH`, `STYLE` and `TO`; the last accepted phrase and its Song rows are
+shown separately. Up/Down selects a field and Left/Right changes it. `G` creates a
+TAKE at the displayed destination. `TO APPEND` follows the current end of Song;
+`TO EXPLICIT` addresses the selected row. The page displays `FREE`, `OCCUPIED`,
+`NO ROOM` or `NO SLOTS` before generation.
+
+To create the current short development cycle:
+
+1. Set `LENGTH 4B` and `STYLE REWORK` (P3).
+2. Press `G` to create a new TAKE.
+3. While that generated TAKE remains unedited and in the same source context, press
+   `D` (`GROW`).
+4. The page reports either `DEVELOP + BREAK 8B` or `BREAK ONLY 4B` and shows the
+   Song rows. During playback, the new rows activate at the next bar boundary.
+5. Press `Ctrl+Z` to undo the complete added cycle in one step.
+
+This operation requires a fresh, unedited 4-bar TAKE made at P3. The default STYLE is
+P2, so choose REWORK before pressing `G`; changing STYLE afterwards does not change
+the existing TAKE. Some styles are not admitted. Editing the TAKE, changing its
+source context, or lacking Song rows/pattern slots causes a clear refusal instead of
+growth. Acid and House, edited-source growth, repeated multi-cycle development and
+persistent development history are outside this first slice. The separate `D`
+command on `MATERIAL BANK` means derive and is not `GROW`.
+
+### MATERIAL BANK — Phrase Core
+
+`MATERIAL BANK` is the legacy capture/derive/write workspace. It has four saved
+slots (`A/B/C/D`) and a Song destination `TO:`.
 
 Main controls:
 
@@ -216,7 +278,8 @@ Alt+W             REPLACE Phrase lanes at TO without row shift
 
 Fresh multi-row Phrase generation is deliberately STOP-only. During PLAY it reports
 `STOP PLAYBACK FOR PHRASE` instead of stopping and restarting transport implicitly.
-Successful `G` or `W` advances `TO:` by the Phrase length.
+Successful `G` or `W` advances `TO:` by the Phrase length. These controls and their
+destination are independent of the generated-Phrase request on `MATERIAL`.
 
 Phrase storage remains `REFERENCE VIEW / REF MUTABLE`: saved Phrase slots keep bounded
 references to pattern material rather than secretly taking a second copy of note
@@ -285,48 +348,70 @@ RAW routing preserves source channels and does not accept explicit SEQTRAK desti
 overrides. SEQTRAK-safe mapping uses drums on `CH1..CH7`, Synth 1 on `CH8`, Synth 2 on
 `CH9`, and DX on `CH10`.
 
-## 10. Persistence and recovery
+## 10. Project save, ACCEPT, DISCARD and Undo
 
-0.9.1 release acceptance includes:
+Project Save/Load is reached from the Project page. Use its on-screen scene
+selection and actions; this is separate from `Alt+Enter`, which accepts working
+material on the Synth pages.
 
-- Scene Save/Load;
-- project-scoped pattern storage;
-- independent Synth A/B TYPE and visible parameter persistence;
-- safe legacy decode/defaults;
-- Song references;
-- Phrase Core state;
-- supported UI-session state.
+On Synth A/B material:
+
+- `D` prepares a REVOICE candidate in NEXT; `Alt+V` prepares CONNECT. These actions
+  prepare material and do not immediately replace the sounding CURRENT.
+- `Enter` requests GO. While playing, NEXT activates at a musical bar boundary.
+  `Esc` cancels a pending candidate, or disarms a queued GO while keeping NEXT.
+- `Alt+Enter` ACCEPTs working material as the accepted version.
+- `Alt+Backspace` or `Alt+X` DISCARDs working edits and restores the accepted version.
+- `Ctrl+Z` undoes the last retained edit on a supported page. Undo is one-step, not
+  a durable project history.
+
+Pattern/Melody data, Song references, synth TYPE and supported parameters,
+project-scoped pattern pages, Phrase state and supported UI state are persisted
+through their respective project storage paths. Save after changing arrangement or
+scene state. Accepted Melody data is stored in its selected slot; save the project
+so its Song descriptor and arrangement return together after reload.
 
 A loaded synth patch remains the owner of its saved TYPE/parameters; loading a project
 must not silently replace it with hidden genre timbre defaults.
 
-The older `PRE_0_9_RELEASE_GATE.md` and `0_9_FINAL_ACCEPTANCE.md` documents are retained
-as historical 0.9 evidence. They are **not** the current 0.9.1 release gate.
+Historical release checklists apply to the specific release named in each document;
+they are not a current feature list.
 
 ## 11. Waveform HUD
 
 The bottom performance HUD has one compositing owner. The optional waveform is cleared
 and redrawn without accumulating stale pixels, runs beneath mute/activity digits, and
 uses bounded visual auto-gain. MIDI Player uses the taller progress waveform from the
-final 0.9.1 HUD fix.
+current MIDI Player HUD.
 
-## 12. Build and flash
+## 12. Developer build and flash
 
 ```bash
 bash scripts/install_arduino_deps.sh
 bash tests/run_host_tests.sh
-bash scripts/build.sh --warnings all
+bash scripts/build_cardputer_dynbuffers.sh
 bash scripts/check_cardputer_dram_budget.sh \
-  build/cardputer-adv-current/GroovePuter.ino.elf
+  build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
 bash scripts/build_seqtrak_midi_only.sh --warnings all
 bash scripts/upload.sh /dev/ttyACM0
 arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 ```
 
-## 13. Release acceptance
+## 13. Feature boundaries
 
-The normative checklist and exact frozen runtime SHA are in
-[`docs/releases/0_9_1_RELEASE.md`](docs/releases/0_9_1_RELEASE.md).
+Keep these distinctions in mind when interpreting visible controls:
 
-A new feature, architecture cleanup or research admission after that boundary belongs
-to the next release line unless it fixes a concrete 0.9.1 correctness defect.
+- The four-slot arrangement Phrase Bank is reachable. The separate eight-slot
+  QWERTYUI state helper is not wired into the production workflow.
+- REVOICE and CONNECT prepare NEXT candidates. They do not directly replace accepted
+  material; use GO to activate a candidate.
+- The current DEVELOP workflow is the bounded MATERIAL cycle above. Arbitrary
+  multi-bar growth from an edited Pattern or Melody is not available.
+- Existing USB MIDI Device, DIN and SEQTRAK paths are separate from USB Host. USB
+  Host/nanoKEY2 is not part of the supported workflow described here.
+- Song synth rows resolve Pattern or Melody slots. Other kinds of material are not
+  supported as Song-row sources, and development history is not retained across
+  project reload.
+
+For release acceptance status, use current documents under [`docs/releases/`](docs/releases/)
+and [`docs/0.9.14/`](docs/0.9.14/).

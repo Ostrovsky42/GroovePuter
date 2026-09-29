@@ -68,31 +68,35 @@ assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 
-# The root README on main is the branch-neutral public landing document. Frozen
-# 0.9.1 release truth is validated independently through MANUAL.md and the release
-# record below, so the landing page must not be coupled to the historical 0.9.1 title.
+# The root README on main is the branch-neutral public landing document. MANUAL.md
+# follows the current 0.9.14 user workflow; the historical 0.9.1 release record below
+# remains independently validated.
 assert readme.startswith("# GroovePuter\n")
 assert "Portable standalone groovebox and hardware musical brain" in readme
 assert "`main` is the public project landing branch" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
 assert "GENRE != FEEL != GENERATION REQUEST != SOUND" in readme
 
-assert manual.startswith("# GroovePuter 0.9.1 Manual")
+assert manual.startswith("# GroovePuter 0.9.14 Manual")
 assert "GENERATE: GENRE -> FEEL" in manual
-assert "12 active pages" in manual
+assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
+assert "DEVELOP + BREAK 8B" in manual
+assert "Alt+Enter` ACCEPTs" in manual
+assert "uses Pattern steps or Melody" in manual
 assert "GENERATION -> FEEL" in manual
 assert "TEXTURE    -> FEEL" in manual
-assert "Current `dev_0.9` Firmware" not in manual
 assert "GENRE 1/3" not in manual
 assert "GENERATION 3/3" not in manual
 
-# 0.9.1 README/manual remain the frozen release record, while the canonical key map
-# follows the active 0.9.2 hardening branch.
-assert keys.startswith("# GroovePuter 0.9.2 Key Map")
+# The canonical manual and key map follow the current development workflow, while
+# the 0.9.1 release record remains frozen below.
+assert keys.startswith("# GroovePuter 0.9.14 Key Map")
 assert "GENERATE: GENRE -> FEEL" in keys
+assert "MATERIAL BANK`, `D` still means derive" in keys
+assert "slot's saved descriptor selects" in keys
 assert "## GENRE 1/2" in keys
 assert "## FEEL 2/2" in keys
-assert "## PHRASE CORE" in keys
+assert "## MATERIAL BANK" in keys
 assert "## GENERATION 3/3" not in keys
 assert "PAUSE MIDI FIRST" not in keys
 
