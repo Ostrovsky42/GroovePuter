@@ -105,6 +105,7 @@ const GenreCase kGenres[] = {
     {"UKG", GenerativeMode::UkGarage, 0},
     {"DnB", GenerativeMode::DrumAndBass, 0},
     {"BrokenDnB", GenerativeMode::Broken, 2},
+    {"Electro", GenerativeMode::Electro, 0},
 };
 
 const GenreCase* findGenre(const std::string& name) {
@@ -203,6 +204,7 @@ LaneRec laneFrom(const SynthPattern& p, bool haveOwnerMasks, uint16_t ownerAttac
 struct MakeOptions {
   R::RealizationLevel level = R::RealizationLevel::P2Variation;
   int lawOverride = -1;  // -1: natural production selection
+  uint16_t manualArchetype = 0;  // 0: natural (Auto); else the user-facing MANUAL rhythm selection
 };
 
 // Returns false when the request is not applicable (reason in out.status).
@@ -213,6 +215,11 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
   out.bars = bars;
   MiniAcid engine(kSampleRate, nullptr);
   configure(engine, g);
+  if (opt.manualArchetype != 0) {
+    Scene& sc = engine.sceneManager().currentScene();
+    sc.genre.rhythmSelectionMode = static_cast<uint8_t>(R::RhythmSelectionMode::Manual);
+    sc.genre.rhythmArchetypeId = opt.manualArchetype;
+  }
   const bool routeP1R = R::selectStrongRhythmRoute(engine.sceneManager().currentScene().genre) !=
                         R::StrongRhythmRoute::Legacy;
   out.p1r = routeP1R;

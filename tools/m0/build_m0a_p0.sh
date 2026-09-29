@@ -21,4 +21,5 @@ mapfile -t SRCS < <(
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) \
   -o "$OUT/m0a_p0"
 cd "$ROOT"
+if [[ -n "${M0_P0_BUILD_ONLY:-}" ]]; then exit 0; fi
 M0_P0_OUT="$OUT" "$OUT/m0a_p0" | tee "$OUT/p0_report.txt"

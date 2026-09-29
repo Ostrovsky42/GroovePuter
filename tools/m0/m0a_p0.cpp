@@ -33,6 +33,7 @@ bool samePc(const LaneRec& a, const LaneRec& b) {
 
 struct SectionDiff {
   int drums = 0, bassRhythm = 0, bassPitch = 0, chord = 0;
+  int pcOnPreserved = 0;  // bass pitch-class changes on attack positions present in both A and the variant
   bool bassOrChord() const { return bassRhythm + bassPitch + chord > 0; }
 };
 
@@ -43,6 +44,10 @@ SectionDiff diffAgainst(const Phrase& a, const Phrase& v) {
     d.drums += !sameDrums(v.bar[i], a.bar[i]);
     d.bassRhythm += v.bar[i].a.attacks != a.bar[i].a.attacks;
     d.bassPitch += !samePc(v.bar[i].a, a.bar[i].a);
+    for (int st = 0; st < 16; ++st) {
+      const uint16_t bit = R::stepBit(static_cast<uint8_t>(st));
+      if ((a.bar[i].a.attacks & bit) && (v.bar[i].a.attacks & bit) && a.bar[i].a.noteAt[st] % 12 != v.bar[i].a.noteAt[st] % 12) ++d.pcOnPreserved;
+    }
     d.chord += (v.bar[i].b.attacks != a.bar[i].b.attacks) || !samePc(v.bar[i].b, a.bar[i].b);
   }
   return d;
@@ -72,6 +77,78 @@ int main() {
   const char* e = std::getenv("M0_P0_OUT");
   const std::string out = e ? e : "build/m0a/p0";
   std::filesystem::create_directories(out);
+
+  if (std::getenv("M0_P0_GOLDEN")) {
+    // Golden dump: canonical hash of EVERY lane of EVERY bar, for the compatibility rule of P0-B
+    // (Statement / Repeat / Return / Response bars must stay bit-identical; only Break, Reduction,
+    // Build and Turnaround bars may change).
+    auto h = [](uint64_t x, uint64_t v) { x ^= v + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2); return x * 1099511628211ull; };
+    std::ofstream g(out + "/p0b_golden.tsv");
+    g << "genre\tordinal\tlevel\tlaw\tbar\tfunction\thash\n";
+    for (const GenreCase& gc : kGenres) {
+      // The golden was captured before B1 for the original 11 genres; later additions (Electro) have no baseline.
+      if (std::string(gc.name) == "Electro") continue;
+      for (auto level : {kP2, kP3}) {
+        for (uint32_t o = 0; o < 8; ++o) {
+          for (int law = 0; law <= 3; ++law) {
+            MakeOptions opt; opt.level = level; opt.lawOverride = law;
+            Phrase p;
+            if (!makePhrase(gc, 4, o, opt, p)) continue;
+            for (size_t b = 0; b < p.bar.size(); ++b) {
+              uint64_t x = 1469598103934665603ull;
+              const BarRec& r = p.bar[b];
+              for (int v = 0; v < 8; ++v)
+                for (int st = 0; st < 16; ++st) {
+                  const DrumStep& d = r.drums.voices[v].steps[st];
+                  x = h(x, (uint64_t(d.hit) << 1) | d.accent); x = h(x, d.velocity); x = h(x, uint8_t(d.timing));
+                  x = h(x, d.fx); x = h(x, d.fxParam); x = h(x, d.probability);
+                }
+              for (const SynthPattern* sp : {&r.synthA, &r.synthB})
+                for (int st = 0; st < 16; ++st) {
+                  const SynthStep& s2 = sp->steps[st];
+                  x = h(x, uint8_t(s2.note)); x = h(x, (uint64_t(s2.slide) << 2) | (uint64_t(s2.accent) << 1) | s2.ghost);
+                  x = h(x, s2.velocity); x = h(x, uint8_t(s2.timing)); x = h(x, s2.fx); x = h(x, s2.fxParam); x = h(x, s2.probability);
+                }
+              g << gc.name << '\t' << o << '\t' << levelName(level) << '\t' << law << '\t' << b << '\t' << barFnName(r.fn) << '\t'
+                << std::hex << x << std::dec << '\n';
+            }
+          }
+        }
+      }
+    }
+    std::printf("golden written: %s/p0b_golden.tsv\n", out.c_str());
+    return 0;
+  }
+
+  if (std::getenv("M0_P0_AUDITION_B1")) {
+    // After P0-B1: targeted archetypes (forced through MANUAL rhythm selection), two identities each, mix B
+    // (synths 1.5, drums 0.8), cycle = A (Loop) + DEVELOP + BREAK, all P3.
+    struct Item { const char* host; uint16_t id; const char* name; uint32_t ordinal; };
+    std::filesystem::create_directories(out + "/audition_b1");
+    for (Item it : {Item{"Techno", 404, "broken_techno", 0}, Item{"Techno", 404, "broken_techno", 2}, Item{"Techno", 420, "machine_syncopation", 0},
+                    Item{"Techno", 420, "machine_syncopation", 1}, Item{"UKG", 417, "classic_2step", 0}, Item{"UKG", 417, "classic_2step", 3},
+                    Item{"UKG", 418, "skippy_2step", 0}, Item{"UKG", 418, "skippy_2step", 3}}) {
+      const GenreCase* g = findGenre(it.host);
+      MakeOptions oa; oa.level = kP3; oa.lawOverride = 0; oa.manualArchetype = it.id;
+      MakeOptions od = oa; od.lawOverride = 2;
+      MakeOptions ob = oa; ob.lawOverride = 3;
+      Phrase a, d, b;
+      if (!makePhrase(*g, 4, it.ordinal, oa, a) || !makePhrase(*g, 4, it.ordinal, od, d) || !makePhrase(*g, 4, it.ordinal, ob, b)) continue;
+      std::vector<const BarRec*> bars;
+      for (const Phrase* ph : {&a, &d, &b}) for (const BarRec& br : ph->bar) bars.push_back(&br);
+      g_mix = MixSettings{1.5f, 1.5f, 0.8f};
+      std::vector<int16_t> pcm; std::string note;
+      const bool ok = render(*g, a.suggestedBpm, bars, pcm, note);
+      g_mix = MixSettings{};
+      const SectionDiff sd = diffAgainst(a, d), sb = diffAgainst(a, b);
+      const std::string name = std::string(it.name) + "_ord" + std::to_string(it.ordinal) + "_B1_mixB";
+      writeWav(out + "/audition_b1/" + name + ".wav", pcm);
+      std::printf("AUDITION_B1 %-40s bpm=%.0f %.1fs %s DEVELOP d/b/p/c=%d/%d/%d/%d BREAK d/b/p/c=%d/%d/%d/%d pcOnPreserved=%d/%d bassId=%s\n", name.c_str(),
+                  a.suggestedBpm, static_cast<double>(pcm.size()) / kRenderRate, ok ? "ok" : "FAILED", sd.drums, sd.bassRhythm, sd.bassPitch, sd.chord,
+                  sb.drums, sb.bassRhythm, sb.bassPitch, sb.chord, sd.pcOnPreserved, sb.pcOnPreserved, R::bassRhythmName(a.bar[0].bassId));
+    }
+    return 0;
+  }
 
   if (std::getenv("M0_P0_AUDITION")) {
     // Mix audition: A (Loop) + DEVELOP + BREAK, 12 bars, P3, at three fader sets, for identities that pass the structural condition.
@@ -158,6 +235,36 @@ int main() {
     std::printf("    %-28s identities=%d applicable=%d structural(bass|chord)=%d/%d %s%s\n", kv.first.c_str(), a.n + a.na, a.n,
                 a.pass, a.n, (a.n > 0 && a.pass == a.n) ? "PASSES 8/8 rule" : (a.n == 0 ? "NOT ADMITTED" : "FAILS"),
                 fails.empty() ? "" : (" (drum-only:" + fails + ")").c_str());
+  }
+
+  // ------------------------------------------------------------------ S1T (targeted)
+  std::printf("\n== P0-S1T TARGETED CORPUS (archetype forced through the user-facing MANUAL rhythm selection; ordinals 0..7; all P3) ==\n");
+  {
+    struct Target { const char* host; uint16_t id; const char* name; };
+    const Target targets[] = {{"Techno", 404, "broken_techno"}, {"Techno", 420, "machine_syncopation"}, {"DnB", 413, "two_step_roll"},
+                              {"DnB", 414, "ghosted_roll"}, {"DnB", 415, "sparse_fast_break"}, {"UKG", 417, "classic_2step"},
+                              {"UKG", 418, "skippy_2step"}, {"Electro", 712, "electro_backskip"}, {"Electro", 714, "electro_gap_push"}};
+    for (const Target& t : targets) {
+      const GenreCase* g = findGenre(t.host);
+      int pass = 0, ran = 0, pcMoved = 0;
+      std::string failing;
+      for (uint32_t o = 0; o < 8; ++o) {
+        MakeOptions oa; oa.level = kP3; oa.lawOverride = 0; oa.manualArchetype = t.id;
+        MakeOptions od = oa; od.lawOverride = 2;
+        MakeOptions ob = oa; ob.lawOverride = 3;
+        Phrase a, d, b;
+        if (!makePhrase(*g, 4, o, oa, a) || a.archetype != t.name || !makePhrase(*g, 4, o, od, d) || !makePhrase(*g, 4, o, ob, b)) continue;
+        const SectionDiff sd = diffAgainst(a, d), sb = diffAgainst(a, b);
+        const bool cycle = sd.bassOrChord() || sb.bassOrChord();
+        ++ran; pass += cycle; if (!cycle) failing += " ord" + std::to_string(o);
+        pcMoved += (sd.pcOnPreserved + sb.pcOnPreserved) > 0;
+        std::printf("  %-22s host=%-6s ord=%u bassId=%-14s DEVELOP d/b/p/c=%d/%d/%d/%d  BREAK d/b/p/c=%d/%d/%d/%d  pcOnPreserved=%d/%d  cycle=%s\n",
+                    t.name, t.host, o, R::bassRhythmName(a.bar[0].bassId), sd.drums, sd.bassRhythm, sd.bassPitch, sd.chord,
+                    sb.drums, sb.bassRhythm, sb.bassPitch, sb.chord, sd.pcOnPreserved, sb.pcOnPreserved, cycle ? "YES" : "no");
+      }
+      std::printf("    => %-22s reached on %d/8 ordinals, structural (bass|chord) %d/%d%s; identities where preserved bass positions changed pitch class: %d\n",
+                  t.name, ran, pass, ran, (ran > 0 && pass == ran) ? " PASSES" : (ran == 0 ? " NOT REACHABLE" : (" FAILS (drum-only:" + failing + ")").c_str()), pcMoved);
+    }
   }
 
   // ------------------------------------------------------------------ S2

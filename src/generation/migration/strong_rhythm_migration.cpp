@@ -1,4 +1,5 @@
 #include "strong_rhythm_migration.h"
+#include "../roles/bar_function_roles.h"
 
 #include "../generation_context.h"
 #include "../rhythm/rhythm_realizer.h"
@@ -726,7 +727,14 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   bassRequest.generation = materializationGeneration;
   bassRequest.barOrdinal = barOrdinal;
   bassRequest.allowEmptyBar = allowSparse;
-  const BassRhythmResult bass = realizeBassRhythm(bassRequest);
+  const BassRhythmResult bassBase = realizeBassRhythm(bassRequest);
+  // P0-B1: bass follows the phrase bar function. `bass` is the plan actually used to build
+  // Synth A (and exported as origin evidence); `bassBase` keeps the pre-function attacks so
+  // other roles are not given freed positions. Statement/Repeat/Return/Response: identical.
+  BassRhythmResult bassEffective = bassBase;
+  bassEffective.plan = BarFunctionRoles::applyToBassPlan(
+      result.phraseBarFunction, bassBase.plan, bassRequest.kickOnsets, bassRequest.protectedSpace);
+  const BassRhythmResult& bass = bassEffective;
   result.bassRhythmStatus = bass.status;
   result.bassRhythmId = bass.plan.id;
   if (bass.status != BassRhythmStatus::Ok &&
@@ -759,13 +767,17 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   chordRequest.requestedId = result.chordRhythmId;
   chordRequest.family = definition->family;
   chordRequest.archetypeId = definition->archetypeId;
-  chordRequest.bassOnsets = bass.plan.onsets;
+  chordRequest.bassOnsets = bassBase.plan.onsets;
   chordRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::ChordRhythm);
   chordRequest.generation = bassRequest.generation;
   chordRequest.barOrdinal = barOrdinal;
   chordRequest.allowEmptyBar = allowSparse;
-  const ChordRhythmResult chord = realizeChordRhythm(chordRequest);
+  const ChordRhythmResult chordBase = realizeChordRhythm(chordRequest);
+  ChordRhythmResult chordEffective = chordBase;
+  chordEffective.plan = BarFunctionRoles::applyToChordPlan(
+      result.phraseBarFunction, chordBase.plan, bassBase.plan.onsets, chordRequest.protectedSpace);
+  const ChordRhythmResult& chord = chordEffective;
   result.chordRhythmStatus = chord.status;
   result.chordRhythmId = chord.plan.id;
   result.chordOnsets = chord.plan.onsets;
@@ -849,10 +861,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   melodicRequest.requestedShape = result.motifShapeId;
   melodicRequest.family = definition->family;
   melodicRequest.archetypeId = definition->archetypeId;
-  melodicRequest.bassOnsets = bass.plan.onsets;
+  melodicRequest.bassOnsets = bassBase.plan.onsets;
   melodicRequest.chordOnsets =
       result.synthBRole == SemanticSynthBRole::Melodic ? 0
-                                                       : chord.plan.onsets;
+                                                       : chordBase.plan.onsets;
   melodicRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::MelodicRhythm);
   melodicRequest.generation = bassRequest.generation;

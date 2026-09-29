@@ -99,6 +99,9 @@ jobs:
       - name: Run 0.9.14 M0-A musical play baseline
         run: bash tests/run_0_9_14_m0a_tests.sh
 
+      - name: Run 0.9.14 P0-B1 bass and chord follow bar function
+        run: bash tests/run_0_9_14_p0b_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
