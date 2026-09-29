@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "p0_preservation_evaluator.h"
 #include "src/dsp/musical_development.h"
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/state/undo_owner.h"
@@ -4412,6 +4413,13 @@ bool MiniAcid::cancelNextMaterial(int voiceIndex) {
 bool MiniAcid::acquireWorkingMelodySource(
     int voiceIndex,
     PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const {
+  return acquireWorkingMelodySourceImpl_(voiceIndex, outBuffer, nullptr);
+}
+
+bool MiniAcid::acquireWorkingMelodySourceImpl_(
+    int voiceIndex,
+    PhraseRuntime::RuntimeSynthEventBuffer& outBuffer,
+    uint8_t (*sourceSteps)[SynthPattern::kSteps]) const {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   const int idx = clamp303Voice(voiceIndex);
 
@@ -4441,9 +4449,13 @@ bool MiniAcid::acquireWorkingMelodySource(
   settings.swingEnabled =
       (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
 
-  if (PhraseRuntime::projectPatternToRuntimeEvents(
-          activeSynthPattern(idx), settings, outBuffer) !=
-      PhraseRuntime::PatternProjectionStatus::Ready) {
+  const PhraseRuntime::PatternProjectionStatus projection =
+      sourceSteps != nullptr
+          ? PhraseRuntime::projectPatternToRuntimeEventsWithSourceSteps(
+                activeSynthPattern(idx), settings, outBuffer, *sourceSteps)
+          : PhraseRuntime::projectPatternToRuntimeEvents(
+                activeSynthPattern(idx), settings, outBuffer);
+  if (projection != PhraseRuntime::PatternProjectionStatus::Ready) {
     return false;
   }
 
@@ -4513,7 +4525,11 @@ void MiniAcid::cancelGoQueue(int voiceIndex) {
 MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
     int voiceIndex,
     const GroovePuterDevelopment::DevelopmentRequest& request,
-    GroovePuterDevelopment::DevelopmentResult* outResult) {
+    GroovePuterDevelopment::DevelopmentResult* outResult,
+    GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation* semanticOut) {
+  if (semanticOut != nullptr) {
+    *semanticOut = GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation{};
+  }
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
     return NextPrepareResult::InvalidVoice;
   }
@@ -4528,7 +4544,10 @@ MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
   }
 
   PhraseRuntime::RuntimeSynthEventBuffer sourceBuffer{};
-  if (!acquireWorkingMelodySource(idx, sourceBuffer)) {
+  uint8_t sourceSteps[SynthPattern::kSteps];
+  for (uint8_t& step : sourceSteps) step = 0xFFu;
+  if (!acquireWorkingMelodySourceImpl_(
+          idx, sourceBuffer, semanticOut != nullptr ? &sourceSteps : nullptr)) {
     return NextPrepareResult::UnsupportedCurrentState;
   }
 
@@ -4551,8 +4570,58 @@ MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(
     return NextPrepareResult::InvalidCandidate;
   }
 
+  // D1-C: independent, read-only semantic observation. It runs before
+  // prepareNextMelody() purely because both consume the same inputs; nothing
+  // computed here is read by the publication path below.
+  if (semanticOut != nullptr) {
+    observeP0Preservation_(idx, basis, sourceBuffer, sourceSteps,
+                           /*haveSourceSteps=*/true, dev, request, *semanticOut);
+  }
+
   return prepareNextMelody(
       idx, dev.candidate, basis, dev.classification.idea);
+}
+
+void MiniAcid::observeP0Preservation_(
+    int idx,
+    const PreparationBasis& basis,
+    const PhraseRuntime::RuntimeSynthEventBuffer& source,
+    const uint8_t (&sourceSteps)[SynthPattern::kSteps],
+    bool haveSourceSteps,
+    const GroovePuterDevelopment::DevelopmentResult& dev,
+    const GroovePuterDevelopment::DevelopmentRequest& request,
+    GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation& out) const {
+  namespace Sem = GroovePuterDevelopmentSemantic;
+  out = Sem::DevelopmentSemanticObservation{};
+
+  // Binding preconditions. Anything outside the first-hop P0 scope stays
+  // unavailable (lineage UNKNOWN) -- never a heuristic fallback.
+  const Sem::P0PreservationAssessment none{};
+  const GroovePuterMaterial::GeneratedSynthABarOrigin* origin = nullptr;
+  bool bound = haveSourceSteps && idx == 0 && basis.valid() &&
+               basis.kind == GroovePuterMaterial::MaterialKind::Pattern &&
+               basis.reference.address.voice == 0 &&
+               !workingMaterial_[idx].holdsMelody();
+  if (bound) {
+    origin = findGeneratedSynthAOrigin(basis.reference);
+    GroovePuterMaterial::MaterialReference resident{};
+    bound = origin != nullptr && current303MaterialReference_(idx, resident) &&
+            resident.id == basis.reference.id &&
+            resident.address == basis.reference.address;
+  }
+
+  if (!bound) {
+    out.facts = Sem::adaptP0Preservation(source, dev.candidate, dev.evidence, request, none);
+    return;
+  }
+
+  out.preservation =
+      Sem::evaluateP0Preservation(*origin, source, sourceSteps, dev.candidate);
+  out.available = true;
+  // Exact-version difference is evidence ("changed since origin"), never a gate.
+  out.currentChangedSinceOrigin = basis.version != origin->originPatternVersion;
+  out.facts = Sem::adaptP0Preservation(
+      source, dev.candidate, dev.evidence, request, out.preservation);
 }
 
 MiniAcid::NextPrepareResult MiniAcid::growWorkingMaterial(

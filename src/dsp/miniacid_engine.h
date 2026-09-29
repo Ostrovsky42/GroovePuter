@@ -7,6 +7,7 @@
 #include "src/state/material_version.h"
 #include "src/state/material_lineage.h"
 #include "src/state/generated_synth_a_origin.h"
+#include "src/dsp/p0_preservation_types.h"
 #include "src/state/working_material_storage.h"
 
 namespace GroovePuterDevelopment {
@@ -339,10 +340,14 @@ public:
       int voiceIndex,
       PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const;
 
+  // `semanticOut` (D1-C) is a purely observational, optional output: passing it
+  // never changes candidate generation, classification, NEXT eligibility or
+  // publication. Callers that pass nothing behave exactly as before.
   NextPrepareResult developWorkingMaterial(
       int voiceIndex,
       const GroovePuterDevelopment::DevelopmentRequest& request,
-      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr);
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation* semanticOut = nullptr);
 
   NextPrepareResult growWorkingMaterial(
       int voiceIndex,
@@ -713,6 +718,22 @@ private:
   int clamp303Note(int note) const;
   bool current303MaterialReference_(
       int voiceIndex, GroovePuterMaterial::MaterialReference& out) const;
+  // Shared Pattern->Runtime source acquisition. When `sourceSteps` is non-null
+  // and CURRENT is a Pattern, it also receives the authoritative physical step
+  // of every projected event (projectPatternToRuntimeEventsWithSourceSteps).
+  bool acquireWorkingMelodySourceImpl_(
+      int voiceIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& outBuffer,
+      uint8_t (*sourceSteps)[SynthPattern::kSteps]) const;
+  void observeP0Preservation_(
+      int idx,
+      const PreparationBasis& basis,
+      const PhraseRuntime::RuntimeSynthEventBuffer& source,
+      const uint8_t (&sourceSteps)[SynthPattern::kSteps],
+      bool haveSourceSteps,
+      const GroovePuterDevelopment::DevelopmentResult& dev,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation& out) const;
   enum class CurrentNextState : uint8_t {
     CleanAcceptedPattern = 0,
     DirtyCurrent,
