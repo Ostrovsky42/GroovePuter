@@ -128,7 +128,8 @@ int main() {
     for (Item it : {Item{"Techno", 404, "broken_techno", 0}, Item{"Techno", 404, "broken_techno", 2}, Item{"Techno", 420, "machine_syncopation", 0},
                     Item{"Techno", 420, "machine_syncopation", 1}, Item{"UKG", 417, "classic_2step", 0}, Item{"UKG", 417, "classic_2step", 3},
                     Item{"UKG", 418, "skippy_2step", 0}, Item{"UKG", 418, "skippy_2step", 3},
-                    Item{"Dub", 410, "steppers", 0}, Item{"Dub", 410, "steppers", 3}}) {
+                    Item{"Dub", 410, "steppers", 0}, Item{"Dub", 410, "steppers", 3},
+                    Item{"Funk", 713, "funk_house_bridge", 1}, Item{"Funk", 713, "funk_house_bridge", 2}}) {
       const GenreCase* g = findGenre(it.host);
       MakeOptions oa; oa.level = kP3; oa.lawOverride = 0; oa.manualArchetype = it.id;
       MakeOptions od = oa; od.lawOverride = 2;
@@ -246,7 +247,7 @@ int main() {
     const Target targets[] = {{"Techno", 404, "broken_techno"}, {"Techno", 420, "machine_syncopation"}, {"DnB", 413, "two_step_roll"},
                               {"DnB", 414, "ghosted_roll"}, {"DnB", 415, "sparse_fast_break"}, {"UKG", 417, "classic_2step"},
                               {"UKG", 418, "skippy_2step"}, {"Electro", 712, "electro_backskip"}, {"Electro", 714, "electro_gap_push"},
-                              {"Dub", 410, "steppers"}};
+                              {"Dub", 410, "steppers"}, {"Funk", 713, "funk_house_bridge"}};
     for (const Target& t : targets) {
       const GenreCase* g = findGenre(t.host);
       int pass = 0, ran = 0, pcMoved = 0;

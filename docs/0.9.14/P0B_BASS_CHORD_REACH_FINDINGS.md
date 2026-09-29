@@ -1,6 +1,6 @@
 # 0.9.14 P0-B — Why development does not reach bass and chords (findings and proposed change)
 
-Status: **B1 implemented (section 7); B2 in progress (section 9): steppers admitted.** Follows the owner's choice of option (b) in `P0_MUSICAL_PLAY_SPEC.md` §9.
+Status: **B1 implemented (section 7); B2 in progress (sections 9 and 10): steppers and funk_house_bridge admitted.** Follows the owner's choice of option (b) in `P0_MUSICAL_PLAY_SPEC.md` §9.
 Tags: **[OBSERVED]** read from code or measured on the M0 corpus; **[INFERENCE]**; **[OPEN]**.
 
 ## 1. Mechanism
@@ -132,3 +132,11 @@ suite pass; existing tests that pinned the old ten-archetype list were updated (
 **Listening (owner, two renders at mix C): there is a difference and it sounds good.**
 
 Not done: `funk_house_bridge`, `chord_response`, `hypnotic_sparse`, `sparse_skank` (next, one per commit, with listening); 8-bar phrases; Acid and House.
+
+## 10. B2 step 2: funk_house_bridge (713)
+
+Compatibility: all 1464 bars of the golden taken after steppers are unchanged; new bars only for Funk identities 1, 2, 3 (`tests/golden/p0b_bar_function_golden_b2_steppers.tsv`). Targeted corpus (Funk host,
+ordinals 0 to 7, P3): bass or chord changes in the cycle **8/8**. Bass pitch classes on preserved positions changed in **4 of 8** identities (ord 0, 1, 4, 6), so here the bass change carries a pitch consequence.
+Caveat: even the first bar of DEVELOP has different drums from A in this family (4 of 4 bars), so "the same idea" is less literally restated than in steppers; the drums differ from A because the law path realizes the
+base bars from the phrase identity rather than bar by bar. Gates as before, all green; permanent DRAM unchanged. **Listening (owner, two renders at mix C): sounds good, the ear is not bothered, the long notes sound
+good.** Next candidates: `chord_response (412)`, `hypnotic_sparse (403)`, `sparse_skank (411)`.

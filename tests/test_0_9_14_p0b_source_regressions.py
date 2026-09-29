@@ -47,6 +47,7 @@ req("phraseEvolutionAdmitted(engine.sceneManager().currentScene().genre" in read
 for bad in (401, 402, 409, 419):
     req(not re.search(rf"case {bad}:", CAT), f"archetype {bad} makes the phrase catalog invalid and must not be admitted")
 req(re.search(r"case 410:", CAT) is not None, "steppers (410) is the first B2 archetype")
+req(re.search(r"case 713:", CAT) is not None, "funk_house_bridge (713) is the second B2 archetype")
 
 if fail:
     for m in fail: print("FAIL:", m)
