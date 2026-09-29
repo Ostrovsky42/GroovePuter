@@ -358,6 +358,11 @@ inline void applyPreparedPersistent(
     scene.synthABanks[bank].patterns[index] = scratch.synthA;
     scene.synthBBanks[bank].patterns[index] = scratch.synthB;
     scene.drumBanks[bank].patterns[index] = scratch.drums;
+    // Song playback reads Synth events from the derived runtime bank, not from the Pattern:
+    // publish this slot's events together with the Pattern (inside the audio guard), or the
+    // engine keeps playing whatever the slot held before.
+    (void)engine.refreshPatternRuntimeEvents(0, bank, index);
+    (void)engine.refreshPatternRuntimeEvents(1, bank, index);
 
     // D1-A Checkpoint A1: canonical Synth A Material identity publication
     GroovePuterMaterial::setResidentDescriptor(
@@ -527,6 +532,14 @@ GroovePuterUndo::UndoResult undoLastGeneratedPhrase(
       [&](const GeneratedPhraseUndoPayload& payload) {
         const auto restore = [&]() {
           restoreUndo(engine.sceneManager(), payload);
+          // Cleared slots must not keep playing the undone events.
+          for (int bar = 0; bar < payload.bars; ++bar) {
+            const int localSlot = payload.firstLocalSlot + bar;
+            const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+            const int index = localSlot % Bank<SynthPattern>::kPatterns;
+            (void)engine.refreshPatternRuntimeEvents(0, bank, index);
+            (void)engine.refreshPatternRuntimeEvents(1, bank, index);
+          }
         };
         applyGuard(restore);
       });

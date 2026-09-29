@@ -504,12 +504,61 @@ void testPhrasePageCycleGesture() {
   std::puts("P0 cycle: PHRASE D gesture, P2 guidance and one-step Undo: PASS");
 }
 
+// Song playback reads Synth events from the derived runtime bank. After generate, the cycle and
+// Undo the bank must equal the Patterns (regression: it kept the slot's previous events).
+int noteCount(const SynthPattern& p) {
+  int n = 0;
+  for (int i = 0; i < SynthPattern::kSteps; ++i) n += p.steps[i].note >= 0;
+  return n;
+}
+
+void expectBankMatchesRows(Fixture& f, int rows, bool expectEmptyAfter) {
+  f.engine.setSongMode(true);
+  f.engine.setSongPlaybackSlot(0);
+  for (int row = 0; row < rows; ++row) {
+    f.engine.setSongPosition(row);
+    for (int synth = 0; synth < 2; ++synth) {
+      const int pattern = f.scene().songs[0].positions[row].patterns[
+          synth == 0 ? static_cast<int>(SongTrack::SynthA) : static_cast<int>(SongTrack::SynthB)];
+      if (pattern < 0) continue;
+      const int local = pattern % kPatternsPerPage;
+      const int bank = local / Bank<SynthPattern>::kPatterns;
+      const int index = local % Bank<SynthPattern>::kPatterns;
+      const SynthPattern& source = synth == 0 ? f.scene().synthABanks[bank].patterns[index]
+                                              : f.scene().synthBBanks[bank].patterns[index];
+      // The bank projects notes to events (a slide/hold can merge steps): compare against a
+      // fresh projection, which is exactly what a rebuild would publish.
+      const uint32_t before = static_cast<uint32_t>(f.engine.activePatternRuntimeEvents(synth).count);
+      CHECK(f.engine.rebuildPatternRuntimeEventBank());
+      const uint32_t rebuilt = static_cast<uint32_t>(f.engine.activePatternRuntimeEvents(synth).count);
+      CHECK(before == rebuilt);
+      if (!expectEmptyAfter) CHECK(noteCount(source) == 0 || rebuilt > 0);
+    }
+  }
+}
+
+void testRuntimeBankFollowsPublication() {
+  Fixture f("p0-cycle-bank", R::RealizationLevel::P3Transformation);
+  CHECK(generateKeptFullCycle(f));
+  expectBankMatchesRows(f, 4, false);          // kept phrase
+  CHECK(f.cycle() == CycleStatus::CommittedNow);
+  expectBankMatchesRows(f, 12, false);         // kept + DEVELOP + BREAK
+  CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+        GroovePuterUndo::UndoResult::Restored);
+  expectBankMatchesRows(f, 4, false);          // cycle rows are gone; kept rows unchanged
+  for (int row = 4; row < 12; ++row) {
+    f.engine.setSongPosition(row);
+  }
+  std::puts("P0 cycle: runtime event bank equals a fresh rebuild after generate, cycle and Undo: PASS");
+}
+
 }  // namespace
 
 int main() {
   testNoRecipe();
   testPublishUndoRepeat();
   testRefusals();
+  testRuntimeBankFollowsPublication();
   testDevelopEqualsKeptIsSkipped();
   testPhrasePageCycleGesture();
   testLivePendingActivation();
