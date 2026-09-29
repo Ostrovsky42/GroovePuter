@@ -24,6 +24,10 @@ namespace {
 // The firmware/SDL production sample rate (audio_config.h), NOT the corpus tool's constant.
 constexpr uint32_t kRenderRate = ::kSampleRate;
 
+// Engine track-fader levels applied to every render (defaults = engine defaults).
+struct MixSettings { float synthA = 1.0f, synthB = 1.0f, drums = 1.0f; };
+MixSettings g_mix;
+
 struct Section {
   std::string label;
   std::string what;
@@ -93,12 +97,11 @@ bool render(const GenreCase& g, float bpm, const std::vector<const BarRec*>& bar
   // without this the synth lanes keep playing stale (empty) events.
   const bool bankOk = engine.rebuildPatternRuntimeEventBank();
   if (!bankOk) { note = "event bank rebuild failed"; return false; }
-  if (const char* trim = std::getenv("M0_DRUM_TRIM")) {
-    // Mix aid via the engine's own track faders: pull the drum lanes down so bass/chords are audible.
-    const float t = static_cast<float>(std::atof(trim));
-    for (int id = static_cast<int>(VoiceId::DrumKick); id < static_cast<int>(VoiceId::Count); ++id)
-      engine.setTrackVolume(static_cast<VoiceId>(id), t);
-  }
+  if (const char* trim = std::getenv("M0_DRUM_TRIM")) g_mix.drums = static_cast<float>(std::atof(trim));
+  engine.setTrackVolume(VoiceId::SynthA, g_mix.synthA);
+  engine.setTrackVolume(VoiceId::SynthB, g_mix.synthB);
+  for (int id = static_cast<int>(VoiceId::DrumKick); id < static_cast<int>(VoiceId::Count); ++id)
+    engine.setTrackVolume(static_cast<VoiceId>(id), g_mix.drums);
   engine.setBpm(bpm);
   engine.setSongMode(true);
   engine.setSongPlaybackSlot(0);
@@ -143,6 +146,7 @@ std::string fmt(double v) {
 
 }  // namespace
 
+#ifndef M0A_RENDER_NO_MAIN
 int main() {
   const char* e = std::getenv("M0_AUDIO_OUT");
   const std::string out = e ? e : "build/m0a/audio";
@@ -347,3 +351,4 @@ int main() {
   std::printf("render failures: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }
+#endif  // M0A_RENDER_NO_MAIN
