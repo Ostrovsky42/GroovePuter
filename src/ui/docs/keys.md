@@ -236,6 +236,7 @@ timeline.
 | `G` | Generate into the resolved `TO` row |
 | `P` | Cycle `STYLE` (same value as the focused STYLE field) |
 | `D` | Grow an eligible fresh TAKE (see below) |
+| `R` | Open ALLOW REPLACEMENT (plain `R` only; Alt/Ctrl/Meta+R are other shortcuts) |
 
 `TO` always shows the row `G` would actually target right now: `APPEND` resolves
 against the Song's current logical end every frame, or `EXPLICIT` if entering
@@ -250,6 +251,34 @@ result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback changes at the next 
 boundary. `Ctrl+Z` removes the added cycle in one step. P2, non-4-bar, edited or
 unsupported-style Takes are refused; changing STYLE after making the TAKE does not
 convert it. On `MATERIAL BANK`, `D` still means derive.
+
+### ALLOW REPLACEMENT (MATERIAL, `R`)
+
+When `G` or `D` reports `NO ROOM`, the page has no run of consecutive free pattern slots. Deleting Song
+rows removes only the Song reference; generated patterns stay in their slots. `R` lets you **allow** unused
+slots to be replaced by a later `G`/`D`. Allowing erases nothing and starts nothing.
+
+| Key | Action |
+|---|---|
+| `R` | Open the slot grid (16 slots of the current page) |
+| `Left/Right` | Move one slot |
+| `Up/Down` | Move one bank (8 slots) |
+| `Enter` on `~` | Allow replacement (the first time you are asked to confirm) |
+| `Enter` on `*` | Cancel the permission |
+| `Enter` on a held slot | Names what holds it; nothing changes |
+| `R` / `Esc` | Back to MATERIAL |
+
+Grid characters: `.` free, `~` unused (may be allowed), `*` allowed, letters = held and therefore protected:
+`S` Song row, `P` Phrase Bank, `C` CURRENT, `W` working edit, `N` queued NEXT, `M` Melody, `U` live Undo.
+Protection always wins over the permission. `SLOT SPACE: NOW / AFTER ALLOWED` shows, for TAKE at the selected
+LENGTH and for GROW 4B/8B, whether a consecutive run exists now and after the allowed replacement; it says
+nothing about whether GROW will run (style, edits and an already published cycle are reported by `D`).
+On MATERIAL the TO line reads `REPLACES ALLOWED` when `G` will use allowed slots.
+
+After a replacement **Undo does not restore the old content** (it restores the Song rows and empties the
+slots the generation used). Permissions are not saved: they end when a scene is loaded, a new scene is made or
+the page changes. An allowed slot you edit loses its permission. If a slot is edited or protected again, it is
+skipped, never replaced.
 
 ## MATERIAL BANK
 
