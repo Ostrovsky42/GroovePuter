@@ -51,13 +51,29 @@ struct CycleProbe {
         static_cast<unsigned long>(heap_caps_get_minimum_free_size(caps)));
   }
 };
+
+// One line per user action of the MATERIAL page (G, R open/allow/cancel, Undo): the stack
+// high-water mark is the minimum free stack since the task started, so a later line also covers
+// every draw and handler that ran before it.
+void probeNow(const char* label) {
+  constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  Serial.printf(
+      "[PML-PROBE] %s stackMinFreeBytes=%lu internalFree=%lu largestBlock=%lu minEverFree=%lu\n",
+      label,
+      static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+      static_cast<unsigned long>(heap_caps_get_free_size(caps)),
+      static_cast<unsigned long>(heap_caps_get_largest_free_block(caps)),
+      static_cast<unsigned long>(heap_caps_get_minimum_free_size(caps)));
+}
 }  // namespace
 #define GP_CYCLE_PROBE_BEGIN CycleProbe cycleProbe_;
 #define GP_CYCLE_PROBE_END(result, playing) \
   cycleProbe_.report(static_cast<int>((result).status), (result).bars, (playing))
+#define GP_PROBE(label) probeNow(label)
 #else
 #define GP_CYCLE_PROBE_BEGIN
 #define GP_CYCLE_PROBE_END(result, playing) ((void)0)
+#define GP_PROBE(label) ((void)0)
 #endif
 
 namespace {
@@ -842,6 +858,7 @@ bool PhrasePage::replaceEnter() {
   }
   if (glyph == '*') {
     SlotReuse::unmark(mini_acid_, slot);
+    GP_PROBE("R-cancel");
     UI::showToast("REPLACEMENT CANCELED", 900);
     return true;
   }
@@ -861,6 +878,7 @@ bool PhrasePage::replaceEnter() {
     return true;
   }
   const auto preview = SlotReuse::preview(mini_acid_);
+  GP_PROBE("R-allow");
   const int bars = GroovePuterState::requestedPhraseBars();
   char message[40];
   if (preview.longestNow >= bars) {
@@ -1082,6 +1100,7 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
     replace_confirming_ = false;
     replace_confirmed_ = false;
     replace_cursor_ = 0;
+    GP_PROBE("R-open");
     return true;
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
@@ -1271,6 +1290,7 @@ bool PhrasePage::generatePhraseToSong() {
         }
       });
 
+  GP_PROBE("G");
   if (!result) {
     const bool typedRejection =
         result.status == GeneratedPhraseSong::LifecycleStatus::Failed &&
@@ -1437,6 +1457,7 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
+      GP_PROBE("UNDO");
       UI::showToast("UNDO: MATERIAL", 1000);
       return true;
     }
