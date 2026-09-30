@@ -1235,6 +1235,29 @@ int MiniAcid::display303LocalPatternIndex(int voiceIndex) const {
   return songPatternIndexInBank(global);
 }
 
+uint8_t MiniAcid::reuseEngineHolders(int localSlot) const {
+  uint8_t mask = 0;
+  if (localSlot < 0 || localSlot >= kPatternsPerPage) return kReuseHolderCurrent;  // unknown slot: never reusable
+  const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+  const int index = localSlot % Bank<SynthPattern>::kPatterns;
+  const int global = songPatternFromPageBankIndex(currentPageIndex(), bank, index);
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    const bool selected = current303BankIndex(voice) == bank &&
+                          display303LocalPatternIndex(voice) == index;
+    if (selected) mask |= kReuseHolderCurrent;
+    if (selected && !workingMaterial_[voice].empty()) mask |= kReuseHolderWorking;
+    if (pendingMaterial_[voice].queued &&
+        pendingMaterial_[voice].slot == static_cast<uint16_t>(global)) {
+      mask |= kReuseHolderNext;
+    }
+  }
+  if (sceneManager_.getCurrentBankIndex(2) == bank &&
+      sceneManager_.getCurrentDrumPatternIndex() == index) {
+    mask |= kReuseHolderCurrent;
+  }
+  return mask;
+}
+
 int MiniAcid::displayDrumLocalPatternIndex() const {
   int16_t global = displayDrumPatternIndex();
   if (global < 0) return -1;
@@ -1605,6 +1628,7 @@ void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
 
 void MiniAcid::setCurrentPage(int8_t page) {
   hardBarrierPatternPlayback_();
+  if (page != currentPage_.load(std::memory_order_acquire)) reuseMarks_.clear();
   currentPage_.store(page, std::memory_order_release);
 }
 
@@ -2923,6 +2947,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // replacement attempt (MaterialIds are per-project; fail closed).
   clearGeneratedSynthAOrigin();
   clearGeneratedPhraseRecipe();
+  clearReuseMarks();
   
   // Do not auto-save here: filesystem writes can stall UX/audio path on constrained devices.
   // Scene persistence is explicit via Save/Save As.
@@ -2983,6 +3008,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
 
   sceneManager_.wipeToZero();
+  clearReuseMarks();
   applySceneStateFromManager();
   const int residentPage = PatternPagingService::activePageIndex();
   if (!rebuildPatternRuntimeEventBank() ||
@@ -3005,6 +3031,7 @@ void MiniAcid::loadSceneFromStorage() {
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   clearGeneratedSynthAOrigin();  // D1-B: see loadSceneByName
   clearGeneratedPhraseRecipe();
+  clearReuseMarks();
   lastSceneLoadRecoveredAutosave_ = false;
   if (sceneStorage_) {
     if (sceneStorage_->hasSceneAuto() &&

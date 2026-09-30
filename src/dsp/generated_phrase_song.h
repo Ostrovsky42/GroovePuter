@@ -5,6 +5,8 @@
 #include "generated_phrase_p1r_materializer.h"
 #include "mode_manager.h"
 #include "phrase_generator.h"
+#include "slot_reuse.h"
+#include "src/state/generated_phrase_undo_payload.h"
 #include "src/audio/pattern_paging.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
@@ -22,7 +24,6 @@
 
 namespace GeneratedPhraseSong {
 
-constexpr uint32_t kGeneratedPhraseUndoTag = 0x44325048u;  // "D2PH"
 constexpr int kMaxPreparedBars = 8;
 
 enum class LifecycleStatus : uint8_t {
@@ -102,17 +103,6 @@ struct PreparedPhraseArrangement {
   GroovePuterMaterial::MaterialId synthAId(uint8_t bar) const {
     return synthAReservation.idAt(bar);
   }
-};
-
-struct GeneratedPhraseUndoPayload {
-  uint32_t tag = kGeneratedPhraseUndoTag;
-  Song beforeSong{};
-  int16_t pageIndex = -1;
-  int16_t songSlot = -1;
-  int16_t songStart = -1;
-  int16_t firstLocalSlot = -1;
-  int16_t bars = 0;
-  int16_t previousPatternBars = 1;
 };
 
 static_assert(std::is_trivially_copyable<GeneratedPhraseUndoPayload>::value,
@@ -246,6 +236,7 @@ inline bool materializeLegacyBar(
 }
 
 inline bool exactPreparedSlotsRemainSafe(
+    MiniAcid& engine,
     const Scene& scene,
     const PreparedPhraseArrangement& prepared) {
   if (prepared.firstLocalSlot < 0 ||
@@ -253,12 +244,8 @@ inline bool exactPreparedSlotsRemainSafe(
     return false;
   }
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
-    if (!PhraseGenerator::localSlotIsSafeForPhrase(
-            scene,
-            prepared.request.pageIndex,
-            prepared.firstLocalSlot + bar)) {
-      return false;
-    }
+    // Free now, or a marked slot whose token, id and holders are re-verified here (PML-C).
+    if (!SlotReuse::usable(engine, scene, prepared.firstLocalSlot + bar)) return false;
   }
   return true;
 }
@@ -276,7 +263,7 @@ inline bool preparedTargetStillCommitSafe(
           scene.songs[prepared.songSlot],
           prepared.request.songStart,
           prepared.request.bars) ||
-      !exactPreparedSlotsRemainSafe(scene, prepared)) {
+      !exactPreparedSlotsRemainSafe(engine, scene, prepared)) {
     return false;
   }
 
@@ -355,6 +342,9 @@ inline void applyPreparedPersistent(
       materializeLegacyBar(engine, scene, prepared, bar, scratch);
     }
 
+    // PML-C: a slot taken through an "allow replacement" mark is emptied (patterns AND both
+    // descriptors) and the mark ends; for a slot that was free this is a no-op.
+    SlotReuse::reclaim(engine, scene, localSlot);
     scene.synthABanks[bank].patterns[index] = scratch.synthA;
     scene.synthBBanks[bank].patterns[index] = scratch.synthB;
     scene.drumBanks[bank].patterns[index] = scratch.drums;
@@ -610,8 +600,8 @@ inline bool prepareWithGenerationAttempt(
     return false;
   }
 
-  prepared.firstLocalSlot = PhraseGenerator::findSafeContiguousEmptySlots(
-      scene, prepared.request.pageIndex, bars);
+  prepared.firstLocalSlot = SlotReuse::findRun(
+      engine, scene, prepared.request.pageIndex, bars);
   if (prepared.firstLocalSlot < 0) {
     prepared.result.error =
         PhraseGenerator::PhraseError::NoContiguousPatternSlots;
@@ -1090,8 +1080,8 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
           scene.songs[recipe.songSlot], cycleStart, kCycleBars)) {
     return refuse(CycleStatus::RowsOccupied);
   }
-  prepared->firstLocalSlot = PhraseGenerator::findSafeContiguousEmptySlots(
-      scene, recipe.pageIndex, kCycleBars);
+  prepared->firstLocalSlot = SlotReuse::findRun(
+      engine, scene, recipe.pageIndex, kCycleBars);
   if (prepared->firstLocalSlot < 0) return refuse(CycleStatus::NoSafeSlots);
 
   // PREFLIGHT: prove all eight bars materialize before any destination is touched.

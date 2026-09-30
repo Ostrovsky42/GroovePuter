@@ -108,6 +108,9 @@ jobs:
       - name: Run 0.9.14 mix C defaults (new scenes only)
         run: bash tests/run_0_9_14_mix_defaults_tests.sh
 
+      - name: Run 0.9.14 PML-C allow-replacement marks
+        run: bash tests/run_0_9_14_pml_c_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 

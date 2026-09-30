@@ -8,6 +8,7 @@
 #include "src/state/material_lineage.h"
 #include "src/state/generated_synth_a_origin.h"
 #include "src/state/generated_phrase_recipe.h"
+#include "src/state/reuse_marks.h"
 #include "src/dsp/p0_preservation_types.h"
 #include "src/state/working_material_storage.h"
 
@@ -334,6 +335,21 @@ public:
   void clearGeneratedPhraseRecipe() {
     generatedPhraseRecipe_ = GroovePuterMaterial::GeneratedPhraseRecipe{};
   }
+
+  // PML-C: session-only "allow replacement" marks for Pattern slots of the current page.
+  // Marks are managed by slot_reuse.h (which verifies every holder); nothing here decides
+  // whether a slot may be replaced. Dropped on scene load, project change and page change.
+  const GroovePuterMaterial::ReuseMarks& reuseMarks() const { return reuseMarks_; }
+  GroovePuterMaterial::ReuseMarks& reuseMarksForReuseModule() { return reuseMarks_; }
+  void clearReuseMarks() { reuseMarks_.clear(); }
+
+  // Holders only the engine can see for a resident Pattern slot of the current page.
+  enum ReuseHolder : uint8_t {
+    kReuseHolderCurrent = 1,   // selected as CURRENT (synth or drum selector)
+    kReuseHolderWorking = 2,   // Working material bound to the slot
+    kReuseHolderNext = 4,      // queued as NEXT
+  };
+  uint8_t reuseEngineHolders(int localSlot) const;
 
   enum class GoRequestResult : uint8_t {
     Failed = 0,
@@ -873,6 +889,7 @@ private:
   GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
   bool generatedSynthAOriginValid_ = false;
   GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
+  GroovePuterMaterial::ReuseMarks reuseMarks_{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
   GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};
