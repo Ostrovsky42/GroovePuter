@@ -215,8 +215,9 @@ void testGridHoldersAndResults() {
   CHECK(gfx.count("U") == 3);                          // slots 14-16: the rest of the live Undo receipt
   CHECK(gfx.count("~") == 12);                         // slots 1-12: unused orphans that may be allowed
   CHECK(gfx.count("*") == 0);
-  CHECK(gfx.shows("TAKE 4B: NOW NO  AFTER NO"));
-  CHECK(gfx.shows("GROW 8B: NOW NO  AFTER NO"));
+  CHECK(gfx.shows("SLOT SPACE"));                     // the results are labelled as space, not as a GROW promise
+  CHECK(gfx.shows("TAKE 4B  NO / NO"));
+  CHECK(gfx.shows("GROW 4B  NO / NO     8B  NO / NO"));
   CHECK(gfx.shows("BLOCKED BY"));
   CHECK(gfx.shows("LIVE UNDO 3"));
   CHECK(gfx.shows("SLOT 1: UNUSED  ENTER: ALLOW"));
@@ -261,9 +262,8 @@ void testConfirmAndMark() {
   // the two results differ: permission set is not generation possible
   drawView(page, gfx);
   CHECK(gfx.count("*") == 4);
-  CHECK(gfx.shows("TAKE 4B: NOW NO  AFTER YES"));
-  CHECK(gfx.shows("GROW 4B: NOW NO  AFTER YES"));
-  CHECK(gfx.shows("GROW 8B: NOW NO  AFTER NO"));
+  CHECK(gfx.shows("TAKE 4B  NO / YES"));
+  CHECK(gfx.shows("GROW 4B  NO / YES     8B  NO / NO"));
 
   // ENTER on an allowed slot cancels the permission
   CHECK(press(page, key('\n')));

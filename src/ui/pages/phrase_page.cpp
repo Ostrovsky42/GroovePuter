@@ -986,16 +986,23 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   // allowed replacement. "Allowed" is not "possible now".
   const auto preview = SlotReuse::preview(mini_acid_);
   const int takeBars = GroovePuterState::requestedPhraseBars();
-  const auto operationLine = [&](int row, const char* name, int bars) {
-    std::snprintf(line, sizeof(line), "%s %dB: NOW %s  AFTER %s", name, bars,
-                  yesNo(preview.longestNow >= bars), yesNo(preview.longestAfter >= bars));
-    gfx.setTextColor(preview.longestNow >= bars ? palette.accent
-                     : (preview.longestAfter >= bars ? palette.text : palette.drums));
-    gfx.drawText(x, LayoutManager::lineY(row), line);
+  // SLOT SPACE only: a YES here means a consecutive run of that length exists; it does not promise
+  // that GROW can run (style, edits and an already published cycle are reported by D itself).
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(4), "SLOT SPACE:  NOW / AFTER ALLOWED");
+  const auto spaceColor = [&](int bars) {
+    return preview.longestNow >= bars ? palette.accent
+           : (preview.longestAfter >= bars ? palette.text : palette.drums);
   };
-  operationLine(4, "TAKE", takeBars);
-  operationLine(5, "GROW", 4);
-  operationLine(6, "GROW", 8);
+  std::snprintf(line, sizeof(line), "TAKE %dB  %s / %s", takeBars,
+                yesNo(preview.longestNow >= takeBars), yesNo(preview.longestAfter >= takeBars));
+  gfx.setTextColor(spaceColor(takeBars));
+  gfx.drawText(x, LayoutManager::lineY(5), line);
+  std::snprintf(line, sizeof(line), "GROW 4B  %s / %s     8B  %s / %s",
+                yesNo(preview.longestNow >= 4), yesNo(preview.longestAfter >= 4),
+                yesNo(preview.longestNow >= 8), yesNo(preview.longestAfter >= 8));
+  gfx.setTextColor(spaceColor(4));
+  gfx.drawText(x, LayoutManager::lineY(6), line);
 
   int counts[128] = {};
   for (int slot = 0; slot < kPatternsPerPage; ++slot) {
@@ -1014,7 +1021,7 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   }
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(7),
-               shown ? line : "SLOTS ONLY: D ALSO CHECKS STYLE/EDITS");
+               shown ? line : "D ALSO CHECKS STYLE, EDITS, CYCLE");
 
   UI::drawStandardFooter(gfx, "[L/R]MOVE [ENTER]ALLOW", "R/ESC:BACK");
 }

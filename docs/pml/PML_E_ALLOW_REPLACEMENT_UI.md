@@ -11,8 +11,9 @@ Status: **implemented and host-tested (real `PhrasePage`, real engine, real even
   `N` NEXT, `M` Melody, `U` live Undo). Protection wins over the permission.
 * Cursor: L/R one slot, U/D one bank (8). ENTER on `~` asks first, ENTER on `*` cancels the permission, ENTER on a held slot names the holder. R or ESC leaves; entering the page starts on the product view.
 * Confirmation (once per visit): *"ALLOW REPLACEMENT OF SLOT n? The next TAKE or GROW may replace its content. After replacement Undo will not restore the old content. Nothing is erased now."*
-* Two results per operation length, separately: `TAKE 4B: NOW NO  AFTER YES`, `GROW 4B: ...`, `GROW 8B: ...` (the TAKE line follows the selected LENGTH). "Allowed" is not "possible now". A line names what blocks
-  (`BLOCKED BY CURRENT 1  LIVE UNDO 3`); with no blocker it says that the lines are slots only and that D also checks style and edits.
+* Two results per operation length, labelled **`SLOT SPACE: NOW / AFTER ALLOWED`**: `TAKE 4B  NO / YES` (follows the selected LENGTH) and `GROW 4B  NO / YES     8B  NO / NO`. A `YES` means a consecutive run of that
+  length exists; it is **not** a promise that GROW can run (style `NotAdmitted`, `EditedSinceGeneration` and an already published cycle are reported by D). "Allowed" is not "possible now". A line names what blocks
+  (`BLOCKED BY CURRENT 1  LIVE UNDO 3`); with no blocker it reads `D ALSO CHECKS STYLE, EDITS, CYCLE`. **An exact preview of the selected GROW (whether it will run, and with 4 or 8 bars) remains an open requirement.**
 * Product view: when a run exists only through allowed slots the TO line reads `REPLACES ALLOWED` (not `FREE`); with none it reads `NO SLOTS: R`. A G refused for lack of a consecutive run says `NO ROOM: R=ALLOW REPLACE`.
 * Marking starts no generation and erases nothing.
 
