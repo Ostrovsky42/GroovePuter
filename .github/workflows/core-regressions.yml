@@ -111,6 +111,9 @@ jobs:
       - name: Run 0.9.14 PML-C allow-replacement marks
         run: bash tests/run_0_9_14_pml_c_tests.sh
 
+      - name: Run 0.9.14 PML-E allow-replacement UI
+        run: bash tests/run_0_9_14_pml_e_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 

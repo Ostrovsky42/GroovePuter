@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
 #include "../../debug_log.h"
@@ -358,6 +359,9 @@ PhrasePage::PhrasePage(IGfx& gfx,
 
 void PhrasePage::onEnter(int context) {
   if (core_mode_) return;
+  replace_view_ = false;          // entering the page always starts on the product view
+  replace_confirming_ = false;
+  replace_confirmed_ = false;
   if (context > 0) {
     const int row = context - 1;
     if (row >= 0 && row < Song::kMaxPositions) {
@@ -494,6 +498,14 @@ PhrasePage::Admissibility PhrasePage::admissibilityFor(
   }
   if (PhraseGenerator::findSafeContiguousEmptySlots(
           scene, mini_acid_.currentPageIndex(), bars) < 0) {
+    // A run made only of free slots and slots the musician allowed to be replaced (every holder
+    // and the content token re-verified, without changing anything).
+    const uint16_t usable = SlotReuse::usableMask(mini_acid_, scene, true);
+    int run = 0;
+    for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+      run = (usable & (1u << slot)) ? run + 1 : 0;
+      if (run >= bars) return Admissibility::Replace;
+    }
     return Admissibility::NoSlots;
   }
   return Admissibility::Free;
@@ -623,10 +635,12 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
   const char* admissibilityText =
       admissibility == Admissibility::Free ? "FREE" :
+      (admissibility == Admissibility::Replace ? "REPLACES ALLOWED" :
       (admissibility == Admissibility::Occupied ? "OCCUPIED" :
-       (admissibility == Admissibility::NoSlots ? "NO SLOTS" : "NO ROOM"));
+       (admissibility == Admissibility::NoSlots ? "NO SLOTS: R" : "NO ROOM")));
   const IGfxColor admissibilityColor =
-      admissibility == Admissibility::Free ? palette.accent :
+      (admissibility == Admissibility::Free ||
+       admissibility == Admissibility::Replace) ? palette.accent :
       (admissibility == Admissibility::Occupied ||
        admissibility == Admissibility::NoSlots ? palette.drums : palette.dim);
 
@@ -726,7 +740,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
-                         "G:TAKE D:GROW P:STYLE");
+                         "G:TAKE D:GROW P:STYLE R:REPLACE");
 }
 
 bool PhrasePage::growKeptPhrase() {
@@ -768,7 +782,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
     case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
     case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
-    case S::NoSafeSlots: message = "NO FREE SLOTS ON PAGE"; break;
+    case S::NoSafeSlots: message = "NO ROOM: R=ALLOW REPLACE"; break;
     case S::RowsOccupied: message = "SONG ROWS AFTER ARE USED"; break;
     case S::ReservationFailed: message = "STORAGE BUSY: TRY AGAIN"; break;
     case S::TargetChanged: message = "MOVED: PRESS D AGAIN"; break;
@@ -777,6 +791,232 @@ bool PhrasePage::growKeptPhrase() {
   }
   UI::showToast(message, 1800);
   return true;
+}
+
+namespace {
+
+// One character per slot. Protection wins over the mark: a slot that is allowed but held shows the
+// holder. '.' free, '*' allowed and usable, '~' unused (may be allowed), letters = holder.
+char replaceGlyph(const MiniAcid& engine, const Scene& scene, int slot) {
+  if (SlotReuse::slotIsFree(scene, engine.currentPageIndex(), slot)) return '.';
+  const uint8_t held = SlotReuse::holders(engine, scene, slot);
+  if (held & SlotReuse::kHolderSong) return 'S';
+  if (held & SlotReuse::kHolderPhraseBank) return 'P';
+  if (held & SlotReuse::kHolderCurrent) return 'C';
+  if (held & SlotReuse::kHolderWorking) return 'W';
+  if (held & SlotReuse::kHolderNext) return 'N';
+  if (held & SlotReuse::kHolderMelody) return 'M';
+  if (held & SlotReuse::kHolderUndoReceipt) return 'U';
+  return SlotReuse::verify(engine, scene, slot) == SlotReuse::Verdict::Ok ? '*' : '~';
+}
+
+const char* replaceHolderName(char glyph) {
+  switch (glyph) {
+    case 'S': return "SONG";
+    case 'P': return "PHRASE BANK";
+    case 'C': return "CURRENT";
+    case 'W': return "WORKING";
+    case 'N': return "NEXT";
+    case 'M': return "MELODY";
+    case 'U': return "LIVE UNDO";
+    default: return "?";
+  }
+}
+
+const char* yesNo(bool value) { return value ? "YES" : "NO"; }
+
+}  // namespace
+
+void PhrasePage::replaceLeave() {
+  replace_view_ = false;
+  replace_confirming_ = false;
+}
+
+bool PhrasePage::replaceEnter() {
+  const int slot = std::min<int>(replace_cursor_, kPatternsPerPage - 1);
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const char glyph = replaceGlyph(mini_acid_, scene, slot);
+  if (glyph == '.') {
+    UI::showToast("ALREADY FREE", 900);
+    return true;
+  }
+  if (glyph == '*') {
+    SlotReuse::unmark(mini_acid_, slot);
+    UI::showToast("REPLACEMENT CANCELED", 900);
+    return true;
+  }
+  if (glyph != '~') {
+    char message[40];
+    std::snprintf(message, sizeof(message), "HELD BY %s", replaceHolderName(glyph));
+    UI::showToast(message, 1200);
+    return true;
+  }
+  if (!replace_confirmed_) {
+    replace_confirming_ = true;   // explicit warning first; nothing has changed yet
+    return true;
+  }
+  uint8_t held = 0;
+  if (SlotReuse::mark(mini_acid_, slot, &held) != SlotReuse::MarkResult::Marked) {
+    UI::showToast("CANNOT ALLOW THIS SLOT", 1000);
+    return true;
+  }
+  const auto preview = SlotReuse::preview(mini_acid_);
+  const int bars = GroovePuterState::requestedPhraseBars();
+  char message[40];
+  if (preview.longestNow >= bars) {
+    std::snprintf(message, sizeof(message), "ALLOWED: %dB POSSIBLE", bars);
+  } else {
+    std::snprintf(message, sizeof(message), "ALLOWED, %dB NOT YET", bars);
+  }
+  UI::showToast(message, 1300);
+  return true;
+}
+
+bool PhrasePage::handleReplaceEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (replace_confirming_) {
+    if (UIInput::isConfirm(ui_event)) {
+      replace_confirmed_ = true;
+      replace_confirming_ = false;
+      return replaceEnter();
+    }
+    if (UIInput::isBack(ui_event)) {
+      replace_confirming_ = false;
+      UI::showToast("CANCELED", 700);
+      return true;
+    }
+    return true;   // modal: swallow everything else
+  }
+  const bool plain = !ui_event.ctrl && !ui_event.alt && !ui_event.meta;
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  if (UIInput::isBack(ui_event) || (plain && lower == 'r')) {
+    replaceLeave();
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  int cursor = replace_cursor_;
+  if (nav == GROOVEPUTER_LEFT) cursor -= 1;
+  else if (nav == GROOVEPUTER_RIGHT) cursor += 1;
+  else if (nav == GROOVEPUTER_UP) cursor -= Bank<SynthPattern>::kPatterns;
+  else if (nav == GROOVEPUTER_DOWN) cursor += Bank<SynthPattern>::kPatterns;
+  if (cursor != replace_cursor_) {
+    replace_cursor_ = static_cast<uint8_t>(
+        ((cursor % kPatternsPerPage) + kPatternsPerPage) % kPatternsPerPage);
+    return true;
+  }
+  if (UIInput::isConfirm(ui_event)) return replaceEnter();
+  return false;
+}
+
+void PhrasePage::drawReplaceView(IGfx& gfx) {
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  UI::drawStandardHeader(gfx, mini_acid_, "ALLOW REPLACEMENT");
+
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  char line[96];
+
+  if (replace_confirming_) {
+    gfx.setTextColor(palette.accent);
+    std::snprintf(line, sizeof(line), "ALLOW REPLACEMENT OF SLOT %d?",
+                  static_cast<int>(replace_cursor_) + 1);
+    gfx.drawText(x, LayoutManager::lineY(1), line);
+    gfx.setTextColor(palette.text);
+    gfx.drawText(x, LayoutManager::lineY(2), "THE NEXT TAKE OR GROW MAY");
+    gfx.drawText(x, LayoutManager::lineY(3), "REPLACE ITS CONTENT.");
+    gfx.setTextColor(palette.drums);
+    gfx.drawText(x, LayoutManager::lineY(5), "AFTER REPLACEMENT UNDO WILL NOT");
+    gfx.drawText(x, LayoutManager::lineY(6), "RESTORE THE OLD CONTENT.");
+    gfx.setTextColor(palette.dim);
+    gfx.drawText(x, LayoutManager::lineY(7), "NOTHING IS ERASED NOW.");
+    UI::drawStandardFooter(gfx, "[ENTER]ALLOW  [ESC]CANCEL", "");
+    return;
+  }
+
+  std::snprintf(line, sizeof(line), "PAGE %d", mini_acid_.currentPageIndex() + 1);
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x + width - gfx.textWidth(line), LayoutManager::lineY(0), line);
+
+  constexpr int kGap = 2;
+  const int cellW = std::max(9, (width - kGap * (kPatternsPerPage - 1)) / kPatternsPerPage);
+  const int cellH = 10;
+  const int gridY = LayoutManager::lineY(1);
+  char glyphs[kPatternsPerPage];
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    glyphs[slot] = replaceGlyph(mini_acid_, scene, slot);
+    const int cx = x + slot * (cellW + kGap);
+    const bool cursor = slot == replace_cursor_;
+    if (glyphs[slot] == '*') {
+      gfx.fillRect(cx, gridY, cellW, cellH, palette.accent);
+      gfx.setTextColor(palette.background);
+    } else {
+      gfx.setTextColor(glyphs[slot] == '~' ? palette.text
+                     : (glyphs[slot] == '.' ? palette.dim : palette.drums));
+    }
+    gfx.drawRect(cx, gridY, cellW, cellH, cursor ? palette.text : palette.border);
+    char label[2] = {glyphs[slot], 0};
+    gfx.drawText(cx + std::max(1, (cellW - gfx.textWidth(label)) / 2), gridY + 1, label);
+  }
+
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(2), ". FREE  ~ UNUSED  * ALLOWED  LETTER = HELD");
+
+  const int cursorSlot = std::min<int>(replace_cursor_, kPatternsPerPage - 1);
+  const char here = glyphs[cursorSlot];
+  if (here == '.') {
+    std::snprintf(line, sizeof(line), "SLOT %d: FREE", cursorSlot + 1);
+  } else if (here == '*') {
+    std::snprintf(line, sizeof(line), "SLOT %d: ALLOWED  ENTER: CANCEL", cursorSlot + 1);
+  } else if (here == '~') {
+    const bool edited = mini_acid_.reuseMarks().marked(cursorSlot) &&
+        SlotReuse::verify(mini_acid_, scene, cursorSlot) == SlotReuse::Verdict::Edited;
+    std::snprintf(line, sizeof(line), edited ? "SLOT %d: EDITED, ALLOW AGAIN?"
+                                              : "SLOT %d: UNUSED  ENTER: ALLOW",
+                  cursorSlot + 1);
+  } else {
+    std::snprintf(line, sizeof(line), "SLOT %d: HELD BY %s", cursorSlot + 1, replaceHolderName(here));
+  }
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(3), line);
+
+  // Two results, per operation length: what is possible NOW and what becomes possible AFTER the
+  // allowed replacement. "Allowed" is not "possible now".
+  const auto preview = SlotReuse::preview(mini_acid_);
+  const int takeBars = GroovePuterState::requestedPhraseBars();
+  const auto operationLine = [&](int row, const char* name, int bars) {
+    std::snprintf(line, sizeof(line), "%s %dB: NOW %s  AFTER %s", name, bars,
+                  yesNo(preview.longestNow >= bars), yesNo(preview.longestAfter >= bars));
+    gfx.setTextColor(preview.longestNow >= bars ? palette.accent
+                     : (preview.longestAfter >= bars ? palette.text : palette.drums));
+    gfx.drawText(x, LayoutManager::lineY(row), line);
+  };
+  operationLine(4, "TAKE", takeBars);
+  operationLine(5, "GROW", 4);
+  operationLine(6, "GROW", 8);
+
+  int counts[128] = {};
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    const char g = glyphs[slot];
+    if (g != '.' && g != '~' && g != '*') ++counts[static_cast<unsigned char>(g)];
+  }
+  line[0] = 0;
+  int shown = 0;
+  for (const char g : {'S', 'P', 'C', 'W', 'N', 'M', 'U'}) {
+    const int n = counts[static_cast<unsigned char>(g)];
+    if (n == 0 || shown >= 3) continue;
+    char part[24];
+    std::snprintf(part, sizeof(part), "%s%s %d", shown ? "  " : "BLOCKED BY ", replaceHolderName(g), n);
+    std::strncat(line, part, sizeof(line) - std::strlen(line) - 1);
+    ++shown;
+  }
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(7),
+               shown ? line : "SLOTS ONLY: D ALSO CHECKS STYLE/EDITS");
+
+  UI::drawStandardFooter(gfx, "[L/R]MOVE [ENTER]ALLOW", "R/ESC:BACK");
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
@@ -827,6 +1067,15 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'd') {
     return growKeptPhrase();
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'r') {
+    // Plain R only: Alt/Meta/Ctrl combinations belong to the global handlers (e.g. Alt+R). The
+    // performance keyboard is active on PERFORM only, so MATERIAL does not compete for this key.
+    replace_view_ = true;
+    replace_confirming_ = false;
+    replace_confirmed_ = false;
+    replace_cursor_ = 0;
+    return true;
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
     const auto level = GroovePuterState::cycleGenerationLevel();
@@ -1028,7 +1277,12 @@ bool PhrasePage::generatePhraseToSong() {
     }
     LOG_WARN_UI("Generated Phrase -> Song failed at TO=%d: %s",
                 songStart + 1, GeneratedPhraseSong::statusText(result));
-    UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
+    // Lack of a consecutive run is the one refusal the musician can act on from here.
+    if (result.phrase.error == PhraseGenerator::PhraseError::NoContiguousPatternSlots) {
+      UI::showToast("NO ROOM: R=ALLOW REPLACE", 1800);
+    } else {
+      UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
+    }
     return true;
   }
 
@@ -1250,7 +1504,8 @@ bool PhrasePage::undoPreparedOwnedState() {
 
 void PhrasePage::draw(IGfx& gfx) {
   if (!core_mode_) {
-    drawProductView(gfx);
+    if (replace_view_) drawReplaceView(gfx);
+    else drawProductView(gfx);
     return;
   }
 
@@ -1405,6 +1660,7 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     if (ui_event.key == '[' || ui_event.key == ']') return true;
   }
 
+  if (!core_mode_ && replace_view_) return handleReplaceEvent(ui_event);
   if (!core_mode_) return handleProductEvent(ui_event);
 
   const int nav = UIInput::navCode(ui_event);
