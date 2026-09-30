@@ -256,17 +256,15 @@ growth. Acid and House, edited-source growth, repeated multi-cycle development a
 persistent development history are outside this first slice. The separate `D`
 command on `MATERIAL BANK` means derive and is not `GROW`.
 
-When `G` or `D` answers `NO ROOM: R=ALLOW REPLACE`, the page has no run of consecutive free pattern slots,
-often because earlier generated patterns are still stored after their Song rows were deleted. Press plain `R`
-on `MATERIAL` to open ALLOW REPLACEMENT: a grid of the 16 slots of the current pattern page. Move with
-Left/Right (Up/Down jumps one bank), `Enter` on an unused slot (`~`) asks once to confirm and then allows it (`*`);
-`Enter` on an allowed slot cancels it; `R` or `Esc` leaves. Slots held by a Song row (`S`), the Phrase Bank (`P`),
-the CURRENT selection (`C`), a working edit (`W`), a queued NEXT (`N`), a Melody (`M`) or the live Undo (`U`) cannot be
-allowed. Allowing erases nothing and starts no generation; the next `G`/`D` that needs room uses free slots first and
-replaces allowed ones only when nothing else fits. `SLOT SPACE` shows whether a run of the needed length exists now and
-after the allowed replacement; it does not promise that GROW will run. **After a replacement Undo restores the Song rows
-but not the old content.** Permissions are session-only, end on scene load/new scene/page change, and are cancelled by
-editing the slot.
+When `G` or `D` answers `NO ROOM: R MAKES ROOM`, the page has no run of consecutive free pattern slots,
+usually because earlier generated patterns are still stored after their Song rows were deleted. Press plain `R`
+on `MATERIAL`. The page asks `REUSE n UNUSED TAKES?`: takes generated in this session, not in Song and not edited
+by you. `Enter` says yes (you return with `ROOM FOR 4B: PRESS G`), `Esc` says no. Nothing is erased: the next `G`/`D`
+uses free slots first and replaces these only when nothing else fits. **After a replacement Undo restores the Song
+rows but not the old content.** Older material, hand-made or edited patterns, anything in Song, the CURRENT selection
+and the live Undo are never offered automatically; press `S` on the question to choose slots yourself in a grid
+(`~` unused, `*` allowed, letters mark what holds a slot). Permissions are session-only: they end on scene load,
+new scene and page change, and editing a slot cancels its permission.
 
 Typical deletion path before using it: on `SONG`, `Backspace` clears the selected cell(s), or `Ctrl+M` removes the
 row. A row deleted this way no longer references its pattern, but the pattern stays in its slot until replaced.
