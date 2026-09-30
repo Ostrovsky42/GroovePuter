@@ -375,6 +375,7 @@ PhrasePage::PhrasePage(IGfx& gfx,
 
 void PhrasePage::onEnter(int context) {
   if (core_mode_) return;
+  room_view_ = false;
   replace_view_ = false;          // entering the page always starts on the product view
   replace_confirming_ = false;
   replace_confirmed_ = false;
@@ -649,11 +650,16 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const int toRow = resolvedToRow();
   const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
+  char roomHint[24] = "NO SLOTS: R";
+  if (admissibility == Admissibility::NoSlots) {
+    const int reusable = SlotReuse::autoCandidateCount(mini_acid_);
+    if (reusable > 0) std::snprintf(roomHint, sizeof(roomHint), "NO SLOTS: R REUSE %d", reusable);
+  }
   const char* admissibilityText =
       admissibility == Admissibility::Free ? "FREE" :
       (admissibility == Admissibility::Replace ? "REPLACES ALLOWED" :
       (admissibility == Admissibility::Occupied ? "OCCUPIED" :
-       (admissibility == Admissibility::NoSlots ? "NO SLOTS: R" : "NO ROOM")));
+       (admissibility == Admissibility::NoSlots ? roomHint : "NO ROOM")));
   const IGfxColor admissibilityColor =
       (admissibility == Admissibility::Free ||
        admissibility == Admissibility::Replace) ? palette.accent :
@@ -756,7 +762,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
-                         "G:TAKE D:GROW P:STYLE R:REPLACE");
+                         "G:TAKE D:GROW P:STYLE R:ROOM");
 }
 
 bool PhrasePage::growKeptPhrase() {
@@ -798,7 +804,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
     case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
     case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
-    case S::NoSafeSlots: message = "NO ROOM: R=ALLOW REPLACE"; break;
+    case S::NoSafeSlots: message = "NO ROOM: R MAKES ROOM"; break;
     case S::RowsOccupied: message = "SONG ROWS AFTER ARE USED"; break;
     case S::ReservationFailed: message = "STORAGE BUSY: TRY AGAIN"; break;
     case S::TargetChanged: message = "MOVED: PRESS D AGAIN"; break;
@@ -881,7 +887,7 @@ bool PhrasePage::replaceEnter() {
   GP_PROBE("R-allow");
   const int bars = GroovePuterState::requestedPhraseBars();
   char message[40];
-  if (preview.longestNow >= bars) {
+  if (preview.longestAfter >= bars) {
     std::snprintf(message, sizeof(message), "ALLOWED: %dB POSSIBLE", bars);
   } else {
     std::snprintf(message, sizeof(message), "ALLOWED, %dB NOT YET", bars);
@@ -1044,6 +1050,75 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   UI::drawStandardFooter(gfx, "[L/R]MOVE [ENTER]ALLOW", "R/ESC:BACK");
 }
 
+bool PhrasePage::handleRoomEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  const bool plain = !ui_event.ctrl && !ui_event.alt && !ui_event.meta;
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  if (UIInput::isBack(ui_event) || (plain && lower == 'r')) {
+    room_view_ = false;
+    return true;
+  }
+  if (plain && lower == 's') {          // slot by slot: anything the automatic offer leaves out
+    room_view_ = false;
+    replace_view_ = true;
+    replace_cursor_ = 0;
+    replace_confirming_ = false;
+    replace_confirmed_ = false;
+    return true;
+  }
+  if (!UIInput::isConfirm(ui_event)) return false;
+  const int offered = SlotReuse::autoCandidateCount(mini_acid_);
+  if (offered == 0) {
+    UI::showToast("NOTHING TO REUSE", 1000);
+    return true;
+  }
+  (void)SlotReuse::makeRoom(mini_acid_);
+  GP_PROBE("R-room");
+  const auto preview = SlotReuse::preview(mini_acid_);
+  const int bars = GroovePuterState::requestedPhraseBars();
+  char message[40];
+  if (preview.longestAfter >= bars) std::snprintf(message, sizeof(message), "ROOM FOR %dB: PRESS G", bars);
+  else std::snprintf(message, sizeof(message), "STILL NO ROOM FOR %dB", bars);
+  UI::showToast(message, 1600);
+  room_view_ = false;
+  return true;
+}
+
+void PhrasePage::drawRoomView(IGfx& gfx) {
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  UI::drawStandardHeader(gfx, mini_acid_, "MAKE ROOM");
+  const int x = Layout::COL_1;
+  char line[64];
+  const int offered = SlotReuse::autoCandidateCount(mini_acid_);
+  if (offered > 0) {
+    std::snprintf(line, sizeof(line), "REUSE %d UNUSED TAKE%s?", offered, offered == 1 ? "" : "S");
+    gfx.setTextColor(palette.accent);
+    gfx.drawText(x, LayoutManager::lineY(1), line);
+    gfx.setTextColor(palette.text);
+    gfx.drawText(x, LayoutManager::lineY(2), "NOT IN SONG, NOT EDITED BY YOU.");
+    gfx.drawText(x, LayoutManager::lineY(3), "THEY MAKE ROOM FOR THE NEXT G.");
+    gfx.setTextColor(palette.drums);
+    gfx.drawText(x, LayoutManager::lineY(4), "AFTER THAT UNDO WILL NOT");
+    gfx.drawText(x, LayoutManager::lineY(5), "RESTORE THEIR OLD CONTENT.");
+    gfx.setTextColor(palette.dim);
+    gfx.drawText(x, LayoutManager::lineY(6), "[S] CHOOSE SLOTS YOURSELF");
+    UI::drawStandardFooter(gfx, "[ENTER]YES  [ESC]NO", "");
+    return;
+  }
+  gfx.setTextColor(palette.accent);
+  gfx.drawText(x, LayoutManager::lineY(1), "NOTHING TO REUSE");
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(2), "TAKES MADE HERE ARE STILL IN");
+  gfx.drawText(x, LayoutManager::lineY(3), "SONG OR IN USE, OR YOU EDITED");
+  gfx.drawText(x, LayoutManager::lineY(4), "THEM. OLDER MATERIAL IS NEVER");
+  gfx.drawText(x, LayoutManager::lineY(5), "REUSED AUTOMATICALLY.");
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(6), "[S] CHOOSE SLOTS YOURSELF");
+  UI::drawStandardFooter(gfx, "[S]SLOTS  [ESC]BACK", "");
+}
+
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   cycleProductFocus(0);
@@ -1096,7 +1171,8 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'r') {
     // Plain R only: Alt/Meta/Ctrl combinations belong to the global handlers (e.g. Alt+R). The
     // performance keyboard is active on PERFORM only, so MATERIAL does not compete for this key.
-    replace_view_ = true;
+    room_view_ = true;
+    replace_view_ = false;
     replace_confirming_ = false;
     replace_confirmed_ = false;
     replace_cursor_ = 0;
@@ -1306,7 +1382,7 @@ bool PhrasePage::generatePhraseToSong() {
                 songStart + 1, GeneratedPhraseSong::statusText(result));
     // Lack of a consecutive run is the one refusal the musician can act on from here.
     if (result.phrase.error == PhraseGenerator::PhraseError::NoContiguousPatternSlots) {
-      UI::showToast("NO ROOM: R=ALLOW REPLACE", 1800);
+      UI::showToast("NO ROOM: R MAKES ROOM", 1800);
     } else {
       UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
     }
@@ -1532,7 +1608,8 @@ bool PhrasePage::undoPreparedOwnedState() {
 
 void PhrasePage::draw(IGfx& gfx) {
   if (!core_mode_) {
-    if (replace_view_) drawReplaceView(gfx);
+    if (room_view_) drawRoomView(gfx);
+    else if (replace_view_) drawReplaceView(gfx);
     else drawProductView(gfx);
     return;
   }
@@ -1688,6 +1765,7 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     if (ui_event.key == '[' || ui_event.key == ']') return true;
   }
 
+  if (!core_mode_ && room_view_) return handleRoomEvent(ui_event);
   if (!core_mode_ && replace_view_) return handleReplaceEvent(ui_event);
   if (!core_mode_) return handleProductEvent(ui_event);
 

@@ -169,12 +169,18 @@ void drawView(PhrasePage& page, UiGfx& gfx) {
   g_footerRight = model.footer.right;
 }
 
+// R opens the MAKE ROOM question; S on it opens the slot-by-slot grid.
+void openGrid(PhrasePage& page) {
+  CHECK(press(page, key('r')));
+  CHECK(press(page, key('s')));
+}
+
 void testOpenAndKeys() {
   Fixture f("pmle-keys", GenerativeMode::Techno, 404);
   UiGfx gfx;
   PhrasePage page(gfx, f.engine, AudioGuard{}, false);
   drawView(page, gfx);
-  CHECK(g_footerRight.find("R:REPLACE") != std::string::npos);   // the footer names the action
+  CHECK(g_footerRight.find("R:ROOM") != std::string::npos);      // the footer names the action
 
   UIEvent alt = key('r'); alt.alt = true;              // Alt+R belongs to the global handlers
   CHECK(!page.handleEvent(alt));
@@ -183,20 +189,28 @@ void testOpenAndKeys() {
   UIEvent meta = key('r'); meta.meta = true;
   CHECK(!page.handleEvent(meta));
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));   // none of them opened the view
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));   // none of them opened the view
 
-  CHECK(press(page, key('r')));                   // plain R opens it
+  CHECK(press(page, key('r')));                   // plain R opens the question
   drawView(page, gfx);
-  CHECK(gfx.shows("SLOT SPACE") && !gfx.shows("LENGTH"));
-  CHECK(g_footerLeft.find("[ENTER]ALLOW") != std::string::npos);
+  CHECK(gfx.shows("NOTHING TO REUSE") && !gfx.shows("LENGTH"));   // fresh page: nothing generated here
+  CHECK(g_footerLeft.find("[S]SLOTS") != std::string::npos);
   CHECK(press(page, key('R')));                   // and plain R leaves it
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));
   CHECK(press(page, key('r')));
   CHECK(press(page, key(0x1B)));                  // ESC leaves it too
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));
-  std::puts("PML-E: plain R opens/leaves ALLOW REPLACEMENT; Alt/Ctrl/Meta+R do not; footer names R: PASS");
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));
+  CHECK(press(page, key('r')));
+  CHECK(press(page, key('S')));                   // S opens the slot-by-slot grid
+  drawView(page, gfx);
+  CHECK(gfx.shows("SLOT SPACE") && !gfx.shows("LENGTH"));
+  CHECK(g_footerLeft.find("[ENTER]ALLOW") != std::string::npos);
+  CHECK(press(page, key('R')));                   // R leaves the grid
+  drawView(page, gfx);
+  CHECK(gfx.shows("LENGTH"));
+  std::puts("PML-E: plain R opens/leaves MAKE ROOM, S opens the grid; Alt/Ctrl/Meta+R do not; footer names R: PASS");
 }
 
 void testGridHoldersAndResults() {
@@ -207,9 +221,9 @@ void testGridHoldersAndResults() {
 
   // product view: no run, nothing allowed yet
   drawView(page, gfx);
-  CHECK(gfx.shows("NO SLOTS: R"));
+  CHECK(gfx.shows("NO SLOTS: R REUSE 12"));             // the product view says what R can do
 
-  CHECK(press(page, key('r')));
+  openGrid(page);
   drawView(page, gfx);
   CHECK(gfx.count("C") == 1);                          // slot 13: CURRENT (first slot of the last TAKE)
   CHECK(gfx.count("U") == 3);                          // slots 14-16: the rest of the live Undo receipt
@@ -229,7 +243,7 @@ void testConfirmAndMark() {
   buildOrphans(f);
   UiGfx gfx;
   PhrasePage page(gfx, f.engine, AudioGuard{}, false);
-  CHECK(press(page, key('r')));
+  openGrid(page);
 
   // ENTER on an unused slot asks first; nothing is marked yet
   CHECK(press(page, key('\n')));
@@ -289,7 +303,7 @@ void testAdmissibilityAndGenerate() {
   PhrasePage page(gfx, f.engine, AudioGuard{}, false);
   // G fails for lack of room and says where to go
   CHECK(press(page, key('g')));
-  CHECK(toastText(page, gfx).find("R=ALLOW REPLACE") != std::string::npos);
+  CHECK(toastText(page, gfx).find("R MAKES ROOM") != std::string::npos);
   for (int s = 0; s < 4; ++s) CHECK(SlotReuse::mark(f.engine, s) == MarkResult::Marked);
   drawView(page, gfx);
   CHECK(gfx.shows("REPLACES ALLOWED"));                 // product view: G is possible, and says it replaces
@@ -336,9 +350,69 @@ void testDistinctGrowMessages() {
     PhrasePage page(gfx, f.engine, AudioGuard{}, false);
     for (int i = 0; i < 4; ++i) { CHECK(f.take(4, i * 4)); }       // the page is full, the last TAKE is kept
     CHECK(press(page, key('d')));
-    CHECK(toastText(page, gfx) == "NO ROOM: R=ALLOW REPLACE");      // NoSafeSlots
+    CHECK(toastText(page, gfx) == "NO ROOM: R MAKES ROOM");      // NoSafeSlots
   }
   std::puts("PML-E: NotAdmitted, Edited, AlreadyGrown and NoSafeSlots each give a different message: PASS");
+}
+
+void testMakeRoomQuestion() {
+  Fixture f("pmle-room", GenerativeMode::Techno, 404);
+  buildOrphans(f);
+  UiGfx gfx;
+  PhrasePage page(gfx, f.engine, AudioGuard{}, false);
+
+  // a hand edit: that slot must not be offered
+  f.scene().synthABanks[0].patterns[2].steps[5].velocity ^= 0x11;
+
+  CHECK(press(page, key('r')));
+  drawView(page, gfx);
+  CHECK(gfx.shows("REUSE 11 UNUSED TAKES?"));
+  CHECK(gfx.shows("NOT IN SONG, NOT EDITED BY YOU."));
+  CHECK(gfx.shows("AFTER THAT UNDO WILL NOT"));
+  CHECK(gfx.shows("RESTORE THEIR OLD CONTENT."));
+  CHECK(g_footerLeft.find("[ENTER]YES") != std::string::npos);
+  CHECK(f.engine.reuseMarks().count() == 0);              // asking changes nothing
+
+  CHECK(press(page, key(0x1B)));                          // NO
+  CHECK(f.engine.reuseMarks().count() == 0);
+  drawView(page, gfx);
+  CHECK(gfx.shows("LENGTH"));
+
+  CHECK(press(page, key('r')));
+  CHECK(press(page, key('\n')));                          // YES
+  CHECK(f.engine.reuseMarks().count() == 11);
+  CHECK(!f.engine.reuseMarks().marked(2));                // the edited slot stays out
+  CHECK(toastText(page, gfx) == "ROOM FOR 4B: PRESS G");
+  drawView(page, gfx);
+  CHECK(gfx.shows("REPLACES ALLOWED"));
+  CHECK(gfx.shows("LENGTH"));                             // back on the product view
+
+  // G now works and uses them; the untouched remainder stays
+  CHECK(press(page, key('g')));
+  CHECK(f.engine.generatedPhraseRecipe() != nullptr);
+  std::puts("PML-E: MAKE ROOM asks once, offers only unedited takes, marks them on YES, then G works: PASS");
+}
+
+void testMakeRoomNothingToReuse() {
+  Fixture f("pmle-room-none", GenerativeMode::Techno, 404);
+  buildOrphans(f);
+  f.engine.clearReuseMarks();                             // older material: a scene load drops the ledger
+  UiGfx gfx;
+  PhrasePage page(gfx, f.engine, AudioGuard{}, false);
+  drawView(page, gfx);
+  CHECK(gfx.shows("NO SLOTS: R") && !gfx.shows("REUSE"));
+  CHECK(press(page, key('r')));
+  drawView(page, gfx);
+  CHECK(gfx.shows("NOTHING TO REUSE"));
+  CHECK(gfx.shows("OLDER MATERIAL IS NEVER"));
+  CHECK(press(page, key('\n')));                          // ENTER does nothing harmful
+  CHECK(toastText(page, gfx) == "NOTHING TO REUSE");
+  CHECK(f.engine.reuseMarks().count() == 0);
+  CHECK(press(page, key('s')));                           // the grid is still reachable for older material
+  drawView(page, gfx);
+  CHECK(gfx.shows("SLOT SPACE"));
+  CHECK(gfx.count("~") == 12);
+  std::puts("PML-E: with no session-generated unedited takes the screen says so and the grid stays reachable: PASS");
 }
 
 void testPageEntryResets() {
@@ -358,6 +432,8 @@ int main() {
   testOpenAndKeys();
   testGridHoldersAndResults();
   testConfirmAndMark();
+  testMakeRoomQuestion();
+  testMakeRoomNothingToReuse();
   testAdmissibilityAndGenerate();
   testDistinctGrowMessages();
   testPageEntryResets();

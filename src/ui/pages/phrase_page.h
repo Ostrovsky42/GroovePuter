@@ -112,6 +112,10 @@ class PhrasePage : public IPage {
 
   // ALLOW REPLACEMENT (MATERIAL, key R): the musician chooses unused Pattern slots that a LATER
   // generation may replace. Marking erases nothing and starts nothing; see docs/pml.
+  // MAKE ROOM (plain R): one question for the common case, covering only takes generated in this
+  // session and not edited since; S opens the slot-by-slot view for everything else.
+  void drawRoomView(IGfx& gfx);
+  bool handleRoomEvent(UIEvent& ui_event);
   void drawReplaceView(IGfx& gfx);
   bool handleReplaceEvent(UIEvent& ui_event);
   bool replaceEnter();
@@ -178,7 +182,8 @@ class PhrasePage : public IPage {
   uint8_t product_bar_cursor_ = 0;
 
   // ALLOW REPLACEMENT view state (product view only).
-  bool replace_view_ = false;
+  bool room_view_ = false;            // MAKE ROOM question
+  bool replace_view_ = false;         // slot-by-slot view
   bool replace_confirming_ = false;   // the "Undo will not restore" confirmation is showing
   bool replace_confirmed_ = false;    // confirmed once during this visit to the view
   uint8_t replace_cursor_ = 0;
