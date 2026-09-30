@@ -25,7 +25,7 @@ remove a safeguard (the Undo) in order to reproduce what was just deleted. **Rec
 cycle content is a pure function of `(recipe, salt)`, Undo of a variant could be implemented by **re-deriving the previous salt's cycle** instead of storing replaced content. **[OPEN]** not proven; it is a design hypothesis for V1.
 
 ### Findings that belong to the next production slice
-* **F1 (latent bug).** `generateCycle` cross-checks the origin sidecar with `origin.barCount != recipe.bars`. After a cycle the sidecar describes 8 bars, so any future repeated GROW would be refused as "edited".
+* **F1 (latent bug; FIXED after this report in a separate commit with a regression test, see PML_E).** `generateCycle` cross-checks the origin sidecar with `origin.barCount != recipe.bars`. After a cycle the sidecar describes 8 bars, so any future repeated GROW would be refused as "edited".
   Today it is hidden by `CycleAlreadyPublished`, and Undo clears the sidecar (which is why "Undo, then D" works). Fix: compare the identity only.
 * **F2.** After GROW the CURRENT selector sits on the first cycle slot and protects it in addition to the receipt. Any "replace the cycle" flow must also move CURRENT, or the preview must name it.
 * **F3.** The cycle flag (`cycleSongStart`) outlives the cycle's rows. Regrowing after deleting the rows needs a rule for when the flag is reset.

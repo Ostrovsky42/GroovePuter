@@ -116,15 +116,9 @@ int main() {
   s->engine.setGeneratedPhraseCycleStart(-1);                     // PROTOTYPE: forget the published cycle
   auto c2 = GeneratedPhraseSong::generateCycle(s->engine, kGuard);
   std::printf("  GROW after forgetting the cycle flag (prototype): %s\n", cycleName(c2.status));
-  // FINDING (latent production bug, not fixed in this slice): generateCycle cross-checks the origin
-  // sidecar with `barCount != recipe.bars`; after a cycle the sidecar describes 8 bars, so a repeated
-  // GROW would report EditedSinceGeneration although nothing was edited. Undo clears the sidecar, which
-  // is why today's "Undo, then D" path works.
-  PROOF(c2.status == CycleStatus::EditedSinceGeneration, "finding: a repeated GROW would be refused as 'edited' because the origin sidecar still describes the 8-bar cycle");
-  s->engine.clearGeneratedSynthAOrigin();                          // PROTOTYPE: what Undo of the cycle does
-  auto c2b = GeneratedPhraseSong::generateCycle(s->engine, kGuard);
-  std::printf("  GROW with the origin cleared (prototype): %s\n", cycleName(c2b.status));
-  PROOF(c2b.status == CycleStatus::NoSafeSlots, "blocker 2: slots 4-11 still hold the old cycle and its Undo receipt");
+  // F1 (found by the first run of this tool at e7f8d66f, fixed afterwards): the origin sidecar used to make a
+  // repeated GROW report EditedSinceGeneration after a cycle. With the fix the blocker is the slots.
+  PROOF(c2.status == CycleStatus::NoSafeSlots, "blocker 2: slots 4-11 still hold the old cycle and its Undo receipt (no false 'edited' after the F1 fix)");
   const auto pvS1 = SlotReuse::preview(s->engine);
   std::printf("  preview: longest run now=%d, after marks=%d; holders of slot 4: 0x%02x (receipt=0x%02x)\n", pvS1.longestNow, pvS1.longestAfter, pvS1.slotHolders[4], SlotReuse::kHolderUndoReceipt);
   PROOF(pvS1.slotHolders[4] & SlotReuse::kHolderUndoReceipt, "the slots of the deleted cycle are held only by the live Undo receipt");
