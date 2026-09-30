@@ -354,6 +354,12 @@ inline void applyPreparedPersistent(
     (void)engine.refreshPatternRuntimeEvents(0, bank, index);
     (void)engine.refreshPatternRuntimeEvents(1, bank, index);
 
+    // Session ledger: this generator wrote the slot and left exactly this content (MAKE ROOM offers
+    // only slots whose content still equals it).
+    engine.generatedLedgerForReuseModule().set(
+        localSlot, prepared.request.pageIndex,
+        GroovePuterMaterial::slotContentToken(scene, localSlot));
+
     // D1-A Checkpoint A1: canonical Synth A Material identity publication
     GroovePuterMaterial::setResidentDescriptor(
         scene, 0, localSlot,

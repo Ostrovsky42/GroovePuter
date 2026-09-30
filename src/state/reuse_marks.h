@@ -47,6 +47,31 @@ struct ReuseMarks {
   }
 };
 
+// Session-only record of the slots THIS session's generator wrote, with the content token the
+// generator left there. A slot whose token still matches is "generated here and not edited since":
+// the only class the one-screen MAKE ROOM action may offer. Older or hand-made material never
+// appears here (it can still be chosen slot by slot). Dropped with the marks.
+struct GeneratedLedger {
+  uint64_t token[kPatternsPerPage]{};
+  uint16_t mask = 0;
+  int8_t page = -1;
+
+  bool has(int slot) const {
+    return slot >= 0 && slot < kPatternsPerPage && (mask & (1u << slot)) != 0;
+  }
+  void set(int slot, int pageIndex, uint64_t contentToken) {
+    if (slot < 0 || slot >= kPatternsPerPage) return;
+    if (page != pageIndex) clear();
+    page = static_cast<int8_t>(pageIndex);
+    token[slot] = contentToken;
+    mask = static_cast<uint16_t>(mask | (1u << slot));
+  }
+  void clear() { *this = GeneratedLedger{}; }
+};
+
+static_assert(std::is_trivially_copyable<GeneratedLedger>::value, "ledger must stay fixed value state");
+static_assert(sizeof(GeneratedLedger) <= 144, "ledger is budgeted against the DRAM headroom");
+
 static_assert(std::is_trivially_copyable<ReuseMarks>::value, "reuse marks must stay fixed value state");
 static_assert(sizeof(ReuseMarks) <= 208, "reuse marks are budgeted against the DRAM headroom");
 

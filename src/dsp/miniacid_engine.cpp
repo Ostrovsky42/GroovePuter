@@ -1628,7 +1628,7 @@ void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
 
 void MiniAcid::setCurrentPage(int8_t page) {
   hardBarrierPatternPlayback_();
-  if (page != currentPage_.load(std::memory_order_acquire)) reuseMarks_.clear();
+  if (page != currentPage_.load(std::memory_order_acquire)) clearReuseMarks();
   currentPage_.store(page, std::memory_order_release);
 }
 

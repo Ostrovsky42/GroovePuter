@@ -341,7 +341,10 @@ public:
   // whether a slot may be replaced. Dropped on scene load, project change and page change.
   const GroovePuterMaterial::ReuseMarks& reuseMarks() const { return reuseMarks_; }
   GroovePuterMaterial::ReuseMarks& reuseMarksForReuseModule() { return reuseMarks_; }
-  void clearReuseMarks() { reuseMarks_.clear(); }
+  // Also drops the session ledger of generated slots (same lifecycle).
+  void clearReuseMarks() { reuseMarks_.clear(); generatedLedger_.clear(); }
+  const GroovePuterMaterial::GeneratedLedger& generatedLedger() const { return generatedLedger_; }
+  GroovePuterMaterial::GeneratedLedger& generatedLedgerForReuseModule() { return generatedLedger_; }
 
   // Holders only the engine can see for a resident Pattern slot of the current page.
   enum ReuseHolder : uint8_t {
@@ -890,6 +893,7 @@ private:
   bool generatedSynthAOriginValid_ = false;
   GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
   GroovePuterMaterial::ReuseMarks reuseMarks_{};
+  GroovePuterMaterial::GeneratedLedger generatedLedger_{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
   GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};

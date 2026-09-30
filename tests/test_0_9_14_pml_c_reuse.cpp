@@ -392,6 +392,53 @@ void testSessionBoundaries() {
   std::puts("PML-C: page change / new scene drop marks; an engine-bypassing wipe leaves an inert, revoked mark: PASS");
 }
 
+// MAKE ROOM candidates: generated in THIS session, content still what the generator left, referenced
+// by nothing, protected by nothing. Hand-made / edited / older material is never offered.
+void testAutoCandidates() {
+  Fixture f("pmlc-auto");
+  buildOrphans(f);
+  // slots 0-11 are unreferenced generated orphans; 12 is CURRENT and 13-15 belong to the live receipt
+  CHECK(SlotReuse::autoCandidateMask(f.engine) == 0x0FFF);
+  CHECK(SlotReuse::autoCandidateCount(f.engine) == 12);
+
+  // a manual edit removes that slot from the offer
+  f.scene().synthABanks[0].patterns[2].steps[5].velocity ^= 0x11;
+  CHECK(SlotReuse::autoCandidateMask(f.engine) == (0x0FFF & ~(1u << 2)));
+  f.scene().synthABanks[0].patterns[2].steps[5].velocity ^= 0x11;       // reverting restores the exact content
+  CHECK(SlotReuse::autoCandidateMask(f.engine) == 0x0FFF);
+
+  // a Song reference removes it (protection)
+  f.song().positions[0].patterns[0] = static_cast<int16_t>(songPatternFromPageBankIndex(0, 0, 3));
+  CHECK(SlotReuse::autoCandidateMask(f.engine) == (0x0FFF & ~(1u << 3)));
+  f.song().positions[0].patterns[0] = -1;
+
+  // make room marks exactly the candidates, and the preview then shows the room
+  CHECK(SlotReuse::makeRoom(f.engine) == 12);
+  CHECK(f.engine.reuseMarks().count() == 12);
+  const auto preview = SlotReuse::preview(f.engine);
+  CHECK(!preview.take4Now && preview.take4After && preview.longestAfter == 12);
+  CHECK(f.take(4, 0));                                                     // G uses them
+  CHECK(f.engine.generatedPhraseRecipe()->firstLocalSlot == 0);
+  // the new TAKE is referenced by the Song now: not a candidate; the untouched orphans still are
+  CHECK((SlotReuse::autoCandidateMask(f.engine) & 0x000F) == 0);
+  CHECK((SlotReuse::autoCandidateMask(f.engine) & 0x0FF0) == 0x0FF0 - 0);
+
+  // older material: the ledger is session-only, so after a scene load / new scene nothing is offered
+  Fixture g("pmlc-auto2");
+  buildOrphans(g);
+  CHECK(SlotReuse::autoCandidateCount(g.engine) == 12);
+  g.engine.clearReuseMarks();                                              // what a scene load does
+  CHECK(SlotReuse::autoCandidateCount(g.engine) == 0);
+  CHECK(SlotReuse::makeRoom(g.engine) == 0);
+  Fixture h("pmlc-auto3");
+  buildOrphans(h);
+  h.engine.setCurrentPage(static_cast<int8_t>(1));                         // a page change too
+  h.engine.setCurrentPage(static_cast<int8_t>(0));
+  CHECK(SlotReuse::autoCandidateCount(h.engine) == 0);
+  std::printf("PML-C: GeneratedLedger = %zu B\n", sizeof(GroovePuterMaterial::GeneratedLedger));
+  std::puts("PML-C: MAKE ROOM offers only generated-here, unedited, unreferenced, unprotected slots; session-only: PASS");
+}
+
 }  // namespace
 
 int main() {
@@ -403,6 +450,7 @@ int main() {
   testUndoGate();
   testSaveLoadAfterReplacement();
   testSessionBoundaries();
+  testAutoCandidates();
   std::puts("0.9.14 PML-C reuse: PASS");
   return 0;
 }

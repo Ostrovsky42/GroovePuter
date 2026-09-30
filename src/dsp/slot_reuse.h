@@ -154,6 +154,43 @@ inline int findRun(MiniAcid& engine, const Scene& scene, int pageIndex, int bars
   return -1;
 }
 
+// MAKE ROOM candidates: slots this session generated and that still hold exactly what the generator
+// left (unedited), referenced by nothing and protected by nothing. Hand-made, edited or older
+// material is never a candidate here; it stays reachable through the slot-by-slot view.
+inline bool autoCandidate(const MiniAcid& engine, const Scene& scene, int slot) {
+  const auto& ledger = engine.generatedLedger();
+  if (!ledger.has(slot) || ledger.page != engine.currentPageIndex()) return false;
+  if (ledger.token[slot] != GroovePuterMaterial::slotContentToken(scene, slot)) return false;
+  if (slotIsFree(scene, engine.currentPageIndex(), slot)) return false;
+  return holders(engine, scene, slot) == 0;
+}
+
+inline uint16_t autoCandidateMask(const MiniAcid& engine) {
+  const Scene& scene = engine.sceneManager().currentScene();
+  uint16_t mask = 0;
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    if (autoCandidate(engine, scene, slot)) mask = static_cast<uint16_t>(mask | (1u << slot));
+  }
+  return mask;
+}
+
+inline int autoCandidateCount(const MiniAcid& engine) {
+  const uint16_t mask = autoCandidateMask(engine);
+  int n = 0;
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) n += (mask & (1u << slot)) ? 1 : 0;
+  return n;
+}
+
+// Allow replacement of every candidate (the same marks the slot-by-slot view sets). Returns how many.
+inline int makeRoom(MiniAcid& engine) {
+  const uint16_t mask = autoCandidateMask(engine);
+  int marked = 0;
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    if ((mask & (1u << slot)) && mark(engine, slot) == MarkResult::Marked) ++marked;
+  }
+  return marked;
+}
+
 // Free-or-usable mask without mutating marks (for the preview).
 inline uint16_t usableMask(const MiniAcid& engine, const Scene& scene, bool withMarks) {
   uint16_t mask = 0;
