@@ -460,7 +460,7 @@ void testPhrasePageCycleGesture() {
     CHECK(page.handleEvent(key));
     CHECK(f.scene().songs[0].length == 2);
     UI::drawToast(gfx);
-    CHECK(gfx.shows("4B TAKE"));
+    CHECK(gfx.shows("SET 4B"));
   }
   {
     Fixture f("p0-ui-p2", R::RealizationLevel::P2Variation);

@@ -732,7 +732,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 bool PhrasePage::growKeptPhrase() {
   const auto* recipe = mini_acid_.generatedPhraseRecipe();
   if (recipe != nullptr && recipe->bars != GeneratedPhraseSong::kCycleSectionBars) {
-    UI::showToast("MAKE A 4B TAKE TO GROW", 1800);
+    UI::showToast("SET 4B, PRESS G", 1800);
     return true;
   }
   GP_CYCLE_PROBE_BEGIN
@@ -759,20 +759,20 @@ bool PhrasePage::growKeptPhrase() {
   }
 
   using S = GeneratedPhraseSong::CycleStatus;
-  const char* message = "CYCLE FAILED";
+  const char* message = "GROW FAILED: PRESS G";
   switch (result.status) {
-    case S::NoRecipe: message = "MAKE A 4B TAKE FIRST"; break;
-    case S::CycleAlreadyPublished: message = "CYCLE ALREADY IN SONG"; break;
-    case S::NothingToAdd: message = "NO NEW SECTION"; break;
-    case S::NotAdmitted: message = "THIS STYLE CANNOT GROW"; break;
-    case S::DepthNotP3: message = "SET REWORK, THEN NEW TAKE"; break;
-    case S::ContextChanged: message = "SOURCE CHANGED: NEW TAKE"; break;
-    case S::EditedSinceGeneration: message = "TAKE EDITED: CANNOT GROW"; break;
-    case S::NoSafeSlots: message = "NO FREE PATTERN SLOTS"; break;
-    case S::RowsOccupied: message = "SONG ROWS OCCUPIED"; break;
-    case S::ReservationFailed: message = "MATERIAL IDS UNAVAILABLE"; break;
-    case S::TargetChanged: message = "TARGET CHANGED: RETRY"; break;
-    case S::Busy: message = "WAIT: GENERATION BUSY"; break;
+    case S::NoRecipe: message = "PRESS G FIRST"; break;
+    case S::CycleAlreadyPublished: message = "ALREADY GROWN"; break;
+    case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
+    case S::NotAdmitted: message = "TRY ANOTHER TAKE: G"; break;
+    case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
+    case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
+    case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
+    case S::NoSafeSlots: message = "NO FREE SLOTS ON PAGE"; break;
+    case S::RowsOccupied: message = "SONG ROWS AFTER ARE USED"; break;
+    case S::ReservationFailed: message = "STORAGE BUSY: TRY AGAIN"; break;
+    case S::TargetChanged: message = "MOVED: PRESS D AGAIN"; break;
+    case S::Busy: message = "BUSY: TRY AGAIN"; break;
     default: break;
   }
   UI::showToast(message, 1800);
