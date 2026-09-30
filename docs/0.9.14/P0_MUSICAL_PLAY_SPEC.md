@@ -253,3 +253,14 @@ On the product MATERIAL page, select **STYLE REWORK** and **LENGTH 4B**, then pr
 A source TAKE at a different length is refused before invoking the cycle, with `MAKE A 4B TAKE TO GROW`. A P2 source is refused by the engine and presented as `SET REWORK, THEN NEW TAKE`; changing STYLE after the TAKE cannot silently convert its already generated material. Other typed failures are shown as brief cause-specific messages. This gesture does not change the default P2 style, persist the session recipe, or claim support for edited A, Acid, or House.
 
 **Device gate remains open:** build the exact UI candidate with FS1B, record ELF/BIN checksum and DRAM, flash that BIN, then test both the eight-bar and four-bar outcomes, bar-boundary activation while playing, Undo, repeated attempt, visible refusals, and stack/heap high-water under repeated cycles. Assess mix C with the physical output separately; a host render does not set new-scene faders.
+
+## 13. Mix C for new scenes: implemented
+
+**[OBSERVED]** `applyNewSceneMix` (`scenes.h`): Synth A/B faders 1.5 (the fader maximum), drums 0.45, applied only in `SceneManager::wipeToZero()` and `SceneManager::loadDefaultScene()`.
+Those are the new-scene paths: new project (`createNewSceneWithName`), Project page clear, Ctrl+Alt+Backspace reset, and the boot fallback when no scene can be parsed.
+Neither function touched `trackVolumes` before, so a "new" scene used to **inherit the previous scene's faders**; it now starts from mix C.
+
+* Loaders are unchanged: the streaming loader and the document loader set 1.0 before parsing, so a scene file without `trackVolumes` loads at 1.0 (tested through both).
+* A saved scene reloads with exactly its own faders (tested: a changed kick fader survives, other drums keep 0.45).
+* DSP gain, master volume (0.6) and the fader clamp are unchanged.
+* Not verified: how mix C sounds on the Cardputer speaker beyond the owner's listening of the published cycle; drums are about 5 dB quieter than before in new scenes.
