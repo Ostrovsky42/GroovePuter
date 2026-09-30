@@ -946,10 +946,10 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
     gfx.drawText(x, LayoutManager::lineY(2), "THE NEXT TAKE OR GROW MAY");
     gfx.drawText(x, LayoutManager::lineY(3), "REPLACE ITS CONTENT.");
     gfx.setTextColor(palette.drums);
-    gfx.drawText(x, LayoutManager::lineY(5), "AFTER REPLACEMENT UNDO WILL NOT");
-    gfx.drawText(x, LayoutManager::lineY(6), "RESTORE THE OLD CONTENT.");
+    gfx.drawText(x, LayoutManager::lineY(4), "AFTER REPLACEMENT UNDO WILL NOT");
+    gfx.drawText(x, LayoutManager::lineY(5), "RESTORE THE OLD CONTENT.");
     gfx.setTextColor(palette.dim);
-    gfx.drawText(x, LayoutManager::lineY(7), "NOTHING IS ERASED NOW.");
+    gfx.drawText(x, LayoutManager::lineY(6), "NOTHING IS ERASED NOW.");
     UI::drawStandardFooter(gfx, "[ENTER]ALLOW  [ESC]CANCEL", "");
     return;
   }
@@ -980,7 +980,7 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   }
 
   gfx.setTextColor(palette.dim);
-  gfx.drawText(x, LayoutManager::lineY(2), ". FREE  ~ UNUSED  * ALLOWED  LETTER = HELD");
+  gfx.drawText(x, LayoutManager::lineY(0), ". FREE  ~ UNUSED  * ALLOWED");
 
   const int cursorSlot = std::min<int>(replace_cursor_, kPatternsPerPage - 1);
   const char here = glyphs[cursorSlot];
@@ -998,7 +998,7 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
     std::snprintf(line, sizeof(line), "SLOT %d: HELD BY %s", cursorSlot + 1, replaceHolderName(here));
   }
   gfx.setTextColor(palette.text);
-  gfx.drawText(x, LayoutManager::lineY(3), line);
+  gfx.drawText(x, LayoutManager::lineY(2), line);
 
   // Two results, per operation length: what is possible NOW and what becomes possible AFTER the
   // allowed replacement. "Allowed" is not "possible now".
@@ -1007,7 +1007,7 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   // SLOT SPACE only: a YES here means a consecutive run of that length exists; it does not promise
   // that GROW can run (style, edits and an already published cycle are reported by D itself).
   gfx.setTextColor(palette.dim);
-  gfx.drawText(x, LayoutManager::lineY(4), "SLOT SPACE:  NOW / AFTER ALLOWED");
+  gfx.drawText(x, LayoutManager::lineY(3), "SLOT SPACE:  NOW / AFTER ALLOWED");
   const auto spaceColor = [&](int bars) {
     return preview.longestNow >= bars ? palette.accent
            : (preview.longestAfter >= bars ? palette.text : palette.drums);
@@ -1015,12 +1015,12 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
   std::snprintf(line, sizeof(line), "TAKE %dB  %s / %s", takeBars,
                 yesNo(preview.longestNow >= takeBars), yesNo(preview.longestAfter >= takeBars));
   gfx.setTextColor(spaceColor(takeBars));
-  gfx.drawText(x, LayoutManager::lineY(5), line);
+  gfx.drawText(x, LayoutManager::lineY(4), line);
   std::snprintf(line, sizeof(line), "GROW 4B  %s / %s     8B  %s / %s",
                 yesNo(preview.longestNow >= 4), yesNo(preview.longestAfter >= 4),
                 yesNo(preview.longestNow >= 8), yesNo(preview.longestAfter >= 8));
   gfx.setTextColor(spaceColor(4));
-  gfx.drawText(x, LayoutManager::lineY(6), line);
+  gfx.drawText(x, LayoutManager::lineY(5), line);
 
   int counts[128] = {};
   for (int slot = 0; slot < kPatternsPerPage; ++slot) {
@@ -1038,7 +1038,7 @@ void PhrasePage::drawReplaceView(IGfx& gfx) {
     ++shown;
   }
   gfx.setTextColor(palette.dim);
-  gfx.drawText(x, LayoutManager::lineY(7),
+  gfx.drawText(x, LayoutManager::lineY(6),
                shown ? line : "D ALSO CHECKS STYLE, EDITS, CYCLE");
 
   UI::drawStandardFooter(gfx, "[L/R]MOVE [ENTER]ALLOW", "R/ESC:BACK");

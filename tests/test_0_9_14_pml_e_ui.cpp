@@ -183,19 +183,19 @@ void testOpenAndKeys() {
   UIEvent meta = key('r'); meta.meta = true;
   CHECK(!page.handleEvent(meta));
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("LETTER = HELD"));   // none of them opened the view
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));   // none of them opened the view
 
   CHECK(press(page, key('r')));                   // plain R opens it
   drawView(page, gfx);
-  CHECK(gfx.shows("LETTER = HELD") && !gfx.shows("LENGTH"));
+  CHECK(gfx.shows("SLOT SPACE") && !gfx.shows("LENGTH"));
   CHECK(g_footerLeft.find("[ENTER]ALLOW") != std::string::npos);
   CHECK(press(page, key('R')));                   // and plain R leaves it
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("LETTER = HELD"));
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));
   CHECK(press(page, key('r')));
   CHECK(press(page, key(0x1B)));                  // ESC leaves it too
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("LETTER = HELD"));
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));
   std::puts("PML-E: plain R opens/leaves ALLOW REPLACEMENT; Alt/Ctrl/Meta+R do not; footer names R: PASS");
 }
 
@@ -348,7 +348,7 @@ void testPageEntryResets() {
   CHECK(press(page, key('r')));
   page.onEnter(0);
   drawView(page, gfx);
-  CHECK(gfx.shows("LENGTH") && !gfx.shows("LETTER = HELD"));   // entering the page starts on the product view
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));   // entering the page starts on the product view
   std::puts("PML-E: entering the page resets the view: PASS");
 }
 
