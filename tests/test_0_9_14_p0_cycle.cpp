@@ -552,12 +552,43 @@ void testRuntimeBankFollowsPublication() {
   std::puts("P0 cycle: runtime event bank equals a fresh rebuild after generate, cycle and Undo: PASS");
 }
 
+// F1: the origin sidecar describes the LATEST generated phrase. After a cycle it describes the cycle
+// (8 bars), which says nothing against the kept phrase A. An unedited A must not be refused as edited
+// because of the cycle's length; a really edited A must still be refused; the block on repeated GROW
+// (CycleAlreadyPublished) is not lifted by this.
+void testOriginOfLaterCycleDoesNotJudgeKeptPhrase() {
+  {
+    Fixture f("p0-f1-unedited", R::RealizationLevel::P3Transformation);
+    CHECK(generateKeptFullCycle(f));
+    CHECK(f.cycle() == CycleStatus::CommittedNow);
+    const auto* origin = f.engine.generatedSynthAOrigin();
+    CHECK(origin != nullptr && origin->common.barCount == 8);      // the sidecar now describes the cycle
+    CHECK(f.cycle() == CycleStatus::CycleAlreadyPublished);        // repeated GROW stays blocked
+    f.engine.setGeneratedPhraseCycleStart(-1);                     // (test hook: what a future regrow rule would do)
+    const CycleStatus status = f.cycle();
+    CHECK(status != CycleStatus::EditedSinceGeneration);           // no false "edited"
+  }
+  {
+    Fixture f("p0-f1-edited", R::RealizationLevel::P3Transformation);
+    CHECK(generateKeptFullCycle(f));
+    CHECK(f.cycle() == CycleStatus::CommittedNow);
+    f.engine.setGeneratedPhraseCycleStart(-1);
+    const int pattern = f.scene().songs[0].positions[1].patterns[static_cast<int>(SongTrack::SynthA)];
+    const int local = pattern % kPatternsPerPage;
+    f.scene().synthABanks[local / Bank<SynthPattern>::kPatterns].patterns[local % Bank<SynthPattern>::kPatterns]
+        .steps[3].velocity ^= 0x21;
+    CHECK(f.cycle() == CycleStatus::EditedSinceGeneration);        // a real edit is still refused
+  }
+  std::puts("P0 cycle F1: the cycle's origin does not judge A; a real edit of A is still refused; repeated GROW stays blocked: PASS");
+}
+
 }  // namespace
 
 int main() {
   testNoRecipe();
   testPublishUndoRepeat();
   testRefusals();
+  testOriginOfLaterCycleDoesNotJudgeKeptPhrase();
   testRuntimeBankFollowsPublication();
   testDevelopEqualsKeptIsSkipped();
   testPhrasePageCycleGesture();

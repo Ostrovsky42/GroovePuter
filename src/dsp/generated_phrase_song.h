@@ -1020,11 +1020,21 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   const CycleStatus verified = verifyKeptPhrase(engine, scene, recipe, breakExecution);
   if (verified != CycleStatus::CommittedNow) return refuse(verified);
 
+  // The origin sidecar describes the LATEST generated phrase. It is evidence about A only while it
+  // still describes A (same first slot). After a cycle it describes the cycle (more bars) and says
+  // nothing against A; A's own contract (recipe + R0 above) is what decides.
   const auto* origin = engine.generatedSynthAOrigin();
-  if (origin != nullptr &&
-      (origin->common.phraseGenerationIdentity != recipe.phraseGenerationIdentity ||
-       origin->common.barCount != recipe.bars)) {
-    return refuse(CycleStatus::EditedSinceGeneration);
+  if (origin != nullptr && origin->common.barCount > 0) {
+    const int keptFirstGlobal = songPatternFromPageBankIndex(
+        recipe.pageIndex, recipe.firstLocalSlot / Bank<SynthPattern>::kPatterns,
+        recipe.firstLocalSlot % Bank<SynthPattern>::kPatterns);
+    const bool describesKept =
+        origin->bars[0].material.address.globalSlot == static_cast<uint8_t>(keptFirstGlobal);
+    if (describesKept &&
+        (origin->common.phraseGenerationIdentity != recipe.phraseGenerationIdentity ||
+         origin->common.barCount != recipe.bars)) {
+      return refuse(CycleStatus::EditedSinceGeneration);
+    }
   }
 
   // The kept phrase carries its OWN natural law (chosen from its identity, never assumed Loop).
