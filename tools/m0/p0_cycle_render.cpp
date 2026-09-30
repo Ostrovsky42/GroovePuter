@@ -147,9 +147,92 @@ void survey() {
               total, natural[0], natural[1], natural[2], natural[3], devDup, brkDup);
   (void)lawName;
 }
+
+// P0_CYCLE_MINUTE=1: about one minute of music from the SAME published sections, arranged by
+// repetition only (no new generation, no engine change). Form, in 4-bar sections:
+//   A  A  DEVELOP  A  BREAK(Return last)  A  DEVELOP
+// Only takes whose cycle has both sections (8 bars) are used. Host only.
+void minute(const std::string& out) {
+  struct M { const char* genre; uint16_t id; const char* name; int takes; };
+  const M items[] = {{"Dub", 410, "steppers", 2}, {"Funk", 713, "funk_house_bridge", 2}};
+  std::ofstream manifest(out + "/manifest_minute.tsv");
+  manifest << "file\tgenre\tarchetype\tbpm\tseconds\tform\n";
+  static const int form[] = {0, 0, 1, 0, 2, 0, 1};   // 0 = A, 1 = DEVELOP, 2 = BREAK
+  static const char* formName[] = {"A", "DEV", "BRK"};
+  for (const M& it : items) {
+    const GenreCase* g = findGenre(it.genre);
+    int made = 0;
+    for (int attempt = 0; attempt < 24 && made < it.takes; ++attempt) {
+      const std::string project = "p0-minute-" + std::string(it.name) + std::to_string(attempt);
+      SceneStorageSdl storage;
+      MiniAcid engine(kRate, &storage);
+      PatternPagingService::setProjectName(project.c_str());
+      PatternPagingService::clearProjectPages();
+      engine.init();
+      engine.setSongMode(false);
+      configure(engine, *g);
+      Scene& sc = engine.sceneManager().currentScene();
+      sc.genre.rhythmSelectionMode = static_cast<uint8_t>(R::RhythmSelectionMode::Manual);
+      sc.genre.rhythmArchetypeId = it.id;
+      for (int bnk = 0; bnk < kBankCount; ++bnk)
+        for (int i = 0; i < Bank<SynthPattern>::kPatterns; ++i) {
+          sc.synthABanks[bnk].patterns[i] = SynthPattern{}; sc.synthBBanks[bnk].patterns[i] = SynthPattern{};
+          sc.drumBanks[bnk].patterns[i] = DrumPatternSet{};
+        }
+      for (int v = 0; v < Scene::kMaterialVoices; ++v)
+        for (int sl = 0; sl < Scene::kMaterialSlotsPerVoice; ++sl) sc.materialSlots[v][sl] = GroovePuterMaterial::MaterialSlotDescriptor{};
+      GroovePuterState::setGenerationLevel(R::RealizationLevel::P3Transformation);
+      const auto* def = R::ReferenceVocabulary::definitionForId(it.id);
+      const float bpm = def ? 0.5f * (def->suggestedBpmMin + def->suggestedBpmMax) : 120.0f;
+      engine.setBpm(bpm);
+      if (GeneratedPhraseSong::generate(engine, 4, 0, kGuard).status != GeneratedPhraseSong::LifecycleStatus::CommittedNow) continue;
+      const auto cycle = GeneratedPhraseSong::generateCycle(engine, kGuard);
+      if (cycle.status != GeneratedPhraseSong::CycleStatus::CommittedNow || cycle.bars != 8) continue;
+
+      Song& song = sc.songs[0];
+      SongPosition src[12];
+      for (int r = 0; r < 12; ++r) src[r] = song.positions[r];
+      int row = 0;
+      std::string formText;
+      for (int section : form) {
+        for (int b = 0; b < 4; ++b) song.positions[row++] = src[section * 4 + b];
+        formText += std::string(formText.empty() ? "" : " ") + formName[section];
+      }
+      song.length = row;
+      engine.rebuildPatternRuntimeEventBank();
+      engine.setTrackVolume(VoiceId::SynthA, 1.5f);
+      engine.setTrackVolume(VoiceId::SynthB, 1.5f);
+      for (int id = static_cast<int>(VoiceId::DrumKick); id < static_cast<int>(VoiceId::Count); ++id)
+        engine.setTrackVolume(static_cast<VoiceId>(id), 0.45f);
+      engine.setSongMode(true);
+      engine.setSongPlaybackSlot(0);
+      engine.setSongPosition(0);
+      engine.start();
+      const size_t perBar = static_cast<size_t>(std::llround(4.0 * 60.0 / bpm * kRate));
+      const size_t total = perBar * row + static_cast<size_t>(kRate * 1.5f);
+      std::vector<int16_t> pcm(total, 0);
+      for (size_t at = 0; at < total; at += 128) engine.generateAudioBuffer(pcm.data() + at, std::min<size_t>(128, total - at));
+      engine.stop();
+      ++made;
+      const std::string file = std::string("minute_") + it.genre + "_" + it.name + "_take" + std::to_string(made);
+      writeWav(out + "/" + file + ".wav", pcm);
+      manifest << file << '\t' << it.genre << '\t' << it.name << '\t' << bpm << '\t'
+               << static_cast<double>(perBar * row) / kRate << '\t' << formText << '\n';
+      std::printf("MINUTE %s bars=%d bpm=%.0f seconds=%.0f form=%s\n", file.c_str(), row, bpm,
+                  static_cast<double>(perBar * row) / kRate, formText.c_str());
+    }
+  }
+}
 }  // namespace
 
 int main() {
+  if (std::getenv("P0_CYCLE_MINUTE")) {
+    const char* o = std::getenv("P0_CYCLE_OUT");
+    const std::string outDir = o ? o : "build/p0/product_cycle";
+    std::filesystem::create_directories(outDir);
+    minute(outDir);
+    return 0;
+  }
   if (std::getenv("P0_CYCLE_SURVEY")) { survey(); return 0; }
   const char* o = std::getenv("P0_CYCLE_OUT");
   const std::string out = o ? o : "build/p0/product_cycle";
