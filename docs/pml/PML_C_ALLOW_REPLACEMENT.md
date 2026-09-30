@@ -40,5 +40,9 @@ Tags: **[OBSERVED]** measured or read from code; **[OPEN]**.
 
 * Build PASS. Static DRAM (`.dram0.data + .dram0.bss`): **189792 B before, 189984 B after: +192 B** (`.data` unchanged, `.bss` +192). Budget 191488 B, headroom **1696 B -> 1504 B**.
   The estimate in the PML-B contract (about 256 B) was high; `ReuseMarks` itself is 200 B and the measured delta is 192 B after layout.
-* The budget check prints `policy: provisional exception; threshold-rule items 5-7 pending`: the gate passes under a provisional exception, it is not an unconditional pass.
+* **Conditional pass, not GREEN.** `scripts/check_cardputer_dram_budget.sh` passes under an explicit **provisional exception**: its 191488 B ceiling is a rollback to the last repository ceiling that
+  predates an undocumented 122880 B replacement and "is not a universal hardware safety boundary". The script states that threshold-rule items 1-4 (identity, static profile) are met and that
+  **items 5-7 remain pending: hardware minima, declared reserves, and the deriving calculation of the threshold.** The FS1B build itself printed `=== FS1B dynamic-FatFs Cardputer build PASS ===`.
+* Evidence: `docs/pml/logs/fs1b_pmlc_dram_check.txt` (verbatim output of the budget check). Exact-SHA caveat: this build ran on the working tree that became `f8d65622` (the changes were not yet committed
+  when it ran); an exact-SHA FS1B rebuild of the committed tree is still to be done and is required before any memory claim is made.
 * Not measured: stack high-water or heap use while the feature is exercised on the device.
