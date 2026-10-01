@@ -664,9 +664,11 @@ bool ProjectPage::saveCurrentScene() {
   const std::string name = save_name_;
   const GroovePuterState::SceneRevisionState revisionBefore =
       GroovePuterState::sceneRevisionSnapshot();
-  withAudioGuard([&]() {
-    saved = mini_acid_.saveSceneAs(name);
-  });
+  // Save is not a mutation: withAudioGuard() would bump the scene revision and expire the
+  // retained Undo receipt (R5: Save does not expire Undo). Take the audio guard directly.
+  const auto saveUnderGuard = [&]() { saved = mini_acid_.saveSceneAs(name); };
+  if (audio_guard_) audio_guard_(saveUnderGuard);
+  else saveUnderGuard();
   if (saved) {
     GroovePuterState::markSceneSaveSucceeded();
     closeDialog();

@@ -584,6 +584,30 @@ void testOriginOfLaterCycleDoesNotJudgeKeptPhrase() {
 
 }  // namespace
 
+// SDL acceptance (48e651f0): D -> Save -> Ctrl+Z reported "UNDO: EMPTY" and left the cycle in
+// place. The R5 contract says Save does not expire Undo. Engine-level proof of that contract.
+void testSaveKeepsCycleUndo() {
+  Fixture f("p0-cycle-save-undo", R::RealizationLevel::P3Transformation);
+  CHECK(f.generateKept());
+  const CycleStatus status = f.cycle();
+  CHECK(status == CycleStatus::CommittedNow);
+  const auto before = GroovePuterState::sceneRevisionSnapshot();
+  CHECK(before.dirty());
+  CHECK(f.engine.saveSceneAs("p0-cycle-save-undo-as-new-name"));
+  GroovePuterState::markSceneSaveSucceeded();
+  const auto after = GroovePuterState::sceneRevisionSnapshot();
+  std::printf("save/undo: revision %u -> %u, persisted %u, hasUndo=%d\n",
+              static_cast<unsigned>(before.currentRevision),
+              static_cast<unsigned>(after.currentRevision),
+              static_cast<unsigned>(after.persistedRevision),
+              GroovePuterUndo::undoOwner().hasUndo() ? 1 : 0);
+  CHECK(after.currentRevision == before.currentRevision);
+  CHECK(GroovePuterUndo::undoOwner().hasUndo());
+  CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+        GroovePuterUndo::UndoResult::Restored);
+  std::puts("P0 cycle: Save keeps the cycle Undo (engine level): PASS");
+}
+
 int main() {
   testNoRecipe();
   testPublishUndoRepeat();
@@ -594,6 +618,7 @@ int main() {
   testPhrasePageCycleGesture();
   testLivePendingActivation();
   testLiveStopAndUndoWhilePending();
+  testSaveKeepsCycleUndo();
   std::puts("0.9.14 P0 cycle: PASS");
   return 0;
 }
