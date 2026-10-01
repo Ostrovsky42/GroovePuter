@@ -1,4 +1,5 @@
 #include "cardputer_usb_role_runtime.h"
+#include "cardputer_usb_host_midi.h"
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
 
@@ -492,11 +493,23 @@ void applyPendingMidiInputConfig() {
     }
 }
 
+bool usbHostRole() {
+#if ARDUINO_USB_CDC_ON_BOOT
+    // The core already started TinyUSB Device before setup(); a stale saved Host role (NVS
+    // outlives a reflash) must not turn this build's Device receive into a silent Host path.
+    return false;
+#else
+    return CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host;
+#endif
+}
+
 void syncUsbMidiInputLifecycle() {
-    const bool mounted = g_transport.mounted();
+    const bool host = usbHostRole();
+    const bool mounted = host ? GroovePuterMidi::CardputerUsbHostMidi::isConnected()
+                              : g_transport.mounted();
     if (mounted && !g_usbInputMounted) {
         g_midiIoState.usbAttached();
-        g_midiIoState.usbReady(true, true);
+        g_midiIoState.usbReady(true, !host);  // a Host session only receives
         g_inputParser.reset(GroovePuterMidi::InputSession{
             GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = true;
@@ -514,9 +527,18 @@ void drainIncomingMidiPackets() {
     applyPendingMidiInputConfig();
     syncUsbMidiInputLifecycle();
     midiEventPacket_t packet{};
-    for (std::size_t drained = 0;
-         drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
-         ++drained) {
+    const bool hostRole = usbHostRole();
+    for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
+        if (hostRole) {
+            uint8_t raw4[4];
+            if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4)) break;
+            packet.header = raw4[0];
+            packet.byte1 = raw4[1];
+            packet.byte2 = raw4[2];
+            packet.byte3 = raw4[3];
+        } else if (!g_transport.readPacket(packet)) {
+            break;
+        }
         ExternalMidiTransportEventType type{};
         if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
                 packet.header, packet.byte1, type)) {
@@ -1530,7 +1552,9 @@ bool registerCardputerUsbMidiSink(
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
     g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
-    g_midiIoState.requestUsbRole(GroovePuterMidi::UsbRole::Device);
+    g_midiIoState.requestUsbRole(
+        usbHostRole() ? GroovePuterMidi::UsbRole::Host
+                      : GroovePuterMidi::UsbRole::Device);
     g_midiIoState.boot();
     g_inputDispatcher.bind(router, g_midiIoState);
     g_inputParser.reset(GroovePuterMidi::InputSession{

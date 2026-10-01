@@ -34,6 +34,23 @@ void snapshot(uint32_t& freeBytes, uint32_t& largest) {
     g_memDiag.minEverFree = heap_caps_get_minimum_free_size(caps);
 }
 
+// Single-producer (the task that runs usb_host_client_handle_events, i.e. loop) /
+// single-consumer (MidiDispatchTask) ring of USB-MIDI packets. Bounded, no allocation.
+constexpr uint32_t kRingSize = 64;  // packets, power of two
+uint32_t g_ring[kRingSize];
+std::atomic<uint32_t> g_ringHead{0}, g_ringTail{0}, g_ringDropped{0};
+
+void ringPush(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3) {
+    const uint32_t head = g_ringHead.load(std::memory_order_relaxed);
+    if (head - g_ringTail.load(std::memory_order_acquire) >= kRingSize) {
+        g_ringDropped.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    g_ring[head & (kRingSize - 1)] = static_cast<uint32_t>(b0) | (static_cast<uint32_t>(b1) << 8) |
+                                      (static_cast<uint32_t>(b2) << 16) | (static_cast<uint32_t>(b3) << 24);
+    g_ringHead.store(head + 1, std::memory_order_release);
+}
+
 void onInputTransfer(usb_transfer_t* transfer) {
     g_inFlight.store(false, std::memory_order_relaxed);
     if (g_closing.load(std::memory_order_relaxed)) return;
@@ -67,11 +84,11 @@ void onInputTransfer(usb_transfer_t* transfer) {
                     g_noteOffCount.fetch_add(1, std::memory_order_relaxed);
                     g_status.store("NOTE_OFF", std::memory_order_relaxed);
                 }
-                if (g_callback) {
-                    const uint8_t pkt[4] = {buf[i], buf[i + 1], buf[i + 2], buf[i + 3]};
-                    g_callback(pkt);
-                }
             }
+            // Every USB-MIDI packet with a real cable-event number goes to the single consumer
+            // (the MIDI dispatch task); CIN 0 and 1 are reserved. The identity/fencing/parsing
+            // is the existing input path, not this file.
+            if (cin >= 2) ringPush(buf[i], buf[i + 1], buf[i + 2], buf[i + 3]);
         }
     }
 
@@ -244,6 +261,19 @@ uint8_t CardputerUsbHostMidi::lastVelocity() { return g_lastVelocity.load(); }
 const char* CardputerUsbHostMidi::status() { return g_status.load(); }
 const UsbHostMemDiag& CardputerUsbHostMidi::memDiag() { return g_memDiag; }
 
+bool CardputerUsbHostMidi::popPacket(uint8_t out[4]) {
+    const uint32_t tail = g_ringTail.load(std::memory_order_relaxed);
+    if (tail == g_ringHead.load(std::memory_order_acquire)) return false;
+    const uint32_t v = g_ring[tail & (kRingSize - 1)];
+    out[0] = static_cast<uint8_t>(v);
+    out[1] = static_cast<uint8_t>(v >> 8);
+    out[2] = static_cast<uint8_t>(v >> 16);
+    out[3] = static_cast<uint8_t>(v >> 24);
+    g_ringTail.store(tail + 1, std::memory_order_release);
+    return true;
+}
+uint32_t CardputerUsbHostMidi::droppedPackets() { return g_ringDropped.load(); }
+
 void CardputerUsbHostMidi::stop() {
     // Teardown if necessary
 }
@@ -266,6 +296,8 @@ uint8_t CardputerUsbHostMidi::lastNote() { return 0; }
 uint8_t CardputerUsbHostMidi::lastVelocity() { return 0; }
 const char* CardputerUsbHostMidi::status() { return "OFF"; }
 const UsbHostMemDiag& CardputerUsbHostMidi::memDiag() { static UsbHostMemDiag d; return d; }
+bool CardputerUsbHostMidi::popPacket(uint8_t[4]) { return false; }
+uint32_t CardputerUsbHostMidi::droppedPackets() { return 0; }
 void CardputerUsbHostMidi::stop() {}
 } // namespace GroovePuterMidi
 

@@ -33,6 +33,9 @@ public:
     static const char* status();
     static void stop();
     static const UsbHostMemDiag& memDiag();
+    // Consumer side of the packet ring (MidiDispatchTask only). Producer is the loop task.
+    static bool popPacket(uint8_t out[4]);
+    static uint32_t droppedPackets();
 };
 
 } // namespace GroovePuterMidi
