@@ -149,6 +149,14 @@ UIEvent arrow(int scancode) {
 
 bool press(PhrasePage& page, UIEvent event) { return page.handleEvent(event); }
 
+// Esc as the emulator and the device normalisation deliver it: a scancode, key 0 (not key 0x1B).
+UIEvent escapeScancode() {
+  UIEvent e{};
+  e.event_type = GROOVEPUTER_KEY_DOWN;
+  e.scancode = GROOVEPUTER_ESCAPE;
+  return e;
+}
+
 std::string toastText(PhrasePage& page, UiGfx& gfx) {
   gfx.labels.clear();
   UI::drawToast(gfx);
@@ -199,7 +207,7 @@ void testOpenAndKeys() {
   drawView(page, gfx);
   CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));
   CHECK(press(page, key('r')));
-  CHECK(press(page, key(0x1B)));                  // ESC leaves it too
+  CHECK(press(page, key(0x1B)));                  // ESC (key 0x1B) leaves it too
   drawView(page, gfx);
   CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));
   CHECK(press(page, key('r')));
@@ -207,6 +215,15 @@ void testOpenAndKeys() {
   drawView(page, gfx);
   CHECK(gfx.shows("SLOT SPACE") && !gfx.shows("LENGTH"));
   CHECK(g_footerLeft.find("[ENTER]ALLOW") != std::string::npos);
+  CHECK(press(page, escapeScancode()));           // Esc as a scancode leaves the grid
+  drawView(page, gfx);
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("SLOT SPACE"));
+  CHECK(press(page, key('r')));
+  CHECK(press(page, escapeScancode()));           // and the question
+  drawView(page, gfx);
+  CHECK(gfx.shows("LENGTH") && !gfx.shows("NOTHING TO REUSE"));
+  CHECK(press(page, key('r')));
+  CHECK(press(page, key('s')));
   CHECK(press(page, key('R')));                   // R leaves the grid
   drawView(page, gfx);
   CHECK(gfx.shows("LENGTH"));
@@ -253,8 +270,8 @@ void testConfirmAndMark() {
   CHECK(gfx.shows("NOTHING IS ERASED NOW"));
   CHECK(f.engine.reuseMarks().count() == 0);
 
-  // ESC cancels
-  CHECK(press(page, key(0x1B)));
+  // Esc (as a scancode) cancels
+  CHECK(press(page, escapeScancode()));
   drawView(page, gfx);
   CHECK(!gfx.shows("RESTORE THE OLD CONTENT"));
   CHECK(f.engine.reuseMarks().count() == 0);
@@ -373,7 +390,7 @@ void testMakeRoomQuestion() {
   CHECK(g_footerLeft.find("[ENTER]YES") != std::string::npos);
   CHECK(f.engine.reuseMarks().count() == 0);              // asking changes nothing
 
-  CHECK(press(page, key(0x1B)));                          // NO
+  CHECK(press(page, escapeScancode()));                    // NO (Esc as a scancode)
   CHECK(f.engine.reuseMarks().count() == 0);
   drawView(page, gfx);
   CHECK(gfx.shows("LENGTH"));

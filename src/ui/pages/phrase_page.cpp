@@ -817,6 +817,12 @@ bool PhrasePage::growKeptPhrase() {
 
 namespace {
 
+// Esc reaches pages in two shapes: a scancode (the emulator and the normalised device path, which is
+// what the global help, Project and the file manager test) or key 0x1B; Backspace also leaves.
+bool isLeaveKey(const UIEvent& event) {
+  return UIInput::isBack(event) || event.scancode == GROOVEPUTER_ESCAPE;
+}
+
 // One character per slot. Protection wins over the mark: a slot that is allowed but held shows the
 // holder. '.' free, '*' allowed and usable, '~' unused (may be allowed), letters = holder.
 char replaceGlyph(const MiniAcid& engine, const Scene& scene, int slot) {
@@ -904,7 +910,7 @@ bool PhrasePage::handleReplaceEvent(UIEvent& ui_event) {
       replace_confirming_ = false;
       return replaceEnter();
     }
-    if (UIInput::isBack(ui_event)) {
+    if (isLeaveKey(ui_event)) {
       replace_confirming_ = false;
       UI::showToast("CANCELED", 700);
       return true;
@@ -915,7 +921,7 @@ bool PhrasePage::handleReplaceEvent(UIEvent& ui_event) {
   const char lower = ui_event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
       : 0;
-  if (UIInput::isBack(ui_event) || (plain && lower == 'r')) {
+  if (isLeaveKey(ui_event) || (plain && lower == 'r')) {
     replaceLeave();
     return true;
   }
@@ -1056,7 +1062,7 @@ bool PhrasePage::handleRoomEvent(UIEvent& ui_event) {
   const char lower = ui_event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
       : 0;
-  if (UIInput::isBack(ui_event) || (plain && lower == 'r')) {
+  if (isLeaveKey(ui_event) || (plain && lower == 'r')) {
     room_view_ = false;
     return true;
   }
