@@ -8,6 +8,7 @@
 static constexpr uint32_t kWavetableSize = 1024;
 static constexpr uint32_t kWavetableBits = 10;  // 2^10 = 1024
 static constexpr uint32_t kWavetableMask = 0x3FF;
+static constexpr uint32_t kSquareDutyIndex = static_cast<uint32_t>(kWavetableSize * 0.3f);
 
 class Wavetable {
 public:
@@ -20,14 +21,18 @@ public:
     return sineTable_[index];
   }
   
+  // Saw and square are closed-form in the table index, so they own no table
+  // (8192 B of DRAM). The expressions are the ones the removed tables were
+  // filled with, so every output is bit-identical.
   static inline float lookupSaw(uint32_t phase) {
     uint32_t index = (phase >> 22) & kWavetableMask;
-    return sawTable_[index];
+    return 2.0f * static_cast<float>(index) / static_cast<float>(kWavetableSize) - 1.0f;
   }
-  
+
+  // 30% duty cycle for acid sound.
   static inline float lookupSquare(uint32_t phase) {
     uint32_t index = (phase >> 22) & kWavetableMask;
-    return squareTable_[index];
+    return (index < kSquareDutyIndex) ? 1.0f : -1.0f;
   }
   
   static bool isInitialized() { return initialized_; }
@@ -35,6 +40,4 @@ public:
 private:
   static bool initialized_;
   static float sineTable_[kWavetableSize];
-  static float sawTable_[kWavetableSize];
-  static float squareTable_[kWavetableSize];
 };
