@@ -946,30 +946,52 @@ void loop() {
     if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
       const auto& d = GroovePuterMidi::CardputerUsbHostMidi::memDiag();
       char line[48];
-      g_display.fillRect(0, 63, 240, 72, CP_BLACK);
+      g_display.fillRect(0, 54, 240, 81, CP_BLACK);
       g_display.setTextColor(IGfxColor::White());
       snprintf(line, sizeof(line), "HOST st=%s up=%lus", GroovePuterMidi::CardputerUsbHostMidi::status(),
                (unsigned long)(millis() / 1000));
+      g_display.drawText(0, 55, line);
+      cardputerUsbInputDiag(line, sizeof(line));
       g_display.drawText(0, 64, line);
-      snprintf(line, sizeof(line), "B f=%u l=%u", (unsigned)d.freeBefore, (unsigned)d.largestBefore);
+      g_internalSynthOutput.diagLine(line, sizeof(line));
       g_display.drawText(0, 73, line);
-      snprintf(line, sizeof(line), "I f=%u l=%u%s", (unsigned)d.freeInstalled, (unsigned)d.largestInstalled, d.installed ? "" : " -");
-      g_display.drawText(0, 82, line);
-      snprintf(line, sizeof(line), "C f=%u l=%u%s", (unsigned)d.freeClient, (unsigned)d.largestClient, d.client ? "" : " -");
-      g_display.drawText(0, 91, line);
-      snprintf(line, sizeof(line), "D f=%u l=%u%s", (unsigned)d.freeDevice, (unsigned)d.largestDevice, d.device ? "" : " -");
+      for (int voice = 0; voice < 2; ++voice) {
+        const auto track = voice == 0 ? GroovePuterOutput::Track::SynthA
+                                      : GroovePuterOutput::Track::SynthB;
+        const auto output = GroovePuterOutput::state(track);
+        const char* mode = !output.explicitMode ? "LEGACY"
+            : output.mode == GroovePuterOutput::Mode::Internal ? "INT"
+            : output.mode == GroovePuterOutput::Mode::Midi ? "MIDI" : "LAYER";
+        snprintf(line, sizeof(line), "%c OUT=%s mute=%d vol=%d%%", 'A' + voice,
+                 mode, g_miniAcid->is303Muted(voice) ? 1 : 0,
+                 static_cast<int>(100.0f * g_miniAcid->getTrackVolume(
+                     voice == 0 ? VoiceId::SynthA : VoiceId::SynthB)));
+        g_display.drawText(0, 82 + voice * 9, line);
+      }
+      // Observe the existing published output buffer, without adding work to DSP.
+      const auto& waveform = g_miniAcid->getWaveformBuffer();
+      int outputPeak = 0;
+      for (size_t i = 0; i < waveform.count && i < AUDIO_BUFFER_SAMPLES; ++i) {
+        const int sample = waveform.data[i];
+        const int magnitude = sample < 0 ? -sample : sample;
+        if (magnitude > outputPeak) outputPeak = magnitude;
+      }
+      snprintf(line, sizeof(line), "MAIN=%d%% PLAY=%d pk=%d",
+               static_cast<int>(100.0f * g_miniAcid->mainVolume()),
+               g_miniAcid->isPlaying() ? 1 : 0, outputPeak);
       g_display.drawText(0, 100, line);
-      snprintf(line, sizeof(line), "P f=%u l=%u n=%lu%s", (unsigned)d.freePacket, (unsigned)d.largestPacket,
-               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount(), d.packet ? "" : " -");
+      const uint32_t lastAudio = g_miniAcid->perfStats.lastCallbackMicros.load(
+          std::memory_order_relaxed);
+      snprintf(line, sizeof(line), "AUD age=%lums pause=%d",
+               static_cast<unsigned long>((micros() - lastAudio) / 1000),
+               g_audioMutationGate.pauseRequested() ? 1 : 0);
       g_display.drawText(0, 109, line);
       snprintf(line, sizeof(line), "min=%u %04X:%04X", (unsigned)d.minEverFree,
                (unsigned)GroovePuterMidi::CardputerUsbHostMidi::vid(),
                (unsigned)GroovePuterMidi::CardputerUsbHostMidi::pid());
       g_display.drawText(0, 118, line);
-      cardputerUsbInputDiag(line, sizeof(line));
+      snprintf(line, sizeof(line), "HOLD KEY: read OUT/mute/vol/pk");
       g_display.drawText(0, 127, line);
-      g_internalSynthOutput.diagLine(line, sizeof(line));
-      g_display.drawText(150, 118, line);
       g_display.flush();
     }
 #endif
