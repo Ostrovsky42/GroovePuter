@@ -1,3 +1,4 @@
+#include "cardputer_usb_role_runtime.h"
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
 
@@ -1331,6 +1332,11 @@ bool CardputerUsbMidiTransport::begin() {
     // so start the already registered MIDI descriptor explicitly in that
     // configuration.
 #if !ARDUINO_USB_CDC_ON_BOOT
+    // Single binary: the saved boot role decides who owns the one USB-OTG controller.
+    if (CardputerUsbRoleRuntime::activeRole() != UsbBootRole::Device) {
+        begun_ = false;
+        return false;
+    }
     if (!USB.begin()) {
         begun_ = false;
         return false;

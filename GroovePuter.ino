@@ -10,6 +10,13 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/platform/cardputer_usb_host_midi.h"
+// Host bring-up diagnostics: only meaningful in the CDC-off single-binary build, where project
+// code (not the Arduino core) decides which USB role owns the OTG controller.
+#if defined(GROOVEPUTER_USB_HOST_DIAG) && !ARDUINO_USB_CDC_ON_BOOT
+#define GP_USB_HOST_DIAG 1
+#endif
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -402,6 +409,13 @@ void setup() {
   // statically reserved, so startup no longer depends on the largest free heap
   // block left by SD and SMF initialization.
   g_musicalEventRouter.addSink(g_internalSynthOutput);
+  CardputerUsbRoleRuntime::init();
+#ifdef GP_USB_HOST_DIAG
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    screenLog("4d. USB Host Init...");
+    if (!GroovePuterMidi::CardputerUsbHostMidi::begin(nullptr)) markBootStage(952, "USB Host begin failed");
+  }
+#endif
   screenLog("4d. USB MIDI Runtime...");
   markBootStage(52, "before USB MIDI sink");
   if (!registerCardputerUsbMidiSink(
@@ -509,6 +523,11 @@ void loop() {
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
   LedManager::instance().update();
+#ifdef GP_USB_HOST_DIAG
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    GroovePuterMidi::CardputerUsbHostMidi::service();
+  }
+#endif
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(
@@ -568,6 +587,17 @@ void loop() {
       }
     }
 
+#ifdef GP_USB_HOST_DIAG
+    if (evt.alt && (evt.key == 'u' || evt.key == 'U')) {
+      const UsbBootRole next = CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host
+                                   ? UsbBootRole::Device : UsbBootRole::Host;
+      UI::showToast(next == UsbBootRole::Host ? "REBOOT -> HOST" : "REBOOT -> DEVICE", 1500);
+      drawUI();
+      delay(400);
+      CardputerUsbRoleRuntime::requestRebootWithRole(next);
+      return;
+    }
+#endif
     bool handled = false;
     {
       AudioMutationScope mutationScope(g_audioMutationGate);
@@ -912,6 +942,33 @@ void loop() {
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
+#ifdef GP_USB_HOST_DIAG
+    if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+      const auto& d = GroovePuterMidi::CardputerUsbHostMidi::memDiag();
+      char line[48];
+      g_display.fillRect(0, 63, 240, 72, CP_BLACK);
+      g_display.setTextColor(IGfxColor::White());
+      snprintf(line, sizeof(line), "HOST st=%s up=%lus", GroovePuterMidi::CardputerUsbHostMidi::status(),
+               (unsigned long)(millis() / 1000));
+      g_display.drawText(0, 64, line);
+      snprintf(line, sizeof(line), "B f=%u l=%u", (unsigned)d.freeBefore, (unsigned)d.largestBefore);
+      g_display.drawText(0, 73, line);
+      snprintf(line, sizeof(line), "I f=%u l=%u%s", (unsigned)d.freeInstalled, (unsigned)d.largestInstalled, d.installed ? "" : " -");
+      g_display.drawText(0, 82, line);
+      snprintf(line, sizeof(line), "C f=%u l=%u%s", (unsigned)d.freeClient, (unsigned)d.largestClient, d.client ? "" : " -");
+      g_display.drawText(0, 91, line);
+      snprintf(line, sizeof(line), "D f=%u l=%u%s", (unsigned)d.freeDevice, (unsigned)d.largestDevice, d.device ? "" : " -");
+      g_display.drawText(0, 100, line);
+      snprintf(line, sizeof(line), "P f=%u l=%u n=%lu%s", (unsigned)d.freePacket, (unsigned)d.largestPacket,
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount(), d.packet ? "" : " -");
+      g_display.drawText(0, 109, line);
+      snprintf(line, sizeof(line), "min=%u %04X:%04X", (unsigned)d.minEverFree,
+               (unsigned)GroovePuterMidi::CardputerUsbHostMidi::vid(),
+               (unsigned)GroovePuterMidi::CardputerUsbHostMidi::pid());
+      g_display.drawText(0, 118, line);
+      g_display.flush();
+    }
+#endif
   }
 
   static unsigned long lastMemLog = 0;
