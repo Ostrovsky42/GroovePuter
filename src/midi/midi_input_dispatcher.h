@@ -58,6 +58,7 @@ public:
     }
 
     const MidiInputRoutingConfig& config() const { return config_; }
+    uint32_t published() const { return published_; }  // diagnostic: events handed to the router
 
     bool setConfig(const MidiInputRoutingConfig& config) {
         if (!isValidConfig(config)) return false;
@@ -178,6 +179,7 @@ private:
 
     void publish(MusicalEventType type, const ActiveOwner& owner, uint8_t velocity) {
         if (router_ == nullptr) return;
+        ++published_;
         router_->route(MusicalEvent{type,
                                    MusicalEventSource::MidiInput,
                                    owner.target,
@@ -292,6 +294,7 @@ private:
     ActiveOwner owners_[kMaxActiveNotes]{};
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
+    uint32_t published_{0};
 };
 
 }  // namespace GroovePuterMidi

@@ -968,6 +968,8 @@ void loop() {
       g_display.drawText(0, 118, line);
       cardputerUsbInputDiag(line, sizeof(line));
       g_display.drawText(0, 127, line);
+      g_internalSynthOutput.diagLine(line, sizeof(line));
+      g_display.drawText(150, 118, line);
       g_display.flush();
     }
 #endif

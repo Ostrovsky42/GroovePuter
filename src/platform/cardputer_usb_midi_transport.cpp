@@ -1687,9 +1687,9 @@ bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
 // Diagnostic text for the on-screen Host overlay (racy reads, display only).
 void cardputerUsbInputDiag(char* out, size_t size) {
     const auto& cfg = g_inputDispatcher.config();
-    std::snprintf(out, size, "IN en=%d t=%d pop=%lu prs=%lu no=%lu ph=%d rx=%d",
+    std::snprintf(out, size, "IN e%d t%d pop%lu prs%lu pub%lu ph%d rx%d",
                   cfg.enabled ? 1 : 0, static_cast<int>(cfg.target),
                   static_cast<unsigned long>(g_hostPopped), static_cast<unsigned long>(g_hostParsed),
-                  static_cast<unsigned long>(g_hostNotParsed),
+                  static_cast<unsigned long>(g_inputDispatcher.published()),
                   static_cast<int>(g_midiIoState.usbPhase()), g_midiIoState.usbCanReceive() ? 1 : 0);
 }

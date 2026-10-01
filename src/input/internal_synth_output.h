@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 
 #include <cstdint>
 
@@ -88,6 +89,8 @@ public:
 
     void handleMusicalEvent(const MusicalEvent& event) override;
     void syncPatternOwnership();
+    // Diagnostic one-liner: MIDI-input events seen, live projections started, voice ownership.
+    void diagLine(char* out, size_t size) const;
 
 private:
     static int synthIndex(MusicalEventTarget target);
@@ -102,4 +105,5 @@ private:
     // Only tracks sampler voices started by this PERFORM sink. It is not a MIDI
     // note-owner table; one bit corresponds to one normalized drum lane 0..7.
     uint8_t liveDrumPadMask_{0};
+    uint32_t midiInEvents_{0}, liveOns_{0};  // diagnostic counters
 };
