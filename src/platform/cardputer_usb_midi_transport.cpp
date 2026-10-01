@@ -235,6 +235,7 @@ GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
 bool g_usbInputMounted = false;
+uint32_t g_hostPopped = 0, g_hostParsed = 0, g_hostNotParsed = 0;  // diagnostic counters (dispatch task)
 portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
 GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
 uint32_t g_requestedInputConfigVersion = 0;
@@ -536,6 +537,7 @@ void drainIncomingMidiPackets() {
             packet.byte1 = raw4[1];
             packet.byte2 = raw4[2];
             packet.byte3 = raw4[3];
+            ++g_hostPopped;
         } else if (!g_transport.readPacket(packet)) {
             break;
         }
@@ -574,6 +576,7 @@ void drainIncomingMidiPackets() {
         const uint8_t raw[4] = {
             packet.header, packet.byte1, packet.byte2, packet.byte3};
         const GroovePuterMidi::ParseResult parsed = g_inputParser.usbPacket(raw, micros());
+        if (hostRole) { if (parsed.hasInput) ++g_hostParsed; else ++g_hostNotParsed; }
         if (parsed.hasInput) {
             if (!g_inputQueue.tryPush(parsed.input)) {
                 ++g_diagnostics.externalRxIgnored;
@@ -1680,3 +1683,13 @@ void setCardputerDinMidiEnabled(bool enabled) {
 }
 
 bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+
+// Diagnostic text for the on-screen Host overlay (racy reads, display only).
+void cardputerUsbInputDiag(char* out, size_t size) {
+    const auto& cfg = g_inputDispatcher.config();
+    std::snprintf(out, size, "IN en=%d t=%d pop=%lu prs=%lu no=%lu ph=%d rx=%d",
+                  cfg.enabled ? 1 : 0, static_cast<int>(cfg.target),
+                  static_cast<unsigned long>(g_hostPopped), static_cast<unsigned long>(g_hostParsed),
+                  static_cast<unsigned long>(g_hostNotParsed),
+                  static_cast<int>(g_midiIoState.usbPhase()), g_midiIoState.usbCanReceive() ? 1 : 0);
+}

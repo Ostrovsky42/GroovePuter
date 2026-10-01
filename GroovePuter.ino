@@ -966,6 +966,8 @@ void loop() {
                (unsigned)GroovePuterMidi::CardputerUsbHostMidi::vid(),
                (unsigned)GroovePuterMidi::CardputerUsbHostMidi::pid());
       g_display.drawText(0, 118, line);
+      cardputerUsbInputDiag(line, sizeof(line));
+      g_display.drawText(0, 127, line);
       g_display.flush();
     }
 #endif
