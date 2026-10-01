@@ -1,3 +1,4 @@
+#include "src/ui/save_probe.h"
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
@@ -386,7 +387,13 @@ void MiniAcidDisplay::servicePersistence_() {
     }
 
     bool saved = false;
-    withAudioGuard([&]() { saved = mini_acid_.autoSaveSceneRecovery(); });
+    SAVE_PROBE_BEGIN("autosave", mini_acid_.isPlaying())
+    withAudioGuard([&]() {
+        SAVE_PROBE_HOLD_BEGIN();
+        saved = mini_acid_.autoSaveSceneRecovery();
+        SAVE_PROBE_HOLD_END();
+    });
+    SAVE_PROBE_END(saved);
     if (saved) {
         recovery_save_pending_ = false;
         Serial.printf("[AUTOSAVE] recovery revision=%u\n",

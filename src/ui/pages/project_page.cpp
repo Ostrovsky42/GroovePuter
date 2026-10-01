@@ -24,6 +24,7 @@
 #include "../midi_device_profile_ui.h"
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/ui/save_probe.h"
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
@@ -634,9 +635,13 @@ bool ProjectPage::loadSceneAtSelection() {
       mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
       mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   std::string name = scenes_[selection_index_];
+  SAVE_PROBE_BEGIN("load", mini_acid_.isPlaying())
   withAudioGuard([&]() {
+    SAVE_PROBE_HOLD_BEGIN();
     loaded = mini_acid_.loadSceneByName(name);
+    SAVE_PROBE_HOLD_END();
   });
+  SAVE_PROBE_END(loaded);
   if (loaded) {
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
       GroovePuterState::markSceneMutated();
@@ -666,9 +671,15 @@ bool ProjectPage::saveCurrentScene() {
       GroovePuterState::sceneRevisionSnapshot();
   // Save is not a mutation: withAudioGuard() would bump the scene revision and expire the
   // retained Undo receipt (R5: Save does not expire Undo). Take the audio guard directly.
-  const auto saveUnderGuard = [&]() { saved = mini_acid_.saveSceneAs(name); };
+  SAVE_PROBE_BEGIN("save-as", mini_acid_.isPlaying())
+  const auto saveUnderGuard = [&]() {
+    SAVE_PROBE_HOLD_BEGIN();
+    saved = mini_acid_.saveSceneAs(name);
+    SAVE_PROBE_HOLD_END();
+  };
   if (audio_guard_) audio_guard_(saveUnderGuard);
   else saveUnderGuard();
+  SAVE_PROBE_END(saved);
   if (saved) {
     GroovePuterState::markSceneSaveSucceeded();
     closeDialog();
