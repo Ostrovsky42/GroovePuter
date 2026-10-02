@@ -158,6 +158,8 @@ public:
     struct Entry { bool on; uint8_t note; uint8_t velocity; };
     void externalNoteOn(uint8_t note, uint8_t velocity) override { entries.push_back({true, note, velocity}); }
     void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
+    void externalSustain(bool down) override { sustain.push_back(down); }
+    std::vector<bool> sustain;
     std::vector<Entry> entries;
 };
 
@@ -218,7 +220,71 @@ void performTargetFeedsTheKeyboardBridgeNotTheRouter() {
     assert(bridge.entries.size() == 1u && !bridge.entries[0].on && bridge.entries[0].note == 60);
 }
 
+void sustainMapsToThePerformBridgeOnly() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+
+    const uint8_t down[4] = {0x0B, 0xB0, 64, 127};
+    const uint8_t stillDown[4] = {0x0B, 0xB0, 64, 100};
+    const uint8_t up[4] = {0x0B, 0xB0, 64, 0};
+
+    // Direct synth target: parsed but not applied (historical R6 policy).
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::SynthA;
+    assert(dispatcher.setConfig(config));
+    {
+        const ParseResult parsed = parser.usbPacket(down, 100);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+        assert(bridge.sustain.empty() && routed.events.empty());
+    }
+
+    // PERFORM: press and release are edges, a repeated press is not a new edge.
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+    for (const auto* packet : {&down, &stillDown, &up}) {
+        const ParseResult parsed = parser.usbPacket(*packet, 200);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+    }
+    (void)dispatcher.service(queue);
+    assert(bridge.sustain.size() == 2u && bridge.sustain[0] && !bridge.sustain[1]);
+
+    // A held button is released when the session goes away (no stuck LATCH).
+    {
+        const ParseResult parsed = parser.usbPacket(down, 300);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+        assert(bridge.sustain.size() == 3u && bridge.sustain[2]);
+        io.usbDetached();
+        (void)dispatcher.service(queue);
+        assert(bridge.sustain.size() == 4u && !bridge.sustain[3]);
+    }
+    // A policy change away from PERFORM while held releases it too.
+    io.usbAttached();
+    io.usbReady(true, true);
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    {
+        const ParseResult parsed = parser.usbPacket(down, 400);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+        assert(bridge.sustain.size() == 5u && bridge.sustain[4]);
+        config.target = MidiInputTarget::SynthB;
+        assert(dispatcher.setConfig(config));
+        assert(bridge.sustain.size() == 6u && !bridge.sustain[5]);
+    }
+}
+
 int main() {
+    sustainMapsToThePerformBridgeOnly();
     performTargetFeedsTheKeyboardBridgeNotTheRouter();
     usbNoteOnOffReachesConfiguredMusicalTarget();
     defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes();

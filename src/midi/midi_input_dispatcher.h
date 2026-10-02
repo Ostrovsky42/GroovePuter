@@ -25,6 +25,8 @@ public:
     virtual ~MidiExternalNoteSink() = default;
     virtual void externalNoteOn(uint8_t note, uint8_t velocity) = 0;
     virtual void externalNoteOff(uint8_t note) = 0;
+    // Sustain button / pedal (CC64) of the external keyboard: true while held down.
+    virtual void externalSustain(bool down) = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -214,7 +216,14 @@ private:
         publish(MusicalEventType::NoteOff, owner, velocity);
     }
 
+    void releaseSustain() {
+        if (!sustainDown_) return;
+        sustainDown_ = false;
+        if (performSink_ != nullptr) performSink_->externalSustain(false);
+    }
+
     void releaseAllOwnedNotes() {
+        releaseSustain();
         if (router_ == nullptr) {
             for (auto& owner : owners_) owner = ActiveOwner{};
             return;
@@ -223,6 +232,7 @@ private:
     }
 
     void releaseSource(InputSource source) {
+        if (source == InputSource::Usb) releaseSustain();
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             if (owners_[i].active && owners_[i].source == source) releaseOwner(i);
         }
@@ -305,8 +315,16 @@ private:
                 releaseChannel(event);
                 break;
             case InputKind::Sustain:
-                // 0.9.11 preserves the historical R6 policy: sustain is parsed
-                // and bounded but deliberately not applied to product routing.
+                // Direct synth/drum targets keep the historical R6 policy (parsed and bounded, not
+                // applied). The PERFORM target maps it to LATCH while the button is held.
+                if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
+                    performSink_ != nullptr) {
+                    const bool down = event.velocity >= 64u;
+                    if (down != sustainDown_) {
+                        sustainDown_ = down;
+                        performSink_->externalSustain(down);
+                    }
+                }
                 break;
         }
     }
@@ -316,6 +334,7 @@ private:
     MidiIoState* io_{nullptr};
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
+    bool sustainDown_{false};
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
 };

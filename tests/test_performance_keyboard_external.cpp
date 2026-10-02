@@ -173,6 +173,32 @@ int main() {
         assert(velocityOf(100) == 10);
         assert(velocityOf(127) == 13);
     }
+    // 11. Sustain button: LATCH while held (LATCH exists only with ARP on), previous LATCH state
+    //     restored on release. Without ARP the button is a harmless no-op.
+    {
+        PerformanceKeyboard kb(router);
+        kb.setArpeggiatorEnabled(true);
+        assert(!kb.latchEnabled());
+        kb.externalSustain(true);
+        assert(kb.externalSustainDown() && kb.latchEnabled());
+        kb.externalSustain(true);                          // repeated press: no new edge
+        kb.externalSustain(false);
+        assert(!kb.externalSustainDown() && !kb.latchEnabled());
+
+        PerformanceKeyboard manual(router);                // user had LATCH on already
+        manual.setArpeggiatorEnabled(true);
+        manual.setLatchEnabled(true);
+        assert(manual.latchEnabled());
+        manual.externalSustain(true);
+        manual.externalSustain(false);
+        assert(manual.latchEnabled());                     // restored to the user's choice
+
+        PerformanceKeyboard noArp(router);                 // no ARP: nothing to latch
+        noArp.externalSustain(true);
+        assert(!noArp.latchEnabled());
+        noArp.externalSustain(false);
+        assert(!noArp.latchEnabled());
+    }
     std::puts("PERFORM keyboard external notes: PASS");
     return 0;
 }

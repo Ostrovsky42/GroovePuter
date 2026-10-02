@@ -42,6 +42,9 @@ public:
     bool externalNoteOn(uint8_t note, uint8_t velocity);
     bool externalNoteOff(uint8_t note);
     void releaseAllExternalNotes();
+    // External sustain button: LATCH while held, the previous LATCH state is restored on release.
+    void externalSustain(bool down);
+    bool externalSustainDown() const { return externalSustainDown_; }
     std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
@@ -309,6 +312,8 @@ private:
     MusicalEventRouter& router_;
     HeldNote held_[kMaxHeldNotes]{};
     std::size_t heldCount_{0};
+    bool externalSustainDown_{false};
+    bool latchBeforeExternalSustain_{false};
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     PerformanceChordMode chordMode_{PerformanceChordMode::Off};
     PerformanceVoiceMode voiceMode_{PerformanceVoiceMode::Mono};

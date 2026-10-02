@@ -1258,6 +1258,19 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
     return true;
 }
 
+void PerformanceKeyboard::externalSustain(bool down) {
+    serviceHardwareClock();
+    if (down == externalSustainDown_) return;
+    if (down) {
+        latchBeforeExternalSustain_ = latchEnabled();
+        externalSustainDown_ = true;
+        setLatchEnabled(true);
+    } else {
+        externalSustainDown_ = false;
+        setLatchEnabled(latchBeforeExternalSustain_);
+    }
+}
+
 std::size_t PerformanceKeyboard::externalHeldCount() const {
     std::size_t count = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) count += held_[i].physicalKey == '\0' ? 1 : 0;
