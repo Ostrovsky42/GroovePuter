@@ -58,6 +58,8 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE,
   // External keyboard Mod button press: the active page may use it (notes tab: delete).
   GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
+  // External keyboard gesture Sustain held + Mod: clear the whole melody on the notes tab.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };

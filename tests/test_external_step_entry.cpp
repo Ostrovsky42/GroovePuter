@@ -143,6 +143,43 @@ int main() {
     engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
   }
 
+  // Clearing the whole melody: the external gesture (CLEAR event) and Ctrl+Backspace both remove
+  // every sound and keep the length; an empty melody is a harmless no-op; Undo is one step.
+  {
+    UIEvent clear{};
+    clear.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    clear.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR;
+    UIEvent a = external(60, 100);
+    UIEvent aOff = external(60, 0);
+    assert(page.handleEvent(a));
+    assert(page.handleEvent(aOff));
+    assert(engine.currentPhraseBuffer(0).count >= 1);
+    const uint16_t lengthBefore = engine.currentPhraseBuffer(0).lengthTicks;
+    assert(page.handleEvent(clear));
+    assert(engine.currentPhraseBuffer(0).count == 0);
+    assert(engine.currentPhraseBuffer(0).lengthTicks == lengthBefore);
+    assert(page.handleEvent(clear));                         // empty: toast only, still consumed
+    assert(engine.currentPhraseBuffer(0).count == 0);
+
+    // Undo restores everything in one step.
+    UIEvent undo{};
+    undo.event_type = GROOVEPUTER_APPLICATION_EVENT;   // what Ctrl+Z becomes in the display
+    undo.app_event_type = GROOVEPUTER_APP_EVENT_UNDO;
+    assert(page.handleEvent(undo));
+    assert(engine.currentPhraseBuffer(0).count >= 1);
+
+    // Ctrl+Backspace on the Cardputer keyboard does the same.
+    UIEvent ctrlBackspace{};
+    ctrlBackspace.event_type = GROOVEPUTER_KEY_DOWN;
+    ctrlBackspace.key = '\b';
+    ctrlBackspace.ctrl = true;
+    assert(page.handleEvent(ctrlBackspace));
+    assert(engine.currentPhraseBuffer(0).count == 0);
+
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+    assert(!page.handleEvent(clear));                        // not a melody voice
+  }
+
   std::puts("external keyboard step entry on the MELODY notes tab: PASS");
   return 0;
 }

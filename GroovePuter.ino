@@ -556,7 +556,10 @@ void loop() {
           if (g_miniDisplay) {
             UIEvent offered{};
             offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
-            offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+            // Sustain held + Mod clears the whole melody; Mod alone deletes the note under the cursor.
+            offered.app_event_type = g_performanceKeyboard.externalSustainDown()
+                ? GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR
+                : GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
             (void)g_miniDisplay->handleEvent(offered);
           }
           continue;

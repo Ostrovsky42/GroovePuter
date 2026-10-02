@@ -21,6 +21,7 @@
 #include "../phrase_notes_delete_edit.h"
 #include "../phrase_notes_duration_edit.h"
 #include "../phrase_notes_insert_edit.h"
+#include "../phrase_notes_clear_edit.h"
 #include "../phrase_notes_join_edit.h"
 #include "../phrase_selection_state.h"
 #include "../phrase_source_toggle.h"
@@ -809,6 +810,27 @@ bool SynthSequencerPage::handleExternalMod() {
   return handlePhraseNotesEvent(backspace);
 }
 
+// Removes every sound of the melody (its length stays). One Undo step brings them all back.
+bool SynthSequencerPage::clearMelody() {
+  if (synth_tab_ != SynthTab::Notes ||
+      mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
+    return false;
+  }
+  PhraseNotesClearEdit::Prepared prepared{};
+  const auto result =
+      PhraseNotesClearEdit::prepare(mini_acid_.currentPhraseBuffer(voice_index_), prepared);
+  if (result != PhraseNotesClearEdit::Result::Ready) {
+    UI::showToast(result == PhraseNotesClearEdit::Result::NothingToClear ? "MELODY IS EMPTY"
+                                                                           : "CLEAR FAILED",
+                  900);
+    return true;
+  }
+  const bool committed = commitRuntimePhraseEditWithUndo(
+      mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
+  UI::showToast(committed ? "MELODY CLEARED  CTRL+Z UNDO" : "EDIT STALE", 1400);
+  return true;
+}
+
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
       ui_event.ctrl || ui_event.meta) {
@@ -1102,6 +1124,10 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return handleExternalMod();
   }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR) {
+    return clearMelody();
+  }
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE) {
     return handleExternalNote(static_cast<uint8_t>(ui_event.x), static_cast<uint8_t>(ui_event.y));
   }
@@ -1184,6 +1210,12 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
                     1000);
     }
     return true;
+  }
+
+  // Ctrl+Backspace: clear the whole melody (undoable), before the plain Backspace delete below.
+  if (phraseNotes && ui_event.event_type == GROOVEPUTER_KEY_DOWN && ui_event.ctrl &&
+      !ui_event.alt && !ui_event.meta && (ui_event.key == '\b' || ui_event.key == 0x7F)) {
+    return clearMelody();
   }
 
   if (phraseNotes && handleMelodySlotKey(ui_event)) return true;
