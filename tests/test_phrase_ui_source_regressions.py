@@ -72,8 +72,8 @@ for needle in (
     "case 'd': return deriveFromParent();",
     "case 'w': return writeToCurrentRow(ui_event.alt);",
     "return clearCurrentSlot();",
-    '"1-4:SLOT L/R:BAR U/D:CAPLEN"',
-    '"G:GEN ENT/D/W"',
+    '"1-4:SLOT [L/R]BAR [U/D]LEN"',
+    '"G:NEW ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 # Ctrl+arrow TO/8-bar destination shortcuts still exist in CORE handleEvent;
