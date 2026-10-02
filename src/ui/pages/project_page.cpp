@@ -71,7 +71,10 @@ static const TapeColor TAPE_PALETTE[] = {
 
 static const char* LED_MODE_NAMES[] = {"Off", "StepTrig", "Beat", "MuteState"};
 static const char* VOICE_ID_NAMES[] = {"303A", "303B", "Kick", "Snare", "HatC", "HatO", "TomM", "TomH", "Rim", "Clap"};
-static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90};
+// Raw 0..255 LED brightness steps (the scene stores the raw value; the UI shows a percentage).
+// The ladder reaches full scale: it used to stop at 90 (35%).
+static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90, 130, 180, 255};
+static constexpr int BRI_STEP_COUNT = static_cast<int>(sizeof(BRI_STEPS) / sizeof(BRI_STEPS[0]));
 static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
 VisualStyle nextStyle(VisualStyle style) {
@@ -1424,15 +1427,15 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             if (main_focus_ == MainFocus::LedBri) {
                 int currentIdx = 0;
-                for (int i = 0; i < 5; ++i) {
+                for (int i = 0; i < BRI_STEP_COUNT; ++i) {
                     if (BRI_STEPS[i] == led.brightness) {
                         currentIdx = i;
                         break;
                     }
                 }
                 currentIdx += right ? 1 : -1;
-                if (currentIdx < 0) currentIdx = 4;
-                if (currentIdx > 4) currentIdx = 0;
+                if (currentIdx < 0) currentIdx = BRI_STEP_COUNT - 1;
+                if (currentIdx >= BRI_STEP_COUNT) currentIdx = 0;
                 led.brightness = BRI_STEPS[currentIdx];
                 GroovePuterState::markSceneMutated();
                 LedManager::instance().testPulse(led);
@@ -1547,8 +1550,8 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         }
         if (main_focus_ == MainFocus::LedBri) {
             int currentIdx = 0;
-            for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
-            led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+            for (int i = 0; i < BRI_STEP_COUNT; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
+            led.brightness = BRI_STEPS[(currentIdx + 1) % BRI_STEP_COUNT];
             GroovePuterState::markSceneMutated();
             LedManager::instance().testPulse(led);
             return true;
