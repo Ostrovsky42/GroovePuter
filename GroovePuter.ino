@@ -1039,8 +1039,12 @@ void loop() {
       g_display.drawText(0, 109, line);
       cardputerUsbLastRawText(line, sizeof(line));
       g_display.drawText(0, 118, line);
-      snprintf(line, sizeof(line), "QD n=%lu ", (unsigned long)cardputerExternalNoteQueue().dropped());
-      g_display.drawText(0, 127, line);
+      {
+        char cc[40], pb[40];
+        cardputerUsbRampText(cc, sizeof(cc), pb, sizeof(pb));
+        snprintf(line, sizeof(line), "%s  %s", cc, pb);
+        g_display.drawText(0, 127, line);
+      }
       g_display.flush();
     }
 #endif
