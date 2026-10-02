@@ -23,7 +23,7 @@ legacy_workflow	disposition	new_owner
 0-9-9-phrase-w1r-h1-f1-replay.yml	removed-from-active-surface	research-manual
 0-9-9-ui-final-product-pass.yml	removed-from-active-surface	research-manual
 0-9-9-ui-p0-ownership-audit.yml	removed-from-active-surface	research-manual
-0_9_10_memory_r1_product_closure.yml	removed-from-active-surface	memory
+0_9_10_memory_r1_product_closure.yml	removed-from-active-surface	historical-git-provenance
 0_9_10_pattern_phrase_p1c_runtime_foundation.yml	removed-from-active-surface	core
 0_9_10_pattern_phrase_p2_common_runtime_playback.yml	removed-from-active-surface	git-history
 0_9_10_pattern_phrase_p3_phrase_lifetime.yml	removed-from-active-surface	git-history
