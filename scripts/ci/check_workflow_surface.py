@@ -34,3 +34,23 @@ if missing or unexpected:
     raise SystemExit(1)
 
 print(f"CI workflow surface OK: {len(actual)} canonical workflows")
+
+
+ledger = root / "docs" / "ci" / "WORKFLOW_MIGRATION.tsv"
+rows = ledger.read_text(encoding="utf-8").splitlines()
+if not rows or rows[0] != "legacy_workflow\tdisposition\tnew_owner":
+    raise SystemExit("invalid CI migration ledger header")
+
+legacy_rows = [row.split("\t", 2) for row in rows[1:] if row.strip()]
+if len(legacy_rows) != 111:
+    raise SystemExit(f"CI migration ledger must contain 111 legacy workflows, got {len(legacy_rows)}")
+
+legacy_names = [row[0] for row in legacy_rows]
+if len(set(legacy_names)) != len(legacy_names):
+    raise SystemExit("CI migration ledger contains duplicate legacy workflow names")
+
+still_active = sorted(set(legacy_names) & actual)
+if still_active:
+    raise SystemExit(f"legacy workflows leaked back into active surface: {still_active}")
+
+print("CI migration ledger OK: 111 legacy workflows accounted for")
