@@ -671,6 +671,22 @@ bool PerformPage::handleEvent(UIEvent& event) {
 
     if (toolsLayerVisible_ && handleToolKey(event)) return true;
 
+    // The Cardputer arrow keycaps are ; , . / and, since #465, deliver ONLY the arrow scancode (the
+    // printed character is suppressed centrally). The live scale bindings below were written for the
+    // characters, so without this the LEFT/RIGHT arrows stopped changing the scale on the live page.
+    if (!event.ctrl && !event.alt && !event.meta) {
+        switch (UIInput::navCode(event)) {
+            case GROOVEPUTER_LEFT:
+                keyboard_.cycleScale(-1);
+                return true;
+            case GROOVEPUTER_RIGHT:
+                keyboard_.cycleScale(1);
+                return true;
+            default:
+                break;
+        }
+    }
+
     switch (event.key) {
         case 'n':
         case 'N':
