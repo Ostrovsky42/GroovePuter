@@ -7,17 +7,6 @@ namespace GroovePuterMidi {
 
 using UsbHostMidiCallback = void (*)(const uint8_t packet[4]);
 
-// Same-boot internal-heap snapshots taken around the Host bring-up (diagnostic; bytes).
-struct UsbHostMemDiag {
-    uint32_t freeBefore = 0, largestBefore = 0;          // before usb_host_install
-    uint32_t freeInstalled = 0, largestInstalled = 0;    // after usb_host_install
-    uint32_t freeClient = 0, largestClient = 0;          // after usb_host_client_register
-    uint32_t freeDevice = 0, largestDevice = 0;          // after the first device was claimed
-    uint32_t freePacket = 0, largestPacket = 0;          // at the first MIDI packet
-    uint32_t minEverFree = 0;
-    bool installed = false, client = false, device = false, packet = false;
-};
-
 class CardputerUsbHostMidi {
 public:
     static bool begin(UsbHostMidiCallback callback);
@@ -32,7 +21,6 @@ public:
     static uint8_t lastVelocity();
     static const char* status();
     static void stop();
-    static const UsbHostMemDiag& memDiag();
     // Consumer side of the packet ring (MidiDispatchTask only). Producer is the loop task.
     static bool popPacket(uint8_t out[4]);
     static uint32_t droppedPackets();

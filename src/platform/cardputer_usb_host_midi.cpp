@@ -3,7 +3,6 @@
 #if defined(ARDUINO)
 
 #include <Arduino.h>
-#include <esp_heap_caps.h>
 #include <usb/usb_host.h>
 #include <atomic>
 #include <algorithm>
@@ -25,15 +24,6 @@ std::atomic<uint8_t> g_lastNote{0}, g_lastVelocity{0};
 std::atomic<const char*> g_status{"INIT"};
 
 UsbHostMidiCallback g_callback{nullptr};
-UsbHostMemDiag g_memDiag;
-
-void snapshot(uint32_t& freeBytes, uint32_t& largest) {
-    constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-    freeBytes = heap_caps_get_free_size(caps);
-    largest = heap_caps_get_largest_free_block(caps);
-    g_memDiag.minEverFree = heap_caps_get_minimum_free_size(caps);
-}
-
 // Single-producer (the task that runs usb_host_client_handle_events, i.e. loop) /
 // single-consumer (MidiDispatchTask) ring of USB-MIDI packets. Bounded, no allocation.
 constexpr uint32_t kRingSize = 64;  // packets, power of two
@@ -70,10 +60,6 @@ void onInputTransfer(usb_transfer_t* transfer) {
             const uint8_t d2 = buf[i + 3];
 
             if (cin == 0x09 || cin == 0x08 || (status & 0xF0) == 0x90 || (status & 0xF0) == 0x80) {
-                if (!g_memDiag.packet) {
-                    snapshot(g_memDiag.freePacket, g_memDiag.largestPacket);
-                    g_memDiag.packet = true;
-                }
                 g_packetCount.fetch_add(1, std::memory_order_relaxed);
                 if ((status & 0xF0) == 0x90 && d2 > 0) {
                     g_noteOnCount.fetch_add(1, std::memory_order_relaxed);
@@ -176,10 +162,6 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
                 err = usb_host_transfer_submit(transfer);
                 g_inFlight.store(err == ESP_OK, std::memory_order_relaxed);
                 g_status.store(err == ESP_OK ? "READY" : "SUBMIT_FAIL", std::memory_order_relaxed);
-                if (err == ESP_OK && !g_memDiag.device) {
-                    snapshot(g_memDiag.freeDevice, g_memDiag.largestDevice);
-                    g_memDiag.device = true;
-                }
             } else {
                 g_status.store("ALLOC_FAIL", std::memory_order_relaxed);
             }
@@ -202,12 +184,9 @@ bool CardputerUsbHostMidi::begin(UsbHostMidiCallback callback) {
         .root_port_unpowered = false,
         .intr_flags = ESP_INTR_FLAG_LEVEL3,
     };
-    snapshot(g_memDiag.freeBefore, g_memDiag.largestBefore);
     esp_err_t result = usb_host_install(&config);
     if (result != ESP_OK) return false;
     g_hostInstalled.store(true, std::memory_order_relaxed);
-    snapshot(g_memDiag.freeInstalled, g_memDiag.largestInstalled);
-    g_memDiag.installed = true;
 
     usb_host_client_config_t clientConfig{};
     clientConfig.max_num_event_msg = 5;
@@ -216,8 +195,6 @@ bool CardputerUsbHostMidi::begin(UsbHostMidiCallback callback) {
     result = usb_host_client_register(&clientConfig, &clientHandle);
     if (result != ESP_OK) return false;
     g_client.store(clientHandle, std::memory_order_relaxed);
-    snapshot(g_memDiag.freeClient, g_memDiag.largestClient);
-    g_memDiag.client = true;
     return true;
 }
 
@@ -259,7 +236,6 @@ uint32_t CardputerUsbHostMidi::noteOffCount() { return g_noteOffCount.load(); }
 uint8_t CardputerUsbHostMidi::lastNote() { return g_lastNote.load(); }
 uint8_t CardputerUsbHostMidi::lastVelocity() { return g_lastVelocity.load(); }
 const char* CardputerUsbHostMidi::status() { return g_status.load(); }
-const UsbHostMemDiag& CardputerUsbHostMidi::memDiag() { return g_memDiag; }
 
 bool CardputerUsbHostMidi::popPacket(uint8_t out[4]) {
     const uint32_t tail = g_ringTail.load(std::memory_order_relaxed);
@@ -295,7 +271,6 @@ uint32_t CardputerUsbHostMidi::noteOffCount() { return 0; }
 uint8_t CardputerUsbHostMidi::lastNote() { return 0; }
 uint8_t CardputerUsbHostMidi::lastVelocity() { return 0; }
 const char* CardputerUsbHostMidi::status() { return "OFF"; }
-const UsbHostMemDiag& CardputerUsbHostMidi::memDiag() { static UsbHostMemDiag d; return d; }
 bool CardputerUsbHostMidi::popPacket(uint8_t[4]) { return false; }
 uint32_t CardputerUsbHostMidi::droppedPackets() { return 0; }
 void CardputerUsbHostMidi::stop() {}

@@ -31,9 +31,6 @@ struct CardputerUsbMidiStatusSnapshot {
 // Registers a bounded live-event sink and starts the sole Cardputer USB-MIDI
 // owner task. Pattern and transport queues remain owned by AudioTask (producer)
 // and MidiDispatchTask (consumer).
-// Diagnostic one-liner for the Host overlay (see GROOVEPUTER_USB_HOST_DIAG).
-void cardputerUsbInputDiag(char* out, size_t size);
-
 bool registerCardputerUsbMidiSink(
     MusicalEventRouter& router,
     MusicalEventQueue& patternQueue,

@@ -1,7 +1,5 @@
 #include "internal_synth_output.h"
 
-#include <cstdio>
-
 #include "src/dsp/miniacid_engine.h"
 #include "src/output/output_ownership.h"
 
@@ -62,7 +60,6 @@ void InternalSynthOutput::reconcileLiveProjectionLocked(int voice) {
         engine_.liveNoteOff(voice, clampInternalLiveNote(current.note));
     }
     if (next.active) {
-        ++liveOns_;
         engine_.liveNoteOn(
             voice, clampInternalLiveNote(next.note), next.velocity);
     }
@@ -178,7 +175,6 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     }
 
     AudioMutationScope mutationScope(mutationGate_);
-    if (event.source == MusicalEventSource::MidiInput) ++midiInEvents_;
     const int voice = synthIndex(event.target);
     applyPatternOwnershipLocked(
         voice, engine_.patternOwnsInternalSynth(voice));
@@ -186,10 +182,4 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     MonoArbitrationState& state = monoState_[voice];
     state.applyLiveEvent(event);
     reconcileLiveProjectionLocked(voice);
-}
-
-void InternalSynthOutput::diagLine(char* out, size_t size) const {
-    std::snprintf(out, size, "SY ev=%lu on=%lu pat=%d%d", static_cast<unsigned long>(midiInEvents_),
-                  static_cast<unsigned long>(liveOns_), monoState_[0].patternOwned ? 1 : 0,
-                  monoState_[1].patternOwned ? 1 : 0);
 }

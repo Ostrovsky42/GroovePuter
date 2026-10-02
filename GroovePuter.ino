@@ -12,10 +12,10 @@
 #include "cardputer_display.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/platform/cardputer_usb_host_midi.h"
-// Host bring-up diagnostics: only meaningful in the CDC-off single-binary build, where project
-// code (not the Arduino core) decides which USB role owns the OTG controller.
-#if defined(GROOVEPUTER_USB_HOST_DIAG) && !ARDUINO_USB_CDC_ON_BOOT
-#define GP_USB_HOST_DIAG 1
+// Single binary, two USB roles: only when the core does not start TinyUSB Device before
+// setup() (CDCOnBoot=default) can project code pick Device or Host from the saved role.
+#if !ARDUINO_USB_CDC_ON_BOOT
+#define GP_USB_ROLE_RUNTIME 1
 #endif
 #include <cstdarg>
 #include <cstdio>
@@ -410,7 +410,7 @@ void setup() {
   // block left by SD and SMF initialization.
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   CardputerUsbRoleRuntime::init();
-#ifdef GP_USB_HOST_DIAG
+#ifdef GP_USB_ROLE_RUNTIME
   if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
     screenLog("4d. USB Host Init...");
     if (!GroovePuterMidi::CardputerUsbHostMidi::begin(nullptr)) markBootStage(952, "USB Host begin failed");
@@ -523,7 +523,7 @@ void loop() {
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
   LedManager::instance().update();
-#ifdef GP_USB_HOST_DIAG
+#ifdef GP_USB_ROLE_RUNTIME
   if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
     GroovePuterMidi::CardputerUsbHostMidi::service();
   }
@@ -587,17 +587,6 @@ void loop() {
       }
     }
 
-#ifdef GP_USB_HOST_DIAG
-    if (evt.alt && (evt.key == 'u' || evt.key == 'U')) {
-      const UsbBootRole next = CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host
-                                   ? UsbBootRole::Device : UsbBootRole::Host;
-      UI::showToast(next == UsbBootRole::Host ? "REBOOT -> HOST" : "REBOOT -> DEVICE", 1500);
-      drawUI();
-      delay(400);
-      CardputerUsbRoleRuntime::requestRebootWithRole(next);
-      return;
-    }
-#endif
     bool handled = false;
     {
       AudioMutationScope mutationScope(g_audioMutationGate);
@@ -942,59 +931,6 @@ void loop() {
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
-#ifdef GP_USB_HOST_DIAG
-    if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
-      const auto& d = GroovePuterMidi::CardputerUsbHostMidi::memDiag();
-      char line[48];
-      g_display.fillRect(0, 54, 240, 81, CP_BLACK);
-      g_display.setTextColor(IGfxColor::White());
-      snprintf(line, sizeof(line), "HOST st=%s up=%lus", GroovePuterMidi::CardputerUsbHostMidi::status(),
-               (unsigned long)(millis() / 1000));
-      g_display.drawText(0, 55, line);
-      cardputerUsbInputDiag(line, sizeof(line));
-      g_display.drawText(0, 64, line);
-      g_internalSynthOutput.diagLine(line, sizeof(line));
-      g_display.drawText(0, 73, line);
-      for (int voice = 0; voice < 2; ++voice) {
-        const auto track = voice == 0 ? GroovePuterOutput::Track::SynthA
-                                      : GroovePuterOutput::Track::SynthB;
-        const auto output = GroovePuterOutput::state(track);
-        const char* mode = !output.explicitMode ? "LEGACY"
-            : output.mode == GroovePuterOutput::Mode::Internal ? "INT"
-            : output.mode == GroovePuterOutput::Mode::Midi ? "MIDI" : "LAYER";
-        snprintf(line, sizeof(line), "%c OUT=%s mute=%d vol=%d%%", 'A' + voice,
-                 mode, g_miniAcid->is303Muted(voice) ? 1 : 0,
-                 static_cast<int>(100.0f * g_miniAcid->getTrackVolume(
-                     voice == 0 ? VoiceId::SynthA : VoiceId::SynthB)));
-        g_display.drawText(0, 82 + voice * 9, line);
-      }
-      // Observe the existing published output buffer, without adding work to DSP.
-      const auto& waveform = g_miniAcid->getWaveformBuffer();
-      int outputPeak = 0;
-      for (size_t i = 0; i < waveform.count && i < AUDIO_BUFFER_SAMPLES; ++i) {
-        const int sample = waveform.data[i];
-        const int magnitude = sample < 0 ? -sample : sample;
-        if (magnitude > outputPeak) outputPeak = magnitude;
-      }
-      snprintf(line, sizeof(line), "MAIN=%d%% PLAY=%d pk=%d",
-               static_cast<int>(100.0f * g_miniAcid->mainVolume()),
-               g_miniAcid->isPlaying() ? 1 : 0, outputPeak);
-      g_display.drawText(0, 100, line);
-      const uint32_t lastAudio = g_miniAcid->perfStats.lastCallbackMicros.load(
-          std::memory_order_relaxed);
-      snprintf(line, sizeof(line), "AUD age=%lums pause=%d",
-               static_cast<unsigned long>((micros() - lastAudio) / 1000),
-               g_audioMutationGate.pauseRequested() ? 1 : 0);
-      g_display.drawText(0, 109, line);
-      snprintf(line, sizeof(line), "min=%u %04X:%04X", (unsigned)d.minEverFree,
-               (unsigned)GroovePuterMidi::CardputerUsbHostMidi::vid(),
-               (unsigned)GroovePuterMidi::CardputerUsbHostMidi::pid());
-      g_display.drawText(0, 118, line);
-      snprintf(line, sizeof(line), "HOLD KEY: read OUT/mute/vol/pk");
-      g_display.drawText(0, 127, line);
-      g_display.flush();
-    }
-#endif
   }
 
   static unsigned long lastMemLog = 0;
