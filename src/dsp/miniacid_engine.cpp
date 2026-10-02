@@ -671,6 +671,9 @@ void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
   if (velocity > 127) velocity = 127;
 
   synthVoices_[idx]->startNote(noteToFreq(note), false, false, velocity);
+  // A played note (built-in or external keyboard) pulses the LED like a sequenced one.
+  LedManager::instance().onVoiceTriggered(idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+                                          sceneManager_.currentScene().led);
   liveNotes_[idx] = static_cast<int16_t>(note);
   if (idx == 0) gateCountdownA_ = 0;
   else gateCountdownB_ = 0;
