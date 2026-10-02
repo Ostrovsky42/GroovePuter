@@ -160,8 +160,12 @@ public:
     void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
     void externalSustain(bool down) override { sustain.push_back(down); }
     void externalNudge(int direction) override { nudges.push_back(direction); }
-    void externalMod() override { ++mods; }
-    int mods = 0;
+    void externalMod(ModPhase phase) override {
+        modPhases.push_back(phase);
+        if (phase == ModPhase::Press) ++mods;
+    }
+    std::vector<ModPhase> modPhases;
+    int mods = 0;  // presses
     std::vector<int> nudges;
     std::vector<bool> sustain;
     std::vector<Entry> entries;
@@ -396,9 +400,20 @@ void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
         for (int v = 14; v >= 0; --v) send(0xB8, 0x5E, static_cast<uint8_t>(v), 0x0B);
     }
     assert(bridge.mods == 2);
+    // Each press produced exactly one Press and one Release, in order; the second ramp ended at 0.
+    assert(bridge.modPhases.size() == 4u);
+    assert(bridge.modPhases[0] == ModPhase::Press && bridge.modPhases[1] == ModPhase::Release);
+    assert(bridge.modPhases[2] == ModPhase::Press && bridge.modPhases[3] == ModPhase::Release);
     // A press that starts from a small value after a partial release (value 2) still counts once.
     send(0xB8, 0x5E, 3, 0x0B);
     assert(bridge.mods == 3);
+    // Pulling the keyboard out while the button is held cancels the press (no Release is faked).
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.modPhases.back() == ModPhase::Cancel);
+    io.usbAttached();
+    io.usbReady(true, true);
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
 
     // Pitch button left: a short touch only reaches MSB 54, then springs back; it must count once.
     for (int v = 63; v >= 54; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);

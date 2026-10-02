@@ -18,6 +18,13 @@ enum class MidiInputTarget : uint8_t {
     Perform = 3,  // external keyboard played through the PERFORM keyboard (chords / arp / latch)
 };
 
+// Phases of the external Mod button (a short press = tap, a long hold = a different action).
+enum class ModPhase : uint8_t {
+    Press = 1,    // the ramp started
+    Release = 2,  // the ramp started back down
+    Cancel = 3,   // the session ended while held: forget the press without acting on it
+};
+
 // Sink for the PERFORM target. Called from the MIDI dispatch task; the implementation must only
 // enqueue (the PERFORM keyboard lives on the UI/loop task).
 class MidiExternalNoteSink {
@@ -29,8 +36,8 @@ public:
     virtual void externalSustain(bool down) = 0;
     // Pitch buttons of the external keyboard as a one-shot nudge: -1 = left/down, +1 = right/up.
     virtual void externalNudge(int direction) = 0;
-    // Mod button of the external keyboard as a one-shot (press edge).
-    virtual void externalMod() = 0;
+    // Mod button of the external keyboard: press, release (tap or hold is decided by the consumer).
+    virtual void externalMod(ModPhase phase) = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -222,7 +229,11 @@ private:
 
     void releaseSustain() {
         bendZone_ = 0;
-        modArmed_ = true;
+        if (modState_ == ModState::Held && performSink_ != nullptr) {
+            performSink_->externalMod(ModPhase::Cancel);
+        }
+        modState_ = ModState::Idle;
+        modLast_ = 0;
         if (!sustainDown_) return;
         sustainDown_ = false;
         if (performSink_ != nullptr) performSink_->externalSustain(false);
@@ -328,12 +339,19 @@ private:
                     performSink_ == nullptr) {
                     break;
                 }
-                if (event.velocity == 0u) {
-                    modArmed_ = true;
-                } else if (modArmed_) {
-                    modArmed_ = false;
-                    performSink_->externalMod();
+                const uint8_t value = event.velocity;
+                if (value == 0u) {
+                    // The end of the ramp down. A press that never showed a decrease still ends here.
+                    if (modState_ == ModState::Held) performSink_->externalMod(ModPhase::Release);
+                    modState_ = ModState::Idle;
+                } else if (modState_ == ModState::Idle) {
+                    modState_ = ModState::Held;
+                    performSink_->externalMod(ModPhase::Press);
+                } else if (modState_ == ModState::Held && value < modLast_) {
+                    modState_ = ModState::Released;   // the ramp turned downwards: the button is up
+                    performSink_->externalMod(ModPhase::Release);
                 }
+                modLast_ = value;
                 break;
             }
             case InputKind::PitchBend: {
@@ -379,7 +397,9 @@ private:
     ActiveOwner owners_[kMaxActiveNotes]{};
     bool sustainDown_{false};
     int bendZone_{0};
-    bool modArmed_{true};
+    enum class ModState : uint8_t { Idle, Held, Released };
+    ModState modState_{ModState::Idle};
+    uint8_t modLast_{0};
     static constexpr int kBendPress = 6;    // deviation from the centre that counts as a press
     static constexpr int kBendRelease = 3;  // deviation under which the button is released again
     uint32_t observedUsbGeneration_{0};

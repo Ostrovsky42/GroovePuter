@@ -77,15 +77,24 @@ int main() {
     {
         ExternalNoteQueue q;
         ExternalNoteQueue::Event e;
-        q.externalMod();
-        assert(q.pop(e) && e.mod && !e.sustain && e.nudge == 0);
+        q.externalMod(GroovePuterMidi::ModPhase::Press);
+        assert(q.pop(e) && e.mod == 1 && !e.sustain && e.nudge == 0);
+        q.externalMod(GroovePuterMidi::ModPhase::Release);
+        q.externalMod(GroovePuterMidi::ModPhase::Cancel);
+        assert(q.pop(e) && e.mod == 2);
+        assert(q.pop(e) && e.mod == 3);
         for (unsigned i = 0; i < ExternalNoteQueue::kCapacity - ExternalNoteQueue::kNoteOffReserve; ++i) {
             q.externalNoteOn(static_cast<uint8_t>(i), 100);
         }
         const uint32_t before = q.dropped();
-        q.externalMod();
-        assert(q.dropped() == before + 1);
+        q.externalMod(GroovePuterMidi::ModPhase::Press);
+        assert(q.dropped() == before + 1);                 // a press is droppable at the reserve line
         assert(!q.takeRecovery());
+        q.externalMod(GroovePuterMidi::ModPhase::Release); // a release still fits in the reserve
+        assert(!q.takeRecovery());
+        for (unsigned i = 0; i < ExternalNoteQueue::kNoteOffReserve; ++i) q.externalNoteOff(static_cast<uint8_t>(i));
+        q.externalMod(GroovePuterMidi::ModPhase::Release); // queue full: lost, recovery raised
+        assert(q.takeRecovery());
     }
     std::puts("external note queue: PASS");
     return 0;

@@ -21,6 +21,9 @@
 #include "src/midi/latency_histogram.h"
 static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> loop apply
 #endif
+// External Mod button: tap = delete the note under the cursor, hold = clear the melody.
+#include "src/midi/mod_hold_tracker.h"
+static GroovePuterMidi::ModHoldTracker g_modHold;
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -551,16 +554,21 @@ void loop() {
           g_performanceKeyboard.externalSustain(note.on);
           continue;
         }
-        if (note.mod) {
-          // Mod button: the active page may use it (MELODY notes tab: delete); otherwise unused.
-          if (g_miniDisplay) {
-            UIEvent offered{};
-            offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
-            // Sustain held + Mod clears the whole melody; Mod alone deletes the note under the cursor.
-            offered.app_event_type = g_performanceKeyboard.externalSustainDown()
-                ? GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR
-                : GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
-            (void)g_miniDisplay->handleEvent(offered);
+        if (note.mod != 0) {
+          // Mod button: a tap deletes the sound under the cursor (on the release), holding it for
+          // ModHoldTracker::kHoldMs clears the whole melody (fired by the timer below). The active page
+          // decides whether it uses either; elsewhere the button is unused.
+          if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Press)) {
+            g_modHold.onPress(millis());
+          } else if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Release)) {
+            if (g_modHold.onRelease() && g_miniDisplay) {
+              UIEvent offered{};
+              offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+              offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+              (void)g_miniDisplay->handleEvent(offered);
+            }
+          } else {
+            g_modHold.reset();   // cancel: the session ended while the button was down
           }
           continue;
         }
@@ -596,7 +604,16 @@ void loop() {
         if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
         else g_performanceKeyboard.externalNoteOff(note.note);
       }
+      if (g_modHold.pollLongHold(millis())) {
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR;
+          (void)g_miniDisplay->handleEvent(offered);
+        }
+      }
       if (externalNotes.takeRecovery()) {
+        g_modHold.reset();
         g_performanceKeyboard.releaseAllExternalNotes();
         g_performanceKeyboard.externalSustain(false);
       }
