@@ -114,6 +114,27 @@ jobs:
       - name: Run 0.9.14 PML-E allow-replacement UI
         run: bash tests/run_0_9_14_pml_e_tests.sh
 
+      - name: Run 0.9.14 Save keeps the cycle Undo (UI path)
+        run: bash tests/run_0_9_14_save_keeps_undo_tests.sh
+
+      - name: Run 0.9.15 MIDI / PERFORM UI polish gate
+        run: bash tests/run_midi_perform_ui_polish_tests.sh
+
+      - name: Run 0.9.15 PERFORM live scale answers to the arrow keys
+        run: bash tests/run_perform_page_arrows_tests.sh
+
+      - name: Run 0.9.15 PROJECT USB role row
+        run: bash tests/run_project_usb_role_ui_tests.sh
+
+      - name: Run 0.9.15 PROJECT LED brightness ladder
+        run: bash tests/run_project_led_brightness_tests.sh
+
+      - name: Run 0.9.15 live note pulses the LED
+        run: bash tests/run_live_note_led_tests.sh
+
+      - name: Run 0.9.15 external keyboard step entry
+        run: bash tests/run_external_step_entry_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
