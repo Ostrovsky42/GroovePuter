@@ -56,6 +56,8 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE,
   // External keyboard pitch button: x = -1 / +1. The active page may use it (cursor) before PERFORM.
   GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE,
+  // External keyboard Mod button press: the active page may use it (notes tab: delete).
+  GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };

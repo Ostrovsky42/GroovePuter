@@ -124,6 +124,25 @@ int main() {
     assert(!page.handleEvent(back));              // not a melody voice: PERFORM keeps the nudge
   }
 
+  // Mod deletes the sound under the cursor (Backspace path, so Undo applies); nothing there: no-op.
+  {
+    UIEvent mod{};
+    mod.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    mod.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+    engine.makePhrase(0);                                   // already a melody: stays as is
+    const uint16_t beforeDelete = engine.currentPhraseBuffer(0).count;
+    UIEvent enter = external(70, 100);                      // one more sound so the cursor sits on it
+    assert(page.handleEvent(enter));
+    UIEvent enterOff = external(70, 0);
+    assert(page.handleEvent(enterOff));
+    assert(engine.currentPhraseBuffer(0).count == beforeDelete + 1);
+    assert(page.handleEvent(mod));
+    assert(engine.currentPhraseBuffer(0).count == beforeDelete);   // the sound under the cursor is gone
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+    assert(!page.handleEvent(mod));                         // not a melody voice: the page declines
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+  }
+
   std::puts("external keyboard step entry on the MELODY notes tab: PASS");
   return 0;
 }

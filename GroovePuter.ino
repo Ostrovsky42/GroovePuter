@@ -551,6 +551,16 @@ void loop() {
           g_performanceKeyboard.externalSustain(note.on);
           continue;
         }
+        if (note.mod) {
+          // Mod button: the active page may use it (MELODY notes tab: delete); otherwise unused.
+          if (g_miniDisplay) {
+            UIEvent offered{};
+            offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+            offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+            (void)g_miniDisplay->handleEvent(offered);
+          }
+          continue;
+        }
         if (note.nudge != 0) {
           // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate.
           bool nudged = false;

@@ -73,6 +73,20 @@ int main() {
         assert(q.dropped() == before + 1);         // refused at the reserve line, no recovery needed
         assert(!q.takeRecovery());
     }
+    // Mod: queued like a NoteOn (droppable at the reserve line).
+    {
+        ExternalNoteQueue q;
+        ExternalNoteQueue::Event e;
+        q.externalMod();
+        assert(q.pop(e) && e.mod && !e.sustain && e.nudge == 0);
+        for (unsigned i = 0; i < ExternalNoteQueue::kCapacity - ExternalNoteQueue::kNoteOffReserve; ++i) {
+            q.externalNoteOn(static_cast<uint8_t>(i), 100);
+        }
+        const uint32_t before = q.dropped();
+        q.externalMod();
+        assert(q.dropped() == before + 1);
+        assert(!q.takeRecovery());
+    }
     std::puts("external note queue: PASS");
     return 0;
 }

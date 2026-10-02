@@ -18,6 +18,7 @@ enum class InputKind : uint8_t {
     Sustain,
     AllNotesOff,
     AllSoundOff,
+    Mod,        // CC1 (mod button / wheel); value = the controller value
     PitchBend,  // value = the coarse (MSB) byte; only used for the PERFORM nudge buttons
 };
 

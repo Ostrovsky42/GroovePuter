@@ -85,6 +85,8 @@ private:
             kind = InputKind::AllNotesOff;
         } else if (message == 0xb0u && data1 == 120u) {
             kind = InputKind::AllSoundOff;
+        } else if (message == 0xb0u && data1 == 1u) {
+            kind = InputKind::Mod;
         } else if (message == 0xe0u) {
             kind = InputKind::PitchBend;  // data1 = LSB (ignored), data2 = MSB
         } else {

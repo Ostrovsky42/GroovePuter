@@ -24,6 +24,7 @@ public:
         bool on{false};       // NoteOn, or sustain pressed when `sustain` is set
         bool sustain{false};  // sustain event (note and velocity unused)
         int8_t nudge{0};      // pitch-button nudge (-1 / +1); note, velocity and sustain unused
+        bool mod{false};      // mod-button press; everything else unused
         uint8_t note{0};
         uint8_t velocity{0};
         uint32_t stampUs{0};  // producer time when a clock is set (acceptance diagnostics), else 0
@@ -39,7 +40,7 @@ public:
             dropped_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        push(head, Event{true, false, 0, note, velocity, clock_ ? clock_() : 0u});
+        push(head, Event{true, false, 0, false, note, velocity, clock_ ? clock_() : 0u});
     }
 
     void externalNoteOff(uint8_t note) override {
@@ -48,7 +49,7 @@ public:
             recovery_.store(true, std::memory_order_release);
             return;
         }
-        push(head, Event{false, false, 0, note, 0, clock_ ? clock_() : 0u});
+        push(head, Event{false, false, 0, false, note, 0, clock_ ? clock_() : 0u});
     }
 
     // Pressing is droppable like a NoteOn; releasing is critical like a NoteOff.
@@ -64,7 +65,7 @@ public:
             recovery_.store(true, std::memory_order_release);
             return;
         }
-        push(head, Event{down, true, 0, 0, 0, clock_ ? clock_() : 0u});
+        push(head, Event{down, true, 0, false, 0, 0, clock_ ? clock_() : 0u});
     }
 
     // A nudge is droppable like a NoteOn (a lost one is just a button press that did nothing).
@@ -74,8 +75,18 @@ public:
             dropped_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        push(head, Event{false, false, static_cast<int8_t>(direction < 0 ? -1 : 1), 0, 0,
+        push(head, Event{false, false, static_cast<int8_t>(direction < 0 ? -1 : 1), false, 0, 0,
                          clock_ ? clock_() : 0u});
+    }
+
+    // Droppable like a NoteOn: a lost press is a button that did nothing.
+    void externalMod() override {
+        const uint32_t head = head_.load(std::memory_order_relaxed);
+        if (head - tail_.load(std::memory_order_acquire) >= kCapacity - kNoteOffReserve) {
+            dropped_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        push(head, Event{false, false, 0, true, 0, 0, clock_ ? clock_() : 0u});
     }
 
     bool pop(Event& out) {

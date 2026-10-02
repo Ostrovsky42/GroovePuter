@@ -29,6 +29,8 @@ public:
     virtual void externalSustain(bool down) = 0;
     // Pitch buttons of the external keyboard as a one-shot nudge: -1 = left/down, +1 = right/up.
     virtual void externalNudge(int direction) = 0;
+    // Mod button of the external keyboard as a one-shot (press edge).
+    virtual void externalMod() = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -220,6 +222,7 @@ private:
 
     void releaseSustain() {
         bendZone_ = 0;
+        modDown_ = false;
         if (!sustainDown_) return;
         sustainDown_ = false;
         if (performSink_ != nullptr) performSink_->externalSustain(false);
@@ -317,6 +320,19 @@ private:
             case InputKind::AllSoundOff:
                 releaseChannel(event);
                 break;
+            case InputKind::Mod: {
+                // One-shot on the press edge (>= 64); the release (< 64) re-arms it.
+                if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
+                    performSink_ == nullptr) {
+                    break;
+                }
+                const bool down = event.velocity >= 64u;
+                if (down != modDown_) {
+                    modDown_ = down;
+                    if (down) performSink_->externalMod();
+                }
+                break;
+            }
             case InputKind::PitchBend: {
                 // The pitch buttons jump to an extreme and spring back to the centre: only the
                 // press edge is a nudge. Direct targets ignore the message (no bend in the engine).
@@ -353,6 +369,7 @@ private:
     ActiveOwner owners_[kMaxActiveNotes]{};
     bool sustainDown_{false};
     int bendZone_{0};
+    bool modDown_{false};
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
 };

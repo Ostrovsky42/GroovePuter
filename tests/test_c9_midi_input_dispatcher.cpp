@@ -160,6 +160,8 @@ public:
     void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
     void externalSustain(bool down) override { sustain.push_back(down); }
     void externalNudge(int direction) override { nudges.push_back(direction); }
+    void externalMod() override { ++mods; }
+    int mods = 0;
     std::vector<int> nudges;
     std::vector<bool> sustain;
     std::vector<Entry> entries;
@@ -327,7 +329,45 @@ void pitchButtonsAreOneShotNudgesOnPerformOnly() {
     assert(routed.events.empty());                                 // never reaches the router
 }
 
+void modButtonIsAOneShotPressOnPerformOnly() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+
+    const uint8_t press[4] = {0x0B, 0xB0, 1, 127};
+    const uint8_t held[4] = {0x0B, 0xB0, 1, 120};
+    const uint8_t release[4] = {0x0B, 0xB0, 1, 0};
+
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::SynthA;
+    assert(dispatcher.setConfig(config));
+    {
+        const ParseResult parsed = parser.usbPacket(press, 100);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+        assert(bridge.mods == 0 && routed.events.empty());   // direct targets ignore it
+    }
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+    for (const auto* packet : {&press, &held, &release, &press}) {
+        const ParseResult parsed = parser.usbPacket(*packet, 200);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+    }
+    (void)dispatcher.service(queue);
+    assert(bridge.mods == 2);                                // two presses, the repeat is not an edge
+    assert(routed.events.empty());
+}
+
 int main() {
+    modButtonIsAOneShotPressOnPerformOnly();
     pitchButtonsAreOneShotNudgesOnPerformOnly();
     sustainMapsToThePerformBridgeOnly();
     performTargetFeedsTheKeyboardBridgeNotTheRouter();

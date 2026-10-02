@@ -796,6 +796,19 @@ bool SynthSequencerPage::handleExternalNudge(int direction) {
   return handlePhraseNotesEvent(arrow);
 }
 
+// Mod button of the external keyboard on the MELODY notes tab: delete the sound under the cursor
+// through the Backspace path (the same edit, toast and Undo).
+bool SynthSequencerPage::handleExternalMod() {
+  if (synth_tab_ != SynthTab::Notes ||
+      mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
+    return false;
+  }
+  UIEvent backspace{};
+  backspace.event_type = GROOVEPUTER_KEY_DOWN;
+  backspace.key = '\b';
+  return handlePhraseNotesEvent(backspace);
+}
+
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
       ui_event.ctrl || ui_event.meta) {
@@ -1083,6 +1096,10 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE) {
     return handleExternalNudge(ui_event.x);
+  }
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_MOD) {
+    return handleExternalMod();
   }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE) {
