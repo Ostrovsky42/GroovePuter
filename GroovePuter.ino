@@ -1034,6 +1034,10 @@ void loop() {
       snprintf(line, sizeof(line), "PLAY=%d up=%lus us p50/p95/max", g_miniAcid->isPlaying() ? 1 : 0,
                (unsigned long)(millis() / 1000));
       g_display.drawText(0, 109, line);
+      cardputerUsbLastRawText(line, sizeof(line));
+      g_display.drawText(0, 118, line);
+      snprintf(line, sizeof(line), "QD n=%lu ", (unsigned long)cardputerExternalNoteQueue().dropped());
+      g_display.drawText(0, 127, line);
       g_display.flush();
     }
 #endif

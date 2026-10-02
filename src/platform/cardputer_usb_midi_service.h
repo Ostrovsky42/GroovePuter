@@ -51,6 +51,8 @@ GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue();
 // and the dispatch task's minimum free stack since start.
 const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency();
 uint32_t cardputerUsbDispatchStackFreeBytes();
+// Last non-note Host packets as "CTL n=<count> <status.d1.d2> ..." (needs GROOVEPUTER_USB_ACCEPT_DIAG).
+void cardputerUsbLastRawText(char* out, size_t size);
 
 bool applyCardputerMidiInputRuntimeRoutingConfig(
     const GroovePuterMidi::MidiInputRoutingConfig& config);

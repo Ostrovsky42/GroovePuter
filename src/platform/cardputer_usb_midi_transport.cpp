@@ -237,6 +237,10 @@ GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
 GroovePuterMidi::ExternalNoteQueue g_externalNotes;
 GroovePuterMidi::LatencyHistogram g_ringLatency;  // USB callback -> dispatch task (diagnostics)
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+uint8_t g_lastHostRaw[4][4]{};  // last four non-note packets of a Host session (acceptance diagnostics)
+uint32_t g_lastHostRawCount = 0;
+#endif
 bool g_usbInputMounted = false;
 portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
 GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
@@ -537,6 +541,12 @@ void drainIncomingMidiPackets() {
             uint32_t stampUs = 0;
             if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4, &stampUs)) break;
             if (stampUs != 0) g_ringLatency.add(micros() - stampUs);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+            if ((raw4[1] & 0xF0u) != 0x80u && (raw4[1] & 0xF0u) != 0x90u) {  // not a plain note
+                std::memcpy(g_lastHostRaw[g_lastHostRawCount & 3u], raw4, 4);
+                ++g_lastHostRawCount;
+            }
+#endif
             packet.header = raw4[0];
             packet.byte1 = raw4[1];
             packet.byte2 = raw4[2];
@@ -1703,4 +1713,19 @@ uint32_t cardputerUsbDispatchStackFreeBytes() {
     return g_dispatchTaskHandle != nullptr
         ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(g_dispatchTaskHandle) * sizeof(StackType_t))
         : 0u;
+}
+
+void cardputerUsbLastRawText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    const uint32_t count = g_lastHostRawCount;
+    std::snprintf(out, size, "CTL n=%lu", static_cast<unsigned long>(count));
+    for (uint32_t i = 0; i < 3 && i < count; ++i) {
+        const uint8_t* p = g_lastHostRaw[(count - 1u - i) & 3u];
+        char item[16];
+        std::snprintf(item, sizeof(item), " %02X.%02X.%02X", p[1], p[2], p[3]);
+        std::strncat(out, item, size - std::strlen(out) - 1);
+    }
+#else
+    if (size > 0) out[0] = '\0';
+#endif
 }
