@@ -34,7 +34,8 @@ public:
     virtual void externalNoteOff(uint8_t note) = 0;
     // Sustain button / pedal (CC64) of the external keyboard: true while held down.
     virtual void externalSustain(bool down) = 0;
-    // Pitch buttons of the external keyboard as a one-shot nudge: -1 = left/down, +1 = right/up.
+    // Pitch buttons of the external keyboard: -1 = left/down pressed, +1 = right/up pressed, 0 = the
+    // button was released (or the session ended while it was held).
     virtual void externalNudge(int direction) = 0;
     // Mod button of the external keyboard: press, release (tap or hold is decided by the consumer).
     virtual void externalMod(ModPhase phase) = 0;
@@ -228,6 +229,7 @@ private:
     }
 
     void releaseSustain() {
+        if (bendZone_ != 0 && performSink_ != nullptr) performSink_->externalNudge(0);
         bendZone_ = 0;
         if (modState_ == ModState::Held && performSink_ != nullptr) {
             performSink_->externalMod(ModPhase::Cancel);
@@ -371,7 +373,7 @@ private:
                 else if (deviation >= -kBendRelease && deviation <= kBendRelease) zone = 0;
                 if (zone != bendZone_) {
                     bendZone_ = zone;
-                    if (zone != 0) performSink_->externalNudge(zone);
+                    performSink_->externalNudge(zone);   // 0 = back at the centre = released
                 }
                 break;
             }

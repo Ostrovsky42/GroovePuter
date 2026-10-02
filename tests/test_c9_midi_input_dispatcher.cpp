@@ -327,9 +327,15 @@ void pitchButtonsAreOneShotNudgesOnPerformOnly() {
         assert(parsed.hasInput && queue.tryPush(parsed.input));
     }
     (void)dispatcher.service(queue);
-    // left press, (centre), right press, (right again is not a new edge), (centre), left press
-    assert(bridge.nudges.size() == 3u);
-    assert(bridge.nudges[0] == -1 && bridge.nudges[1] == 1 && bridge.nudges[2] == -1);
+    // left press, centre (release), right press, (right again is not a new edge), centre (release),
+    // left press: the events are -1, 0, +1, 0, -1 (0 = the button was released)
+    assert(bridge.nudges.size() == 5u);
+    assert(bridge.nudges[0] == -1 && bridge.nudges[1] == 0 && bridge.nudges[2] == 1 &&
+           bridge.nudges[3] == 0 && bridge.nudges[4] == -1);
+    // The session ending while the button is down releases it (no stuck auto-repeat).
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.nudges.size() == 6u && bridge.nudges[5] == 0);
     assert(routed.events.empty());                                 // never reaches the router
 }
 
@@ -418,17 +424,17 @@ void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
     // Pitch button left: a short touch only reaches MSB 54, then springs back; it must count once.
     for (int v = 63; v >= 54; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
     for (int v = 55; v <= 64; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
-    assert(bridge.nudges.size() == 1u && bridge.nudges[0] == -1);
-    // A long hold goes on to 0 and is still one nudge; the button to the right gives +1.
+    assert(bridge.nudges.size() == 2u && bridge.nudges[0] == -1 && bridge.nudges[1] == 0);  // press, release
+    // A long hold goes on to 0 and is still one press; the button to the right gives +1.
     for (int v = 63; v >= 0; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
     for (int v = 1; v <= 64; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
     for (int v = 65; v <= 127; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
     for (int v = 126; v >= 64; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
-    assert(bridge.nudges.size() == 3u);
-    assert(bridge.nudges[1] == -1 && bridge.nudges[2] == 1);
+    assert(bridge.nudges.size() == 6u);
+    assert(bridge.nudges[2] == -1 && bridge.nudges[3] == 0 && bridge.nudges[4] == 1 && bridge.nudges[5] == 0);
     // A tiny wobble around the centre never fires (below the press deviation).
     for (int v : {62, 66, 61, 67, 64}) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
-    assert(bridge.nudges.size() == 3u);
+    assert(bridge.nudges.size() == 6u);
     assert(routed.events.empty());
 }
 

@@ -118,6 +118,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   "${ROOT_DIR}/tests/test_mod_hold_tracker.cpp" \
   -o "${BUILD_DIR}/test_mod_hold_tracker"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_nudge_repeater.cpp" \
+  -o "${BUILD_DIR}/test_nudge_repeater"
+
+"${BUILD_DIR}/test_nudge_repeater"
+
 "${BUILD_DIR}/test_mod_hold_tracker"
 
 "${BUILD_DIR}/test_latency_histogram"

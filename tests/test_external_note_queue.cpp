@@ -63,15 +63,22 @@ int main() {
         ExternalNoteQueue::Event e;
         q.externalNudge(-1);
         q.externalNudge(5);                        // any positive value is +1
+        q.externalNudge(0);                        // the release
         assert(q.pop(e) && e.nudge == -1 && !e.sustain);
         assert(q.pop(e) && e.nudge == 1);
+        assert(q.pop(e) && e.nudge == ExternalNoteQueue::kNudgeEnd);
         for (unsigned i = 0; i < ExternalNoteQueue::kCapacity - ExternalNoteQueue::kNoteOffReserve; ++i) {
             q.externalNoteOn(static_cast<uint8_t>(i), 100);
         }
         const uint32_t before = q.dropped();
         q.externalNudge(1);
-        assert(q.dropped() == before + 1);         // refused at the reserve line, no recovery needed
+        assert(q.dropped() == before + 1);         // a press is refused at the reserve line
         assert(!q.takeRecovery());
+        q.externalNudge(0);                        // the release still fits in the reserve
+        assert(!q.takeRecovery());
+        for (unsigned i = 0; i < ExternalNoteQueue::kNoteOffReserve; ++i) q.externalNoteOff(static_cast<uint8_t>(i));
+        q.externalNudge(0);                        // queue full: a lost release raises the recovery request
+        assert(q.takeRecovery());
     }
     // Mod: queued like a NoteOn (droppable at the reserve line).
     {

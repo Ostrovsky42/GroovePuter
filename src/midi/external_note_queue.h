@@ -19,6 +19,7 @@ class ExternalNoteQueue final : public MidiExternalNoteSink {
 public:
     static constexpr std::size_t kCapacity = 32;  // power of two
     static constexpr std::size_t kNoteOffReserve = 8;
+    static constexpr int8_t kNudgeEnd = 2;  // Event::nudge value for "the pitch button was released"
 
     struct Event {
         bool on{false};       // NoteOn, or sustain pressed when `sustain` is set
@@ -68,10 +69,20 @@ public:
         push(head, Event{down, true, 0, 0, 0, 0, clock_ ? clock_() : 0u});
     }
 
-    // A nudge is droppable like a NoteOn (a lost one is just a button press that did nothing).
+    // A press (-1 / +1) is droppable like a NoteOn. The release (0) is critical like a NoteOff: losing it
+    // would leave the auto-repeat running, so it uses the reserve and raises the recovery request.
     void externalNudge(int direction) override {
         const uint32_t head = head_.load(std::memory_order_relaxed);
-        if (head - tail_.load(std::memory_order_acquire) >= kCapacity - kNoteOffReserve) {
+        const uint32_t used = head - tail_.load(std::memory_order_acquire);
+        if (direction == 0) {
+            if (used >= kCapacity) {
+                recovery_.store(true, std::memory_order_release);
+                return;
+            }
+            push(head, Event{false, false, kNudgeEnd, 0, 0, 0, clock_ ? clock_() : 0u});
+            return;
+        }
+        if (used >= kCapacity - kNoteOffReserve) {
             dropped_.fetch_add(1, std::memory_order_relaxed);
             return;
         }

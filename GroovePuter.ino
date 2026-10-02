@@ -23,7 +23,9 @@ static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> lo
 #endif
 // External Mod button: tap = delete the note under the cursor, hold = clear the melody.
 #include "src/midi/mod_hold_tracker.h"
+#include "src/midi/nudge_repeater.h"
 static GroovePuterMidi::ModHoldTracker g_modHold;
+static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -525,6 +527,26 @@ void setup() {
 }
 
 
+// One external pitch-button step: the active page may take it (notes tab: cursor), otherwise it steps
+// the ARP rate when ARP is on. Returns true when the page took it (those steps auto-repeat).
+static bool applyExternalNudge(int direction) {
+  bool pageTookIt = false;
+  if (g_miniDisplay) {
+    UIEvent offered{};
+    offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+    offered.x = direction;
+    pageTookIt = g_miniDisplay->handleEvent(offered);
+  }
+  if (!pageTookIt && g_performanceKeyboard.arpeggiatorEnabled()) {
+    g_performanceKeyboard.cycleArpRate(direction);
+    char toast[32];
+    snprintf(toast, sizeof(toast), "ARP RATE: %s", g_performanceKeyboard.arpRateName());
+    UI::showToast(toast, 700);
+  }
+  return pageTookIt;
+}
+
 void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
@@ -573,20 +595,14 @@ void loop() {
           continue;
         }
         if (note.nudge != 0) {
-          // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate.
-          bool nudged = false;
-          if (g_miniDisplay) {
-            UIEvent offered{};
-            offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
-            offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
-            offered.x = note.nudge;
-            nudged = g_miniDisplay->handleEvent(offered);
-          }
-          if (!nudged && g_performanceKeyboard.arpeggiatorEnabled()) {
-            g_performanceKeyboard.cycleArpRate(note.nudge);
-            char toast[32];
-            snprintf(toast, sizeof(toast), "ARP RATE: %s", g_performanceKeyboard.arpRateName());
-            UI::showToast(toast, 700);
+          // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate. Only a
+          // step the page took auto-repeats while the button stays down (like a held arrow key).
+          if (note.nudge == GroovePuterMidi::ExternalNoteQueue::kNudgeEnd) {
+            g_nudgeRepeat.onRelease();
+          } else if (applyExternalNudge(note.nudge)) {
+            g_nudgeRepeat.onPress(note.nudge, millis());
+          } else {
+            g_nudgeRepeat.reset();
           }
           continue;
         }
@@ -604,6 +620,10 @@ void loop() {
         if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
         else g_performanceKeyboard.externalNoteOff(note.note);
       }
+      {
+        const int repeatDirection = g_nudgeRepeat.poll(millis());
+        if (repeatDirection != 0 && !applyExternalNudge(repeatDirection)) g_nudgeRepeat.reset();
+      }
       if (g_modHold.pollLongHold(millis())) {
         if (g_miniDisplay) {
           UIEvent offered{};
@@ -614,6 +634,7 @@ void loop() {
       }
       if (externalNotes.takeRecovery()) {
         g_modHold.reset();
+        g_nudgeRepeat.reset();
         g_performanceKeyboard.releaseAllExternalNotes();
         g_performanceKeyboard.externalSustain(false);
       }
