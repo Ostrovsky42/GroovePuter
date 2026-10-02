@@ -496,8 +496,8 @@ void applyPendingMidiInputConfig() {
 
 bool usbHostRole() {
 #if ARDUINO_USB_CDC_ON_BOOT
-    // The core already started TinyUSB Device before setup(); a stale saved Host role (NVS
-    // outlives a reflash) must not turn this build's Device receive into a silent Host path.
+    // The core already started TinyUSB Device before setup(); a stale saved Host role
+    // (it outlives a reflash) must not turn this build's Device receive into a silent Host path.
     return false;
 #else
     return CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host;
