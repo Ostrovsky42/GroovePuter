@@ -218,6 +218,8 @@ private:
 
     int findHeld(char physicalKey) const;
     int findHeldExternal(uint8_t note) const;
+    bool latchedArpContinues() const;
+    void releaseHeldKeepingLatch();
     static bool drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel);
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);

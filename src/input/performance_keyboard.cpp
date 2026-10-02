@@ -926,7 +926,10 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
     const bool pendingLatchedInput = pendingClocked_.latchEnabled && pendingLatchCount_ > 0;
     const bool hasInput = heldCount_ > 0 || latchedInput || pendingLatchedInput;
     const bool wantsClock = activeStepEngineEnabled() || requestedStepEngineEnabled();
-    if (!liveInputAllowed() || !hasInput || !wantsClock) {
+    // A latched arpeggio keeps generating after the PERFORM page was left (see setEnabled).
+    const bool generationAllowed =
+        noteModeEnabled_ && (enabled_ || latchedArpContinues());
+    if (!generationAllowed || !hasInput || !wantsClock) {
         if (!hasInput || !wantsClock) resetPulseClock(false);
         return;
     }
@@ -1314,8 +1317,31 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
 void PerformanceKeyboard::setEnabled(bool enabled) {
     serviceHardwareClock();
     if (enabled_ == enabled) return;
-    if (!enabled) panic();
+    if (!enabled) {
+        if (latchedArpContinues()) releaseHeldKeepingLatch();
+        else panic();
+    }
     enabled_ = enabled;
+}
+
+// A latched arpeggio is a hands-free voice: leaving the PERFORM page (to tweak a sound, say) must
+// not cut it. Everything else keeps the old guard against notes that could no longer be released.
+bool PerformanceKeyboard::latchedArpContinues() const {
+    return activeClocked_.arpEnabled && activeClocked_.latchEnabled && latchedCount_ > 0;
+}
+
+void PerformanceKeyboard::releaseHeldKeepingLatch() {
+    char keys[kMaxHeldNotes]{};
+    uint8_t external[kMaxHeldNotes]{};
+    std::size_t keyCount = 0;
+    std::size_t externalCount = 0;
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        if (held_[i].physicalKey != '\0') keys[keyCount++] = held_[i].physicalKey;
+        else external[externalCount++] = static_cast<uint8_t>(held_[i].note);
+    }
+    // The normal release paths keep the latched notes sounding (heldCount_ == 0 with LATCH).
+    for (std::size_t i = 0; i < keyCount; ++i) keyUp(keys[i]);
+    for (std::size_t i = 0; i < externalCount; ++i) externalNoteOff(external[i]);
 }
 void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
     serviceHardwareClock();

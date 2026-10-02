@@ -199,6 +199,55 @@ int main() {
         noArp.externalSustain(false);
         assert(!noArp.latchEnabled());
     }
+    // 12. Leaving the PERFORM page (setEnabled(false)) keeps a latched arpeggio sounding; without
+    //     LATCH the old guard still silences everything (no note could be released any more).
+    {
+        auto countNoteOns = [&](MusicalEventSource source) {
+            int n = 0;
+            for (const auto& e : sink.events) n += (e.type == MusicalEventType::NoteOn && e.source == source) ? 1 : 0;
+            return n;
+        };
+        PerformanceKeyboard kb(router);
+        kb.setArpeggiatorEnabled(true);
+        kb.setLatchEnabled(true);
+        kb.setTempoBpm(120.0f);
+        sink.clear();
+        uint32_t t = 1000000u;
+        kb.service(t);
+        assert(kb.externalNoteOn(60, 100));
+        kb.service(t);
+        assert(kb.externalNoteOff(60));                    // latched: the arp keeps going
+        for (int i = 0; i < 8; ++i) { t += 125000u; kb.service(t); }
+        assert(countNoteOns(MusicalEventSource::Arpeggiator) >= 3);
+        assert(kb.externalHeldCount() == 0);
+
+        kb.setEnabled(false);                              // the musician leaves the PERFORM page
+        assert(sink.count(MusicalEventType::AllNotesOff) == 0);
+        sink.clear();
+        for (int i = 0; i < 8; ++i) { t += 125000u; kb.service(t); }
+        assert(countNoteOns(MusicalEventSource::Arpeggiator) >= 3);   // still sounding
+
+        // Notes still physically held when the page is left are released, the latched ones stay.
+        kb.setEnabled(true);
+        assert(kb.externalNoteOn(64, 100));
+        sink.clear();
+        kb.setEnabled(false);
+        assert(kb.externalHeldCount() == 0);
+        for (int i = 0; i < 8; ++i) { t += 125000u; kb.service(t); }
+        assert(countNoteOns(MusicalEventSource::Arpeggiator) >= 3);
+
+        PerformanceKeyboard plain(router);                 // no LATCH: unchanged guard
+        plain.setArpeggiatorEnabled(true);
+        plain.setTempoBpm(120.0f);
+        uint32_t u = 5000000u;
+        plain.service(u);
+        assert(plain.externalNoteOn(60, 100));
+        plain.service(u);
+        sink.clear();
+        plain.setEnabled(false);
+        assert(sink.count(MusicalEventType::AllNotesOff) >= 1 || sink.count(MusicalEventType::NoteOff) >= 1);
+        assert(plain.externalHeldCount() == 0);
+    }
     std::puts("PERFORM keyboard external notes: PASS");
     return 0;
 }
