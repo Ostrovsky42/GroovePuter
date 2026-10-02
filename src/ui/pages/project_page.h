@@ -29,7 +29,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
@@ -157,6 +157,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   uint8_t midi_profile_preview_ = 0xFF;
+  uint8_t usb_role_preview_ = 0xFF;  // unset; otherwise the UsbBootRole being previewed
+  bool activateUsbRole();
   std::string save_name_;
 };
 

@@ -19,6 +19,7 @@ UsbBootRole CardputerUsbRoleRuntime::activeRole_{UsbBootRole::Device};
 UsbBootRole CardputerUsbRoleRuntime::pendingRole_{UsbBootRole::Device};
 #endif
 bool CardputerUsbRoleRuntime::initialized_{false};
+uint32_t CardputerUsbRoleRuntime::restartRequests_{0};
 
 const char* usbBootRoleToString(UsbBootRole role) {
     switch (role) {
@@ -59,6 +60,21 @@ UsbBootRole CardputerUsbRoleRuntime::pendingRole() {
     return pendingRole_;
 }
 
+bool CardputerUsbRoleRuntime::selectableInThisBuild() {
+#if defined(ARDUINO) && ARDUINO_USB_CDC_ON_BOOT
+    return false;
+#else
+    return true;
+#endif
+}
+
+uint32_t CardputerUsbRoleRuntime::restartRequests() { return restartRequests_; }
+
+bool CardputerUsbRoleRuntime::restartPending() {
+    if (!initialized_) init();
+    return pendingRole_ != activeRole_;
+}
+
 bool CardputerUsbRoleRuntime::setPendingRole(UsbBootRole role) {
     if (!initialized_) init();
     pendingRole_ = role;
@@ -80,6 +96,7 @@ bool CardputerUsbRoleRuntime::setPendingRole(UsbBootRole role) {
 
 bool CardputerUsbRoleRuntime::requestRebootWithRole(UsbBootRole newRole) {
     if (!setPendingRole(newRole)) return false;
+    ++restartRequests_;
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
     esp_restart();
 #endif

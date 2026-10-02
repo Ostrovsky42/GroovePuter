@@ -185,7 +185,10 @@ bool CardputerUsbHostMidi::begin(UsbHostMidiCallback callback) {
         .intr_flags = ESP_INTR_FLAG_LEVEL3,
     };
     esp_err_t result = usb_host_install(&config);
-    if (result != ESP_OK) return false;
+    if (result != ESP_OK) {
+        g_status.store("INSTALL_FAIL", std::memory_order_relaxed);
+        return false;
+    }
     g_hostInstalled.store(true, std::memory_order_relaxed);
 
     usb_host_client_config_t clientConfig{};

@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 
 #include "../layout_manager.h"
@@ -24,6 +25,8 @@
 #include "../midi_device_profile_ui.h"
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_usb_host_midi.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/ui/save_probe.h"
 
 namespace {
@@ -152,7 +155,7 @@ void sectionRange(int section, int& first, int& last) {
       last = (int)ProjectPage::MainFocus::LedFlash;
       return;
     case 3: // midi
-      first = (int)ProjectPage::MainFocus::MidiDevice;
+      first = (int)ProjectPage::MainFocus::UsbRole;
       last = (int)ProjectPage::MainFocus::MidiInputTarget;
       return;
     default:
@@ -397,11 +400,73 @@ bool ProjectPage::clearProject() {
   return true;
 }
 
+namespace {
+const char* usbRoleLabel(UsbBootRole role) {
+    switch (role) {
+        case UsbBootRole::Device: return "COMPUTER";
+        case UsbBootRole::Host: return "KEYBOARD";
+        case UsbBootRole::Off: return "OFF";
+    }
+    return "COMPUTER";
+}
+
+UsbBootRole usbRoleStep(UsbBootRole role, int delta) {
+    // COMPUTER -> KEYBOARD -> OFF -> COMPUTER
+    int index = role == UsbBootRole::Device ? 0 : role == UsbBootRole::Host ? 1 : 2;
+    index = (index + (delta >= 0 ? 1 : 2)) % 3;
+    return index == 0 ? UsbBootRole::Device : index == 1 ? UsbBootRole::Host : UsbBootRole::Off;
+}
+
+UsbBootRole usbRoleFromPreview(uint8_t preview, UsbBootRole fallback) {
+    return preview <= static_cast<uint8_t>(UsbBootRole::Host)
+        ? static_cast<UsbBootRole>(preview) : fallback;
+}
+}  // namespace
+
+// USB role: choose COMPUTER / KEYBOARD / OFF with L/R, ENTER saves it (it does not change the running
+// role), a second ENTER restarts. A project with unsaved changes is never restarted from here.
+bool ProjectPage::activateUsbRole() {
+    if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+        UI::showToast("USB ROLE FIXED: COMPUTER", 1400);
+        return true;
+    }
+    const UsbBootRole pending = CardputerUsbRoleRuntime::pendingRole();
+    const UsbBootRole selected = usbRoleFromPreview(usb_role_preview_, pending);
+    if (selected != pending) {
+        if (!CardputerUsbRoleRuntime::setPendingRole(selected)) {
+            usb_role_preview_ = static_cast<uint8_t>(pending);
+            UI::showToast("USB ROLE NOT SAVED", 1600);
+            return true;
+        }
+        usb_role_preview_ = static_cast<uint8_t>(selected);
+        UI::showToast(CardputerUsbRoleRuntime::restartPending()
+                          ? "SAVED - ENTER TO RESTART"
+                          : "USB: ACTIVE", 1600);
+        return true;
+    }
+    if (!CardputerUsbRoleRuntime::restartPending()) {
+        UI::showToast("USB: ACTIVE", 900);
+        return true;
+    }
+    if (GroovePuterState::sceneRevisionSnapshot().dirty()) {
+        UI::showToast("SAVE PROJECT FIRST (SAVE AS)", 2000);
+        return true;
+    }
+    withAudioGuard([&]() {
+        if (mini_acid_.isPlaying()) mini_acid_.stop();
+        mini_acid_.allLiveNotesOff();
+    });
+    UI::showToast("RESTARTING...", 600);
+    CardputerUsbRoleRuntime::requestRebootWithRole(pending);
+    return true;
+}
+
 void ProjectPage::onEnter(int context) {
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
   midi_profile_preview_ = ProfileUi::kUnsetPreview;
+  usb_role_preview_ = 0xFF;
 }
 
 bool ProjectPage::importMidiAtSelection() {
@@ -1289,6 +1354,13 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 main_focus_ == MainFocus::MidiInputTarget) {
                 return adjustMidiInput(right ? 1 : -1);
             }
+            if (main_focus_ == MainFocus::UsbRole) {
+                if (!CardputerUsbRoleRuntime::selectableInThisBuild()) return true;
+                const UsbBootRole current = usbRoleFromPreview(
+                    usb_role_preview_, CardputerUsbRoleRuntime::pendingRole());
+                usb_role_preview_ = static_cast<uint8_t>(usbRoleStep(current, right ? 1 : -1));
+                return true;
+            }
             if (main_focus_ == MainFocus::MidiDevice) {
                 const auto pending =
                     GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1404,6 +1476,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::MidiInputEnabled ||
             main_focus_ == MainFocus::MidiInputChannel ||
             main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+        if (main_focus_ == MainFocus::UsbRole) return activateUsbRole();
         if (main_focus_ == MainFocus::MidiDevice) {
             const auto pending =
                 GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1704,6 +1777,17 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::LedFlash:
         std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
         break;
+      case MainFocus::UsbRole: {
+        if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+          std::snprintf(line, sizeof(line), "USB        COMPUTER (fixed)");
+        } else {
+          const UsbBootRole pending = CardputerUsbRoleRuntime::pendingRole();
+          const UsbBootRole selected = usbRoleFromPreview(usb_role_preview_, pending);
+          std::snprintf(line, sizeof(line), "USB        <%s>%s", usbRoleLabel(selected),
+                        selected != pending ? "*" : "");
+        }
+        break;
+      }
       case MainFocus::MidiDevice: {
         const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
         const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
@@ -1755,8 +1839,20 @@ void ProjectPage::draw(IGfx& gfx) {
         GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
     const auto selected = ProfileUi::profileFromPreview(
         midi_profile_preview_, pending);
-    std::snprintf(midi0, sizeof(midi0), "Saved:%s",
-                  ProfileUi::shortName(pending));
+    {
+      const UsbBootRole active = CardputerUsbRoleRuntime::activeRole();
+      const char* state = "";
+      if (active == UsbBootRole::Host) {
+        state = GroovePuterMidi::CardputerUsbHostMidi::isConnected() ? " OK" : " NO KBD";
+        if (std::strcmp(GroovePuterMidi::CardputerUsbHostMidi::status(), "INSTALL_FAIL") == 0) state = " FAULT";
+      }
+      if (CardputerUsbRoleRuntime::restartPending()) {
+        std::snprintf(midi0, sizeof(midi0), "USB:%s>%s RESTART", usbRoleLabel(active),
+                      usbRoleLabel(CardputerUsbRoleRuntime::pendingRole()));
+      } else {
+        std::snprintf(midi0, sizeof(midi0), "USB:%s%s", usbRoleLabel(active), state);
+      }
+    }
     if (selected != pending) {
       std::snprintf(midi1, sizeof(midi1), "Apply:ENTER SAVE");
     } else if (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()) {
@@ -1790,7 +1886,7 @@ int ProjectPage::firstFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::Load;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::VisualStyle;
   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedMode;
-  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::UsbRole;
   return 0;
 }
 
@@ -1807,7 +1903,7 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
-  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::MidiDevice && f <= ProjectPage::MainFocus::MidiInputTarget;
+  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::UsbRole && f <= ProjectPage::MainFocus::MidiInputTarget;
   return false;
 }
 

@@ -24,6 +24,16 @@ public:
     // Pending role to be applied on next boot.
     static UsbBootRole pendingRole();
 
+    // False in a CDC-on-boot build: the core starts TinyUSB Device before setup(), so the saved role
+    // cannot take effect there and the UI must not pretend otherwise.
+    static bool selectableInThisBuild();
+
+    // True when the saved role differs from the running one (a restart is needed).
+    static bool restartPending();
+
+    // Number of restarts requested through requestRebootWithRole() in this run (tests, diagnostics).
+    static uint32_t restartRequests();
+
     // Set pending role in NVS. Returns true on successful write.
     static bool setPendingRole(UsbBootRole role);
 
@@ -34,4 +44,5 @@ private:
     static UsbBootRole activeRole_;
     static UsbBootRole pendingRole_;
     static bool initialized_;
+    static uint32_t restartRequests_;
 };
