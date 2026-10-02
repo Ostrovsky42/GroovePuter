@@ -11,7 +11,7 @@ track_h = (ROOT / "src/midi/smf_track_inspector.h").read_text(encoding="utf-8")
 page_h = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
 page_wrapper = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text(encoding="utf-8")
 player_cpp = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
-workflow = (ROOT / ".github/workflows/core-regressions.yml").read_text(encoding="utf-8")
+workflow = (ROOT / ".github/workflows/cardputer-adv.yml").read_text(encoding="utf-8")
 doc = (ROOT / "docs/stages/SMF_STRUCTURAL_INSPECTOR_STAGE_1B.md").read_text(encoding="utf-8")
 
 assert '#include "smf_structural_inspector.h"' in stream_cpp

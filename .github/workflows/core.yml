@@ -1,0 +1,49 @@
+name: Core
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev_0.9.14
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce bounded CI surface
+        run: python3 scripts/ci/check_workflow_surface.py
+      - name: Validate CI runner syntax
+        run: |
+          for script in scripts/ci/*.sh; do
+            bash -n "$script"
+          done
+
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - name: Run current core contracts
+        run: bash scripts/ci/run_core.sh
+
+  sdl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - name: Build desktop target
+        run: make -C platform_sdl clean all CXX=g++

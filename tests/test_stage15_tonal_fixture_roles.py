@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CURRENT = ROOT / "tests/data/stage15_tonal_enabled_baseline.tsv"
 PRE_F13 = ROOT / "tests/data/stage15_tonal_enabled_pre_f13_baseline.tsv"
 F13_FROZEN = ROOT / "tests/data/stage15_tonal_enabled_f13_baseline.tsv.gz.b64"
-BASELINE_WORKFLOW = ROOT / ".github/workflows/stage15-tonal-baseline.yml"
+BASELINE_WORKFLOW = ROOT / "scripts/ci/run_stage15_baseline_contract.sh"
 BOUNDARY = ROOT / "tests/test_stage15_tonal_corpus_boundary.py"
 F13_TEST = ROOT / "tests/test_stage15_tonal_f13_corpus.py"
 
@@ -29,7 +29,7 @@ def git_blob_sha(path: Path) -> str:
 def consumers(needle: str):
     hits = set()
     skip_parts = {"build", ".pio"}
-    for consumer_root in (ROOT / ".github", ROOT / "tests"):
+    for consumer_root in (ROOT / ".github", ROOT / "tests", ROOT / "scripts" / "ci"):
         for path in consumer_root.rglob("*"):
             if not path.is_file():
                 continue
@@ -72,18 +72,18 @@ pre_f13_consumers = consumers(PRE_F13_NAME)
 f13_consumers = consumers(F13_FROZEN_NAME)
 
 expected_current_consumers = {
-    ".github/workflows/stage15-tonal-baseline.yml",
+    "scripts/ci/run_stage15_baseline_contract.sh",
     "tests/run_0_9_9_phrase_w1_tests.sh",
     "tests/run_0_9_9_phrase_w1r_tests.sh",
     "tests/test_stage15_tonal_fixture_roles.py",
 }
 expected_pre_f13_consumers = {
-    ".github/workflows/stage15-tonal-baseline.yml",
+    "scripts/ci/run_stage15_baseline_contract.sh",
     "tests/test_stage15_tonal_corpus_boundary.py",
     "tests/test_stage15_tonal_fixture_roles.py",
 }
 expected_f13_consumers = {
-    ".github/workflows/stage15-tonal-baseline.yml",
+    "scripts/ci/run_stage15_baseline_contract.sh",
     "tests/test_stage15_tonal_fixture_roles.py",
     # The GF2 semantic gate tests assert the frozen F13 corpus is still present,
     # because their research scope is pinned against it. They read the fixture's
@@ -106,23 +106,15 @@ baseline_workflow = BASELINE_WORKFLOW.read_text(encoding="utf-8")
 boundary = BOUNDARY.read_text(encoding="utf-8")
 f13_test = F13_TEST.read_text(encoding="utf-8")
 
-historical_start = baseline_workflow.index(
-    "- name: Verify historical PRE-F13 to F-13 expression ownership delta"
-)
-historical_end = baseline_workflow.index(
-    "- name: Compare current accepted Stage15 tonal golden", historical_start
-)
+historical_start = baseline_workflow.index("# HISTORICAL PRE-F13 -> F13")
+historical_end = baseline_workflow.index("# CURRENT ACCEPTED GOLDEN", historical_start)
 historical_block = baseline_workflow[historical_start:historical_end]
 assert PRE_F13_NAME in historical_block
 assert "stage15_tonal_enabled_f13_expected.tsv" in historical_block
 assert CURRENT_NAME not in historical_block
 
-current_start = baseline_workflow.index(
-    "- name: Compare current accepted Stage15 tonal golden"
-)
-current_end = baseline_workflow.index(
-    "- name: Upload frozen F-13 tonal corpus", current_start
-)
+current_start = baseline_workflow.index("# CURRENT ACCEPTED GOLDEN")
+current_end = baseline_workflow.index("# HISTORICAL OWNERSHIP BOUNDARY", current_start)
 current_block = baseline_workflow[current_start:current_end]
 assert CURRENT_NAME in current_block
 assert "stage15_tonal_enabled_actual.tsv" in current_block
