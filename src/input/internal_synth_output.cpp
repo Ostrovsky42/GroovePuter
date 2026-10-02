@@ -2,7 +2,6 @@
 
 #include "src/dsp/miniacid_engine.h"
 #include "src/output/output_ownership.h"
-#include "src/ui/led_manager.h"
 
 namespace {
 uint8_t clampInternalLiveNote(uint8_t note) {
@@ -127,13 +126,7 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
         switch (event.type) {
             case MusicalEventType::NoteOn: {
                 triggerRegisteredLocalDrumVoice(lane, event.velocity);
-                {
-                    static constexpr VoiceId kLaneVoice[8] = {
-                        VoiceId::DrumKick, VoiceId::DrumSnare, VoiceId::DrumHatC, VoiceId::DrumHatO,
-                        VoiceId::DrumTomM, VoiceId::DrumTomH, VoiceId::DrumRim, VoiceId::DrumClap};
-                    LedManager::instance().onVoiceTriggered(
-                        kLaneVoice[lane], engine_.sceneManager().currentScene().led);
-                }
+                engine_.pulseLedForDrumLane(lane);
                 if (engine_.sampleStore && engine_.samplerTrack &&
                     engine_.samplerTrack->isEnabled() &&
                     engine_.samplerTrack->pad(lane).id.value != 0) {

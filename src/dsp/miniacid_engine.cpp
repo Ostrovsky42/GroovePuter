@@ -679,6 +679,14 @@ void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
   else gateCountdownB_ = 0;
 }
 
+void MiniAcid::pulseLedForDrumLane(uint8_t lane) {
+  static constexpr VoiceId kLaneVoice[8] = {
+      VoiceId::DrumKick, VoiceId::DrumSnare, VoiceId::DrumHatC, VoiceId::DrumHatO,
+      VoiceId::DrumTomM, VoiceId::DrumTomH, VoiceId::DrumRim, VoiceId::DrumClap};
+  if (lane >= 8) return;
+  LedManager::instance().onVoiceTriggered(kLaneVoice[lane], sceneManager_.currentScene().led);
+}
+
 void MiniAcid::liveNoteOff(int synthIndex, uint8_t midiNote) {
   const int idx = clamp303Voice(synthIndex);
   if (liveNotes_[idx] != static_cast<int16_t>(midiNote)) return;
