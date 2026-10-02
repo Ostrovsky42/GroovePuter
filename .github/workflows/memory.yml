@@ -8,6 +8,10 @@ on:
       - "scripts/**"
       - "tests/**"
       - "GroovePuter.ino"
+      - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
+      - "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md"
+      - "scripts/instrument_cardputer_memory_runtime.py"
+      - "scripts/report_cardputer_tinyusb_class_buffers.sh"
       - ".github/workflows/memory.yml"
   push:
     branches:
@@ -23,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate memory instrumentation contracts
         run: |
           python3 tests/test_cardputer_memory_baseline_source_regressions.py
@@ -37,6 +43,8 @@ jobs:
         image-kind: [product, runtime]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: arduino/setup-arduino-cli@v2
         with:
           version: "1.x"
