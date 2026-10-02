@@ -1,4 +1,5 @@
 #include "cardputer_usb_role_runtime.h"
+#include "src/midi/latency_histogram.h"
 #include "cardputer_usb_host_midi.h"
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
@@ -235,6 +236,7 @@ GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
 GroovePuterMidi::ExternalNoteQueue g_externalNotes;
+GroovePuterMidi::LatencyHistogram g_ringLatency;  // USB callback -> dispatch task (diagnostics)
 bool g_usbInputMounted = false;
 portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
 GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
@@ -532,7 +534,9 @@ void drainIncomingMidiPackets() {
     for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
         if (hostRole) {
             uint8_t raw4[4];
-            if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4)) break;
+            uint32_t stampUs = 0;
+            if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4, &stampUs)) break;
+            if (stampUs != 0) g_ringLatency.add(micros() - stampUs);
             packet.header = raw4[0];
             packet.byte1 = raw4[1];
             packet.byte2 = raw4[2];
@@ -1562,6 +1566,9 @@ bool registerCardputerUsbMidiSink(
     g_midiIoState.boot();
     g_inputDispatcher.bind(router, g_midiIoState);
     g_inputDispatcher.setPerformSink(&g_externalNotes);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    g_externalNotes.setClock([]() -> uint32_t { return micros(); });
+#endif
     g_inputParser.reset(GroovePuterMidi::InputSession{
         GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
     g_patternDrumGates.clear();
@@ -1688,4 +1695,12 @@ bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
 
 GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
     return g_externalNotes;
+}
+
+const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency() { return g_ringLatency; }
+
+uint32_t cardputerUsbDispatchStackFreeBytes() {
+    return g_dispatchTaskHandle != nullptr
+        ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(g_dispatchTaskHandle) * sizeof(StackType_t))
+        : 0u;
 }

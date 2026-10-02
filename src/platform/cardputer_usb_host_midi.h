@@ -22,7 +22,9 @@ public:
     static const char* status();
     static void stop();
     // Consumer side of the packet ring (MidiDispatchTask only). Producer is the loop task.
-    static bool popPacket(uint8_t out[4]);
+    static bool popPacket(uint8_t out[4], uint32_t* stampUs = nullptr);
+    static uint32_t attachCount();
+    static uint32_t detachCount();
     static uint32_t droppedPackets();
 };
 

@@ -29,6 +29,10 @@ UsbHostMidiCallback g_callback{nullptr};
 constexpr uint32_t kRingSize = 64;  // packets, power of two
 uint32_t g_ring[kRingSize];
 std::atomic<uint32_t> g_ringHead{0}, g_ringTail{0}, g_ringDropped{0};
+std::atomic<uint32_t> g_attachCount{0}, g_detachCount{0};
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+uint32_t g_ringStamp[kRingSize];  // push time, acceptance diagnostics only
+#endif
 
 void ringPush(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3) {
     const uint32_t head = g_ringHead.load(std::memory_order_relaxed);
@@ -36,6 +40,9 @@ void ringPush(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3) {
         g_ringDropped.fetch_add(1, std::memory_order_relaxed);
         return;
     }
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    g_ringStamp[head & (kRingSize - 1)] = micros();
+#endif
     g_ring[head & (kRingSize - 1)] = static_cast<uint32_t>(b0) | (static_cast<uint32_t>(b1) << 8) |
                                       (static_cast<uint32_t>(b2) << 16) | (static_cast<uint32_t>(b3) << 24);
     g_ringHead.store(head + 1, std::memory_order_release);
@@ -93,6 +100,7 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
     if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
         if (g_device.load(std::memory_order_relaxed) == event->dev_gone.dev_hdl) {
             g_closing.store(true, std::memory_order_relaxed);
+            g_detachCount.fetch_add(1, std::memory_order_relaxed);
             g_status.store("DEV_GONE", std::memory_order_relaxed);
             if (g_claimed.load(std::memory_order_relaxed) && g_inFlight.load(std::memory_order_relaxed)) {
                 (void)usb_host_endpoint_halt(g_device.load(), static_cast<uint8_t>(g_inputEndpoint.load()));
@@ -162,6 +170,7 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
                 err = usb_host_transfer_submit(transfer);
                 g_inFlight.store(err == ESP_OK, std::memory_order_relaxed);
                 g_status.store(err == ESP_OK ? "READY" : "SUBMIT_FAIL", std::memory_order_relaxed);
+                if (err == ESP_OK) g_attachCount.fetch_add(1, std::memory_order_relaxed);
             } else {
                 g_status.store("ALLOC_FAIL", std::memory_order_relaxed);
             }
@@ -240,9 +249,17 @@ uint8_t CardputerUsbHostMidi::lastNote() { return g_lastNote.load(); }
 uint8_t CardputerUsbHostMidi::lastVelocity() { return g_lastVelocity.load(); }
 const char* CardputerUsbHostMidi::status() { return g_status.load(); }
 
-bool CardputerUsbHostMidi::popPacket(uint8_t out[4]) {
+uint32_t CardputerUsbHostMidi::attachCount() { return g_attachCount.load(); }
+uint32_t CardputerUsbHostMidi::detachCount() { return g_detachCount.load(); }
+
+bool CardputerUsbHostMidi::popPacket(uint8_t out[4], uint32_t* stampUs) {
     const uint32_t tail = g_ringTail.load(std::memory_order_relaxed);
     if (tail == g_ringHead.load(std::memory_order_acquire)) return false;
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    if (stampUs) *stampUs = g_ringStamp[tail & (kRingSize - 1)];
+#else
+    if (stampUs) *stampUs = 0;
+#endif
     const uint32_t v = g_ring[tail & (kRingSize - 1)];
     out[0] = static_cast<uint8_t>(v);
     out[1] = static_cast<uint8_t>(v >> 8);
@@ -274,7 +291,9 @@ uint32_t CardputerUsbHostMidi::noteOffCount() { return 0; }
 uint8_t CardputerUsbHostMidi::lastNote() { return 0; }
 uint8_t CardputerUsbHostMidi::lastVelocity() { return 0; }
 const char* CardputerUsbHostMidi::status() { return "OFF"; }
-bool CardputerUsbHostMidi::popPacket(uint8_t[4]) { return false; }
+bool CardputerUsbHostMidi::popPacket(uint8_t[4], uint32_t*) { return false; }
+uint32_t CardputerUsbHostMidi::attachCount() { return 0; }
+uint32_t CardputerUsbHostMidi::detachCount() { return 0; }
 uint32_t CardputerUsbHostMidi::droppedPackets() { return 0; }
 void CardputerUsbHostMidi::stop() {}
 } // namespace GroovePuterMidi

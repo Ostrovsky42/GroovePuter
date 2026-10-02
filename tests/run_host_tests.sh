@@ -100,6 +100,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   "${ROOT_DIR}/tests/test_external_note_queue.cpp" \
   -o "${BUILD_DIR}/test_external_note_queue"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_latency_histogram.cpp" \
+  -o "${BUILD_DIR}/test_latency_histogram"
+
+"${BUILD_DIR}/test_latency_histogram"
+
 "${BUILD_DIR}/test_external_note_queue"
 
 "${BUILD_DIR}/test_performance_keyboard"

@@ -17,6 +17,10 @@
 #if !ARDUINO_USB_CDC_ON_BOOT
 #define GP_USB_ROLE_RUNTIME 1
 #endif
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+#include "src/midi/latency_histogram.h"
+static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> loop apply
+#endif
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -540,6 +544,9 @@ void loop() {
       auto& externalNotes = cardputerExternalNoteQueue();
       GroovePuterMidi::ExternalNoteQueue::Event note;
       while (externalNotes.pop(note)) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+        if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
+#endif
         if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
         else g_performanceKeyboard.externalNoteOff(note.note);
       }
@@ -942,6 +949,48 @@ void loop() {
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    // Acceptance overlay (diagnostic image only): memory, stacks, reconnects, queue and hop latency.
+    {
+      constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+      char line[56];
+      g_display.fillRect(0, 54, 240, 81, CP_BLACK);
+      g_display.setTextColor(IGfxColor::White());
+      snprintf(line, sizeof(line), "ROLE %s att=%lu det=%lu on=%lu",
+               CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host ? "KBD" : "PC",
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::attachCount(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::detachCount(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount());
+      g_display.drawText(0, 55, line);
+      snprintf(line, sizeof(line), "MEM f=%u min=%u blk=%u", (unsigned)heap_caps_get_free_size(caps),
+               (unsigned)heap_caps_get_minimum_free_size(caps),
+               (unsigned)heap_caps_get_largest_free_block(caps));
+      g_display.drawText(0, 64, line);
+      snprintf(line, sizeof(line), "STK loop=%u disp=%u aud=%u",
+               (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+               (unsigned)cardputerUsbDispatchStackFreeBytes(),
+               (unsigned)(g_audioTaskHandle ? uxTaskGetStackHighWaterMark(g_audioTaskHandle) * sizeof(StackType_t) : 0));
+      g_display.drawText(0, 73, line);
+      snprintf(line, sizeof(line), "Q held=%u drop=%lu ring=%lu",
+               (unsigned)g_performanceKeyboard.externalHeldCount(),
+               (unsigned long)cardputerExternalNoteQueue().dropped(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::droppedPackets());
+      g_display.drawText(0, 82, line);
+      const auto& ringLat = cardputerUsbRingLatency();
+      snprintf(line, sizeof(line), "LAT usb>disp n=%lu %lu/%lu/%lu", (unsigned long)ringLat.count(),
+               (unsigned long)ringLat.percentileUs(50), (unsigned long)ringLat.percentileUs(95),
+               (unsigned long)ringLat.maxUs());
+      g_display.drawText(0, 91, line);
+      snprintf(line, sizeof(line), "LAT disp>keys n=%lu %lu/%lu/%lu", (unsigned long)g_queueLatency.count(),
+               (unsigned long)g_queueLatency.percentileUs(50), (unsigned long)g_queueLatency.percentileUs(95),
+               (unsigned long)g_queueLatency.maxUs());
+      g_display.drawText(0, 100, line);
+      snprintf(line, sizeof(line), "PLAY=%d up=%lus us p50/p95/max", g_miniAcid->isPlaying() ? 1 : 0,
+               (unsigned long)(millis() / 1000));
+      g_display.drawText(0, 109, line);
+      g_display.flush();
+    }
+#endif
   }
 
   static unsigned long lastMemLog = 0;

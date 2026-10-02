@@ -1249,6 +1249,12 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
     return true;
 }
 
+std::size_t PerformanceKeyboard::externalHeldCount() const {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < heldCount_; ++i) count += held_[i].physicalKey == '\0' ? 1 : 0;
+    return count;
+}
+
 void PerformanceKeyboard::releaseAllExternalNotes() {
     uint8_t notes[kMaxHeldNotes]{};
     std::size_t count = 0;

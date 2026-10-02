@@ -24,7 +24,11 @@ public:
         bool on{false};
         uint8_t note{0};
         uint8_t velocity{0};
+        uint32_t stampUs{0};  // producer time when a clock is set (acceptance diagnostics), else 0
     };
+
+    // Optional microsecond clock (diagnostics only): events carry the push time.
+    void setClock(uint32_t (*clock)()) { clock_ = clock; }
 
     void externalNoteOn(uint8_t note, uint8_t velocity) override {
         const uint32_t head = head_.load(std::memory_order_relaxed);
@@ -33,7 +37,7 @@ public:
             dropped_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        push(head, Event{true, note, velocity});
+        push(head, Event{true, note, velocity, clock_ ? clock_() : 0u});
     }
 
     void externalNoteOff(uint8_t note) override {
@@ -42,7 +46,7 @@ public:
             recovery_.store(true, std::memory_order_release);
             return;
         }
-        push(head, Event{false, note, 0});
+        push(head, Event{false, note, 0, clock_ ? clock_() : 0u});
     }
 
     bool pop(Event& out) {
@@ -66,6 +70,7 @@ private:
     Event ring_[kCapacity]{};
     std::atomic<uint32_t> head_{0}, tail_{0}, dropped_{0};
     std::atomic<bool> recovery_{false};
+    uint32_t (*clock_)(){nullptr};
 };
 
 }  // namespace GroovePuterMidi

@@ -41,6 +41,7 @@ public:
     bool externalNoteOn(uint8_t note, uint8_t velocity);
     bool externalNoteOff(uint8_t note);
     void releaseAllExternalNotes();
+    std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
     void setTempoBpm(float bpm);
