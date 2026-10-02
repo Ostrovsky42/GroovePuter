@@ -701,6 +701,88 @@ bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
   return true;
 }
 
+// Adds one sound at the cursor (or the next free cell after a selected sound) and moves the cursor
+// on. pitch < 0 continues the melody; an external keyboard passes the played pitch and velocity.
+bool SynthSequencerPage::insertAtCursor(int pitch, uint8_t velocity) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(
+      phrase_cursor_, phrase.lengthTicks);
+
+  const uint16_t step = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
+  uint16_t target = PhraseNotesCursor::tick(phrase_cursor_);
+  const PhraseNotesSelection::Selection anchor =
+      PhraseNotesSelection::deriveInCell(phrase, target, step);
+  if (anchor.active && step > 0) {
+    target = static_cast<uint16_t>(
+        phrase.events[anchor.eventIndex].startTick + step);
+    while (target < phrase.lengthTicks) {
+      bool occupied = false;
+      for (uint16_t i = 0; i < phrase.count; ++i) {
+        if (phrase.events[i].startTick / step == target / step) {
+          occupied = true;
+          break;
+        }
+      }
+      if (!occupied) break;
+      target = static_cast<uint16_t>(target + step);
+    }
+    if (target >= phrase.lengthTicks) {
+      target = PhraseNotesCursor::tick(phrase_cursor_);
+    }
+  }
+
+  PhraseNotesInsertEdit::Prepared prepared{};
+  const auto result = PhraseNotesInsertEdit::prepare(
+      phrase, target, phrase_cursor_.grid, prepared, pitch, velocity);
+  if (result != PhraseNotesInsertEdit::Result::Ready) {
+    const char* why = "ADD FAILED";
+    if (result == PhraseNotesInsertEdit::Result::Occupied) {
+      why = "SOUND ALREADY HERE";
+    } else if (result == PhraseNotesInsertEdit::Result::Full) {
+      why = "MELODY FULL";
+    }
+    UI::showToast(why, 900);
+    return true;
+  }
+
+  const bool committed = commitRuntimePhraseEditWithUndo(
+      mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
+
+  if (committed && step > 0) {
+    phrase_cursor_.cell = static_cast<uint8_t>(target / step);
+    phrase_cursor_ = PhraseNotesCursor::clamp(
+        phrase_cursor_, phrase.lengthTicks);
+  }
+  UI::showToast(committed ? "SOUND ADDED" : "EDIT STALE", 900);
+  return true;
+}
+
+bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
+  if (synth_tab_ != SynthTab::Notes ||
+      mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
+    return false;
+  }
+  const auto guarded = [&](auto&& body) {
+    if (audio_guard_) audio_guard_(body);
+    else body();
+  };
+  if (velocity == 0) {
+    if (external_audition_note_ != static_cast<int16_t>(note)) return false;
+    guarded([&]() { mini_acid_.liveNoteOff(voice_index_, note); });
+    external_audition_note_ = -1;
+    return true;
+  }
+  if (external_audition_note_ >= 0) {
+    const uint8_t previous = static_cast<uint8_t>(external_audition_note_);
+    guarded([&]() { mini_acid_.liveNoteOff(voice_index_, previous); });
+    external_audition_note_ = -1;
+  }
+  insertAtCursor(note, velocity);
+  guarded([&]() { mini_acid_.liveNoteOn(voice_index_, note, velocity); });
+  external_audition_note_ = static_cast<int16_t>(note);
+  return true;
+}
+
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
       ui_event.ctrl || ui_event.meta) {
@@ -764,56 +846,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
   if (ui_event.key == '\n' && !ui_event.alt) {
-    phrase_cursor_ = PhraseNotesCursor::clamp(
-        phrase_cursor_, phrase.lengthTicks);
-
-    const uint16_t step = RuntimePhraseEdit::gridTicks(phrase_cursor_.grid);
-    uint16_t target = PhraseNotesCursor::tick(phrase_cursor_);
-    const PhraseNotesSelection::Selection anchor =
-        PhraseNotesSelection::deriveInCell(phrase, target, step);
-    if (anchor.active && step > 0) {
-      target = static_cast<uint16_t>(
-          phrase.events[anchor.eventIndex].startTick + step);
-      while (target < phrase.lengthTicks) {
-        bool occupied = false;
-        for (uint16_t i = 0; i < phrase.count; ++i) {
-          if (phrase.events[i].startTick / step == target / step) {
-            occupied = true;
-            break;
-          }
-        }
-        if (!occupied) break;
-        target = static_cast<uint16_t>(target + step);
-      }
-      if (target >= phrase.lengthTicks) {
-        target = PhraseNotesCursor::tick(phrase_cursor_);
-      }
-    }
-
-    PhraseNotesInsertEdit::Prepared prepared{};
-    const auto result = PhraseNotesInsertEdit::prepare(
-        phrase, target, phrase_cursor_.grid, prepared);
-    if (result != PhraseNotesInsertEdit::Result::Ready) {
-      const char* why = "ADD FAILED";
-      if (result == PhraseNotesInsertEdit::Result::Occupied) {
-        why = "SOUND ALREADY HERE";
-      } else if (result == PhraseNotesInsertEdit::Result::Full) {
-        why = "MELODY FULL";
-      }
-      UI::showToast(why, 900);
-      return true;
-    }
-
-    const bool committed = commitRuntimePhraseEditWithUndo(
-        mini_acid_, audio_guard_, voice_index_, prepared.before, prepared.after);
-
-    if (committed && step > 0) {
-      phrase_cursor_.cell = static_cast<uint8_t>(target / step);
-      phrase_cursor_ = PhraseNotesCursor::clamp(
-          phrase_cursor_, phrase.lengthTicks);
-    }
-    UI::showToast(committed ? "SOUND ADDED" : "EDIT STALE", 900);
-    return true;
+    return insertAtCursor(-1, PhraseNotesInsertEdit::kInsertVelocity);
   }
 
   if (isBackspace && !ui_event.alt) {
@@ -1034,6 +1067,10 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE) {
+    return handleExternalNote(static_cast<uint8_t>(ui_event.x), static_cast<uint8_t>(ui_event.y));
+  }
   // Resolve modified commands before their unmodified base key. This keeps
   // Alt/Ctrl/Meta+Enter from falling through to GO while NEXT is available.
   if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {

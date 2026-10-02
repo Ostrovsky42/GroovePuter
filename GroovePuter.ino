@@ -547,10 +547,28 @@ void loop() {
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
         if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
 #endif
+        if (note.sustain) {
+          g_performanceKeyboard.externalSustain(note.on);
+          continue;
+        }
+        // The active page gets the note first (MELODY notes tab: step entry); otherwise PERFORM plays it.
+        bool consumed = false;
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE;
+          offered.x = note.note;
+          offered.y = note.on ? note.velocity : 0;
+          consumed = g_miniDisplay->handleEvent(offered);
+        }
+        if (consumed) continue;
         if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
         else g_performanceKeyboard.externalNoteOff(note.note);
       }
-      if (externalNotes.takeRecovery()) g_performanceKeyboard.releaseAllExternalNotes();
+      if (externalNotes.takeRecovery()) {
+        g_performanceKeyboard.releaseAllExternalNotes();
+        g_performanceKeyboard.externalSustain(false);
+      }
     }
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {

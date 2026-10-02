@@ -64,6 +64,12 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void drawPhraseRoll(IGfx& gfx);
   void drawPhraseList(IGfx& gfx);
   bool handlePhraseNotesEvent(UIEvent& ui_event);
+  bool insertAtCursor(int pitch, uint8_t velocity);
+  // External keyboard step entry (MELODY notes tab): velocity > 0 adds the played pitch at the
+  // cursor and auditions it, velocity 0 releases the audition. False when not applicable, so
+  // PERFORM plays the note instead.
+  bool handleExternalNote(uint8_t note, uint8_t velocity);
+  int16_t external_audition_note_ = -1;
   bool handleMelodySlotKey(UIEvent& ui_event);
 
   MiniAcid& mini_acid_;
