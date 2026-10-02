@@ -74,15 +74,6 @@ static const char* VOICE_ID_NAMES[] = {"303A", "303B", "Kick", "Snare", "HatC", 
 static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90};
 static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
-const char* styleShortName(VisualStyle style) {
-  switch (style) {
-    case VisualStyle::MINIMAL: return "MINI";
-    case VisualStyle::RETRO_CLASSIC: return "RETRO";
-    case VisualStyle::AMBER: return "AMBER";
-    default: return "RETRO";
-  }
-}
-
 VisualStyle nextStyle(VisualStyle style) {
   switch (style) {
     case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
@@ -152,7 +143,7 @@ void sectionRange(int section, int& first, int& last) {
       return;
     case 2: // led
       first = (int)ProjectPage::MainFocus::LedMode;
-      last = (int)ProjectPage::MainFocus::LedFlash;
+      last = (int)ProjectPage::MainFocus::LedTest;
       return;
     case 3: // midi
       first = (int)ProjectPage::MainFocus::UsbRole;
@@ -1402,6 +1393,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 return true;
             }
             if (main_focus_ == MainFocus::LedSource) {
+                if (led.mode != LedMode::StepTrig) return true;
                 int s = static_cast<int>(led.source);
                 s += right ? 1 : -1;
                 int max = static_cast<int>(VoiceId::Count) - 1;
@@ -1447,6 +1439,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 return true;
             }
             if (main_focus_ == MainFocus::LedFlash) {
+                if (led.mode != LedMode::StepTrig) return true;
                 int currentIdx = 0;
                 for (int i = 0; i < 4; ++i) {
                     if (FLASH_STEPS[i] == led.flashMs) {
@@ -1476,6 +1469,10 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::MidiInputEnabled ||
             main_focus_ == MainFocus::MidiInputChannel ||
             main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+        if (main_focus_ == MainFocus::LedTest) {
+            LedManager::instance().testPulse(mini_acid_.sceneManager().currentScene().led);
+            return true;
+        }
         if (main_focus_ == MainFocus::UsbRole) return activateUsbRole();
         if (main_focus_ == MainFocus::MidiDevice) {
             const auto pending =
@@ -1526,6 +1523,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (main_focus_ == MainFocus::LedSource) {
+                if (led.mode != LedMode::StepTrig) return true;
             led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
             switch (led.source) {
                 case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break;
@@ -1556,6 +1554,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (main_focus_ == MainFocus::LedFlash) {
+                if (led.mode != LedMode::StepTrig) return true;
             int currentIdx = 0;
             for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
             led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
@@ -1614,8 +1613,6 @@ void ProjectPage::draw(IGfx& gfx) {
   const int y0 = LayoutManager::lineY(0);
   const int line_h = gfx.fontHeight();
   const int listW = Layout::COL_WIDTH;
-  const int infoX = Layout::COL_2;
-  const int infoW = Layout::CONTENT.w - infoX - 4;
   int sectionIdx = static_cast<int>(section_);
   int firstFocus = 0;
   int lastFocus = 0;
@@ -1720,43 +1717,76 @@ void ProjectPage::draw(IGfx& gfx) {
     return;
   }
 
-  // Main Page Drawing
-  const int rowBase = 2;
-  const int visibleRows = 8;
+  // A shared full-width settings surface keeps role/profile names readable.
+  const auto palette = UI::themePalette();
+  int tabX = Layout::COL_1;
+  for (int i = 0; i < 4; ++i) {
+    char tab[16];
+    std::snprintf(tab, sizeof(tab), i == sectionIdx ? "[%s]" : " %s ", sectionName(i));
+    gfx.setTextColor(i == sectionIdx ? palette.invert : palette.secondary);
+    if (i == sectionIdx) gfx.fillRect(tabX - 1, LayoutManager::lineY(0) - 1,
+                                     gfx.measureText(tab) + 2, Layout::LINE_HEIGHT - 1, palette.focus);
+    gfx.drawText(tabX, LayoutManager::lineY(0), tab);
+    tabX += gfx.measureText(tab) + 6;
+  }
+  const int rowBase = 1;
+  const int visibleRows = 6;
   for (int row = 0; row < visibleRows; ++row) {
-    int focusIdx = firstFocus + row;
+    const int focusIdx = firstFocus + row;
     if (focusIdx > lastFocus) break;
-    MainFocus focus = static_cast<MainFocus>(focusIdx);
-    bool selected = (focus == main_focus_) && dialog_type_ == DialogType::None;
-
+    const MainFocus focus = static_cast<MainFocus>(focusIdx);
+    const bool selected = focus == main_focus_;
+    const char* label = "";
+    switch (focus) {
+      case MainFocus::Load: label = "Load Scene"; break;
+      case MainFocus::SaveAs: label = "Save As"; break;
+      case MainFocus::New: label = "New"; break;
+      case MainFocus::ImportMidi: label = "Import MIDI"; break;
+      case MainFocus::ClearProject: label = "Clear Project"; break;
+      case MainFocus::VisualStyle: label = "Theme"; break;
+      case MainFocus::GrooveMode: label = "Groove"; break;
+      case MainFocus::GrooveFlavor: label = "Flavor"; break;
+      case MainFocus::Volume: label = "Main Volume"; break;
+      case MainFocus::LedMode: label = "Mode"; break;
+      case MainFocus::LedSource: label = "Source"; break;
+      case MainFocus::LedColor: label = "Color"; break;
+      case MainFocus::LedBri: label = "Brightness"; break;
+      case MainFocus::LedFlash: label = "Flash"; break;
+      case MainFocus::LedTest: label = "Test LED"; break;
+      case MainFocus::UsbRole: label = "USB Role"; break;
+      case MainFocus::MidiDevice: label = "Device Profile"; break;
+      case MainFocus::MidiInputEnabled: label = "MIDI Input"; break;
+      case MainFocus::MidiInputChannel: label = "Input Channel"; break;
+      case MainFocus::MidiInputTarget: label = "Input Route"; break;
+    }
     char line[48];
     switch (focus) {
-      case MainFocus::Load: std::snprintf(line, sizeof(line), "Load Scene"); break;
-      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "Save As"); break;
-      case MainFocus::New: std::snprintf(line, sizeof(line), "New"); break;
-      case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), "Import MIDI"); break;
-      case MainFocus::ClearProject: std::snprintf(line, sizeof(line), "Clear Project"); break;
+      case MainFocus::Load: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::New: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::ClearProject: std::snprintf(line, sizeof(line), ""); break;
       case MainFocus::VisualStyle:
-        std::snprintf(line, sizeof(line), "Theme      %s", styleShortName(UI::currentStyle));
+        std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
         break;
       case MainFocus::GrooveMode:
-        std::snprintf(line, sizeof(line), "Groove     %s", grooveModeName(mini_acid_.grooveboxMode()));
+        std::snprintf(line, sizeof(line), "%s", grooveModeName(mini_acid_.grooveboxMode()));
         break;
       case MainFocus::GrooveFlavor: {
         int f = mini_acid_.grooveFlavor();
-        std::snprintf(line, sizeof(line), "Flavor     %s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
+        std::snprintf(line, sizeof(line), "%s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
         break;
       }
       case MainFocus::Volume: {
         int volPct = (int)(mini_acid_.miniParameter(MiniAcidParamId::MainVolume).normalized() * 100.0f + 0.5f);
-        std::snprintf(line, sizeof(line), "Main Vol   %d%%", volPct);
+        std::snprintf(line, sizeof(line), "%d%%", volPct);
         break;
       }
       case MainFocus::LedMode:
-        std::snprintf(line, sizeof(line), "LED Mode   %s", LED_MODE_NAMES[static_cast<int>(led.mode)]);
+        std::snprintf(line, sizeof(line), "%s", LED_MODE_NAMES[static_cast<int>(led.mode)]);
         break;
       case MainFocus::LedSource:
-        std::snprintf(line, sizeof(line), "LED Src    %s", VOICE_ID_NAMES[static_cast<int>(led.source)]);
+        std::snprintf(line, sizeof(line), "%s", VOICE_ID_NAMES[static_cast<int>(led.source)]);
         break;
       case MainFocus::LedColor: {
         int colorIdx = 0;
@@ -1768,22 +1798,23 @@ void ProjectPage::draw(IGfx& gfx) {
             break;
           }
         }
-        std::snprintf(line, sizeof(line), "LED Color  %s", TAPE_PALETTE[colorIdx].name);
+        std::snprintf(line, sizeof(line), "%s", TAPE_PALETTE[colorIdx].name);
         break;
       }
       case MainFocus::LedBri:
-        std::snprintf(line, sizeof(line), "LED Bri    %u%%", (unsigned)led.brightness);
+        std::snprintf(line, sizeof(line), "%u%%", (unsigned)((led.brightness * 100u + 127u) / 255u));
         break;
       case MainFocus::LedFlash:
-        std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
+        std::snprintf(line, sizeof(line), "%ums", (unsigned)led.flashMs);
         break;
+      case MainFocus::LedTest: std::snprintf(line, sizeof(line), "ENTER"); break;
       case MainFocus::UsbRole: {
         if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
-          std::snprintf(line, sizeof(line), "USB        COMPUTER (fixed)");
+          std::snprintf(line, sizeof(line), "COMPUTER (fixed)");
         } else {
           const UsbBootRole pending = CardputerUsbRoleRuntime::pendingRole();
           const UsbBootRole selected = usbRoleFromPreview(usb_role_preview_, pending);
-          std::snprintf(line, sizeof(line), "USB        <%s>%s", usbRoleLabel(selected),
+          std::snprintf(line, sizeof(line), "<%s>%s", usbRoleLabel(selected),
                         selected != pending ? "*" : "");
         }
         break;
@@ -1791,85 +1822,71 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::MidiDevice: {
         const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
         const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
-        std::snprintf(line, sizeof(line), "Device     <%s>%s",
+        std::snprintf(line, sizeof(line), "<%s>%s",
                       ProfileUi::shortName(selected), selected != pending ? "*" : "");
         break;
       }
       case MainFocus::MidiInputEnabled: {
         const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-        std::snprintf(line, sizeof(line), "MIDI Input <%s>", InputUi::enabledName(input.enabled));
+        std::snprintf(line, sizeof(line), "<%s>", InputUi::enabledName(input.enabled));
         break;
       }
       case MainFocus::MidiInputChannel: {
         const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
         char channel[12]; InputUi::formatChannel(input, channel, sizeof(channel));
-        std::snprintf(line, sizeof(line), "Input Ch   <%s>", channel);
+        std::snprintf(line, sizeof(line), "<%s>", channel);
         break;
       }
       case MainFocus::MidiInputTarget: {
         const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-        std::snprintf(line, sizeof(line), "Input To   <%s>", InputUi::targetName(input.target));
+        std::snprintf(line, sizeof(line), "<%s>", InputUi::targetName(input.target));
         break;
       }
     }
-    Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
+    const int rowY = LayoutManager::lineY(rowBase + row);
+    const bool available = !((focus == MainFocus::LedSource || focus == MainFocus::LedFlash)
+                             && led.mode != LedMode::StepTrig);
+    if (selected) gfx.fillRect(Layout::COL_1 - 1, rowY - 1, Layout::CONTENT.w - 6,
+                               Layout::LINE_HEIGHT - 2, palette.focus);
+    gfx.setTextColor(selected ? palette.invert : (available ? palette.text : palette.dim));
+    gfx.drawText(Layout::COL_1 + 6, rowY, label);
+    const int valueX = Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(line);
+    gfx.drawText(valueX, rowY, line);
   }
-
-  uint32_t freeInt = 0;
-  uint32_t largestInt = 0;
-#if defined(ESP32) || defined(ESP_PLATFORM)
-  freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-  largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-#endif
-  int cpuAvg = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
-  int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
-  static char perf0[42];
-  static char perf1[42];
-  static char perf2[42];
-  std::snprintf(perf0, sizeof(perf0), "CPU:%d/%d%%", cpuAvg, cpuPeak);
-  std::snprintf(perf1, sizeof(perf1), "RAM:%uk/%uk",
-                (unsigned)(freeInt / 1024), (unsigned)(largestInt / 1024));
-  std::snprintf(perf2, sizeof(perf2), "Th:%s  M:%s",
-                styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
+  char hint[64] = "[ENTER] SELECT";
   if (section_ == ProjectSection::Midi) {
-    static char midi0[42];
-    static char midi1[42];
-    static char midi2[42];
-    const auto pending =
-        GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
-    const auto selected = ProfileUi::profileFromPreview(
-        midi_profile_preview_, pending);
-    {
-      const UsbBootRole active = CardputerUsbRoleRuntime::activeRole();
-      const char* state = "";
-      if (active == UsbBootRole::Host) {
-        state = GroovePuterMidi::CardputerUsbHostMidi::isConnected() ? " OK" : " NO KBD";
-        if (std::strcmp(GroovePuterMidi::CardputerUsbHostMidi::status(), "INSTALL_FAIL") == 0) state = " FAULT";
-      }
-      if (CardputerUsbRoleRuntime::restartPending()) {
-        std::snprintf(midi0, sizeof(midi0), "USB:%s>%s RESTART", usbRoleLabel(active),
-                      usbRoleLabel(CardputerUsbRoleRuntime::pendingRole()));
+    if (main_focus_ == MainFocus::UsbRole) {
+      const auto pending = CardputerUsbRoleRuntime::pendingRole();
+      const auto selected = usbRoleFromPreview(usb_role_preview_, pending);
+      if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+        std::snprintf(hint, sizeof(hint), "USB ROLE FIXED IN THIS BUILD");
+      } else if (selected != pending) {
+        std::snprintf(hint, sizeof(hint), "ENTER SAVE; THEN ENTER RESTART");
+      } else if (CardputerUsbRoleRuntime::restartPending()) {
+        std::snprintf(hint, sizeof(hint), "NOW %s; ENTER RESTART", usbRoleLabel(CardputerUsbRoleRuntime::activeRole()));
       } else {
-        std::snprintf(midi0, sizeof(midi0), "USB:%s%s", usbRoleLabel(active), state);
+        const bool host = pending == UsbBootRole::Host;
+        std::snprintf(hint, sizeof(hint), "%s: %s", usbRoleLabel(pending), host
+            ? (GroovePuterMidi::CardputerUsbHostMidi::isConnected() ? "CONNECTED" : "NO KEYBOARD") : "ACTIVE");
       }
-    }
-    if (selected != pending) {
-      std::snprintf(midi1, sizeof(midi1), "Apply:ENTER SAVE");
-    } else if (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()) {
-      std::snprintf(midi1, sizeof(midi1), "Apply:REBOOT");
+    } else if (main_focus_ == MainFocus::MidiDevice) {
+      const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+      const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
+      std::snprintf(hint, sizeof(hint), "%s", selected != pending ? "ENTER SAVE PROFILE"
+          : (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+    } else if (main_focus_ == MainFocus::MidiInputChannel) {
+      std::snprintf(hint, sizeof(hint), "INPUT FILTER: OMNI OR CH1..16");
     } else {
-      std::snprintf(midi1, sizeof(midi1), "Apply:ACTIVE");
+      std::snprintf(hint, sizeof(hint), "PERFORM ROUTE FOLLOWS PERFORM TARGET");
     }
-    const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-    char inputChannel[10]; InputUi::formatChannel(input, inputChannel, sizeof(inputChannel));
-    std::snprintf(midi2, sizeof(midi2), "In:%s %s>%s",
-                  InputUi::enabledName(input.enabled), inputChannel, InputUi::targetName(input.target));
-    const char* midiLines[3] = {midi0, midi1, midi2};
-    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, midiLines, 3);
-  } else {
-    const char* infoLines[3] = {perf0, perf1, perf2};
-    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
+  } else if (section_ == ProjectSection::Led) {
+    std::snprintf(hint, sizeof(hint), "%s", main_focus_ == MainFocus::LedTest ? "ENTER: 150MS TEST PULSE"
+        : ((main_focus_ == MainFocus::LedSource || main_focus_ == MainFocus::LedFlash) && led.mode != LedMode::StepTrig
+           ? "N/A: SOURCE + FLASH REQUIRE STEP MODE" : "TEST: CURRENT COLOR + BRIGHTNESS"));
   }
+  gfx.setTextColor(palette.secondary);
+  Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lastLineY(gfx),
+                           Layout::CONTENT.w - 8, hint);
 
   char projInfo[64];
   std::snprintf(projInfo, sizeof(projInfo), "SCENE: %s",
@@ -1893,7 +1910,7 @@ int ProjectPage::firstFocusInSection(int sectionIdx) {
 int ProjectPage::lastFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
-  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
+  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedTest;
   if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiInputTarget;
   return 0;
 }
@@ -1902,7 +1919,7 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   ProjectPage::MainFocus f = static_cast<ProjectPage::MainFocus>(focusIdx);
   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
-  if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
+  if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedTest;
   if (sectionIdx == 3) return f >= ProjectPage::MainFocus::UsbRole && f <= ProjectPage::MainFocus::MidiInputTarget;
   return false;
 }

@@ -29,7 +29,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
