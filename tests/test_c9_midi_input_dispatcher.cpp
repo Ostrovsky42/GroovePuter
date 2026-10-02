@@ -159,6 +159,8 @@ public:
     void externalNoteOn(uint8_t note, uint8_t velocity) override { entries.push_back({true, note, velocity}); }
     void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
     void externalSustain(bool down) override { sustain.push_back(down); }
+    void externalNudge(int direction) override { nudges.push_back(direction); }
+    std::vector<int> nudges;
     std::vector<bool> sustain;
     std::vector<Entry> entries;
 };
@@ -283,7 +285,50 @@ void sustainMapsToThePerformBridgeOnly() {
     }
 }
 
+void pitchButtonsAreOneShotNudgesOnPerformOnly() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+
+    // USB-MIDI pitch bend packets: CIN 0x0E, status 0xE0, LSB, MSB (centre = 64).
+    const uint8_t left[4] = {0x0E, 0xE0, 0, 0};          // button pressed: extreme low
+    const uint8_t centre[4] = {0x0E, 0xE0, 0, 64};       // spring back
+    const uint8_t right[4] = {0x0E, 0xE0, 127, 127};     // extreme high
+    const uint8_t rightHeld[4] = {0x0E, 0xE0, 100, 120};
+
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::SynthA;
+    assert(dispatcher.setConfig(config));
+    {
+        const ParseResult parsed = parser.usbPacket(left, 100);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+        assert(bridge.nudges.empty() && routed.events.empty());   // direct targets ignore it
+    }
+
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+    for (const auto* packet : {&left, &centre, &right, &rightHeld, &centre, &left}) {
+        const ParseResult parsed = parser.usbPacket(*packet, 200);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+    }
+    (void)dispatcher.service(queue);
+    // left press, (centre), right press, (right again is not a new edge), (centre), left press
+    assert(bridge.nudges.size() == 3u);
+    assert(bridge.nudges[0] == -1 && bridge.nudges[1] == 1 && bridge.nudges[2] == -1);
+    assert(routed.events.empty());                                 // never reaches the router
+}
+
 int main() {
+    pitchButtonsAreOneShotNudgesOnPerformOnly();
     sustainMapsToThePerformBridgeOnly();
     performTargetFeedsTheKeyboardBridgeNotTheRouter();
     usbNoteOnOffReachesConfiguredMusicalTarget();

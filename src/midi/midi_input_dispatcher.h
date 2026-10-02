@@ -27,6 +27,8 @@ public:
     virtual void externalNoteOff(uint8_t note) = 0;
     // Sustain button / pedal (CC64) of the external keyboard: true while held down.
     virtual void externalSustain(bool down) = 0;
+    // Pitch buttons of the external keyboard as a one-shot nudge: -1 = left/down, +1 = right/up.
+    virtual void externalNudge(int direction) = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -217,6 +219,7 @@ private:
     }
 
     void releaseSustain() {
+        bendZone_ = 0;
         if (!sustainDown_) return;
         sustainDown_ = false;
         if (performSink_ != nullptr) performSink_->externalSustain(false);
@@ -314,6 +317,20 @@ private:
             case InputKind::AllSoundOff:
                 releaseChannel(event);
                 break;
+            case InputKind::PitchBend: {
+                // The pitch buttons jump to an extreme and spring back to the centre: only the
+                // press edge is a nudge. Direct targets ignore the message (no bend in the engine).
+                if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
+                    performSink_ == nullptr) {
+                    break;
+                }
+                const int zone = event.velocity <= 40u ? -1 : (event.velocity >= 88u ? 1 : 0);
+                if (zone != bendZone_) {
+                    bendZone_ = zone;
+                    if (zone != 0) performSink_->externalNudge(zone);
+                }
+                break;
+            }
             case InputKind::Sustain:
                 // Direct synth/drum targets keep the historical R6 policy (parsed and bounded, not
                 // applied). The PERFORM target maps it to LATCH while the button is held.
@@ -335,6 +352,7 @@ private:
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
     bool sustainDown_{false};
+    int bendZone_{0};
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
 };

@@ -551,6 +551,24 @@ void loop() {
           g_performanceKeyboard.externalSustain(note.on);
           continue;
         }
+        if (note.nudge != 0) {
+          // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate.
+          bool nudged = false;
+          if (g_miniDisplay) {
+            UIEvent offered{};
+            offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+            offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+            offered.x = note.nudge;
+            nudged = g_miniDisplay->handleEvent(offered);
+          }
+          if (!nudged && g_performanceKeyboard.arpeggiatorEnabled()) {
+            g_performanceKeyboard.cycleArpRate(note.nudge);
+            char toast[32];
+            snprintf(toast, sizeof(toast), "ARP RATE: %s", g_performanceKeyboard.arpRateName());
+            UI::showToast(toast, 700);
+          }
+          continue;
+        }
         // The active page gets the note first (MELODY notes tab: step entry); otherwise PERFORM plays it.
         bool consumed = false;
         if (g_miniDisplay) {

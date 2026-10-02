@@ -783,6 +783,19 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
   return true;
 }
 
+// Pitch button of the external keyboard on the MELODY notes tab: the cursor goes one cell left/right
+// through the same path as the arrow keys.
+bool SynthSequencerPage::handleExternalNudge(int direction) {
+  if (synth_tab_ != SynthTab::Notes ||
+      mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
+    return false;
+  }
+  UIEvent arrow{};
+  arrow.event_type = GROOVEPUTER_KEY_DOWN;
+  arrow.scancode = direction < 0 ? GROOVEPUTER_LEFT : GROOVEPUTER_RIGHT;
+  return handlePhraseNotesEvent(arrow);
+}
+
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
       ui_event.ctrl || ui_event.meta) {
@@ -1067,6 +1080,10 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE) {
+    return handleExternalNudge(ui_event.x);
+  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE) {
     return handleExternalNote(static_cast<uint8_t>(ui_event.x), static_cast<uint8_t>(ui_event.y));

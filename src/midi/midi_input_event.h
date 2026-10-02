@@ -18,6 +18,7 @@ enum class InputKind : uint8_t {
     Sustain,
     AllNotesOff,
     AllSoundOff,
+    PitchBend,  // value = the coarse (MSB) byte; only used for the PERFORM nudge buttons
 };
 
 enum class ResetReason : uint8_t {

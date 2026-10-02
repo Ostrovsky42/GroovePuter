@@ -69,6 +69,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // cursor and auditions it, velocity 0 releases the audition. False when not applicable, so
   // PERFORM plays the note instead.
   bool handleExternalNote(uint8_t note, uint8_t velocity);
+  bool handleExternalNudge(int direction);
   int16_t external_audition_note_ = -1;
   bool handleMelodySlotKey(UIEvent& ui_event);
 

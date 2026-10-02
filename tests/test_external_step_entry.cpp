@@ -109,6 +109,21 @@ int main() {
   UIEvent offUnknown = external(99, 0);
   assert(!page.handleEvent(offUnknown));
 
+  // The pitch buttons move the cursor one cell on this tab (same path as the arrow keys), so the
+  // next note lands one cell further / back; elsewhere the page declines and PERFORM takes it.
+  {
+    UIEvent back{};
+    back.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    back.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+    back.x = -1;
+    assert(page.handleEvent(back));
+    UIEvent forward = back;
+    forward.x = 1;
+    assert(page.handleEvent(forward));
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+    assert(!page.handleEvent(back));              // not a melody voice: PERFORM keeps the nudge
+  }
+
   std::puts("external keyboard step entry on the MELODY notes tab: PASS");
   return 0;
 }

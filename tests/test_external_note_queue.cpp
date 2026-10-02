@@ -57,6 +57,22 @@ int main() {
         q.externalSustain(false);                 // now the queue is full: release lost, recovery raised
         assert(q.takeRecovery());
     }
+    // Nudge: queued like a NoteOn (droppable at the reserve line), carries its direction.
+    {
+        ExternalNoteQueue q;
+        ExternalNoteQueue::Event e;
+        q.externalNudge(-1);
+        q.externalNudge(5);                        // any positive value is +1
+        assert(q.pop(e) && e.nudge == -1 && !e.sustain);
+        assert(q.pop(e) && e.nudge == 1);
+        for (unsigned i = 0; i < ExternalNoteQueue::kCapacity - ExternalNoteQueue::kNoteOffReserve; ++i) {
+            q.externalNoteOn(static_cast<uint8_t>(i), 100);
+        }
+        const uint32_t before = q.dropped();
+        q.externalNudge(1);
+        assert(q.dropped() == before + 1);         // refused at the reserve line, no recovery needed
+        assert(!q.takeRecovery());
+    }
     std::puts("external note queue: PASS");
     return 0;
 }
