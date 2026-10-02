@@ -24,10 +24,10 @@ legacy_workflow	disposition	new_owner
 0-9-9-ui-final-product-pass.yml	removed-from-active-surface	research-manual
 0-9-9-ui-p0-ownership-audit.yml	removed-from-active-surface	research-manual
 0_9_10_memory_r1_product_closure.yml	removed-from-active-surface	memory
-0_9_10_pattern_phrase_p1c_runtime_foundation.yml	removed-from-active-surface	research-manual
-0_9_10_pattern_phrase_p2_common_runtime_playback.yml	removed-from-active-surface	research-manual
-0_9_10_pattern_phrase_p3_phrase_lifetime.yml	removed-from-active-surface	research-manual
-0_9_10_pattern_phrase_p3_u1_hybrid_pattern_phrase_ux.yml	removed-from-active-surface	research-manual
+0_9_10_pattern_phrase_p1c_runtime_foundation.yml	removed-from-active-surface	core
+0_9_10_pattern_phrase_p2_common_runtime_playback.yml	removed-from-active-surface	git-history
+0_9_10_pattern_phrase_p3_phrase_lifetime.yml	removed-from-active-surface	git-history
+0_9_10_pattern_phrase_p3_u1_hybrid_pattern_phrase_ux.yml	removed-from-active-surface	git-history
 0_9_10_ui_constitution_u1g.yml	removed-from-active-surface	research-manual
 0_9_10_ui_constitution_u2a.yml	removed-from-active-surface	research-manual
 0_9_10_ui_constitution_u4a.yml	removed-from-active-surface	research-manual
@@ -79,7 +79,7 @@ midi-device-profiles-0-9-7-r8.yml	removed-from-active-surface	midi-targets
 midi-device-profiles-0-9-7.yml	removed-from-active-surface	midi-targets
 output-ownership.yml	removed-from-active-surface	core/nightly
 p2-multibar-chord-rhythm.yml	removed-from-active-surface	nightly/research-manual
-p2_final_closure_materialize.yml	removed-from-active-surface	research-manual
+p2_final_closure_materialize.yml	removed-from-active-surface	git-history
 p3-same-chord-retrigger.yml	removed-from-active-surface	nightly/research-manual
 performance-closure.yml	removed-from-active-surface	core/nightly
 phrase-core.yml	removed-from-active-surface	core/nightly
