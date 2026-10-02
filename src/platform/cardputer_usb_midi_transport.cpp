@@ -234,6 +234,7 @@ GroovePuterMidi::MidiInputQueue g_inputQueue;
 GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
+GroovePuterMidi::ExternalNoteQueue g_externalNotes;
 bool g_usbInputMounted = false;
 portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
 GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
@@ -1560,6 +1561,7 @@ bool registerCardputerUsbMidiSink(
                       : GroovePuterMidi::UsbRole::Device);
     g_midiIoState.boot();
     g_inputDispatcher.bind(router, g_midiIoState);
+    g_inputDispatcher.setPerformSink(&g_externalNotes);
     g_inputParser.reset(GroovePuterMidi::InputSession{
         GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
     g_patternDrumGates.clear();
@@ -1683,3 +1685,7 @@ void setCardputerDinMidiEnabled(bool enabled) {
 }
 
 bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
+    return g_externalNotes;
+}

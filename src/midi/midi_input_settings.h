@@ -38,7 +38,7 @@ inline bool decodeRoutingConfig(uint32_t word, MidiInputRoutingConfig& out) {
         ? MidiInputChannelMode::Single : MidiInputChannelMode::Omni;
     candidate.channel = static_cast<uint8_t>((payload >> 2u) & 0x0Fu);
     const uint8_t target = static_cast<uint8_t>((payload >> 6u) & 0x03u);
-    if (target > static_cast<uint8_t>(MidiInputTarget::Drums)) {
+    if (target > static_cast<uint8_t>(MidiInputTarget::Perform)) {
         out = defaultRoutingConfig();
         return false;
     }

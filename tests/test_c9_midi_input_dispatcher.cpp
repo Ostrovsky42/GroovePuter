@@ -153,7 +153,73 @@ void reconfigurationReleasesNotesOwnedByPreviousPolicy() {
 }
 }  // namespace
 
+class CaptureNotes final : public MidiExternalNoteSink {
+public:
+    struct Entry { bool on; uint8_t note; uint8_t velocity; };
+    void externalNoteOn(uint8_t note, uint8_t velocity) override { entries.push_back({true, note, velocity}); }
+    void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
+    std::vector<Entry> entries;
+};
+
+void performTargetFeedsTheKeyboardBridgeNotTheRouter() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.channelMode = MidiInputChannelMode::Omni;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    // Three held pitches are all accepted (polyphonic, no mono arbitration), pitch is absolute
+    // (no synth-range clamp: 100 stays 100 and 10 stays 10), velocity 0 NoteOn is a NoteOff.
+    const uint8_t on60[4] = {0x09, 0x90, 60, 90};
+    const uint8_t on100[4] = {0x09, 0x90, 100, 80};
+    const uint8_t on10[4] = {0x09, 0x90, 10, 70};
+    const uint8_t zeroVel[4] = {0x09, 0x90, 60, 0};
+    for (const auto* packet : {&on60, &on100, &on10, &zeroVel}) {
+        const ParseResult parsed = parser.usbPacket(*packet, 100);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+    }
+    assert(dispatcher.service(queue) == 4u);
+    assert(routed.events.empty());  // nothing went through the router
+    assert(bridge.entries.size() == 4u);
+    assert(bridge.entries[0].on && bridge.entries[0].note == 60 && bridge.entries[0].velocity == 90);
+    assert(bridge.entries[1].on && bridge.entries[1].note == 100);
+    assert(bridge.entries[2].on && bridge.entries[2].note == 10);
+    assert(!bridge.entries[3].on && bridge.entries[3].note == 60);
+
+    // Detach (new generation) releases only the notes this source still owns (100 and 10).
+    bridge.entries.clear();
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.entries.size() == 2u);
+    for (const auto& entry : bridge.entries) assert(!entry.on);
+
+    // A policy change away from PERFORM releases what PERFORM owned before the change.
+    io.usbAttached();
+    io.usbReady(true, true);
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    const ParseResult again = parser.usbPacket(on60, 300);
+    assert(again.hasInput && queue.tryPush(again.input));
+    assert(dispatcher.service(queue) == 1u);
+    bridge.entries.clear();
+    config.target = MidiInputTarget::SynthA;
+    assert(dispatcher.setConfig(config));
+    assert(bridge.entries.size() == 1u && !bridge.entries[0].on && bridge.entries[0].note == 60);
+}
+
 int main() {
+    performTargetFeedsTheKeyboardBridgeNotTheRouter();
     usbNoteOnOffReachesConfiguredMusicalTarget();
     defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes();
     reconfigurationReleasesNotesOwnedByPreviousPolicy();

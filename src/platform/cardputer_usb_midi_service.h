@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "src/midi/external_note_queue.h"
 #include "src/midi/midi_input_dispatcher.h"
 
 class MusicalEventRouter;
@@ -41,6 +42,10 @@ bool registerCardputerUsbMidiSink(
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);
 
 GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig();
+// External keyboard notes for the PERFORM target. Producer: MidiDispatchTask. Consumer: the loop
+// task, which owns the PERFORM keyboard.
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue();
+
 bool applyCardputerMidiInputRuntimeRoutingConfig(
     const GroovePuterMidi::MidiInputRoutingConfig& config);
 

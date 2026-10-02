@@ -186,6 +186,29 @@ int PerformanceKeyboard::findHeld(char physicalKey) const {
     return -1;
 }
 
+int PerformanceKeyboard::findHeldExternal(uint8_t note) const {
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        if (held_[i].physicalKey == '\0' && static_cast<uint8_t>(held_[i].note) == note) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+bool PerformanceKeyboard::drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel) {
+    // Same lane layout as the GM/SEQTRAK drum map used by the built-in keys, by pitch class.
+    switch (note % 12) {
+        case 0: case 1: zeroBasedChannel = 0; return true;   // kick
+        case 2: zeroBasedChannel = 1; return true;           // snare
+        case 3: case 4: zeroBasedChannel = 2; return true;   // clap
+        case 5: case 6: zeroBasedChannel = 3; return true;   // hat 1
+        case 7: case 8: case 10: zeroBasedChannel = 4; return true;  // hat 2 / open hat
+        case 9: zeroBasedChannel = 5; return true;           // perc 1
+        case 11: zeroBasedChannel = 6; return true;          // perc 2
+        default: return false;
+    }
+}
+
 bool PerformanceKeyboard::isPitchClassHeld(uint8_t pitchClass) const {
     pitchClass %= 12;
     for (std::size_t i = 0; i < heldCount_; ++i) {
@@ -1117,12 +1140,143 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     return true;
 }
 
+bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
+    serviceHardwareClock();
+    if (!noteModeEnabled_) return false;
+    if (!enabled_) return true;
+    if (velocity == 0) return externalNoteOff(note);
+    if (velocity > 127) velocity = 127;
+
+    if (target_ == MusicalEventTarget::Drums) {
+        uint8_t drumChannel = 0;
+        if (!drumChannelForExternalNote(note, drumChannel)) return true;
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (held_[i].physicalKey == '\0' && held_[i].channel == drumChannel) return true;
+        }
+        if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+        held_[heldCount_++] = HeldNote{'\0', kSeqtrakDrumNote, velocity, drumChannel};
+        emitNoteOn(held_[heldCount_ - 1]);
+        return true;
+    }
+
+    note = fitMidiNote(note);
+    if (findHeldExternal(note) >= 0) return true;
+    if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+
+    const std::size_t priorHeld = heldCount_;
+    held_[heldCount_++] = HeldNote{'\0', note, velocity, 0};
+
+    if (activeClocked_.latchEnabled || pendingClocked_.latchEnabled) {
+        if (!pendingLatchCapture_) {
+            pendingLatchCount_ = latchedCount_;
+            for (std::size_t i = 0; i < latchedCount_; ++i) pendingLatch_[i] = latched_[i];
+        }
+        if (priorHeld == 0 && latchReplaceArmed_) {
+            pendingLatchCount_ = 0;
+            latchReplaceArmed_ = false;
+        }
+        bool duplicate = false;
+        for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
+            if (pendingLatch_[i].note == note) { duplicate = true; break; }
+        }
+        if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
+            pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
+        }
+        pendingLatchCapture_ = true;
+    }
+
+    if (activeStepEngineEnabled() || requestedStepEngineEnabled()) {
+        // Active or pending step-engine ownership suppresses an immediate direct attack.
+    } else if (chordMode_ != PerformanceChordMode::Off) {
+        triggerDirectTransformed(lastServiceMicros_);
+    } else if (directPolyphonyEnabled()) {
+        emitPolyNoteOn(held_[heldCount_ - 1]);
+    } else {
+        emitNoteOn(held_[heldCount_ - 1]);
+    }
+
+    if (requestedStepEngineEnabled()) service(lastServiceMicros_);
+    return true;
+}
+
+bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
+    serviceHardwareClock();
+    int found = -1;
+    if (target_ == MusicalEventTarget::Drums) {
+        uint8_t drumChannel = 0;
+        if (!drumChannelForExternalNote(note, drumChannel)) return false;
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (held_[i].physicalKey == '\0' && held_[i].channel == drumChannel) {
+                found = static_cast<int>(i);
+                break;
+            }
+        }
+    } else {
+        note = fitMidiNote(note);
+        found = findHeldExternal(note);
+    }
+    if (found < 0) return false;
+    const std::size_t index = static_cast<std::size_t>(found);
+    const HeldNote released = held_[index];
+    const bool wasActive = index + 1 == heldCount_;
+    for (std::size_t i = index + 1; i < heldCount_; ++i) held_[i - 1] = held_[i];
+    held_[--heldCount_] = HeldNote{};
+    if (heldCount_ == 0 && (activeClocked_.latchEnabled || pendingClocked_.latchEnabled)) {
+        latchReplaceArmed_ = true;
+    }
+
+    if (target_ == MusicalEventTarget::Drums) {
+        emitNoteOff(released.note, released.channel);
+        return true;
+    }
+    if (activeStepEngineEnabled()) {
+        if (heldCount_ == 0 && !(activeClocked_.latchEnabled && latchedCount_ > 0)) {
+            stopGeneratedOutput();
+            if (!pendingClocked_.latchEnabled) resetPulseClock(false);
+        }
+        return true;
+    }
+    if (chordMode_ != PerformanceChordMode::Off) {
+        if (polyChordSustainEnabled()) reconcileDirectPolyChord(lastServiceMicros_);
+        else if (wasActive) {
+            stopGeneratedOutput();
+            if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
+        }
+        return true;
+    }
+    if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
+    else emitNoteOff(released.note);
+    return true;
+}
+
+void PerformanceKeyboard::releaseAllExternalNotes() {
+    uint8_t notes[kMaxHeldNotes]{};
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        if (held_[i].physicalKey != '\0') continue;
+        notes[count++] = target_ == MusicalEventTarget::Drums
+            ? static_cast<uint8_t>(held_[i].channel)
+            : static_cast<uint8_t>(held_[i].note);
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        if (target_ == MusicalEventTarget::Drums) {
+            // Drum holds are identified by lane; any pitch of that lane releases it.
+            static constexpr uint8_t kLanePitch[kSeqtrakDrumChannelCount] = {0, 2, 4, 5, 7, 9, 11};
+            const uint8_t lane = notes[i] < kSeqtrakDrumChannelCount ? notes[i] : 0;
+            externalNoteOff(kLanePitch[lane]);
+        } else {
+            externalNoteOff(notes[i]);
+        }
+    }
+}
+
 void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
                                              std::size_t pressedCount) {
     char missing[kMaxHeldNotes]{};
     std::size_t missingCount = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) {
-        if (!containsKey(pressedKeys, pressedCount, held_[i].physicalKey)) {
+        if (held_[i].physicalKey != '\0' &&
+            !containsKey(pressedKeys, pressedCount, held_[i].physicalKey)) {
             missing[missingCount++] = held_[i].physicalKey;
         }
     }

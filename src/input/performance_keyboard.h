@@ -35,6 +35,12 @@ public:
 
     bool keyDown(char physicalKey, uint8_t velocity = 0);
     bool keyUp(char physicalKey);
+    // External keyboard (Host MIDI IN -> PERFORM). Absolute MIDI pitch, no QWERTY octave offset,
+    // same held-note list as the built-in keys, so CHORD / ARP / LATCH / rhythms apply unchanged.
+    // Identity is the folded pitch (one external hold per pitch); built-in keys never match it.
+    bool externalNoteOn(uint8_t note, uint8_t velocity);
+    bool externalNoteOff(uint8_t note);
+    void releaseAllExternalNotes();
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
     void setTempoBpm(float bpm);
@@ -206,6 +212,8 @@ private:
     static uint8_t clampPercent(uint8_t value);
 
     int findHeld(char physicalKey) const;
+    int findHeldExternal(uint8_t note) const;
+    static bool drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel);
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
     void emitPolyNoteOn(const HeldNote& held);

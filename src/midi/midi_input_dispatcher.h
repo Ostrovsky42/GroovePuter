@@ -15,6 +15,16 @@ enum class MidiInputTarget : uint8_t {
     SynthA = 0,
     SynthB = 1,
     Drums = 2,
+    Perform = 3,  // external keyboard played through the PERFORM keyboard (chords / arp / latch)
+};
+
+// Sink for the PERFORM target. Called from the MIDI dispatch task; the implementation must only
+// enqueue (the PERFORM keyboard lives on the UI/loop task).
+class MidiExternalNoteSink {
+public:
+    virtual ~MidiExternalNoteSink() = default;
+    virtual void externalNoteOn(uint8_t note, uint8_t velocity) = 0;
+    virtual void externalNoteOff(uint8_t note) = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -52,10 +62,13 @@ public:
             case MidiInputTarget::SynthA:
             case MidiInputTarget::SynthB:
             case MidiInputTarget::Drums:
+            case MidiInputTarget::Perform:
                 return true;
         }
         return false;
     }
+
+    void setPerformSink(MidiExternalNoteSink* sink) { performSink_ = sink; }
 
     const MidiInputRoutingConfig& config() const { return config_; }
 
@@ -98,6 +111,7 @@ private:
         MusicalEventTarget target{MusicalEventTarget::SynthA};
         uint8_t routedChannel{0};
         uint8_t routedNote{0};
+        bool perform{false};  // owned by the PERFORM keyboard bridge, not the router
     };
 
     static bool sameConfig(const MidiInputRoutingConfig& lhs,
@@ -113,6 +127,7 @@ private:
             case MidiInputTarget::SynthA: return MusicalEventTarget::SynthA;
             case MidiInputTarget::SynthB: return MusicalEventTarget::SynthB;
             case MidiInputTarget::Drums: return MusicalEventTarget::Drums;
+            case MidiInputTarget::Perform: return MusicalEventTarget::SynthA;  // unused: see perform
         }
         return MusicalEventTarget::SynthA;
     }
@@ -167,7 +182,7 @@ private:
     int findResolvedOwner(MusicalEventTarget target, uint8_t routedChannel) const {
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             const ActiveOwner& owner = owners_[i];
-            if (!owner.active || owner.target != target) continue;
+            if (!owner.active || owner.perform || owner.target != target) continue;
             if (target != MusicalEventTarget::Drums ||
                 owner.routedChannel == routedChannel) {
                 return static_cast<int>(i);
@@ -177,6 +192,12 @@ private:
     }
 
     void publish(MusicalEventType type, const ActiveOwner& owner, uint8_t velocity) {
+        if (owner.perform) {
+            if (performSink_ == nullptr) return;
+            if (type == MusicalEventType::NoteOn) performSink_->externalNoteOn(owner.routedNote, velocity);
+            else performSink_->externalNoteOff(owner.routedNote);
+            return;
+        }
         if (router_ == nullptr) return;
         router_->route(MusicalEvent{type,
                                    MusicalEventSource::MidiInput,
@@ -241,7 +262,9 @@ private:
         candidate.inputChannel = event.id.channel;
         candidate.sourceNote = event.id.key;
         candidate.target = musicalTarget(config_.target);
-        candidate.routedNote = clampSynthNote(event.id.key);
+        candidate.perform = config_.target == MidiInputTarget::Perform;
+        if (candidate.perform && performSink_ == nullptr) return;
+        candidate.routedNote = candidate.perform ? event.id.key : clampSynthNote(event.id.key);
         candidate.routedChannel = 0;
         if (candidate.target == MusicalEventTarget::Drums) {
             if (!mapDrum(event.id.key, candidate.routedChannel)) return;
@@ -251,7 +274,9 @@ private:
         const int existingSource = findSourceOwner(event);
         if (existingSource >= 0) releaseOwner(static_cast<std::size_t>(existingSource));
 
-        const int resolved = findResolvedOwner(candidate.target, candidate.routedChannel);
+        // The PERFORM keyboard is polyphonic and does its own arbitration; the router targets are mono.
+        const int resolved = candidate.perform
+            ? -1 : findResolvedOwner(candidate.target, candidate.routedChannel);
         if (resolved >= 0) releaseOwner(static_cast<std::size_t>(resolved));
 
         const int freeIndex = findFreeOwner();
@@ -286,6 +311,7 @@ private:
         }
     }
 
+    MidiExternalNoteSink* performSink_{nullptr};
     MusicalEventRouter* router_{nullptr};
     MidiIoState* io_{nullptr};
     MidiInputRoutingConfig config_{};

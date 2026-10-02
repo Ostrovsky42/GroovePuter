@@ -14,6 +14,7 @@ inline const char* targetName(GroovePuterMidi::MidiInputTarget target) {
         case GroovePuterMidi::MidiInputTarget::SynthA: return "SYN A";
         case GroovePuterMidi::MidiInputTarget::SynthB: return "SYN B";
         case GroovePuterMidi::MidiInputTarget::Drums: return "DRUMS";
+        case GroovePuterMidi::MidiInputTarget::Perform: return "PERFORM";
     }
     return "SYN A";
 }
@@ -52,8 +53,8 @@ inline GroovePuterMidi::MidiInputRoutingConfig stepChannel(
 
 inline GroovePuterMidi::MidiInputRoutingConfig stepTarget(
         GroovePuterMidi::MidiInputRoutingConfig config, int delta) {
-    int target = (static_cast<int>(config.target) + delta) % 3;
-    if (target < 0) target += 3;
+    int target = (static_cast<int>(config.target) + delta) % 4;
+    if (target < 0) target += 4;
     config.target = static_cast<GroovePuterMidi::MidiInputTarget>(target);
     return config;
 }

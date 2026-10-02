@@ -534,6 +534,17 @@ void loop() {
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
     g_internalSynthOutput.syncPatternOwnership();
+    // External keyboard (MIDI IN target PERFORM): the dispatch task only enqueues; the PERFORM
+    // keyboard is owned here, so chords / arp / latch / rhythms see the notes like built-in keys.
+    {
+      auto& externalNotes = cardputerExternalNoteQueue();
+      GroovePuterMidi::ExternalNoteQueue::Event note;
+      while (externalNotes.pop(note)) {
+        if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
+        else g_performanceKeyboard.externalNoteOff(note.note);
+      }
+      if (externalNotes.takeRecovery()) g_performanceKeyboard.releaseAllExternalNotes();
+    }
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {
       g_performanceKeyboard.panic();
