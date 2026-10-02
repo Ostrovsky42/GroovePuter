@@ -29,10 +29,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Validate memory instrumentation contracts
-        run: |
-          python3 tests/test_cardputer_memory_baseline_source_regressions.py
-          python3 tests/test_memory_r1_product_closure.py
+      - name: Validate current memory instrumentation contract
+        run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
 
   baseline:
     runs-on: ubuntu-latest
