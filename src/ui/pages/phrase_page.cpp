@@ -650,7 +650,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const int toRow = resolvedToRow();
   const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
-  char roomHint[24] = "NO SLOTS: R";
+  char roomHint[32] = "NO SLOTS: R";
   if (admissibility == Admissibility::NoSlots) {
     const int reusable = SlotReuse::autoCandidateCount(mini_acid_);
     if (reusable > 0) std::snprintf(roomHint, sizeof(roomHint), "NO SLOTS: R REUSE %d", reusable);
