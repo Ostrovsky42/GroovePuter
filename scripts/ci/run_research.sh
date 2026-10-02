@@ -3,7 +3,7 @@ set -euo pipefail
 
 suite="${1:-}"
 if [[ -z "${suite}" ]]; then
-  echo "usage: $0 <gf2|phrase|generation|ui|undo|sampler|stage15|all>" >&2
+  echo "usage: $0 <gf2|phrase|generation|ui|undo|sampler|stage15|usb-acceptance|all>" >&2
   exit 2
 fi
 
@@ -37,6 +37,9 @@ run_suite() {
       ;;
     stage15)
       for s in tests/run_generation_stage15b_tests.sh tests/run_generation_stage15c_tests.sh tests/run_tonal_projector_tests.sh tests/run_tonal_materializer_tests.sh tests/run_tonal_materializer_global_scale_test.sh tests/run_stage15_tonal_integration_tests.sh tests/run_stage15_tonal_register_sweep.sh scripts/ci/run_stage15_baseline_contract.sh; do run_script "$s"; done
+      ;;
+    usb-acceptance)
+      run_script scripts/ci/build_usb_acceptance_package.sh
       ;;
     all)
       for nested in gf2 phrase generation ui undo sampler stage15; do run_suite "$nested"; done
