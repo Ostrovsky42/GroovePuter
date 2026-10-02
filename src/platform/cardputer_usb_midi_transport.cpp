@@ -1555,6 +1555,9 @@ bool registerCardputerUsbMidiSink(
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
     g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
+    // An external keyboard (Host) plays through the external output too; a Device session
+    // must not echo the computer's notes back to it.
+    UsbMidiOutput::setMidiInputThru(usbHostRole());
     g_midiIoState.requestUsbRole(
         usbHostRole() ? GroovePuterMidi::UsbRole::Host
                       : GroovePuterMidi::UsbRole::Device);
