@@ -222,7 +222,7 @@ private:
 
     void releaseSustain() {
         bendZone_ = 0;
-        modDown_ = false;
+        modArmed_ = true;
         if (!sustainDown_) return;
         sustainDown_ = false;
         if (performSink_ != nullptr) performSink_->externalSustain(false);
@@ -321,15 +321,18 @@ private:
                 releaseChannel(event);
                 break;
             case InputKind::Mod: {
-                // One-shot on the press edge (>= 64); the release (< 64) re-arms it.
+                // The button sends a short ramp (the owner's nanoKEY2: 0..15 up on press, back to 0 on
+                // release), not a level. The first non-zero value fires once and disarms; only a zero
+                // (the end of the ramp back down) re-arms it, so one press is exactly one one-shot.
                 if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
                     performSink_ == nullptr) {
                     break;
                 }
-                const bool down = event.velocity >= 64u;
-                if (down != modDown_) {
-                    modDown_ = down;
-                    if (down) performSink_->externalMod();
+                if (event.velocity == 0u) {
+                    modArmed_ = true;
+                } else if (modArmed_) {
+                    modArmed_ = false;
+                    performSink_->externalMod();
                 }
                 break;
             }
@@ -340,7 +343,14 @@ private:
                     performSink_ == nullptr) {
                     break;
                 }
-                const int zone = event.velocity <= 40u ? -1 : (event.velocity >= 88u ? 1 : 0);
+                // The pitch buttons send a slow ramp away from the centre (64) and back (the owner's
+                // nanoKEY2: a short touch only reaches 54, a hold goes on to 0). Arm at a small
+                // deviation so a touch counts, re-arm only near the centre (hysteresis).
+                const int deviation = static_cast<int>(event.velocity) - 64;
+                int zone = bendZone_;
+                if (deviation <= -kBendPress) zone = -1;
+                else if (deviation >= kBendPress) zone = 1;
+                else if (deviation >= -kBendRelease && deviation <= kBendRelease) zone = 0;
                 if (zone != bendZone_) {
                     bendZone_ = zone;
                     if (zone != 0) performSink_->externalNudge(zone);
@@ -369,7 +379,9 @@ private:
     ActiveOwner owners_[kMaxActiveNotes]{};
     bool sustainDown_{false};
     int bendZone_{0};
-    bool modDown_{false};
+    bool modArmed_{true};
+    static constexpr int kBendPress = 6;    // deviation from the centre that counts as a press
+    static constexpr int kBendRelease = 3;  // deviation under which the button is released again
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
 };

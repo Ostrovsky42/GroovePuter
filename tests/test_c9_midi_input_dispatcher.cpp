@@ -366,7 +366,59 @@ void modButtonIsAOneShotPressOnPerformOnly() {
     assert(routed.events.empty());
 }
 
+void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    auto send = [&](uint8_t status, uint8_t d1, uint8_t d2, uint8_t cin) {
+        const uint8_t packet[4] = {cin, status, d1, d2};
+        const ParseResult parsed = parser.usbPacket(packet, 100);
+        assert(parsed.hasInput && queue.tryPush(parsed.input));
+        (void)dispatcher.service(queue);
+    };
+
+    // Mod = CC 0x5E on channel 9: a 0..15 ramp up, then back down to 0 (measured on the device).
+    // Two presses, so exactly two one-shots; the ramp down never fires.
+    for (int press = 0; press < 2; ++press) {
+        for (uint8_t v = 1; v <= 15; ++v) send(0xB8, 0x5E, v, 0x0B);
+        for (int v = 14; v >= 0; --v) send(0xB8, 0x5E, static_cast<uint8_t>(v), 0x0B);
+    }
+    assert(bridge.mods == 2);
+    // A press that starts from a small value after a partial release (value 2) still counts once.
+    send(0xB8, 0x5E, 3, 0x0B);
+    assert(bridge.mods == 3);
+
+    // Pitch button left: a short touch only reaches MSB 54, then springs back; it must count once.
+    for (int v = 63; v >= 54; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    for (int v = 55; v <= 64; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    assert(bridge.nudges.size() == 1u && bridge.nudges[0] == -1);
+    // A long hold goes on to 0 and is still one nudge; the button to the right gives +1.
+    for (int v = 63; v >= 0; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    for (int v = 1; v <= 64; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    for (int v = 65; v <= 127; ++v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    for (int v = 126; v >= 64; --v) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    assert(bridge.nudges.size() == 3u);
+    assert(bridge.nudges[1] == -1 && bridge.nudges[2] == 1);
+    // A tiny wobble around the centre never fires (below the press deviation).
+    for (int v : {62, 66, 61, 67, 64}) send(0xE8, 0, static_cast<uint8_t>(v), 0x0E);
+    assert(bridge.nudges.size() == 3u);
+    assert(routed.events.empty());
+}
+
 int main() {
+    rampedButtonsOfTheOwnersKeyboardCountOncePerPress();
     modButtonIsAOneShotPressOnPerformOnly();
     pitchButtonsAreOneShotNudgesOnPerformOnly();
     sustainMapsToThePerformBridgeOnly();

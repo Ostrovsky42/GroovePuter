@@ -85,7 +85,9 @@ private:
             kind = InputKind::AllNotesOff;
         } else if (message == 0xb0u && data1 == 120u) {
             kind = InputKind::AllSoundOff;
-        } else if (message == 0xb0u && data1 == 1u) {
+        } else if (message == 0xb0u && (data1 == 1u || data1 == 94u)) {
+            // CC1 (modulation) and CC94, which is what the owner's nanoKEY2 Mod button sends
+            // (measured: a 0..15 ramp up on press and back to 0 on release).
             kind = InputKind::Mod;
         } else if (message == 0xe0u) {
             kind = InputKind::PitchBend;  // data1 = LSB (ignored), data2 = MSB
