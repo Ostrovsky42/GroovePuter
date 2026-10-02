@@ -86,9 +86,9 @@ require("kMaxPages" in alt_bracket_block and "kPageCount" not in alt_bracket_blo
         "Alt+[ / ] must use kMaxPages for pattern-page wraparound, not kPageCount")
 
 # Plain [/] (no modifier) remains UI-page navigation
-require("if (event.key == ']') { nextPage(); return true; }" in DISPLAY and
-        "if (event.key == '[') { previousPage(); return true; }" in DISPLAY,
-        "plain [ / ] must remain UI-page navigation")
+require("if (event.key == ']') { nextPage(event.meta); return true; }" in DISPLAY and
+        "if (event.key == '[') { previousPage(event.meta); return true; }" in DISPLAY,
+        "plain [ / ] must remain UI-page navigation through the modifier-aware page seam")
 
 # Fn+[/] (meta modifier) remains workflow switching
 require("event.meta && (event.key == '[' || event.key == '{')" in DISPLAY and

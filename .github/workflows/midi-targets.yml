@@ -1,0 +1,32 @@
+name: MIDI Targets
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev_0.9.14
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run MIDI ownership and device-profile contracts
+        run: bash scripts/ci/run_midi_targets.sh
+
+  seqtrak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build SEQTRAK MIDI-only target
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
