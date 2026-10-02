@@ -1,0 +1,56 @@
+name: Memory
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "firmware/**"
+      - "scripts/**"
+      - "tests/**"
+      - "GroovePuter.ino"
+      - ".github/workflows/memory.yml"
+  push:
+    branches:
+      - main
+      - dev_0.9.14
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate memory instrumentation contracts
+        run: |
+          python3 tests/test_cardputer_memory_baseline_source_regressions.py
+          python3 tests/test_memory_r1_product_closure.py
+
+  baseline:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+        image-kind: [product, runtime]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build and report memory baseline
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/build_cardputer_memory_baseline.sh "${{ matrix.profile }}" "${{ matrix.image-kind }}" --warnings all 2>&1 | tee "build/memory-${{ matrix.profile }}-${{ matrix.image-kind }}.log"
+      - name: Upload baseline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-${{ matrix.profile }}-${{ matrix.image-kind }}-${{ github.sha }}
+          path: build/memory-${{ matrix.profile }}-${{ matrix.image-kind }}.log
+          if-no-files-found: error

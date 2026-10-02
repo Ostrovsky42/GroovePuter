@@ -1,0 +1,63 @@
+name: Cardputer ADV
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev_0.9.14
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build Cardputer ADV
+        run: bash scripts/build.sh --warnings all
+      - name: Enforce fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  fs1b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Prepare pinned ESP-IDF source
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/esp-idf"
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+          git -C "$HOME/esp-idf" checkout --detach FETCH_HEAD
+          test "$(git -C "$HOME/esp-idf" rev-parse HEAD)" = "858a988d6eb90f54661abe282c523879c6ad0116"
+      - name: Build authoritative FS1B image
+        run: bash scripts/build_cardputer_dynbuffers.sh --warnings all
+      - name: Verify budget and fingerprints
+        run: |
+          set -euo pipefail
+          bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+          sha256sum build/cardputer-adv-dynbuffers/GroovePuter.ino.elf build/cardputer-adv-dynbuffers/GroovePuter.ino.bin | tee build/cardputer-adv-dynbuffers/SHA256SUMS.txt
+      - name: Upload flashable evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-adv-fs1b-${{ github.sha }}
+          path: |
+            build/cardputer-adv-dynbuffers/*.elf
+            build/cardputer-adv-dynbuffers/*.bin
+            build/cardputer-adv-dynbuffers/SHA256SUMS.txt
+          if-no-files-found: error
