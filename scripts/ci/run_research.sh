@@ -36,7 +36,7 @@ run_suite() {
       for s in tests/run_sampler_ref_tests.sh tests/run_sampler_registry_boot_tests.sh tests/run_sampler_persistence_ownership_tests.sh tests/run_sampler_recovery_0_9_3_tests.sh; do run_script "$s"; done
       ;;
     stage15)
-      for s in tests/run_generation_stage15b_tests.sh tests/run_generation_stage15c_tests.sh tests/run_tonal_projector_tests.sh tests/run_tonal_materializer_tests.sh tests/run_tonal_materializer_global_scale_test.sh tests/run_stage15_tonal_integration_tests.sh tests/run_stage15_tonal_register_sweep.sh; do run_script "$s"; done
+      for s in tests/run_generation_stage15b_tests.sh tests/run_generation_stage15c_tests.sh tests/run_tonal_projector_tests.sh tests/run_tonal_materializer_tests.sh tests/run_tonal_materializer_global_scale_test.sh tests/run_stage15_tonal_integration_tests.sh tests/run_stage15_tonal_register_sweep.sh scripts/ci/run_stage15_baseline_contract.sh; do run_script "$s"; done
       ;;
     all)
       for nested in gf2 phrase generation ui undo sampler stage15; do run_suite "$nested"; done

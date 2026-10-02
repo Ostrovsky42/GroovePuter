@@ -40,7 +40,4 @@ do
   run_script "${script}"
 done
 
-echo "::group::Stage15 legacy baseline"
-bash tests/run_stage15_tonal_baseline_dump.sh > /tmp/stage15_legacy.tsv
-diff -u tests/data/stage15_tonal_legacy_baseline.tsv /tmp/stage15_legacy.tsv
-echo "::endgroup::"
+run_script scripts/ci/run_stage15_baseline_contract.sh
