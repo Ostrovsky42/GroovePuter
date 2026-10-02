@@ -38,6 +38,7 @@ public:
     // External keyboard (Host MIDI IN -> PERFORM). Absolute MIDI pitch, no QWERTY octave offset,
     // same held-note list as the built-in keys, so CHORD / ARP / LATCH / rhythms apply unchanged.
     // Identity is the folded pitch (one external hold per pitch); built-in keys never match it.
+    // Velocity: the key dynamics scaled by the PERFORM velocity setting (setting / 100), clamped 1..127.
     bool externalNoteOn(uint8_t note, uint8_t velocity);
     bool externalNoteOff(uint8_t note);
     void releaseAllExternalNotes();

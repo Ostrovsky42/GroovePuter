@@ -330,7 +330,7 @@ const char* PerformPage::selectedRowHint() const {
                 case 0: return "</> ROOT NOTE";
                 case 1: return "</> SCALE";
                 case 2: return "</> OCTAVE SHIFT -2..+2";
-                case 3: return "</> VELOCITY 10..120";
+                case 3: return "</> VELOCITY (EXT KEYS: SCALE)";
                 case 4: return "</> OR \\: TARGET INSTRUMENT";
                 case 5:
                     return keyboard_.target() == MusicalEventTarget::Dx

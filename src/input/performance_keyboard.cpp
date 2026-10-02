@@ -1146,6 +1146,15 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
     if (!enabled_) return true;
     if (velocity == 0) return externalNoteOff(note);
     if (velocity > 127) velocity = 127;
+    // The PERFORM velocity setting is a multiplier for an external keyboard (100 = x1.0, the
+    // default): the touch dynamics of the keys are kept, only the overall level follows the setting.
+    {
+        uint32_t scaled = (static_cast<uint32_t>(velocity) * keyVelocity_ + kDefaultVelocity / 2) /
+                          kDefaultVelocity;
+        if (scaled < 1) scaled = 1;
+        if (scaled > 127) scaled = 127;
+        velocity = static_cast<uint8_t>(scaled);
+    }
 
     if (target_ == MusicalEventTarget::Drums) {
         uint8_t drumChannel = 0;

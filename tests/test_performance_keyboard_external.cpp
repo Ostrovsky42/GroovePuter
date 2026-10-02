@@ -147,6 +147,32 @@ int main() {
         assert(sink.has(MusicalEventType::NoteOff, 60) && !sink.has(MusicalEventType::NoteOff, 64));
         kb.panic();
     }
+    // 10. The PERFORM velocity setting scales an external keyboard's dynamics (x setting/100) and
+    //     keeps their shape: ordering is preserved, 100 is neutral, extremes are clamped to 1..127.
+    {
+        PerformanceKeyboard kb(router);
+        auto velocityOf = [&](uint8_t keyVelocity) {
+            sink.clear();
+            assert(kb.externalNoteOn(60, keyVelocity));
+            assert(sink.events.size() == 1);
+            const uint8_t out = sink.events[0].velocity;
+            assert(kb.externalNoteOff(60));
+            return out;
+        };
+        assert(kb.velocity() == PerformanceKeyboard::kDefaultVelocity);
+        assert(velocityOf(97) == 97);                    // default setting is neutral
+        kb.setVelocity(50);
+        assert(velocityOf(100) == 50);                   // half
+        assert(velocityOf(40) == 20);
+        assert(velocityOf(1) == 1);                      // never rounds down to a NoteOff
+        assert(velocityOf(20) < velocityOf(60) && velocityOf(60) < velocityOf(120));  // dynamics kept
+        kb.setVelocity(PerformanceKeyboard::kMaxVelocity);   // 120 = x1.2
+        assert(velocityOf(100) == 120);
+        assert(velocityOf(127) == 127);                  // clamped
+        kb.setVelocity(PerformanceKeyboard::kMinVelocity);   // 10 = x0.1
+        assert(velocityOf(100) == 10);
+        assert(velocityOf(127) == 13);
+    }
     std::puts("PERFORM keyboard external notes: PASS");
     return 0;
 }
