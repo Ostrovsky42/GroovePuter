@@ -122,10 +122,10 @@ replace_once(
 # end hook needs no change to existing error handling.
 replace_once(
     phrase_page_path,
-    "      });\n\n  if (!result) {\n",
+    "      });\n\n  GP_PROBE(\"G\");\n",
     "      });\n"
     "  endPhraseMemoryProbe(static_cast<int>(result.status));\n"
-    "\n  if (!result) {\n",
+    "\n  GP_PROBE(\"G\");\n",
     "PHRASE probe end hook",
 )
 
