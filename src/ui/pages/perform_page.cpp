@@ -9,13 +9,16 @@
 #include "src/output/output_mode_runtime.h"
 #include "src/output/output_ownership.h"
 #include "src/state/scene_revision.h"
+#include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "../midi_input_ui.h"
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM",
+    "KEY", "CHORD", "ARP", "RHYTHM", "IN",
 };
 constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]",
+    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[IN]",
 };
 
 bool strumIsAudible(const PerformanceKeyboard& keyboard) {
@@ -27,16 +30,6 @@ bool rotationIsAudible(const PerformanceKeyboard& keyboard) {
     const uint8_t pulses = keyboard.euclideanPulses();
     const uint8_t length = keyboard.euclideanLength();
     return pulses > 0 && pulses < length;
-}
-
-const char* compactTargetName(MusicalEventTarget target) {
-    switch (target) {
-        case MusicalEventTarget::SynthA: return "SYN A";
-        case MusicalEventTarget::SynthB: return "SYN B";
-        case MusicalEventTarget::Dx: return "DX";
-        case MusicalEventTarget::Drums: return "DRUMS";
-    }
-    return "?";
 }
 
 const char* arpOrderLabel(PerformanceArpDirection direction) {
@@ -84,6 +77,7 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Chord: return 6;
         case PerformanceToolContext::Arp: return 4;
         case PerformanceToolContext::Rhythm: return 6;
+        case PerformanceToolContext::Input: return 6;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -146,6 +140,28 @@ void PerformPage::cycleOutput(int direction) {
                   keyboard_.targetName(),
                   GroovePuterOutput::modeName(next));
     UI::showToast(toast, 1000);
+}
+
+void PerformPage::adjustInput(int direction) {
+    namespace InputUi = GroovePuterUi::MidiInputUi;
+    const auto current = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+    auto next = current;
+    switch (currentRow()) {
+        case 0: next = InputUi::stepEnabled(current); break;
+        case 1: next = InputUi::stepChannel(current, direction); break;
+        case 2: next = InputUi::stepTarget(current, direction); break;
+        case 3:
+            if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
+                keyboard_.cycleTarget(direction);
+            return;
+        case 4:
+            if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
+                cycleOutput(direction);
+            return;
+        default: return;
+    }
+    if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
+        UI::showToast("MIDI input save failed", 1400);
 }
 
 void PerformPage::adjustSelectedValue(int direction) {
@@ -227,6 +243,9 @@ void PerformPage::adjustSelectedValue(int direction) {
             }
             return;
 
+        case PerformanceToolContext::Input:
+            adjustInput(direction);
+            return;
         case PerformanceToolContext::Count:
             return;
     }
@@ -291,6 +310,9 @@ void PerformPage::toggleSelectedValue() {
             }
             return;
 
+        case PerformanceToolContext::Input:
+            adjustInput(1);
+            return;
         case PerformanceToolContext::Count:
             return;
     }
@@ -308,7 +330,7 @@ const char* PerformPage::selectedRowHint() const {
                 case 0: return "</> ROOT NOTE";
                 case 1: return "</> SCALE";
                 case 2: return "</> OCTAVE SHIFT -2..+2";
-                case 3: return "</> VELOCITY 10..120";
+                case 3: return "</> VELOCITY (EXT KEYS: SCALE)";
                 case 4: return "</> OR \\: TARGET INSTRUMENT";
                 case 5:
                     return keyboard_.target() == MusicalEventTarget::Dx
@@ -362,6 +384,20 @@ const char* PerformPage::selectedRowHint() const {
                     return "</> STRUM MS  ENTER DIRECTION";
                 default: return "";
             }
+
+        case PerformanceToolContext::Input: {
+            const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+            const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
+            switch (row) {
+                case 0: return "ENTER: EXTERNAL MIDI INPUT ON/OFF";
+                case 1: return "</> INPUT FILTER: OMNI OR CH1..16";
+                case 2: return "PERFORM FOLLOWS TARGET + CHORD/ARP";
+                case 3: return follows ? "</> INSTRUMENT (RELEASES HELD NOTES)" : "N/A: SELECT ROUTE PERFORM";
+                case 4: return follows ? "</> INTERNAL / MIDI / LAYER" : "N/A: SELECT ROUTE PERFORM";
+                case 5: return "CHANGE USB ROLE IN PROJECT > MIDI";
+                default: return "";
+            }
+        }
 
         case PerformanceToolContext::Count:
             break;
@@ -417,7 +453,7 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 }
 
 void PerformPage::drawToolTabs(IGfx& gfx, int y) {
-    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM]". The bracket cell to the
+    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [IN]". The bracket cell to the
     // left of each label is always reserved, so labels never shift when the
     // active context changes.
     const UI::ThemePalette palette = UI::themePalette();
@@ -440,20 +476,6 @@ void PerformPage::drawToolTabs(IGfx& gfx, int y) {
         x += (len + 3) * charW;
     }
 
-    char target[16];
-    if (keyboard_.target() == MusicalEventTarget::Drums) {
-        std::snprintf(target, sizeof(target), "%s",
-                      compactTargetName(keyboard_.target()));
-    } else {
-        std::snprintf(target, sizeof(target), "%s %s",
-                      compactTargetName(keyboard_.target()),
-                      keyboard_.voiceModeName());
-    }
-    const int rightEdge = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X;
-    int targetX = rightEdge - gfx.measureText(target);
-    if (targetX < x) targetX = x;
-    gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(targetX, y, target);
 }
 
 void PerformPage::drawToolsLayer(IGfx& gfx) {
@@ -614,6 +636,26 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             }
             break;
 
+        case PerformanceToolContext::Input: {
+            namespace InputUi = GroovePuterUi::MidiInputUi;
+            const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+            const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
+            drawRow(0, "INPUT", InputUi::enabledName(input.enabled), true);
+            InputUi::formatChannel(input, value, sizeof(value));
+            drawRow(1, "CHANNEL", value, true);
+            drawRow(2, "ROUTE", InputUi::targetName(input.target), true);
+            drawRow(3, "TARGET", follows ? keyboard_.targetName() : "N/A", follows);
+            GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+            const bool hasTrack = GroovePuterOutput::trackForTarget(keyboard_.target(), track);
+            drawRow(4, "OUT", !follows ? "N/A" : (hasTrack
+                ? GroovePuterOutput::modeName(GroovePuterOutput::mode(track)) : "MIDI"),
+                follows && hasTrack);
+            const auto role = CardputerUsbRoleRuntime::activeRole();
+            drawRow(5, "USB", role == UsbBootRole::Host ? "KEYBOARD"
+                : (role == UsbBootRole::Device ? "COMPUTER" : "OFF"), false);
+            break;
+        }
+
         case PerformanceToolContext::Count:
             break;
     }
@@ -670,6 +712,22 @@ bool PerformPage::handleEvent(UIEvent& event) {
     }
 
     if (toolsLayerVisible_ && handleToolKey(event)) return true;
+
+    // The Cardputer arrow keycaps are ; , . / and, since #465, deliver ONLY the arrow scancode (the
+    // printed character is suppressed centrally). The live scale bindings below were written for the
+    // characters, so without this the LEFT/RIGHT arrows stopped changing the scale on the live page.
+    if (!event.ctrl && !event.alt && !event.meta) {
+        switch (UIInput::navCode(event)) {
+            case GROOVEPUTER_LEFT:
+                keyboard_.cycleScale(-1);
+                return true;
+            case GROOVEPUTER_RIGHT:
+                keyboard_.cycleScale(1);
+                return true;
+            default:
+                break;
+        }
+    }
 
     switch (event.key) {
         case 'n':
@@ -816,7 +874,8 @@ void PerformPage::drawContent(IGfx& gfx) {
                       static_cast<unsigned>(keyboard_.strumMs()),
                       static_cast<unsigned>(keyboard_.velocity()));
     }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
+    Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
+                             Layout::CONTENT.w - 8, line);
 
     const int visualY = LayoutManager::lineY(2);
     const int visualH = LayoutManager::lineY(7) - visualY - 2;
@@ -888,7 +947,17 @@ void PerformPage::drawContent(IGfx& gfx) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "EXT MONO | TAB PERFORMANCE TOOLS");
     }
-    gfx.drawText(Layout::COL_1, LayoutManager::lastLineY(gfx), line);
+    if (!usbBlocked && !usbReady && active < 0 && keyboard_.heldCount() == 0) {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        if (input.enabled) {
+            const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
+            std::snprintf(line, sizeof(line), "IN: %s%s%s | TAB TOOLS",
+                GroovePuterUi::MidiInputUi::targetName(input.target),
+                follows ? " > " : "", follows ? keyboard_.targetName() : "");
+        }
+    }
+    Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lastLineY(gfx),
+                             Layout::CONTENT.w - 8, line);
 }
 
 void PerformPage::drawFooter(IGfx& gfx) {

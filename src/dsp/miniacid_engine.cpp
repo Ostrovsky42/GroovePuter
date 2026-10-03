@@ -671,9 +671,20 @@ void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
   if (velocity > 127) velocity = 127;
 
   synthVoices_[idx]->startNote(noteToFreq(note), false, false, velocity);
+  // A played note (built-in or external keyboard) pulses the LED like a sequenced one.
+  LedManager::instance().onVoiceTriggered(idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+                                          sceneManager_.currentScene().led);
   liveNotes_[idx] = static_cast<int16_t>(note);
   if (idx == 0) gateCountdownA_ = 0;
   else gateCountdownB_ = 0;
+}
+
+void MiniAcid::pulseLedForDrumLane(uint8_t lane) {
+  static constexpr VoiceId kLaneVoice[8] = {
+      VoiceId::DrumKick, VoiceId::DrumSnare, VoiceId::DrumHatC, VoiceId::DrumHatO,
+      VoiceId::DrumTomM, VoiceId::DrumTomH, VoiceId::DrumRim, VoiceId::DrumClap};
+  if (lane >= 8) return;
+  LedManager::instance().onVoiceTriggered(kLaneVoice[lane], sceneManager_.currentScene().led);
 }
 
 void MiniAcid::liveNoteOff(int synthIndex, uint8_t midiNote) {

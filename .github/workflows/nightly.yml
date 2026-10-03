@@ -1,0 +1,22 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - name: Run broad preservation corpus
+        run: bash scripts/ci/run_nightly.sh

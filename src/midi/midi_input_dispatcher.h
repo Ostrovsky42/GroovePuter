@@ -15,6 +15,30 @@ enum class MidiInputTarget : uint8_t {
     SynthA = 0,
     SynthB = 1,
     Drums = 2,
+    Perform = 3,  // external keyboard played through the PERFORM keyboard (chords / arp / latch)
+};
+
+// Phases of the external Mod button (a short press = tap, a long hold = a different action).
+enum class ModPhase : uint8_t {
+    Press = 1,    // the ramp started
+    Release = 2,  // the ramp started back down
+    Cancel = 3,   // the session ended while held: forget the press without acting on it
+};
+
+// Sink for the PERFORM target. Called from the MIDI dispatch task; the implementation must only
+// enqueue (the PERFORM keyboard lives on the UI/loop task).
+class MidiExternalNoteSink {
+public:
+    virtual ~MidiExternalNoteSink() = default;
+    virtual void externalNoteOn(uint8_t note, uint8_t velocity) = 0;
+    virtual void externalNoteOff(uint8_t note) = 0;
+    // Sustain button / pedal (CC64) of the external keyboard: true while held down.
+    virtual void externalSustain(bool down) = 0;
+    // Pitch buttons of the external keyboard: -1 = left/down pressed, +1 = right/up pressed, 0 = the
+    // button was released (or the session ended while it was held).
+    virtual void externalNudge(int direction) = 0;
+    // Mod button of the external keyboard: press, release (tap or hold is decided by the consumer).
+    virtual void externalMod(ModPhase phase) = 0;
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -52,10 +76,13 @@ public:
             case MidiInputTarget::SynthA:
             case MidiInputTarget::SynthB:
             case MidiInputTarget::Drums:
+            case MidiInputTarget::Perform:
                 return true;
         }
         return false;
     }
+
+    void setPerformSink(MidiExternalNoteSink* sink) { performSink_ = sink; }
 
     const MidiInputRoutingConfig& config() const { return config_; }
 
@@ -98,6 +125,7 @@ private:
         MusicalEventTarget target{MusicalEventTarget::SynthA};
         uint8_t routedChannel{0};
         uint8_t routedNote{0};
+        bool perform{false};  // owned by the PERFORM keyboard bridge, not the router
     };
 
     static bool sameConfig(const MidiInputRoutingConfig& lhs,
@@ -113,6 +141,7 @@ private:
             case MidiInputTarget::SynthA: return MusicalEventTarget::SynthA;
             case MidiInputTarget::SynthB: return MusicalEventTarget::SynthB;
             case MidiInputTarget::Drums: return MusicalEventTarget::Drums;
+            case MidiInputTarget::Perform: return MusicalEventTarget::SynthA;  // unused: see perform
         }
         return MusicalEventTarget::SynthA;
     }
@@ -167,7 +196,7 @@ private:
     int findResolvedOwner(MusicalEventTarget target, uint8_t routedChannel) const {
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             const ActiveOwner& owner = owners_[i];
-            if (!owner.active || owner.target != target) continue;
+            if (!owner.active || owner.perform || owner.target != target) continue;
             if (target != MusicalEventTarget::Drums ||
                 owner.routedChannel == routedChannel) {
                 return static_cast<int>(i);
@@ -177,6 +206,12 @@ private:
     }
 
     void publish(MusicalEventType type, const ActiveOwner& owner, uint8_t velocity) {
+        if (owner.perform) {
+            if (performSink_ == nullptr) return;
+            if (type == MusicalEventType::NoteOn) performSink_->externalNoteOn(owner.routedNote, velocity);
+            else performSink_->externalNoteOff(owner.routedNote);
+            return;
+        }
         if (router_ == nullptr) return;
         router_->route(MusicalEvent{type,
                                    MusicalEventSource::MidiInput,
@@ -193,7 +228,21 @@ private:
         publish(MusicalEventType::NoteOff, owner, velocity);
     }
 
+    void releaseSustain() {
+        if (bendZone_ != 0 && performSink_ != nullptr) performSink_->externalNudge(0);
+        bendZone_ = 0;
+        if (modState_ == ModState::Held && performSink_ != nullptr) {
+            performSink_->externalMod(ModPhase::Cancel);
+        }
+        modState_ = ModState::Idle;
+        modLast_ = 0;
+        if (!sustainDown_) return;
+        sustainDown_ = false;
+        if (performSink_ != nullptr) performSink_->externalSustain(false);
+    }
+
     void releaseAllOwnedNotes() {
+        releaseSustain();
         if (router_ == nullptr) {
             for (auto& owner : owners_) owner = ActiveOwner{};
             return;
@@ -202,6 +251,7 @@ private:
     }
 
     void releaseSource(InputSource source) {
+        if (source == InputSource::Usb) releaseSustain();
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             if (owners_[i].active && owners_[i].source == source) releaseOwner(i);
         }
@@ -241,7 +291,9 @@ private:
         candidate.inputChannel = event.id.channel;
         candidate.sourceNote = event.id.key;
         candidate.target = musicalTarget(config_.target);
-        candidate.routedNote = clampSynthNote(event.id.key);
+        candidate.perform = config_.target == MidiInputTarget::Perform;
+        if (candidate.perform && performSink_ == nullptr) return;
+        candidate.routedNote = candidate.perform ? event.id.key : clampSynthNote(event.id.key);
         candidate.routedChannel = 0;
         if (candidate.target == MusicalEventTarget::Drums) {
             if (!mapDrum(event.id.key, candidate.routedChannel)) return;
@@ -251,7 +303,9 @@ private:
         const int existingSource = findSourceOwner(event);
         if (existingSource >= 0) releaseOwner(static_cast<std::size_t>(existingSource));
 
-        const int resolved = findResolvedOwner(candidate.target, candidate.routedChannel);
+        // The PERFORM keyboard is polyphonic and does its own arbitration; the router targets are mono.
+        const int resolved = candidate.perform
+            ? -1 : findResolvedOwner(candidate.target, candidate.routedChannel);
         if (resolved >= 0) releaseOwner(static_cast<std::size_t>(resolved));
 
         const int freeIndex = findFreeOwner();
@@ -279,17 +333,77 @@ private:
             case InputKind::AllSoundOff:
                 releaseChannel(event);
                 break;
+            case InputKind::Mod: {
+                // The button sends a short ramp (the owner's nanoKEY2: 0..15 up on press, back to 0 on
+                // release), not a level. The first non-zero value fires once and disarms; only a zero
+                // (the end of the ramp back down) re-arms it, so one press is exactly one one-shot.
+                if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
+                    performSink_ == nullptr) {
+                    break;
+                }
+                const uint8_t value = event.velocity;
+                if (value == 0u) {
+                    // The end of the ramp down. A press that never showed a decrease still ends here.
+                    if (modState_ == ModState::Held) performSink_->externalMod(ModPhase::Release);
+                    modState_ = ModState::Idle;
+                } else if (modState_ == ModState::Idle) {
+                    modState_ = ModState::Held;
+                    performSink_->externalMod(ModPhase::Press);
+                } else if (modState_ == ModState::Held && value < modLast_) {
+                    modState_ = ModState::Released;   // the ramp turned downwards: the button is up
+                    performSink_->externalMod(ModPhase::Release);
+                }
+                modLast_ = value;
+                break;
+            }
+            case InputKind::PitchBend: {
+                // The pitch buttons jump to an extreme and spring back to the centre: only the
+                // press edge is a nudge. Direct targets ignore the message (no bend in the engine).
+                if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
+                    performSink_ == nullptr) {
+                    break;
+                }
+                // The pitch buttons send a slow ramp away from the centre (64) and back (the owner's
+                // nanoKEY2: a short touch only reaches 54, a hold goes on to 0). Arm at a small
+                // deviation so a touch counts, re-arm only near the centre (hysteresis).
+                const int deviation = static_cast<int>(event.velocity) - 64;
+                int zone = bendZone_;
+                if (deviation <= -kBendPress) zone = -1;
+                else if (deviation >= kBendPress) zone = 1;
+                else if (deviation >= -kBendRelease && deviation <= kBendRelease) zone = 0;
+                if (zone != bendZone_) {
+                    bendZone_ = zone;
+                    performSink_->externalNudge(zone);   // 0 = back at the centre = released
+                }
+                break;
+            }
             case InputKind::Sustain:
-                // 0.9.11 preserves the historical R6 policy: sustain is parsed
-                // and bounded but deliberately not applied to product routing.
+                // Direct synth/drum targets keep the historical R6 policy (parsed and bounded, not
+                // applied). The PERFORM target maps it to LATCH while the button is held.
+                if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
+                    performSink_ != nullptr) {
+                    const bool down = event.velocity >= 64u;
+                    if (down != sustainDown_) {
+                        sustainDown_ = down;
+                        performSink_->externalSustain(down);
+                    }
+                }
                 break;
         }
     }
 
+    MidiExternalNoteSink* performSink_{nullptr};
     MusicalEventRouter* router_{nullptr};
     MidiIoState* io_{nullptr};
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
+    bool sustainDown_{false};
+    int bendZone_{0};
+    enum class ModState : uint8_t { Idle, Held, Released };
+    ModState modState_{ModState::Idle};
+    uint8_t modLast_{0};
+    static constexpr int kBendPress = 6;    // deviation from the centre that counts as a press
+    static constexpr int kBendRelease = 3;  // deviation under which the button is released again
     uint32_t observedUsbGeneration_{0};
     uint32_t observedUartGeneration_{0};
 };

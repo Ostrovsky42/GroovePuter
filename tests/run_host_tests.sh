@@ -79,6 +79,62 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
   -o "${BUILD_DIR}/test_performance_keyboard"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_keyboard_external.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_keyboard_external"
+
+"${BUILD_DIR}/test_performance_keyboard_external"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_note_queue.cpp" \
+  -o "${BUILD_DIR}/test_external_note_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_latency_histogram.cpp" \
+  -o "${BUILD_DIR}/test_latency_histogram"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_mod_hold_tracker.cpp" \
+  -o "${BUILD_DIR}/test_mod_hold_tracker"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_nudge_repeater.cpp" \
+  -o "${BUILD_DIR}/test_nudge_repeater"
+
+"${BUILD_DIR}/test_nudge_repeater"
+
+"${BUILD_DIR}/test_mod_hold_tracker"
+
+"${BUILD_DIR}/test_latency_histogram"
+
+"${BUILD_DIR}/test_external_note_queue"
+
 "${BUILD_DIR}/test_performance_keyboard"
 
 "${CXX}" \

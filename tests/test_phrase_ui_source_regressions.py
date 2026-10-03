@@ -44,7 +44,7 @@ require(CPP, '"DR"', "Drums preview label is missing")
 # Honest reference semantics and separate next-capture controls.
 require(CPP, '"REF MUT"', "Mutable reference storage badge is missing")
 require(CPP, '"REF LINKED"', "Linked reference warning is missing")
-require(CPP, '"CAP %uB %s  GEN %uB  P:%s"',
+require(CPP, '"CAP %uB %s  NEW %uB  P:%s"',
         "Next capture settings must be visibly separate from saved metadata, "
         "and distinct from the Generated Phrase request-bars owner")
 if any(term in CPP for term in ('"COPIED"', '"RECORDED"', '"EXTRACTED"')):
@@ -72,8 +72,8 @@ for needle in (
     "case 'd': return deriveFromParent();",
     "case 'w': return writeToCurrentRow(ui_event.alt);",
     "return clearCurrentSlot();",
-    '"1-4:SLOT L/R:BAR U/D:CAPLEN"',
-    '"G:GEN ENT/D/W"',
+    '"1-4:SLOT [L/R]BAR [U/D]LEN"',
+    '"G:NEW ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 # Ctrl+arrow TO/8-bar destination shortcuts still exist in CORE handleEvent;

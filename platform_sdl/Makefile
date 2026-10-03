@@ -91,6 +91,8 @@ SOURCES := \
 	../src/ui/midi_file_manager.cpp \
 	../src/platform/cardputer_ui_session.cpp \
 	../src/platform/cardputer_material_publication_session.cpp \
+	../src/platform/cardputer_usb_role_runtime.cpp \
+	../src/platform/cardputer_usb_host_midi.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \

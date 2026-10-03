@@ -1,0 +1,76 @@
+T0: 2026-10-01T20:40:00+02:00
+shared tree: /home/gg/pro/arduino.ESP32-S3-Touch-AMOLED-1.75/Cardputer/miniacid
+branch: feature/20260929-m0-musical-play-baseline
+HEAD: b5cf8e5b86fe37f5cf71c43e20f0d94bc3df5d33
+HEAD^{tree}: bc0ec6cce4b2a42b429ff3a4240e68bce2744ad2
+
+== tracked modified (path, sha256 of the working file, insertions/deletions) ==
+GroovePuter.ino                                                        0c3eab2ce7f8ff81  +51/-1
+platform_sdl/sdl_main.cpp                                              7c5f019a6bda75b4  +3/-0
+src/audio/audio_mutation_gate.h                                        9ddc78c263c0484e  +35/-0
+src/dsp/miniacid_engine.cpp                                            3d40851127aa6643  +36/-11
+src/generation/migration/quantized_generation_undo_owner_impl.h        2c20c0c8de673389  +2/-0
+src/ui/docs/keys.md                                                    62f4b6f5479540ec  +2/-1
+src/ui/global_help_content.h                                           51f20038d1125b77  +4/-4
+src/ui/miniacid_display.cpp                                            8b0d38084dd96345  +2/-1
+src/ui/miniacid_display.h                                              fa3e1f4b9e0968d5  +6/-0
+src/ui/pages/pattern_edit_page.cpp                                     f2a5a9b4fb3180c2  +18/-0
+src/ui/pages/synth_sequencer_page.cpp                                  0329beed644d1172  +0/-55
+src/ui/ui_common.cpp                                                   6ae01bc96237d341  +11/-1
+src/ui/ui_common.h                                                     db1704f5c30eb193  +2/-1
+tests/test_audio_mutation_gate.cpp                                     5edd455a768b19bc  +7/-0
+tests/test_global_help_content.cpp                                     59a6b01c6a3c95a4  +6/-0
+tests/test_ui_constitution_u1f_shell_pixel_ownership.py                a22776eb218b3b93  +1/-1
+tests/test_undo_0_9_8_r6_ux_source_regressions.py                      01413ab780e77420  +3/-6
+
+tracked diff (git diff --binary) sha256: 82fa460994dbf4d84d8f9a0231f4d095750d67d47255652f159f1f6177c2f399
+staged diff sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+== untracked (path, sha256 first 16, bytes) ==
+docs/audio-timing-probe.md                                             d279a6d36228241e  8006 B
+docs/midi/2026-09-17-0.9.13-product-midi-bpm-review.md                 1f17322a4ce3a626  9839 B
+docs/superpowers/plans/2026-09-17-0913-product-closure.md              54a59fed3c150315  6142 B
+docs/superpowers/plans/2026-10-01-0-9-14-15-three-day.md               68b5d0dbe35f0188  39988 B
+logs/audio-timing-20261001/report.md                                   f66e24e068ca36bf  3658 B
+logs/audio-timing-20261001/summary.json                                b0113ee50e3e1b5c  550 B
+logs/bklva-comparison-20261001/analysis/audio-init.asm                 2b0a084b1b42ab16  4171 B
+logs/bklva-comparison-20261001/analysis/audio-loop.asm                 d94671948062ecea  10765 B
+logs/bklva-comparison-20261001/analysis/capture-segment-0-strings.tsv  af975cc7f8bcfbba  71945 B
+logs/bklva-comparison-20261001/analysis/capture-segment-1-strings.tsv  10dd9fe4ce54b5cb  6968 B
+logs/bklva-comparison-20261001/analysis/capture-segment-2-strings.tsv  88a99bc0c3324c79  1609 B
+logs/bklva-comparison-20261001/analysis/capture-segment-3-strings.tsv  564d0e1ec9489b34  22480 B
+logs/bklva-comparison-20261001/analysis/capture-segment-4-strings.tsv  08f2dc250483f6d3  767 B
+logs/bklva-comparison-20261001/analysis/daw-iram.asm                   c7226db37244b5fe  1141693 B
+logs/bklva-comparison-20261001/analysis/daw-irom.asm                   b588890ae31e1f40  15626999 B
+logs/bklva-comparison-20261001/analysis/daw-segment-0-strings.tsv      6c5b44ed22bcca26  159323 B
+logs/bklva-comparison-20261001/analysis/daw-segment-1-strings.tsv      a8e972190410ce05  1916 B
+logs/bklva-comparison-20261001/analysis/daw-segment-2-strings.tsv      b4b7ec63872e868c  61246 B
+logs/bklva-comparison-20261001/analysis/daw-segment-3-strings.tsv      0b33a961eba7c7cb  8339 B
+logs/bklva-comparison-20261001/analysis/daw-segment-4-strings.tsv      969b613b1afc942d  3166 B
+logs/bklva-comparison-20261001/analysis/daw-segment-5-strings.tsv      01ba4719c80b6fe9  1 B
+logs/bklva-comparison-20261001/analysis/queue-consumer.asm             c22c9d5e235854eb  4441 B
+logs/bklva-comparison-20261001/analysis/queue-producer.asm             56115b175cc56291  2667 B
+logs/bklva-comparison-20261001/analysis/render-entry.asm               d5d29fe761d78b98  2837 B
+logs/bklva-comparison-20261001/analysis/report.md                      1f757ee1a133f5c2  13782 B
+logs/bklva-comparison-20261001/analysis/segments.json                  4c9c686b9ec1e037  1930 B
+logs/bklva-comparison-20261001/analysis/startup-bss.asm                838e4352b4973883  871 B
+logs/bklva-comparison-20261001/analysis/task-static-api.asm            51b78400944f503c  2997 B
+logs/bklva-comparison-20261001/record.json                             ce0d05169cfd0896  772 B
+logs/bklva-comparison-20261001/restore-grooveputer.txt                 80787df1f7012057  392 B
+logs/modifier-stage-20261001/candidate.json                            754c8cc217311ce1  427 B
+logs/modifier-stage-20261001/report.md                                 5a4c27764b5beafe  5444 B
+logs/modifier-stage-20261001/summary.json                              c5cf6198dd60e3cc  286 B
+logs/synth-generation-fix-20261001/report.md                           ea146aab2df18f87  4294 B
+logs/synth-routing-20261001/report.md                                  34d1a00bdc75b9eb  5920 B
+logs/synth-routing-20261001/summary-files.json                         b04981d1bf3f33a7  345 B
+logs/synth-routing-20261001/summary.json                               c42084a29c4ecd76  615 B
+platform_sdl/patterns/grooveputer_5Fscene/material_id.meta             32276ef0d36f16dc  16 B
+src/audio/audio_timing_probe.h                                         600da89a6981978c  4442 B
+src/ui/modifier_hints.h                                                7b9f9d663aa2900b  1861 B
+tests/run_all_gates.sh                                                 0a144335bc33fdc6  4411 B
+tests/run_audio_timing_probe_tests.sh                                  51730b47cc576737  884 B
+tests/run_synth_generation_runtime_tests.sh                            26116ddd988fb8ad  1196 B
+tests/test_audio_stage_timing.cpp                                      a9671de3b01724ed  553 B
+tests/test_audio_timing_probe.cpp                                      1b0cdd648eedeb43  1416 B
+tests/test_modifier_hints.cpp                                          e0cbdf34d922729d  1409 B
+tests/test_synth_generation_runtime.cpp                                504cbf8d3976c683  8685 B

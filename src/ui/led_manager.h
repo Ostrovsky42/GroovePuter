@@ -27,6 +27,9 @@ public:
     void onBeat(int step, const LedSettings& settings);
     void testPulse(const LedSettings& settings);
 
+    // True while a published pulse is waiting for update() (tests, diagnostics).
+    bool hasPendingPulse() const { return ledPulseState_.load(std::memory_order_acquire) == 1; }
+
 private:
     LedManager();
 
