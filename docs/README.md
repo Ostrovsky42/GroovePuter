@@ -11,10 +11,12 @@ The distinction matters: a document can be valuable evidence without describing 
 - [`../README.md`](../README.md) — product overview and current candidate status.
 - [`../src/ui/docs/keys.md`](../src/ui/docs/keys.md) — canonical current Cardputer ADV key map.
 - [`SONG_PAGE_QUICKSTART.md`](SONG_PAGE_QUICKSTART.md) — focused Song-page editing reference.
-- [`reference/EXTERNAL_MIDI_COMPATIBILITY.md`](reference/EXTERNAL_MIDI_COMPATIBILITY.md) — hardware/protocol compatibility evidence.
+- [`releases/0.9.15-midi-ui-polish-2026-10-02.md`](releases/0.9.15-midi-ui-polish-2026-10-02.md) — current external-keyboard / PERFORM routing and UI behavior.
 - [`releases/0.9.15-hardware-acceptance.md`](releases/0.9.15-hardware-acceptance.md) — current USB Host hardware acceptance procedure.
 
 `MANUAL.md` in the repository root is an older 0.9.1-era manual and must not be treated as the authoritative key map for the current candidate.
+
+`reference/EXTERNAL_MIDI_COMPATIBILITY.md` is preserved compatibility evidence from the USB-MIDI-device line. It does not describe the full current 0.9.15 USB Host keyboard path.
 
 ### Developer
 
