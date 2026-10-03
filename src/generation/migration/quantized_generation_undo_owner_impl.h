@@ -425,6 +425,8 @@ inline void exchangeGenerationUndo(MiniAcid& engine,
       : scene.synthBBanks[retained.target.synthBank[1]];
   GroovePuterUndo::exchangeFixedValue(
       bank.patterns[retained.target.synthSlot[voice]], retained.synth[voice]);
+  (void)engine.refreshPatternRuntimeEvents(
+      voice, retained.target.synthBank[voice], retained.target.synthSlot[voice]);
 }
 
 }  // namespace QuantizedGenerationDetail

@@ -45,6 +45,7 @@ run "0.9.15 PROJECT USB role row" bash tests/run_project_usb_role_ui_tests.sh
 run "0.9.15 PROJECT LED brightness" bash tests/run_project_led_brightness_tests.sh
 run "0.9.15 live note LED pulse" bash tests/run_live_note_led_tests.sh
 run "0.9.15 external keyboard step entry" bash tests/run_external_step_entry_tests.sh
+run "0.9.16 synth generation runtime" bash tests/run_synth_generation_runtime_tests.sh
 run "Output ownership" bash tests/run_output_ownership_tests.sh
 run "Performance closure" bash tests/run_performance_closure_tests.sh
 run "Instrument interaction" bash tests/run_instrument_interaction_closure_tests.sh

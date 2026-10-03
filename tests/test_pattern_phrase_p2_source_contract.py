@@ -138,19 +138,15 @@ require("exchangeSynthPatternUndo" in compact_generation_undo,
 require("refreshPatternRuntimeEvents" in compact_generation_undo,
         "compact Generation Undo leaves prepared runtime data stale")
 
-# Stopped Synth-page generation is another canonical Pattern assignment.
-stopped_generate = between(
-    synth_page,
-    "if (!phraseNotes && synth_tab_ == SynthTab::Notes &&",
-    "if (isOutputCycleKey(ui_event))")
-require("isSynthGenerateKey(ui_event)" in stopped_generate,
-        "stopped Synth generate key ownership disappeared")
-require("!mini_acid_.isPlaying()" in stopped_generate,
-        "stopped Synth generate must remain stopped-transport-only")
-require("restoreSynthPatternUndo(manager, prepared)" in stopped_generate,
-        "stopped Synth generate canonical assignment disappeared")
-require("refreshPatternRuntimeEvents" in stopped_generate,
-        "stopped Synth generate does not settle prepared runtime data")
+# Plain G now has one NOTES child owner for STOP and PLAY. Runtime/cache
+# behavior is tested by test_synth_generation_runtime; the parent must not
+# resurrect the old stopped-only assignment that bypassed shared P.
+require("isSynthGenerateKey" not in synth_page,
+        "stopped-only Synth generation duplicate returned")
+require("return MultiPage::handleEvent(ui_event);" in synth_page,
+        "Synth page no longer delegates ordinary NOTES input")
+require("regenerateSynthWithQuantizedCommit" in pattern_page,
+        "NOTES child lost quantized synth generation ownership")
 
 # Paging publication order is strict:
 # resident Scene -> paging activePage -> complete bank -> MiniAcid currentPage.

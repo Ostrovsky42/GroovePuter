@@ -1064,6 +1064,12 @@ void PatternEditPage::draw(IGfx& gfx) {
       drawMinimalStyle(gfx);
       break;
   }
+  if (mini_acid_.songVoiceDisplayState(voice_index_) ==
+      MiniAcid::SongVoiceDisplayState::Pattern) {
+    UI::drawStandardFooter(gfx,
+        note_entry_mode_ ? "G/P:NOTES N:EXIT" : "P:STYLE G:GEN AltG:LEGACY",
+        "C1/2:BANK Alt[]:PAGE");
+  }
 }
 
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {

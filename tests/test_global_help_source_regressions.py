@@ -68,14 +68,18 @@ assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 
-# The root README on main is the branch-neutral public landing document. MANUAL.md
-# follows the current 0.9.14 user workflow; the historical 0.9.1 release record below
-# remains independently validated.
+# The public README now routes users through the documentation facade. Keep
+# navigation and truthful release status checked without freezing old marketing
+# copy. MANUAL and the historical release record remain separately validated.
 assert readme.startswith("# GroovePuter\n")
-assert "Portable standalone groovebox and hardware musical brain" in readme
-assert "`main` is the public project landing branch" in readme
+assert "M5Stack Cardputer ADV" in readme
+assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
-assert "GENRE != FEEL != GENERATION REQUEST != SOUND" in readme
+assert "hardware-release claim" in readme
+assert "GENRE != FEEL != SOUND" in readme
+facade = (ROOT / "docs/README.md").read_text()
+assert "../src/ui/docs/keys.md" in facade
+assert "releases/0.9.15-hardware-acceptance.md" in facade
 
 assert manual.startswith("# GroovePuter 0.9.14 Manual")
 assert "GENERATE: GENRE -> FEEL" in manual

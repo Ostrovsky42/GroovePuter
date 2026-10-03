@@ -97,14 +97,6 @@ bool isOutputCycleKey(const UIEvent& event) {
   return key == 'o' || event.scancode == GROOVEPUTER_O;
 }
 
-bool isSynthGenerateKey(const UIEvent& event) {
-  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-  const char key = event.key
-      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
-      : 0;
-  return key == 'g' || event.scancode == GROOVEPUTER_G;
-}
-
 bool commitRuntimePhraseEditWithUndo(
     MiniAcid& miniAcid,
     const AudioGuard& audioGuard,
@@ -1234,53 +1226,6 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       }
       return handled;
     }
-  }
-
-  if (!phraseNotes && synth_tab_ == SynthTab::Notes &&
-      isSynthGenerateKey(ui_event) && !mini_acid_.isPlaying()) {
-    SceneManager& manager = mini_acid_.sceneManager();
-    GroovePuterUndo::SynthPatternUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(manager, voice_index_, before)) {
-      return true;
-    }
-
-    SynthPattern generated = before.before;
-    const GenerativeParams& genreParams = mini_acid_.genreManager().getCompiledGenerativeParams();
-    auto behavior = mini_acid_.genreManager().getBehavior();
-    if (mini_acid_.genreManager().generativeMode() == GenerativeMode::Reggae) {
-      if (voice_index_ == 0) {
-        behavior.stepMask = 0x1111;
-        behavior.motifLength = 2;
-        behavior.avoidClusters = true;
-        behavior.forceOctaveJump = false;
-      } else {
-        behavior.stepMask = 0xAAAA;
-        behavior.motifLength = 4;
-        behavior.avoidClusters = false;
-        behavior.forceOctaveJump = false;
-      }
-    }
-    mini_acid_.modeManager().generatePattern(
-        generated, mini_acid_.bpm(), genreParams, behavior, voice_index_);
-
-    if (GroovePuterUndo::PatternEdit::samePattern(before.before, generated) ||
-        !GroovePuterUndo::synthPatternUndoTargetAvailable(manager, before)) {
-      return true;
-    }
-
-    GroovePuterUndo::SynthPatternUndoPayload prepared = before;
-    prepared.before = generated;
-    (void)GroovePuterUndo::undoOwner().commitPrepared(
-        GroovePuterUndo::UndoKind::Pattern, before, [&]() {
-          const auto apply = [&]() {
-            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
-            (void)mini_acid_.refreshPatternRuntimeEvents(
-                prepared.synthIndex, prepared.bankIndex, prepared.patternIndex);
-          };
-          if (audio_guard_) audio_guard_(apply);
-          else apply();
-        });
-    return true;
   }
 
   if (isOutputCycleKey(ui_event)) {
