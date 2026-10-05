@@ -98,12 +98,22 @@ assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
 assert "DEVELOP + BREAK 8B" in manual
-assert "Alt+Enter` ACCEPTs" in manual
+assert "`Alt+Enter` ACCEPTs" in manual
 assert "uses Pattern steps or Melody" in manual
 assert "GENERATION -> FEEL" in manual
 assert "TEXTURE    -> FEEL" in manual
 assert "GENRE 1/3" not in manual
 assert "GENERATION 3/3" not in manual
+
+# Hard-global key ownership must win in docs just as it does in MiniAcidDisplay:
+# Alt+V is GENRE and Alt+X is LiveMix before page dispatch. Do not advertise
+# unreachable Synth-local CONNECT/DISCARD chords on those same keys.
+assert "Shortcut Alt+V -> Page 11" in display
+assert "LiveMix: ON" in display and "event.alt && (event.key == 'x'" in display
+assert "`Alt+V` prepares CONNECT" not in manual
+assert "`Alt+Backspace` or `Alt+X` DISCARDs" not in manual
+assert "| `Alt+Backspace` / `Alt+X` | Discard working edits" not in keys
+assert "| `Alt+Backspace` | Discard working edits to accepted material |" in keys
 
 # The canonical external key map keeps the full expert reference, but 0.9.17 adds
 # a stable beginner constitution at the top: Space=transport, G=generate current
