@@ -9,7 +9,7 @@ ask for help without learning GroovePuter's internal architecture first.
 | Key | What it means in the first session |
 |---|---|
 | `Space` | Play / Stop |
-| `Alt+V` | Open **GENRE** |
+| `Fn+M` | Open the workspace launcher; choose **GENRE** or **MATERIAL** |
 | `G` | Generate the thing you are looking at |
 | `D` on **MATERIAL** | Develop the fresh TAKE |
 | `Ctrl+Z` | Undo the last retained edit |
@@ -20,10 +20,14 @@ screen decides the exact scope of an action. In particular, `D` means **DEVELOP*
 this quick start only on the **MATERIAL** page; other expert pages keep their own `D`
 actions.
 
+> Current 0.9.16 foundation note: the historical `Alt+V` shortcut still resolves to
+> the legacy FEEL page. Do not use it to reach GENRE in this quick start; use `Fn+M`.
+> This is tracked as a 0.9.17 navigation defect, not a feature of the new workflow.
+
 ## 1. Hear something
 
 1. Press `Space` to start playback.
-2. Press `Alt+V` to open **GENRE**.
+2. Press `Fn+M`, choose **GENRE**, and enter it.
 3. Use `Up/Down` to choose the field and `Left/Right` to change Genre, Variant or
    Rhythm.
 4. Press `G`.
