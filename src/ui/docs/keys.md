@@ -9,13 +9,15 @@ You do not need the whole table below before making music. Start with these rule
 | Key | Beginner meaning |
 |---|---|
 | `Space` | Play / Stop |
-| `Alt+V` | Open GENRE |
+| `Fn+M` | Workspace launcher; choose GENRE or MATERIAL |
 | `G` | Generate the thing you are looking at |
 | `D` on MATERIAL | DEVELOP the fresh TAKE |
 | `Ctrl+Z` | Undo the last retained Pattern / Song / Phrase edit |
 | `Alt+H` | Help for the current page |
 
-These are beginner rules, not global overrides. Page-local input still wins. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
+These are beginner rules, not global overrides. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
+
+The v0.9.16 foundation still has a legacy hard-global `Alt+V` route that resolves to FEEL, not GENRE. Until the focused 0.9.17 navigation fix lands, use `Fn+M` to reach GENRE.
 
 For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
 
@@ -48,13 +50,13 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Space` | Active transport unless the page consumes it |
 | `Alt+P` | MIDI Player |
 | `Alt+K` | SAMPLER |
-| `Alt+V` | GENRE |
+| `Alt+V` | Legacy shortcut -> FEEL; use `Fn+M` for GENRE |
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
 | `Alt+\` | `CARBON <-> CYBER` |
 
-The active page gets first refusal before global fallbacks.
+Hard-global Alt shortcuts are handled before page-local input. Outside those reserved chords, the active page gets first refusal before late global fallbacks.
 
 ## MIDI KEYBOARD / PERFORM
 
@@ -141,10 +143,12 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
 | `Alt+Enter` / `Ctrl+Enter` | Accept working material |
-| `Alt+Backspace` / `Alt+X` | Discard working edits to accepted material |
+| `Alt+Backspace` | Discard working edits to accepted material |
 | `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
 | `Esc` with NEXT ready | Cancel NEXT, or disarm queued GO while keeping NEXT |
 | `Ctrl+C/V` | Copy / Paste |
+
+`Alt+X` is reserved globally for LiveMix and therefore is not a Synth DISCARD chord. Likewise, the current hard-global `Alt+V` route is not a reachable Synth CONNECT shortcut.
 
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
 change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
@@ -228,7 +232,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
-| `Alt+J` | Jump to PHRASE with this row as the explicit `TO` destination |
+| `Alt+J` | Jump to MATERIAL with this row as the explicit `TO` destination |
 
 For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
 Pattern or Melody playback; the row does not store a separate type. Accepted Melody
