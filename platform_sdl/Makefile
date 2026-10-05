@@ -80,6 +80,7 @@ SOURCES := \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
+	../src/ui/global_midi_sync_overlay.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
 	../src/ui/ui_core.cpp \

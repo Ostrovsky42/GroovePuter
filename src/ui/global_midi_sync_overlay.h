@@ -9,7 +9,7 @@ class GlobalMidiSyncOverlay {
 public:
     bool isVisible() const { return visible_; }
 
-    void open() { visible_ = true; }
+    void open() { selectedRow_ = 0; visible_ = true; }
     void close() { visible_ = false; }
     bool handleEvent(UIEvent& event);
     void draw(IGfx& gfx, const MiniAcid& miniAcid) const;
