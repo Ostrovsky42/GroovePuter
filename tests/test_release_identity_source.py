@@ -2,6 +2,9 @@
 """Keep diagnostic and product release images on the accepted USB profile."""
 
 import re
+import shlex
+import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,4 +64,35 @@ for field in ("fqbn", "extra_cpp_flags", "fatfs", "diagnostics"):
         f"Release provenance must record {field}",
     )
 
-print("Release product identity and USB profile: PASS")
+# Execute the generated upload example with a stub: shell expansion must pass
+# the complete FQBN even when the user's environment has no FQBN variable.
+flash_template = ACCEPTANCE.split('cat > "$PACKAGE_DIR/FLASH.txt" <<EOF\n', 1)[1].split('\nEOF', 1)[0]
+rendered = subprocess.check_output(
+    ["bash", "-c", f"FQBN_ACCEPT={shlex.quote(EXPECTED_FQBN)}\ncat <<EOF\n{flash_template}\nEOF"],
+    text=True,
+)
+upload_line = next(line.strip() for line in rendered.splitlines() if "arduino-cli upload" in line)
+arguments = subprocess.check_output(
+    ["bash", "-c", 'unset FQBN; arduino-cli() { printf "%s\\n" "$@"; }; ' + upload_line],
+    text=True,
+).splitlines()
+require(
+    arguments == ["upload", "--fqbn", EXPECTED_FQBN, "-p", "/dev/ttyACM0", "--input-dir", "."],
+    "Packaged flash instruction must pass the correct FQBN without relying on shell environment",
+)
+
+# Run the workflow's checksum command, then move its output as artifact download
+# does. Verification must work without the original build-directory hierarchy.
+hash_command = next(line.strip() for line in RELEASE.splitlines() if "sha256sum " in line)
+with tempfile.TemporaryDirectory() as temporary:
+    root = Path(temporary)
+    build = root / "build" / "firmware"
+    build.mkdir(parents=True)
+    for name in ("GroovePuter.ino.elf", "GroovePuter.ino.bin", "GroovePuter.ino.merged.bin"):
+        (build / name).write_bytes(name.encode())
+    subprocess.run(["bash", "-ec", f"BUILD_DIR=build/firmware\n{hash_command}"], cwd=root, check=True)
+    downloaded = root / "downloaded"
+    build.rename(downloaded)
+    subprocess.run(["sha256sum", "-c", "SHA256SUMS.txt"], cwd=downloaded, check=True)
+
+print("Release product identity, USB profile, and portable package instructions: PASS")

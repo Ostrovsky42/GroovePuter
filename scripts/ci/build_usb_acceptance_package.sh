@@ -78,9 +78,8 @@ PROFILE
   -DGROOVEPUTER_USB_ACCEPT_DIAG
 
 FLASH FROM A COMPUTER-MODE / DOWNLOAD-MODE DEVICE
-  FQBN='$FQBN_ACCEPT' \
-  arduino-cli upload --fqbn "\$FQBN" -p /dev/ttyACM0 \
-    --input-dir <extracted-artifact-directory>
+  From the extracted artifact directory, run:
+  arduino-cli upload --fqbn '$FQBN_ACCEPT' -p /dev/ttyACM0 --input-dir .
 
 After flashing, follow:
   docs/releases/0.9.15-hardware-acceptance.md

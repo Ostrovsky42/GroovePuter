@@ -66,7 +66,7 @@ jobs:
             echo "USB acceptance diagnostic marker leaked into product image" >&2
             exit 6
           fi
-          sha256sum "$BUILD_DIR"/*.elf "$BUILD_DIR"/*.bin | tee "$BUILD_DIR/SHA256SUMS.txt"
+          (cd "$BUILD_DIR" && sha256sum *.elf *.bin > SHA256SUMS.txt)
           printf 'commit=%s\nref=%s\nrun=%s\nfqbn=%s\nextra_cpp_flags=%s\nfatfs=FS1B-dynamic-buffers\ndiagnostics=none\n' \
             "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" "$FQBN" \
             "${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-<none>}" > "$BUILD_DIR/provenance.txt"
