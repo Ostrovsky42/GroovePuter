@@ -33,7 +33,7 @@ done
 
 # Prove this is the diagnostic image rather than the product image.
 for marker in "ROLE %s att=%lu det=%lu on=%lu" "MEM f=%u min=%u blk=%u"               "Q held=%u drop=%lu ring=%lu" "LAT usb>disp" "LAT disp>keys"; do
-  if ! strings "$ELF" | grep -Fq "$marker"; then
+  if ! strings "$ELF" | grep -F "$marker" >/dev/null; then
     echo "USB acceptance diagnostic marker missing from ELF: $marker" >&2
     exit 4
   fi

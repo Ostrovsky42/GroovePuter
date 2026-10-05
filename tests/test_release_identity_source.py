@@ -48,6 +48,10 @@ require(
     "USB acceptance image must enable only the USB diagnostics flag",
 )
 require(
+    'grep -F "$marker" >/dev/null' in ACCEPTANCE and 'grep -Fq "$marker"' not in ACCEPTANCE,
+    "USB acceptance marker scan must drain strings output under pipefail",
+)
+require(
     "USB acceptance diagnostic marker leaked into product image" in RELEASE,
     "Release workflow must prove diagnostic markers are absent from product ELF",
 )
