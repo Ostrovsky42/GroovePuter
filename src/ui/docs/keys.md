@@ -31,6 +31,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt/Fn+1..0` | Direct page jump |
 | `Space` | Active transport unless the page consumes it |
 | `Alt+P` | MIDI Player |
+| `Alt+Y` | Global tempo and MIDI Sync (all sound); also in Fn+M launcher |
 | `Alt+K` | SAMPLER |
 | `Alt+V` | GENRE |
 | `Alt+W` | Waveform overlay except Phrase REPLACE |

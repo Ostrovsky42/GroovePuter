@@ -14,6 +14,7 @@
 #include "ui_view_continuity.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
+#include "global_midi_sync_overlay.h"
 #include "workflow_mode.h"
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
@@ -81,6 +82,7 @@ private:
   bool help_dialog_visible_ = false;
   std::unique_ptr<MultiPageHelpDialog> help_dialog_;
   GlobalHelpOverlay global_help_overlay_;
+  GlobalMidiSyncOverlay global_midi_sync_overlay_;
   WorkspaceLauncherOverlay workspace_launcher_;
 
   AudioGuard audio_guard_;

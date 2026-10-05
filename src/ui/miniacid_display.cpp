@@ -315,6 +315,10 @@ void MiniAcidDisplay::update() {
         global_help_overlay_.setPageContext(page_index_);
         global_help_overlay_.draw(gfx_);
     }
+
+    if (global_midi_sync_overlay_.isVisible()) {
+        global_midi_sync_overlay_.draw(gfx_, mini_acid_);
+    }
     
     drawToast();
     gfx_.flush();
@@ -513,8 +517,20 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    if (global_midi_sync_overlay_.isVisible()) {
+        return global_midi_sync_overlay_.handleEvent(event);
+    }
+
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
+    }
+
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
+        !event.ctrl && !event.meta && !event.shift &&
+        (event.key == 'y' || event.key == 'Y')) {
+        workspace_launcher_.close();
+        global_midi_sync_overlay_.open();
+        return true;
     }
 
     if (workspace_launcher_.isVisible()) {
@@ -525,6 +541,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             } else if (workspace_launcher_.takeHelpRequest()) {
                 global_help_overlay_.setPageContext(page_index_);
                 global_help_overlay_.toggle();
+            } else if (workspace_launcher_.takeSyncRequest()) {
+                global_midi_sync_overlay_.open();
             }
             return true;
         }
