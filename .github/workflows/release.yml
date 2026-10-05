@@ -32,6 +32,9 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc
+      GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,14 +51,25 @@ jobs:
           git init "$HOME/esp-idf"
           git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
           git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
-      - name: Build release FS1B image
-        run: bash scripts/build_cardputer_dynbuffers.sh --warnings all
+      - name: Build product release FS1B image
+        run: |
+          set -euo pipefail
+          mkdir -p build/cardputer-adv-dynbuffers
+          bash scripts/build_cardputer_dynbuffers.sh --warnings all 2>&1 | tee build/cardputer-adv-dynbuffers/BUILD.log
       - name: Verify release memory budget and hash artifacts
         run: |
           set -euo pipefail
-          bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
-          sha256sum build/cardputer-adv-dynbuffers/*.elf build/cardputer-adv-dynbuffers/*.bin | tee build/cardputer-adv-dynbuffers/SHA256SUMS.txt
-          printf 'commit=%s\nref=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" > build/cardputer-adv-dynbuffers/provenance.txt
+          BUILD_DIR=build/cardputer-adv-dynbuffers
+          ELF="$BUILD_DIR/GroovePuter.ino.elf"
+          bash scripts/check_cardputer_dram_budget.sh "$ELF"
+          if strings "$ELF" | grep -F 'ROLE %s att=%lu det=%lu on=%lu' >/dev/null; then
+            echo "USB acceptance diagnostic marker leaked into product image" >&2
+            exit 6
+          fi
+          sha256sum "$BUILD_DIR"/*.elf "$BUILD_DIR"/*.bin | tee "$BUILD_DIR/SHA256SUMS.txt"
+          printf 'commit=%s\nref=%s\nrun=%s\nfqbn=%s\nextra_cpp_flags=%s\nfatfs=FS1B-dynamic-buffers\ndiagnostics=none\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" "$FQBN" \
+            "${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-<none>}" > "$BUILD_DIR/provenance.txt"
       - name: Upload release candidate
         uses: actions/upload-artifact@v4
         with:
@@ -65,4 +79,5 @@ jobs:
             build/cardputer-adv-dynbuffers/*.bin
             build/cardputer-adv-dynbuffers/SHA256SUMS.txt
             build/cardputer-adv-dynbuffers/provenance.txt
+            build/cardputer-adv-dynbuffers/BUILD.log
           if-no-files-found: error

@@ -10,6 +10,7 @@ run() {
 }
 
 run "CI surface" python3 scripts/ci/check_workflow_surface.py
+run "Release product identity" python3 tests/test_release_identity_source.py
 run "Rhythm Stage 1" bash tests/run_rhythm_stage1_tests.sh
 run "Rhythm Stage 2" bash tests/run_rhythm_stage2_tests.sh
 run "Rhythm Stage 3" bash tests/run_rhythm_stage3_tests.sh
