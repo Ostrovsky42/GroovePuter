@@ -1,7 +1,23 @@
-# GroovePuter 0.9.14 Key Map — Cardputer ADV
+# GroovePuter 0.9.17 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.14 development runtime. `Alt+H`
-opens page-aware on-device help; this file is the fuller release reference.
+This is the canonical external key reference for the current 0.9.17 productization runtime built on the hardware-accepted v0.9.16 Foundation Freeze. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+
+## First Five Minutes
+
+You do not need the whole table below before making music. Start with these rules:
+
+| Key | Beginner meaning |
+|---|---|
+| `Space` | Play / Stop |
+| `Alt+V` | Open GENRE |
+| `G` | Generate the thing you are looking at |
+| `D` on MATERIAL | DEVELOP the fresh TAKE |
+| `Ctrl+Z` | Undo the last retained Pattern / Song / Phrase edit |
+| `Alt+H` | Help for the current page |
+
+These are beginner rules, not global overrides. Page-local input still wins. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
+
+For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
 
 ## Workflows
 
