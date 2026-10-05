@@ -19,7 +19,7 @@ constexpr const char* kGlobalLines[] = {
     "Alt/Fn+1..0 Direct page jump",
     "Space       Active transport",
     "Alt+P       MIDI Player",
-    "Alt+V       GENRE",
+    "Alt+V       FEEL (legacy)",
     "Alt+W       Waveform except CORE",
     "Alt+\\       Theme CARBON/CYBER",
     "Alt+X       LiveMix ON/OFF",
