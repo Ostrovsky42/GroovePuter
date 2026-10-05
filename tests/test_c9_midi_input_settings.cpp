@@ -19,7 +19,8 @@ void defaultIsFailClosed() {
 void roundTripsRepresentativePolicies() {
     for (MidiInputTarget target : {MidiInputTarget::SynthA,
                                   MidiInputTarget::SynthB,
-                                  MidiInputTarget::Drums}) {
+                                  MidiInputTarget::Drums,
+                                  MidiInputTarget::Perform}) {
         MidiInputRoutingConfig source{};
         source.enabled = true;
         source.channelMode = MidiInputChannelMode::Single;
@@ -47,12 +48,15 @@ void corruptionFailsClosed() {
     assert(!MidiInputSettings::decodeRoutingConfig(word | 0x00000100u, decoded));
     assert(!decoded.enabled);
 
-    const uint32_t invalidTarget =
+    // The target field is two bits and all four values are public since PERFORM was added (3).
+    // A word with the old "invalid" pattern now decodes to PERFORM; corruption of the reserved
+    // bits and the magic/version stays fail-closed (tested above).
+    const uint32_t performWord =
         (static_cast<uint32_t>(MidiInputSettings::kSettingsMagic) << 24u) |
         (static_cast<uint32_t>(MidiInputSettings::kSettingsVersion) << 16u) |
         0xC0u;
-    assert(!MidiInputSettings::decodeRoutingConfig(invalidTarget, decoded));
-    assert(decoded.target == MidiInputTarget::SynthA);
+    assert(MidiInputSettings::decodeRoutingConfig(performWord, decoded));
+    assert(decoded.target == MidiInputTarget::Perform);
 }
 
 void uiCyclesAllPublicValues() {
@@ -68,9 +72,11 @@ void uiCyclesAllPublicValues() {
 
     config.target = MidiInputTarget::SynthA;
     config = GroovePuterUi::MidiInputUi::stepTarget(config, -1);
-    assert(config.target == MidiInputTarget::Drums);
+    assert(config.target == MidiInputTarget::Perform);
     config = GroovePuterUi::MidiInputUi::stepTarget(config, 1);
     assert(config.target == MidiInputTarget::SynthA);
+    config = GroovePuterUi::MidiInputUi::stepTarget(config, 3);
+    assert(config.target == MidiInputTarget::Perform);
 }
 }  // namespace
 

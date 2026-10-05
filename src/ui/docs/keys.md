@@ -121,7 +121,9 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
-| `G` | Reroll only the selected synth lane when NOTE ENTRY is OFF |
+| `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
+| `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
+| `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
 | `Alt+Enter` / `Ctrl+Enter` | Accept working material |
 | `Alt+Backspace` / `Alt+X` | Discard working edits to accepted material |
 | `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
@@ -138,9 +140,16 @@ note. `Ctrl+Z` undoes a retained note edit.
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.
 
-Plain `G` uses the active Genre/Variant/Rhythm/P-level/harmony identity. During PLAY
+In STEPS outside NOTE ENTRY, plain `G` uses the active Genre/Variant/Rhythm/P-level/harmony identity. During PLAY
 the selected lane publishes at `BAR_START`; the other synth and drums stay unchanged.
-Inside NOTE ENTRY, `G` remains note input.
+Inside NOTE ENTRY, `G` and `P` remain note input (including scancode-only events).
+`P` only changes the shared request selector (P1/P2/P3 internally); it does not regenerate,
+change the current pattern, or replace Undo. DRUMS and MATERIAL see the same selector.
+`Alt+G` retains the legacy algorithm and the same selected-synth scope; it is not
+whole-scene CHAOS. In STOP its runtime events update immediately; in PLAY the old
+runtime remains audible until `BAR_START`, just as for G.
+Undo before that boundary cancels the pending activation; Redo during PLAY and
+Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 
 ### KNOBS / MORE
 

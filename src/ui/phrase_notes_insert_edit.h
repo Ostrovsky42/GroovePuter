@@ -55,10 +55,14 @@ inline uint8_t continuedNote(const Buffer& phrase, uint16_t targetTick) {
   return note;
 }
 
+// `pitch < 0` keeps the continue-the-melody rule; an external keyboard passes the played pitch and
+// velocity (step entry).
 inline Result prepare(const Buffer& live,
                       uint16_t cursorTick,
                       RuntimePhraseEdit::Grid grid,
-                      Prepared& out) {
+                      Prepared& out,
+                      int pitch = -1,
+                      uint8_t velocity = kInsertVelocity) {
   out.before = live;
   out.after = live;
 
@@ -84,7 +88,8 @@ inline Result prepare(const Buffer& live,
           live, out.after, [&](Buffer& candidate) {
             editResult = RuntimePhraseEdit::insertSnapped(
                 candidate, cursorTick, gridTicks,
-                continuedNote(live, snappedTick), kInsertVelocity);
+                pitch >= 0 ? static_cast<uint8_t>(pitch) : continuedNote(live, snappedTick),
+                velocity);
           });
 
   if (editResult != RuntimePhraseEdit::EventEditResult::Changed ||

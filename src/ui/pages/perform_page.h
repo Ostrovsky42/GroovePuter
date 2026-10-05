@@ -13,6 +13,7 @@ enum class PerformanceToolContext : uint8_t {
     Chord,
     Arp,
     Rhythm,
+    Input,
     Count,
 };
 
@@ -42,7 +43,7 @@ private:
         uint8_t context = state.performContext;
         if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
         selectedContext_ = static_cast<PerformanceToolContext>(context);
-        constexpr uint8_t kMaxRowByContext[4] = {5, 5, 3, 5};
+        constexpr uint8_t kMaxRowByContext[5] = {5, 5, 3, 5, 5};
         for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
                 ? state.performRows[i]
@@ -57,6 +58,7 @@ private:
     void adjustSelectedValue(int direction);
     void toggleSelectedValue();
     void cycleOutput(int direction);
+    void adjustInput(int direction);
     uint8_t rowCountForContext() const;
     uint8_t currentRow() const;
     const char* selectedRowHint() const;

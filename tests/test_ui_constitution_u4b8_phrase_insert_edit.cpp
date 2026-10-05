@@ -175,6 +175,24 @@ int main() {
            "a full melody did not report being full");
   }
 
+  // Step entry from an external keyboard: the played pitch and velocity replace the
+  // continue-the-melody rule and the default velocity; without them nothing changes.
+  {
+    const Buffer live = makePhrase();
+    Prepared prepared{};
+    assert(PhraseNotesInsertEdit::prepare(live, 100, Grid::Sixteenth, prepared, 72, 33) ==
+           Result::Ready);
+    const Event* added = eventAt(prepared.after, 96);
+    expect(added != nullptr && added->note == 72 && added->velocity == 33,
+           "an explicit pitch and velocity were not used");
+    Prepared plain{};
+    assert(PhraseNotesInsertEdit::prepare(live, 100, Grid::Sixteenth, plain) == Result::Ready);
+    const Event* continued = eventAt(plain.after, 96);
+    expect(continued != nullptr && continued->note == 67 &&
+               continued->velocity == PhraseNotesInsertEdit::kInsertVelocity,
+           "the default rule changed");
+  }
+
   if (g_failures == 0) {
     std::printf("UI Constitution U4B8 phrase insert: PASS\n");
     return 0;

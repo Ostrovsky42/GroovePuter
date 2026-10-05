@@ -112,8 +112,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
       const bool redo = owner.nextIsRedo();
-      const UndoResult result =
-          GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+      UndoResult result = UndoResult::NothingToUndo;
+      withAudioGuard([&]() {
+        result = GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+      });
       switch (result) {
         case UndoResult::Restored:
           UI::showToast(redo ? "REDO: GENERATION" : "UNDO: GENERATION", 900);
@@ -442,7 +444,11 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
 
     const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
         UndoKind::Generation, before, [&]() {
-          GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+          withAudioGuard([&]() {
+            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                prepared.synthIndex, prepared.bankIndex, prepared.patternIndex);
+          });
         });
     if (!committed) {
       if (activationSlot >= 0) {
@@ -627,6 +633,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       ui_event.scancode <= GROOVEPUTER_F8) {
     key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
   }
+  // These letters also arrive as scancode-only UI events. NOTE ENTRY must
+  // consume them as pitches before the command/legacy generation paths.
+  if (key == 0 && (ui_event.scancode == GROOVEPUTER_G ||
+                   ui_event.scancode == GROOVEPUTER_P)) {
+    key = ui_event.scancode == GROOVEPUTER_G ? 'g' : 'p';
+  }
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
@@ -722,6 +734,13 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     resetNoteHoldTracking();
   }
 
+  if (!note_entry_mode_ && lowerKey == 'p' &&
+      !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
+    return true;
+  }
+
   // Outside NOTE ENTRY, plain G rerolls only this physical synth voice through
   // the active Genre/recipe/P-level/harmony context. Drums and the other synth
   // remain owned by their current patterns. Modified editor commands remain in
@@ -749,6 +768,22 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       label = "GEN -> NEXT BAR";
     else if (result == QuantizedGenerationResult::AttemptUnavailable)
       label = "GEN ATTEMPT FULL";
+    else if (GroovePuterRhythm::quantizedGenerationStatus() ==
+             GroovePuterRhythm::QuantizedGenerationStatus::Busy)
+      label = "GEN BUSY";
+
+    if (result == QuantizedGenerationResult::Failed) {
+      const Scene& scene = mini_acid_.sceneManager().currentScene();
+      LOG_WARN_UI("Synth G refused: voice=%d status=%u genre=%u recipe=%u rhythm=%u/%u level=%u page=%d",
+                  voice_index_,
+                  static_cast<unsigned>(GroovePuterRhythm::quantizedGenerationStatus()),
+                  static_cast<unsigned>(scene.genre.generativeMode),
+                  static_cast<unsigned>(scene.genre.recipe),
+                  static_cast<unsigned>(scene.genre.rhythmSelectionMode),
+                  static_cast<unsigned>(scene.genre.rhythmArchetypeId),
+                  static_cast<unsigned>(GroovePuterState::currentGenerationLevel()),
+                  mini_acid_.currentPageIndex());
+    }
     UI::showToast(label, 1200);
     return true;
   }

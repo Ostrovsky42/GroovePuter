@@ -70,8 +70,10 @@ wavetable_h = (ROOT / "src/dsp/audio_wavetables.h").read_text(encoding="utf-8")
 wavetable_cpp = (ROOT / "src/dsp/audio_wavetables.cpp").read_text(encoding="utf-8")
 for token in ("lookupTriangle", "triangleTable_"):
     require(token not in wavetable_h + wavetable_cpp, f"WT1 dead triangle representation survived: {token}")
-for token in ("lookupSaw", "sawTable_", "lookupSquare", "squareTable_", "lookupSine", "sineTable_"):
+for token in ("lookupSaw", "lookupSquare", "lookupSine", "sineTable_"):
     require(token in wavetable_h + wavetable_cpp, f"WT1 scope breach: surviving wavetable owner missing {token}")
+for token in ("sawTable_", "squareTable_"):
+    require(token not in wavetable_h + wavetable_cpp, f"closed-form saw/square regressed to a table: {token}")
 
 instrumenter = (ROOT / "scripts/instrument_cardputer_memory_runtime.py").read_text(encoding="utf-8")
 for token in (

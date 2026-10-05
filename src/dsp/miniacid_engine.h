@@ -133,6 +133,9 @@ public:
   void continueTransport();
 
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
+  // A played drum lane (0..7: kick, snare, closed hat, open hat, mid tom, high tom, rim, clap)
+  // pulses the LED like a sequenced hit. Kept in the engine so the output sink needs no LED/scene types.
+  void pulseLedForDrumLane(uint8_t lane);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
   void suspendLiveNoteProjection(int synthIndex);

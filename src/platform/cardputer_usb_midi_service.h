@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstddef>
+
 #include <cstdint>
 
+#include "src/midi/external_note_queue.h"
+#include "src/midi/latency_histogram.h"
 #include "src/midi/midi_input_dispatcher.h"
 
 class MusicalEventRouter;
@@ -39,6 +43,19 @@ bool registerCardputerUsbMidiSink(
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);
 
 GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig();
+// External keyboard notes for the PERFORM target. Producer: MidiDispatchTask. Consumer: the loop
+// task, which owns the PERFORM keyboard.
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue();
+
+// Acceptance diagnostics: USB-callback -> dispatch-task latency (needs GROOVEPUTER_USB_ACCEPT_DIAG)
+// and the dispatch task's minimum free stack since start.
+const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency();
+uint32_t cardputerUsbDispatchStackFreeBytes();
+// Last non-note Host packets as "CTL n=<count> <status.d1.d2> ..." (needs GROOVEPUTER_USB_ACCEPT_DIAG).
+void cardputerUsbLastRawText(char* out, size_t size);
+// Shape of the last controller / pitch-bend burst: count, min..max, last value.
+void cardputerUsbRampText(char* ccOut, size_t ccSize, char* pbOut, size_t pbSize);
+
 bool applyCardputerMidiInputRuntimeRoutingConfig(
     const GroovePuterMidi::MidiInputRoutingConfig& config);
 
