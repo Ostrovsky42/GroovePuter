@@ -15,14 +15,15 @@ workflow = (ROOT / "src/ui/workflow_mode.h").read_text()
 readme = (ROOT / "README.md").read_text()
 manual = (ROOT / "MANUAL.md").read_text()
 keys = (ROOT / "src/ui/docs/keys.md").read_text()
+docs_index = (ROOT / "docs/README.md").read_text()
+quickstart_path = ROOT / "docs/user/QUICKSTART.md"
 groove_lab = (ROOT / "docs/GROOVE_LAB.md").read_text()
 release = (ROOT / "docs/releases/0_9_1_RELEASE.md").read_text()
 integration = (
     ROOT / "docs/stages/INTEGRATED_GENERATE_PHRASE_ACCEPTANCE.md"
 ).read_text()
 
-# Existing on-device help routing remains intact. The embedded string table itself is
-# intentionally unchanged by this docs-only PR.
+# Existing on-device help routing remains intact.
 assert '"Alt+H       Toggle this help"' in help_content
 assert "Ctrl+H" not in help_content
 assert '"HELP: %s  ESC/ALT+H"' in overlay
@@ -68,20 +69,32 @@ assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 
-# The public README now routes users through the documentation facade. Keep
-# navigation and truthful release status checked without freezing old marketing
-# copy. MANUAL and the historical release record remain separately validated.
+# 0.9.17 First Five Minutes documentation contract. The public landing page must
+# point at the hardware-accepted 0.9.16 foundation and the first user-facing page
+# must be a small action-oriented quick start rather than historical architecture.
 assert readme.startswith("# GroovePuter\n")
 assert "M5Stack Cardputer ADV" in readme
+assert "v0.9.16" in readme
+assert "docs/user/QUICKSTART.md" in readme
+assert "0.9.14 / 0.9.15 public-beta candidate" not in readme
 assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
-assert "hardware-release claim" in readme
 assert "GENRE != FEEL != SOUND" in readme
-facade = (ROOT / "docs/README.md").read_text()
-assert "../src/ui/docs/keys.md" in facade
-assert "releases/0.9.15-hardware-acceptance.md" in facade
 
-assert manual.startswith("# GroovePuter 0.9.14 Manual")
+assert quickstart_path.exists(), "0.9.17 user quick start is missing"
+quickstart = quickstart_path.read_text()
+assert quickstart.startswith("# GroovePuter 0.9.17 — First Five Minutes")
+for action in ("Space", "Alt+V", "G", "D", "Ctrl+Z", "Alt+H"):
+    assert action in quickstart, action
+for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "ReferenceRole"):
+    assert internal_term not in quickstart, internal_term
+
+assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
+assert "0.9.16" in docs_index
+assert "older 0.9.1-era manual" not in docs_index
+
+assert manual.startswith("# GroovePuter 0.9.17 Manual")
+assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
 assert "DEVELOP + BREAK 8B" in manual
@@ -92,9 +105,20 @@ assert "TEXTURE    -> FEEL" in manual
 assert "GENRE 1/3" not in manual
 assert "GENERATION 3/3" not in manual
 
-# The canonical manual and key map follow the current development workflow, while
-# the 0.9.1 release record remains frozen below.
-assert keys.startswith("# GroovePuter 0.9.14 Key Map")
+# The canonical external key map keeps the full expert reference, but 0.9.17 adds
+# a stable beginner constitution at the top: Space=transport, G=generate current
+# context, D=develop on MATERIAL, Ctrl+Z=undo, Alt+H=context help.
+assert keys.startswith("# GroovePuter 0.9.17 Key Map")
+assert "## First Five Minutes" in keys
+for expected in (
+    "`Space`",
+    "`G`",
+    "Generate the thing you are looking at",
+    "`D`",
+    "`Ctrl+Z`",
+    "`Alt+H`",
+):
+    assert expected in keys
 assert "GENERATE: GENRE -> FEEL" in keys
 assert "MATERIAL BANK`, `D` still means derive" in keys
 assert "slot's saved descriptor selects" in keys
@@ -103,6 +127,14 @@ assert "## FEEL 2/2" in keys
 assert "## MATERIAL BANK" in keys
 assert "## GENERATION 3/3" not in keys
 assert "PAUSE MIDI FIRST" not in keys
+
+# On-device Help must not send a new user to the retired Groove Lab label and the
+# MATERIAL page must expose the actual hero actions documented externally.
+assert '"Alt+V       GENRE"' in help_content
+assert '"Alt+V       Groove Lab"' not in help_content
+assert '"G           New TAKE at TO"' in help_content
+assert '"D           DEVELOP fresh TAKE"' in help_content
+assert '"R           Make room / reuse"' in help_content
 
 assert groove_lab.startswith("# Groove Lab — Historical Page Note")
 assert "Mode Page is retired" in groove_lab
