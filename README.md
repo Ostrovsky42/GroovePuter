@@ -32,7 +32,7 @@ The first-session key vocabulary is intentionally small:
 
 ```text
 Space     PLAY / STOP
-Alt+V     GENRE
+Fn+M      workspace launcher → GENRE / MATERIAL
 G         generate the thing on screen
 D         DEVELOP on MATERIAL
 Ctrl+Z    undo
@@ -87,7 +87,7 @@ DEVELOP
 A truthful first-session path is:
 
 1. `Space` — start playback.
-2. `Alt+V` — open GENRE and choose Genre / Variant / Rhythm.
+2. `Fn+M` — open the workspace launcher, choose GENRE, then select Genre / Variant / Rhythm.
 3. `G` — generate and listen.
 4. `Fn+M` — open the workspace launcher and go to MATERIAL.
 5. Set `LENGTH = 4B` and `STYLE = REWORK`.
@@ -95,6 +95,8 @@ A truthful first-session path is:
 7. `D` — develop that fresh TAKE into the supported related development / break cycle.
 8. `Ctrl+Z` — undo the retained cycle if you do not want it.
 9. Open PROJECT and use the on-screen Save action.
+
+The v0.9.16 foundation still has a legacy `Alt+V` shortcut that resolves to FEEL, so the first-session path deliberately uses the workspace launcher for GENRE until that navigation defect is repaired in a focused 0.9.17 change.
 
 For the complete current key map, see [`src/ui/docs/keys.md`](src/ui/docs/keys.md). On-device page-aware help is available with `Alt+H`.
 
