@@ -105,10 +105,18 @@ assert "TEXTURE    -> FEEL" in manual
 assert "GENRE 1/3" not in manual
 assert "GENERATION 3/3" not in manual
 
-# Hard-global key ownership must win in docs just as it does in MiniAcidDisplay:
-# Alt+V is GENRE and Alt+X is LiveMix before page dispatch. Do not advertise
-# unreachable Synth-local CONNECT/DISCARD chords on those same keys.
-assert "Shortcut Alt+V -> Page 11" in display
+# Hard-global key ownership must win in docs just as it does in MiniAcidDisplay.
+# 0.9.17 fixes the old hardcoded legacy Page 11 destination so Alt+V really opens
+# GENRE. Alt+X remains LiveMix before page dispatch; do not advertise unreachable
+# Synth-local CONNECT/DISCARD chords on those same keys.
+alt_v_handler = re.search(
+    r"if \(event\.alt && \(event\.key == 'v'.*?return true;\n\s*}",
+    display,
+    re.S,
+)
+assert alt_v_handler, "Alt+V global handler missing"
+assert "goToPage(WorkflowPages::kGenre);" in alt_v_handler.group(0)
+assert "Page 11" not in alt_v_handler.group(0)
 assert "LiveMix: ON" in display and "event.alt && (event.key == 'x'" in display
 assert "`Alt+V` prepares CONNECT" not in manual
 assert "`Alt+Backspace` or `Alt+X` DISCARDs" not in manual
