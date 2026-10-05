@@ -1635,6 +1635,7 @@ void SceneManager::loadDefaultScene() {
   grooveFlavor_ = 0;
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
+  applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
@@ -1854,6 +1855,7 @@ void SceneManager::wipeToZero() {
   grooveFlavor_ = 0;
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
+  applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {

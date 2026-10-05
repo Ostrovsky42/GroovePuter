@@ -1,5 +1,6 @@
 #include "phrase_execution.h"
 
+#include "../composition/phrase_evolution_admission.h"
 #include "../rhythm/bar_evolution.h"
 #include "../rhythm/reference_phrase_vocabulary.h"
 
@@ -58,7 +59,8 @@ void resetSemanticProbeScratch(PhraseExecutionScratch& scratch) {
 // GF2-I3: a declared law only takes effect where the archetype is admitted to
 // phrase evolution and the trajectory it maps to is eligible at this level.
 // Anything else leaves the phrase on its established per-bar realization.
-TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
+TrajectoryId admittedPhraseTrajectory(const GenreSettings& genre,
+                                      RhythmArchetypeId archetypeId,
                                       PhraseEvolutionLawId law,
                                       RealizationLevel level,
                                       uint8_t phraseBars) {
@@ -69,7 +71,7 @@ TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(archetypeId);
   if (definition == nullptr ||
-      !ReferenceVocabulary::phraseEvolutionEnabled(definition->key)) {
+      !phraseEvolutionAdmitted(genre, definition->key)) {
     return kNoTrajectoryId;
   }
 
@@ -153,7 +155,7 @@ PhraseExecutionStatus preparePhraseExecution(
   const PhraseEvolutionLawId selectedPhraseLaw =
       destination.selection.composition.phraseLaw;
   destination.phraseTrajectory = admittedPhraseTrajectory(
-      destination.selection.composition.rhythmArchetypeId,
+      settings, destination.selection.composition.rhythmArchetypeId,
       selectedPhraseLaw, materialization.level,
       destination.length.effectivePhraseBars);
   if (selectedPhraseLaw != PhraseEvolutionLawId::Loop &&
@@ -260,6 +262,45 @@ PhraseExecutionStatus preparePhraseExecution(
 
   destination.status = PhraseExecutionStatus::Ready;
   return destination.status;
+}
+
+PhraseLawApplyStatus applyPhraseLawToExecution(PreparedPhraseExecution& execution,
+                                               PhraseEvolutionLawId law) {
+  if (execution.status != PhraseExecutionStatus::Ready) {
+    return PhraseLawApplyStatus::InvalidContext;
+  }
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          execution.selection.composition.rhythmArchetypeId);
+  if (definition == nullptr) return PhraseLawApplyStatus::InvalidContext;
+
+  execution.phraseTrajectory = kNoTrajectoryId;
+  execution.phrasePlan = RhythmPhrasePlan{};
+  execution.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
+  if (law == PhraseEvolutionLawId::Loop) return PhraseLawApplyStatus::Applied;
+
+  const uint8_t bars = execution.length.effectivePhraseBars;
+  const TrajectoryId requested = admittedPhraseTrajectory(
+      execution.settings, execution.selection.composition.rhythmArchetypeId,
+      law, execution.materialization.level, bars);
+  if (requested == kNoTrajectoryId) return PhraseLawApplyStatus::NotAdmitted;
+
+  BarEvolutionRequest evolution{};
+  evolution.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
+  evolution.archetypeId = definition->archetypeId;
+  evolution.phraseBars = bars > kMaxPhraseBars ? kMaxPhraseBars : bars;
+  evolution.level = execution.materialization.level;
+  evolution.generation = execution.selection.realizationGeneration;
+  evolution.structuralDensityTarget = execution.selection.structuralDensityTarget;
+  evolution.requestedTrajectoryId = requested;
+  const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
+  if (evolved.status != BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
+    return PhraseLawApplyStatus::NoEligibleTrajectory;
+  }
+  execution.phraseTrajectory = requested;
+  execution.phrasePlan = evolved.plan;
+  execution.selection.composition.phraseLaw = law;
+  return PhraseLawApplyStatus::Applied;
 }
 
 StrongRhythmMigrationResult materializePreparedPhraseBar(

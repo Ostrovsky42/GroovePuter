@@ -126,6 +126,7 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
         switch (event.type) {
             case MusicalEventType::NoteOn: {
                 triggerRegisteredLocalDrumVoice(lane, event.velocity);
+                engine_.pulseLedForDrumLane(lane);
                 if (engine_.sampleStore && engine_.samplerTrack &&
                     engine_.samplerTrack->isEnabled() &&
                     engine_.samplerTrack->pad(lane).id.value != 0) {

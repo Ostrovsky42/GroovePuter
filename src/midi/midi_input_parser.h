@@ -27,7 +27,7 @@ public:
     ParseResult usbPacket(const uint8_t (&packet)[4], uint32_t atMicros) const {
         if ((packet[0] >> 4u) != 0) return {};
         const uint8_t cin = packet[0] & 0x0fu;
-        if (cin != 0x08u && cin != 0x09u && cin != 0x0bu) return {};
+        if (cin != 0x08u && cin != 0x09u && cin != 0x0bu && cin != 0x0eu) return {};
         return channelMessage(packet[1], packet[2], packet[3], cin, atMicros);
     }
 
@@ -69,7 +69,8 @@ private:
         const uint8_t channel = status & 0x0fu;
         if ((message == 0x80u && cin != 0x08u) ||
             (message == 0x90u && cin != 0x09u) ||
-            (message == 0xb0u && cin != 0x0bu)) {
+            (message == 0xb0u && cin != 0x0bu) ||
+            (message == 0xe0u && cin != 0x0eu)) {
             return {};
         }
 
@@ -84,13 +85,19 @@ private:
             kind = InputKind::AllNotesOff;
         } else if (message == 0xb0u && data1 == 120u) {
             kind = InputKind::AllSoundOff;
+        } else if (message == 0xb0u && (data1 == 1u || data1 == 94u)) {
+            // CC1 (modulation) and CC94, which is what the owner's nanoKEY2 Mod button sends
+            // (measured: a 0..15 ramp up on press and back to 0 on release).
+            kind = InputKind::Mod;
+        } else if (message == 0xe0u) {
+            kind = InputKind::PitchBend;  // data1 = LSB (ignored), data2 = MSB
         } else {
             return {};
         }
         return ParseResult{true,
                            MidiInputEvent{InputKey{session_.source, session_.generation,
                                                    channel, static_cast<uint8_t>(
-                                                       message == 0xb0u ? 0u : data1)},
+                                                       (message == 0xb0u || message == 0xe0u) ? 0u : data1)},
                                           kind, data2, atMicros},
                            false, 0};
     }

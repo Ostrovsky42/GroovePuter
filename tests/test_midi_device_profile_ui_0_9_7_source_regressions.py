@@ -18,7 +18,7 @@ def forbid(text: str, needle: str, where: str) -> None:
 
 
 require(HEADER, "enum class ProjectSection { Scenes = 0, Groove, Led, Midi };", "project_page.h")
-require(HEADER, "LedFlash, MidiDevice", "project_page.h")
+require(HEADER, "LedFlash, LedTest, UsbRole, MidiDevice", "project_page.h")
 require(HEADER, "uint8_t midi_profile_preview_ = 0xFF;", "project_page.h")
 require(HEADER, "static_assert(sizeof(ProjectPage) <= 256", "project_page.h")
 forbid(HEADER, "MidiOutputSettings", "project_page.h")
@@ -31,8 +31,8 @@ require(CPP, "MainFocus::MidiDevice", "project_page.cpp")
 require(CPP, "ProfileUi::stepSelectableProfile", "project_page.cpp")
 require(CPP, "selectCardputerMidiDeviceProfileForNextBoot", "project_page.cpp")
 require(CPP, "cardputerMidiDeviceProfileRestartRequired", "project_page.cpp")
-require(CPP, "Apply:REBOOT", "project_page.cpp")
-require(CPP, "Apply:ENTER SAVE", "project_page.cpp")
+require(CPP, "PROFILE: REBOOT REQUIRED", "project_page.cpp")
+require(CPP, "ENTER SAVE PROFILE", "project_page.cpp")
 forbid(CPP, "publishMidiPatternStartupRoutes", "project_page.cpp")
 forbid(CPP, "applyMidiDeviceProfile(", "project_page.cpp")
 

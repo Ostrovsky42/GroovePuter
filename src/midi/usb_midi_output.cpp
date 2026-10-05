@@ -1,5 +1,7 @@
 #include "usb_midi_output.h"
 
+#include <atomic>
+
 #include "midi_pattern_startup_routes.h"
 
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
@@ -20,10 +22,23 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
     // before Arduino setup(). Expanded state is initialized in begin().
 }
 
+namespace {
+// Raw MidiInput stays fail-closed unless the product says the input is an external keyboard
+// session (Host role): there is no computer on the other end to echo notes back to. In the
+// Device role the same events would loop to the DAW, so the default is off.
+std::atomic<bool> g_midiInputThru{false};
+}  // namespace
+
+void UsbMidiOutput::setMidiInputThru(bool enabled) {
+    g_midiInputThru.store(enabled, std::memory_order_relaxed);
+}
+
 bool UsbMidiOutput::isSynthPerformanceSource(MusicalEventSource source) {
     return source == MusicalEventSource::PerformanceKeyboard ||
            source == MusicalEventSource::PerformanceKeyboardPoly ||
-           source == MusicalEventSource::Arpeggiator;
+           source == MusicalEventSource::Arpeggiator ||
+           (source == MusicalEventSource::MidiInput &&
+            g_midiInputThru.load(std::memory_order_relaxed));
 }
 
 bool UsbMidiOutput::sourceRequestsPolyReceiver(MusicalEventSource source) {

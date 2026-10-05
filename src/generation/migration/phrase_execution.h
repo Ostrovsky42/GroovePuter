@@ -70,6 +70,21 @@ PhraseExecutionStatus preparePhraseExecution(
 // Random-access physical materialization. physicalPatternAddress is a storage
 // destination coordinate only; explicit phraseBarOrdinal remains the musical
 // coordinate. On validation failure the caller-owned outputs are untouched.
+// P0: re-apply a phrase law to an already prepared execution WITHOUT re-preparing it, so the
+// same identity, settings, level, ordinal and pitch source produce the same base idea under a
+// different bar-function programme. Loop clears the programme. Applied, or a typed refusal:
+// the archetype is not admitted for this scenario (see phraseEvolutionAdmitted) or has no
+// eligible trajectory for this bar count and level. On refusal the execution is left as Loop.
+enum class PhraseLawApplyStatus : uint8_t {
+  Applied = 0,
+  NotAdmitted,
+  NoEligibleTrajectory,
+  InvalidContext,
+};
+
+PhraseLawApplyStatus applyPhraseLawToExecution(PreparedPhraseExecution& execution,
+                                               PhraseEvolutionLawId law);
+
 StrongRhythmMigrationResult materializePreparedPhraseBar(
     const PreparedPhraseExecution& prepared,
     uint8_t phraseBarOrdinal,

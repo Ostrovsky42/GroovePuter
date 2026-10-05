@@ -30,8 +30,8 @@ void LedManager::setLedColor(Rgb8 color, uint8_t brightness) {
 #if defined(ESP32) && GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN >= 0
     neopixelWrite(GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN, r, g, b);
 #else
-    // Cardputer ADV uses GPIO21 as PA_EN. RGB output is deliberately disabled
-    // until a distinct LED data pin is verified for this hardware profile.
+    // SDL has no physical RGB output. On ADV, display-owned GPIO38 powers
+    // the LED; do not override the backlight PWM here.
     (void)r;
     (void)g;
     (void)b;

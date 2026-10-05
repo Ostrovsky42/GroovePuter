@@ -8,7 +8,9 @@
 #include "src/state/generation_request_state.h"
 
 #include <array>
+#include <type_traits>
 #include <cstdint>
+#include <cstring>
 
 namespace GeneratedPhraseP1R {
 
@@ -124,6 +126,70 @@ inline bool prepareDestinationIndependentPitchSource(
   return true;
 }
 
+// P0 R1: fingerprint of everything prepareDestinationIndependentPitchSource reads from
+// the engine instead of from the PreparedPhraseExecution. The recipe stores this at
+// generation time; a later difference means the rebuilt sections would be produced in a
+// different context than the kept phrase. Field-wise (no struct bytes: padding is undefined).
+inline uint32_t pitchSourceFingerprint(MiniAcid& engine) {
+  uint64_t x = 1469598103934665603ull;
+  const auto mix = [&x](uint64_t v) {
+    x ^= v + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2);
+    x *= 1099511628211ull;
+  };
+  const auto mixF = [&mix](float f) {
+    uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(f), "float size");
+    std::memcpy(&bits, &f, sizeof(bits));
+    mix(bits);
+  };
+  auto& gm = engine.genreManager();
+  mix(static_cast<uint64_t>(gm.recipe()));
+  mix(static_cast<uint64_t>(gm.generativeMode()));
+  mix(static_cast<uint64_t>(engine.modeManager().flavor()));
+  mixF(engine.bpm());
+  const GenerativeParams p = gm.getCompiledGenerativeParams();
+  mix(static_cast<uint64_t>(p.minNotes)); mix(static_cast<uint64_t>(p.maxNotes));
+  mix(static_cast<uint64_t>(p.minOctave)); mix(static_cast<uint64_t>(p.maxOctave));
+  mixF(p.slideProbability); mixF(p.accentProbability); mixF(p.gateLengthMultiplier);
+  mixF(p.swingAmount); mixF(p.microTimingAmount);
+  mix(static_cast<uint64_t>(p.velocityMin)); mix(static_cast<uint64_t>(p.velocityMax));
+  mix(p.preferDownbeats); mix(p.allowRepeats);
+  mixF(p.rootNoteBias); mixF(p.ghostProbability); mixF(p.chromaticProbability);
+  mix(p.sparseKick); mix(p.sparseHats); mix(p.noAccents);
+  mixF(p.fillProbability); mixF(p.drumSyncopation);
+  mix(p.drumPreferOffbeat); mix(static_cast<uint64_t>(p.drumVoiceCount));
+  const GenreBehavior b = gm.getBehavior();
+  mix(b.stepMask); mix(b.motifLength); mix(b.preferredScale);
+  mix(b.useMotif); mix(b.allowChromatic); mix(b.forceOctaveJump); mix(b.avoidClusters);
+  return static_cast<uint32_t>(x ^ (x >> 32));
+}
+
+// P0 R0: canonical musical content of one bar (every lane), field-wise, so padding and
+// service bytes never take part. Same fields as the P0-B golden dump.
+inline uint64_t canonicalBarHash(const DrumPatternSet& drums,
+                                 const SynthPattern& synthA,
+                                 const SynthPattern& synthB) {
+  uint64_t x = 1469598103934665603ull;
+  const auto h = [&x](uint64_t v) {
+    x ^= v + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2);
+    x *= 1099511628211ull;
+  };
+  for (int v = 0; v < DrumPatternSet::kVoices; ++v)
+    for (int st = 0; st < DrumPattern::kSteps; ++st) {
+      const DrumStep& d = drums.voices[v].steps[st];
+      h((uint64_t(d.hit) << 1) | d.accent); h(d.velocity); h(uint8_t(d.timing));
+      h(d.fx); h(d.fxParam); h(d.probability);
+    }
+  for (const SynthPattern* sp : {&synthA, &synthB})
+    for (int st = 0; st < SynthPattern::kSteps; ++st) {
+      const SynthStep& s = sp->steps[st];
+      h(uint8_t(s.note));
+      h((uint64_t(s.slide) << 2) | (uint64_t(s.accent) << 1) | s.ghost);
+      h(s.velocity); h(uint8_t(s.timing)); h(s.fx); h(s.fxParam); h(s.probability);
+    }
+  return x;
+}
+
 inline bool materializePreparedBars(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     const PhraseGenerator::PhraseBar& pitchSource,
@@ -161,6 +227,21 @@ inline bool materializePreparedBars(
   return true;
 }
 
+// D1-B: compact owner-derived evidence for one materialized Synth A bar. Valid
+// only when P1R materialization actually Applied AND the bass owner exported
+// its resolved plan; every other path leaves it default (valid == false).
+// Owns no Pattern bytes.
+struct MaterializedSynthABarEvidence {
+  bool valid = false;
+  uint8_t phraseBarOrdinal = 0;
+  GroovePuterRhythm::BassRhythmPlan bassRhythm{};
+  // D1-B1: pitch class at each bass attack, from the owner's tonal plan.
+  GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
+};
+
+static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
+              "bar evidence must stay fixed-capacity");
+
 // PMB-P1 bounded materialization: rebuilds the destination-independent pitch
 // source fresh (PMB-A1 proved this is deterministic/idempotent) and
 // materializes exactly one bar into the caller's single reused scratch
@@ -175,7 +256,9 @@ inline bool materializeOneBar(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
-    PhraseGenerator::PhraseBar& scratch) {
+    PhraseGenerator::PhraseBar& scratch,
+    MaterializedSynthABarEvidence& evidence) {
+  evidence = MaterializedSynthABarEvidence{};
   scratch = PhraseGenerator::PhraseBar{};
   if (!prepareDestinationIndependentPitchSource(engine, execution, scratch)) {
     return false;
@@ -183,7 +266,28 @@ inline bool materializeOneBar(
   const auto result = GroovePuterRhythm::materializePreparedPhraseBar(
       execution, phraseBarOrdinal, physicalPatternAddress,
       scratch.drums, scratch.synthA, scratch.synthB);
-  return result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+  const bool applied =
+      result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+  // Valid only when BOTH required owner results exist (fail closed).
+  if (applied && result.bassRhythmPlanAvailable &&
+      result.bassPitchClassWitnessAvailable) {
+    evidence.valid = true;
+    evidence.phraseBarOrdinal = phraseBarOrdinal;
+    evidence.bassRhythm = result.bassRhythmPlan;
+    evidence.bassPitchClasses = result.bassPitchClassWitness;
+  }
+  return applied;
+}
+
+inline bool materializeOneBar(
+    MiniAcid& engine,
+    const GroovePuterRhythm::PreparedPhraseExecution& execution,
+    uint8_t phraseBarOrdinal,
+    int16_t physicalPatternAddress,
+    PhraseGenerator::PhraseBar& scratch) {
+  MaterializedSynthABarEvidence ignored{};
+  return materializeOneBar(engine, execution, phraseBarOrdinal,
+                           physicalPatternAddress, scratch, ignored);
 }
 
 inline PreparationDisposition prepare(

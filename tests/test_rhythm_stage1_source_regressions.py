@@ -4,7 +4,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TYPES = ROOT / "src/generation/rhythm/rhythm_types.h"
 CATALOG_H = ROOT / "src/generation/rhythm/rhythm_catalog.h"
 CATALOG_CPP = ROOT / "src/generation/rhythm/rhythm_catalog.cpp"
-CORE_WORKFLOW = ROOT / ".github/workflows/core-regressions.yml"
+CORE_WORKFLOW = ROOT / ".github/workflows/core.yml"
+CORE_RUNNER = ROOT / "scripts/ci/run_core.sh"
+CARDPUTER_WORKFLOW = ROOT / ".github/workflows/cardputer-adv.yml"
+MIDI_WORKFLOW = ROOT / ".github/workflows/midi-targets.yml"
 DEDICATED_WORKFLOW = ROOT / ".github/workflows/groove-vocabulary-stage1.yml"
 ATLAS_COMPILER = ROOT / "tools/atlas/compile_atlas_runtime.py"
 ATLAS_TEST = ROOT / "tests/test_rhythm_atlas_falsification.cpp"
@@ -74,10 +77,15 @@ def test_stage1_is_bounded_and_not_runtime_coupled() -> None:
 
 def test_existing_core_ci_owns_stage1_tests() -> None:
     assert not DEDICATED_WORKFLOW.exists(), "temporary Stage 1 workflow must not survive"
-    workflow = read(CORE_WORKFLOW)
-    require(workflow, "bash tests/run_rhythm_stage1_tests.sh")
-    require(workflow, "cardputer-adv-build")
-    require(workflow, "cardputer-adv-seqtrak-midi-only-build")
+    core_workflow = read(CORE_WORKFLOW)
+    core_runner = read(CORE_RUNNER)
+    cardputer_workflow = read(CARDPUTER_WORKFLOW)
+    midi_workflow = read(MIDI_WORKFLOW)
+    require(core_workflow, "bash scripts/ci/run_core.sh")
+    require(core_runner, "bash tests/run_rhythm_stage1_tests.sh")
+    require(cardputer_workflow, "bash scripts/build.sh --warnings all")
+    require(cardputer_workflow, "bash scripts/check_cardputer_dram_budget.sh")
+    require(midi_workflow, "bash scripts/build_seqtrak_midi_only.sh --warnings all")
 
 
 def test_atlas_falsification_uses_hash_gated_v26_inputs() -> None:

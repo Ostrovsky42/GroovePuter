@@ -368,6 +368,16 @@ bool writeIdentityHighWater(const std::string& projectName, uint32_t highWater) 
         removeIfExists(temporaryPath);
         return false;
     }
+    // main now holds the committed high-water. Mirror it into ".bak" so that
+    // losing main later cannot resurrect an older value (which would reissue
+    // published MaterialIds). On failure the advanced main is NOT rolled
+    // back: the caller fails closed and the skipped ids are a benign gap.
+    uint32_t mirrored = 0;
+    if (!copyFile(mainPath, backupPath) ||
+        !readIdentityMeta(backupPath, mirrored) || mirrored != highWater) {
+        removeIfExists(backupPath);
+        return false;
+    }
     return true;
 }
 
@@ -663,17 +673,25 @@ int PatternPagingService::activePageIndex() {
     return activePageIndexStorage();
 }
 
-GroovePuterMaterial::MaterialId PatternPagingService::allocateMaterialId() {
+GroovePuterMaterial::MaterialIdReservation
+PatternPagingService::reserveMaterialIds(uint8_t count) {
+    if (count == 0 || count > 8) return {};
     if (!ensureDirectory()) return {};
     uint32_t highWater = 0;
     if (!loadIdentityHighWater(activeProjectNameStorage(), highWater)) return {};
-    if (highWater == 0xFFFFFFFFu) return {};
-    const uint32_t next = highWater + 1u;
-    if (next == 0 ||
-        !writeIdentityHighWater(activeProjectNameStorage(), next)) {
+    if (highWater > 0xFFFFFFFFu - count) return {};
+    const uint32_t first = highWater + 1u;
+    if (first == 0) return {};
+    const uint32_t next = highWater + static_cast<uint32_t>(count);
+    if (!writeIdentityHighWater(activeProjectNameStorage(), next)) {
         return {};
     }
-    return GroovePuterMaterial::MaterialId{next};
+    return GroovePuterMaterial::MaterialIdReservation{
+        GroovePuterMaterial::MaterialId{first}, count};
+}
+
+GroovePuterMaterial::MaterialId PatternPagingService::allocateMaterialId() {
+    return reserveMaterialIds(1).first;
 }
 
 bool PatternPagingService::ensureDirectory() {

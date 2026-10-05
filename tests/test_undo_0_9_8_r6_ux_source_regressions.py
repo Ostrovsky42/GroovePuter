@@ -59,19 +59,16 @@ def main() -> None:
     # SYNTH parent only admits Pattern Undo while NOTES is already visible and
     # does not call the Pattern child directly across tabs. The Pattern child
     # remains the authority for decoding/exchanging a retained receipt during
-    # Ctrl+Z. R9's hardware follow-up separately lets the parent PREPARE a new
-    # bounded Pattern receipt for STOP-state Synth G before legacy dispatch.
+    # Ctrl+Z. Synth generation is dispatched to that same NOTES child; its
+    # Generation ownership is verified by the runtime behavioral gate.
     require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern,
             "Pattern retained Undo handler disappeared")
     require("synth_tab_ == SynthTab::Notes" in synth_parent and
             "owner.kind() == GroovePuterUndo::UndoKind::Pattern" in synth_parent and
             "MultiPage::handleEvent(ui_event)" in synth_parent and
             "pattern_page_->handleEvent(ui_event)" not in synth_parent and
-            "SynthPatternUndoPayload retained" not in synth_parent and
-            "SynthPatternUndoPayload before" in synth_parent and
-            "captureCurrentSynthPatternUndo" in synth_parent and
-            "synthPatternUndoTargetAvailable" in synth_parent,
-            "Pattern Undo routing must stay local while STOP Synth G gains bounded prepare ownership")
+            "SynthPatternUndoPayload retained" not in synth_parent,
+            "Pattern Undo routing must stay local to the existing NOTES child")
     require('"REDO: MATERIAL"' in synth_parent and '"UNDO: MATERIAL"' in synth_parent and
             '"REDO: STEPS"' in synth_parent and '"UNDO: STEPS"' in synth_parent,
             "Synth one-slot feedback must distinguish Material/Steps Undo from Redo")

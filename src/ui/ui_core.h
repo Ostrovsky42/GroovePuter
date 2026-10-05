@@ -50,6 +50,16 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_TOGGLE_MODE,
   GROOVEPUTER_APP_EVENT_OPEN_GENRE,
   GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE,
+
+  // External keyboard note offered to the active page first (step entry): x = MIDI note,
+  // y = velocity, 0 = note off. A page that does not consume it lets PERFORM play the note.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE,
+  // External keyboard pitch button: x = -1 / +1. The active page may use it (cursor) before PERFORM.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE,
+  // External keyboard Mod button press: the active page may use it (notes tab: delete).
+  GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
+  // External keyboard gesture Sustain held + Mod: clear the whole melody on the notes tab.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };

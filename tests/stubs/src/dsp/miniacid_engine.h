@@ -73,6 +73,8 @@ public:
         calls.push_back(Call{CallType::NoteOn, voice, note, velocity});
     }
 
+    void pulseLedForDrumLane(uint8_t) {}
+
     void liveNoteOff(int voice, uint8_t note) {
         liveNote[static_cast<std::size_t>(voice)] = -1;
         calls.push_back(Call{CallType::NoteOff, voice, note, 0});

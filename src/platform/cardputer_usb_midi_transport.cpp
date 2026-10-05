@@ -1,3 +1,6 @@
+#include "cardputer_usb_role_runtime.h"
+#include "src/midi/latency_histogram.h"
+#include "cardputer_usb_host_midi.h"
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
 
@@ -232,6 +235,24 @@ GroovePuterMidi::MidiInputQueue g_inputQueue;
 GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
+GroovePuterMidi::ExternalNoteQueue g_externalNotes;
+GroovePuterMidi::LatencyHistogram g_ringLatency;  // USB callback -> dispatch task (diagnostics)
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+uint8_t g_lastHostRaw[4][4]{};  // last four non-note packets of a Host session (acceptance diagnostics)
+uint32_t g_lastHostRawCount = 0;
+struct RampStats {  // per controller / pitch bend: shape of what a button sends (diagnostics)
+    uint8_t id = 0xFF;
+    uint32_t n = 0;
+    uint8_t mn = 255, mx = 0, last = 0;
+    void add(uint8_t value) {
+        ++n;
+        if (value < mn) mn = value;
+        if (value > mx) mx = value;
+        last = value;
+    }
+};
+RampStats g_ccStats, g_pbStats;
+#endif
 bool g_usbInputMounted = false;
 portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
 GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
@@ -491,11 +512,23 @@ void applyPendingMidiInputConfig() {
     }
 }
 
+bool usbHostRole() {
+#if ARDUINO_USB_CDC_ON_BOOT
+    // The core already started TinyUSB Device before setup(); a stale saved Host role
+    // (it outlives a reflash) must not turn this build's Device receive into a silent Host path.
+    return false;
+#else
+    return CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host;
+#endif
+}
+
 void syncUsbMidiInputLifecycle() {
-    const bool mounted = g_transport.mounted();
+    const bool host = usbHostRole();
+    const bool mounted = host ? GroovePuterMidi::CardputerUsbHostMidi::isConnected()
+                              : g_transport.mounted();
     if (mounted && !g_usbInputMounted) {
         g_midiIoState.usbAttached();
-        g_midiIoState.usbReady(true, true);
+        g_midiIoState.usbReady(true, !host);  // a Host session only receives
         g_inputParser.reset(GroovePuterMidi::InputSession{
             GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = true;
@@ -513,9 +546,33 @@ void drainIncomingMidiPackets() {
     applyPendingMidiInputConfig();
     syncUsbMidiInputLifecycle();
     midiEventPacket_t packet{};
-    for (std::size_t drained = 0;
-         drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
-         ++drained) {
+    const bool hostRole = usbHostRole();
+    for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
+        if (hostRole) {
+            uint8_t raw4[4];
+            uint32_t stampUs = 0;
+            if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4, &stampUs)) break;
+            if (stampUs != 0) g_ringLatency.add(micros() - stampUs);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+            if ((raw4[1] & 0xF0u) == 0xB0u) {
+                if (g_ccStats.id != raw4[2]) g_ccStats = RampStats{raw4[2]};
+                g_ccStats.add(raw4[3]);
+            } else if ((raw4[1] & 0xF0u) == 0xE0u) {
+                g_pbStats.id = 0;
+                g_pbStats.add(raw4[3]);  // MSB
+            }
+            if ((raw4[1] & 0xF0u) != 0x80u && (raw4[1] & 0xF0u) != 0x90u) {  // not a plain note
+                std::memcpy(g_lastHostRaw[g_lastHostRawCount & 3u], raw4, 4);
+                ++g_lastHostRawCount;
+            }
+#endif
+            packet.header = raw4[0];
+            packet.byte1 = raw4[1];
+            packet.byte2 = raw4[2];
+            packet.byte3 = raw4[3];
+        } else if (!g_transport.readPacket(packet)) {
+            break;
+        }
         ExternalMidiTransportEventType type{};
         if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
                 packet.header, packet.byte1, type)) {
@@ -1331,6 +1388,11 @@ bool CardputerUsbMidiTransport::begin() {
     // so start the already registered MIDI descriptor explicitly in that
     // configuration.
 #if !ARDUINO_USB_CDC_ON_BOOT
+    // Single binary: the saved boot role decides who owns the one USB-OTG controller.
+    if (CardputerUsbRoleRuntime::activeRole() != UsbBootRole::Device) {
+        begun_ = false;
+        return false;
+    }
     if (!USB.begin()) {
         begun_ = false;
         return false;
@@ -1524,9 +1586,18 @@ bool registerCardputerUsbMidiSink(
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
     g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
-    g_midiIoState.requestUsbRole(GroovePuterMidi::UsbRole::Device);
+    // An external keyboard (Host) plays through the external output too; a Device session
+    // must not echo the computer's notes back to it.
+    UsbMidiOutput::setMidiInputThru(usbHostRole());
+    g_midiIoState.requestUsbRole(
+        usbHostRole() ? GroovePuterMidi::UsbRole::Host
+                      : GroovePuterMidi::UsbRole::Device);
     g_midiIoState.boot();
     g_inputDispatcher.bind(router, g_midiIoState);
+    g_inputDispatcher.setPerformSink(&g_externalNotes);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    g_externalNotes.setClock([]() -> uint32_t { return micros(); });
+#endif
     g_inputParser.reset(GroovePuterMidi::InputSession{
         GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
     g_patternDrumGates.clear();
@@ -1650,3 +1721,45 @@ void setCardputerDinMidiEnabled(bool enabled) {
 }
 
 bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
+    return g_externalNotes;
+}
+
+const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency() { return g_ringLatency; }
+
+uint32_t cardputerUsbDispatchStackFreeBytes() {
+    return g_dispatchTaskHandle != nullptr
+        ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(g_dispatchTaskHandle) * sizeof(StackType_t))
+        : 0u;
+}
+
+void cardputerUsbLastRawText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    const uint32_t count = g_lastHostRawCount;
+    std::snprintf(out, size, "CTL n=%lu", static_cast<unsigned long>(count));
+    for (uint32_t i = 0; i < 3 && i < count; ++i) {
+        const uint8_t* p = g_lastHostRaw[(count - 1u - i) & 3u];
+        char item[16];
+        std::snprintf(item, sizeof(item), " %02X.%02X.%02X", p[1], p[2], p[3]);
+        std::strncat(out, item, size - std::strlen(out) - 1);
+    }
+#else
+    if (size > 0) out[0] = '\0';
+#endif
+}
+
+// "CC5E n=37 0..127 l=0" for the last controller seen, "PB n=12 40..88 l=64" for pitch bend (MSB).
+void cardputerUsbRampText(char* ccOut, size_t ccSize, char* pbOut, size_t pbSize) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    if (g_ccStats.n == 0) std::snprintf(ccOut, ccSize, "CC -");
+    else std::snprintf(ccOut, ccSize, "CC%02X n=%lu %u..%u l=%u", g_ccStats.id,
+                       static_cast<unsigned long>(g_ccStats.n), g_ccStats.mn, g_ccStats.mx, g_ccStats.last);
+    if (g_pbStats.n == 0) std::snprintf(pbOut, pbSize, "PB -");
+    else std::snprintf(pbOut, pbSize, "PB n=%lu %u..%u l=%u", static_cast<unsigned long>(g_pbStats.n),
+                       g_pbStats.mn, g_pbStats.mx, g_pbStats.last);
+#else
+    if (ccSize > 0) ccOut[0] = '\0';
+    if (pbSize > 0) pbOut[0] = '\0';
+#endif
+}

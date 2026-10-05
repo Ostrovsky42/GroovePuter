@@ -30,7 +30,11 @@ inline IGfxColor song303Color(int synthIndex) {
   return (synthIndex == 0) ? IGfxColor(0x00D7FF) : IGfxColor(0xFF4FD8);
 }
 
-inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
+inline void formatSongPatternLabel(const MiniAcid& engine,
+                                   SongTrack track,
+                                   int pattern,
+                                   char* out,
+                                   int outSize) {
   if (!out || outSize <= 0) return;
   if (pattern < 0) {
     std::snprintf(out, outSize, "---");
@@ -43,7 +47,35 @@ inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
     std::snprintf(out, outSize, "---");
     return;
   }
-  std::snprintf(out, outSize, "%d%c%d", page, static_cast<char>('A' + bank), slot);
+  int voice = -1;
+  if (track == SongTrack::SynthA) voice = 0;
+  if (track == SongTrack::SynthB) voice = 1;
+  if (voice < 0) {
+    std::snprintf(out, outSize, "%d%c%d", page,
+                  static_cast<char>('A' + bank), slot);
+    return;
+  }
+
+  char kind = '?';
+  switch (engine.songCellMaterialKind(voice, static_cast<int16_t>(pattern))) {
+    case MiniAcid::SongCellMaterialKind::Pattern: kind = 'P'; break;
+    case MiniAcid::SongCellMaterialKind::Melody: kind = 'M'; break;
+    case MiniAcid::SongCellMaterialKind::Unknown: kind = '?'; break;
+    case MiniAcid::SongCellMaterialKind::Empty: kind = '-'; break;
+  }
+  std::snprintf(out, outSize, "%c%d%c%d", kind, page,
+                static_cast<char>('A' + bank), slot);
+}
+
+inline const char* songVoiceStateLabel(MiniAcid::SongVoiceDisplayState state) {
+  switch (state) {
+    case MiniAcid::SongVoiceDisplayState::Pattern: return "PAT";
+    case MiniAcid::SongVoiceDisplayState::Melody: return "MEL";
+    case MiniAcid::SongVoiceDisplayState::Held: return "HOLD";
+    case MiniAcid::SongVoiceDisplayState::Awaiting: return "WAIT";
+    case MiniAcid::SongVoiceDisplayState::LoadFailed: return "FAIL";
+    default: return "?";
+  }
 }
 
 inline int songQuarterFromRow(int row) {
@@ -1487,7 +1519,8 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         char patLabel[16] = "---";
         
         if (patIndex >= 0) {
-            formatSongPatternLabel(patIndex, patLabel, sizeof(patLabel));
+            formatSongPatternLabel(mini_acid_, trk, patIndex, patLabel,
+                                   sizeof(patLabel));
         }
 
         if (trk == SongTrack::SynthA) {
@@ -1683,7 +1716,12 @@ void SongPage::draw(IGfx& gfx) {
       drawMinimalStyle(gfx);
       break;
   }
-  UI::drawStandardFooter(gfx, "[TAB]PHRASE [ARWS]MOVE Q-I:PAT", "G:GEN B:BANK C+N/M:ROW");
+  char materialStatus[48];
+  std::snprintf(
+      materialStatus, sizeof(materialStatus), "A:%s B:%s  G:GEN C+N/M:ROW",
+      songVoiceStateLabel(mini_acid_.songVoiceDisplayState(0)),
+      songVoiceStateLabel(mini_acid_.songVoiceDisplayState(1)));
+  UI::drawStandardFooter(gfx, "[TAB]PHRASE [ARWS]MOVE Q-I:PAT", materialStatus);
 }
 
 void SongPage::drawMinimalStyle(IGfx &gfx) {
@@ -1888,7 +1926,8 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
           gfx.drawText(tx + 2, rowY + 1, "WAIT");
         } else if (pattern >= 0) {
           char patternBuf[10];
-          formatSongPatternLabel(pattern, patternBuf, sizeof(patternBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patternBuf,
+                                 sizeof(patternBuf));
           gfx.setTextColor(selected && has_selection_
                                ? palette.invert
                                : (editable ? trackColor(track) : palette.dim));
@@ -2197,7 +2236,8 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
 
         if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf));
           IGfxColor patColor = colorForSongTrack(track);
           gfx.setTextColor(patColor.color16());
           gfx.drawText(tx + 1, ry + 1, patBuf);
@@ -2466,7 +2506,8 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
           gfx.drawText(tx + 2, ry + 1, "WAIT");
         } else if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf));
           gfx.setTextColor(selected && has_selection_
                                ? IGfxColor(RetroTheme::BG_DEEP_BLACK)
                                : (editable ? themedTrackColor(track)
@@ -2722,7 +2763,8 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
           gfx.drawText(tx + 2, ry + 1, "WAIT");
         } else if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf));
           gfx.setTextColor(selected && has_selection_
                                ? IGfxColor(AmberTheme::BG_DEEP_BLACK)
                                : (editable ? themedTrackColor(track)
@@ -2985,7 +3027,8 @@ bool SongPage::generateCurrentCellPattern(bool rememberForDoubleTap) {
 
     char patternLabel[12];
     formatSongPatternLabel(
-        result.globalPattern[trackIndex], patternLabel, sizeof(patternLabel));
+        mini_acid_, track, result.globalPattern[trackIndex],
+        patternLabel, sizeof(patternLabel));
     const char* trackLabel = track == SongTrack::SynthA
         ? "A"
         : track == SongTrack::SynthB ? "B" : "DR";

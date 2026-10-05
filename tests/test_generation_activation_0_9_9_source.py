@@ -129,8 +129,18 @@ stop_block = between(ENGINE, "void MiniAcid::stop()", "void MiniAcid::pauseTrans
 require("cancelPendingGenerationActivation" in stop_block and
         "synchronizeCommittedGenerationRuntime" in stop_block,
         "STOP must drop pending and settle runtime to committed truth")
-require("cancelPendingGenerationActivation(*this);\n  Serial.println(\"[LoadScene] Applying scene state...\")" in ENGINE,
+load_success = between(
+    ENGINE,
+    "bool MiniAcid::loadSceneByName",
+    "bool MiniAcid::saveSceneAs")
+cancel_pos = load_success.find("cancelPendingGenerationActivation(*this)")
+apply_pos = load_success.find('Serial.println("[LoadScene] Applying scene state...")')
+require(cancel_pos >= 0 and apply_pos > cancel_pos,
         "successful project Load must drop pending before applying loaded state")
+next_clear_pos = load_success.find("invalidateSessionNextForProjectChange()")
+if next_clear_pos >= 0:
+    require(cancel_pos < next_clear_pos < apply_pos,
+            "project NEXT invalidation must happen after generation cancellation and before loaded state is applied")
 cancel = between(OWNER, "inline bool cancelPendingGenerationActivationForRevision", "inline int armCompactSynthActivation")
 for forbidden in ("restoreGenerationUndo", "restoreSynthPatternUndo", "setMode(", "setBpm("):
     require(forbidden not in cancel,

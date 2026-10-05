@@ -1,0 +1,66 @@
+name: Memory
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "firmware/**"
+      - "scripts/**"
+      - "tests/**"
+      - "GroovePuter.ino"
+      - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
+      - "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md"
+      - "scripts/instrument_cardputer_memory_runtime.py"
+      - "scripts/report_cardputer_tinyusb_class_buffers.sh"
+      - ".github/workflows/memory.yml"
+  push:
+    branches:
+      - main
+      - dev_0.9.14
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Validate current memory instrumentation contract
+        run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
+
+  baseline:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+        image-kind: [product, runtime]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build and report memory baseline
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/build_cardputer_memory_baseline.sh "${{ matrix.profile }}" "${{ matrix.image-kind }}" --warnings all 2>&1 | tee "build/memory-${{ matrix.profile }}-${{ matrix.image-kind }}.log"
+      - name: Upload baseline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-${{ matrix.profile }}-${{ matrix.image-kind }}-${{ github.sha }}
+          path: build/memory-${{ matrix.profile }}-${{ matrix.image-kind }}.log
+          if-no-files-found: error

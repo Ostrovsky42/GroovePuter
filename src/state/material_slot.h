@@ -31,7 +31,25 @@ enum class MaterialKind : uint8_t {
 struct MaterialSlotDescriptor {
   MaterialKind kind = MaterialKind::Pattern;
   MaterialId id{};
+
+  constexpr bool isFree() const {
+    return kind == MaterialKind::Pattern && !id.valid();
+  }
 };
+
+inline bool operator==(const MaterialSlotDescriptor& lhs,
+                       const MaterialSlotDescriptor& rhs) {
+  return lhs.kind == rhs.kind && lhs.id == rhs.id;
+}
+
+inline bool operator!=(const MaterialSlotDescriptor& lhs,
+                       const MaterialSlotDescriptor& rhs) {
+  return !(lhs == rhs);
+}
+
+inline bool isCanonicalFree(const MaterialSlotDescriptor& descriptor) {
+  return descriptor.isFree();
+}
 
 inline bool validKindValue(int value) {
   return value == static_cast<int>(MaterialKind::Pattern) ||

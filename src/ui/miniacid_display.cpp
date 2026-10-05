@@ -1,3 +1,4 @@
+#include "src/ui/save_probe.h"
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
@@ -238,6 +239,10 @@ void MiniAcidDisplay::update() {
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
+    // Song rows that name a Melody slot are prepared here, off the audio thread.
+    if (mini_acid_.songMaterialServiceDue()) {
+        withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
+    }
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
@@ -382,7 +387,13 @@ void MiniAcidDisplay::servicePersistence_() {
     }
 
     bool saved = false;
-    withAudioGuard([&]() { saved = mini_acid_.autoSaveSceneRecovery(); });
+    SAVE_PROBE_BEGIN("autosave", mini_acid_.isPlaying())
+    withAudioGuard([&]() {
+        SAVE_PROBE_HOLD_BEGIN();
+        saved = mini_acid_.autoSaveSceneRecovery();
+        SAVE_PROBE_HOLD_END();
+    });
+    SAVE_PROBE_END(saved);
     if (saved) {
         recovery_save_pending_ = false;
         Serial.printf("[AUTOSAVE] recovery revision=%u\n",

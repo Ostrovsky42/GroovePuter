@@ -44,6 +44,30 @@ inline bool operator!=(MaterialId lhs, MaterialId rhs) {
 static_assert(sizeof(MaterialId) == sizeof(uint32_t),
               "MaterialId must remain a four-byte opaque value");
 
+struct MaterialIdReservation {
+  MaterialId first{};
+  uint8_t count = 0;
+
+  constexpr bool valid() const {
+    return first.valid() && count > 0;
+  }
+
+  constexpr MaterialId idAt(uint8_t index) const {
+    if (!valid() || index >= count) return {};
+    return MaterialId{first.value + index};
+  }
+};
+
+inline bool operator==(const MaterialIdReservation& lhs,
+                       const MaterialIdReservation& rhs) {
+  return lhs.first == rhs.first && lhs.count == rhs.count;
+}
+
+inline bool operator!=(const MaterialIdReservation& lhs,
+                       const MaterialIdReservation& rhs) {
+  return !(lhs == rhs);
+}
+
 struct MaterialReference {
   MaterialAddress address{};
   MaterialId id{};

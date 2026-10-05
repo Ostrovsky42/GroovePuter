@@ -6,6 +6,10 @@
 #include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
 #include "src/state/material_lineage.h"
+#include "src/state/generated_synth_a_origin.h"
+#include "src/state/generated_phrase_recipe.h"
+#include "src/state/reuse_marks.h"
+#include "src/dsp/p0_preservation_types.h"
 #include "src/state/working_material_storage.h"
 
 namespace GroovePuterDevelopment {
@@ -129,6 +133,9 @@ public:
   void continueTransport();
 
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
+  // A played drum lane (0..7: kick, snare, closed hat, open hat, mid tom, high tom, rim, clap)
+  // pulses the LED like a sequenced hit. Kept in the engine so the output sink needs no LED/scene types.
+  void pulseLedForDrumLane(uint8_t lane);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
   void suspendLiveNoteProjection(int synthIndex);
@@ -221,6 +228,45 @@ public:
   bool loadCurrentSlotMelody(int voiceIndex,
                              PhraseRuntime::RuntimeSynthEventBuffer& out) const;
 
+  // Unified Song slots. A Song cell names a slot; the slot's kind decides
+  // whether the row plays a Pattern or a Melody. Song is a NEXT producer: this
+  // control-side service loads the Melody of the next row into the voice's
+  // NEXT buffer ahead of the boundary and catches up a voice whose current row
+  // could not be activated there. Call from the UI loop under the audio guard.
+  void serviceSongMaterial();
+  // Cheap unguarded hint for the UI loop: whether serviceSongMaterial() has
+  // anything to do, so the audio guard is not taken on every frame.
+  bool songMaterialServiceDue() const;
+  // Song reached a row but kept this voice where it was, because its Working
+  // Melody is unsaved.
+  bool songVoiceHeld(int voiceIndex) const;
+
+  // Read-only Song/material projection for UI and deterministic tests. These
+  // values do not own or mutate musical material.
+  enum class SongCellMaterialKind : uint8_t {
+    Empty = 0,
+    Pattern,
+    Melody,
+    Unknown,
+  };
+  enum class SongVoiceDisplayState : uint8_t {
+    Pattern = 0,
+    Melody,
+    Held,
+    Awaiting,
+    LoadFailed,
+  };
+  SongCellMaterialKind songCellMaterialKind(int voiceIndex,
+                                            int16_t globalSlot) const;
+  SongVoiceDisplayState songVoiceDisplayState(int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* activeMelodyForDisplay(
+      int voiceIndex) const;
+  bool songNeedsNextBuffer(int voiceIndex) const;
+
+  // Project/Scene replacement is a canonical-truth boundary. Session NEXT
+  // prepared against the old project cannot survive it.
+  bool invalidateSessionNextForProjectChange();
+
   // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
   // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
   // to the exact preparation basis it was prepared against.
@@ -250,6 +296,67 @@ public:
 
   PreparationBasis captureCurrentPreparationBasis(int voiceIndex) const;
 
+  // D1-B: read-only session provenance of the latest committed P1R generated
+  // Phrase (Synth A). nullptr when none is known. Historical evidence only:
+  // it is never rewritten by later edits and carries no lineage verdict.
+  const GroovePuterMaterial::GeneratedSynthAOrigin* generatedSynthAOrigin() const {
+    return generatedSynthAOriginValid_ ? &generatedSynthAOrigin_ : nullptr;
+  }
+  const GroovePuterMaterial::GeneratedSynthABarOrigin* findGeneratedSynthAOrigin(
+      GroovePuterMaterial::MaterialReference reference) const {
+    return generatedSynthAOriginValid_ ? generatedSynthAOrigin_.find(reference)
+                                       : nullptr;
+  }
+  // Publication is reserved for GeneratedPhraseSong (enforced by source
+  // regression): call only after the physical generated Material committed.
+  bool publishGeneratedSynthAOrigin(
+      const GroovePuterMaterial::GeneratedSynthAOriginCandidate& candidate) {
+    if (!candidate.complete()) return false;
+    generatedSynthAOrigin_ = candidate.origin;
+    generatedSynthAOriginValid_ = true;
+    return true;
+  }
+  void clearGeneratedSynthAOrigin() {
+    generatedSynthAOrigin_ = GroovePuterMaterial::GeneratedSynthAOrigin{};
+    generatedSynthAOriginValid_ = false;
+  }
+
+  // P0: rebuild inputs of the latest generated phrase. Same lifecycle as the
+  // origin sidecar except that Undo of the cycle keeps it (GeneratedPhraseSong
+  // decides). Publication is reserved for GeneratedPhraseSong.
+  const GroovePuterMaterial::GeneratedPhraseRecipe* generatedPhraseRecipe() const {
+    return generatedPhraseRecipe_.valid ? &generatedPhraseRecipe_ : nullptr;
+  }
+  void publishGeneratedPhraseRecipe(
+      const GroovePuterMaterial::GeneratedPhraseRecipe& recipe) {
+    generatedPhraseRecipe_ = recipe;
+    generatedPhraseRecipe_.valid = true;
+  }
+  void setGeneratedPhraseCycleStart(int16_t songStart) {
+    if (generatedPhraseRecipe_.valid) generatedPhraseRecipe_.cycleSongStart = songStart;
+  }
+  void clearGeneratedPhraseRecipe() {
+    generatedPhraseRecipe_ = GroovePuterMaterial::GeneratedPhraseRecipe{};
+  }
+
+  // PML-C: session-only "allow replacement" marks for Pattern slots of the current page.
+  // Marks are managed by slot_reuse.h (which verifies every holder); nothing here decides
+  // whether a slot may be replaced. Dropped on scene load, project change and page change.
+  const GroovePuterMaterial::ReuseMarks& reuseMarks() const { return reuseMarks_; }
+  GroovePuterMaterial::ReuseMarks& reuseMarksForReuseModule() { return reuseMarks_; }
+  // Also drops the session ledger of generated slots (same lifecycle).
+  void clearReuseMarks() { reuseMarks_.clear(); generatedLedger_.clear(); }
+  const GroovePuterMaterial::GeneratedLedger& generatedLedger() const { return generatedLedger_; }
+  GroovePuterMaterial::GeneratedLedger& generatedLedgerForReuseModule() { return generatedLedger_; }
+
+  // Holders only the engine can see for a resident Pattern slot of the current page.
+  enum ReuseHolder : uint8_t {
+    kReuseHolderCurrent = 1,   // selected as CURRENT (synth or drum selector)
+    kReuseHolderWorking = 2,   // Working material bound to the slot
+    kReuseHolderNext = 4,      // queued as NEXT
+  };
+  uint8_t reuseEngineHolders(int localSlot) const;
+
   enum class GoRequestResult : uint8_t {
     Failed = 0,
     InvalidVoice,
@@ -274,10 +381,14 @@ public:
       int voiceIndex,
       PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const;
 
+  // `semanticOut` (D1-C) is a purely observational, optional output: passing it
+  // never changes candidate generation, classification, NEXT eligibility or
+  // publication. Callers that pass nothing behave exactly as before.
   NextPrepareResult developWorkingMaterial(
       int voiceIndex,
       const GroovePuterDevelopment::DevelopmentRequest& request,
-      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr);
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation* semanticOut = nullptr);
 
   NextPrepareResult growWorkingMaterial(
       int voiceIndex,
@@ -648,6 +759,22 @@ private:
   int clamp303Note(int note) const;
   bool current303MaterialReference_(
       int voiceIndex, GroovePuterMaterial::MaterialReference& out) const;
+  // Shared Pattern->Runtime source acquisition. When `sourceSteps` is non-null
+  // and CURRENT is a Pattern, it also receives the authoritative physical step
+  // of every projected event (projectPatternToRuntimeEventsWithSourceSteps).
+  bool acquireWorkingMelodySourceImpl_(
+      int voiceIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& outBuffer,
+      uint8_t (*sourceSteps)[SynthPattern::kSteps]) const;
+  void observeP0Preservation_(
+      int idx,
+      const PreparationBasis& basis,
+      const PhraseRuntime::RuntimeSynthEventBuffer& source,
+      const uint8_t (&sourceSteps)[SynthPattern::kSteps],
+      bool haveSourceSteps,
+      const GroovePuterDevelopment::DevelopmentResult& dev,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation& out) const;
   enum class CurrentNextState : uint8_t {
     CleanAcceptedPattern = 0,
     DirtyCurrent,
@@ -758,8 +885,18 @@ private:
     bool lifecycleBound = false;
     GroovePuterMaterial::IdeaClassification ideaClassification =
         GroovePuterMaterial::IdeaClassification::Unknown;
+    // Song row this NEXT was prepared for; -1 when Song did not produce it.
+    // int8_t keeps the struct at 32 bytes (Song::kMaxPositions == 128).
+    int8_t songRow = -1;
   };
+  static_assert(Song::kMaxPositions <= 128,
+                "PendingMaterial::songRow is an int8_t row index");
   PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
+  GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
+  bool generatedSynthAOriginValid_ = false;
+  GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
+  GroovePuterMaterial::ReuseMarks reuseMarks_{};
+  GroovePuterMaterial::GeneratedLedger generatedLedger_{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.
   // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
   GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};
@@ -773,6 +910,39 @@ private:
   // Working Melody belongs to the slot it was made on or loaded from. After a
   // slot change a saved one (it is on SD) leaves Working with that slot.
   void releaseSavedWorkingMelody_(int voiceIndex);
+  void dropRuntimePhraseReceiptFor_(int voiceIndex);
+  void restoreSlotMaterialAfterSong_(int voiceIndex);
+  void dropSongPreparedNext_();
+  void invalidateSongPreparedNext_(int voiceIndex = -1, int row = -1);
+  bool userOwnsNext_(int voiceIndex) const;
+  void silenceAwaitingSongVoice_(int voiceIndex);
+
+  // Unified Song slots (see serviceSongMaterial()).
+  enum class SongVoiceState : uint8_t {
+    InSync,     // the voice plays what the current row names
+    Held,       // unsaved Working Melody: the voice keeps its slot
+    Awaiting,   // the row's Melody is not loaded yet: the voice is silent
+  };
+  SongVoiceState songVoiceState_[NUM_303_VOICES]{};
+  // The slot a voice is bound to in Song mode; a held voice stays on it.
+  int16_t songVoiceSlot_[NUM_303_VOICES]{-1, -1};
+  // Last Song Melody that failed to load; not retried until START.
+  int16_t songLoadFailedSlot_[NUM_303_VOICES]{-1, -1};
+  bool workingMelodyUnsaved_(int voiceIndex) const;
+  // Phrase phase origin. Pattern mode keeps 0 (global phase); Song restarts it
+  // at the first bar of a row whose material changed for the voice.
+  uint32_t melodyPhaseOriginTick_[NUM_303_VOICES]{0, 0};
+  bool songPhaseResetPending_[NUM_303_VOICES]{false, false};
+  uint32_t songRowStartTick_ = 0;
+  void applySongSynthRow_(int voiceIndex, int16_t globalSlot);
+  bool songVoiceInSync_(int voiceIndex, int16_t globalSlot) const;
+  bool activateSongMelody_(int voiceIndex, int16_t globalSlot);
+  bool loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSlot);
+  int peekNextSongRow_() const;
+  bool songNeedsNext_(int voiceIndex) const;
+  int nextSongRowFrom_(int currentPos) const;
+  bool songRowIsPause_(int row) const;
+  int16_t songSynthSlotAt_(int voiceIndex, int row) const;
   DiscardResult discardToAcceptedMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   AudioMutationGate* acceptAudioMutationGate_ = nullptr;

@@ -10,6 +10,22 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/platform/cardputer_usb_host_midi.h"
+// Single binary, two USB roles: only when the core does not start TinyUSB Device before
+// setup() (CDCOnBoot=default) can project code pick Device or Host from the saved role.
+#if !ARDUINO_USB_CDC_ON_BOOT
+#define GP_USB_ROLE_RUNTIME 1
+#endif
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+#include "src/midi/latency_histogram.h"
+static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> loop apply
+#endif
+// External Mod button: tap = delete the note under the cursor, hold = clear the melody.
+#include "src/midi/mod_hold_tracker.h"
+#include "src/midi/nudge_repeater.h"
+static GroovePuterMidi::ModHoldTracker g_modHold;
+static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -402,6 +418,13 @@ void setup() {
   // statically reserved, so startup no longer depends on the largest free heap
   // block left by SD and SMF initialization.
   g_musicalEventRouter.addSink(g_internalSynthOutput);
+  CardputerUsbRoleRuntime::init();
+#ifdef GP_USB_ROLE_RUNTIME
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    screenLog("4d. USB Host Init...");
+    if (!GroovePuterMidi::CardputerUsbHostMidi::begin(nullptr)) markBootStage(952, "USB Host begin failed");
+  }
+#endif
   screenLog("4d. USB MIDI Runtime...");
   markBootStage(52, "before USB MIDI sink");
   if (!registerCardputerUsbMidiSink(
@@ -504,17 +527,118 @@ void setup() {
 }
 
 
+// One external pitch-button step: the active page may take it (notes tab: cursor), otherwise it steps
+// the ARP rate when ARP is on. Returns true when the page took it (those steps auto-repeat).
+static bool applyExternalNudge(int direction) {
+  bool pageTookIt = false;
+  if (g_miniDisplay) {
+    UIEvent offered{};
+    offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+    offered.x = direction;
+    pageTookIt = g_miniDisplay->handleEvent(offered);
+  }
+  if (!pageTookIt && g_performanceKeyboard.arpeggiatorEnabled()) {
+    g_performanceKeyboard.cycleArpRate(direction);
+    char toast[32];
+    snprintf(toast, sizeof(toast), "ARP RATE: %s", g_performanceKeyboard.arpRateName());
+    UI::showToast(toast, 700);
+  }
+  return pageTookIt;
+}
+
 void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
   LedManager::instance().update();
+#ifdef GP_USB_ROLE_RUNTIME
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    GroovePuterMidi::CardputerUsbHostMidi::service();
+  }
+#endif
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
     g_internalSynthOutput.syncPatternOwnership();
+    // External keyboard (MIDI IN target PERFORM): the dispatch task only enqueues; the PERFORM
+    // keyboard is owned here, so chords / arp / latch / rhythms see the notes like built-in keys.
+    {
+      auto& externalNotes = cardputerExternalNoteQueue();
+      GroovePuterMidi::ExternalNoteQueue::Event note;
+      while (externalNotes.pop(note)) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+        if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
+#endif
+        if (note.sustain) {
+          g_performanceKeyboard.externalSustain(note.on);
+          continue;
+        }
+        if (note.mod != 0) {
+          // Mod button: a tap deletes the sound under the cursor (on the release), holding it for
+          // ModHoldTracker::kHoldMs clears the whole melody (fired by the timer below). The active page
+          // decides whether it uses either; elsewhere the button is unused.
+          if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Press)) {
+            g_modHold.onPress(millis());
+          } else if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Release)) {
+            if (g_modHold.onRelease() && g_miniDisplay) {
+              UIEvent offered{};
+              offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+              offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+              (void)g_miniDisplay->handleEvent(offered);
+            }
+          } else {
+            g_modHold.reset();   // cancel: the session ended while the button was down
+          }
+          continue;
+        }
+        if (note.nudge != 0) {
+          // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate. Only a
+          // step the page took auto-repeats while the button stays down (like a held arrow key).
+          if (note.nudge == GroovePuterMidi::ExternalNoteQueue::kNudgeEnd) {
+            g_nudgeRepeat.onRelease();
+          } else if (applyExternalNudge(note.nudge)) {
+            g_nudgeRepeat.onPress(note.nudge, millis());
+          } else {
+            g_nudgeRepeat.reset();
+          }
+          continue;
+        }
+        // The active page gets the note first (MELODY notes tab: step entry); otherwise PERFORM plays it.
+        bool consumed = false;
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE;
+          offered.x = note.note;
+          offered.y = note.on ? note.velocity : 0;
+          consumed = g_miniDisplay->handleEvent(offered);
+        }
+        if (consumed) continue;
+        if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
+        else g_performanceKeyboard.externalNoteOff(note.note);
+      }
+      {
+        const int repeatDirection = g_nudgeRepeat.poll(millis());
+        if (repeatDirection != 0 && !applyExternalNudge(repeatDirection)) g_nudgeRepeat.reset();
+      }
+      if (g_modHold.pollLongHold(millis())) {
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR;
+          (void)g_miniDisplay->handleEvent(offered);
+        }
+      }
+      if (externalNotes.takeRecovery()) {
+        g_modHold.reset();
+        g_nudgeRepeat.reset();
+        g_performanceKeyboard.releaseAllExternalNotes();
+        g_performanceKeyboard.externalSustain(false);
+      }
+    }
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {
       g_performanceKeyboard.panic();
@@ -912,6 +1036,56 @@ void loop() {
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    // Acceptance overlay (diagnostic image only): memory, stacks, reconnects, queue and hop latency.
+    {
+      constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+      char line[56];
+      g_display.fillRect(0, 54, 240, 81, CP_BLACK);
+      g_display.setTextColor(IGfxColor::White());
+      snprintf(line, sizeof(line), "ROLE %s att=%lu det=%lu on=%lu",
+               CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host ? "KBD" : "PC",
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::attachCount(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::detachCount(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount());
+      g_display.drawText(0, 55, line);
+      snprintf(line, sizeof(line), "MEM f=%u min=%u blk=%u", (unsigned)heap_caps_get_free_size(caps),
+               (unsigned)heap_caps_get_minimum_free_size(caps),
+               (unsigned)heap_caps_get_largest_free_block(caps));
+      g_display.drawText(0, 64, line);
+      snprintf(line, sizeof(line), "STK loop=%u disp=%u aud=%u",
+               (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+               (unsigned)cardputerUsbDispatchStackFreeBytes(),
+               (unsigned)(g_audioTaskHandle ? uxTaskGetStackHighWaterMark(g_audioTaskHandle) * sizeof(StackType_t) : 0));
+      g_display.drawText(0, 73, line);
+      snprintf(line, sizeof(line), "Q held=%u drop=%lu ring=%lu",
+               (unsigned)g_performanceKeyboard.externalHeldCount(),
+               (unsigned long)cardputerExternalNoteQueue().dropped(),
+               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::droppedPackets());
+      g_display.drawText(0, 82, line);
+      const auto& ringLat = cardputerUsbRingLatency();
+      snprintf(line, sizeof(line), "LAT usb>disp n=%lu %lu/%lu/%lu", (unsigned long)ringLat.count(),
+               (unsigned long)ringLat.percentileUs(50), (unsigned long)ringLat.percentileUs(95),
+               (unsigned long)ringLat.maxUs());
+      g_display.drawText(0, 91, line);
+      snprintf(line, sizeof(line), "LAT disp>keys n=%lu %lu/%lu/%lu", (unsigned long)g_queueLatency.count(),
+               (unsigned long)g_queueLatency.percentileUs(50), (unsigned long)g_queueLatency.percentileUs(95),
+               (unsigned long)g_queueLatency.maxUs());
+      g_display.drawText(0, 100, line);
+      snprintf(line, sizeof(line), "PLAY=%d up=%lus us p50/p95/max", g_miniAcid->isPlaying() ? 1 : 0,
+               (unsigned long)(millis() / 1000));
+      g_display.drawText(0, 109, line);
+      cardputerUsbLastRawText(line, sizeof(line));
+      g_display.drawText(0, 118, line);
+      {
+        char cc[40], pb[40];
+        cardputerUsbRampText(cc, sizeof(cc), pb, sizeof(pb));
+        snprintf(line, sizeof(line), "%s  %s", cc, pb);
+        g_display.drawText(0, 127, line);
+      }
+      g_display.flush();
+    }
+#endif
   }
 
   static unsigned long lastMemLog = 0;

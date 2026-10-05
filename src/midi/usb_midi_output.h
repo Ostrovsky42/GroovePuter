@@ -123,6 +123,12 @@ private:
     static uint8_t patternDrumChannel(uint8_t logicalVoice);
     static int generatedTargetIndex(MusicalEventTarget target);
     static bool isSynthPerformanceSource(MusicalEventSource source);
+
+public:
+    // Host keyboard session only; see usb_midi_output.cpp. Default off (fail-closed).
+    static void setMidiInputThru(bool enabled);
+
+private:
     static bool sourceRequestsPolyReceiver(MusicalEventSource source);
 
     void configureLanes();

@@ -14,7 +14,7 @@ struct UiViewContinuityState {
   uint8_t phraseGrid[2]{1, 1};
   uint8_t performToolsVisible{0};
   uint8_t performContext{0};
-  uint8_t performRows[4]{0, 0, 0, 0};
+  uint8_t performRows[5]{0, 0, 0, 0, 0};
   uint8_t feelFocus{0};
   uint8_t feelPreset{1};
   uint8_t genreFocus{0};

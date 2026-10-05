@@ -1,6 +1,6 @@
-# GroovePuter 0.9.2 Key Map — Cardputer ADV
+# GroovePuter 0.9.14 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.2 hardening runtime. `Alt+H`
+This is the canonical external key reference for the current 0.9.14 development runtime. `Alt+H`
 opens page-aware on-device help; this file is the fuller release reference.
 
 ## Workflows
@@ -9,7 +9,7 @@ opens page-aware on-device help; this file is the fuller release reference.
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
-SONG:     SONG -> PHRASE -> PHRASE CORE
+SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
 ```
 
@@ -121,12 +121,35 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
-| `G` | Reroll only the selected synth lane when NOTE ENTRY is OFF |
+| `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
+| `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
+| `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
+| `Alt+Enter` / `Ctrl+Enter` | Accept working material |
+| `Alt+Backspace` / `Alt+X` | Discard working edits to accepted material |
+| `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
+| `Esc` with NEXT ready | Cancel NEXT, or disarm queued GO while keeping NEXT |
 | `Ctrl+C/V` | Copy / Paste |
 
-Plain `G` uses the active Genre/Variant/Rhythm/P-level/harmony identity. During PLAY
+On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
+change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
+`Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
+`J` joins it to the next note, and `G` changes the grid. `[` / `]` move by bar;
+`L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
+note. `Ctrl+Z` undoes a retained note edit.
+
+In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
+next step as a continuation (shown as `TI`), rather than entering a new attack.
+
+In STEPS outside NOTE ENTRY, plain `G` uses the active Genre/Variant/Rhythm/P-level/harmony identity. During PLAY
 the selected lane publishes at `BAR_START`; the other synth and drums stay unchanged.
-Inside NOTE ENTRY, `G` remains note input.
+Inside NOTE ENTRY, `G` and `P` remain note input (including scancode-only events).
+`P` only changes the shared request selector (P1/P2/P3 internally); it does not regenerate,
+change the current pattern, or replace Undo. DRUMS and MATERIAL see the same selector.
+`Alt+G` retains the legacy algorithm and the same selected-synth scope; it is not
+whole-scene CHAOS. In STOP its runtime events update immediately; in PLAY the old
+runtime remains audible until `BAR_START`, just as for G.
+Undo before that boundary cancels the pending activation; Redo during PLAY and
+Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 
 ### KNOBS / MORE
 
@@ -191,10 +214,14 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `P` | Cursor to playhead |
 | `Alt+J` | Jump to PHRASE with this row as the explicit `TO` destination |
 
+For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
+Pattern or Melody playback; the row does not store a separate type. Accepted Melody
+must be saved in its slot for this assignment to play as Melody after reload.
+
 `B` changes assignment context only. `Alt+B` changes stored references. Song-slot
 crossing and the visible PAT assignment bank are independent controls.
 
-0.9.2 hardening distinguishes Song-generated material from manual/imported material.
+Song editing distinguishes Song-generated material from manual/imported material.
 Clearing a Song cell removes its arrangement reference; an unreferenced Song-generated
 orphan may be reused by later Song generation, while non-empty manual/imported patterns
 are never reclaimed automatically. A resident page still contains 16 slots per track;
@@ -203,33 +230,78 @@ pattern page instead of clearing the project. Song stores page-aware global patt
 so playback can return to the required page through the existing deferred page-switch
 path.
 
-## PHRASE
+## MATERIAL
 
-Generated-Phrase product workflow. `NEXT REQUEST` (`LENGTH`/`DEPTH`/`TO`) and
+Generated-Phrase product workflow. The request (`LENGTH`/`STYLE`/`TO`) and
 `LAST ACCEPTED` (`BAR`/activity) are separate objects, never one shared
 timeline.
 
 | Key | Action |
 |---|---|
-| `Up/Down` | Move focus `LENGTH -> DEPTH -> TO [-> BAR]` (`BAR` only when a live accepted Phrase exists) |
-| `Left/Right` | Adjust the focused field (length 1/2/4/8, depth, TO placement, or accepted bar) |
+| `Up/Down` | Move focus `LENGTH -> STYLE -> TO [-> BAR]` (`BAR` only when a live accepted Phrase exists) |
+| `Left/Right` | Adjust the focused field (length 1/2/4/8, style, TO placement, or accepted bar) |
 | `Enter` (focus `TO`) | `EXPLICIT` row -> `APPEND` (no effect while already `APPEND`) |
 | `Enter` (focus `BAR`) | Focus the accepted bar's Song/pattern context (STOP-only) |
 | `G` | Generate into the resolved `TO` row |
-| `P` | Cycle `DEPTH` (shortcut, same owner as focused `DEPTH`) |
+| `P` | Cycle `STYLE` (same value as the focused STYLE field) |
+| `D` | Grow an eligible fresh TAKE (see below) |
+| `R` | Make room: reuse unused takes (plain `R` only; Alt/Ctrl/Meta+R are other shortcuts) |
 
 `TO` always shows the row `G` would actually target right now: `APPEND` resolves
 against the Song's current logical end every frame, or `EXPLICIT` if entering
-PHRASE from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
+MATERIAL from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
 (`FREE`/`OCCUPIED`/`NO ROOM`) mirrors the exact generation-availability check.
 `LAST ACCEPTED` is retrospective only and disappears (`LAST --`) if its
 generated material is no longer structurally present in the Song.
 
-## PHRASE CORE
+For the bounded musical-play cycle, set `LENGTH 4B` and `STYLE REWORK` (P3), press
+`G` for a new TAKE, then `D` while its source remains unedited and unchanged. The
+result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback changes at the next bar
+boundary. `Ctrl+Z` removes the added cycle in one step. P2, non-4-bar, edited or
+unsupported-style Takes are refused; changing STYLE after making the TAKE does not
+convert it. On `MATERIAL BANK`, `D` still means derive.
 
-Legacy capture/derive/write workspace, now a separate page from PHRASE. Its
-own `TO:` destination and generation length are independent of the PHRASE
-product request above.
+### Make room (MATERIAL, `R`)
+
+When `G` or `D` says `NO ROOM`, the page has no run of consecutive free pattern slots. Deleting Song
+rows removes only the Song reference; the generated patterns stay in their slots. Press plain `R`:
+
+| Key | Action |
+|---|---|
+| `R` | Ask: `REUSE n UNUSED TAKES?` (takes generated in this session, not in Song, not edited by you) |
+| `Enter` | Yes: they will be replaced by the next `G`/`D`; you return to MATERIAL (`ROOM FOR 4B: PRESS G`) |
+| `Esc` / `R` | No, back |
+| `S` | Choose slots yourself (the slot-by-slot view below) |
+
+The answer is one sentence: only takes made in this session that you have not edited, and that nothing
+uses, are offered. Older material, hand-made or edited patterns, anything in Song, the CURRENT selection or
+the live Undo are **never** offered automatically. Nothing is erased when you say yes; the next generation
+uses free slots first and replaces these only when nothing else fits. **After a replacement Undo restores
+the Song rows but not the old content.** The product line reads `NO SLOTS: R REUSE n` when there is something
+to offer and `REPLACES ALLOWED` when `G` will use allowed slots. Permissions are not saved: they end when a
+scene is loaded, a new scene is made or the page changes, and an edit cancels the permission of its slot.
+
+#### Choosing slots yourself (`R`, then `S`)
+
+| Key | Action |
+|---|---|
+| `Left/Right` | Move one slot |
+| `Up/Down` | Move one bank (8 slots) |
+| `Enter` on `~` | Allow replacement (asks to confirm the first time) |
+| `Enter` on `*` | Cancel the permission |
+| `Enter` on a held slot | Names what holds it; nothing changes |
+| `R` / `Esc` | Back to MATERIAL |
+
+Grid characters: `.` free, `~` unused (may be allowed), `*` allowed, letters = held and therefore protected:
+`S` Song row, `P` Phrase Bank, `C` CURRENT, `W` working edit, `N` queued NEXT, `M` Melody, `U` live Undo.
+`SLOT SPACE: NOW / AFTER ALLOWED` shows, for TAKE at the selected LENGTH and for GROW 4B/8B, whether a
+consecutive run exists now and after the allowed replacement; it says nothing about whether GROW will run
+(style, edits and an already published cycle are reported by `D`).
+
+## MATERIAL BANK
+
+Capture/derive/write workspace. Its own `TO:` destination and generation length are
+independent of the MATERIAL product request above.
 
 | Key | Action |
 |---|---|

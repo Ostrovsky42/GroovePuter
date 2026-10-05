@@ -1,0 +1,9 @@
+PROBE image (-DGROOVEPUTER_P0_CYCLE_PROBE), build/cardputer-adv-p0probe:
+53d971cbc63e73d0a2d2dce2ef155ca4537937c6ede633a4698aabc5ea3a0b45  build/cardputer-adv-p0probe/GroovePuter.ino.elf
+c25ba3ceec67a669793aaae453b1cfe96f9f2325b51c7be185f8a3d468b7f84e  build/cardputer-adv-p0probe/GroovePuter.ino.bin
+PML-PROBE strings in ELF: 1
+
+Cardputer DRAM globals: 189984 bytes (budget 191488)
+  .dram0.data: 37080 bytes
+  .dram0.bss:  152904 bytes
+  policy: provisional exception; threshold-rule items 5-7 pending

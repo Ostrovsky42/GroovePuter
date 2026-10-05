@@ -420,6 +420,20 @@ struct Scene {
   };
 };
 
+// Mix C: fader defaults for a NEW scene only (wipeToZero, loadDefaultScene). Synth lanes sit
+// ~16 dB under the drums at 1.0/1.0; 1.5 is the fader maximum, drums at 0.45 bring the
+// difference to about -8 dB. DSP gain is unchanged. This is NOT what the loaders use: a scene
+// file without "trackVolumes" keeps loading at 1.0 so existing projects sound as before.
+constexpr float kNewSceneSynthVolume = 1.5f;
+constexpr float kNewSceneDrumVolume = 0.45f;
+
+inline void applyNewSceneMix(Scene& scene) {
+  for (int i = 0; i < (int)VoiceId::Count; ++i) {
+    scene.trackVolumes[i] =
+        i <= (int)VoiceId::SynthB ? kNewSceneSynthVolume : kNewSceneDrumVolume;
+  }
+}
+
 namespace GroovePuterMaterial {
 
 // A flat comma-separated list, synth A then synth B. The scene document is

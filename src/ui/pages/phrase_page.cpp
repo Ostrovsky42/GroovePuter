@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
 #include "../../debug_log.h"
@@ -16,6 +17,64 @@
 #include "src/state/generation_request_state.h"
 #include "src/state/phrase_generation_request_state.h"
 #include "src/state/scene_revision.h"
+
+// Diagnostic image only (-DGROOVEPUTER_P0_CYCLE_PROBE, never set by default): after every
+// growKeptPhrase call, print the control-task stack high-water mark and internal heap state.
+#if defined(GROOVEPUTER_P0_CYCLE_PROBE) && defined(ARDUINO_M5STACK_CARDPUTER)
+#include <Arduino.h>
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+namespace {
+struct CycleProbe {
+  uint32_t stackBefore, freeBefore, largestBefore, startedUs;
+  CycleProbe() {
+    constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    stackBefore = uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t);
+    freeBefore = heap_caps_get_free_size(caps);
+    largestBefore = heap_caps_get_largest_free_block(caps);
+    startedUs = micros();
+  }
+  void report(int status, unsigned bars, bool playing) const {
+    constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    Serial.printf(
+        "[P0-CYCLE-PROBE] status=%d bars=%u playing=%d us=%lu "
+        "stackMinFreeBytes before=%lu after=%lu "
+        "internalFree before=%lu after=%lu largestBlock before=%lu after=%lu minEverFree=%lu\n",
+        status, bars, playing ? 1 : 0, static_cast<unsigned long>(micros() - startedUs),
+        static_cast<unsigned long>(stackBefore),
+        static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+        static_cast<unsigned long>(freeBefore),
+        static_cast<unsigned long>(heap_caps_get_free_size(caps)),
+        static_cast<unsigned long>(largestBefore),
+        static_cast<unsigned long>(heap_caps_get_largest_free_block(caps)),
+        static_cast<unsigned long>(heap_caps_get_minimum_free_size(caps)));
+  }
+};
+
+// One line per user action of the MATERIAL page (G, R open/allow/cancel, Undo): the stack
+// high-water mark is the minimum free stack since the task started, so a later line also covers
+// every draw and handler that ran before it.
+void probeNow(const char* label) {
+  constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  Serial.printf(
+      "[PML-PROBE] %s stackMinFreeBytes=%lu internalFree=%lu largestBlock=%lu minEverFree=%lu\n",
+      label,
+      static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+      static_cast<unsigned long>(heap_caps_get_free_size(caps)),
+      static_cast<unsigned long>(heap_caps_get_largest_free_block(caps)),
+      static_cast<unsigned long>(heap_caps_get_minimum_free_size(caps)));
+}
+}  // namespace
+#define GP_CYCLE_PROBE_BEGIN CycleProbe cycleProbe_;
+#define GP_CYCLE_PROBE_END(result, playing) \
+  cycleProbe_.report(static_cast<int>((result).status), (result).bars, (playing))
+#define GP_PROBE(label) probeNow(label)
+#else
+#define GP_CYCLE_PROBE_BEGIN
+#define GP_CYCLE_PROBE_END(result, playing) ((void)0)
+#define GP_PROBE(label) ((void)0)
+#endif
 
 namespace {
 
@@ -316,6 +375,10 @@ PhrasePage::PhrasePage(IGfx& gfx,
 
 void PhrasePage::onEnter(int context) {
   if (core_mode_) return;
+  room_view_ = false;
+  replace_view_ = false;          // entering the page always starts on the product view
+  replace_confirming_ = false;
+  replace_confirmed_ = false;
   if (context > 0) {
     const int row = context - 1;
     if (row >= 0 && row < Song::kMaxPositions) {
@@ -452,6 +515,14 @@ PhrasePage::Admissibility PhrasePage::admissibilityFor(
   }
   if (PhraseGenerator::findSafeContiguousEmptySlots(
           scene, mini_acid_.currentPageIndex(), bars) < 0) {
+    // A run made only of free slots and slots the musician allowed to be replaced (every holder
+    // and the content token re-verified, without changing anything).
+    const uint16_t usable = SlotReuse::usableMask(mini_acid_, scene, true);
+    int run = 0;
+    for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+      run = (usable & (1u << slot)) ? run + 1 : 0;
+      if (run >= bars) return Admissibility::Replace;
+    }
     return Admissibility::NoSlots;
   }
   return Admissibility::Free;
@@ -541,6 +612,15 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const auto depth = GroovePuterState::currentGenerationLevel();
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const bool live = hasLiveBarFocus();
+  const auto* recipe = mini_acid_.generatedPhraseRecipe();
+  const auto* cycleOrigin = mini_acid_.generatedSynthAOrigin();
+  const int cycleBars = recipe != nullptr && cycleOrigin != nullptr &&
+          recipe->cycleSongStart >= 0 &&
+          recipe->songSlot == std::clamp(scene.activeSongSlot, 0, 1) &&
+          (cycleOrigin->common.barCount == 4 || cycleOrigin->common.barCount == 8) &&
+          recipe->cycleSongStart + cycleOrigin->common.barCount <=
+              scene.songs[recipe->songSlot].length
+      ? cycleOrigin->common.barCount : 0;
 
   UI::drawStandardHeader(gfx, mini_acid_, "MATERIAL");
 
@@ -570,12 +650,19 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   const int toRow = resolvedToRow();
   const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
   const Admissibility admissibility = admissibilityFor(toRow, requestedBars);
+  char roomHint[32] = "NO SLOTS: R";
+  if (admissibility == Admissibility::NoSlots) {
+    const int reusable = SlotReuse::autoCandidateCount(mini_acid_);
+    if (reusable > 0) std::snprintf(roomHint, sizeof(roomHint), "NO SLOTS: R REUSE %d", reusable);
+  }
   const char* admissibilityText =
       admissibility == Admissibility::Free ? "FREE" :
+      (admissibility == Admissibility::Replace ? "REPLACES ALLOWED" :
       (admissibility == Admissibility::Occupied ? "OCCUPIED" :
-       (admissibility == Admissibility::NoSlots ? "NO SLOTS" : "NO ROOM"));
+       (admissibility == Admissibility::NoSlots ? roomHint : "NO ROOM")));
   const IGfxColor admissibilityColor =
-      admissibility == Admissibility::Free ? palette.accent :
+      (admissibility == Admissibility::Free ||
+       admissibility == Admissibility::Replace) ? palette.accent :
       (admissibility == Admissibility::Occupied ||
        admissibility == Admissibility::NoSlots ? palette.drums : palette.dim);
 
@@ -618,18 +705,34 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.setTextColor(outcomeColor);
   gfx.drawText(x + 70, LayoutManager::lineY(2), line);
 
+  const auto drawCycleSummary = [&]() {
+    if (cycleBars == 0) return false;
+    std::snprintf(line, sizeof(line), "%s %dB -> SONG %c%d-%d",
+                  cycleBars == 4 ? "BREAK ONLY" : "GROW", cycleBars,
+                  static_cast<char>('A' + recipe->songSlot),
+                  recipe->cycleSongStart + 1,
+                  recipe->cycleSongStart + cycleBars);
+    gfx.setTextColor(palette.accent);
+    gfx.drawText(x, LayoutManager::lineY(3), line);
+    return true;
+  };
+
   if (!live) {
-    gfx.setTextColor(palette.dim);
-    gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
+    if (!drawCycleSummary()) {
+      gfx.setTextColor(palette.dim);
+      gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
+    }
     gfx.drawText(x, LayoutManager::lineY(4), "G CREATES A NEW TAKE");
   } else {
-    std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
-                  static_cast<unsigned>(accepted.bars),
-                  static_cast<char>('A' + accepted.songSlot),
-                  accepted.songStart + 1,
-                  accepted.songStart + accepted.bars);
-    gfx.setTextColor(palette.text);
-    gfx.drawText(x, LayoutManager::lineY(3), line);
+    if (!drawCycleSummary()) {
+      std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
+                    static_cast<unsigned>(accepted.bars),
+                    static_cast<char>('A' + accepted.songSlot),
+                    accepted.songStart + 1,
+                    accepted.songStart + accepted.bars);
+      gfx.setTextColor(palette.text);
+      gfx.drawText(x, LayoutManager::lineY(3), line);
+    }
 
     if (product_bar_cursor_ >= accepted.bars) product_bar_cursor_ = 0;
     const int playingBar = currentGeneratedBar(mini_acid_, accepted);
@@ -659,7 +762,367 @@ void PhrasePage::drawProductView(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
-                         "G:GEN P:DEPTH ENT:BAR");
+                         "G:TAKE D:GROW P:STYLE R:ROOM");
+}
+
+bool PhrasePage::growKeptPhrase() {
+  const auto* recipe = mini_acid_.generatedPhraseRecipe();
+  if (recipe != nullptr && recipe->bars != GeneratedPhraseSong::kCycleSectionBars) {
+    UI::showToast("SET 4B, PRESS G", 1800);
+    return true;
+  }
+  GP_CYCLE_PROBE_BEGIN
+  const bool probePlaying = mini_acid_.isPlaying();
+  const GeneratedPhraseSong::CycleResult result =
+      GeneratedPhraseSong::generateCycle(mini_acid_, [&](auto&& operation) {
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
+      });
+  GP_CYCLE_PROBE_END(result, probePlaying);
+  (void)probePlaying;
+
+  if (result) {
+    const char* section = result.developSkipped ? "BREAK ONLY" :
+                          result.breakSkipped ? "DEVELOP ONLY" : "DEVELOP + BREAK";
+    char message[48];
+    std::snprintf(message, sizeof(message), "%s %uB %s", section,
+                  static_cast<unsigned>(result.bars),
+                  result.status == GeneratedPhraseSong::CycleStatus::PendingNextBar
+                      ? "NEXT BAR" : "IN SONG");
+    UI::showToast(message, 1800);
+    invalidatePreview();
+    return true;
+  }
+
+  using S = GeneratedPhraseSong::CycleStatus;
+  const char* message = "GROW FAILED: PRESS G";
+  switch (result.status) {
+    case S::NoRecipe: message = "PRESS G FIRST"; break;
+    case S::CycleAlreadyPublished: message = "ALREADY GROWN"; break;
+    case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
+    case S::NotAdmitted: message = "TRY ANOTHER TAKE: G"; break;
+    case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
+    case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
+    case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
+    case S::NoSafeSlots: message = "NO ROOM: R MAKES ROOM"; break;
+    case S::RowsOccupied: message = "SONG ROWS AFTER ARE USED"; break;
+    case S::ReservationFailed: message = "STORAGE BUSY: TRY AGAIN"; break;
+    case S::TargetChanged: message = "MOVED: PRESS D AGAIN"; break;
+    case S::Busy: message = "BUSY: TRY AGAIN"; break;
+    default: break;
+  }
+  UI::showToast(message, 1800);
+  return true;
+}
+
+namespace {
+
+// Esc reaches pages in two shapes: a scancode (the emulator and the normalised device path, which is
+// what the global help, Project and the file manager test) or key 0x1B; Backspace also leaves.
+bool isLeaveKey(const UIEvent& event) {
+  return UIInput::isBack(event) || event.scancode == GROOVEPUTER_ESCAPE;
+}
+
+// One character per slot. Protection wins over the mark: a slot that is allowed but held shows the
+// holder. '.' free, '*' allowed and usable, '~' unused (may be allowed), letters = holder.
+char replaceGlyph(const MiniAcid& engine, const Scene& scene, int slot) {
+  if (SlotReuse::slotIsFree(scene, engine.currentPageIndex(), slot)) return '.';
+  const uint8_t held = SlotReuse::holders(engine, scene, slot);
+  if (held & SlotReuse::kHolderSong) return 'S';
+  if (held & SlotReuse::kHolderPhraseBank) return 'P';
+  if (held & SlotReuse::kHolderCurrent) return 'C';
+  if (held & SlotReuse::kHolderWorking) return 'W';
+  if (held & SlotReuse::kHolderNext) return 'N';
+  if (held & SlotReuse::kHolderMelody) return 'M';
+  if (held & SlotReuse::kHolderUndoReceipt) return 'U';
+  return SlotReuse::verify(engine, scene, slot) == SlotReuse::Verdict::Ok ? '*' : '~';
+}
+
+const char* replaceHolderName(char glyph) {
+  switch (glyph) {
+    case 'S': return "SONG";
+    case 'P': return "PHRASE BANK";
+    case 'C': return "CURRENT";
+    case 'W': return "WORKING";
+    case 'N': return "NEXT";
+    case 'M': return "MELODY";
+    case 'U': return "LIVE UNDO";
+    default: return "?";
+  }
+}
+
+const char* yesNo(bool value) { return value ? "YES" : "NO"; }
+
+}  // namespace
+
+void PhrasePage::replaceLeave() {
+  replace_view_ = false;
+  replace_confirming_ = false;
+}
+
+bool PhrasePage::replaceEnter() {
+  const int slot = std::min<int>(replace_cursor_, kPatternsPerPage - 1);
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const char glyph = replaceGlyph(mini_acid_, scene, slot);
+  if (glyph == '.') {
+    UI::showToast("ALREADY FREE", 900);
+    return true;
+  }
+  if (glyph == '*') {
+    SlotReuse::unmark(mini_acid_, slot);
+    GP_PROBE("R-cancel");
+    UI::showToast("REPLACEMENT CANCELED", 900);
+    return true;
+  }
+  if (glyph != '~') {
+    char message[40];
+    std::snprintf(message, sizeof(message), "HELD BY %s", replaceHolderName(glyph));
+    UI::showToast(message, 1200);
+    return true;
+  }
+  if (!replace_confirmed_) {
+    replace_confirming_ = true;   // explicit warning first; nothing has changed yet
+    return true;
+  }
+  uint8_t held = 0;
+  if (SlotReuse::mark(mini_acid_, slot, &held) != SlotReuse::MarkResult::Marked) {
+    UI::showToast("CANNOT ALLOW THIS SLOT", 1000);
+    return true;
+  }
+  const auto preview = SlotReuse::preview(mini_acid_);
+  GP_PROBE("R-allow");
+  const int bars = GroovePuterState::requestedPhraseBars();
+  char message[40];
+  if (preview.longestAfter >= bars) {
+    std::snprintf(message, sizeof(message), "ALLOWED: %dB POSSIBLE", bars);
+  } else {
+    std::snprintf(message, sizeof(message), "ALLOWED, %dB NOT YET", bars);
+  }
+  UI::showToast(message, 1300);
+  return true;
+}
+
+bool PhrasePage::handleReplaceEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (replace_confirming_) {
+    if (UIInput::isConfirm(ui_event)) {
+      replace_confirmed_ = true;
+      replace_confirming_ = false;
+      return replaceEnter();
+    }
+    if (isLeaveKey(ui_event)) {
+      replace_confirming_ = false;
+      UI::showToast("CANCELED", 700);
+      return true;
+    }
+    return true;   // modal: swallow everything else
+  }
+  const bool plain = !ui_event.ctrl && !ui_event.alt && !ui_event.meta;
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  if (isLeaveKey(ui_event) || (plain && lower == 'r')) {
+    replaceLeave();
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  int cursor = replace_cursor_;
+  if (nav == GROOVEPUTER_LEFT) cursor -= 1;
+  else if (nav == GROOVEPUTER_RIGHT) cursor += 1;
+  else if (nav == GROOVEPUTER_UP) cursor -= Bank<SynthPattern>::kPatterns;
+  else if (nav == GROOVEPUTER_DOWN) cursor += Bank<SynthPattern>::kPatterns;
+  if (cursor != replace_cursor_) {
+    replace_cursor_ = static_cast<uint8_t>(
+        ((cursor % kPatternsPerPage) + kPatternsPerPage) % kPatternsPerPage);
+    return true;
+  }
+  if (UIInput::isConfirm(ui_event)) return replaceEnter();
+  return false;
+}
+
+void PhrasePage::drawReplaceView(IGfx& gfx) {
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  UI::drawStandardHeader(gfx, mini_acid_, "ALLOW REPLACEMENT");
+
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  char line[96];
+
+  if (replace_confirming_) {
+    gfx.setTextColor(palette.accent);
+    std::snprintf(line, sizeof(line), "ALLOW REPLACEMENT OF SLOT %d?",
+                  static_cast<int>(replace_cursor_) + 1);
+    gfx.drawText(x, LayoutManager::lineY(1), line);
+    gfx.setTextColor(palette.text);
+    gfx.drawText(x, LayoutManager::lineY(2), "THE NEXT TAKE OR GROW MAY");
+    gfx.drawText(x, LayoutManager::lineY(3), "REPLACE ITS CONTENT.");
+    gfx.setTextColor(palette.drums);
+    gfx.drawText(x, LayoutManager::lineY(4), "AFTER REPLACEMENT UNDO WILL NOT");
+    gfx.drawText(x, LayoutManager::lineY(5), "RESTORE THE OLD CONTENT.");
+    gfx.setTextColor(palette.dim);
+    gfx.drawText(x, LayoutManager::lineY(6), "NOTHING IS ERASED NOW.");
+    UI::drawStandardFooter(gfx, "[ENTER]ALLOW  [ESC]CANCEL", "");
+    return;
+  }
+
+  std::snprintf(line, sizeof(line), "PAGE %d", mini_acid_.currentPageIndex() + 1);
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x + width - gfx.textWidth(line), LayoutManager::lineY(0), line);
+
+  constexpr int kGap = 2;
+  const int cellW = std::max(9, (width - kGap * (kPatternsPerPage - 1)) / kPatternsPerPage);
+  const int cellH = 10;
+  const int gridY = LayoutManager::lineY(1);
+  char glyphs[kPatternsPerPage];
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    glyphs[slot] = replaceGlyph(mini_acid_, scene, slot);
+    const int cx = x + slot * (cellW + kGap);
+    const bool cursor = slot == replace_cursor_;
+    if (glyphs[slot] == '*') {
+      gfx.fillRect(cx, gridY, cellW, cellH, palette.accent);
+      gfx.setTextColor(palette.background);
+    } else {
+      gfx.setTextColor(glyphs[slot] == '~' ? palette.text
+                     : (glyphs[slot] == '.' ? palette.dim : palette.drums));
+    }
+    gfx.drawRect(cx, gridY, cellW, cellH, cursor ? palette.text : palette.border);
+    char label[2] = {glyphs[slot], 0};
+    gfx.drawText(cx + std::max(1, (cellW - gfx.textWidth(label)) / 2), gridY + 1, label);
+  }
+
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(0), ". FREE  ~ UNUSED  * ALLOWED");
+
+  const int cursorSlot = std::min<int>(replace_cursor_, kPatternsPerPage - 1);
+  const char here = glyphs[cursorSlot];
+  if (here == '.') {
+    std::snprintf(line, sizeof(line), "SLOT %d: FREE", cursorSlot + 1);
+  } else if (here == '*') {
+    std::snprintf(line, sizeof(line), "SLOT %d: ALLOWED  ENTER: CANCEL", cursorSlot + 1);
+  } else if (here == '~') {
+    const bool edited = mini_acid_.reuseMarks().marked(cursorSlot) &&
+        SlotReuse::verify(mini_acid_, scene, cursorSlot) == SlotReuse::Verdict::Edited;
+    std::snprintf(line, sizeof(line), edited ? "SLOT %d: EDITED, ALLOW AGAIN?"
+                                              : "SLOT %d: UNUSED  ENTER: ALLOW",
+                  cursorSlot + 1);
+  } else {
+    std::snprintf(line, sizeof(line), "SLOT %d: HELD BY %s", cursorSlot + 1, replaceHolderName(here));
+  }
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(2), line);
+
+  // Two results, per operation length: what is possible NOW and what becomes possible AFTER the
+  // allowed replacement. "Allowed" is not "possible now".
+  const auto preview = SlotReuse::preview(mini_acid_);
+  const int takeBars = GroovePuterState::requestedPhraseBars();
+  // SLOT SPACE only: a YES here means a consecutive run of that length exists; it does not promise
+  // that GROW can run (style, edits and an already published cycle are reported by D itself).
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(3), "SLOT SPACE:  NOW / AFTER ALLOWED");
+  const auto spaceColor = [&](int bars) {
+    return preview.longestNow >= bars ? palette.accent
+           : (preview.longestAfter >= bars ? palette.text : palette.drums);
+  };
+  std::snprintf(line, sizeof(line), "TAKE %dB  %s / %s", takeBars,
+                yesNo(preview.longestNow >= takeBars), yesNo(preview.longestAfter >= takeBars));
+  gfx.setTextColor(spaceColor(takeBars));
+  gfx.drawText(x, LayoutManager::lineY(4), line);
+  std::snprintf(line, sizeof(line), "GROW 4B  %s / %s     8B  %s / %s",
+                yesNo(preview.longestNow >= 4), yesNo(preview.longestAfter >= 4),
+                yesNo(preview.longestNow >= 8), yesNo(preview.longestAfter >= 8));
+  gfx.setTextColor(spaceColor(4));
+  gfx.drawText(x, LayoutManager::lineY(5), line);
+
+  int counts[128] = {};
+  for (int slot = 0; slot < kPatternsPerPage; ++slot) {
+    const char g = glyphs[slot];
+    if (g != '.' && g != '~' && g != '*') ++counts[static_cast<unsigned char>(g)];
+  }
+  line[0] = 0;
+  int shown = 0;
+  for (const char g : {'S', 'P', 'C', 'W', 'N', 'M', 'U'}) {
+    const int n = counts[static_cast<unsigned char>(g)];
+    if (n == 0 || shown >= 3) continue;
+    char part[24];
+    std::snprintf(part, sizeof(part), "%s%s %d", shown ? "  " : "BLOCKED BY ", replaceHolderName(g), n);
+    std::strncat(line, part, sizeof(line) - std::strlen(line) - 1);
+    ++shown;
+  }
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(6),
+               shown ? line : "D ALSO CHECKS STYLE, EDITS, CYCLE");
+
+  UI::drawStandardFooter(gfx, "[L/R]MOVE [ENTER]ALLOW", "R/ESC:BACK");
+}
+
+bool PhrasePage::handleRoomEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  const bool plain = !ui_event.ctrl && !ui_event.alt && !ui_event.meta;
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  if (isLeaveKey(ui_event) || (plain && lower == 'r')) {
+    room_view_ = false;
+    return true;
+  }
+  if (plain && lower == 's') {          // slot by slot: anything the automatic offer leaves out
+    room_view_ = false;
+    replace_view_ = true;
+    replace_cursor_ = 0;
+    replace_confirming_ = false;
+    replace_confirmed_ = false;
+    return true;
+  }
+  if (!UIInput::isConfirm(ui_event)) return false;
+  const int offered = SlotReuse::autoCandidateCount(mini_acid_);
+  if (offered == 0) {
+    UI::showToast("NOTHING TO REUSE", 1000);
+    return true;
+  }
+  (void)SlotReuse::makeRoom(mini_acid_);
+  GP_PROBE("R-room");
+  const auto preview = SlotReuse::preview(mini_acid_);
+  const int bars = GroovePuterState::requestedPhraseBars();
+  char message[40];
+  if (preview.longestAfter >= bars) std::snprintf(message, sizeof(message), "ROOM FOR %dB: PRESS G", bars);
+  else std::snprintf(message, sizeof(message), "STILL NO ROOM FOR %dB", bars);
+  UI::showToast(message, 1600);
+  room_view_ = false;
+  return true;
+}
+
+void PhrasePage::drawRoomView(IGfx& gfx) {
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  UI::drawStandardHeader(gfx, mini_acid_, "MAKE ROOM");
+  const int x = Layout::COL_1;
+  char line[64];
+  const int offered = SlotReuse::autoCandidateCount(mini_acid_);
+  if (offered > 0) {
+    std::snprintf(line, sizeof(line), "REUSE %d UNUSED TAKE%s?", offered, offered == 1 ? "" : "S");
+    gfx.setTextColor(palette.accent);
+    gfx.drawText(x, LayoutManager::lineY(1), line);
+    gfx.setTextColor(palette.text);
+    gfx.drawText(x, LayoutManager::lineY(2), "NOT IN SONG, NOT EDITED BY YOU.");
+    gfx.drawText(x, LayoutManager::lineY(3), "THEY MAKE ROOM FOR THE NEXT G.");
+    gfx.setTextColor(palette.drums);
+    gfx.drawText(x, LayoutManager::lineY(4), "AFTER THAT UNDO WILL NOT");
+    gfx.drawText(x, LayoutManager::lineY(5), "RESTORE THEIR OLD CONTENT.");
+    gfx.setTextColor(palette.dim);
+    gfx.drawText(x, LayoutManager::lineY(6), "[S] CHOOSE SLOTS YOURSELF");
+    UI::drawStandardFooter(gfx, "[ENTER]YES  [ESC]NO", "");
+    return;
+  }
+  gfx.setTextColor(palette.accent);
+  gfx.drawText(x, LayoutManager::lineY(1), "NOTHING TO REUSE");
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, LayoutManager::lineY(2), "TAKES MADE HERE ARE STILL IN");
+  gfx.drawText(x, LayoutManager::lineY(3), "SONG OR IN USE, OR YOU EDITED");
+  gfx.drawText(x, LayoutManager::lineY(4), "THEM. OLDER MATERIAL IS NEVER");
+  gfx.drawText(x, LayoutManager::lineY(5), "REUSED AUTOMATICALLY.");
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(6), "[S] CHOOSE SLOTS YOURSELF");
+  UI::drawStandardFooter(gfx, "[S]SLOTS  [ESC]BACK", "");
 }
 
 bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
@@ -707,6 +1170,20 @@ bool PhrasePage::handleProductEvent(UIEvent& ui_event) {
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g') {
     return generatePhraseToSong();
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'd') {
+    return growKeptPhrase();
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'r') {
+    // Plain R only: Alt/Meta/Ctrl combinations belong to the global handlers (e.g. Alt+R). The
+    // performance keyboard is active on PERFORM only, so MATERIAL does not compete for this key.
+    room_view_ = true;
+    replace_view_ = false;
+    replace_confirming_ = false;
+    replace_confirmed_ = false;
+    replace_cursor_ = 0;
+    GP_PROBE("R-open");
+    return true;
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'p') {
     const auto level = GroovePuterState::cycleGenerationLevel();
@@ -895,6 +1372,7 @@ bool PhrasePage::generatePhraseToSong() {
         }
       });
 
+  GP_PROBE("G");
   if (!result) {
     const bool typedRejection =
         result.status == GeneratedPhraseSong::LifecycleStatus::Failed &&
@@ -908,7 +1386,12 @@ bool PhrasePage::generatePhraseToSong() {
     }
     LOG_WARN_UI("Generated Phrase -> Song failed at TO=%d: %s",
                 songStart + 1, GeneratedPhraseSong::statusText(result));
-    UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
+    // Lack of a consecutive run is the one refusal the musician can act on from here.
+    if (result.phrase.error == PhraseGenerator::PhraseError::NoContiguousPatternSlots) {
+      UI::showToast("NO ROOM: R MAKES ROOM", 1800);
+    } else {
+      UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
+    }
     return true;
   }
 
@@ -1056,6 +1539,7 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
+      GP_PROBE("UNDO");
       UI::showToast("UNDO: MATERIAL", 1000);
       return true;
     }
@@ -1130,7 +1614,9 @@ bool PhrasePage::undoPreparedOwnedState() {
 
 void PhrasePage::draw(IGfx& gfx) {
   if (!core_mode_) {
-    drawProductView(gfx);
+    if (room_view_) drawRoomView(gfx);
+    else if (replace_view_) drawReplaceView(gfx);
+    else drawProductView(gfx);
     return;
   }
 
@@ -1285,6 +1771,8 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     if (ui_event.key == '[' || ui_event.key == ']') return true;
   }
 
+  if (!core_mode_ && room_view_) return handleRoomEvent(ui_event);
+  if (!core_mode_ && replace_view_) return handleReplaceEvent(ui_event);
   if (!core_mode_) return handleProductEvent(ui_event);
 
   const int nav = UIInput::navCode(ui_event);

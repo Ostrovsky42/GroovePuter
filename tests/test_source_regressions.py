@@ -37,7 +37,7 @@ def test_all_substep_offsets_are_reachable() -> None:
                     f"step={step} offset={offset} must be visited exactly once")
 
 
-def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
+def test_adv_pa_no_gpio_and_verified_rgb_profile() -> None:
     profile = (ROOT / "src/platform/cardputer_adv_hardware.h").read_text(
         encoding="utf-8"
     )
@@ -51,10 +51,10 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
             "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
             "Cardputer ADV PA compatibility overloads must not drive GPIO")
-    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
-            "RGB output must remain disabled until a distinct ADV pin is verified")
+    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (21)" in profile,
+            "ADV RGB data must use the verified M5Unified GPIO21 mapping")
     require("neopixelWrite(21" not in led,
-            "GPIO21 must never receive WS2812 timing on Cardputer ADV")
+            "RGB output must use the hardware profile, not a hardcoded GPIO")
 
 
 def test_cardputer_sd_has_one_hardware_mount_path() -> None:
@@ -694,7 +694,7 @@ def test_synth_pitch_and_live_note_contracts() -> None:
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
-    test_adv_amp_pin_is_not_used_as_rgb_data()
+    test_adv_pa_no_gpio_and_verified_rgb_profile()
     test_genre_regeneration_uses_full_compiled_params()
     test_recipe_selects_the_matching_groovebox_mode()
     test_legacy_recipe_adapters_start_from_compiled_params()

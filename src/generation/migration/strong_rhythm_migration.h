@@ -12,6 +12,7 @@
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_pitch_behavior.h"
+#include "../tonal/bass_pitch_class_witness.h"
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
@@ -190,6 +191,16 @@ struct StrongRhythmMigrationResult {
   GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
   BassRhythmId bassRhythmId = BassRhythmId::Auto;
+  // D1-B: the exact resolved plan that constructed this bar's Synth A (the
+  // same object whose onsets/continuations feed the semantic projection), not
+  // a regenerated look-alike. Valid only when bassRhythmPlanAvailable.
+  BassRhythmPlan bassRhythmPlan{};
+  bool bassRhythmPlanAvailable = false;
+  // D1-B1: exact pitch class of each bass attack, taken from the very
+  // TonalMaterializationPlan that constructed this bar's Synth A. Meaningful
+  // only for steps in bassRhythmPlan.onsets; valid only when Available.
+  BassPitchClassWitness bassPitchClassWitness{};
+  bool bassPitchClassWitnessAvailable = false;
   BassPitchBehaviorStatus bassPitchBehaviorStatus =
       BassPitchBehaviorStatus::InvalidRequest;
   BassPitchContourId bassPitchContour = BassPitchContourId::Auto;
@@ -257,6 +268,15 @@ struct StrongRhythmMelodicRequestProbe {
 
 void setStrongRhythmMelodicRequestProbe(
     StrongRhythmMelodicRequestProbe* probe);
+
+// D1-B1 focused host-test observation: the exact bass TonalMaterializationPlan
+// that was adapted into Synth A (same probe discipline as above).
+struct StrongRhythmBassTonalPlanProbe {
+  bool captured = false;
+  TonalMaterializationPlan plan{};
+};
+
+void setStrongRhythmBassTonalPlanProbe(StrongRhythmBassTonalPlanProbe* probe);
 #endif
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);

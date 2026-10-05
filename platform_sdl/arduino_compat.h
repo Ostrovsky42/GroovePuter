@@ -215,15 +215,24 @@ private:
         auto state = std::make_shared<State>();
         state->path = path;
         state->displayName = path.filename().string();
+        // Host-only: pubsetbuf(nullptr, 0) (before every open) suppresses
+        // libstdc++'s lazily heap-allocated 8 KiB std::filebuf buffer so that
+        // heap-allocation measurements (PMB-P1 T7) see embedded FATFS-like
+        // behaviour. Semantics are preserved: the tests in
+        // test_0_9_14_d1a_material_identity.cpp (SDMock regression) cover
+        // read/write/append/seek/rename/high-water recovery.
+        state->stream.rdbuf()->pubsetbuf(nullptr, 0);
         std::ios::openmode flags = std::ios::binary;
         if (mode == FILE_WRITE) {
             flags |= std::ios::in | std::ios::out | std::ios::app;
             state->stream.open(path, flags);
             if (!state->stream.is_open()) {
                 state->stream.clear();
+                state->stream.rdbuf()->pubsetbuf(nullptr, 0);
                 state->stream.open(path,
                     std::ios::binary | std::ios::out | std::ios::trunc);
                 state->stream.close();
+                state->stream.rdbuf()->pubsetbuf(nullptr, 0);
                 state->stream.open(path, flags);
             }
         } else {
