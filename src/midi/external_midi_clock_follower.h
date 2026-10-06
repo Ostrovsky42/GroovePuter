@@ -37,12 +37,16 @@ public:
     static constexpr double kSourceBpmHysteresis = 0.15;
     static constexpr uint32_t kClockCoalesceWindowUs = 1000;
 
+    // outputLatencyMicros: how long after a block starts rendering its first
+    // MIDI events leave the device. Phase is locked so that those events, not
+    // the render, coincide with the master's position.
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
             TransportClockSource source,
             uint32_t nowMicros,
             bool followEnabled =
-                transportClockRuntime().externalFollowEnabled()) {
+                transportClockRuntime().externalFollowEnabled(),
+            uint32_t outputLatencyMicros = 0) {
         ExternalClockBlockResult result{};
         if (!haveSource_ || source != source_) {
             source_ = source;
@@ -150,7 +154,10 @@ public:
             result.command = ExternalTransportCommand::Stop;
         }
         result.estimate = tracker_.estimate(nowMicros);
-        applyBoundedPhaseLock(result, result.sourceChanged || result.followChanged);
+        applyBoundedPhaseLock(result,
+                              result.sourceChanged || result.followChanged,
+                              tracker_.predictedAbsoluteProjectSteps(
+                                  nowMicros + outputLatencyMicros));
         return result;
     }
 
@@ -213,8 +220,11 @@ private:
         else if (errorSteps > kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
     }
 
+    // masterStepsAtEmission: the master's position when this block's first
+    // events leave the device (now + output latency).
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
-                               bool controlChanged) {
+                               bool controlChanged,
+                               double masterStepsAtEmission) {
         ExternalClockEstimate& estimate = result.estimate;
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
@@ -247,7 +257,7 @@ private:
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(local.sampleRate));
         const double error = wrapProjectPhaseError(
-            estimate.absoluteProjectSteps -
+            masterStepsAtEmission -
             (local.absoluteSteps() + renderedSteps));
         estimate.phaseErrorSteps = error;
         updateTrimDirection(error);
