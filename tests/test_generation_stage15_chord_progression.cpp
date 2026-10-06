@@ -21,7 +21,7 @@ static_assert(static_cast<uint8_t>(ProgressionId::MinorFall) == 6);
 static_assert(static_cast<uint8_t>(ProgressionId::BorrowedLift) == 7);
 static_assert(static_cast<uint8_t>(ProgressionId::Count) == 8);
 static_assert(sizeof(ChordProgressionPlan) == 26);
-static_assert(sizeof(GenerationCompositionResult) <= 32);
+static_assert(sizeof(GenerationCompositionResult) == 26);
 
 GenreSettings settingsFor(GenerativeMode mode, uint8_t recipe = 0) {
   GenreSettings settings{};
