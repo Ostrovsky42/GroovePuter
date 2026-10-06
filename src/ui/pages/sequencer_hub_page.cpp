@@ -1,4 +1,5 @@
 #include "sequencer_hub_page.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_colors.h"
@@ -983,6 +984,10 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     }
 
     if (e.key == ' ') {
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+            UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
+            return true;
+        }
         withAudioGuard([&]() {
             if (mini_acid_.isPlaying()) mini_acid_.stop();
             else mini_acid_.start();

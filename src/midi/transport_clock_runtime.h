@@ -195,4 +195,15 @@ inline TransportClockRuntime& transportClockRuntime() {
     return runtime;
 }
 
+// While GroovePuter follows incoming MIDI Clock, Start/Stop belong to the
+// clock source. A local Play would restart the engine (all-notes-off) and run
+// it on a transport the follower does not own.
+inline bool externalClockOwnsTransport() {
+    const TransportClockRuntime& runtime = transportClockRuntime();
+    return runtime.source() == TransportClockSource::SeqtrakExternal &&
+           runtime.externalFollowEnabled();
+}
+
+inline constexpr const char* kExternalTransportHint = "MIDI IN: PLAY ON DEVICE";
+
 }  // namespace GroovePuterMidi

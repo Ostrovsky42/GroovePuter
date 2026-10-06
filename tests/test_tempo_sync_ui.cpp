@@ -95,6 +95,23 @@ int main() {
   display.handleEvent(altT);
   assert(!engine.isPlaying());
 
+  // Following MIDI Clock: local Space must not start the engine (start() sends
+  // all-notes-off and would run a transport the clock source does not own).
+  clock.setSource(TransportClockSource::SeqtrakExternal);
+  clock.setExternalFollowEnabled(true);
+  assert(externalClockOwnsTransport());
+  display.handleEvent(key(' '));
+  assert(!engine.isPlaying());
+  // MIDI IN with follow off runs locally, so Space plays/stops as usual.
+  clock.setExternalFollowEnabled(false);
+  assert(!externalClockOwnsTransport());
+  display.handleEvent(key(' ')); assert(engine.isPlaying());
+  display.handleEvent(key(' ')); assert(!engine.isPlaying());
+  clock.setExternalFollowEnabled(true);
+  clock.setSource(TransportClockSource::GroovePuterInternal);
+  display.handleEvent(key(' ')); assert(engine.isPlaying());
+  display.handleEvent(key(' ')); assert(!engine.isPlaying());
+
   // BPM is focused on open: Left/Right edits it immediately.
   GlobalMidiSyncOverlay sync;
   clock.setSource(TransportClockSource::GroovePuterInternal);

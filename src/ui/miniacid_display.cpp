@@ -721,6 +721,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     // Pages get first refusal on Space. This lets MIDI Player own its transport
     // without also toggling the global GroovePuter transport.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+            showToast(GroovePuterMidi::kExternalTransportHint, 900);
+            return true;
+        }
         if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
         withAudioGuard([&]() {
             if (mini_acid_.isPlaying()) mini_acid_.stop();

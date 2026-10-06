@@ -649,9 +649,8 @@ void loop() {
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (GroovePuterMidi::transportClockRuntime().source() ==
-        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-      UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    if (GroovePuterMidi::externalClockOwnsTransport()) {
+      UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
     } else {
       AudioMutationScope mutationScope(g_audioMutationGate);
       if (g_miniAcid->isPlaying()) {
@@ -789,9 +788,8 @@ void loop() {
       } else if (c == ';' || c == '\'') {
         needsDraw = true;
       } else if (c == ' ') {
-        if (GroovePuterMidi::transportClockRuntime().source() ==
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-          UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+          UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
         } else if (g_miniAcid->isPlaying()) {
           g_miniAcid->stop();
         } else {
