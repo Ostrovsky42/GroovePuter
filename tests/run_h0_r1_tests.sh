@@ -9,3 +9,6 @@ mkdir -p "$BUILD"
   "$ROOT/src/generation/roles/chord_progression.cpp" \
   -o "$BUILD/timeline"
 "$BUILD/timeline"
+bash "${ROOT}/tests/build_h0_r1_execution_test.sh" \
+  tests/test_h0_r1_slow_materialization.cpp "$BUILD/slow-materialization"
+"$BUILD/slow-materialization"

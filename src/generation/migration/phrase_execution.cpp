@@ -207,11 +207,15 @@ PhraseExecutionStatus preparePhraseExecution(
 
   const PhraseHarmonicClockProjection harmonicClock = projectPhraseHarmonicClock(
       destination.length.effectivePhraseBars,
-      destination.selection.composition.progression);
+      destination.selection.composition.progression,
+      destination.selection.composition.harmonicRhythmPolicy);
   if (harmonicClock.status !=
           PhraseHarmonicClockProjectionStatus::Ok ||
       harmonicClock.harmonicRhythmRealizationCount !=
-          destination.length.effectivePhraseBars) {
+          (destination.selection.composition.harmonicRhythmPolicy ==
+                   PhraseHarmonicPolicyId::HalfBar
+               ? destination.length.effectivePhraseBars
+               : 0)) {
     destination.status = PhraseExecutionStatus::HarmonicProjectionFailure;
     return destination.status;
   }

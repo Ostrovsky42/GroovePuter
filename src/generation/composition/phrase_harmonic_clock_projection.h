@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "phrase_harmonic_timeline.h"
+#include "phrase_harmonic_policy.h"
 #include "../roles/harmonic_rhythm.h"
 
 namespace GroovePuterRhythm {
@@ -42,10 +43,71 @@ struct PhraseHarmonicClockProjection {
 // wiring is deferred to PHRASE-P1R.
 inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
     uint8_t phraseBars,
-    ProgressionId progression) {
+    ProgressionId progression,
+    PhraseHarmonicPolicyId policy = PhraseHarmonicPolicyId::HalfBar) {
   PhraseHarmonicClockProjection result{};
   if (!isSupportedPhraseLength(phraseBars) ||
-      !isValidProgressionId(progression, false)) {
+      !isValidProgressionId(progression, false) ||
+      static_cast<uint8_t>(policy) >=
+          static_cast<uint8_t>(PhraseHarmonicPolicyId::Count)) {
+    return result;
+  }
+
+  // Non-F08 policies construct phrase events directly. Do not ask the legacy
+  // one-bar materializer for views that would then be discarded.
+  if (policy != PhraseHarmonicPolicyId::HalfBar) {
+    PhraseHarmonicEvent events[kMaxPhraseHarmonicEventPositions]{};
+    uint8_t eventCount = 0;
+    switch (policy) {
+      case PhraseHarmonicPolicyId::Static:
+        events[0] = {0, 0, static_cast<uint8_t>(phraseBars * kStepsPerBar)};
+        eventCount = 1;
+        break;
+      case PhraseHarmonicPolicyId::Slow:
+        if (phraseBars != 4) return result;
+        for (uint8_t bar = 0; bar < 4; ++bar) {
+          events[eventCount++] = {
+              bar, static_cast<uint8_t>(bar * kStepsPerBar), kStepsPerBar};
+        }
+        break;
+      case PhraseHarmonicPolicyId::Prolong:
+        if (phraseBars != 4) return result;
+        events[0] = {0, 0, 32};
+        events[1] = {1, 32, 16};
+        events[2] = {2, 48, 16};
+        eventCount = 3;
+        break;
+      case PhraseHarmonicPolicyId::HalfBar:
+      case PhraseHarmonicPolicyId::Syncopated:
+      case PhraseHarmonicPolicyId::Count:
+        return result;
+    }
+
+    result.phraseBars = phraseBars;
+    result.timeline = makePhraseHarmonicTimeline(phraseBars, events, eventCount);
+    if (!validatePhraseHarmonicTimeline(result.timeline)) {
+      result.status = PhraseHarmonicClockProjectionStatus::TimelineFailure;
+      return result;
+    }
+    for (uint8_t bar = 0; bar < phraseBars; ++bar) {
+      const PhraseHarmonicBarMaterialization materialization =
+          projectPhraseHarmonicBarMaterialization(result.timeline, bar);
+      if (materialization.segmentCount == 0 ||
+          materialization.segmentCount > kMaxHarmonicEvents) {
+        result.status = PhraseHarmonicClockProjectionStatus::TimelineFailure;
+        return result;
+      }
+      PhraseHarmonicBarProjection& projected = result.bars[bar];
+      projected.phraseBarOrdinal = bar;
+      projected.harmonicRhythm.progression = progression;
+      projected.harmonicRhythm.onsets = materialization.segmentOnsets;
+      projected.harmonicRhythm.eventCount = materialization.segmentCount;
+      projected.harmonicRhythm.phraseBarOrdinal = bar;
+      projected.harmonicRhythm.phraseHarmonicPosition =
+          materialization.sourceOrdinals[0];
+      projected.eventRange = phraseHarmonicEventRangeForBar(result.timeline, bar);
+    }
+    result.status = PhraseHarmonicClockProjectionStatus::Ok;
     return result;
   }
 

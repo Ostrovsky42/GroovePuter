@@ -3,6 +3,7 @@
 #include <type_traits>
 
 #include "../src/generation/composition/phrase_harmonic_clock_projection.h"
+#include "../src/generation/composition/phrase_harmonic_policy.h"
 
 using namespace GroovePuterRhythm;
 
@@ -62,6 +63,73 @@ void testStaticHalfBarCompatibility() {
       }
     }
   }
+}
+
+void testStaticPolicyTimeline() {
+  const auto clock = projectPhraseHarmonicClock(
+      4, ProgressionId::StaticModal, PhraseHarmonicPolicyId::Static);
+  assert(clock.status == PhraseHarmonicClockProjectionStatus::Ok);
+  assert(clock.harmonicRhythmRealizationCount == 0);
+  assert(clock.timeline.totalEventPositions == 1);
+  assert(clock.timeline.events[0].sourceOrdinal == 0);
+  assert(clock.timeline.events[0].onsetStep == 0);
+  assert(clock.timeline.events[0].durationSteps == 64);
+  for (uint8_t bar = 0; bar < 4; ++bar) {
+    const auto window = projectPhraseHarmonicBarMaterialization(
+        clock.timeline, bar);
+    assert(window.segmentCount == 1);
+    assert(window.sourceOrdinals[0] == 0);
+    assert(window.entersFromPreviousBar == (bar != 0));
+  }
+}
+
+void testSlowPolicyFourBarTimeline() {
+  const auto clock = projectPhraseHarmonicClock(
+      4, ProgressionId::PopCycle, PhraseHarmonicPolicyId::Slow);
+  assert(clock.status == PhraseHarmonicClockProjectionStatus::Ok);
+  assert(clock.harmonicRhythmRealizationCount == 0);
+  assert(clock.timeline.totalEventPositions == 4);
+  for (uint8_t ordinal = 0; ordinal < 4; ++ordinal) {
+    const auto& event = clock.timeline.events[ordinal];
+    assert(event.sourceOrdinal == ordinal);
+    assert(event.onsetStep == ordinal * 16);
+    assert(event.durationSteps == 16);
+    const auto window = projectPhraseHarmonicBarMaterialization(
+        clock.timeline, ordinal);
+    assert(window.segmentCount == 1);
+    assert(window.segmentOnsets == stepBit(0));
+    assert(window.sourceOrdinals[0] == ordinal);
+    assert(!window.entersFromPreviousBar);
+  }
+}
+
+void testProlongPolicyFourBarTimelineOnly() {
+  const auto clock = projectPhraseHarmonicClock(
+      4, ProgressionId::PopCycle, PhraseHarmonicPolicyId::Prolong);
+  assert(clock.status == PhraseHarmonicClockProjectionStatus::Ok);
+  assert(clock.harmonicRhythmRealizationCount == 0);
+  assert(clock.timeline.totalEventPositions == 3);
+  const uint8_t expectedOnsets[] = {0, 32, 48};
+  const uint8_t expectedDurations[] = {32, 16, 16};
+  for (uint8_t ordinal = 0; ordinal < 3; ++ordinal) {
+    const auto& event = clock.timeline.events[ordinal];
+    assert(event.sourceOrdinal == ordinal);
+    assert(event.onsetStep == expectedOnsets[ordinal]);
+    assert(event.durationSteps == expectedDurations[ordinal]);
+  }
+  const auto carryIn = projectPhraseHarmonicBarMaterialization(
+      clock.timeline, 1);
+  assert(carryIn.segmentCount == 1);
+  assert(carryIn.sourceOrdinals[0] == 0);
+  assert(carryIn.entersFromPreviousBar);
+  assert(clock.timeline.totalEventPositions == 3);
+
+  assert(projectPhraseHarmonicClock(
+             2, ProgressionId::PopCycle, PhraseHarmonicPolicyId::Prolong)
+             .status == PhraseHarmonicClockProjectionStatus::InvalidRequest);
+  assert(projectPhraseHarmonicClock(
+             8, ProgressionId::PopCycle, PhraseHarmonicPolicyId::Slow)
+             .status == PhraseHarmonicClockProjectionStatus::InvalidRequest);
 }
 
 void testActiveEventAtEveryPhraseStep() {
@@ -173,6 +241,9 @@ int main() {
   static_assert(std::is_trivially_copyable<PhraseHarmonicTimeline>::value);
   testHalfBarCompatibility();
   testStaticHalfBarCompatibility();
+  testStaticPolicyTimeline();
+  testSlowPolicyFourBarTimeline();
+  testProlongPolicyFourBarTimelineOnly();
   testExplicitCrossBarDuration();
   testActiveEventAtEveryPhraseStep();
   testCarryInDoesNotAdvanceSourceOrdinal();
