@@ -1734,6 +1734,20 @@ uint32_t cardputerUsbDispatchStackFreeBytes() {
         : 0u;
 }
 
+void cardputerUsbClockRxText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    // Racy reads of monotonically increasing counters; display only.
+    std::snprintf(out, size, "RX pk=%lu f8=%lu ign=%lu fa=%lu fc=%lu",
+                  static_cast<unsigned long>(g_transport.diagnostics().rxPackets),
+                  static_cast<unsigned long>(g_diagnostics.externalRxClock),
+                  static_cast<unsigned long>(g_diagnostics.externalRxMasterIgnored),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStart),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStop));
+#else
+    if (size > 0) out[0] = '\0';
+#endif
+}
+
 void cardputerUsbLastRawText(char* out, size_t size) {
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
     const uint32_t count = g_lastHostRawCount;

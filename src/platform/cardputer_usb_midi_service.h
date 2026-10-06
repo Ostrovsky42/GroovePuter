@@ -53,6 +53,9 @@ const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency();
 uint32_t cardputerUsbDispatchStackFreeBytes();
 // Last non-note Host packets as "CTL n=<count> <status.d1.d2> ..." (needs GROOVEPUTER_USB_ACCEPT_DIAG).
 void cardputerUsbLastRawText(char* out, size_t size);
+// Inbound clock path counters as "RX pk=<usb packets> f8=<queued clocks> ign=<realtime
+// dropped because CLOCK is INTERNAL> fa=<starts> fc=<stops>" (needs GROOVEPUTER_USB_ACCEPT_DIAG).
+void cardputerUsbClockRxText(char* out, size_t size);
 // Shape of the last controller / pitch-bend burst: count, min..max, last value.
 void cardputerUsbRampText(char* ccOut, size_t ccSize, char* pbOut, size_t pbSize);
 

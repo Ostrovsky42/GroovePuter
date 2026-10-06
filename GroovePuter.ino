@@ -1070,8 +1070,7 @@ void loop() {
                (unsigned long)g_queueLatency.percentileUs(50), (unsigned long)g_queueLatency.percentileUs(95),
                (unsigned long)g_queueLatency.maxUs());
       g_display.drawText(0, 100, line);
-      snprintf(line, sizeof(line), "PLAY=%d up=%lus us p50/p95/max", g_miniAcid->isPlaying() ? 1 : 0,
-               (unsigned long)(millis() / 1000));
+      cardputerUsbClockRxText(line, sizeof(line));
       g_display.drawText(0, 109, line);
       cardputerUsbLastRawText(line, sizeof(line));
       g_display.drawText(0, 118, line);
