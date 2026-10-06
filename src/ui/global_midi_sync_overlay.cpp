@@ -27,9 +27,12 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
         return true;
     }
 
-    if (event.alt || event.ctrl || event.meta) return true;
+    if (event.ctrl || event.meta) return true;
 
     const int nav = UIInput::navCode(event);
+    // Cardputer has no Shift on the arrow cluster: Alt+Left/Right is the
+    // coarse BPM step, as Alt+Left/Right is elsewhere in the UI.
+    if (event.alt && nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return true;
     const bool confirm = event.key == '\n' || event.key == '\r';
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
         selectedRow_ = nav == GROOVEPUTER_UP ? 0 : 1;
@@ -40,13 +43,13 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
     // Row 0: BPM. Read-only while the tempo comes from incoming MIDI Clock.
     if (selectedRow_ == 0 && !followsMidiClock(runtime) &&
         (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
-        tempoDelta_ = (nav == GROOVEPUTER_RIGHT ? 1 : -1) * (event.shift ? 5 : 1);
+        tempoDelta_ = (nav == GROOVEPUTER_RIGHT ? 1 : -1) * (event.alt ? 5 : 1);
         return true;
     }
 
     // Row 1: clock source. Choosing MIDI IN always means following it; the
     // legacy "external but follow off" state is only shown, never created here.
-    if (selectedRow_ == 1 &&
+    if (selectedRow_ == 1 && !event.alt &&
         (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT || confirm)) {
         const bool midiIn = confirm ? !followsMidiClock(runtime)
                                     : nav == GROOVEPUTER_RIGHT;
@@ -115,7 +118,7 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
                  following ? (held && clock.externalTempoValid ? "LAST BPM" : "BPM IN")
                            : "BPM");
     gfx.drawText(14, 50, following ? "SET BY MIDI CLOCK"
-                                   : "L/R 1  SHIFT+L/R 5");
+                                   : "L/R 1  ALT+L/R 5");
 
     // Clock source.
     if (selectedRow_ == 1) gfx.drawRect(6, 68, w - 12, 15, p.focus);

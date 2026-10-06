@@ -373,7 +373,7 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 ## TEMPO panel
 
 Open with `Alt+Y` or `Fn+M -> TEMPO`. BPM is focused on open:
-`Left/Right` changes it by 1, `Shift+Left/Right` by 5 (10–250 BPM).
+`Left/Right` changes it by 1, `Alt+Left/Right` by 5 (10–250 BPM).
 
 `Down` selects CLOCK. `Left/Right` (or `Enter`) chooses INTERNAL or MIDI IN.
 MIDI IN follows MIDI Clock from any USB MIDI device or DAW: BPM becomes

@@ -102,9 +102,11 @@ int main() {
   auto right=scan(GROOVEPUTER_RIGHT), left=scan(GROOVEPUTER_LEFT);
   sync.open(); sync.handleEvent(right);
   assert(sync.takeTempoDelta()==1 && sync.takeTempoDelta()==0);
-  right.shift=true; sync.handleEvent(right); assert(sync.takeTempoDelta()==5);
-  left.shift=true; sync.handleEvent(left); assert(sync.takeTempoDelta()==-5);
-  right.shift=left.shift=false;
+  right.alt=true; sync.handleEvent(right); assert(sync.takeTempoDelta()==5);
+  left.alt=true; sync.handleEvent(left); assert(sync.takeTempoDelta()==-5);
+  right.alt=left.alt=false;
+  auto shiftRight=right; shiftRight.shift=true; sync.handleEvent(shiftRight);
+  assert(sync.takeTempoDelta()==1); // Shift is not a coarse step any more
   gfx.texts.clear(); sync.draw(gfx,engine);
   assert(gfx.has("TEMPO") && gfx.has("INTERNAL") && gfx.has("BPM"));
 
@@ -125,10 +127,10 @@ int main() {
   engine.setBpm(120); engine.setExternalClockBpm(50);
   display.handleEvent(altY);
   display.handleEvent(right); assert(engine.bpm()==121);
-  right.shift=true; display.handleEvent(right); assert(engine.bpm()==126);
+  right.alt=true; display.handleEvent(right); assert(engine.bpm()==126);
   engine.setBpm(250); display.handleEvent(right); assert(engine.bpm()==250);
-  left.shift=true; engine.setBpm(10); display.handleEvent(left); assert(engine.bpm()==10);
-  right.shift=left.shift=false;
+  left.alt=true; engine.setBpm(10); display.handleEvent(left); assert(engine.bpm()==10);
+  right.alt=left.alt=false;
   // Following MIDI Clock: BPM is read-only.
   clock.setSource(TransportClockSource::SeqtrakExternal);
   clock.setExternalFollowEnabled(true);
