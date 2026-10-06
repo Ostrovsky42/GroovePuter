@@ -871,7 +871,8 @@ enum class CycleStatus : uint8_t {
   NoRecipe,             // no generated phrase known (never generated, Undone, Legacy, scene load)
   CycleAlreadyPublished,
   NothingToAdd,         // both requested sections would repeat the kept phrase
-  NotAdmitted,          // archetype/scenario admits no evolution (Acid, House, no trajectory)
+  NotAdmitted,          // the genre/rhythm archetype admits no evolution (Acid, House):
+                        // another TAKE cannot help, another genre or rhythm can
   DepthNotP3,           // developing a P2 phrase would change law and depth at once
   ContextChanged,       // R1: genre, tonal or pitch-source context differs from the kept phrase
   EditedSinceGeneration,  // R0: the kept phrase no longer equals its rebuild
@@ -881,6 +882,7 @@ enum class CycleStatus : uint8_t {
   TargetChanged,
   Busy,
   Failed,
+  NoTrajectory,         // admitted, but this TAKE's evolution found no plan: another TAKE may work
 };
 
 constexpr uint8_t kCycleSectionBars = 4;
@@ -963,8 +965,8 @@ inline CycleStatus statusForLaw(GroovePuterRhythm::PhraseLawApplyStatus status) 
   using S = GroovePuterRhythm::PhraseLawApplyStatus;
   switch (status) {
     case S::Applied: return CycleStatus::CommittedNow;
-    case S::NotAdmitted:
-    case S::NoEligibleTrajectory: return CycleStatus::NotAdmitted;
+    case S::NotAdmitted: return CycleStatus::NotAdmitted;
+    case S::NoEligibleTrajectory: return CycleStatus::NoTrajectory;
     case S::InvalidContext: return CycleStatus::Failed;
   }
   return CycleStatus::Failed;

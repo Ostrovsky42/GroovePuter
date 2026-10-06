@@ -64,18 +64,17 @@ CREATE TAKE
 DEVELOP
 ```
 
-The **current beta candidate is not fully simplified yet**. Its bounded flagship development path currently requires a 4-bar REWORK/P3 take:
+The default MATERIAL settings (`LENGTH 4B`, `STYLE REWORK`) make a TAKE that `D` can develop:
 
 1. `Space` — start playback.
 2. `Alt+V` — open GENRE; choose Genre / Variant / Rhythm.
 3. `G` — generate and listen.
 4. `Fn+M` — open the workspace launcher and go to MATERIAL.
-5. Set `LENGTH = 4B` and `STYLE = REWORK` (P3).
-6. `G` — create a fresh TAKE.
-7. `D` — develop the eligible TAKE into related DEVELOPMENT / BREAK material.
-8. `Ctrl+Z` — undo the retained cycle if you do not want it.
+5. `G` — create a fresh TAKE.
+6. `D` — develop it into related DEVELOPMENT / BREAK material.
+7. `Ctrl+Z` — undo the retained cycle if you do not want it.
 
-This extra P3 setup is a known first-run UX blocker, not the desired final onboarding flow.
+Acid and House do not grow: pick another genre on GENRE first.
 
 For the complete current key map, see [`src/ui/docs/keys.md`](src/ui/docs/keys.md). On-device page-aware help is available with `Alt+H`.
 

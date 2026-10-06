@@ -254,12 +254,14 @@ MATERIAL from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
 `LAST ACCEPTED` is retrospective only and disappears (`LAST --`) if its
 generated material is no longer structurally present in the Song.
 
-For the bounded musical-play cycle, set `LENGTH 4B` and `STYLE REWORK` (P3), press
-`G` for a new TAKE, then `D` while its source remains unedited and unchanged. The
-result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback changes at the next bar
-boundary. `Ctrl+Z` removes the added cycle in one step. P2, non-4-bar, edited or
-unsupported-style Takes are refused; changing STYLE after making the TAKE does not
-convert it. On `MATERIAL BANK`, `D` still means derive.
+For the bounded musical-play cycle, press `G` for a new TAKE on the defaults
+(`LENGTH 4B`, `STYLE REWORK`), then `D` while its source remains unedited and
+unchanged. The result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback
+changes at the next bar boundary. `Ctrl+Z` removes the added cycle in one step.
+Non-4-bar, edited, VARIANT/FAITHFUL Takes are refused; changing STYLE after making
+the TAKE does not convert it. Acid and House do not grow at all: `D` says
+`<GENRE> CAN'T GROW: FN+M GENRE`, since another TAKE in the same genre cannot
+help. On `MATERIAL BANK`, `D` still means derive.
 
 ### Make room (MATERIAL, `R`)
 
