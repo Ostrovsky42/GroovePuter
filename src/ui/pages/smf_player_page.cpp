@@ -653,13 +653,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                 state.rawRouting ? "RAW" : "SEQTRAK", true,
                                 MusicVisuals::secondaryForStyle()) + 3;
     x += MusicVisuals::drawChip(gfx, x, chipY,
-                                state.tempoMode == SmfTempoMode::Original
-                                    ? "FILE TEMPO"
-                                    : (transportClockRuntime().source() ==
-                                               TransportClockSource::SeqtrakExternal
-                                           ? "SEQ MASTER"
-                                           : "GP MASTER"),
-                                true,
+                                smfTempoModeName(state.tempoMode), true,
                                 state.tempoMode == SmfTempoMode::Project
                                     ? MusicVisuals::accentForStyle()
                                     : MusicVisuals::secondaryForStyle()) + 3;

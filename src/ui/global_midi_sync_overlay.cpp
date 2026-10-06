@@ -1,12 +1,20 @@
 #include "global_midi_sync_overlay.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "ui_input.h"
 #include "ui_theme.h"
 #include "fonts/Adafruit5x7.h"
+
+namespace {
+bool followsMidiClock(const GroovePuterMidi::TransportClockRuntime& runtime) {
+    return runtime.source() == GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
+           runtime.externalFollowEnabled();
+}
+}
 
 bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
     if (!visible_) return false;
@@ -28,34 +36,24 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
         return true;
     }
 
-    if (selectedRow_ == 0 &&
-        (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT || confirm)) {
-        auto& runtime = GroovePuterMidi::transportClockRuntime();
-        if (confirm) {
-            runtime.toggleSource();
-        } else {
-            runtime.setSource(nav == GROOVEPUTER_LEFT
-                ? GroovePuterMidi::TransportClockSource::GroovePuterInternal
-                : GroovePuterMidi::TransportClockSource::SeqtrakExternal);
-        }
-        return true;
-    }
-
-    if (selectedRow_ == 1 &&
-        GroovePuterMidi::transportClockRuntime().source() ==
-            GroovePuterMidi::TransportClockSource::GroovePuterInternal &&
+    auto& runtime = GroovePuterMidi::transportClockRuntime();
+    // Row 0: BPM. Read-only while the tempo comes from incoming MIDI Clock.
+    if (selectedRow_ == 0 && !followsMidiClock(runtime) &&
         (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
         tempoDelta_ = (nav == GROOVEPUTER_RIGHT ? 1 : -1) * (event.shift ? 5 : 1);
         return true;
     }
 
+    // Row 1: clock source. Choosing MIDI IN always means following it; the
+    // legacy "external but follow off" state is only shown, never created here.
     if (selectedRow_ == 1 &&
-        GroovePuterMidi::transportClockRuntime().source() ==
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
         (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT || confirm)) {
-        auto& runtime = GroovePuterMidi::transportClockRuntime();
-        if (confirm) runtime.toggleExternalFollowEnabled();
-        else runtime.setExternalFollowEnabled(nav == GROOVEPUTER_RIGHT);
+        const bool midiIn = confirm ? !followsMidiClock(runtime)
+                                    : nav == GROOVEPUTER_RIGHT;
+        if (midiIn) runtime.setExternalFollowEnabled(true);
+        runtime.setSource(midiIn
+            ? GroovePuterMidi::TransportClockSource::SeqtrakExternal
+            : GroovePuterMidi::TransportClockSource::GroovePuterInternal);
         return true;
     }
 
@@ -83,13 +81,14 @@ void drawTempo(IGfx& gfx, int x, int y, const char* text, IGfxColor color) {
 void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
     if (!visible_) return;
 
+    using GroovePuterMidi::ExternalClockLockState;
     const UI::ThemePalette p = UI::themePalette();
     const auto clock = GroovePuterMidi::transportClockRuntime().snapshot();
-    const bool seqMaster = clock.source ==
+    const bool midiIn = clock.source ==
         GroovePuterMidi::TransportClockSource::SeqtrakExternal;
-    const bool following = seqMaster && clock.externalFollowEnabled;
-    const bool valueFocus = selectedRow_ == 1;
-    const bool followFocus = valueFocus && seqMaster;
+    const bool following = midiIn && clock.externalFollowEnabled;
+    const bool held = clock.externalState == ExternalClockLockState::Hold ||
+                      clock.externalState == ExternalClockLockState::Lost;
     const int w = gfx.width();
     const int footerY = gfx.height() - 12;
 
@@ -97,90 +96,65 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
     gfx.fillRect(0, 0, w, gfx.height(), p.background);
     gfx.fillRect(0, 0, w, 17, p.panel);
     gfx.setTextColor(p.text);
-    gfx.drawText(6, 5, "TEMPO / SYNC");
-    gfx.setTextColor(p.accent);
-    gfx.drawText(w - 42, 5, "GLOBAL");
-    gfx.setTextColor(p.secondary);
-    gfx.drawText(6, 21, "MELODY / PATTERN / DRUMS");
+    gfx.drawText(6, 5, "TEMPO");
+    const char* transport = miniAcid.isPlaying() ? "PLAYING" : "STOPPED";
+    gfx.setTextColor(miniAcid.isPlaying() ? p.active : p.secondary);
+    gfx.drawText(w - 6 - gfx.textWidth(transport), 5, transport);
 
-    const int cardW = (w - 18) / 2;
-    for (int i = 0; i < 2; ++i) {
-        const bool active = (i == 1) == seqMaster;
-        const int x = 6 + i * (cardW + 6);
-        gfx.fillRect(x, 34, cardW, 23, active ? p.accent : p.panel);
-        if (!valueFocus && active)
-            gfx.drawRect(x - 1, 33, cardW + 2, 25, p.focus);
-        gfx.setTextColor(active ? p.invert : p.secondary);
-        const char* label = i == 0 ? "GROOVEPUTER" : "SEQTRAK";
-        gfx.drawText(x + (cardW - gfx.textWidth(label)) / 2, 42, label);
-    }
-
-    gfx.fillRect(6, 62, w - 12, 15, p.panel);
-    if (followFocus) gfx.drawRect(6, 62, w - 12, 15, p.focus);
-    gfx.setTextColor(seqMaster ? p.text : p.secondary);
-    gfx.drawText(12, 66, seqMaster ? "FOLLOW SEQ CLOCK" : "PROJECT TEMPO");
-    const char* follow = seqMaster
-        ? (clock.externalFollowEnabled ? "ON" : "OFF") : "L/R EDIT";
-    gfx.setTextColor(following ? p.active : p.secondary);
-    gfx.drawText(w - 12 - gfx.textWidth(follow), 66, follow);
-
+    // BPM: the main control, focused on open.
     char tempo[12];
-    if (seqMaster && (!following || !clock.externalTempoValid))
+    if (following && !clock.externalTempoValid)
         std::snprintf(tempo, sizeof(tempo), "--.-");
     else
-        std::snprintf(tempo, sizeof(tempo), "%.1f", seqMaster
+        std::snprintf(tempo, sizeof(tempo), "%.1f", following
             ? clock.externalBpm() : static_cast<double>(miniAcid.projectBpm()));
-    if (valueFocus && !seqMaster) gfx.drawRect(6, 80, 108, 31, p.focus);
-    drawTempo(gfx, 12, 84, tempo, p.text);
+    if (selectedRow_ == 0) gfx.drawRect(6, 23, w - 12, 40, p.focus);
+    drawTempo(gfx, 14, 29, tempo, following ? p.secondary : p.text);
     gfx.setTextColor(p.secondary);
-    gfx.drawText(12, 102, seqMaster
-        ? (following && clock.externalTempoValid &&
-           (clock.externalState == GroovePuterMidi::ExternalClockLockState::Hold ||
-            clock.externalState == GroovePuterMidi::ExternalClockLockState::Lost)
-               ? "LAST BPM" : "SEQ BPM")
-        : "BPM");
+    gfx.drawText(14 + static_cast<int>(std::strlen(tempo)) * 12 + 4, 36,
+                 following ? (held && clock.externalTempoValid ? "LAST BPM" : "BPM IN")
+                           : "BPM");
+    gfx.drawText(14, 50, following ? "SET BY MIDI CLOCK"
+                                   : "L/R 1  SHIFT+L/R 5");
 
-    const char* status = "CLOCK OUT";
-    const char* detail = miniAcid.isPlaying() ? "PLAYING" : "STOPPED";
-    IGfxColor statusColor = miniAcid.isPlaying() ? p.active : p.secondary;
-    if (seqMaster) {
-        detail = following ? (clock.externalRunning ? "PLAYING" : "STOPPED")
-                           : "LOCAL TEMPO";
-        statusColor = p.secondary;
-        if (!following) status = "FOLLOW OFF";
-        else {
-            using GroovePuterMidi::ExternalClockLockState;
+    // Clock source.
+    if (selectedRow_ == 1) gfx.drawRect(6, 68, w - 12, 15, p.focus);
+    gfx.setTextColor(p.text);
+    gfx.drawText(14, 72, "CLOCK");
+    const char* source = midiIn ? "< MIDI IN" : "INTERNAL >";
+    gfx.setTextColor(midiIn ? p.accent : p.text);
+    gfx.drawText(w - 14 - gfx.textWidth(source), 72, source);
+
+    if (midiIn) {
+        const char* status = "FOLLOW OFF";
+        const char* detail = "USING PROJECT BPM";
+        IGfxColor color = p.secondary;
+        if (following) {
             switch (clock.externalState) {
                 case ExternalClockLockState::Waiting:
-                    status = "WAITING"; detail = "PRESS SEQ PLAY"; break;
+                    status = "WAITING"; detail = ""; break;
                 case ExternalClockLockState::Locking:
-                    status = "SYNCING"; statusColor = p.warning; break;
+                    status = "SYNCING"; detail = ""; color = p.warning; break;
                 case ExternalClockLockState::Locked:
-                    status = "IN SYNC"; statusColor = p.active; break;
+                    status = "IN SYNC"; detail = ""; color = p.active; break;
                 case ExternalClockLockState::Hold:
-                    status = "CLOCK HOLD"; statusColor = p.warning; break;
+                    status = "CLOCK HOLD"; detail = ""; color = p.warning; break;
                 case ExternalClockLockState::Lost:
-                    status = "CLOCK LOST"; statusColor = p.danger;
-                    detail = "CHECK SEQTRAK"; break;
+                    status = "CLOCK LOST"; detail = "CHECK USB MIDI"; color = p.danger; break;
             }
         }
+        gfx.setTextColor(color);
+        gfx.drawText(14, 92, status);
+        gfx.setTextColor(p.secondary);
+        if (*detail) gfx.drawText(14 + gfx.textWidth(status) + 12, 92, detail);
+        gfx.drawText(14, 104, "PLAY / STOP FROM THE OTHER DEVICE");
+    } else {
+        gfx.setTextColor(p.secondary);
+        gfx.drawText(14, 92, "MIDI IN: FOLLOW A DAW / DEVICE");
     }
-    gfx.setTextColor(statusColor);
-    gfx.drawText(126, 85, status);
-    gfx.setTextColor(p.secondary);
-    gfx.drawText(126, 99, detail);
 
-    gfx.setTextColor(p.secondary);
-    gfx.drawText(6, 113, seqMaster
-        ? (following ? "PLAY / STOP FROM SEQTRAK" : "SEQ CLOCK FOLLOW IS DISABLED")
-        : (valueFocus ? "SHIFT + L/R: 5 BPM  RANGE 10-250"
-                      : "STOP: SEQ USES ITS OWN BPM"));
     gfx.fillRect(0, footerY, w, 12, p.panel);
     gfx.setTextColor(p.text);
-    gfx.drawText(6, footerY + 3, valueFocus
-        ? (seqMaster ? "UP MASTER  L/R OFF/ON  ESC BACK"
-                     : "L/R BPM  UP MASTER  ESC BACK")
-        : (seqMaster ? "L/R MASTER  DOWN FOLLOW  ESC BACK"
-                     : "L/R MASTER  DOWN BPM  ESC BACK"));
+    gfx.drawText(6, footerY + 3, "UP/DN SELECT  L/R CHANGE  ESC");
     gfx.setTextColor(COLOR_TEXT);
 }

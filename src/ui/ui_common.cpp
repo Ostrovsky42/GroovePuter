@@ -181,6 +181,9 @@ namespace UI {
                     status.totalBars = statusCount(smf.totalBars);
                     status.output = UiStatusOutput::Midi;
                     populatePatternAddress(status, miniAcid);
+                    if (smf.tempoMode == GroovePuterMidi::SmfTempoMode::Original) {
+                        status.clock = UiStatusClock::File;
+                    }
                     return status;
                 }
             }

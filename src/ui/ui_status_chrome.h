@@ -287,11 +287,11 @@ inline const char* uiStatusStateToken(UiStatusState state) {
 
 inline const char* uiStatusClockToken(UiStatusClock clock) {
     switch (clock) {
-        case UiStatusClock::Internal: return "GP";
+        case UiStatusClock::Internal: return "INT";
         case UiStatusClock::File: return "FILE";
-        case UiStatusClock::External: return "SEQ";
+        case UiStatusClock::External: return "EXT";
     }
-    return "GP";
+    return "INT";
 }
 
 inline const char* uiStatusOutputToken(UiStatusOutput output) {

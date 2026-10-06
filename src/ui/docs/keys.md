@@ -31,8 +31,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt/Fn+1..0` | Direct page jump |
 | `Space` | Active transport unless the page consumes it |
 | `Alt+P` | MIDI Player |
-| `Alt+T` | PLAY / REC: Groove or MIDI transport; SEQTRAK recording guide |
-| `Alt+Y` | Global tempo and MIDI Sync (all sound); also in Fn+M launcher |
+| `Alt+Y` | TEMPO: project BPM and MIDI clock source; also Fn+M -> TEMPO |
 | `Alt+K` | SAMPLER |
 | `Alt+V` | GENRE |
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
@@ -371,35 +370,16 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `G` | Jump to GENRE |
 | `Esc` / `Backspace` | Close dialog/go up directory |
 
-## PLAY / REC panel
+## TEMPO panel
 
-Open with `Alt+T` or `Fn+M -> PLAY/REC`. `Left/Right` selects
-GROOVE or MIDI FILE without starting either. `Space` or `Enter` applies the
-selected transport action; the panel shows that action before it is pressed.
-`Y` opens Tempo/Sync, `P` opens MIDI Player, and `Esc` closes the panel.
+Open with `Alt+Y` or `Fn+M -> TEMPO`. BPM is focused on open:
+`Left/Right` changes it by 1, `Shift+Left/Right` by 5 (10–250 BPM).
 
-GROOVE shows CYCLE/SONG and the current Synth A/B sources (PAT or MEL),
-including drums. With GroovePuter master, Space starts/stops the Groove
-transport. With SEQTRAK master, it enables/disables external Clock follow;
-SEQTRAK still owns Start/Stop.
-
-MIDI FILE uses the existing player rules: file-tempo playback, project-tempo
-arming at the next bar, or external Start from SEQTRAK. A project-tempo file
-with GroovePuter master requires Groove playback to start first.
-
-REC is a guide for **manual recording on SEQTRAK**, not a remote Record
-button. Choose the receiving track and recording length on SEQTRAK. The panel
-does not report whether SEQTRAK is recording and does not enable note capture
-into Melody or WAV recording.
-
-## Tempo / Sync controls
-
-`Alt+Y` opens the global tempo panel. `Up` selects master; `Down` selects
-the master-specific control. With GROOVEPUTER master, Left/Right edits BPM
-by 1 and Shift+Left/Right by 5 (10–250 BPM). With SEQTRAK master, Left/Right
-sets Follow OFF/ON; SEQ BPM is measured from incoming MIDI Clock and is
-read-only. HOLD/LOST readings are labelled LAST BPM. No incoming valid
-Clock means `--.-`, not the SEQTRAK device's stored tempo.
+`Down` selects CLOCK. `Left/Right` (or `Enter`) chooses INTERNAL or MIDI IN.
+MIDI IN follows MIDI Clock from any USB MIDI device or DAW: BPM becomes
+read-only and Play/Stop come from that device. The panel shows WAITING,
+SYNCING, IN SYNC, CLOCK HOLD or CLOCK LOST. Without a valid incoming clock
+BPM reads `--.-`; after HOLD/LOST it shows the LAST BPM.
 
 Settings DEVICE contains Theme and Main Volume. Manual Groove Mode/Flavor
 controls have been removed from settings; saved project fields are preserved.
