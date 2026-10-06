@@ -64,6 +64,7 @@ bool equal(const GenerationCompositionResult& a,
          a.melodicRhythm == b.melodicRhythm &&
          a.motifShape == b.motifShape &&
          a.phraseLaw == b.phraseLaw &&
+         a.harmonicRhythmPolicy == b.harmonicRhythmPolicy &&
          a.phraseBars == b.phraseBars &&
          a.secondaryRole == b.secondaryRole &&
          a.corridor.bpmMin == b.corridor.bpmMin &&
@@ -86,6 +87,8 @@ void assertPlanBelongsToProfile(const GenerationProfileView& profile,
   const uint8_t packedPhrase = static_cast<uint8_t>(
       (static_cast<uint8_t>(plan.phraseLaw) << 4u) | plan.phraseBars);
   assert(contains(profile.phraseLaws, packedPhrase));
+  assert(contains(profile.harmonicRhythmPolicies,
+                  static_cast<uint8_t>(plan.harmonicRhythmPolicy)));
   assert(isRhythmCompatible(
       settingsFor({static_cast<GenerativeMode>(profile.generativeMode),
                    profile.recipe}),
@@ -108,6 +111,36 @@ void testAllProductionProfilesAreCompleteAndDeterministic() {
           resolveGenerationComposition(settings, context);
       assert(equal(first, second));
       assertPlanBelongsToProfile(profile, first);
+    }
+  }
+}
+
+void testEveryAvailableRecipeSelectsHalfBarPolicy() {
+  static_assert(static_cast<uint8_t>(GenerationDomain::PhraseLawSelection) == 18);
+  static_assert(static_cast<uint8_t>(GenerationDomain::HarmonicRhythmSelection) == 19);
+  static_assert(static_cast<uint8_t>(GenerationDomain::Count) == 20);
+  static_assert(sizeof(GenerationCompositionResult) <= 32);
+
+  for (uint8_t mode = 0; mode < kGenerativeModeCount; ++mode) {
+    const GenerativeMode genre = static_cast<GenerativeMode>(mode);
+    const uint8_t recipeCount = availableRecipeCount(genre);
+    for (uint8_t recipeOrdinal = 0; recipeOrdinal < recipeCount;
+         ++recipeOrdinal) {
+      GenreRecipeId recipe = kBaseRecipeId;
+      assert(availableRecipeAt(genre, recipeOrdinal, recipe));
+      const GenreSettings settings = settingsFor({genre, recipe});
+      const GenerationProfileView profile = generationProfileFor(settings);
+      assert(isValidGenerationProfile(profile));
+      assert(profile.harmonicRhythmPolicies.count == 1);
+      assert(profile.harmonicRhythmPolicies.candidates != nullptr);
+      assert(profile.harmonicRhythmPolicies.candidates[0].id ==
+             static_cast<uint8_t>(PhraseHarmonicPolicyId::HalfBar));
+
+      const GenerationCompositionResult selected = resolveGenerationComposition(
+          settings, generation(0xB000u + mode, recipeOrdinal));
+      assert(selected.status == GenerationCompositionStatus::Ok);
+      assert(selected.harmonicRhythmPolicy == PhraseHarmonicPolicyId::HalfBar);
+      assertPlanBelongsToProfile(profile, selected);
     }
   }
 }
@@ -255,6 +288,7 @@ void testFallbackAndInvalidProfileIntent() {
 
 int main() {
   testAllProductionProfilesAreCompleteAndDeterministic();
+  testEveryAvailableRecipeSelectsHalfBarPolicy();
   testManualRhythmAndEveryRoleRemainComposable();
   testWeightedSelectionIsOrderInvariant();
   testSlowAndBrokenFalsificationProfiles();

@@ -35,6 +35,11 @@ constexpr WeightedIdentityView view(
   return {candidates, static_cast<uint8_t>(N)};
 }
 
+constexpr WeightedIdentityCandidate kHarmonicRhythmHalfBar[] = {
+    weighted(PhraseHarmonicPolicyId::HalfBar, 1),
+};
+constexpr uint32_t kHarmonicRhythmSelectionSalt = 0x48305231u;
+
 constexpr WeightedIdentityCandidate kFeelStraightDrive[] = {
     weighted(FeelProfileId::Straight, 120),
     weighted(FeelProfileId::PushPullControlled, 45),
@@ -312,6 +317,7 @@ struct ProfileDefinition {
   WeightedIdentityView phraseLaw;
   GenerationCorridor corridor;
   CompositionSecondaryRole secondaryRole;
+  WeightedIdentityView harmonicRhythmPolicies;
 };
 
 constexpr ProfileDefinition profile(
@@ -322,7 +328,8 @@ constexpr ProfileDefinition profile(
     GenerationCorridor corridor,
     CompositionSecondaryRole secondaryRole) {
   return {static_cast<uint8_t>(mode), recipe, feels, bass, chord, progression,
-          melodic, motif, phraseLaw, corridor, secondaryRole};
+          melodic, motif, phraseLaw, corridor, secondaryRole,
+          view(kHarmonicRhythmHalfBar)};
 }
 
 constexpr ProfileDefinition kProfiles[] = {
@@ -395,6 +402,9 @@ bool validPhrase(uint8_t id) {
   return law < static_cast<uint8_t>(PhraseEvolutionLawId::Count) &&
          (bars == 1 || bars == 2 || bars == 4 || bars == 8);
 }
+bool validHarmonicRhythmPolicy(uint8_t id) {
+  return id < static_cast<uint8_t>(PhraseHarmonicPolicyId::Count);
+}
 
 uint32_t profileSalt(const GenerationProfileView& profile) {
   return (static_cast<uint32_t>(profile.generativeMode) << 24u) |
@@ -453,6 +463,7 @@ GenerationProfileView generationProfileFor(const GenreSettings& settings) {
   result.melodicRhythms = definition->melodic;
   result.motifShapes = definition->motif;
   result.phraseLaws = definition->phraseLaw;
+  result.harmonicRhythmPolicies = definition->harmonicRhythmPolicies;
   result.corridor = definition->corridor;
   result.secondaryRole = definition->secondaryRole;
   return result;
@@ -477,7 +488,8 @@ bool isValidGenerationProfile(const GenerationProfileView& profile) {
   return validView(profile.feels, validFeel) && validView(profile.bassRhythms, validBass) &&
          validView(profile.chordRhythms, validChord) && validView(profile.progressions, validProgression) &&
          validView(profile.melodicRhythms, validMelodic) && validView(profile.motifShapes, validMotif) &&
-         validView(profile.phraseLaws, validPhrase);
+         validView(profile.phraseLaws, validPhrase) &&
+         validView(profile.harmonicRhythmPolicies, validHarmonicRhythmPolicy);
 }
 
 bool selectWeightedIdentityFromView(
@@ -539,14 +551,15 @@ GenerationCompositionResult resolveGenerationComposition(
   result.secondaryRole = profile.secondaryRole;
 
   const uint32_t baseSalt = profileSalt(profile);
-  uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0;
+  uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0,harmonicRhythmPolicy=0;
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
       !selectWeightedIdentityFromView(profile.bassRhythms, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
       !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
       !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
       !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
       !selectWeightedIdentityFromView(profile.motifShapes, GenerationDomain::MotifSelection, rhythm.archetypeId, baseSalt | melodic, generation, motif) ||
-      !selectWeightedIdentityFromView(profile.phraseLaws, GenerationDomain::PhraseLawSelection, rhythm.archetypeId, baseSalt, generation, phraseChoice)) {
+      !selectWeightedIdentityFromView(profile.phraseLaws, GenerationDomain::PhraseLawSelection, rhythm.archetypeId, baseSalt, generation, phraseChoice) ||
+      !selectWeightedIdentityFromView(profile.harmonicRhythmPolicies, GenerationDomain::HarmonicRhythmSelection, rhythm.archetypeId, baseSalt ^ kHarmonicRhythmSelectionSalt, generation, harmonicRhythmPolicy)) {
     result.status = GenerationCompositionStatus::InvalidProfile;
     return result;
   }
@@ -557,6 +570,8 @@ GenerationCompositionResult resolveGenerationComposition(
   result.melodicRhythm = static_cast<MelodicRhythmId>(melodic);
   result.motifShape = static_cast<MotifShapeId>(motif);
   result.phraseLaw = static_cast<PhraseEvolutionLawId>(phraseChoice >> 4u);
+  result.harmonicRhythmPolicy =
+      static_cast<PhraseHarmonicPolicyId>(harmonicRhythmPolicy);
   result.phraseBars = static_cast<uint8_t>(phraseChoice & 0x0Fu);
   result.status = GenerationCompositionStatus::Ok;
   return result;

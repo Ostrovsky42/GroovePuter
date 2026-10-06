@@ -8,7 +8,7 @@ SCENES = (ROOT / "scenes.h").read_text()
 
 for edge in (
     "rhythms", "feels", "bassRhythms", "chordRhythms",
-    "melodicRhythms", "motifShapes", "phraseLaws",
+    "melodicRhythms", "motifShapes", "phraseLaws", "harmonicRhythmPolicies",
 ):
     assert edge in HEADER, f"missing composition edge: {edge}"
 
@@ -19,6 +19,7 @@ assert "GenerationDomain::MelodicRhythmSelection" in SOURCE
 assert "GenerationDomain::MotifSelection" in SOURCE
 assert "GenerationDomain::FeelProfileSelection" in SOURCE
 assert "GenerationDomain::PhraseLawSelection" in SOURCE
+assert "GenerationDomain::HarmonicRhythmSelection" in SOURCE
 assert "requestedId = result.bassRhythmId" in MIGRATION
 assert "requestedId = result.chordRhythmId" in MIGRATION
 assert "requestedRhythm = result.melodicRhythmId" in MIGRATION

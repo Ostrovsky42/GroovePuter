@@ -10,6 +10,7 @@
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
 #include "../roles/melodic_motif.h"
+#include "phrase_harmonic_policy.h"
 #include "rhythm_selection.h"
 
 struct GenreSettings;
@@ -64,6 +65,7 @@ struct GenerationProfileView {
   WeightedIdentityView melodicRhythms{};
   WeightedIdentityView motifShapes{};
   WeightedIdentityView phraseLaws{};
+  WeightedIdentityView harmonicRhythmPolicies{};
   GenerationCorridor corridor{};
   CompositionSecondaryRole secondaryRole = CompositionSecondaryRole::Melodic;
 };
@@ -90,6 +92,7 @@ struct GenerationCompositionResult {
   // Planning metadata only. Production multi-bar execution remains blocked by
   // the documented Stage 6.1 physical hardware gate.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
+  PhraseHarmonicPolicyId harmonicRhythmPolicy = PhraseHarmonicPolicyId::HalfBar;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
   CompositionSecondaryRole secondaryRole = CompositionSecondaryRole::Melodic;
