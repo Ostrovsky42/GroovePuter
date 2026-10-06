@@ -153,6 +153,7 @@ public:
   // followed tempo until the next explicit setBpm() call or a reboot.
   void restoreProjectBpm();
   float bpm() const;
+  float projectBpm() const { return projectBpmValue; }
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;

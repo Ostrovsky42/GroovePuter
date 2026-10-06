@@ -28,8 +28,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
-  enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
+  enum class ProjectSection { Scenes = 0, Device, Led, Midi };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };

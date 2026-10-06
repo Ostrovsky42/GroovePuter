@@ -391,3 +391,15 @@ REC is a guide for **manual recording on SEQTRAK**, not a remote Record
 button. Choose the receiving track and recording length on SEQTRAK. The panel
 does not report whether SEQTRAK is recording and does not enable note capture
 into Melody or WAV recording.
+
+## Tempo / Sync controls
+
+`Alt+Y` opens the global tempo panel. `Up` selects master; `Down` selects
+the master-specific control. With GROOVEPUTER master, Left/Right edits BPM
+by 1 and Shift+Left/Right by 5 (10–250 BPM). With SEQTRAK master, Left/Right
+sets Follow OFF/ON; SEQ BPM is measured from incoming MIDI Clock and is
+read-only. HOLD/LOST readings are labelled LAST BPM. No incoming valid
+Clock means `--.-`, not the SEQTRAK device's stored tempo.
+
+Settings DEVICE contains Theme and Main Volume. Manual Groove Mode/Flavor
+controls have been removed from settings; saved project fields are preserved.

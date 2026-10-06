@@ -1,5 +1,6 @@
 #include "src/ui/save_probe.h"
 #include "miniacid_display.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 #include "src/state/undo_owner.h"
@@ -540,7 +541,15 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         return true;
     }
     if (global_midi_sync_overlay_.isVisible()) {
-        return global_midi_sync_overlay_.handleEvent(event);
+        global_midi_sync_overlay_.handleEvent(event);
+        const int tempoDelta = global_midi_sync_overlay_.takeTempoDelta();
+        if (tempoDelta != 0 && GroovePuterMidi::transportClockRuntime().source() ==
+            GroovePuterMidi::TransportClockSource::GroovePuterInternal) {
+            const float before = mini_acid_.projectBpm();
+            withAudioGuard([&]() { mini_acid_.setBpm(before + tempoDelta); });
+            if (mini_acid_.projectBpm() != before) GroovePuterState::markSceneMutated();
+        }
+        return true;
     }
 
     if (global_help_overlay_.isVisible()) {

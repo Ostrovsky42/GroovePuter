@@ -24,11 +24,7 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
     const int nav = UIInput::navCode(event);
     const bool confirm = event.key == '\n' || event.key == '\r';
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-        const auto source = GroovePuterMidi::transportClockRuntime().source();
-        selectedRow_ = (nav == GROOVEPUTER_UP ||
-                        source != GroovePuterMidi::TransportClockSource::SeqtrakExternal)
-            ? 0
-            : 1;
+        selectedRow_ = nav == GROOVEPUTER_UP ? 0 : 1;
         return true;
     }
 
@@ -42,6 +38,14 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
                 ? GroovePuterMidi::TransportClockSource::GroovePuterInternal
                 : GroovePuterMidi::TransportClockSource::SeqtrakExternal);
         }
+        return true;
+    }
+
+    if (selectedRow_ == 1 &&
+        GroovePuterMidi::transportClockRuntime().source() ==
+            GroovePuterMidi::TransportClockSource::GroovePuterInternal &&
+        (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+        tempoDelta_ = (nav == GROOVEPUTER_RIGHT ? 1 : -1) * (event.shift ? 5 : 1);
         return true;
     }
 
@@ -84,7 +88,8 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
     const bool seqMaster = clock.source ==
         GroovePuterMidi::TransportClockSource::SeqtrakExternal;
     const bool following = seqMaster && clock.externalFollowEnabled;
-    const bool followFocus = selectedRow_ == 1 && seqMaster;
+    const bool valueFocus = selectedRow_ == 1;
+    const bool followFocus = valueFocus && seqMaster;
     const int w = gfx.width();
     const int footerY = gfx.height() - 12;
 
@@ -103,7 +108,7 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
         const bool active = (i == 1) == seqMaster;
         const int x = 6 + i * (cardW + 6);
         gfx.fillRect(x, 34, cardW, 23, active ? p.accent : p.panel);
-        if (!followFocus && active)
+        if (!valueFocus && active)
             gfx.drawRect(x - 1, 33, cardW + 2, 25, p.focus);
         gfx.setTextColor(active ? p.invert : p.secondary);
         const char* label = i == 0 ? "GROOVEPUTER" : "SEQTRAK";
@@ -113,9 +118,9 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
     gfx.fillRect(6, 62, w - 12, 15, p.panel);
     if (followFocus) gfx.drawRect(6, 62, w - 12, 15, p.focus);
     gfx.setTextColor(seqMaster ? p.text : p.secondary);
-    gfx.drawText(12, 66, "FOLLOW SEQ CLOCK");
+    gfx.drawText(12, 66, seqMaster ? "FOLLOW SEQ CLOCK" : "PROJECT TEMPO");
     const char* follow = seqMaster
-        ? (clock.externalFollowEnabled ? "ON" : "OFF") : "--";
+        ? (clock.externalFollowEnabled ? "ON" : "OFF") : "L/R EDIT";
     gfx.setTextColor(following ? p.active : p.secondary);
     gfx.drawText(w - 12 - gfx.textWidth(follow), 66, follow);
 
@@ -124,10 +129,16 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
         std::snprintf(tempo, sizeof(tempo), "--.-");
     else
         std::snprintf(tempo, sizeof(tempo), "%.1f", seqMaster
-            ? clock.externalBpm() : static_cast<double>(miniAcid.bpm()));
+            ? clock.externalBpm() : static_cast<double>(miniAcid.projectBpm()));
+    if (valueFocus && !seqMaster) gfx.drawRect(6, 80, 108, 31, p.focus);
     drawTempo(gfx, 12, 84, tempo, p.text);
     gfx.setTextColor(p.secondary);
-    gfx.drawText(12, 102, "BPM");
+    gfx.drawText(12, 102, seqMaster
+        ? (following && clock.externalTempoValid &&
+           (clock.externalState == GroovePuterMidi::ExternalClockLockState::Hold ||
+            clock.externalState == GroovePuterMidi::ExternalClockLockState::Lost)
+               ? "LAST BPM" : "SEQ BPM")
+        : "BPM");
 
     const char* status = "CLOCK OUT";
     const char* detail = miniAcid.isPlaying() ? "PLAYING" : "STOPPED";
@@ -162,12 +173,14 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
     gfx.setTextColor(p.secondary);
     gfx.drawText(6, 113, seqMaster
         ? (following ? "PLAY / STOP FROM SEQTRAK" : "SEQ CLOCK FOLLOW IS DISABLED")
-        : "STOP: SEQ USES ITS OWN BPM");
+        : (valueFocus ? "SHIFT + L/R: 5 BPM  RANGE 10-250"
+                      : "STOP: SEQ USES ITS OWN BPM"));
     gfx.fillRect(0, footerY, w, 12, p.panel);
     gfx.setTextColor(p.text);
-    gfx.drawText(6, footerY + 3, followFocus
-        ? "UP MASTER  L/R OFF/ON  ESC BACK"
+    gfx.drawText(6, footerY + 3, valueFocus
+        ? (seqMaster ? "UP MASTER  L/R OFF/ON  ESC BACK"
+                     : "L/R BPM  UP MASTER  ESC BACK")
         : (seqMaster ? "L/R MASTER  DOWN FOLLOW  ESC BACK"
-                     : "L/R MASTER  ENTER CHANGE  ESC BACK"));
+                     : "L/R MASTER  DOWN BPM  ESC BACK"));
     gfx.setTextColor(COLOR_TEXT);
 }

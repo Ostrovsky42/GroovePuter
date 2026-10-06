@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include "src/ui/play_rec_overlay.h"
+#include "src/ui/global_midi_sync_overlay.h"
+#include "src/ui/pages/project_page.h"
 #include "src/ui/miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/input/performance_keyboard.h"
@@ -143,6 +145,56 @@ int main() {
   assert(clock.externalFollowEnabled() && !engine.isPlaying()); // waits for SEQ Start
   display.handleEvent(key(' ')); assert(!clock.externalFollowEnabled());
   display.handleEvent(scan(GROOVEPUTER_ESCAPE));
+  // Device settings must not mutate the saved musical profile.
+  ProjectPage project(gfx,engine,AudioGuard{});
+  engine.setGrooveboxMode(GrooveboxMode::Dub);
+  engine.setGrooveFlavor(3);
+  const auto savedMode=engine.grooveboxMode();
+  const auto savedFlavor=engine.grooveFlavor();
+  auto tab=key('\t'); project.handleEvent(tab);
+  gfx.texts.clear(); project.draw(gfx);
+  assert(gfx.has("DEVICE") && gfx.has("Theme") && gfx.has("Main Volume"));
+  assert(!gfx.has("Flavor") && !gfx.has("Groove"));
+  for (int i=0;i<6;++i) {
+    auto down=scan(GROOVEPUTER_DOWN); project.handleEvent(down);
+    auto right=scan(GROOVEPUTER_RIGHT); project.handleEvent(right);
+  }
+  assert(engine.grooveboxMode()==savedMode && engine.grooveFlavor()==savedFlavor);
+
+  // Tempo commands stay in the display owner's guarded engine path.
+  GlobalMidiSyncOverlay sync;
+  clock.setSource(TransportClockSource::GroovePuterInternal);
+  sync.open(); auto down=scan(GROOVEPUTER_DOWN); sync.handleEvent(down);
+  auto right=scan(GROOVEPUTER_RIGHT); sync.handleEvent(right);
+  assert(sync.takeTempoDelta()==1 && sync.takeTempoDelta()==0);
+  right.shift=true; sync.handleEvent(right); assert(sync.takeTempoDelta()==5);
+  auto left=scan(GROOVEPUTER_LEFT); left.shift=true;
+  sync.handleEvent(left); assert(sync.takeTempoDelta()==-5);
+  gfx.texts.clear(); sync.draw(gfx,engine); assert(gfx.has("PROJECT TEMPO"));
+  shortcut=key('y'); shortcut.alt=true;
+  engine.setBpm(120); engine.setExternalClockBpm(50);
+  display.handleEvent(shortcut);
+  display.handleEvent(scan(GROOVEPUTER_DOWN));
+  right.shift=false; display.handleEvent(right); assert(engine.bpm()==121);
+  right.shift=true; display.handleEvent(right); assert(engine.bpm()==126);
+  engine.setBpm(250); display.handleEvent(right); assert(engine.bpm()==250);
+  engine.setBpm(10); display.handleEvent(left); assert(engine.bpm()==10);
+  clock.setSource(TransportClockSource::SeqtrakExternal);
+  display.handleEvent(right); assert(engine.bpm()==10); // read-only external BPM
+  display.handleEvent(scan(GROOVEPUTER_ESCAPE));
+  sync.open(); sync.handleEvent(down); right.shift=false;
+  sync.handleEvent(right); assert(sync.takeTempoDelta()==0);
+  ExternalClockEstimate estimate{};
+  estimate.state=ExternalClockLockState::Locked; estimate.validTempo=true;
+  estimate.sourceBpmQ16=50u*65536u;
+  clock.publishExternalEstimate(estimate,0);
+  gfx.texts.clear(); sync.draw(gfx,engine); assert(gfx.has("SEQ BPM") && gfx.has("IN SYNC"));
+  estimate.state=ExternalClockLockState::Lost; clock.publishExternalEstimate(estimate,0);
+  gfx.texts.clear(); sync.draw(gfx,engine); assert(gfx.has("LAST BPM") && gfx.has("CLOCK LOST"));
+  estimate.state=ExternalClockLockState::Waiting; estimate.validTempo=false;
+  clock.publishExternalEstimate(estimate,0);
+  gfx.texts.clear(); sync.draw(gfx,engine); assert(gfx.has("WAITING"));
+
   if (const char* directory = std::getenv("PLAY_REC_RENDER_DIR")) {
     SDLDisplay screen(240,135,"PLAY / REC render verification");
     screen.begin();
@@ -167,7 +219,22 @@ int main() {
     panel.open(true); player.value.state=SmfPlayerState::Armed;
     player.value.tempoMode=SmfTempoMode::Project;
     clock.setExternalFollowEnabled(true); save("midi-armed");
+    auto saveSync=[&](const char* name) {
+      screen.startWrite(); sync.draw(screen,engine); screen.endWrite();
+      auto* surface=SDL_CreateRGBSurfaceWithFormat(0,240,135,32,SDL_PIXELFORMAT_RGBA32);
+      assert(surface);
+      assert(SDL_RenderReadPixels(renderer,nullptr,surface->format->format,surface->pixels,surface->pitch)==0);
+      const auto path=std::string(directory)+"/"+name+".bmp";
+      assert(SDL_SaveBMP(surface,path.c_str())==0); SDL_FreeSurface(surface);
+    };
+    clock.setSource(TransportClockSource::GroovePuterInternal);
+    engine.setBpm(120); sync.open(); sync.handleEvent(down); saveSync("tempo-edit");
+    clock.setSource(TransportClockSource::SeqtrakExternal);
+    estimate.state=ExternalClockLockState::Locked; estimate.validTempo=true;
+    clock.publishExternalEstimate(estimate,0); sync.open(); saveSync("seq-50-bpm");
+    estimate.state=ExternalClockLockState::Lost; clock.publishExternalEstimate(estimate,0);
+    saveSync("seq-last-bpm");
   }
   registerSmfPlayerService(nullptr);
-  puts("PLAY/REC: routing, safe selection, external follow, 112 render states PASS");
+  puts("PLAY/REC: routing, safe selection, external follow, 112 render states + DEVICE preservation + guarded BPM/limits + SEQ read-only/last BPM PASS");
 }
