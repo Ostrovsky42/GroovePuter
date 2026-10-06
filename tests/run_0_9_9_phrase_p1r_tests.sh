@@ -16,6 +16,7 @@ mapfile -t SOURCES < <(
 SOURCES+=("/src/generation/migration/phrase_execution.cpp")
 
 CXXFLAGS=(
+  -DGROOVEPUTER_M1_TEST_PROBE
   -std=c++17
   -Wall
   -Wextra

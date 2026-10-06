@@ -19,6 +19,7 @@ run "Rhythm Stage 5" bash tests/run_rhythm_stage5_tests.sh
 run "Rhythm Stage 6" bash tests/run_rhythm_stage6_tests.sh
 run "Rhythm Stage 6.1" bash tests/run_rhythm_stage6_1_tests.sh
 run "Phrase Core" bash scripts/ci/run_phrase_core.sh
+run "Phrase P1R / H0 shared harmony" bash tests/run_0_9_9_phrase_p1r_tests.sh
 run "Pattern/Phrase P1C" bash tests/run_pattern_phrase_p1c_tests.sh
 run "Material identity" bash tests/run_0_9_11_c1a_material_identity_foundation.sh
 run "Material UX" bash tests/run_0_9_11_c5_material_ux_tests.sh

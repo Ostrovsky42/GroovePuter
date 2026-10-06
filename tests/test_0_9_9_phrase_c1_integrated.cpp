@@ -13,28 +13,34 @@ constexpr StepMask at(uint8_t step) {
 }
 
 bool sameSemanticResult(const PhraseSemanticResult& a,
-                        const PhraseSemanticResult& b) {
+                        const PhraseSemanticResult& b,
+                        const PhraseHarmonicTimeline& timelineA,
+                        const PhraseHarmonicTimeline& timelineB) {
   if (a.status != b.status || a.rejectReason != b.rejectReason ||
       a.phraseGenerationIdentity != b.phraseGenerationIdentity ||
       a.requestedPhraseBars != b.requestedPhraseBars ||
       a.effectivePhraseBars != b.effectivePhraseBars ||
-      a.harmonicTimeline.status != b.harmonicTimeline.status ||
-      a.harmonicTimeline.phraseBars != b.harmonicTimeline.phraseBars ||
-      a.harmonicTimeline.totalEventPositions !=
-          b.harmonicTimeline.totalEventPositions) {
+      timelineA.phraseBars != timelineB.phraseBars ||
+      timelineA.totalEventPositions != timelineB.totalEventPositions ||
+      timelineA.status != timelineB.status) {
     return false;
   }
+  for (uint8_t i = 0; i < timelineA.totalEventPositions; ++i) {
+    if (timelineA.events[i].sourceOrdinal != timelineB.events[i].sourceOrdinal ||
+        timelineA.events[i].onsetStep != timelineB.events[i].onsetStep ||
+        timelineA.events[i].durationSteps != timelineB.events[i].durationSteps) {
+      return false;
+    }
+  }
   for (uint8_t bar = 0; bar < kMaxSemanticPhraseBars; ++bar) {
-    if (a.harmonicTimeline.eventPositionsByBar[bar] !=
-            b.harmonicTimeline.eventPositionsByBar[bar] ||
+    if (a.bars[bar].harmonicEvents.firstOrdinal !=
+            b.bars[bar].harmonicEvents.firstOrdinal ||
+        a.bars[bar].harmonicEvents.eventCount !=
+            b.bars[bar].harmonicEvents.eventCount ||
         a.bars[bar].temporal.phraseBarOrdinal !=
             b.bars[bar].temporal.phraseBarOrdinal ||
         a.bars[bar].temporal.evolutionOrdinal !=
             b.bars[bar].temporal.evolutionOrdinal ||
-        a.bars[bar].harmonicEvents.firstOrdinal !=
-            b.bars[bar].harmonicEvents.firstOrdinal ||
-        a.bars[bar].harmonicEvents.eventCount !=
-            b.bars[bar].harmonicEvents.eventCount ||
         a.bars[bar].melodicLifetime.entersFromPreviousBar !=
             b.bars[bar].melodicLifetime.entersFromPreviousBar ||
         a.bars[bar].melodicLifetime.continuesIntoNextBar !=
@@ -99,7 +105,10 @@ int main() {
   assert(semanticA.requestedPhraseBars == 4);
   assert(semanticA.effectivePhraseBars == 4);
   assert(semanticA.phraseGenerationIdentity == phraseIdentity);
-  assert(sameSemanticResult(semanticA, semanticB));
+  assert(sameSemanticResult(semanticA, semanticB, timeline, timeline));
+  PhraseHarmonicTimeline changedTimeline = timeline;
+  ++changedTimeline.events[0].durationSteps;
+  assert(!sameSemanticResult(semanticA, semanticB, timeline, changedTimeline));
 
   assert(semanticA.bars[0].temporal.phraseBarOrdinal == 0);
   assert(semanticA.bars[3].temporal.phraseBarOrdinal == 3);
