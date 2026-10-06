@@ -16,8 +16,10 @@
 //   RETURN   the kept idea back, exactly                          <- IDEAL CEILING;
 //            production only returns rhythm (see the Return bar at the end of BREAK)
 
+#ifndef M0A_RENDER_EXTERNAL_CORPUS
 #define M0A_NO_MAIN
 #include "m0a_corpus.cpp"
+#endif
 
 namespace {
 

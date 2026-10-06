@@ -81,6 +81,7 @@ struct GenreCase {
 
 struct Phrase {
   std::string genre;
+  GenreRecipeId recipe = kBaseRecipeId;
   uint8_t bars = 0;
   bool p1r = false;
   bool ok = false;
@@ -89,6 +90,19 @@ struct Phrase {
   R::PhraseEvolutionLawId law = R::PhraseEvolutionLawId::Loop;
   R::TrajectoryId trajectory = R::kNoTrajectoryId;
   uint8_t rootPc = 0;
+  uint32_t phraseIdentity = 0;
+  uint32_t projectSeed = 0;
+  R::ProgressionId progression = R::ProgressionId::Auto;
+  R::GenerationCompositionResult composition{};
+  R::ChordRhythmId chordRhythm = R::ChordRhythmId::Auto;
+  R::CompositionSecondaryRole synthBRole =
+      R::CompositionSecondaryRole::Melodic;
+  R::FeelProfileId resolvedFeel = R::FeelProfileId::Straight;
+  R::PhraseHarmonicPolicyId harmonicPolicy =
+      R::PhraseHarmonicPolicyId::HalfBar;
+  R::ScaleTypeValue scaleType = R::kDefaultScaleTypeValue;
+  R::ChordProgressionSource progressionSource{};
+  R::PhraseHarmonicTimeline harmonicTimeline{};
   float bpm = 120.0f;
   float suggestedBpm = 120.0f;  // midpoint of the archetype's catalogued tempo range
   std::vector<BarRec> bar;
@@ -206,6 +220,8 @@ struct MakeOptions {
   R::RealizationLevel level = R::RealizationLevel::P2Variation;
   int lawOverride = -1;  // -1: natural production selection
   uint16_t manualArchetype = 0;  // 0: natural (Auto); else the user-facing MANUAL rhythm selection
+  int harmonicPolicyOverride = -1;  // Tool-only comparison; -1 keeps production selection.
+  bool controlledCMajorPopCycle = false;  // Tool-only acceptance fixture.
 };
 
 // Returns false when the request is not applicable (reason in out.status).
@@ -213,6 +229,7 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
                 const MakeOptions& opt, Phrase& out) {
   out = Phrase{};
   out.genre = g.name;
+  out.recipe = g.recipe;
   out.bars = bars;
   MiniAcid engine(kSampleRate, nullptr);
   configure(engine, g);
@@ -238,9 +255,47 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
     return false;
   }
   R::PreparedPhraseExecution exec = prepared.p1rExecution;
+  if (opt.controlledCMajorPopCycle) {
+    exec.selection.composition.progression = R::ProgressionId::PopCycle;
+    exec.selection.composition.chordRhythm = R::ChordRhythmId::HalfBarChange;
+    exec.selection.composition.bassRhythm = R::BassRhythmId::OffbeatPush;
+    exec.selection.composition.secondaryRole = R::CompositionSecondaryRole::Chord;
+    exec.materialization.rootPitchClass = 0;
+    exec.materialization.scaleTypeValue = R::kScaleMajor;
+    exec.progressionSource = R::ChordProgressionSource{};
+    exec.progressionSource.id = R::ProgressionId::PopCycle;
+    exec.progressionSource.period = 4;
+    exec.progressionSource.events[0] = {0, R::ChordQuality::Triad, 0};
+    exec.progressionSource.events[1] = {4, R::ChordQuality::Triad, 0};
+    exec.progressionSource.events[2] = {5, R::ChordQuality::Triad, 0};
+    exec.progressionSource.events[3] = {3, R::ChordQuality::Triad, 0};
+  }
+  if (opt.harmonicPolicyOverride >= 0) {
+    const auto policy = static_cast<R::PhraseHarmonicPolicyId>(
+        opt.harmonicPolicyOverride);
+    const auto projection = R::projectPhraseHarmonicClock(
+        bars, exec.selection.composition.progression, policy);
+    if (projection.status != R::PhraseHarmonicClockProjectionStatus::Ok) {
+      out.status = "HARMONIC_POLICY_OVERRIDE_FAILED";
+      return false;
+    }
+    exec.harmonicTimeline = projection.timeline;
+    exec.selection.composition.harmonicRhythmPolicy = policy;
+  }
   const auto* def = R::ReferenceVocabulary::definitionForId(exec.selection.composition.rhythmArchetypeId);
   out.archetype = def ? def->name : "?";
   out.rootPc = exec.materialization.rootPitchClass;
+  out.phraseIdentity = exec.phraseGenerationIdentity;
+  out.projectSeed = exec.selection.realizationGeneration.projectSeed;
+  out.progression = exec.selection.composition.progression;
+  out.composition = exec.selection.composition;
+  out.chordRhythm = exec.selection.composition.chordRhythm;
+  out.synthBRole = exec.selection.composition.secondaryRole;
+  out.resolvedFeel = exec.selection.resolvedFeel;
+  out.harmonicPolicy = exec.selection.composition.harmonicRhythmPolicy;
+  out.scaleType = exec.materialization.scaleTypeValue;
+  out.progressionSource = exec.progressionSource;
+  out.harmonicTimeline = exec.harmonicTimeline;
   out.bpm = engine.bpm();
   if (def) out.suggestedBpm = 0.5f * (def->suggestedBpmMin + def->suggestedBpmMax);
 
@@ -283,9 +338,10 @@ bool makePhrase(const GenreCase& g, uint8_t bars, uint32_t ordinal,
     r.a = laneFrom(pb.synthA, true, ev.bassRhythm.onsets, ev.bassRhythm.continuations);
     r.b = laneFrom(pb.synthB, false, 0, 0);
     r.bassId = ev.bassRhythm.id;
-    const auto& hr = exec.harmonicClock.bars[b].harmonicRhythm;
-    r.harm = hr.onsets;
-    r.harmEvents = hr.eventCount;
+    const R::PhraseHarmonicBarMaterialization harmonicBar =
+        R::projectPhraseHarmonicBarMaterialization(exec.harmonicTimeline, b);
+    r.harm = harmonicBar.segmentOnsets;
+    r.harmEvents = harmonicBar.segmentCount;
     r.fn = exec.phraseTrajectory != R::kNoTrajectoryId
         ? exec.phrasePlan.bars[b % exec.phrasePlan.barCount].function
         : R::BarFunction::Statement;
