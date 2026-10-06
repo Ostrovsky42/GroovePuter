@@ -97,6 +97,55 @@ inline PhraseHarmonicClockProjection projectPhraseHarmonicClock(
   return result;
 }
 
+// Derive the physical one-bar harmonic clock view from the canonical phrase
+// timeline. Carry-in contributes a local anchor while retaining the source
+// ordinal of the already-active phrase event.
+inline HarmonicRhythmPlan projectPhraseHarmonicRhythmForBar(
+    const PhraseHarmonicTimeline& timeline,
+    ProgressionId progression,
+    uint8_t phraseBarOrdinal) {
+  HarmonicRhythmPlan result{};
+  if (!validatePhraseHarmonicTimeline(timeline) ||
+      !isValidProgressionId(progression, false) ||
+      phraseBarOrdinal >= timeline.phraseBars) return result;
+  const PhraseHarmonicBarMaterialization bar =
+      projectPhraseHarmonicBarMaterialization(timeline, phraseBarOrdinal);
+  if (bar.segmentCount == 0 || bar.segmentCount > kMaxHarmonicEvents) return result;
+  result.progression = progression;
+  result.onsets = bar.segmentOnsets;
+  result.eventCount = bar.segmentCount;
+  result.phraseBarOrdinal = phraseBarOrdinal;
+  result.phraseHarmonicPosition = bar.sourceOrdinals[0];
+  return result;
+}
+
+inline ChordProgressionResult materializePhraseHarmonicProgression(
+    const ChordProgressionSource& source,
+    const PhraseHarmonicBarMaterialization& bar) {
+  ChordProgressionResult result{};
+  if (source.period == 0 || bar.segmentCount == 0 ||
+      bar.segmentCount > kMaxHarmonicEvents ||
+      phraseHarmonicPositionCount(bar.segmentOnsets) != bar.segmentCount) {
+    return result;
+  }
+  ChordProgressionPlan plan{};
+  plan.id = source.id;
+  plan.eventCount = bar.segmentCount;
+  ChordProgressionStatus status = ChordProgressionStatus::InvalidRequest;
+  for (uint8_t ordinal = 0; ordinal < bar.segmentCount; ++ordinal) {
+    const ChordProgressionEventResult event = chordProgressionEventAt(
+        source, bar.sourceOrdinals[ordinal]);
+    if (event.status != ChordProgressionStatus::Ok &&
+        event.status != ChordProgressionStatus::ValidButStatic) return result;
+    if (ordinal != 0 && event.status != status) return result;
+    status = event.status;
+    plan.events[ordinal] = event.event;
+  }
+  result.status = status;
+  result.plan = plan;
+  return result;
+}
+
 static_assert(std::is_trivially_copyable<PhraseHarmonicBarProjection>::value,
               "H2 bar projection must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<PhraseHarmonicClockProjection>::value,
