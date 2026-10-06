@@ -35,3 +35,5 @@ platform_sdl/grooveputer
 .agent/skills/*
 !.agent/skills/embedded-runtime-debugging/
 !.agent/skills/embedded-runtime-debugging/**
+
+/platform_sdl/play_rec_ui_test

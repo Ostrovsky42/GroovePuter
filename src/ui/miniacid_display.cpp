@@ -320,6 +320,8 @@ void MiniAcidDisplay::update() {
         global_midi_sync_overlay_.draw(gfx_, mini_acid_);
     }
     
+    if (play_rec_overlay_.isVisible()) play_rec_overlay_.draw(gfx_, mini_acid_);
+
     drawToast();
     gfx_.flush();
     gfx_.endWrite();
@@ -517,12 +519,40 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    if (play_rec_overlay_.isVisible()) {
+        play_rec_overlay_.handleEvent(event);
+        const auto action = play_rec_overlay_.takeAction();
+        if (action == PlayRecOverlay::Action::Sync) {
+            play_rec_overlay_.close();
+            global_midi_sync_overlay_.open();
+        } else if (action == PlayRecOverlay::Action::Player) {
+            play_rec_overlay_.close();
+            goToPage(kSmfPlayerPage);
+        } else if (action == PlayRecOverlay::Action::GrooveTransport ||
+                   action == PlayRecOverlay::Action::MidiTransport) {
+            // Keep the established queueing, clock ownership and guard rules.
+            UIEvent command{};
+            command.event_type = GROOVEPUTER_KEY_DOWN;
+            command.key = action == PlayRecOverlay::Action::GrooveTransport ? 'g' : ' ';
+            if (auto* playerPage = getPage_(kSmfPlayerPage)) playerPage->handleEvent(command);
+            performance_keyboard_.setTransportPlaying(mini_acid_.isPlaying());
+        }
+        return true;
+    }
     if (global_midi_sync_overlay_.isVisible()) {
         return global_midi_sync_overlay_.handleEvent(event);
     }
 
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
+    }
+
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
+        !event.ctrl && !event.meta && !event.shift &&
+        (event.key == 't' || event.key == 'T')) {
+        workspace_launcher_.close();
+        play_rec_overlay_.open(page_index_ == kSmfPlayerPage);
+        return true;
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
@@ -541,6 +571,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             } else if (workspace_launcher_.takeHelpRequest()) {
                 global_help_overlay_.setPageContext(page_index_);
                 global_help_overlay_.toggle();
+            } else if (workspace_launcher_.takeTransportRequest()) {
+                play_rec_overlay_.open(page_index_ == kSmfPlayerPage);
             } else if (workspace_launcher_.takeSyncRequest()) {
                 global_midi_sync_overlay_.open();
             }

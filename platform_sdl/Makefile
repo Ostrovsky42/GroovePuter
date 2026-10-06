@@ -81,6 +81,7 @@ SOURCES := \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
 	../src/ui/global_midi_sync_overlay.cpp \
+	../src/ui/play_rec_overlay.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
 	../src/ui/ui_core.cpp \
@@ -198,3 +199,11 @@ clean:
 	rm -rf $(APP_BUNDLE)
 
 .PHONY: all clean wasm bundle e1-live-bridge-characterization
+
+PLAY_REC_UI_TARGET := play_rec_ui_test
+PLAY_REC_UI_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_play_rec_ui.cpp
+$(PLAY_REC_UI_TARGET): $(PLAY_REC_UI_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+play-rec-ui-test: $(PLAY_REC_UI_TARGET)
+	./$(PLAY_REC_UI_TARGET)

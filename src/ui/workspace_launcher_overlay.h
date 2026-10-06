@@ -29,6 +29,7 @@ public:
         page_request_ = -1;
         help_request_ = false;
         sync_request_ = false;
+        transport_request_ = false;
     }
 
     void close() {
@@ -36,6 +37,7 @@ public:
         page_request_ = -1;
         help_request_ = false;
         sync_request_ = false;
+        transport_request_ = false;
     }
 
     void toggle(Workspace workspace,
@@ -62,6 +64,12 @@ public:
         if (!sync_request_) return false;
         sync_request_ = false;
         return true;
+    }
+
+    bool takeTransportRequest() {
+        const bool requested = transport_request_;
+        transport_request_ = false;
+        return requested;
     }
 
     bool handleEvent(UIEvent& event) {
@@ -128,7 +136,7 @@ public:
         const int leftW = 88;
         const int rightX = 98;
         const int rightW = w - rightX - 4;
-        const int rowH = 14;
+        const int rowH = 12;
         const int rowsY = headerH + 4;
 
         gfx.fillRect(0, 0, w, h, p.background);
@@ -204,7 +212,7 @@ public:
 
 private:
     static constexpr int kWorkflowEntryCount = 5;
-    static constexpr int kEntryCount = 7;
+    static constexpr int kEntryCount = 8;
 
     void loadRememberedPages_(const int8_t* pages, int count) {
         if (!pages || count <= 0) return;
@@ -257,6 +265,7 @@ private:
             case 4: return "SETTINGS";
             case 5: return "HELP";
             case 6: return "TEMPO/SYNC";
+            case 7: return "PLAY/REC";
             default: return "?";
         }
     }
@@ -274,6 +283,7 @@ private:
     static const char* childLabel(int entry, int child) {
         if (entry == 5) return "CONTROLS";
         if (entry == 6) return "GLOBAL MIDI CLOCK";
+        if (entry == 7) return "TRANSPORT";
         return WorkflowPages::pageName(childPage(entry, child));
     }
 
@@ -352,10 +362,20 @@ private:
             line2 = "Melody / Pattern / Drums";
             return;
         }
+        if (entry == 7) {
+            line1 = "Groove / MIDI file";
+            line2 = "SEQTRAK record guide";
+            return;
+        }
         descriptionForPage(childPage(entry, child), line1, line2);
     }
 
     void activateSelection() {
+        if (selected_ == 7) {
+            transport_request_ = true;
+            visible_ = false;
+            return;
+        }
         if (selected_ == 5) {
             help_request_ = true;
             visible_ = false;
@@ -380,4 +400,5 @@ private:
     int page_request_ = -1;
     bool help_request_ = false;
     bool sync_request_ = false;
+    bool transport_request_ = false;
 };

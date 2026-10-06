@@ -20,6 +20,7 @@ constexpr const char* kGlobalLines[] = {
     "Space       Active transport",
     "Alt+P       MIDI Player",
     "Alt+Y       Tempo/MIDI Sync (all sound)",
+    "Alt+T       Play/Rec transport panel",
     "Alt+V       Groove Lab",
     "Alt+W       Waveform except CORE",
     "Alt+\\       Theme CARBON/CYBER",
