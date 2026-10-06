@@ -318,7 +318,10 @@ void test_b3_to_b6_generated_origin_multibar() {
     assert(sameSource(snapshot.common.progressionSource, exec.progressionSource));
     for (int bar = 0; bar < route.bars; ++bar) {
       assert(sameHarmonic(snapshot.bars[bar].harmonicRhythm,
-                          exec.harmonicClock.bars[bar].harmonicRhythm));
+                          projectPhraseHarmonicRhythmForBar(
+                              exec.harmonicTimeline,
+                              exec.selection.composition.progression,
+                              static_cast<uint8_t>(bar))));
       assert(snapshot.bars[bar].harmonicRhythm.phraseBarOrdinal == bar);
     }
     assert(sameOrigin(snapshot, *engine.generatedSynthAOrigin()));

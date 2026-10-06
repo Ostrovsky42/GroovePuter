@@ -381,7 +381,10 @@ inline void applyPreparedPersistent(
             scene.synthABanks[bank].patterns[index]);
         entry.bassRhythm = barEvidence.bassRhythm;
         entry.bassPitchClasses = barEvidence.bassPitchClasses;
-        entry.harmonicRhythm = execution.harmonicClock.bars[sectionBar].harmonicRhythm;
+        entry.harmonicRhythm = GroovePuterRhythm::projectPhraseHarmonicRhythmForBar(
+            execution.harmonicTimeline,
+            execution.selection.composition.progression,
+            sectionBar);
         entry.phraseBarOrdinal = static_cast<uint8_t>(bar);
         ++candidate->filledBars;
       }

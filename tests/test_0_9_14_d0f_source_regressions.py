@@ -108,7 +108,7 @@ if m1_start >= 0 and m1_end > m1_start:
 # Harmonic WHAT/WHEN and tonal frame are already available before COMMIT.
 for token in (
     "ChordProgressionSource progressionSource",
-    "PhraseHarmonicClockProjection harmonicClock",
+    "PhraseHarmonicTimeline harmonicTimeline",
     "rootPitchClass",
     "scaleTypeValue",
 ):

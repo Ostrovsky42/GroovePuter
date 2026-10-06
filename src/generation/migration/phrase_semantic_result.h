@@ -33,7 +33,6 @@ struct PhraseSemanticResult {
   uint16_t phraseGenerationIdentity = kUnspecifiedPhraseGenerationIdentity;
   uint8_t requestedPhraseBars = 0;
   uint8_t effectivePhraseBars = 0;
-  PhraseHarmonicTimeline harmonicTimeline{};
   PhraseSemanticBarState bars[kMaxSemanticPhraseBars]{};
 };
 
@@ -62,7 +61,6 @@ inline PhraseSemanticResult makePhraseSemanticResult(
     return result;
   }
 
-  result.harmonicTimeline = harmonicTimeline;
   for (uint8_t bar = 0; bar < length.effectivePhraseBars; ++bar) {
     result.bars[bar].temporal = phraseTemporalCoordinatesForBar(bar);
     result.bars[bar].harmonicEvents =

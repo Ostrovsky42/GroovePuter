@@ -50,7 +50,9 @@ struct PreparedPhraseExecution {
   PhraseLengthRequestResult length{};
   StrongRhythmFrozenSelection selection{};
   ChordProgressionSource progressionSource{};
-  PhraseHarmonicClockProjection harmonicClock{};
+  // Sole prepared owner of phrase WHEN. Per-bar materialization plans are
+  // derived on demand to keep PMB-P1 compact and random-access.
+  PhraseHarmonicTimeline harmonicTimeline{};
   PhraseSemanticResult semantic{};
   // GF2-I3: the declared phrase law realized as a bar-function programme, once
   // for the whole phrase. kNoTrajectoryId means the law, level or archetype

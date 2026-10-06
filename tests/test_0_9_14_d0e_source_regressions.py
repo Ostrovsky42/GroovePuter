@@ -61,7 +61,7 @@ for token in (
     "PhraseExecutionMaterializationSettings materialization",
     "StrongRhythmFrozenSelection selection",
     "ChordProgressionSource progressionSource",
-    "PhraseHarmonicClockProjection harmonicClock",
+    "PhraseHarmonicTimeline harmonicTimeline",
     "PhraseSemanticResult semantic",
     "TrajectoryId phraseTrajectory",
     "RhythmPhrasePlan phrasePlan",

@@ -205,16 +205,17 @@ PhraseExecutionStatus preparePhraseExecution(
   }
   destination.progressionSource = source.source;
 
-  destination.harmonicClock = projectPhraseHarmonicClock(
+  const PhraseHarmonicClockProjection harmonicClock = projectPhraseHarmonicClock(
       destination.length.effectivePhraseBars,
       destination.selection.composition.progression);
-  if (destination.harmonicClock.status !=
+  if (harmonicClock.status !=
           PhraseHarmonicClockProjectionStatus::Ok ||
-      destination.harmonicClock.harmonicRhythmRealizationCount !=
+      harmonicClock.harmonicRhythmRealizationCount !=
           destination.length.effectivePhraseBars) {
     destination.status = PhraseExecutionStatus::HarmonicProjectionFailure;
     return destination.status;
   }
+  destination.harmonicTimeline = harmonicClock.timeline;
 
   MelodicMotifStatus melodicStatus[kMaxSemanticPhraseBars]{};
   MelodicCrossBarLifetime melodicLifetime[kMaxSemanticPhraseBars]{};
@@ -225,11 +226,10 @@ PhraseExecutionStatus preparePhraseExecution(
     StrongRhythmMigrationContext barContext =
         makeExecutionContext(destination, bar, 0);
     StrongRhythmPhraseExecutionOverride execution{};
-    execution.harmonicRhythm =
-        &destination.harmonicClock.bars[bar].harmonicRhythm;
+    const PhraseHarmonicBarMaterialization harmonicBar =
+        projectPhraseHarmonicBarMaterialization(destination.harmonicTimeline, bar);
+    execution.harmonicBar = &harmonicBar;
     execution.progressionSource = &destination.progressionSource;
-    execution.firstGlobalHarmonicOrdinal =
-        destination.harmonicClock.bars[bar].eventRange.firstOrdinal;
     if (destination.phraseTrajectory != kNoTrajectoryId) {
       execution.barPlan = &destination.phrasePlan.bars[
           bar % destination.phrasePlan.barCount];
@@ -254,7 +254,7 @@ PhraseExecutionStatus preparePhraseExecution(
   resetSemanticProbeScratch(scratch);
   destination.semantic = makePhraseSemanticResult(
       phraseGenerationIdentity, destination.length,
-      destination.harmonicClock.timeline, melodicStatus, melodicLifetime);
+      destination.harmonicTimeline, melodicStatus, melodicLifetime);
   if (destination.semantic.status != PhraseSemanticContractStatus::Ready) {
     destination.status = PhraseExecutionStatus::SemanticContractFailure;
     return destination.status;
@@ -322,11 +322,12 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
   StrongRhythmMigrationContext context =
       makeExecutionContext(prepared, phraseBarOrdinal, physicalPatternAddress);
   StrongRhythmPhraseExecutionOverride execution{};
-  execution.harmonicRhythm =
-      &prepared.harmonicClock.bars[phraseBarOrdinal].harmonicRhythm;
+  const PhraseHarmonicBarMaterialization harmonicBar =
+      projectPhraseHarmonicBarMaterialization(prepared.harmonicTimeline,
+                                               phraseBarOrdinal);
+  if (harmonicBar.segmentCount == 0) return invalidMaterializationResult();
+  execution.harmonicBar = &harmonicBar;
   execution.progressionSource = &prepared.progressionSource;
-  execution.firstGlobalHarmonicOrdinal =
-      prepared.harmonicClock.bars[phraseBarOrdinal].eventRange.firstOrdinal;
   if (prepared.phraseTrajectory != kNoTrajectoryId) {
     execution.barPlan = &prepared.phrasePlan.bars[
         phraseBarOrdinal % prepared.phrasePlan.barCount];

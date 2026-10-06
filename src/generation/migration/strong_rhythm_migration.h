@@ -5,6 +5,7 @@
 
 #include "../../../scenes.h"
 #include "../composition/generation_profile.h"
+#include "../composition/phrase_harmonic_clock_projection.h"
 #include "../composition/phrase_length_request.h"
 #include "../composition/rhythm_selection.h"
 #include "../composition/tonal_profile.h"
@@ -102,9 +103,8 @@ inline bool chordProgressionSourceEventAt(
 // H1-F1 WHAT source into the existing one-bar materializer. It owns neither
 // policy nor storage and is valid only for the duration of one call.
 struct StrongRhythmPhraseExecutionOverride {
-  const HarmonicRhythmPlan* harmonicRhythm = nullptr;
+  const PhraseHarmonicBarMaterialization* harmonicBar = nullptr;
   const ChordProgressionSource* progressionSource = nullptr;
-  uint16_t firstGlobalHarmonicOrdinal = 0;
   // GF2-I3: the already-evolved rhythm plan for this bar of the phrase. The
   // phrase owner realizes the whole bar-function programme; the shared
   // migration only materializes the bar it is handed.
@@ -258,6 +258,10 @@ struct StrongRhythmMigrationResult {
   bool tonalMaterializationApplied = false;
 };
 
+// Role labels used at the tonal materialization boundary and by the optional
+// host probe below. They are not persisted or used for generation decisions.
+enum class StrongRhythmTonalRole : uint8_t { Bass = 0, Chord, Melody };
+
 #ifdef GROOVEPUTER_M1_TEST_PROBE
 // Focused host-test observation only.  Normal firmware neither declares nor
 // links this type or its storage; migration semantics remain untouched.
@@ -277,6 +281,18 @@ struct StrongRhythmBassTonalPlanProbe {
 };
 
 void setStrongRhythmBassTonalPlanProbe(StrongRhythmBassTonalPlanProbe* probe);
+
+struct StrongRhythmTonalInputProbeEntry {
+  StrongRhythmTonalRole role = StrongRhythmTonalRole::Bass;
+  ChordProgressionPlan progression{};
+  StepMask harmonicEventOnsets = 0;
+};
+struct StrongRhythmTonalInputProbe {
+  uint8_t count = 0;
+  bool overflow = false;
+  StrongRhythmTonalInputProbeEntry entries[3]{};
+};
+void setStrongRhythmTonalInputProbe(StrongRhythmTonalInputProbe* probe);
 #endif
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);

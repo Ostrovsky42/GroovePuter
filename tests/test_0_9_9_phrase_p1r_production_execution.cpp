@@ -147,9 +147,10 @@ void testT1PrepareOnce() {
   assert(prepared.progressionSource.id ==
          prepared.selection.composition.progression);
   assert(prepared.progressionSource.period > 0);
-  assert(prepared.harmonicClock.status ==
-         PhraseHarmonicClockProjectionStatus::Ok);
-  assert(prepared.harmonicClock.harmonicRhythmRealizationCount == 8);
+  assert(prepared.harmonicTimeline.status == PhraseHarmonicTimelineStatus::Ok);
+  assert(prepared.harmonicTimeline.phraseBars == 8);
+  assert(projectPhraseHarmonicClock(8, prepared.selection.composition.progression)
+             .harmonicRhythmRealizationCount == 8);
   assert(prepared.semantic.status == PhraseSemanticContractStatus::Ready);
   assert(prepared.semantic.phraseGenerationIdentity == 41);
   std::puts("T1 prepare once: OK");
@@ -292,7 +293,7 @@ void testT9RandomAccess() {
   assert(prepared.status == PhraseExecutionStatus::Ready);
   const uint16_t identity = prepared.phraseGenerationIdentity;
   const uint8_t sourcePeriod = prepared.progressionSource.period;
-  const uint8_t timelineCount = prepared.semantic.harmonicTimeline.totalEventPositions;
+  const uint8_t timelineCount = prepared.harmonicTimeline.totalEventPositions;
 
   const uint8_t order[] = {7, 0, 4, 7};
   PhysicalBar outputs[4]{};
@@ -306,7 +307,7 @@ void testT9RandomAccess() {
   assert(samePhysical(outputs[0], outputs[3]));
   assert(prepared.phraseGenerationIdentity == identity);
   assert(prepared.progressionSource.period == sourcePeriod);
-  assert(prepared.semantic.harmonicTimeline.totalEventPositions == timelineCount);
+  assert(prepared.harmonicTimeline.totalEventPositions == timelineCount);
   std::puts("T9 random access 7->0->4->7: OK");
 }
 
@@ -349,7 +350,7 @@ void testT11ProductionValidButEmpty() {
   assert(emptyBar < prepared.length.effectivePhraseBars);
   assert(prepared.semantic.bars[emptyBar].temporal.phraseBarOrdinal == emptyBar);
   assert(prepared.semantic.bars[emptyBar].harmonicEvents.eventCount > 0);
-  assert(prepared.semantic.harmonicTimeline.status ==
+  assert(prepared.harmonicTimeline.status ==
          PhraseHarmonicTimelineStatus::Ok);
 
   PhysicalBar physical = seededPhysicalBar();
@@ -411,6 +412,55 @@ void testT14NoPublicationAndInvalidOutputUntouched() {
   std::puts("T14 caller-owned/no publication invalid-output guard: OK");
 }
 
+bool sameHarmonicInput(const ChordProgressionPlan& left,
+                       const ChordProgressionPlan& right) {
+  if (left.id != right.id || left.eventCount != right.eventCount) return false;
+  for (uint8_t i = 0; i < left.eventCount; ++i) {
+    if (!sameEvent(left.events[i], right.events[i])) return false;
+  }
+  return true;
+}
+
+void testSharedHarmonicSourceAcrossTonalRoles() {
+  bool observedBassChord = false;
+  bool observedBassMelody = false;
+  for (uint8_t mode = 0; mode < kGenerativeModeCount; ++mode) {
+    const GenreSettings settings = genre(static_cast<GenerativeMode>(mode));
+    const PreparedPhraseExecution prepared = prepare(settings, 541, 4);
+    if (prepared.status != PhraseExecutionStatus::Ready) continue;
+    for (uint8_t bar = 0; bar < 4; ++bar) {
+      StrongRhythmTonalInputProbe probe{};
+      setStrongRhythmTonalInputProbe(&probe);
+      PhysicalBar physical{};
+      const auto result = materializePreparedPhraseBar(
+          prepared, bar, bar, physical.drums, physical.synthA, physical.synthB);
+      setStrongRhythmTonalInputProbe(nullptr);
+      assert(result.status == StrongRhythmMigrationStatus::Applied);
+      assert(!probe.overflow);
+      if (probe.count < 2) continue;
+      for (uint8_t i = 1; i < probe.count; ++i) {
+        assert(probe.entries[i].harmonicEventOnsets ==
+               probe.entries[0].harmonicEventOnsets);
+        assert(sameHarmonicInput(probe.entries[i].progression,
+                                 probe.entries[0].progression));
+      }
+      bool bass = false;
+      bool chord = false;
+      bool melody = false;
+      for (uint8_t i = 0; i < probe.count; ++i) {
+        bass |= probe.entries[i].role == StrongRhythmTonalRole::Bass;
+        chord |= probe.entries[i].role == StrongRhythmTonalRole::Chord;
+        melody |= probe.entries[i].role == StrongRhythmTonalRole::Melody;
+      }
+      observedBassChord |= bass && chord;
+      observedBassMelody |= bass && melody;
+    }
+  }
+  assert(observedBassChord);
+  assert(observedBassMelody);
+  std::puts("A8 shared active HarmonicEvent at all exercised tonal role inputs: OK");
+}
+
 void printMemoryReport() {
   const size_t oneBar = sizeof(DrumPatternSet) + 2u * sizeof(SynthPattern);
   const size_t oldState8 = 8u * oneBar;
@@ -446,6 +496,7 @@ int main() {
   testT12LifetimeCarrierInert();
   testT13LegacyNullOverride();
   testT14NoPublicationAndInvalidOutputUntouched();
+  testSharedHarmonicSourceAcrossTonalRoles();
   printMemoryReport();
   std::puts("P1R focused production phrase execution: OK");
   return 0;

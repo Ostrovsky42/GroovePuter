@@ -113,12 +113,12 @@ void testPhysicalDestinationInvariance() {
   assert(b.materializationStatus == StrongRhythmMigrationStatus::Applied);
   for (int bar = 0; bar < 8; ++bar) assert(sameBar(first[bar], relocated[bar]));
 
-  assert(execution.semantic.harmonicTimeline.totalEventPositions > 0);
-  assert(execution.semantic.harmonicTimeline.totalEventPositions <= 16);
+  assert(execution.harmonicTimeline.totalEventPositions > 0);
+  assert(execution.harmonicTimeline.totalEventPositions <= 16);
   assert(execution.progressionSource.period > 0);
   std::printf(
       "I1 destination invariance: 8 bars harmonic_positions=%u progression_period=%u\n",
-      static_cast<unsigned>(execution.semantic.harmonicTimeline.totalEventPositions),
+      static_cast<unsigned>(execution.harmonicTimeline.totalEventPositions),
       static_cast<unsigned>(execution.progressionSource.period));
 }
 

@@ -329,7 +329,7 @@ inline PreparationDisposition prepare(
 
   evidence.progression = executionOut.progressionSource.id;
   evidence.harmonicEventPositions =
-      executionOut.semantic.harmonicTimeline.totalEventPositions;
+      executionOut.harmonicTimeline.totalEventPositions;
 
   if (pageIndex < 0 || pageIndex >= kMaxPages ||
       firstLocalSlot < 0 ||

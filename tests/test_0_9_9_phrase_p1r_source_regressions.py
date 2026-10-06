@@ -32,7 +32,7 @@ required_fragments = [
     "chordProgressionSourceEventAt(",
     "chordProgressionEventAt(source, globalHarmonicOrdinal)",
     "ChordProgressionEventResult",
-    "firstGlobalHarmonicOrdinal",
+    "materializePhraseHarmonicProgression(",
     "PreparedPhraseExecution",
     "preparePhraseExecution(",
     "materializePreparedPhraseBar(",
@@ -42,6 +42,7 @@ for fragment in required_fragments:
         fail(f"required live P1R seam missing: {fragment}")
 
 for forbidden in (
+    "firstGlobalHarmonicOrdinal + ordinal",
     "globalOrdinal % progression.plan.eventCount",
     "phraseGlobalHarmonicOrdinal % progression.plan.eventCount",
     "firstGlobalHarmonicOrdinal % progression.plan.eventCount",
