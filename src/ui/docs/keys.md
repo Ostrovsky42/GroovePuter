@@ -375,7 +375,10 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 Open with `Alt+Y` or `Fn+M -> TEMPO`. BPM is focused on open:
 `Left/Right` changes it by 1, `Alt+Left/Right` by 5 (10–250 BPM).
 
-`Down` selects CLOCK. `Left/Right` (or `Enter`) chooses INTERNAL or MIDI IN.
+Holding Left/Right speeds up (1 -> 4 BPM per repeat).
+
+`Y` switches CLOCK between INTERNAL and MIDI IN from anywhere in the panel
+(`Down` + `Left/Right` or `Enter` does the same on the CLOCK row).
 MIDI IN follows MIDI Clock from any USB MIDI device or DAW: BPM becomes
 read-only and Play/Stop come from that device. The panel shows WAITING,
 SYNCING, IN SYNC, CLOCK HOLD or CLOCK LOST. Without a valid incoming clock

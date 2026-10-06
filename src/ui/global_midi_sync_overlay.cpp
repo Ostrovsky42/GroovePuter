@@ -40,10 +40,25 @@ bool GlobalMidiSyncOverlay::handleEvent(UIEvent& event) {
     }
 
     auto& runtime = GroovePuterMidi::transportClockRuntime();
+    // Y switches the clock source from any row; Alt+Y (handled above) closes.
+    const bool toggleClock = !event.alt && (event.key == 'y' || event.key == 'Y');
+    if (toggleClock) {
+        const bool midiIn = !followsMidiClock(runtime);
+        if (midiIn) runtime.setExternalFollowEnabled(true);
+        runtime.setSource(midiIn
+            ? GroovePuterMidi::TransportClockSource::SeqtrakExternal
+            : GroovePuterMidi::TransportClockSource::GroovePuterInternal);
+        return true;
+    }
+
     // Row 0: BPM. Read-only while the tempo comes from incoming MIDI Clock.
     if (selectedRow_ == 0 && !followsMidiClock(runtime) &&
         (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
-        tempoDelta_ = (nav == GROOVEPUTER_RIGHT ? 1 : -1) * (event.alt ? 5 : 1);
+        // Held arrows repeat (Alt+arrows deliberately do not), so a held
+        // arrow ramps 1 -> 4 BPM per repeat; Alt+Left/Right is a 5 BPM tap.
+        const int direction = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+        if (event.alt) bpmHold_.reset();
+        tempoDelta_ = direction * (event.alt ? 5 : bpmHold_.multiplier(direction));
         return true;
     }
 
@@ -118,7 +133,7 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
                  following ? (held && clock.externalTempoValid ? "LAST BPM" : "BPM IN")
                            : "BPM");
     gfx.drawText(14, 50, following ? "SET BY MIDI CLOCK"
-                                   : "L/R 1  ALT+L/R 5");
+                                   : "HOLD L/R FAST  ALT+L/R 5");
 
     // Clock source.
     if (selectedRow_ == 1) gfx.drawRect(6, 68, w - 12, 15, p.focus);
@@ -158,6 +173,6 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
 
     gfx.fillRect(0, footerY, w, 12, p.panel);
     gfx.setTextColor(p.text);
-    gfx.drawText(6, footerY + 3, "UP/DN SELECT  L/R CHANGE  ESC");
+    gfx.drawText(6, footerY + 3, "L/R BPM  Y CLOCK  UP/DN  ESC");
     gfx.setTextColor(COLOR_TEXT);
 }

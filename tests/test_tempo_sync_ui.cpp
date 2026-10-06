@@ -139,6 +139,18 @@ int main() {
   sync.handleEvent(enter);
   assert(clock.source()==TransportClockSource::GroovePuterInternal);
 
+  // Y switches the clock source from the BPM row as well.
+  sync.open();
+  auto yKey=key('y'); sync.handleEvent(yKey);
+  assert(clock.source()==TransportClockSource::SeqtrakExternal && clock.externalFollowEnabled());
+  auto bigY=key('Y'); sync.handleEvent(bigY);
+  assert(clock.source()==TransportClockSource::GroovePuterInternal);
+  assert(sync.isVisible() && sync.takeTempoDelta()==0);
+  // A held arrow ramps up through the accelerator.
+  UIInput::HoldAccelerator ramp; int fast=1;
+  for (int i=0;i<30;++i) fast=ramp.multiplierAt(1, 1000u+i*80u);
+  assert(fast==4);
+
   // Through the display owner: guarded engine path and limits.
   auto altY=key('y'); altY.alt=true;
   engine.setBpm(120); engine.setExternalClockBpm(50);
