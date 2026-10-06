@@ -796,11 +796,20 @@ bool PhrasePage::growKeptPhrase() {
 
   using S = GeneratedPhraseSong::CycleStatus;
   const char* message = "GROW FAILED: PRESS G";
+  char genreMessage[48];
   switch (result.status) {
     case S::NoRecipe: message = "PRESS G FIRST"; break;
     case S::CycleAlreadyPublished: message = "ALREADY GROWN"; break;
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
-    case S::NotAdmitted: message = "TRY ANOTHER TAKE: G"; break;
+    case S::NotAdmitted:
+      // A new TAKE in the same genre is refused the same way; say what helps.
+      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: FN+M GENRE",
+                    GenreManager::generativeModeName(
+                        mini_acid_.genreManager().generativeMode()));
+      for (char* c = genreMessage; *c; ++c) *c = static_cast<char>(std::toupper(*c));
+      message = genreMessage;
+      break;
+    case S::NoTrajectory: message = "TRY ANOTHER TAKE: G"; break;
     case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
     case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
     case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
