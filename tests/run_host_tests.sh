@@ -506,6 +506,17 @@ echo "Tee MIDI transport: OK"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follow_loop.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
   -o "${BUILD_DIR}/test_usb_endpoint_health"
 

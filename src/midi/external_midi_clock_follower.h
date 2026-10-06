@@ -201,13 +201,16 @@ private:
             else if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
             return;
         }
+        // Release only after the error crosses zero by the exit margin. Releasing
+        // short of zero left a steady clock-rate difference sawtoothing on one
+        // side, a constant early or late offset of several milliseconds.
         if (phaseTrimDirection_ > 0) {
             if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
-            else if (errorSteps < kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+            else if (errorSteps < -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
             return;
         }
         if (errorSteps > kPhaseTrimEnterSteps) phaseTrimDirection_ = 1;
-        else if (errorSteps > -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+        else if (errorSteps > kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
     }
 
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
@@ -216,12 +219,15 @@ private:
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
 
-        const bool driveBaseChanged = updateDriveBase(
+        // A new drive base restarts the trim decision (updateDriveBase clears
+        // the direction) but must not skip this block's phase measurement:
+        // while the base tracks a jittery source, skipping let phase drift.
+        updateDriveBase(
             estimate.sourceBpmQ16,
             controlChanged || result.command == ExternalTransportCommand::Start);
         if (driveBaseBpmQ16_ != 0) estimate.bpmQ16 = driveBaseBpmQ16_;
 
-        if (controlChanged || driveBaseChanged || !followEnabled_ ||
+        if (controlChanged || !followEnabled_ ||
             result.command == ExternalTransportCommand::Start ||
             result.command == ExternalTransportCommand::Stop ||
             !estimate.transportRunning || !estimate.validTempo ||
