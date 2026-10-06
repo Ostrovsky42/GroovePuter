@@ -315,6 +315,14 @@ def main() -> None:
     require("usbMidi" not in scenes_h and "usbMidi" not in scenes_cpp,
             "scene schema must not gain USB MIDI fields")
 
+    # Notes are accepted only from a keyboard on the Cardputer's USB Host port;
+    # a sequencer/DAW on the COMPUTER side sends clock, not step entry.
+    require("MidiRoutes{\n        usbHostRole(), false, true, true}" in transport,
+            "USB note input must be routed only in the Host (KEYBOARD) role")
+    require(transport.index("pushExternalRealtime(type);") <
+            transport.index("g_inputParser.usbPacket("),
+            "realtime transport must be handled before the note input route")
+
     print("USB MIDI source regressions: OK")
 
 

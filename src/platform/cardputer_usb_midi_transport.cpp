@@ -1610,7 +1610,12 @@ bool registerCardputerUsbMidiSink(
 
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
-    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
+    // Incoming notes are for an external keyboard plugged into the Cardputer
+    // (USB Host). In the COMPUTER role the other side is a sequencer or DAW:
+    // its pattern notes must not play PERFORM or step-record into MELODY.
+    // Realtime Clock/Start/Stop is handled before this route and still follows.
+    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{
+        usbHostRole(), false, true, true});
     // An external keyboard (Host) plays through the external output too; a Device session
     // must not echo the computer's notes back to it.
     UsbMidiOutput::setMidiInputThru(usbHostRole());
