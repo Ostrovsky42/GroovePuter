@@ -1706,6 +1706,10 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
     notifyDispatcher();
 }
 
+uint32_t cardputerUsbMidiOutputLatencyUs() {
+    return kOutputLatencyUs;
+}
+
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
                                          uint32_t& playbackStartMicros) {
     return g_anchorClock.snapshot(blockSequence, playbackStartMicros);

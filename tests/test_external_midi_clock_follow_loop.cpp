@@ -19,6 +19,10 @@ namespace {
 
 constexpr float kSampleRate = 22050.0f;
 constexpr uint16_t kBlockFrames = 512;
+// Notes rendered in a block leave the dispatcher one block later (the
+// Cardputer transport's kOutputLatencyUs). What the master hears is the note,
+// so the error is measured at emission time, not at render time.
+constexpr uint32_t kOutputLatencyUs = 23220;
 
 struct Case {
     double bpm;
@@ -78,7 +82,7 @@ Outcome run(const Case& c, double seconds) {
 
         const auto result = follower.processBlock(
             queue, TransportClockSource::SeqtrakExternal,
-            static_cast<uint32_t>(now), true);
+            static_cast<uint32_t>(now), true, kOutputLatencyUs);
         if (result.estimate.validTempo) {
             driveBpm = static_cast<double>(result.estimate.bpmQ16) / 65536.0;
         }
@@ -96,9 +100,10 @@ Outcome run(const Case& c, double seconds) {
             static_cast<float>(driveBpm), kSampleRate, playing, true);
 
         if (playing && now >= settleUs) {
-            // First F8 after Start is position 0.
+            // First F8 after Start is position 0. The block's first note
+            // leaves kOutputLatencyUs after `now`.
             const double externalSteps =
-                (now - firstPulseUs) / pulseUs / 6.0;
+                (now + kOutputLatencyUs - firstPulseUs) / pulseUs / 6.0;
             double errorSteps = localSteps - externalSteps;
             errorSteps -= 16.0 * std::round(errorSteps / 16.0);
             const double errorMs = errorSteps * 60.0e3 / (c.bpm * 4.0);

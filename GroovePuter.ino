@@ -127,8 +127,12 @@ void audioTask(void *param) {
       const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
       const auto clockSource =
           GroovePuterMidi::transportClockRuntime().source();
+      // Notes of this block leave one output latency after `now`; follow the
+      // master at that moment so the notes, not the render, land on its beat.
       const auto externalClock = g_externalClockFollower.processBlock(
-          g_externalMidiTransportQueue, clockSource, now);
+          g_externalMidiTransportQueue, clockSource, now,
+          GroovePuterMidi::transportClockRuntime().externalFollowEnabled(),
+          cardputerUsbMidiOutputLatencyUs());
       GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
           externalClock.estimate, g_externalClockFollower.failureCount());
 
