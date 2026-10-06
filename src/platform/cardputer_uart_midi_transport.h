@@ -65,6 +65,9 @@ public:
     // from the dispatcher loop, not from the audio callback.
     void service();
 
+    // Next received DIN byte, if any. Non-blocking; call from the dispatcher.
+    bool readByte(uint8_t& out);
+
     const UartMidiDiagnostics& diagnostics() const {
         return core_.diagnostics();
     }

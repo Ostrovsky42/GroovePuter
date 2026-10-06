@@ -215,6 +215,20 @@ void CardputerUartMidiTransport::service() {
 #endif
 }
 
+bool CardputerUartMidiTransport::readByte(uint8_t& out) {
+    if (!begun_) return false;
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+    if (uart().available() <= 0) return false;
+    const int value = uart().read();
+    if (value < 0) return false;
+    out = static_cast<uint8_t>(value);
+    return true;
+#else
+    (void)out;
+    return false;
+#endif
+}
+
 CardputerUartMidiTransport& cardputerUartMidiTransport() {
     static CardputerUartMidiTransport transport;
     return transport;
