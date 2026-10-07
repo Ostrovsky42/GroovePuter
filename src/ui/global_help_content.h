@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #include "workflow_mode.h"
 
 namespace HelpContent {
@@ -394,6 +396,18 @@ inline const char* getLine(int pageIndex, int index) {
     const int globalIdx = index - pageCount;
     if (globalIdx < 0 || globalIdx >= globalCount) return nullptr;
     return kGlobalLines[globalIdx];
+}
+
+// First line of the page's help starting with `prefix`, or 0.
+inline int findLine(int pageIndex, const char* prefix) {
+    if (!prefix) return 0;
+    const int total = getTotalLines(pageIndex);
+    const std::size_t n = std::strlen(prefix);
+    for (int i = 0; i < total; ++i) {
+        const char* line = getLine(pageIndex, i);
+        if (line && std::strncmp(line, prefix, n) == 0) return i;
+    }
+    return 0;
 }
 
 } // namespace HelpContent

@@ -128,6 +128,15 @@ int main() {
   // modified keys never repeat.
   assert(display.repeatsAltVertical());
 
+  // Alt+H from the Melody opens the synth help at its MELODY block.
+  auto altH = altKey('h');
+  display.handleEvent(altH);
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("--- MELODY (Alt+R) ---"));
+  auto altH2 = altKey('h');
+  display.handleEvent(altH2);
+
   // Alt+N again on an empty unsaved Melody is harmless: still empty, no error.
   auto altN2 = altKey('n');
   display.handleEvent(altN2);
