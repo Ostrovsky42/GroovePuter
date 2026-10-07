@@ -28,7 +28,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `[` / `]` | Previous / next page inside workflow |
 | `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
-| `Alt/Fn+1..0` | Direct page jump |
+| `Alt/Fn+1..0` | Direct page jump, see below |
 | `Space` | Active transport unless the page consumes it; while following MIDI IN, mute/unmute GroovePuter |
 | `Alt+P` | MIDI Player |
 | `Alt+Y` | TEMPO: project BPM and MIDI clock source; also Fn+M -> TEMPO |
@@ -40,6 +40,19 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+\` | `CARBON <-> CYBER` |
 
 The active page gets first refusal before global fallbacks.
+
+`Alt/Fn+digit` follows the workflows left to right, one page per digit:
+
+| Digit | Page | Digit | Page |
+|---|---|---|---|
+| `1` | GENRE | `6` | DRUMS |
+| `2` | FEEL | `7` | SONG |
+| `3` | OVERVIEW | `8` | MATERIAL |
+| `4` | SYNTH A | `9` | MIDI KEYBOARD |
+| `5` | SYNTH B | `0` | MIDI PLAYER |
+
+PROJECT opens from `Fn+M`; MATERIAL BANK is `]` from MATERIAL. On MIDI
+PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 
 ## MIDI KEYBOARD / PERFORM
 

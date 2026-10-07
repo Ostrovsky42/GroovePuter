@@ -612,8 +612,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            Serial.println("[UI] Shortcut Alt+V -> Page 11");
-            goToPage(11);
+            // Page 11 is the legacy GENERATION id, which resolves to FEEL.
+            goToPage(WorkflowPages::kGenre);
             return true;
         }
 
@@ -678,20 +678,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             page_index_ == kSmfPlayerPage && event.meta && !event.alt &&
             !event.ctrl && event.key >= '1' && event.key <= '9';
         if ((event.alt || event.meta) && !event.ctrl && !smfPlayerFnNumber) {
-            int targetPage = -1;
-            switch (event.key) {
-                case '1': targetPage = 1; break;
-                case '2': targetPage = 2; break;
-                case '3': targetPage = WorkflowPages::kSynthA; break;
-                case '4': targetPage = WorkflowPages::kSynthB; break;
-                case '5': targetPage = 5; break;
-                case '6': targetPage = 6; break;
-                case '7': targetPage = 7; break;
-                case '8': targetPage = 8; break;
-                case '9': targetPage = 9; break;
-                case '0': targetPage = 10; break;
-                default: break;
-            }
+            const int targetPage = WorkflowPages::directJumpPage(event.key);
             if (targetPage >= 0) {
                 Serial.printf("[UI] Shortcut Alt+%c -> Page %d\n", event.key, targetPage);
                 goToPage(targetPage);
