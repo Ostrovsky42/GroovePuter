@@ -96,7 +96,6 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool toggleAccent();
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
-  bool stepMelodySlot(int direction);
   bool newEmptyMelody();
   bool switchToMelodySlot(int bank, int pattern);
   bool jumpPhraseBar(int direction);

@@ -135,7 +135,6 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
-| `[` / `]` on MELODY | Previous / next saved Melody of this synth across both banks; `NO OTHER MELODY` if none |
 | `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
@@ -157,8 +156,8 @@ picks the next scale; notes stay where they are, and G generates in the same
 key. `V` switches to list view. `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
 `J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
-to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
-this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
+to the previous/next bar. `[` / `]` switch the workflow page as on every page;
+`Q..I` and `B` pick a saved Melody;
 `Alt+Up/Down` scroll the
 roll's pitch window (held, it repeats; elsewhere modified keys never repeat).
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
