@@ -229,6 +229,13 @@ bool SmfPlayerPage::togglePlayerTransport() {
     }
 
     const bool wasActive = smfStateIsActive(state.state);
+    // While following MIDI IN the master owns Start/Stop. Once the file plays,
+    // Space silences all of GroovePuter in place, like on every other page;
+    // pausing would let the file fall out of step with the master.
+    if (wasActive && externalClockOwnsTransport()) {
+        UI::showToast(toggleFollowOutputMute(), 900);
+        return true;
+    }
     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
         !miniAcid_.isPlaying() &&
@@ -242,10 +249,14 @@ bool SmfPlayerPage::togglePlayerTransport() {
     } else if (wasActive) {
         UI::showToast("MIDI: PAUSE", 700);
     } else if (state.tempoMode == SmfTempoMode::Project) {
+        // An armed file joins a running master on the next bar; only a
+        // stopped master needs its own Play.
         UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
-                          ? (clock.externalFollowEnabled
-                                 ? "MIDI ARMED / PLAY SEQTRAK"
-                                 : "MIDI ARMED / FOLLOW OFF")
+                          ? (!clock.externalFollowEnabled
+                                 ? "MIDI ARMED / FOLLOW OFF"
+                                 : (clock.externalRunning
+                                        ? "MIDI: ARM NEXT BAR"
+                                        : "MIDI ARMED / PLAY MASTER"))
                           : "MIDI: ARM NEXT BAR",
                       900);
     } else {

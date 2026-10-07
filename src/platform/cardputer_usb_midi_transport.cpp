@@ -210,6 +210,7 @@ struct MidiDispatchDiagnostics {
     uint32_t externalRxMasterIgnored{0};
     uint32_t uartRxBytes{0};
     uint32_t outboundTransportSuppressed{0};
+    uint32_t followMuteDrops{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -415,6 +416,30 @@ void dispatchPatternPanics() {
                        MusicalEventTarget::Drums));
         ++g_diagnostics.patternPanics;
     }
+}
+
+// Space while following MIDI IN silences GroovePuter in place. Entering the
+// mute releases every sequenced note GroovePuter owns on the wire (Pattern and
+// MIDI Player); while muted their NoteOns are dropped before the write. NoteOn
+// carries no cleanup duty, so dropping it leaves ownership consistent. Live
+// PERFORM notes are deliberate playing and stay untouched.
+void serviceFollowMute() {
+    static bool wasSilenced = false;
+    const bool silenced = GroovePuterMidi::followOutputSilenced();
+    if (silenced && !wasSilenced) {
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthA));
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthB));
+        g_patternDrumGates.clear();
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::Drums));
+        beginSmfCleanup();
+    }
+    wasSilenced = silenced;
 }
 
 void dispatchControlPanics() {
@@ -987,6 +1012,7 @@ void midiDispatchTask(void*) {
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
         // lifecycle traffic. SMF cleanup is independent and cannot silence a
         // Pattern/PERFORM owner of the same physical channel+note.
+        serviceFollowMute();
         dispatchPatternPanics();
         dispatchControlPanics();
         dispatchSmfPanic();
@@ -1253,6 +1279,12 @@ void midiDispatchTask(void*) {
                 bool dispatch = true;
                 if (pendingMusical.event.source ==
                         MusicalEventSource::PatternPlayer &&
+                    pendingMusical.event.type == MusicalEventType::NoteOn &&
+                    GroovePuterMidi::followOutputSilenced()) {
+                    dispatch = false;
+                    ++g_diagnostics.followMuteDrops;
+                } else if (pendingMusical.event.source ==
+                        MusicalEventSource::PatternPlayer &&
                     pendingMusical.event.target == MusicalEventTarget::Drums &&
                     pendingMusical.event.type == MusicalEventType::NoteOn) {
                     dispatch = g_patternDrumGates.scheduleOrExtend(
@@ -1303,6 +1335,10 @@ void midiDispatchTask(void*) {
                        GroovePuterMidi::smfTrackMuteState().isMuted(
                            pendingSmf.trackIndex)) {
                 ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       GroovePuterMidi::followOutputSilenced()) {
+                ++g_diagnostics.followMuteDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
                        !projectSmfNoteOnStillCurrent(pendingSmf)) {

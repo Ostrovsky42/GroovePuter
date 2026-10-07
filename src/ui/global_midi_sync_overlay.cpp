@@ -165,7 +165,13 @@ void GlobalMidiSyncOverlay::draw(IGfx& gfx, const MiniAcid& miniAcid) const {
         gfx.drawText(14, 92, status);
         gfx.setTextColor(p.secondary);
         if (*detail) gfx.drawText(14 + gfx.textWidth(status) + 12, 92, detail);
-        gfx.drawText(14, 104, "PLAY / STOP FROM THE OTHER DEVICE");
+        // The master owns Play/Stop; Space only silences GroovePuter in place.
+        if (GroovePuterMidi::followOutputSilenced()) {
+            gfx.setTextColor(p.warning);
+            gfx.drawText(14, 104, "GP MUTED  SPACE: SOUND ON");
+        } else {
+            gfx.drawText(14, 104, "PLAY/STOP ON DEVICE  SPACE: MUTE");
+        }
     } else {
         gfx.setTextColor(p.secondary);
         gfx.drawText(14, 92, "MIDI IN: FOLLOW A DAW / DEVICE");
