@@ -155,6 +155,8 @@ change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note
 `J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
 to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
 this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
+`Alt+Up/Down` scroll the
+roll's pitch window (held, it repeats; elsewhere modified keys never repeat).
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 

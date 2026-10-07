@@ -47,6 +47,9 @@ public:
   void dismissSplash();
   bool handleEvent(UIEvent event);
   int currentPageIndex() const { return page_index_; }
+  // True when a held Alt+Up/Down should repeat: the current page scrolls with
+  // it and no overlay takes the keys.
+  bool repeatsAltVertical();
 
 private:
   void initMuteButtons(int x, int y, int w, int h);

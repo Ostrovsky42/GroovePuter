@@ -104,6 +104,7 @@ int main() {
   MiniAcidDisplay display(gfx, engine, keyboard);
   display.dismissSplash();
   display.goToPage(WorkflowPages::kSynthA);
+  assert(!display.repeatsAltVertical());  // STEPS: Alt+Up/Down edits values
 
   auto altN = altKey('n');
   assert(display.handleEvent(altN));
@@ -121,6 +122,10 @@ int main() {
   assert(gfx.has("MEL A4*"));
   assert(gfx.has("S-A MEL "));
   assert(!gfx.has("MATERIAL"));
+
+  // Held Alt+Up/Down scrolls the Melody roll, so it repeats here; elsewhere
+  // modified keys never repeat.
+  assert(display.repeatsAltVertical());
 
   // Alt+N again on an empty unsaved Melody is harmless: still empty, no error.
   auto altN2 = altKey('n');

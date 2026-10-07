@@ -513,6 +513,15 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     }
 }
 
+bool MiniAcidDisplay::repeatsAltVertical() {
+    if (splash_active_ || global_midi_sync_overlay_.isVisible() ||
+        global_help_overlay_.isVisible() || workspace_launcher_.isVisible()) {
+        return false;
+    }
+    IPage* page = getPage_(page_index_);
+    return page != nullptr && page->repeatsAltVertical();
+}
+
 void MiniAcidDisplay::dismissSplash() {
     splash_active_ = false;
 }

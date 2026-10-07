@@ -114,6 +114,25 @@ int main() {
   bracket.key = ']';
   assert(!mayRepeat(bracket));
 
+  // Alt+Up/Down repeats only where the page asks (Melody roll scrolling);
+  // Alt+Left/Right and other modifiers never do.
+  UIEvent altUp{};
+  altUp.scancode = GROOVEPUTER_UP;
+  altUp.alt = true;
+  assert(!mayRepeat(altUp));
+  assert(mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_DOWN;
+  assert(mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_RIGHT;
+  assert(!mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_UP;
+  altUp.ctrl = true;
+  assert(!mayRepeat(altUp, true));
+  UIEvent altEnter{};
+  altEnter.key = '\n';
+  altEnter.alt = true;
+  assert(!mayRepeat(altEnter, true));
+
   FakeKeysState rightOnly{};
   rightOnly.hid_keys = {0x38};
   UIEvent rightEvent{};

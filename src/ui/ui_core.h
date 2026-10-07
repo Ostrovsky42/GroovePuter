@@ -347,6 +347,9 @@ class IPage : public Container {
   virtual void onEnter(int context) { (void)context; }
   virtual void onExit() {}
   virtual void tick() {}
+  // Modified keys never auto-repeat (a held Alt+Enter or Ctrl+Z must not fire
+  // twice). A page whose Alt+Up/Down only scrolls its view opts in here.
+  virtual bool repeatsAltVertical() const { return false; }
   virtual void setContext(int context) { onEnter(context); }
   virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
     (void)state;
