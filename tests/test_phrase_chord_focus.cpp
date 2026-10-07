@@ -111,7 +111,17 @@ int main() {
   assert(steps == 2 && after.events[2].note == 62);
   // Not a chord, or too short for two steps.
   assert(prepareArpeggio(arp, 48, 24, 24, after, steps) == AddResult::NoChord);
-  assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::TooShort);
+  assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::Blocked);  // D next
+  Buffer shortChord{};
+  shortChord.lengthTicks = PhraseRuntime::kTicksPerBar;
+  add(shortChord, 0, 60);
+  add(shortChord, 0, 64);
+  assert(prepareArpeggio(shortChord, 0, 24, 24, after, steps) == AddResult::TooShort);
+  // A note right after the chord: lengthening will not help, long or short.
+  arp.events[3].startTick = 24;
+  assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Blocked);
+  arp.events[0].durationSubticks = 24 * PhraseRuntime::kSubticksPerTick;
+  assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Blocked);
 
   // Up/Down along the key: whole and half steps as the scale has them; a
   // note outside the key lands on the nearest key note that way.

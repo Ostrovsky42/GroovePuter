@@ -23,6 +23,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void tick() override;
   // Alt+Up/Down scrolls the Melody piano roll's pitch window: held, it repeats.
   bool repeatsAltVertical() const override;
+  const char* helpAnchor() const override;
 
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;

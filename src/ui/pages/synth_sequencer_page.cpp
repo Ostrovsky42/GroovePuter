@@ -203,7 +203,10 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
   const bool notesTab = synth_tab_ == SynthTab::Notes;
   const int x = notesTab ? kNotesTabStripX : kParamsTabStripX;
   const int y = Layout::CONTENT.y;
-  gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
+  // On the Melody the line under the strip carries BAR n/m: clear only the
+  // label's own rows there.
+  const int stripH = repeatsAltVertical() ? 9 : kTabStripH;
+  gfx.fillRect(x, y, kTabStripW, stripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
   gfx.drawText(x + (kTabStripW - gfx.textWidth(label)) / 2,
                y + 1,
@@ -302,23 +305,18 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
                 mini_acid_.hasUnsavedWorkingMelody(voice_index_) ? "*" : "");
   const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : melodyLabel);
   gfx.drawText(bounds.x + 4, bounds.y, statusText);
-  char where[20];
-  std::snprintf(where, sizeof(where), "BAR %u/%u",
-                static_cast<unsigned>(viewport.focusBar) + 1u,
-                static_cast<unsigned>(viewport.totalBars));
   gfx.setTextColor(COLOR_LABEL);
-  const int whereX = bounds.x + 4 + textWidth(gfx, statusText) + 10;
-  gfx.drawText(whereX, bounds.y, where);
+  const int keyX = bounds.x + 4 + textWidth(gfx, statusText) + 10;
 
-  // Melody slot map of the current bank, right-aligned: the digit marks a slot
-  // holding an accepted Melody (reachable with Q..I), '.' an empty one, and
-  // the current slot is highlighted. The map wins over the PLAY label when the
-  // line is too short for both.
+  // Melody slot map of the current bank, right next to the [N]KM tab strip
+  // (it used to run under it): the digit marks a slot holding an accepted
+  // Melody (reachable with Q..I), '.' an empty one, and the current slot is
+  // highlighted.
   const int bank = mini_acid_.current303BankIndex(voice_index_);
   const int currentPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   const int glyphW = textWidth(gfx, "0");
   const int mapW = glyphW * (1 + Bank<SynthPattern>::kPatterns);
-  const int mapX = bounds.x + bounds.w - 4 - mapW;
+  const int mapX = kNotesTabStripX - 4 - mapW;
   gfx.setTextColor(COLOR_LABEL);
   char bankLabel[2] = {static_cast<char>('A' + (bank < 0 ? 0 : bank)), 0};
   gfx.drawText(mapX, bounds.y, bankLabel);
@@ -330,20 +328,28 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(mapX + glyphW * (1 + slot), bounds.y, glyph);
   }
   gfx.setTextColor(COLOR_LABEL);
-  // The project key the notes move along (Up/Down) and chords build in (A).
+  // The project key the notes move along (Up/Down, A/Z) and chords build in
+  // (H); without the "KEY " prefix when a long status leaves less room.
   const auto& keyParams = mini_acid_.sceneManager().currentScene().generatorParams;
   char keyLabel[16];
   ProjectKey::format(ProjectKey::pitchClass(keyParams.scaleRoot),
                      static_cast<ProjectKey::ScaleTypeValue>(keyParams.scale),
                      keyLabel, sizeof(keyLabel));
-  const int keyX = whereX + textWidth(gfx, where) + 8;
-  if (keyX + textWidth(gfx, keyLabel) + 6 <= mapX) {
-    gfx.drawText(keyX, bounds.y, keyLabel);
+  const char* keyText = keyLabel;
+  if (keyX + textWidth(gfx, keyText) + 4 > mapX) keyText = keyLabel + 4;
+  if (keyX + textWidth(gfx, keyText) + 4 <= mapX) {
+    gfx.drawText(keyX, bounds.y, keyText);
   }
   char grid[16];
   std::snprintf(grid, sizeof(grid), "GRID %s",
                 PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
   gfx.drawText(bounds.x + 4, bounds.y + 9, grid);
+  // Which bar the roll shows, at the right end of the beat-number line.
+  char where[20];
+  std::snprintf(where, sizeof(where), "BAR %u/%u",
+                static_cast<unsigned>(viewport.focusBar) + 1u,
+                static_cast<unsigned>(viewport.totalBars));
+  gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, where), bounds.y + 9, where);
 
   const int planeX = bounds.x + 4;
   const int planeW = std::max(32, bounds.w - 8);
@@ -410,7 +416,8 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
         tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
     const char label[2] = {static_cast<char>('1' + beat), '\0'};
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(beatX + 2, bounds.y + 9, label);
+    // Beat 1 is the left edge, where GRID already sits.
+    if (beat > 0) gfx.drawText(beatX + 2, bounds.y + 9, label);
     gfx.fillRect(beatX, planeTop, 1, kPlaneH, COLOR_LABEL);
   }
 
@@ -841,6 +848,10 @@ bool SynthSequencerPage::repeatsAltVertical() const {
              MiniAcid::SequencedSource::Phrase;
 }
 
+const char* SynthSequencerPage::helpAnchor() const {
+  return repeatsAltVertical() ? "--- MELODY" : nullptr;
+}
+
 bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
   if (synth_tab_ != SynthTab::Notes ||
       mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
@@ -1069,6 +1080,7 @@ bool SynthSequencerPage::addChordTone() {
     case PhraseChordFocus::AddResult::AlreadyInChord:
     case PhraseChordFocus::AddResult::NoChord:
     case PhraseChordFocus::AddResult::TooShort:
+    case PhraseChordFocus::AddResult::Blocked:
       UI::showToast("EDIT FAILED", 1000);
       return true;
     case PhraseChordFocus::AddResult::Ready:
@@ -1091,7 +1103,17 @@ bool SynthSequencerPage::addChordTone() {
     char low[8], mid[8];
     formatNoteName(rootNote, low, sizeof(low));
     formatNoteName(now.events[added - 1].note, mid, sizeof(mid));
-    std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+C ARP", low, mid, name);
+    // A root outside the key gives a chord that sounds off (E in C Dorian
+    // makes E G Bb); say so instead of moving the note behind the user's back.
+    const bool rootInKey = ProjectKey::inScale(
+        rootNote, ProjectKey::pitchClass(key.scaleRoot),
+        static_cast<ProjectKey::ScaleTypeValue>(key.scale));
+    if (rootInKey) {
+      std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+C ARP", low, mid, name);
+    } else {
+      std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  %s OFF KEY", low, mid,
+                    name, low);
+    }
   } else {
     std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
   }
@@ -1117,6 +1139,7 @@ bool SynthSequencerPage::arpeggiateChord() {
     const char* why = "EDIT FAILED";
     if (result == PhraseChordFocus::AddResult::NoChord) why = "NO CHORD HERE  H MAKES ONE";
     else if (result == PhraseChordFocus::AddResult::TooShort) why = "CHORD TOO SHORT  ALT+RIGHT";
+    else if (result == PhraseChordFocus::AddResult::Blocked) why = "NEXT NOTE TOO CLOSE  NO ROOM";
     else if (result == PhraseChordFocus::AddResult::Full) why = "MELODY FULL";
     UI::showToast(why, 1400);
     return true;

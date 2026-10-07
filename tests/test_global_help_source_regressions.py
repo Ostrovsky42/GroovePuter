@@ -35,7 +35,12 @@ alt_h_handler = re.search(
     re.S,
 )
 assert alt_h_handler, "Alt+H global handler missing"
-assert "setPageContext(page_index_)" in alt_h_handler.group(0)
+# Alt+H opens the help of the current page, at that page's own section.
+assert "openPageHelp_()" in alt_h_handler.group(0)
+open_page_help = re.search(r"void MiniAcidDisplay::openPageHelp_\(\) \{.*?\n\}", display, re.S)
+assert open_page_help, "openPageHelp_ missing"
+assert "setPageContext(page_index_)" in open_page_help.group(0)
+assert "helpAnchor()" in open_page_help.group(0)
 
 for page_constant in (
     "kGenre", "kSynthA", "kSynthB", "kSynthAParameters",

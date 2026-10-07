@@ -50,6 +50,7 @@ public:
   // True when a held Alt+Up/Down should repeat: the current page scrolls with
   // it and no overlay takes the keys.
   bool repeatsAltVertical();
+  void openPageHelp_();
 
 private:
   void initMuteButtons(int x, int y, int w, int h);

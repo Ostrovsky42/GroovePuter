@@ -80,6 +80,7 @@ enum class AddResult : uint8_t {
   AlreadyInChord,
   NoChord,
   TooShort,
+  Blocked,  // the next note starts before the arpeggio's second step
 };
 
 // Keys landing within this many milliseconds of each other were played as one
@@ -205,12 +206,16 @@ inline AddResult prepareArpeggio(const Buffer& live, uint16_t cellTick,
   }
   bool inChord[PhraseRuntime::kMaxSynthEvents] = {};
   for (uint8_t i = 0; i < n; ++i) inChord[chord[i]] = true;
+  // Room before the next note (or the end of the Melody).
+  uint32_t room = live.lengthTicks;
   for (uint16_t i = 0; i < live.count; ++i) {
     if (inChord[i]) continue;
     const uint32_t s = live.events[i].startTick;
-    if (s > start && s < end) end = s;
+    if (s > start && s < room) room = s;
   }
-  if (end > live.lengthTicks) end = live.lengthTicks;
+  // Lengthening cannot help when another note is in the way.
+  if ((room - start) / gridTicks < 2) return AddResult::Blocked;
+  if (end > room) end = room;
   const uint32_t count = (end - start) / gridTicks;
   if (count < 2) return AddResult::TooShort;
   if (live.count - n + count > PhraseRuntime::kMaxSynthEvents) {

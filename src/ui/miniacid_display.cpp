@@ -513,6 +513,15 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     }
 }
 
+// Help opens at the section of what the page shows now (SYNTH help starts at
+// MELODY on the Melody editor, not at the pattern keys 25 lines above).
+void MiniAcidDisplay::openPageHelp_() {
+    global_help_overlay_.setPageContext(page_index_);
+    IPage* page = getPage_(page_index_);
+    const char* anchor = page ? page->helpAnchor() : nullptr;
+    global_help_overlay_.toggle(HelpContent::findLine(page_index_, anchor));
+}
+
 bool MiniAcidDisplay::repeatsAltVertical() {
     if (splash_active_ || global_midi_sync_overlay_.isVisible() ||
         global_help_overlay_.isVisible() || workspace_launcher_.isVisible()) {
@@ -560,8 +569,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             if (workspace_launcher_.takePageRequest(requestedPage)) {
                 transitionToPage_(requestedPage);
             } else if (workspace_launcher_.takeHelpRequest()) {
-                global_help_overlay_.setPageContext(page_index_);
-                global_help_overlay_.toggle();
+                openPageHelp_();
             } else if (workspace_launcher_.takeSyncRequest()) {
                 global_midi_sync_overlay_.open();
             }
@@ -603,8 +611,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
             workspace_launcher_.close();
-            global_help_overlay_.setPageContext(page_index_);
-            global_help_overlay_.toggle();
+            openPageHelp_();
             return true;
         }
 
