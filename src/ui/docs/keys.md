@@ -41,17 +41,18 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 
 The active page gets first refusal before global fallbacks.
 
-`Alt/Fn+digit` follows the workflows left to right, one page per digit:
+`Alt/Fn+digit` jumps to one page per digit; `2` is PROJECT, the rest follow the
+workflows left to right:
 
 | Digit | Page | Digit | Page |
 |---|---|---|---|
 | `1` | GENRE | `6` | DRUMS |
-| `2` | FEEL | `7` | SONG |
+| `2` | PROJECT | `7` | SONG |
 | `3` | OVERVIEW | `8` | MATERIAL |
 | `4` | SYNTH A | `9` | MIDI KEYBOARD |
 | `5` | SYNTH B | `0` | MIDI PLAYER |
 
-PROJECT opens from `Fn+M`. MATERIAL BANK has no direct key yet (open UI
+PROJECT also opens from `Fn+M`. FEEL has no digit: `]` from GENRE. MATERIAL BANK has no direct key yet (open UI
 issue: `[`/`]` are Tab-only peers on SONG and MATERIAL). On MIDI
 PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 
@@ -157,12 +158,14 @@ this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 
-Chords: `A` adds a chord tone a third above the chord's top note (major over a
-single note, minor over a chord); `C` cycles the notes of the chord in the cursor
+Chords: `A` adds a chord tone a third above the chord's top note, in the project
+key (the scale GENRE generates in: a diatonic third, so `A`, `A` builds the
+key's own triad); `C` cycles the notes of the chord in the cursor
 cell, low to high, and `Up/Down`, `Backspace`, `Alt+Left/Right` then act on that
 note. Keys pressed together on an external keyboard (within 40 ms) are recorded
 as one chord on the cursor cell. Chords play on SEQTRAK over MIDI; the internal
-synth stays mono and plays the chord's top note.
+synth stays mono and plays the chord's top note. Thin lines separate the pitch
+rows; the dotted one is the key's tonic.
 
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.

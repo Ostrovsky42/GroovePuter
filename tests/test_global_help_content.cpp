@@ -56,7 +56,7 @@ int main() {
     assert(globalContains("Track mute fallback"));
     assert(globalContains("Waveform except CORE"));
     assert(!globalContains("Ctrl+H"));
-    assert(globalContains("1 GENRE 2 FEEL 3 OVW"));
+    assert(globalContains("1 GENRE 2 PROJ 3 OVW"));
 
     // Alt/Fn+1..0: ten digits, ten different live pages. The old table sent
     // 3/4/8 to legacy ids that resolved to SYNTH A/B and FEEL again.
@@ -71,6 +71,7 @@ int main() {
             seen[i] = page;
         }
         assert(WorkflowPages::directJumpPage('1') == WorkflowPages::kGenre);
+        assert(WorkflowPages::directJumpPage('2') == WorkflowPages::kProject);
         assert(WorkflowPages::directJumpPage('a') == -1);
     }
 
