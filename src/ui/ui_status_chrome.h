@@ -299,10 +299,12 @@ inline const char* uiStatusOutputToken(UiStatusOutput output) {
         case UiStatusOutput::InternalAndMidi: return "BOTH";
         case UiStatusOutput::Midi: return "MIDI";
         case UiStatusOutput::Unknown: return "OUT?";
-        case UiStatusOutput::Internal: return "[I]";
-        case UiStatusOutput::Layer: return "[L]";
-        case UiStatusOutput::Legacy: return "[-]";
-        case UiStatusOutput::TrackMidi: return "[M]";
+        // Plain words (0.9.17); the bracket codes needed a legend. An unset
+        // (legacy) track plays like LAYER, so it says BOTH as well.
+        case UiStatusOutput::Internal: return "SND";
+        case UiStatusOutput::Layer: return "BOTH";
+        case UiStatusOutput::Legacy: return "BOTH";
+        case UiStatusOutput::TrackMidi: return "MIDI";
     }
     return "OUT?";
 }

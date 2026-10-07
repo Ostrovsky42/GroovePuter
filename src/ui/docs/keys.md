@@ -52,8 +52,8 @@ workflows left to right:
 | `4` | SYNTH A | `9` | MIDI KEYBOARD |
 | `5` | SYNTH B | `0` | MIDI PLAYER |
 
-PROJECT also opens from `Fn+M`. FEEL has no digit: `]` from GENRE. MATERIAL BANK has no direct key yet (open UI
-issue: `[`/`]` are Tab-only peers on SONG and MATERIAL). On MIDI
+PROJECT also opens from `Fn+M`. FEEL has no digit: `]` from GENRE. MATERIAL BANK has no digit: `]` from
+MATERIAL (SONG -> MATERIAL -> MATERIAL BANK). On MIDI
 PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 
 ## MIDI KEYBOARD / PERFORM

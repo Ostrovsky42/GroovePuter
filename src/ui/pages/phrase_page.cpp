@@ -1770,7 +1770,8 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
       requestPageTransition(WorkflowPages::kArrange);
       return true;
     }
-    if (ui_event.key == '[' || ui_event.key == ']') return true;
+    // [ / ] are left to the workflow page navigation (0.9.17): swallowing
+    // them here left MATERIAL BANK without a key to reach it.
   }
 
   if (!core_mode_ && room_view_) return handleRoomEvent(ui_event);
