@@ -25,6 +25,11 @@ struct ExternalClockBlockResult {
     bool sourceChanged{false};
     bool followChanged{false};
     bool queueFailure{false};
+    // With command == Start: where the master will be (in steps from its
+    // downbeat) when this block's first events leave the device. Starting the
+    // local sequencer there puts the whole first bar on the master's grid
+    // instead of catching up through the bounded trim.
+    double startPhaseSteps{0.0};
 };
 
 class ExternalMidiClockFollower {
@@ -36,6 +41,9 @@ public:
     static constexpr double kSourceBpmQuantum = 0.1;
     static constexpr double kSourceBpmHysteresis = 0.15;
     static constexpr uint32_t kClockCoalesceWindowUs = 1000;
+    // Block wait plus output latency is ~50 ms at most: under one step even at
+    // 300 BPM. A larger lead means a broken estimate, not a late start.
+    static constexpr double kMaximumStartLeadSteps = 2.0;
 
     // outputLatencyMicros: how long after a block starts rendering its first
     // MIDI events leave the device. Phase is locked so that those events, not
@@ -54,6 +62,7 @@ public:
             tracker_.reset();
             driveBaseBpmQ16_ = 0;
             phaseTrimDirection_ = 0;
+            startPending_ = false;
             queue.clearFailure();
             result.sourceChanged = true;
             result.command = ExternalTransportCommand::Stop;
@@ -70,6 +79,7 @@ public:
             phaseTrimDirection_ = 0;
             if (wasEnabled && !followEnabled_) {
                 tracker_.onStop(nowMicros);
+                startPending_ = false;
                 result.command = ExternalTransportCommand::Stop;
             }
         }
@@ -87,6 +97,7 @@ public:
             tracker_.onFailure(nowMicros);
             driveBaseBpmQ16_ = 0;
             phaseTrimDirection_ = 0;
+            startPending_ = false;
             ++failureCount_;
             result.command = ExternalTransportCommand::Stop;
             result.queueFailure = true;
@@ -126,9 +137,11 @@ public:
                 case ExternalMidiTransportEventType::Clock:
                     break;
                 case ExternalMidiTransportEventType::Start:
+                    // The downbeat is the first F8 after FA, which SEQTRAK
+                    // sends 12-27 ms later. Start is issued once it arrives.
                     if (followEnabled_) {
                         tracker_.onStart(event.timestampMicros);
-                        result.command = ExternalTransportCommand::Start;
+                        startPending_ = true;
                     }
                     break;
                 case ExternalMidiTransportEventType::Continue:
@@ -139,6 +152,7 @@ public:
                     break;
                 case ExternalMidiTransportEventType::Stop:
                     tracker_.onStop(event.timestampMicros);
+                    startPending_ = false;
                     if (followEnabled_) {
                         result.command = ExternalTransportCommand::Stop;
                     }
@@ -152,6 +166,15 @@ public:
         if (wasRunning && !tracker_.transportRunning() &&
             tracker_.state() == ExternalClockLockState::Lost) {
             result.command = ExternalTransportCommand::Stop;
+        }
+        if (!tracker_.transportRunning()) startPending_ = false;
+        if (startPending_ && !tracker_.downbeatPending()) {
+            startPending_ = false;
+            result.command = ExternalTransportCommand::Start;
+            const double lead = tracker_.predictedAbsoluteProjectSteps(
+                nowMicros + outputLatencyMicros);
+            result.startPhaseSteps =
+                std::max(0.0, std::min(kMaximumStartLeadSteps, lead));
         }
         result.estimate = tracker_.estimate(nowMicros);
         applyBoundedPhaseLock(result,
@@ -284,6 +307,7 @@ private:
     uint32_t driveBaseBpmQ16_{0};
     uint32_t failureCount_{0};
     int8_t phaseTrimDirection_{0};
+    bool startPending_{false};
     bool haveSource_{false};
     bool followEnabled_{true};
     bool haveFollowState_{false};

@@ -188,6 +188,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_musical_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_musical_event_queue"
+
+"${BUILD_DIR}/test_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_midi_transport_sync.cpp" \
   -o "${BUILD_DIR}/test_midi_transport_sync"
 

@@ -163,9 +163,15 @@ void audioTask(void *param) {
           }
         }
       }
+      // Start arrives with the master's downbeat. Begin where the master will
+      // be when this block's notes leave, so the first bar is on its grid
+      // instead of catching up through the bounded trim.
+      double startedAtPhaseSteps = 0.0;
       switch (externalClock.command) {
         case GroovePuterMidi::ExternalTransportCommand::Start:
           g_miniAcid->start();
+          startedAtPhaseSteps =
+              g_miniAcid->advanceStartPhase(externalClock.startPhaseSteps);
           break;
         case GroovePuterMidi::ExternalTransportCommand::Continue:
           g_miniAcid->continueTransport();
@@ -188,7 +194,8 @@ void audioTask(void *param) {
           g_miniAcid->isPlaying(),
           GroovePuterMidi::transportClockSourcePublishesOutboundClock(
               clockSource),
-          restartFromBeginning);
+          restartFromBeginning,
+          static_cast<float>(startedAtPhaseSteps));
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
       g_patternMusicalEventQueue.endMidiRenderBlock();
       // Space while following silences GroovePuter but keeps it rendering in
