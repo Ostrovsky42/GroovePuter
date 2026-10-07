@@ -127,9 +127,18 @@ inline const uint8_t* tinyGlyph(char c) {
     }
 }
 
+// '#' is 5 px wide: at 3 px it read as A or H ("DA3" on the black keys).
+constexpr uint8_t kTinySharpRows[5] = {0x0A, 0x1F, 0x0A, 0x1F, 0x0A};
+
+inline int tinyAdvance(char c) { return c == '#' ? 6 : 4; }
+
 inline int tinyTextWidth(const char* text) {
     if (!text || text[0] == '\0') return 0;
-    return static_cast<int>(std::strlen(text)) * 4 - 1;
+    int width = 0;
+    for (const char* current = text; *current != '\0'; ++current) {
+        width += tinyAdvance(*current);
+    }
+    return width - 1;
 }
 
 inline void drawTinyText(IGfx& gfx,
@@ -140,15 +149,17 @@ inline void drawTinyText(IGfx& gfx,
     if (!text) return;
     int cursorX = x;
     for (const char* current = text; *current != '\0'; ++current) {
-        const uint8_t* rows = tinyGlyph(*current);
+        const bool sharp = *current == '#';
+        const uint8_t* rows = sharp ? kTinySharpRows : tinyGlyph(*current);
+        const int glyphW = sharp ? 5 : 3;
         for (int row = 0; row < 5; ++row) {
-            for (int column = 0; column < 3; ++column) {
-                if ((rows[row] & (1u << (2 - column))) != 0) {
+            for (int column = 0; column < glyphW; ++column) {
+                if ((rows[row] & (1u << (glyphW - 1 - column))) != 0) {
                     gfx.fillRect(cursorX + column, y + row, 1, 1, color);
                 }
             }
         }
-        cursorX += 4;
+        cursorX += tinyAdvance(*current);
     }
 }
 

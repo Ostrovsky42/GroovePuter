@@ -363,5 +363,18 @@ int main() {
   assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
   assert(display.repeatsAltVertical());  // back on the NOTES tab, Melody shown
 
+  // ] walks SONG -> MATERIAL -> MATERIAL BANK (MATERIAL used to swallow it,
+  // leaving the bank without a key).
+  display.goToPage(WorkflowPages::kPhrase);
+  UIEvent nextPage{};
+  nextPage.event_type = GROOVEPUTER_KEY_DOWN;
+  nextPage.key = ']';
+  display.handleEvent(nextPage);
+  assert(display.currentPageIndex() == WorkflowPages::kPhraseCore);
+  UIEvent prevPage = nextPage;
+  prevPage.key = '[';
+  display.handleEvent(prevPage);
+  assert(display.currentPageIndex() == WorkflowPages::kPhrase);
+
   return 0;
 }

@@ -59,7 +59,7 @@ int main() {
     synthPattern.patternBank = 1;
     synthPattern.patternSlot = 6;
     formatUiStatusLine(synthPattern, line, sizeof(line));
-    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [-]") == 0);
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT BOTH") == 0);
 
     // Phrase is target source truth and must stay visible independently from
     // transport ownership.
@@ -74,14 +74,14 @@ int main() {
     synthPhrase.bar = 2;
     synthPhrase.totalBars = 8;
     formatUiStatusLine(synthPhrase, line, sizeof(line));
-    assert(std::strcmp(line, "S-A MEL PLAY 128 BPM B2/8 INT [-]") == 0);
+    assert(std::strcmp(line, "S-A MEL PLAY 128 BPM B2/8 INT BOTH") == 0);
 
     synthPhrase.routing = UiStatusRouting{
         UiSequencedSource::Phrase,
         UiTransportOwner::Song,
     };
     formatUiStatusLine(synthPhrase, line, sizeof(line));
-    assert(std::strcmp(line, "S-A MEL SONG PLAY 128 BPM B2/8 INT [-]") == 0);
+    assert(std::strcmp(line, "S-A MEL SONG PLAY 128 BPM B2/8 INT BOTH") == 0);
 
     synthPhrase.routing = UiStatusRouting{
         UiSequencedSource::Phrase,
