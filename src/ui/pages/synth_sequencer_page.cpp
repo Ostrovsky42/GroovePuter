@@ -290,7 +290,14 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const bool isQueued = mini_acid_.isGoQueued(voice_index_);
 
   gfx.setTextColor(hasPending ? COLOR_ACCENT : voiceColor);
-  const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : "MATERIAL");
+  // Which Melody this is, and whether it differs from what is saved in its
+  // slot ('*'): "MATERIAL" said neither.
+  char melodyLabel[12];
+  std::snprintf(melodyLabel, sizeof(melodyLabel), "MEL %c%d%s",
+                static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
+                mini_acid_.display303LocalPatternIndex(voice_index_) + 1,
+                mini_acid_.hasUnsavedWorkingMelody(voice_index_) ? "*" : "");
+  const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : melodyLabel);
   gfx.drawText(bounds.x + 4, bounds.y, statusText);
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u/%u",

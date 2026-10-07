@@ -248,8 +248,8 @@ inline const char* uiStatusContextToken(UiStatusContext context) {
         case UiStatusContext::Song: return "SONG";
         case UiStatusContext::Project: return "PROJ";
         case UiStatusContext::Generator: return "ADV";
-        case UiStatusContext::Phrase: return "PHR";
-        case UiStatusContext::PhraseCore: return "PCOR";
+        case UiStatusContext::Phrase: return "MAT";
+        case UiStatusContext::PhraseCore: return "MBNK";
         case UiStatusContext::Unknown: return "PAGE";
     }
     return "PAGE";
@@ -259,7 +259,7 @@ inline const char* uiSequencedSourceToken(UiSequencedSource source) {
     switch (source) {
         case UiSequencedSource::NotApplicable: return "";
         case UiSequencedSource::Pattern: return "PAT";
-        case UiSequencedSource::Phrase: return "PHR";
+        case UiSequencedSource::Phrase: return "MEL";  // the user-facing name
     }
     return "";
 }

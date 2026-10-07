@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
@@ -25,10 +26,15 @@ namespace {
 
 class NullGfx : public IGfx {
  public:
+  std::vector<std::string> texts;
+  bool has(const char* v) const {
+    for (const auto& t : texts) if (t.find(v) != std::string::npos) return true;
+    return false;
+  }
   void begin() override {}
   void clear(IGfxColor) override {}
   void drawPixel(int, int, IGfxColor) override {}
-  void drawText(int, int, const char*) override {}
+  void drawText(int, int, const char* s) override { if (s && *s) texts.push_back(s); }
   void drawImage(int, int, const uint16_t*, int, int) override {}
   void drawRect(int, int, int, int, IGfxColor) override {}
   void drawCircle(int, int, int, IGfxColor) override {}
@@ -102,6 +108,14 @@ int main() {
   assert(!engine.isMelodySlot(0, 0, 3));
   assert(stepNotes(engine.sceneManager().currentScene().synthABanks[0].patterns[3]) ==
          stepsBefore);
+
+  // The editor says which Melody this is and that it is not saved yet; the
+  // status line says MEL, not the internal PHR.
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("MEL A4*"));
+  assert(gfx.has("S-A MEL "));
+  assert(!gfx.has("MATERIAL"));
 
   // Alt+N again on an empty unsaved Melody is harmless: still empty, no error.
   auto altN2 = altKey('n');
