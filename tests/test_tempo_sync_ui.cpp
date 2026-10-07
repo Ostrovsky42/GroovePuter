@@ -100,11 +100,22 @@ int main() {
   clock.setSource(TransportClockSource::SeqtrakExternal);
   clock.setExternalFollowEnabled(true);
   assert(externalClockOwnsTransport());
+  // Instead Space silences GroovePuter in place and a second Space restores it.
+  clock.setFollowOutputMuted(false);
+  assert(!followOutputSilenced());
   display.handleEvent(key(' '));
   assert(!engine.isPlaying());
-  // MIDI IN with follow off runs locally, so Space plays/stops as usual.
+  assert(followOutputSilenced());
+  display.handleEvent(key(' '));
+  assert(!followOutputSilenced());
+  display.handleEvent(key(' '));
+  assert(followOutputSilenced());
+  // MIDI IN with follow off runs locally, so Space plays/stops as usual and a
+  // leftover mute flag no longer silences anything.
   clock.setExternalFollowEnabled(false);
   assert(!externalClockOwnsTransport());
+  assert(!followOutputSilenced());
+  clock.setFollowOutputMuted(false);
   display.handleEvent(key(' ')); assert(engine.isPlaying());
   display.handleEvent(key(' ')); assert(!engine.isPlaying());
   clock.setExternalFollowEnabled(true);

@@ -985,7 +985,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
 
     if (e.key == ' ') {
         if (GroovePuterMidi::externalClockOwnsTransport()) {
-            UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
+            UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
             return true;
         }
         withAudioGuard([&]() {

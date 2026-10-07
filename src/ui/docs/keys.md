@@ -29,7 +29,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Alt/Fn+1..0` | Direct page jump |
-| `Space` | Active transport unless the page consumes it |
+| `Space` | Active transport unless the page consumes it; while following MIDI IN, mute/unmute GroovePuter |
 | `Alt+P` | MIDI Player |
 | `Alt+Y` | TEMPO: project BPM and MIDI clock source; also Fn+M -> TEMPO |
 | `Alt+K` | SAMPLER |
@@ -383,6 +383,13 @@ MIDI IN follows MIDI Clock from any USB MIDI device or DAW: BPM becomes
 read-only and Play/Stop come from that device. The panel shows WAITING,
 SYNCING, IN SYNC, CLOCK HOLD or CLOCK LOST. Without a valid incoming clock
 BPM reads `--.-`; after HOLD/LOST it shows the LAST BPM.
+
+While following MIDI IN, `Space` on any page mutes or unmutes GroovePuter
+(its audio, Pattern MIDI and MIDI Player notes) without stopping it: it keeps
+following, so unmuting comes back on the beat. A new Play from the other
+device clears the mute; Continue keeps it. On the MIDI Player, `Space` still
+arms a file that is not playing; an armed file joins a running master on the
+next bar.
 
 Settings DEVICE contains Theme and Main Volume. Manual Groove Mode/Flavor
 controls have been removed from settings; saved project fields are preserved.

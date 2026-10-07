@@ -722,7 +722,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     // without also toggling the global GroovePuter transport.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {
         if (GroovePuterMidi::externalClockOwnsTransport()) {
-            showToast(GroovePuterMidi::kExternalTransportHint, 900);
+            showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
             return true;
         }
         if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);

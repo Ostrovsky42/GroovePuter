@@ -172,6 +172,12 @@ bool toggleHubMidiTransport(MiniAcid& miniAcid) {
     }
 
     const bool wasActive = smfStateIsActive(state.state);
+    // Same rule as the Player page: while following MIDI IN a playing file is
+    // silenced in place with the rest of GroovePuter, never paused.
+    if (wasActive && externalClockOwnsTransport()) {
+        UI::showToast(toggleFollowOutputMute(), 900);
+        return true;
+    }
     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
         !miniAcid.isPlaying() &&
@@ -187,9 +193,11 @@ bool toggleHubMidiTransport(MiniAcid& miniAcid) {
         UI::showToast("MIDI: PAUSE", 700);
     } else if (state.tempoMode == SmfTempoMode::Project) {
         UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
-                          ? (clock.externalFollowEnabled
-                                 ? "MIDI ARMED / PLAY SEQTRAK"
-                                 : "MIDI ARMED / FOLLOW OFF")
+                          ? (!clock.externalFollowEnabled
+                                 ? "MIDI ARMED / FOLLOW OFF"
+                                 : (clock.externalRunning
+                                        ? "MIDI: ARM NEXT BAR"
+                                        : "MIDI ARMED / PLAY MASTER"))
                           : "MIDI: ARM NEXT BAR",
                       900);
     } else {
