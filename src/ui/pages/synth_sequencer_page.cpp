@@ -515,7 +515,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
     if (playTick >= barStart && playTick < barEnd) {
       const int playX = tickToX(playTick);
-      gfx.fillRect(playX - 2, planeTop + kPlaneH + 5, 5, 3, voiceColor);
+      // A solid line in the synth colour through the whole roll (the cursor
+      // is the dotted grey one). It replaces the 5x3 marker under the roll,
+      // which was hard to see and sat in the SELECTED line.
+      gfx.fillRect(playX, planeTop, 1, kPlaneH, voiceColor);
     }
   }
 
@@ -1009,7 +1012,7 @@ bool SynthSequencerPage::newEmptyMelody() {
   const bool onMelody = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
   if (onMelody && mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
-    UI::showToast("ALT+ENTER SAVE OR ALT+X FIRST", 1400);
+    UI::showToast("ALT+ENTER SAVE OR ALT+BKSP FIRST", 1400);
     return true;
   }
   if (!onMelody) {
