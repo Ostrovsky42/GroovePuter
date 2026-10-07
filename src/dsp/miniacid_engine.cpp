@@ -649,6 +649,19 @@ void MiniAcid::pauseTransport() {
   }
 }
 
+double MiniAcid::advanceStartPhase(double steps) {
+  // Only the state start() just left: tick 383 armed to roll over to the
+  // downbeat on the first sample. Anything else would skip real events.
+  if (!playing || currentTick_ != 383 || tickPhaseAccum_ != 0x100000000ULL) {
+    return 0.0;
+  }
+  if (!(steps > 0.0)) return 0.0;
+  if (steps > 4.0) steps = 4.0;
+  const double ticks = steps * 24.0;
+  tickPhaseAccum_ += static_cast<uint64_t>(ticks * 4294967296.0);
+  return steps;
+}
+
 void MiniAcid::continueTransport() {
   if (playing) return;
   LOG_PRINTLN("[DSP] CONTINUE command received");

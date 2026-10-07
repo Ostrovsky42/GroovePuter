@@ -128,6 +128,11 @@ public:
   void preallocateConstrainedDelayBuffers();
   void reset();
   void start();
+  // Right after start(): begin `steps` into the bar instead of at its start.
+  // The skipped ticks all run on the first rendered sample, so the downbeat
+  // still sounds; everything after it lands on an external master's grid.
+  // Returns the phase actually applied (0 when not called right after start).
+  double advanceStartPhase(double steps);
   void stop();
   void pauseTransport();
   void continueTransport();

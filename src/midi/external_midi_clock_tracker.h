@@ -259,6 +259,8 @@ public:
 
     ExternalClockLockState state() const { return state_; }
     bool transportRunning() const { return transportRunning_; }
+    // True between Start and the downbeat F8 that follows it.
+    bool downbeatPending() const { return downbeatPending_; }
     uint32_t transportEpoch() const { return transportEpoch_; }
     uint32_t pulseGapCount() const { return pulseGaps_; }
     uint32_t intervalOutlierCount() const { return intervalOutliers_; }

@@ -35,6 +35,10 @@ struct Outcome {
     double meanErrorMs{0.0};
     uint32_t stopsAfterStart{0};
     uint32_t unlockedBlocks{0};
+    // First bar after Start: phase error of every block, and how late the
+    // downbeat itself leaves (the device learns of Start only at the downbeat).
+    double firstBarMaxAbsErrorMs{0.0};
+    double downbeatLateMs{-1.0};
 };
 
 Outcome run(const Case& c, double seconds) {
@@ -47,7 +51,11 @@ Outcome run(const Case& c, double seconds) {
     const double pulseUs = 60.0e6 / (c.bpm * 24.0);
     const double blockUs =
         kBlockFrames / kSampleRate * 1.0e6 / (1.0 + c.localClockSkew);
-    const double firstPulseUs = 500000.0;  // master sends FA, then F8 at beat 1
+    // Like SEQTRAK: clock runs while stopped, FA arrives shortly before the
+    // downbeat (12-27 ms measured at 78 BPM; here 15 ms, but always after the
+    // previous pulse), and the downbeat is the first F8 after FA.
+    const double firstPulseUs = 1500000.0;
+    const double startUs = firstPulseUs - std::min(15000.0, 0.5 * pulseUs);
     const double settleUs = firstPulseUs + 10.0e6;
 
     double localSteps = 0.0;
@@ -55,7 +63,8 @@ Outcome run(const Case& c, double seconds) {
     bool playing = false;
     bool startSent = false;
     uint32_t ordinal = 0;
-    long pulse = 0;
+    long pulse = -static_cast<long>(1.0e6 / pulseUs);  // 1 s of pre-roll
+    double nextArrival = -1.0;
 
     Outcome out{};
     double errorSum = 0.0;
@@ -65,19 +74,22 @@ Outcome run(const Case& c, double seconds) {
         const double now = 1000.0 + block * blockUs;
         if (now > firstPulseUs + seconds * 1.0e6) break;
 
-        if (!startSent && now >= firstPulseUs - 2000.0) {
-            queue.tryPushCritical(ExternalMidiTransportEventType::Start,
-                                  static_cast<uint32_t>(firstPulseUs - 1000.0),
-                                  ordinal);
-            startSent = true;
-        }
-        while (startSent) {
-            const double due = firstPulseUs + pulse * pulseUs;
-            const double arrival = std::ceil(due / 1000.0) * 1000.0 +
-                                   jitter(rng);
-            if (arrival > now) break;
-            queue.tryPushClock(static_cast<uint32_t>(arrival), ++ordinal);
+        // Queue events in arrival order, as the USB drain does.
+        for (;;) {
+            if (nextArrival < 0.0) {
+                const double due = firstPulseUs + pulse * pulseUs;
+                nextArrival = std::ceil(due / 1000.0) * 1000.0 + jitter(rng);
+            }
+            if (!startSent && startUs <= nextArrival && startUs <= now) {
+                queue.tryPushCritical(ExternalMidiTransportEventType::Start,
+                                      static_cast<uint32_t>(startUs), ordinal);
+                startSent = true;
+                continue;
+            }
+            if (nextArrival > now) break;
+            queue.tryPushClock(static_cast<uint32_t>(nextArrival), ++ordinal);
             ++pulse;
+            nextArrival = -1.0;
         }
 
         const auto result = follower.processBlock(
@@ -88,7 +100,9 @@ Outcome run(const Case& c, double seconds) {
         }
         if (result.command == ExternalTransportCommand::Start) {
             playing = true;
-            localSteps = 0.0;
+            localSteps = result.startPhaseSteps;
+            out.downbeatLateMs =
+                (now + kOutputLatencyUs - firstPulseUs) / 1000.0;
         } else if (result.command == ExternalTransportCommand::Stop) {
             if (playing) ++out.stopsAfterStart;
             playing = false;
@@ -98,6 +112,15 @@ Outcome run(const Case& c, double seconds) {
             block, kBlockFrames,
             static_cast<float>(std::fmod(localSteps, 16.0)),
             static_cast<float>(driveBpm), kSampleRate, playing, true);
+
+        if (playing && now < firstPulseUs + 16.0 * 6.0 * pulseUs) {
+            const double externalSteps =
+                (now + kOutputLatencyUs - firstPulseUs) / pulseUs / 6.0;
+            const double errorMs = (localSteps - externalSteps) * 60.0e3 /
+                                   (c.bpm * 4.0);
+            out.firstBarMaxAbsErrorMs =
+                std::max(out.firstBarMaxAbsErrorMs, std::fabs(errorMs));
+        }
 
         if (playing && now >= settleUs) {
             // First F8 after Start is position 0. The block's first note
@@ -147,13 +170,16 @@ int main() {
         constexpr double kMeanToleranceMs = 3.0;
         const bool ok = o.maxAbsErrorMs <= toleranceMs &&
                         std::fabs(o.meanErrorMs) <= kMeanToleranceMs &&
-                        o.stopsAfterStart == 0 && o.unlockedBlocks == 0;
+                        o.stopsAfterStart == 0 && o.unlockedBlocks == 0 &&
+                        o.firstBarMaxAbsErrorMs <= toleranceMs;
         std::printf("%s follow %.0f BPM skew %+.1f%% jitter %.0f us: "
                     "max |error| %.2f ms (limit %.2f), mean %+.2f ms, "
-                    "stops %u, unlocked blocks %u\n",
+                    "stops %u, unlocked blocks %u, first bar max %.2f ms, "
+                    "downbeat late %.1f ms\n",
                     ok ? "PASS" : "FAIL", c.bpm, c.localClockSkew * 100.0,
                     c.usbJitterUs, o.maxAbsErrorMs, toleranceMs,
-                    o.meanErrorMs, o.stopsAfterStart, o.unlockedBlocks);
+                    o.meanErrorMs, o.stopsAfterStart, o.unlockedBlocks,
+                    o.firstBarMaxAbsErrorMs, o.downbeatLateMs);
         if (!ok) ++failures;
     }
     return failures == 0 ? 0 : 1;
