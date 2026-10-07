@@ -159,7 +159,10 @@ key. `V` switches to list view. `Enter` adds a note,
 to the previous/next bar. `[` / `]` switch the workflow page as on every page;
 `Q..I` and `B` pick a saved Melody;
 `Alt+Up/Down` scroll the
-roll's pitch window (held, it repeats; elsewhere modified keys never repeat).
+roll's pitch window freely (held, it repeats; elsewhere modified keys never
+repeat); it comes back to the selected note when that note changes. The left
+column names the top and bottom rows and every C; `^3` / `v2` count the notes
+of the bar above / below the window.
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 

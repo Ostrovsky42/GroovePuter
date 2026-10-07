@@ -350,8 +350,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
                 static_cast<unsigned>(viewport.totalBars));
   gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, where), bounds.y + 9, where);
 
-  const int planeX = bounds.x + 4;
-  const int planeW = std::max(32, bounds.w - 8);
+  // A narrow left column names the rows (top, bottom and every C).
+  constexpr int kPitchGutterW = 20;
+  const int planeX = bounds.x + 4 + kPitchGutterW;
+  const int planeW = std::max(32, bounds.w - 8 - kPitchGutterW);
   const int planeTop = bounds.y + 17;
   constexpr int kRowH = 5;
   constexpr int kVisibleNotes = 11;
@@ -375,14 +377,36 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   if (phrase_pitch_lowest_ == 0) {
     phrase_pitch_lowest_ = static_cast<int>(anchorNote) - halfWindow;
   }
-  if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
-    phrase_pitch_lowest_ = static_cast<int>(anchorNote);
-  } else if (static_cast<int>(anchorNote) >=
-             phrase_pitch_lowest_ + kVisibleNotes) {
-    phrase_pitch_lowest_ =
-        static_cast<int>(anchorNote) - (kVisibleNotes - 1);
+  // Follow the selected sound only when it changed; otherwise keep where
+  // Alt+Up/Down scrolled to.
+  const int followed = selection.active
+      ? static_cast<int>(selection.eventIndex) * 128 + anchorNote
+      : -1;
+  if (followed != phrase_pitch_followed_) {
+    phrase_pitch_followed_ = followed;
+    if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
+      phrase_pitch_lowest_ = static_cast<int>(anchorNote);
+    } else if (static_cast<int>(anchorNote) >=
+               phrase_pitch_lowest_ + kVisibleNotes) {
+      phrase_pitch_lowest_ =
+          static_cast<int>(anchorNote) - (kVisibleNotes - 1);
+    }
   }
   const int lowestNote = phrase_pitch_lowest_;
+
+  // Row names: the top and bottom rows, and every C in between when it does
+  // not crowd them (a label is taller than a row).
+  for (int row = 0; row < kVisibleNotes; ++row) {
+    const int note = lowestNote + kVisibleNotes - 1 - row;
+    const bool edge = row == 0 || row == kVisibleNotes - 1;
+    const bool octave = (note % 12) == 0 && row >= 2 && row <= kVisibleNotes - 3;
+    if (!edge && !octave) continue;
+    if (note < 0 || note > 127) continue;
+    char label[8];
+    formatNoteName(static_cast<uint8_t>(note), label, sizeof(label));
+    gfx.setTextColor(octave ? COLOR_WHITE : COLOR_LABEL);
+    gfx.drawText(bounds.x + 4, planeTop + row * kRowH - 1, label);
+  }
 
   const auto noteToY = [&](uint8_t note) -> int {
     const int row = (lowestNote + kVisibleNotes - 1) - static_cast<int>(note);
@@ -468,13 +492,17 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     }
   }
 
+  // How many sounds of this bar lie above / below the window (Alt+Up/Down).
+  char more[8];
   if (aboveWindow > 0) {
+    std::snprintf(more, sizeof(more), "^%d", aboveWindow);
     gfx.setTextColor(voiceColor);
-    gfx.drawText(planeX + planeW - 8, planeTop - 1, "^");
+    gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop - 1, more);
   }
   if (belowWindow > 0) {
+    std::snprintf(more, sizeof(more), "v%d", belowWindow);
     gfx.setTextColor(voiceColor);
-    gfx.drawText(planeX + planeW - 8, planeTop + kPlaneH - 6, "v");
+    gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop + kPlaneH - 6, more);
   }
 
   const int cursorX = tickToX(cursorTick);
