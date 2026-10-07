@@ -84,7 +84,7 @@ constexpr const char* kSynthALines[] = {
     "C           Next note of chord",
     "Alt+C       Chord -> arpeggio",
     "K / M       Key tonic / scale",
-    "[ / ]       Prev/next melody",
+    "Q..I / B    Pick melody / bank",
     "Ctrl+L/R    Prev/next bar",
     "Alt+N       New empty melody",
 };
@@ -124,7 +124,7 @@ constexpr const char* kSynthBLines[] = {
     "C           Next note of chord",
     "Alt+C       Chord -> arpeggio",
     "K / M       Key tonic / scale",
-    "[ / ]       Prev/next melody",
+    "Q..I / B    Pick melody / bank",
     "Ctrl+L/R    Prev/next bar",
     "Alt+N       New empty melody",
 };

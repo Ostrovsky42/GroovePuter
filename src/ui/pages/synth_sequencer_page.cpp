@@ -16,7 +16,6 @@
 #include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
-#include "../melody_slot_browse.h"
 #include "../phrase_chord_focus.h"
 #include "../project_key.h"
 #include "src/state/scene_revision.h"
@@ -713,29 +712,6 @@ bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
   return switchToMelodySlot(bank, pattern);
 }
 
-// On MELODY, [ / ] step to the previous/next slot that holds an accepted
-// Melody, across both banks (A1..A8, B1..B8, wrapping); step slots are skipped.
-bool SynthSequencerPage::stepMelodySlot(int direction) {
-  if (mini_acid_.songModeEnabled()) {
-    UI::showToast("SONG ON: SONG PICKS SLOTS", 1000);
-    return true;
-  }
-  constexpr int kPerBank = Bank<SynthPattern>::kPatterns;
-  const int current =
-      mini_acid_.current303BankIndex(voice_index_) * kPerBank +
-      mini_acid_.display303LocalPatternIndex(voice_index_);
-  const int slot = MelodySlotBrowse::neighbour(
-      current, direction, kBankCount * kPerBank, [&](int candidate) {
-        return mini_acid_.isMelodySlot(voice_index_, candidate / kPerBank,
-                                       candidate % kPerBank);
-      });
-  if (slot < 0) {
-    UI::showToast("NO OTHER MELODY", 900);
-    return true;
-  }
-  return switchToMelodySlot(slot / kPerBank, slot % kPerBank);
-}
-
 // Ctrl+Left/Right on MELODY: the cursor jumps to the previous/next bar.
 bool SynthSequencerPage::jumpPhraseBar(int direction) {
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
@@ -1235,10 +1211,9 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // [ / ] browse Melodies; the bar jump they used to do is Ctrl+Left/Right.
-  if (!ui_event.alt && (ui_event.key == '[' || ui_event.key == ']')) {
-    return stepMelodySlot(ui_event.key == ']' ? +1 : -1);
-  }
+  // [ / ] are not taken here: as on every page they switch the workflow page
+  // (owner, 0.9.17). Melodies are picked with Q..I and B; bars with
+  // Ctrl+Left/Right.
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
   if (ui_event.key == '\n' && !ui_event.alt) {

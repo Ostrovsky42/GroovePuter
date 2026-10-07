@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Melody editor navigation (0.9.17): [ / ] browse saved Melodies, Ctrl+Left/
-Right jump bars, plain arrows keep moving the cursor."""
+"""Melody editor navigation (0.9.17): [ / ] switch workflow pages as everywhere
+(owner), Q..I / B pick Melodies, Ctrl+Left/Right jump bars, plain arrows keep
+moving the cursor."""
 from pathlib import Path
 import sys
 
@@ -17,9 +18,9 @@ def main():
     page = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
     keys = (ROOT / "src/ui/docs/keys.md").read_text(encoding="utf-8")
 
-    brackets = page.index("ui_event.key == '[' || ui_event.key == ']'")
-    require("return stepMelodySlot(" in page[brackets:brackets + 300],
-            "[ / ] on MELODY must browse Melodies")
+    require("ui_event.key == '[' || ui_event.key == ']'" not in page and
+            "stepMelodySlot" not in page,
+            "[ / ] on MELODY must reach the global page navigation")
     require("PhraseInstrumentControls::jumpBar(" in
             page.split("bool SynthSequencerPage::jumpPhraseBar")[1].split("\nbool ")[0],
             "the bar jump lives in jumpPhraseBar")
@@ -27,10 +28,9 @@ def main():
     require(page.rfind("ui_event.ctrl && !ui_event.alt && !ui_event.meta", 0, ctrl) > 0 and
             page.index("handleMelodySlotKey(ui_event)) return true;") > ctrl,
             "Ctrl+Left/Right must reach jumpPhraseBar before other MELODY keys")
-    require("MelodySlotBrowse::neighbour(" in page and
-            "return switchToMelodySlot(bank, pattern);" in page,
-            "Q..I and [ / ] must share one slot switch path")
-    require("`Ctrl+Left/Right` on MELODY" in keys and "`[` / `]` on MELODY" in keys,
+    require("return switchToMelodySlot(bank, pattern);" in page,
+            "Q..I and B pick Melodies through one slot switch path")
+    require("`Ctrl+Left/Right` on MELODY" in keys and "`[` / `]` on MELODY" not in keys,
             "keys.md documents the Melody navigation keys")
     print("melody navigation source regressions: OK")
 

@@ -128,6 +128,21 @@ int main() {
   // modified keys never repeat.
   assert(display.repeatsAltVertical());
 
+  // ] on the Melody switches the workflow page, as everywhere; [ comes back.
+  {
+    const int before = display.currentPageIndex();
+    UIEvent next{};
+    next.event_type = GROOVEPUTER_KEY_DOWN;
+    next.key = ']';
+    display.handleEvent(next);
+    assert(display.currentPageIndex() != before);
+    UIEvent prev = next;
+    prev.key = '[';
+    display.handleEvent(prev);
+    assert(display.currentPageIndex() == before);
+    assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
+  }
+
   // Alt+H from the Melody opens the synth help at its MELODY block.
   auto altH = altKey('h');
   display.handleEvent(altH);
