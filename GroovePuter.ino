@@ -1007,6 +1007,16 @@ void loop() {
   const Keyboard_Class::KeysState currentKeysState =
       M5Cardputer.Keyboard.keysState();
   reconcilePerformanceKeys(currentKeysState);
+  // Opt alone (a modifier the library reports without a key code): one key
+  // for Alt+R, STEPS <-> MELODY on the synth pages. Alt+R stays for SDL.
+  if (currentKeysState.opt && !(hasPreviousKeysState && previousKeysState.opt) &&
+      currentKeysState.hid_keys.empty() && currentKeysState.word.empty() &&
+      g_miniDisplay) {
+    UIEvent toggle{};
+    toggle.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    toggle.app_event_type = GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE;
+    if (!g_miniDisplay->handleEvent(toggle)) UI::showToast("OPT: ON SYNTH A/B", 900);
+  }
 
   const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
                       GroovePuterInput::containsWord(currentKeysState, 'h') ||

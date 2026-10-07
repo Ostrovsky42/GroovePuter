@@ -739,8 +739,7 @@ bool SynthSequencerPage::switchToMelodySlot(int bank, int pattern) {
     case Result::AlreadyCurrent:
       return true;
     case Result::NoMelody:
-      UI::showToast("NO MELODY", 900);
-      return true;
+      return newMelodyInSlot(bank, pattern);
     case Result::Unsaved:
       UI::showToast("ALT+ENTER SAVE", 1200);
       return true;
@@ -949,6 +948,35 @@ bool SynthSequencerPage::handleExternalMod() {
 // copy of them. This is Alt+R plus a clear, each with its own Ctrl+Z; the
 // slot's steps are only replaced once the Melody is saved (Alt+Enter).
 // Unsaved Melody edits block it, like Q..I.
+// Q..I / B on the Melody, to a slot holding steps only: a new empty Melody
+// there, the way the owner did it by hand (STEPS, pick the slot, Alt+N).
+// The slot's steps stay until Alt+Enter, as with Alt+N.
+bool SynthSequencerPage::newMelodyInSlot(int bank, int pattern) {
+  const bool wasMelody = mini_acid_.currentSequencedSource(voice_index_) ==
+                         MiniAcid::SequencedSource::Phrase;
+  if (wasMelody) {
+    const auto result =
+        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  bool moved = false;
+  const auto apply = [&]() {
+    moved = mini_acid_.tryManual303TargetSwitch(voice_index_, bank, pattern);
+  };
+  if (audio_guard_) audio_guard_(apply);
+  else apply();
+  if (!moved) {
+    // Stay where the user was: back to this slot's Melody.
+    if (wasMelody) PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    UI::showToast("SLOT BUSY  ALT+ENTER SAVE", 1400);
+    return true;
+  }
+  return newEmptyMelody();
+}
+
 bool SynthSequencerPage::newEmptyMelody() {
   const bool onMelody = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
@@ -1570,7 +1598,29 @@ void SynthSequencerPage::draw(IGfx& gfx) {
   drawTabIndicator(gfx);
 }
 
+// Alt+R on NOTES, or the Cardputer Opt key from any tab: STEPS <-> MELODY.
+bool SynthSequencerPage::toggleSource() {
+  if (synth_tab_ != SynthTab::Notes) setSynthTab(SynthTab::Notes);
+  const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+  if (result == PhraseSourceToggle::Result::MadePhrase) {
+    UI::showToast("MELODY <- STEPS", 1200);
+  } else if (result == PhraseSourceToggle::Result::Rejected) {
+    UI::showToast("MELODY FAILED", 1500);
+  } else {
+    UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
+                          MiniAcid::SequencedSource::Phrase
+                      ? "SOURCE: MELODY"
+                      : "SOURCE: STEPS",
+                  1000);
+  }
+  return true;
+}
+
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+    return toggleSource();
+  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE) {
     return handleExternalNudge(ui_event.x);
@@ -1653,19 +1703,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-    const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-    if (result == PhraseSourceToggle::Result::MadePhrase) {
-      UI::showToast("MELODY <- STEPS", 1200);
-    } else if (result == PhraseSourceToggle::Result::Rejected) {
-      UI::showToast("MELODY FAILED", 1500);
-    } else {
-      UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
-                            MiniAcid::SequencedSource::Phrase
-                        ? "SOURCE: MELODY"
-                        : "SOURCE: STEPS",
-                    1000);
-    }
-    return true;
+    return toggleSource();
   }
 
   if (synth_tab_ == SynthTab::Notes && isNewMelodyKey(ui_event)) {

@@ -131,9 +131,9 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
-| `Alt+R` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first |
+| `Alt+R` / `Opt` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first. `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
-| `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
+| `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
 | `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
