@@ -18,6 +18,8 @@
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/ui/miniacid_display.h"
 #include "src/ui/workflow_mode.h"
+#include "src/phrase/runtime_phrase_edit.h"
+#include "src/ui/phrase_chord_focus.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -121,6 +123,82 @@ int main() {
   auto altN2 = altKey('n');
   display.handleEvent(altN2);
   assert(engine.currentPhraseBuffer(0).count == 0);
+
+  // Chords: Enter adds a note (the cursor moves on), Left back to it, A twice
+  // builds a triad on that cell, C cycles its notes and Up edits the chosen one.
+  auto key = [](char value) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_KEY_DOWN;
+    e.key = value;
+    return e;
+  };
+  auto scan = [](KeyScanCode value) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_KEY_DOWN;
+    e.scancode = value;
+    return e;
+  };
+  auto enter = key('\n');
+  display.handleEvent(enter);
+  const auto& melody = engine.currentPhraseBuffer(0);
+  assert(melody.count == 1);
+  const uint8_t rootNote = melody.events[0].note;
+  auto left = scan(GROOVEPUTER_LEFT);
+  display.handleEvent(left);
+  auto a1 = key('a');
+  display.handleEvent(a1);
+  auto a2 = key('a');
+  display.handleEvent(a2);
+  assert(melody.count == 3);
+  for (uint16_t i = 0; i < 3; ++i) {
+    assert(melody.events[i].startTick == melody.events[0].startTick);
+  }
+  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  assert(RuntimePhraseEdit::hasOverlappingNotes(melody));
+
+  // C from the just-added top note wraps to the lowest; Up raises only it.
+  auto c = key('c');
+  display.handleEvent(c);
+  auto up = scan(GROOVEPUTER_UP);
+  display.handleEvent(up);
+  assert(melody.events[0].note == rootNote + 1);
+  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  // C again: the middle note, and Up raises that one.
+  auto c2 = key('c');
+  display.handleEvent(c2);
+  auto up2 = scan(GROOVEPUTER_UP);
+  display.handleEvent(up2);
+  assert(melody.events[1].note == rootNote + 5);
+  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == rootNote + 7);
+
+  // Keyboard recording: keys pressed together land as one chord on the cursor
+  // cell; a key played later goes to the next cell.
+  auto external = [](uint8_t note, uint8_t velocity) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    e.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE;
+    e.x = note;
+    e.y = velocity;
+    return e;
+  };
+  auto right = scan(GROOVEPUTER_RIGHT);
+  display.handleEvent(right);  // an empty cell after the triad
+  auto n60 = external(60, 100);
+  assert(display.handleEvent(n60));
+  auto n64 = external(64, 90);
+  assert(display.handleEvent(n64));
+  assert(melody.count == 5);
+  const uint16_t chordStart = melody.events[3].startTick;
+  assert(chordStart > melody.events[0].startTick);
+  assert(melody.events[4].startTick == chordStart && melody.events[4].note == 64);
+  assert(melody.events[4].velocity == 90);
+  auto n64off = external(64, 0);
+  display.handleEvent(n64off);
+  delay(PhraseChordFocus::kChordWindowMs + 40);
+  auto n67 = external(67, 100);
+  assert(display.handleEvent(n67));
+  assert(melody.count == 6);
+  assert(melody.events[5].note == 67 && melody.events[5].startTick > chordStart);
 
   return 0;
 }

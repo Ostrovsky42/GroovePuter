@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # UI tests that need the full SDL source set (real MiniAcidDisplay + engine):
-# TEMPO panel and the MIDI IN Space mute, and Alt+N new empty Melody.
+# TEMPO panel and the MIDI IN Space mute, Alt+N new empty Melody and chords.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build/host-tests/ui-navigation"
 mkdir -p "$BUILD"
 CXX="${CXX:-g++}"
+
+# Melody chord focus and chord-tone helpers: pure, no SDL.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -I"$ROOT" \
+  "$ROOT/tests/test_phrase_chord_focus.cpp" -o "$BUILD/test_phrase_chord_focus"
+"$BUILD/test_phrase_chord_focus"
+echo "Melody chord focus PASS"
 
 cd "$ROOT/platform_sdl"
 mapfile -t SRCS < <(
@@ -37,5 +43,5 @@ cd "$WORK"
 "$BUILD/test_tempo_sync_ui" > "$BUILD/test_tempo_sync_ui.out"
 tail -1 "$BUILD/test_tempo_sync_ui.out"
 "$BUILD/test_melody_new_empty_ui" > /dev/null
-echo "UI navigation: Alt+N new empty Melody PASS"
+echo "UI navigation: Alt+N new empty Melody, chord edit and recording PASS"
 "$BUILD/test_melody_chord_playback"

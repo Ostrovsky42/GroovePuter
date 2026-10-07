@@ -17,6 +17,7 @@
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
 #include "../melody_slot_browse.h"
+#include "../phrase_chord_focus.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
 #include "../phrase_notes_delete_edit.h"
@@ -829,9 +830,66 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
     guarded([&]() { mini_acid_.liveNoteOff(voice_index_, previous); });
     external_audition_note_ = -1;
   }
-  insertAtCursor(note, velocity);
+  // Keys pressed together arrive as NoteOns a few ms apart: they become one
+  // chord on the first key's cell instead of an arpeggio across cells.
+  const uint32_t now = millis();
+  if (!(last_recorded_note_ >= 0 &&
+        PhraseChordFocus::sameChordOnset(last_recorded_ms_, now) &&
+        joinRecordedChord(note, velocity))) {
+    insertAtCursor(note, velocity);
+    rememberRecordedNote(note);
+  }
+  last_recorded_ms_ = now;
   guarded([&]() { mini_acid_.liveNoteOn(voice_index_, note, velocity); });
   external_audition_note_ = static_cast<int16_t>(note);
+  return true;
+}
+
+void SynthSequencerPage::rememberRecordedNote(uint8_t note) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+  const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
+  last_recorded_note_ = -1;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const auto& event = phrase.events[i];
+    if (event.note == note && event.startTick >= cell &&
+        event.startTick < cell + cellTicks) {
+      last_recorded_note_ = static_cast<int16_t>(note);
+      last_recorded_start_ = event.startTick;
+      return;
+    }
+  }
+}
+
+bool SynthSequencerPage::joinRecordedChord(uint8_t note, uint8_t velocity) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  int base = -1;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (phrase.events[i].startTick == last_recorded_start_ &&
+        phrase.events[i].note == static_cast<uint8_t>(last_recorded_note_)) {
+      base = i;
+      break;
+    }
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) return false;
+  int added = -1;
+  const auto result =
+      PhraseChordFocus::prepareAddNote(phrase, base, note, velocity, *after, added);
+  if (result == PhraseChordFocus::AddResult::AlreadyInChord) return true;
+  if (result != PhraseChordFocus::AddResult::Ready) {
+    if (result == PhraseChordFocus::AddResult::Full) {
+      UI::showToast("MELODY FULL", 1200);
+      return true;
+    }
+    return false;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    return false;
+  }
+  UI::showToast("CHORD NOTE ADDED", 700);
   return true;
 }
 
@@ -902,6 +960,96 @@ bool SynthSequencerPage::newEmptyMelody() {
                 static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
                 mini_acid_.display303LocalPatternIndex(voice_index_) + 1);
   UI::showToast(toast, 1600);
+  return true;
+}
+
+int SynthSequencerPage::chordFocusInCell() const {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+  const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
+  return PhraseChordFocus::valid(phrase, cell, cellTicks, chord_focus_event_)
+             ? chord_focus_event_
+             : -1;
+}
+
+// C on MELODY: the next note of the chord in the cursor cell, low to high.
+bool SynthSequencerPage::cycleChordFocus() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  uint8_t position = 0;
+  uint8_t total = 0;
+  const int next = PhraseChordFocus::next(
+      phrase, PhraseNotesCursor::tick(phrase_cursor_),
+      PhraseNotesCursor::quantumTicks(phrase_cursor_.grid), chordFocusInCell(),
+      &position, &total);
+  if (next < 0) {
+    UI::showToast(total == 0 ? "NO NOTE  A ADDS A CHORD NOTE" : "ONE NOTE  A ADDS ONE",
+                  1200);
+    return true;
+  }
+  chord_focus_event_ = static_cast<int16_t>(next);
+  phrase_selection_ = PhraseSelectionState::at(phrase, static_cast<uint16_t>(next));
+  char name[8];
+  formatNoteName(phrase.events[next].note, name, sizeof(name));
+  char toast[28];
+  std::snprintf(toast, sizeof(toast), "CHORD %u/%u %s",
+                static_cast<unsigned>(position + 1), static_cast<unsigned>(total),
+                name);
+  UI::showToast(toast, 900);
+  return true;
+}
+
+// A on MELODY: a chord tone a third above the chord at the cursor, focused so
+// Up/Down set its pitch straight away.
+bool SynthSequencerPage::addChordTone() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  int base = chordFocusInCell();
+  if (base < 0) {
+    const PhraseNotesSelection::Selection inCell = PhraseNotesSelection::deriveInCell(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_),
+        PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+    if (inCell.active && phrase.events[inCell.eventIndex].startTick >= cell) {
+      base = inCell.eventIndex;
+    }
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) {
+    UI::showToast("EDIT FAILED", 1000);
+    return true;
+  }
+  int added = -1;
+  switch (PhraseChordFocus::prepareAddTone(phrase, base, *after, added)) {
+    case PhraseChordFocus::AddResult::NoTarget:
+      UI::showToast("NO NOTE STARTS HERE", 1000);
+      return true;
+    case PhraseChordFocus::AddResult::Full:
+      UI::showToast("MELODY FULL", 1200);
+      return true;
+    case PhraseChordFocus::AddResult::PitchLimit:
+      UI::showToast("PITCH LIMIT", 900);
+      return true;
+    case PhraseChordFocus::AddResult::Invalid:
+      UI::showToast("EDIT FAILED", 1000);
+      return true;
+    case PhraseChordFocus::AddResult::Ready:
+      break;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    UI::showToast("EDIT STALE", 1000);
+    return true;
+  }
+  chord_focus_event_ = static_cast<int16_t>(added);
+  const auto& now = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_selection_ = PhraseSelectionState::at(now, static_cast<uint16_t>(added));
+  char name[8];
+  formatNoteName(now.events[added].note, name, sizeof(name));
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
+  UI::showToast(toast, 1200);
   return true;
 }
 
@@ -987,8 +1135,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (isBackspace && !ui_event.alt) {
     phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
     PhraseNotesDeleteEdit::Prepared prepared{};
-    const auto result = PhraseNotesDeleteEdit::prepare(
-        phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesDeleteEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), prepared)
+        : PhraseNotesDeleteEdit::prepare(
+              phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
+    chord_focus_event_ = -1;  // indices after it shift
     if (result != PhraseNotesDeleteEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesDeleteEdit::Result::NoTarget
@@ -1026,12 +1179,17 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
             PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
     const uint32_t audibleBefore =
         before.active ? audibleEndTick(phrase, before.eventIndex) : 0;
-    const auto result = PhraseNotesDurationEdit::prepare(
-        phrase,
-        PhraseNotesCursor::tick(phrase_cursor_),
-        phrase_cursor_.grid,
-        direction,
-        prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesDurationEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), phrase_cursor_.grid,
+              direction, prepared)
+        : PhraseNotesDurationEdit::prepare(
+              phrase,
+              PhraseNotesCursor::tick(phrase_cursor_),
+              phrase_cursor_.grid,
+              direction,
+              prepared);
     if (result != PhraseNotesDurationEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesDurationEdit::Result::NoTarget
@@ -1066,6 +1224,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    chord_focus_event_ = -1;
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     const uint16_t insertTick = PhraseNotesCursor::tick(phrase_cursor_);
@@ -1142,6 +1301,16 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Chords: C picks the next note of the chord at the cursor, A adds one.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'c' || ui_event.scancode == GROOVEPUTER_C)) {
+    return cycleChordFocus();
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    return addChordTone();
+  }
+
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
     phrase_cursor_ = PhraseNotesCursor::changeGrid(
@@ -1165,8 +1334,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
         phrase_cursor_, phrase.lengthTicks);
     PhraseNotesPitchEdit::Prepared prepared{};
     const int direction = pitchUp ? 1 : -1;
-    const auto result = PhraseNotesPitchEdit::prepare(
-        phrase, PhraseNotesCursor::tick(phrase_cursor_), direction, prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesPitchEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), direction, prepared)
+        : PhraseNotesPitchEdit::prepare(
+              phrase, PhraseNotesCursor::tick(phrase_cursor_), direction,
+              prepared);
     if (result != PhraseNotesPitchEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesPitchEdit::Result::NoTarget

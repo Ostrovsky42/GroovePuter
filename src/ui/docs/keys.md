@@ -157,6 +157,13 @@ this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 
+Chords: `A` adds a chord tone a third above the chord's top note (major over a
+single note, minor over a chord); `C` cycles the notes of the chord in the cursor
+cell, low to high, and `Up/Down`, `Backspace`, `Alt+Left/Right` then act on that
+note. Keys pressed together on an external keyboard (within 40 ms) are recorded
+as one chord on the cursor cell. Chords play on SEQTRAK over MIDI; the internal
+synth stays mono and plays the chord's top note.
+
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.
 
