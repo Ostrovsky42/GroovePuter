@@ -86,7 +86,7 @@ int main() {
   assert(prepareAddTone(seventh, 0, after, added, 0, kScaleDorian) == AddResult::Ready);
   assert(after.count == 4 && after.events[added].note == 70);
 
-  // Alt+A: the chord becomes one note per grid step, low to high and around,
+  // Alt+C: the chord becomes one note per grid step, low to high and around,
   // for as long as the chord lasts, stopping at the next note.
   Buffer arp{};
   arp.lengthTicks = PhraseRuntime::kTicksPerBar;
@@ -105,22 +105,25 @@ int main() {
   }
   assert(after.events[4].note == 62 && after.events[4].startTick == 192);
   assert(!RuntimePhraseEdit::hasOverlappingNotes(after));
-  // A later note cuts the arpeggio short.
-  arp.events[3].startTick = 48;
+  // A later note cuts the cycle, but never below one pass over the chord.
+  arp.events[3].startTick = 72;
   assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Ready);
-  assert(steps == 2 && after.events[2].note == 62);
-  // Not a chord, or too short for two steps.
+  assert(steps == 3 && after.events[3].note == 62);
+  // Not a chord.
   assert(prepareArpeggio(arp, 48, 24, 24, after, steps) == AddResult::NoChord);
-  assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::Blocked);  // D next
+  // A one-step chord (as H makes it) still plays every note: C E G, not C E.
   Buffer shortChord{};
   shortChord.lengthTicks = PhraseRuntime::kTicksPerBar;
+  add(shortChord, 0, 67);
   add(shortChord, 0, 60);
   add(shortChord, 0, 64);
-  assert(prepareArpeggio(shortChord, 0, 24, 24, after, steps) == AddResult::TooShort);
-  // A note right after the chord: lengthening will not help, long or short.
-  arp.events[3].startTick = 24;
-  assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Blocked);
-  arp.events[0].durationSubticks = 24 * PhraseRuntime::kSubticksPerTick;
+  assert(prepareArpeggio(shortChord, 0, 24, 24, after, steps) == AddResult::Ready);
+  assert(steps == 3 && after.events[0].note == 60 && after.events[1].note == 64 &&
+         after.events[2].note == 67 && after.events[2].startTick == 48);
+  // No room for all chord notes before the next one: it says how many.
+  assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::Blocked);  // D next
+  assert(steps == 3);
+  arp.events[3].startTick = 48;
   assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Blocked);
 
   // Up/Down along the key: whole and half steps as the scale has them; a

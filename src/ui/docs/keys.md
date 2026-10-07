@@ -171,9 +171,9 @@ Chords: `H` on a single note builds the project key's triad on it in one press;
 `H` on a chord adds one more tone on top (a triad becomes a seventh chord). `C`
 cycles the notes of the chord in the cursor cell, low to high, and the pitch
 keys, `Backspace`, `Alt+A` and `Alt+Left/Right` then act on that note. `Alt+C`
-turns the chord into an arpeggio: its notes one per grid step, low to high and
-around, for as long as the chord lasts (lengthen a note first with
-`Alt+Right`); `Ctrl+Z` brings the chord back. Keys pressed together on an
+turns the chord into an arpeggio: its notes one per grid step, low to high,
+every note at least once and around again while a longer chord lasts; it needs
+that many free steps before the next note. `Ctrl+Z` brings the chord back. Keys pressed together on an
 external keyboard (within 40 ms) are recorded as one chord on the cursor cell.
 Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the
 chord's top note (an arpeggio plays everywhere). Thin lines separate the pitch

@@ -1085,7 +1085,6 @@ bool SynthSequencerPage::addChordTone() {
     case PhraseChordFocus::AddResult::Invalid:
     case PhraseChordFocus::AddResult::AlreadyInChord:
     case PhraseChordFocus::AddResult::NoChord:
-    case PhraseChordFocus::AddResult::TooShort:
     case PhraseChordFocus::AddResult::Blocked:
       UI::showToast("EDIT FAILED", 1000);
       return true;
@@ -1144,8 +1143,12 @@ bool SynthSequencerPage::arpeggiateChord() {
   if (result != PhraseChordFocus::AddResult::Ready) {
     const char* why = "EDIT FAILED";
     if (result == PhraseChordFocus::AddResult::NoChord) why = "NO CHORD HERE  H MAKES ONE";
-    else if (result == PhraseChordFocus::AddResult::TooShort) why = "CHORD TOO SHORT  ALT+RIGHT";
-    else if (result == PhraseChordFocus::AddResult::Blocked) why = "NEXT NOTE TOO CLOSE  NO ROOM";
+    char needs[32];
+    if (result == PhraseChordFocus::AddResult::Blocked) {
+      std::snprintf(needs, sizeof(needs), "ARP NEEDS %u FREE STEPS",
+                    static_cast<unsigned>(steps));
+      why = needs;
+    }
     else if (result == PhraseChordFocus::AddResult::Full) why = "MELODY FULL";
     UI::showToast(why, 1400);
     return true;
