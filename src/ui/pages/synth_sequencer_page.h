@@ -73,7 +73,24 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool handleExternalMod();
   bool clearMelody();
   int16_t external_audition_note_ = -1;
+  // Melody event the editor works on inside a chord (C cycles it); -1 when the
+  // cursor cell holds no chord. Valid only while it starts in the cursor cell.
+  int16_t chord_focus_event_ = -1;
+  // Last note recorded from an external keyboard: a key within
+  // PhraseChordFocus::kChordWindowMs joins its chord instead of moving on.
+  uint32_t last_recorded_ms_ = 0;
+  int16_t last_recorded_note_ = -1;
+  uint16_t last_recorded_start_ = 0;
+  bool joinRecordedChord(uint8_t note, uint8_t velocity);
+  void rememberRecordedNote(uint8_t note);
+  int chordFocusInCell() const;
+  bool cycleChordFocus();
+  bool addChordTone();
   bool handleMelodySlotKey(UIEvent& ui_event);
+  bool stepMelodySlot(int direction);
+  bool newEmptyMelody();
+  bool switchToMelodySlot(int bank, int pattern);
+  bool jumpPhraseBar(int direction);
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;

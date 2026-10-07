@@ -1,0 +1,204 @@
+// Alt+N on SYNTH A NOTES: a new, empty Melody in the current slot (0.9.17).
+// Every slot holds steps (the default scene fills them), so Alt+R alone always
+// starts from a copy of them; Alt+N starts from nothing. The slot's steps stay
+// until the Melody is saved, and each step has its own Ctrl+Z.
+#include <cassert>
+#include <cstring>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#define private public
+#include "src/dsp/miniacid_engine.h"
+#undef private
+#include "platform_sdl/scene_storage_sdl.h"
+#include "platform_sdl/sdl_display.h"
+#include "src/audio/pattern_paging.h"
+#include "src/input/performance_keyboard.h"
+#include "src/platform/cardputer_material_publication_session.h"
+#include "src/ui/miniacid_display.h"
+#include "src/ui/workflow_mode.h"
+#include "src/phrase/runtime_phrase_edit.h"
+#include "src/ui/phrase_chord_focus.h"
+
+SerialMock Serial;
+SDMock SD;
+
+namespace {
+
+class NullGfx : public IGfx {
+ public:
+  std::vector<std::string> texts;
+  bool has(const char* v) const {
+    for (const auto& t : texts) if (t.find(v) != std::string::npos) return true;
+    return false;
+  }
+  void begin() override {}
+  void clear(IGfxColor) override {}
+  void drawPixel(int, int, IGfxColor) override {}
+  void drawText(int, int, const char* s) override { if (s && *s) texts.push_back(s); }
+  void drawImage(int, int, const uint16_t*, int, int) override {}
+  void drawRect(int, int, int, int, IGfxColor) override {}
+  void drawCircle(int, int, int, IGfxColor) override {}
+  void drawKnobFace(int, int, int, IGfxColor, IGfxColor) override {}
+  void fillRect(int, int, int, int, IGfxColor) override {}
+  void fillCircle(int, int, int, IGfxColor) override {}
+  void drawLine(int32_t, int32_t, int32_t, int32_t, IGfxColor) override {}
+  void setRotation(int) override {}
+  void setTextColor(IGfxColor) override {}
+  void setTextColor(uint16_t) override {}
+  void setFont(GfxFont) override {}
+  void startWrite() override {}
+  void endWrite() override {}
+  void flush() override {}
+  int textWidth(const char* s) const override { return s ? std::strlen(s) * 6 : 0; }
+  int fontHeight() const override { return 8; }
+  int width() const override { return 240; }
+  int height() const override { return 135; }
+};
+
+UIEvent altKey(char value) {
+  UIEvent e{};
+  e.event_type = GROOVEPUTER_KEY_DOWN;
+  e.key = value;
+  e.alt = true;
+  return e;
+}
+
+int stepNotes(const SynthPattern& pattern) {
+  int notes = 0;
+  for (int i = 0; i < SynthPattern::kSteps; ++i) {
+    if (pattern.steps[i].note >= 0) ++notes;
+  }
+  return notes;
+}
+
+}  // namespace
+
+int main() {
+  const auto root = std::filesystem::temp_directory_path() / "gp_test_new_empty_melody";
+  std::error_code ec;
+  std::filesystem::remove_all(root, ec);
+  std::filesystem::create_directories(root);
+  std::filesystem::current_path(root);
+  SD.setRoot(root);
+  GroovePuterPlatform::clearMaterialPublication("new_empty", 0);
+  PatternPagingService::setProjectName("new_empty");
+  SceneStorageSdl storage;
+  storage.setCurrentSceneName("default");
+
+  MiniAcid engine{44100.0f, &storage};
+  engine.init();
+  engine.setSongMode(false);
+  engine.set303PatternIndex(0, 3);  // A4
+  const int stepsBefore =
+      stepNotes(engine.sceneManager().currentScene().synthABanks[0].patterns[3]);
+  assert(stepsBefore > 0);  // the default scene fills every slot with steps
+
+  NullGfx gfx;
+  MusicalEventRouter router;
+  PerformanceKeyboard keyboard(router);
+  MiniAcidDisplay display(gfx, engine, keyboard);
+  display.dismissSplash();
+  display.goToPage(WorkflowPages::kSynthA);
+
+  auto altN = altKey('n');
+  assert(display.handleEvent(altN));
+  assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
+  assert(engine.currentPhraseBuffer(0).count == 0);
+  // Nothing is replaced until Alt+Enter: the slot still holds its steps.
+  assert(!engine.isMelodySlot(0, 0, 3));
+  assert(stepNotes(engine.sceneManager().currentScene().synthABanks[0].patterns[3]) ==
+         stepsBefore);
+
+  // The editor says which Melody this is and that it is not saved yet; the
+  // status line says MEL, not the internal PHR.
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("MEL A4*"));
+  assert(gfx.has("S-A MEL "));
+  assert(!gfx.has("MATERIAL"));
+
+  // Alt+N again on an empty unsaved Melody is harmless: still empty, no error.
+  auto altN2 = altKey('n');
+  display.handleEvent(altN2);
+  assert(engine.currentPhraseBuffer(0).count == 0);
+
+  // Chords: Enter adds a note (the cursor moves on), Left back to it, A twice
+  // builds a triad on that cell, C cycles its notes and Up edits the chosen one.
+  auto key = [](char value) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_KEY_DOWN;
+    e.key = value;
+    return e;
+  };
+  auto scan = [](KeyScanCode value) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_KEY_DOWN;
+    e.scancode = value;
+    return e;
+  };
+  auto enter = key('\n');
+  display.handleEvent(enter);
+  const auto& melody = engine.currentPhraseBuffer(0);
+  assert(melody.count == 1);
+  const uint8_t rootNote = melody.events[0].note;
+  auto left = scan(GROOVEPUTER_LEFT);
+  display.handleEvent(left);
+  auto a1 = key('a');
+  display.handleEvent(a1);
+  auto a2 = key('a');
+  display.handleEvent(a2);
+  assert(melody.count == 3);
+  for (uint16_t i = 0; i < 3; ++i) {
+    assert(melody.events[i].startTick == melody.events[0].startTick);
+  }
+  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  assert(RuntimePhraseEdit::hasOverlappingNotes(melody));
+
+  // C from the just-added top note wraps to the lowest; Up raises only it.
+  auto c = key('c');
+  display.handleEvent(c);
+  auto up = scan(GROOVEPUTER_UP);
+  display.handleEvent(up);
+  assert(melody.events[0].note == rootNote + 1);
+  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  // C again: the middle note, and Up raises that one.
+  auto c2 = key('c');
+  display.handleEvent(c2);
+  auto up2 = scan(GROOVEPUTER_UP);
+  display.handleEvent(up2);
+  assert(melody.events[1].note == rootNote + 5);
+  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == rootNote + 7);
+
+  // Keyboard recording: keys pressed together land as one chord on the cursor
+  // cell; a key played later goes to the next cell.
+  auto external = [](uint8_t note, uint8_t velocity) {
+    UIEvent e{};
+    e.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    e.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE;
+    e.x = note;
+    e.y = velocity;
+    return e;
+  };
+  auto right = scan(GROOVEPUTER_RIGHT);
+  display.handleEvent(right);  // an empty cell after the triad
+  auto n60 = external(60, 100);
+  assert(display.handleEvent(n60));
+  auto n64 = external(64, 90);
+  assert(display.handleEvent(n64));
+  assert(melody.count == 5);
+  const uint16_t chordStart = melody.events[3].startTick;
+  assert(chordStart > melody.events[0].startTick);
+  assert(melody.events[4].startTick == chordStart && melody.events[4].note == 64);
+  assert(melody.events[4].velocity == 90);
+  auto n64off = external(64, 0);
+  display.handleEvent(n64off);
+  delay(PhraseChordFocus::kChordWindowMs + 40);
+  auto n67 = external(67, 100);
+  assert(display.handleEvent(n67));
+  assert(melody.count == 6);
+  assert(melody.events[5].note == 67 && melody.events[5].startTick > chordStart);
+
+  return 0;
+}

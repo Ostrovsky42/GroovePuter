@@ -16,6 +16,8 @@
 #include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
+#include "../melody_slot_browse.h"
+#include "../phrase_chord_focus.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
 #include "../phrase_notes_delete_edit.h"
@@ -73,6 +75,17 @@ uint32_t audibleEndTick(
     if (other > event.startTick && other < end) end = other;
   }
   return end;
+}
+
+bool isNewMelodyKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+      !event.alt || event.ctrl || event.meta) {
+    return false;
+  }
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'n' || event.scancode == GROOVEPUTER_N;
 }
 
 bool isSourceToggleKey(const UIEvent& event) {
@@ -278,7 +291,14 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const bool isQueued = mini_acid_.isGoQueued(voice_index_);
 
   gfx.setTextColor(hasPending ? COLOR_ACCENT : voiceColor);
-  const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : "MATERIAL");
+  // Which Melody this is, and whether it differs from what is saved in its
+  // slot ('*'): "MATERIAL" said neither.
+  char melodyLabel[12];
+  std::snprintf(melodyLabel, sizeof(melodyLabel), "MEL %c%d%s",
+                static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
+                mini_acid_.display303LocalPatternIndex(voice_index_) + 1,
+                mini_acid_.hasUnsavedWorkingMelody(voice_index_) ? "*" : "");
+  const char* statusText = isQueued ? "GO QUEUED" : (hasPending ? "NEXT READY" : melodyLabel);
   gfx.drawText(bounds.x + 4, bounds.y, statusText);
   char where[20];
   std::snprintf(where, sizeof(where), "BAR %u/%u",
@@ -652,7 +672,47 @@ bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
     if (target < 0) return false;
     pattern = target;
   }
+  return switchToMelodySlot(bank, pattern);
+}
 
+// On MELODY, [ / ] step to the previous/next slot that holds an accepted
+// Melody, across both banks (A1..A8, B1..B8, wrapping); step slots are skipped.
+bool SynthSequencerPage::stepMelodySlot(int direction) {
+  if (mini_acid_.songModeEnabled()) {
+    UI::showToast("SONG ON: SONG PICKS SLOTS", 1000);
+    return true;
+  }
+  constexpr int kPerBank = Bank<SynthPattern>::kPatterns;
+  const int current =
+      mini_acid_.current303BankIndex(voice_index_) * kPerBank +
+      mini_acid_.display303LocalPatternIndex(voice_index_);
+  const int slot = MelodySlotBrowse::neighbour(
+      current, direction, kBankCount * kPerBank, [&](int candidate) {
+        return mini_acid_.isMelodySlot(voice_index_, candidate / kPerBank,
+                                       candidate % kPerBank);
+      });
+  if (slot < 0) {
+    UI::showToast("NO OTHER MELODY", 900);
+    return true;
+  }
+  return switchToMelodySlot(slot / kPerBank, slot % kPerBank);
+}
+
+// Ctrl+Left/Right on MELODY: the cursor jumps to the previous/next bar.
+bool SynthSequencerPage::jumpPhraseBar(int direction) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseInstrumentControls::jumpBar(
+      phrase_cursor_, direction, phrase.lengthTicks);
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "MELODY BAR %u/%u",
+                static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
+                static_cast<unsigned>(
+                    PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
+  UI::showToast(toast, 900);
+  return true;
+}
+
+bool SynthSequencerPage::switchToMelodySlot(int bank, int pattern) {
   std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> melody(
       new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
   if (!melody) {
@@ -770,9 +830,66 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
     guarded([&]() { mini_acid_.liveNoteOff(voice_index_, previous); });
     external_audition_note_ = -1;
   }
-  insertAtCursor(note, velocity);
+  // Keys pressed together arrive as NoteOns a few ms apart: they become one
+  // chord on the first key's cell instead of an arpeggio across cells.
+  const uint32_t now = millis();
+  if (!(last_recorded_note_ >= 0 &&
+        PhraseChordFocus::sameChordOnset(last_recorded_ms_, now) &&
+        joinRecordedChord(note, velocity))) {
+    insertAtCursor(note, velocity);
+    rememberRecordedNote(note);
+  }
+  last_recorded_ms_ = now;
   guarded([&]() { mini_acid_.liveNoteOn(voice_index_, note, velocity); });
   external_audition_note_ = static_cast<int16_t>(note);
+  return true;
+}
+
+void SynthSequencerPage::rememberRecordedNote(uint8_t note) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+  const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
+  last_recorded_note_ = -1;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const auto& event = phrase.events[i];
+    if (event.note == note && event.startTick >= cell &&
+        event.startTick < cell + cellTicks) {
+      last_recorded_note_ = static_cast<int16_t>(note);
+      last_recorded_start_ = event.startTick;
+      return;
+    }
+  }
+}
+
+bool SynthSequencerPage::joinRecordedChord(uint8_t note, uint8_t velocity) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  int base = -1;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (phrase.events[i].startTick == last_recorded_start_ &&
+        phrase.events[i].note == static_cast<uint8_t>(last_recorded_note_)) {
+      base = i;
+      break;
+    }
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) return false;
+  int added = -1;
+  const auto result =
+      PhraseChordFocus::prepareAddNote(phrase, base, note, velocity, *after, added);
+  if (result == PhraseChordFocus::AddResult::AlreadyInChord) return true;
+  if (result != PhraseChordFocus::AddResult::Ready) {
+    if (result == PhraseChordFocus::AddResult::Full) {
+      UI::showToast("MELODY FULL", 1200);
+      return true;
+    }
+    return false;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    return false;
+  }
+  UI::showToast("CHORD NOTE ADDED", 700);
   return true;
 }
 
@@ -803,6 +920,139 @@ bool SynthSequencerPage::handleExternalMod() {
 }
 
 // Removes every sound of the melody (its length stays). One Undo step brings them all back.
+// Alt+N: start a Melody from nothing in the current slot. Every slot holds
+// steps (the default scene fills them), so Alt+R alone always starts from a
+// copy of them. This is Alt+R plus a clear, each with its own Ctrl+Z; the
+// slot's steps are only replaced once the Melody is saved (Alt+Enter).
+// Unsaved Melody edits block it, like Q..I.
+bool SynthSequencerPage::newEmptyMelody() {
+  const bool onMelody = mini_acid_.currentSequencedSource(voice_index_) ==
+                        MiniAcid::SequencedSource::Phrase;
+  if (onMelody && mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+    UI::showToast("ALT+ENTER SAVE OR ALT+X FIRST", 1400);
+    return true;
+  }
+  if (!onMelody) {
+    const auto result =
+        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected ||
+        mini_acid_.currentSequencedSource(voice_index_) !=
+            MiniAcid::SequencedSource::Phrase) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  if (mini_acid_.currentPhraseBuffer(voice_index_).count > 0) {
+    PhraseNotesClearEdit::Prepared prepared{};
+    if (PhraseNotesClearEdit::prepare(mini_acid_.currentPhraseBuffer(voice_index_),
+                                      prepared) !=
+            PhraseNotesClearEdit::Result::Ready ||
+        !commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                         prepared.before, prepared.after)) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  phrase_cursor_ = PhraseNotesCursor::clamp(
+      phrase_cursor_, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
+  char toast[40];
+  std::snprintf(toast, sizeof(toast), "NEW MELODY %c%d  ALT+ENTER SAVE",
+                static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
+                mini_acid_.display303LocalPatternIndex(voice_index_) + 1);
+  UI::showToast(toast, 1600);
+  return true;
+}
+
+int SynthSequencerPage::chordFocusInCell() const {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+  const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
+  return PhraseChordFocus::valid(phrase, cell, cellTicks, chord_focus_event_)
+             ? chord_focus_event_
+             : -1;
+}
+
+// C on MELODY: the next note of the chord in the cursor cell, low to high.
+bool SynthSequencerPage::cycleChordFocus() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  uint8_t position = 0;
+  uint8_t total = 0;
+  const int next = PhraseChordFocus::next(
+      phrase, PhraseNotesCursor::tick(phrase_cursor_),
+      PhraseNotesCursor::quantumTicks(phrase_cursor_.grid), chordFocusInCell(),
+      &position, &total);
+  if (next < 0) {
+    UI::showToast(total == 0 ? "NO NOTE  A ADDS A CHORD NOTE" : "ONE NOTE  A ADDS ONE",
+                  1200);
+    return true;
+  }
+  chord_focus_event_ = static_cast<int16_t>(next);
+  phrase_selection_ = PhraseSelectionState::at(phrase, static_cast<uint16_t>(next));
+  char name[8];
+  formatNoteName(phrase.events[next].note, name, sizeof(name));
+  char toast[28];
+  std::snprintf(toast, sizeof(toast), "CHORD %u/%u %s",
+                static_cast<unsigned>(position + 1), static_cast<unsigned>(total),
+                name);
+  UI::showToast(toast, 900);
+  return true;
+}
+
+// A on MELODY: a chord tone a third above the chord at the cursor, focused so
+// Up/Down set its pitch straight away.
+bool SynthSequencerPage::addChordTone() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  int base = chordFocusInCell();
+  if (base < 0) {
+    const PhraseNotesSelection::Selection inCell = PhraseNotesSelection::deriveInCell(
+        phrase, PhraseNotesCursor::tick(phrase_cursor_),
+        PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
+    const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
+    if (inCell.active && phrase.events[inCell.eventIndex].startTick >= cell) {
+      base = inCell.eventIndex;
+    }
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) {
+    UI::showToast("EDIT FAILED", 1000);
+    return true;
+  }
+  int added = -1;
+  switch (PhraseChordFocus::prepareAddTone(phrase, base, *after, added)) {
+    case PhraseChordFocus::AddResult::NoTarget:
+      UI::showToast("NO NOTE STARTS HERE", 1000);
+      return true;
+    case PhraseChordFocus::AddResult::Full:
+      UI::showToast("MELODY FULL", 1200);
+      return true;
+    case PhraseChordFocus::AddResult::PitchLimit:
+      UI::showToast("PITCH LIMIT", 900);
+      return true;
+    case PhraseChordFocus::AddResult::Invalid:
+      UI::showToast("EDIT FAILED", 1000);
+      return true;
+    case PhraseChordFocus::AddResult::Ready:
+      break;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    UI::showToast("EDIT STALE", 1000);
+    return true;
+  }
+  chord_focus_event_ = static_cast<int16_t>(added);
+  const auto& now = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_selection_ = PhraseSelectionState::at(now, static_cast<uint16_t>(added));
+  char name[8];
+  formatNoteName(now.events[added].note, name, sizeof(name));
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
+  UI::showToast(toast, 1200);
+  return true;
+}
+
 bool SynthSequencerPage::clearMelody() {
   if (synth_tab_ != SynthTab::Notes ||
       mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
@@ -872,16 +1122,9 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // [ / ] browse Melodies; the bar jump they used to do is Ctrl+Left/Right.
   if (!ui_event.alt && (ui_event.key == '[' || ui_event.key == ']')) {
-    phrase_cursor_ = PhraseInstrumentControls::jumpBar(
-        phrase_cursor_, ui_event.key == ']' ? +1 : -1, phrase.lengthTicks);
-    char toast[32];
-    std::snprintf(toast, sizeof(toast), "MATERIAL BAR %u/%u",
-                  static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
-                  static_cast<unsigned>(
-                      PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
-    UI::showToast(toast, 900);
-    return true;
+    return stepMelodySlot(ui_event.key == ']' ? +1 : -1);
   }
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
@@ -892,8 +1135,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   if (isBackspace && !ui_event.alt) {
     phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
     PhraseNotesDeleteEdit::Prepared prepared{};
-    const auto result = PhraseNotesDeleteEdit::prepare(
-        phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesDeleteEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), prepared)
+        : PhraseNotesDeleteEdit::prepare(
+              phrase, PhraseNotesCursor::tick(phrase_cursor_), prepared);
+    chord_focus_event_ = -1;  // indices after it shift
     if (result != PhraseNotesDeleteEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesDeleteEdit::Result::NoTarget
@@ -931,12 +1179,17 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
             PhraseNotesCursor::quantumTicks(phrase_cursor_.grid));
     const uint32_t audibleBefore =
         before.active ? audibleEndTick(phrase, before.eventIndex) : 0;
-    const auto result = PhraseNotesDurationEdit::prepare(
-        phrase,
-        PhraseNotesCursor::tick(phrase_cursor_),
-        phrase_cursor_.grid,
-        direction,
-        prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesDurationEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), phrase_cursor_.grid,
+              direction, prepared)
+        : PhraseNotesDurationEdit::prepare(
+              phrase,
+              PhraseNotesCursor::tick(phrase_cursor_),
+              phrase_cursor_.grid,
+              direction,
+              prepared);
     if (result != PhraseNotesDurationEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesDurationEdit::Result::NoTarget
@@ -971,6 +1224,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   }
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    chord_focus_event_ = -1;
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     const uint16_t insertTick = PhraseNotesCursor::tick(phrase_cursor_);
@@ -1047,6 +1301,16 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Chords: C picks the next note of the chord at the cursor, A adds one.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'c' || ui_event.scancode == GROOVEPUTER_C)) {
+    return cycleChordFocus();
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    return addChordTone();
+  }
+
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
     phrase_cursor_ = PhraseNotesCursor::changeGrid(
@@ -1070,8 +1334,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
         phrase_cursor_, phrase.lengthTicks);
     PhraseNotesPitchEdit::Prepared prepared{};
     const int direction = pitchUp ? 1 : -1;
-    const auto result = PhraseNotesPitchEdit::prepare(
-        phrase, PhraseNotesCursor::tick(phrase_cursor_), direction, prepared);
+    const int chordNote = chordFocusInCell();
+    const auto result = chordNote >= 0
+        ? PhraseNotesPitchEdit::prepareSelected(
+              phrase, static_cast<uint16_t>(chordNote), direction, prepared)
+        : PhraseNotesPitchEdit::prepare(
+              phrase, PhraseNotesCursor::tick(phrase_cursor_), direction,
+              prepared);
     if (result != PhraseNotesPitchEdit::Result::Ready) {
       UI::showToast(
           result == PhraseNotesPitchEdit::Result::NoTarget
@@ -1204,10 +1473,22 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  if (synth_tab_ == SynthTab::Notes && isNewMelodyKey(ui_event)) {
+    return newEmptyMelody();
+  }
+
   // Ctrl+Backspace: clear the whole melody (undoable), before the plain Backspace delete below.
   if (phraseNotes && ui_event.event_type == GROOVEPUTER_KEY_DOWN && ui_event.ctrl &&
       !ui_event.alt && !ui_event.meta && (ui_event.key == '\b' || ui_event.key == 0x7F)) {
     return clearMelody();
+  }
+
+  if (phraseNotes && ui_event.event_type == GROOVEPUTER_KEY_DOWN &&
+      ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    const int nav = UIInput::navCode(ui_event);
+    if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+      return jumpPhraseBar(nav == GROOVEPUTER_RIGHT ? +1 : -1);
+    }
   }
 
   if (phraseNotes && handleMelodySlotKey(ui_event)) return true;

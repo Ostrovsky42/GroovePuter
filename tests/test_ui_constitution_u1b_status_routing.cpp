@@ -74,14 +74,14 @@ int main() {
     synthPhrase.bar = 2;
     synthPhrase.totalBars = 8;
     formatUiStatusLine(synthPhrase, line, sizeof(line));
-    assert(std::strcmp(line, "S-A PHR PLAY 128 BPM B2/8 INT [-]") == 0);
+    assert(std::strcmp(line, "S-A MEL PLAY 128 BPM B2/8 INT [-]") == 0);
 
     synthPhrase.routing = UiStatusRouting{
         UiSequencedSource::Phrase,
         UiTransportOwner::Song,
     };
     formatUiStatusLine(synthPhrase, line, sizeof(line));
-    assert(std::strcmp(line, "S-A PHR SONG PLAY 128 BPM B2/8 INT [-]") == 0);
+    assert(std::strcmp(line, "S-A MEL SONG PLAY 128 BPM B2/8 INT [-]") == 0);
 
     synthPhrase.routing = UiStatusRouting{
         UiSequencedSource::Phrase,
@@ -92,7 +92,7 @@ int main() {
     synthPhrase.output = UiStatusOutput::Midi;
     synthPhrase.liveMixLocked = true;
     formatUiStatusLine(synthPhrase, line, sizeof(line));
-    assert(std::strcmp(line, "S-A PHR SMF ARM 128 BPM B2/8 EXT MIDI LM") == 0);
+    assert(std::strcmp(line, "S-A MEL SMF ARM 128 BPM B2/8 EXT MIDI LM") == 0);
 
     // When no target sequenced source applies, non-default transport remains
     // observable rather than borrowing a source from some other track.

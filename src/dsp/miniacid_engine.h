@@ -725,7 +725,12 @@ private:
   void processSequencerEvents(uint32_t absoluteTick);
   void triggerSynthStep_(int synthIdx,
                          const PhraseRuntime::RuntimeSynthEvent& event,
-                         uint32_t absoluteStartSubtick);
+                         uint32_t absoluteStartSubtick,
+                         bool chordVoice = false);
+  // Melody onsets of one tick. A Melody with overlapping notes starts every
+  // note of the tick as a chord voice; any other keeps the one-note path.
+  void triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
+                            uint32_t absoluteStartSubtick);
   // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
   // one place leaves room for a per-voice cycle origin later without touching
   // the sequencer scan.
@@ -749,6 +754,13 @@ private:
                              bool accent,
                              bool slide);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
+  void publishChordNoteOn_(int synthIdx, uint8_t note, uint8_t velocity,
+                           bool accent);
+  void publishChordNoteOff_(int synthIdx, uint8_t note);
+  // The monophonic synth follows the top note of the sounding chord.
+  void followChordWithInternalVoice_(int synthIdx, bool topRestarted);
+  bool translateChordVoiceAction_(
+      int synthIdx, const PhraseRuntime::RuntimeSynthPlaybackAction& action);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
@@ -866,6 +878,8 @@ private:
   PhraseRuntime::RuntimeSynthEvent patternRetrigEvent_[NUM_303_VOICES]{};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
+  // Note the internal synth plays while a chord sounds, or -1.
+  int16_t chordInternalNote_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
 

@@ -28,7 +28,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `[` / `]` | Previous / next page inside workflow |
 | `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
-| `Alt/Fn+1..0` | Direct page jump |
+| `Alt/Fn+1..0` | Direct page jump, see below |
 | `Space` | Active transport unless the page consumes it; while following MIDI IN, mute/unmute GroovePuter |
 | `Alt+P` | MIDI Player |
 | `Alt+Y` | TEMPO: project BPM and MIDI clock source; also Fn+M -> TEMPO |
@@ -40,6 +40,20 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+\` | `CARBON <-> CYBER` |
 
 The active page gets first refusal before global fallbacks.
+
+`Alt/Fn+digit` follows the workflows left to right, one page per digit:
+
+| Digit | Page | Digit | Page |
+|---|---|---|---|
+| `1` | GENRE | `6` | DRUMS |
+| `2` | FEEL | `7` | SONG |
+| `3` | OVERVIEW | `8` | MATERIAL |
+| `4` | SYNTH A | `9` | MIDI KEYBOARD |
+| `5` | SYNTH B | `0` | MIDI PLAYER |
+
+PROJECT opens from `Fn+M`. MATERIAL BANK has no direct key yet (open UI
+issue: `[`/`]` are Tab-only peers on SONG and MATERIAL). On MIDI
+PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 
 ## MIDI KEYBOARD / PERFORM
 
@@ -117,8 +131,11 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
 | `Alt+R` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first |
+| `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
+| `[` / `]` on MELODY | Previous / next saved Melody of this synth across both banks; `NO OTHER MELODY` if none |
+| `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
@@ -134,9 +151,18 @@ variation, repeat cycle `1/2/4/8`, and presets.
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
 change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
-`J` joins it to the next note, and `G` changes the grid. `[` / `]` move by bar;
+`J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
+to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
+this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
+
+Chords: `A` adds a chord tone a third above the chord's top note (major over a
+single note, minor over a chord); `C` cycles the notes of the chord in the cursor
+cell, low to high, and `Up/Down`, `Backspace`, `Alt+Left/Right` then act on that
+note. Keys pressed together on an external keyboard (within 40 ms) are recorded
+as one chord on the cursor cell. Chords play on SEQTRAK over MIDI; the internal
+synth stays mono and plays the chord's top note.
 
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.
