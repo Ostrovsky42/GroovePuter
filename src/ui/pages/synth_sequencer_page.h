@@ -75,6 +75,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int16_t external_audition_note_ = -1;
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool stepMelodySlot(int direction);
+  bool newEmptyMelody();
   bool switchToMelodySlot(int bank, int pattern);
   bool jumpPhraseBar(int direction);
 

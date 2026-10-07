@@ -76,6 +76,17 @@ uint32_t audibleEndTick(
   return end;
 }
 
+bool isNewMelodyKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+      !event.alt || event.ctrl || event.meta) {
+    return false;
+  }
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'n' || event.scancode == GROOVEPUTER_N;
+}
+
 bool isSourceToggleKey(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN ||
       !event.alt || event.ctrl || event.meta) {
@@ -844,6 +855,49 @@ bool SynthSequencerPage::handleExternalMod() {
 }
 
 // Removes every sound of the melody (its length stays). One Undo step brings them all back.
+// Alt+N: start a Melody from nothing in the current slot. Every slot holds
+// steps (the default scene fills them), so Alt+R alone always starts from a
+// copy of them. This is Alt+R plus a clear, each with its own Ctrl+Z; the
+// slot's steps are only replaced once the Melody is saved (Alt+Enter).
+// Unsaved Melody edits block it, like Q..I.
+bool SynthSequencerPage::newEmptyMelody() {
+  const bool onMelody = mini_acid_.currentSequencedSource(voice_index_) ==
+                        MiniAcid::SequencedSource::Phrase;
+  if (onMelody && mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+    UI::showToast("ALT+ENTER SAVE OR ALT+X FIRST", 1400);
+    return true;
+  }
+  if (!onMelody) {
+    const auto result =
+        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected ||
+        mini_acid_.currentSequencedSource(voice_index_) !=
+            MiniAcid::SequencedSource::Phrase) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  if (mini_acid_.currentPhraseBuffer(voice_index_).count > 0) {
+    PhraseNotesClearEdit::Prepared prepared{};
+    if (PhraseNotesClearEdit::prepare(mini_acid_.currentPhraseBuffer(voice_index_),
+                                      prepared) !=
+            PhraseNotesClearEdit::Result::Ready ||
+        !commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                         prepared.before, prepared.after)) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  phrase_cursor_ = PhraseNotesCursor::clamp(
+      phrase_cursor_, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
+  char toast[40];
+  std::snprintf(toast, sizeof(toast), "NEW MELODY %c%d  ALT+ENTER SAVE",
+                static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
+                mini_acid_.display303LocalPatternIndex(voice_index_) + 1);
+  UI::showToast(toast, 1600);
+  return true;
+}
+
 bool SynthSequencerPage::clearMelody() {
   if (synth_tab_ != SynthTab::Notes ||
       mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
@@ -1236,6 +1290,10 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
                     1000);
     }
     return true;
+  }
+
+  if (synth_tab_ == SynthTab::Notes && isNewMelodyKey(ui_event)) {
+    return newEmptyMelody();
   }
 
   // Ctrl+Backspace: clear the whole melody (undoable), before the plain Backspace delete below.

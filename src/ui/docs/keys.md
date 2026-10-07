@@ -131,6 +131,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
 | `Alt+R` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first |
+| `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
 | `[` / `]` on MELODY | Previous / next saved Melody of this synth across both banks; `NO OTHER MELODY` if none |

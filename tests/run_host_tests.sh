@@ -672,3 +672,8 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 # Unified Song slots: ownership, exact Pattern/Melody playback and display source contract.
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_unified_song_slots_tests.sh"
+
+# Melody slot navigation (Q..I / B) and the UI navigation tests: TEMPO + MIDI
+# IN Space mute, Alt+N new empty Melody. Both were written but never run.
+bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
+bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"
