@@ -58,6 +58,21 @@ int main() {
   add(high, 0, 125);
   assert(prepareAddTone(high, 0, after, added) == AddResult::PitchLimit);
 
+  // In the project key: diatonic thirds, so the triad stays in the scale.
+  using namespace GroovePuterRhythm;
+  assert(chordToneAbove(60, true, 0, kScaleMajor) == 64);   // C -> E
+  assert(chordToneAbove(64, false, 0, kScaleMajor) == 67);  // E -> G
+  assert(chordToneAbove(71, true, 0, kScaleMajor) == 74);   // B -> D
+  assert(chordToneAbove(60, true, 0, kScaleDorian) == 63);  // C -> Eb
+  assert(chordToneAbove(62, true, 0, kScaleDorian) == 65);  // D -> F
+  assert(chordToneAbove(69, true, 9, kScaleMinor) == 72);   // A minor: A -> C
+  assert(chordToneAbove(63, true, 0, kScalePentatonicMinor) == 67);  // Eb -> G
+  assert(chordToneAbove(61, true, 0, kScaleMajor) == 64);   // off-scale C# -> E
+  assert(chordToneAbove(60, true, 0, kScaleChromatic) == 64);
+  assert(chordToneAbove(60, false, 0, kScaleChromatic) == 63);
+  assert(prepareAddTone(b, 3, after, added, 0, kScaleDorian) == AddResult::Ready);
+  assert(after.events[added].note == 65);  // D + F in C Dorian, not F#
+
   // Recording: keys within the window form one chord; later ones do not.
   assert(sameChordOnset(1000, 1000 + kChordWindowMs));
   assert(!sameChordOnset(1000, 1000 + kChordWindowMs + 1));

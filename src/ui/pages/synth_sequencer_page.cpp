@@ -380,6 +380,23 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     return value >= lowestNote && value < lowestNote + kVisibleNotes;
   };
 
+  // Row separators in the 1 px gap under each pitch row, so stacked chord
+  // notes a semitone apart read as separate rows. The project key's tonic row
+  // is dotted brighter as a landmark for the eye.
+  const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
+  const int tonic = (key.scaleRoot % 12 + 12) % 12;
+  for (int row = 0; row < kVisibleNotes; ++row) {
+    const int note = lowestNote + kVisibleNotes - 1 - row;
+    const int lineY = planeTop + row * kRowH + kRowH - 1;
+    if (((note % 12) + 12) % 12 == tonic) {
+      for (int x = planeX; x < planeX + planeW; x += 2) {
+        gfx.fillRect(x, lineY, 1, 1, COLOR_LABEL);
+      }
+    } else {
+      gfx.fillRect(planeX, lineY, planeW, 1, COLOR_LIGHT_GRAY);
+    }
+  }
+
   for (int beat = 0; beat < 4; ++beat) {
     const int beatX =
         tickToX(barStart + static_cast<uint32_t>(beat) * kBeatTicks);
@@ -1021,7 +1038,10 @@ bool SynthSequencerPage::addChordTone() {
     return true;
   }
   int added = -1;
-  switch (PhraseChordFocus::prepareAddTone(phrase, base, *after, added)) {
+  const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
+  switch (PhraseChordFocus::prepareAddTone(
+      phrase, base, *after, added, static_cast<uint8_t>((key.scaleRoot % 12 + 12) % 12),
+      static_cast<GroovePuterRhythm::ScaleTypeValue>(key.scale))) {
     case PhraseChordFocus::AddResult::NoTarget:
       UI::showToast("NO NOTE STARTS HERE", 1000);
       return true;
