@@ -79,8 +79,7 @@ enum class AddResult : uint8_t {
   Invalid,
   AlreadyInChord,
   NoChord,
-  TooShort,
-  Blocked,  // the next note starts before the arpeggio's second step
+  Blocked,  // no room for every chord note before the next note
 };
 
 // Keys landing within this many milliseconds of each other were played as one
@@ -182,10 +181,11 @@ inline AddResult prepareAddTone(
   return AddResult::Ready;
 }
 
-// Alt+A: the chord in the cursor cell becomes an arpeggio. Its notes play one
-// after another on the grid, low to high and around again, for as long as the
-// chord lasted (cut at the next note that starts later). Nothing overlaps
-// afterwards, so the internal synth plays it too. `steps` gets the note count.
+// Alt+C: the chord in the cursor cell becomes an arpeggio. Its notes play one
+// per grid step, low to high: every chord note at least once (a one-step
+// chord from H becomes three steps), and around again while a longer chord
+// lasts. Nothing overlaps afterwards, so the internal synth plays it too.
+// `steps` gets the note count; on Blocked, how many free steps it needs.
 inline AddResult prepareArpeggio(const Buffer& live, uint16_t cellTick,
                                  uint16_t cellTicks, uint16_t gridTicks,
                                  Buffer& after, uint16_t& steps) {
@@ -213,11 +213,15 @@ inline AddResult prepareArpeggio(const Buffer& live, uint16_t cellTick,
     const uint32_t s = live.events[i].startTick;
     if (s > start && s < room) room = s;
   }
-  // Lengthening cannot help when another note is in the way.
-  if ((room - start) / gridTicks < 2) return AddResult::Blocked;
-  if (end > room) end = room;
-  const uint32_t count = (end - start) / gridTicks;
-  if (count < 2) return AddResult::TooShort;
+  // Every chord note once, more while the chord lasts, never past the room.
+  const uint32_t roomSteps = (room - start) / gridTicks;
+  if (roomSteps < n) {
+    steps = n;
+    return AddResult::Blocked;
+  }
+  uint32_t count = (end - start) / gridTicks;
+  if (count < n) count = n;
+  if (count > roomSteps) count = roomSteps;
   if (live.count - n + count > PhraseRuntime::kMaxSynthEvents) {
     return AddResult::Full;
   }
