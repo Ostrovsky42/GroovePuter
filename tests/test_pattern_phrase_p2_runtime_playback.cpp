@@ -401,13 +401,108 @@ void testPlaybackStateIsFixedAndTriviallyCopyable() {
                 "P2 playback state must remain fixed/trivially copyable");
   static_assert(std::is_trivially_copyable<RuntimeSynthPlaybackActions>::value,
                 "P2 action batch must remain fixed/trivially copyable");
-  static_assert(sizeof(RuntimeSynthPlaybackActions) <= 32,
+  // 0.9.17 Melody chords: a chord onset may release four voices and start one
+  // (5 actions of 11 bytes). Still a fixed, stack-returned batch.
+  static_assert(sizeof(RuntimeSynthPlaybackActions) <= 64,
                 "P2 action batch grew unexpectedly");
+}
+
+// 0.9.17 Melody chords ------------------------------------------------------
+
+bool isChordVoice(const RuntimeSynthPlaybackActions& actions, uint8_t index) {
+  return (actions.values[index].event.flags & PhraseRuntime::kEventChordVoice) != 0;
+}
+
+void testChordNotesSoundTogetherAndEndOnTheirOwn() {
+  RuntimeSynthPlaybackState state;
+  auto a = state.acceptChordOnset(event(60, 192), 1000);
+  auto b = state.acceptChordOnset(event(64, 96), 1000);
+  auto c = state.acceptChordOnset(event(67, 384), 1000);
+  assert(a.count == 1 && b.count == 1 && c.count == 1);
+  requireAction(c, 0, RuntimeSynthPlaybackActionType::Start, 67);
+  assert(isChordVoice(c, 0));
+  assert(state.voiceCount() == 3);
+  assert(state.topNote() == 67);
+
+  auto first = state.releaseDue(1096);  // 64 ends first
+  assert(first.count == 1);
+  requireAction(first, 0, RuntimeSynthPlaybackActionType::Release, 64);
+  assert(state.voiceCount() == 2);
+  auto second = state.releaseDue(1192);
+  requireAction(second, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  auto last = state.releaseDue(1384);
+  requireAction(last, 0, RuntimeSynthPlaybackActionType::Release, 67);
+  assert(!state.active() && state.topNote() == -1);
+}
+
+void testChordNoteEndingAtNextOnsetReleasesFirst() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 192), 0);
+  auto next = state.acceptChordOnset(event(62, 192), 192);
+  assert(next.count == 2);
+  requireAction(next, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(next, 1, RuntimeSynthPlaybackActionType::Start, 62);
+  assert(state.voiceCount() == 1);
+}
+
+void testChordSamePitchRestartsAndFifthStealsOldest() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 999), 0);
+  auto again = state.acceptChordOnset(event(60, 999), 10);
+  assert(again.count == 2);
+  requireAction(again, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(again, 1, RuntimeSynthPlaybackActionType::Start, 60);
+  assert(state.voiceCount() == 1);
+
+  state.acceptChordOnset(event(64, 999), 20);
+  state.acceptChordOnset(event(67, 999), 30);
+  state.acceptChordOnset(event(71, 999), 40);
+  assert(state.voiceCount() == PhraseRuntime::kMaxChordVoices);
+  auto fifth = state.acceptChordOnset(event(74, 999), 50);
+  requireAction(fifth, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(fifth, 1, RuntimeSynthPlaybackActionType::Start, 74);
+  assert(state.voiceCount() == PhraseRuntime::kMaxChordVoices);
+  assert(state.topNote() == 74);
+}
+
+void testHardBarrierAndMonoOnsetReleaseEveryChordVoice() {
+  RuntimeSynthPlaybackState state;
+  for (uint8_t note : {60, 64, 67, 71}) state.acceptChordOnset(event(note, 999), 0);
+  auto barrier = state.hardBarrier();
+  assert(barrier.count == 4);
+  for (uint8_t i = 0; i < 4; ++i) {
+    assert(barrier.values[i].type == RuntimeSynthPlaybackActionType::Release);
+    assert(isChordVoice(barrier, i));
+  }
+  assert(!state.active());
+
+  for (uint8_t note : {60, 64, 67, 71}) state.acceptChordOnset(event(note, 999), 0);
+  auto mono = state.acceptOnset(event(48, 96), 10);
+  assert(mono.count == 5);
+  requireAction(mono, 4, RuntimeSynthPlaybackActionType::Start, 48);
+  assert(!isChordVoice(mono, 4));
+  assert(state.voiceCount() == 1 && state.activeNote() == 48);
+}
+
+void testChordRetriggerTargetsTheMatchingVoice() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 999), 0);
+  state.acceptChordOnset(event(64, 999), 0);
+  auto retrig = state.acceptRetrigger(event(60, 999));
+  assert(retrig.count == 1);
+  requireAction(retrig, 0, RuntimeSynthPlaybackActionType::Retrigger, 60);
+  assert(isChordVoice(retrig, 0));
+  assert(state.acceptRetrigger(event(55, 999)).count == 0);
 }
 
 }  // namespace
 
 int main() {
+  testChordNotesSoundTogetherAndEndOnTheirOwn();
+  testChordNoteEndingAtNextOnsetReleasesFirst();
+  testChordSamePitchRestartsAndFifthStealsOldest();
+  testHardBarrierAndMonoOnsetReleaseEveryChordVoice();
+  testChordRetriggerTargetsTheMatchingVoice();
   testAdjacentTieExtendsShortGateThroughTiedStep();
   testAdjacentTieChainHasOneOnsetAndOneFinalRelease();
   testRestBlocksLaterTieAndOrphanTieHasNoOnset();

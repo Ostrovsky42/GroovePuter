@@ -497,6 +497,8 @@ void MiniAcid::reset() {
   retrigB_ = {};
   patternPlaybackState_[0] = {};
   patternPlaybackState_[1] = {};
+  chordInternalNote_[0] = -1;
+  chordInternalNote_[1] = -1;
   patternRetrigEvent_[0] = {};
   patternRetrigEvent_[1] = {};
   for(int i=0; i<NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
@@ -578,6 +580,14 @@ void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
   const int idx = clamp303Voice(voiceIndex);
   if (synthVoices_[idx]) synthVoices_[idx]->release();
   publishPatternNoteOff_(idx);
+  // Chord voices are not "the" Pattern note: release each one on the wire.
+  const auto& held = patternPlaybackState_[idx];
+  for (uint8_t v = 0; v < held.voiceCount(); ++v) {
+    if ((held.voiceEvent(v).flags & PhraseRuntime::kEventChordVoice) != 0) {
+      publishChordNoteOff_(idx, held.voiceEvent(v).note);
+    }
+  }
+  chordInternalNote_[idx] = -1;
   patternPlaybackState_[idx] = {};
   patternRetrigEvent_[idx] = {};
   if (idx == 0) {
@@ -2319,10 +2329,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     } else if (activeMaterial_[0].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
-                phraseEventAt_(0, absoluteTick)) {
-          triggerSynthStep_(0, *phraseA, absoluteStartSubtick);
-        }
+        triggerPhraseOnsets_(0, absoluteTick, absoluteStartSubtick);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventA =
                    synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
@@ -2334,10 +2341,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     } else if (activeMaterial_[1].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
-                phraseEventAt_(1, absoluteTick)) {
-          triggerSynthStep_(1, *phraseB, absoluteStartSubtick);
-        }
+        triggerPhraseOnsets_(1, absoluteTick, absoluteStartSubtick);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventB =
                    synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
@@ -3951,11 +3955,30 @@ void MiniAcid::consumePatternPlaybackActions_(
     int synthIdx,
     const PhraseRuntime::RuntimeSynthPlaybackActions& actions) {
   const int idx = clamp303Voice(synthIdx);
+  // The state has already applied this batch: topAfter is what sounds now.
+  const int topAfter = patternPlaybackState_[idx].topNote();
+  bool chordActions = false;
+  bool monoStart = false;
+  bool topRestarted = false;
   for (uint8_t i = 0; i < actions.count; ++i) {
     const PhraseRuntime::RuntimeSynthPlaybackAction& action = actions.values[i];
     const PhraseRuntime::RuntimeSynthEvent& event = action.event;
     const bool accent = (event.flags & PhraseRuntime::kEventAccent) != 0;
     const bool slide = (event.flags & PhraseRuntime::kEventSlide) != 0;
+
+    // Chord voices: each note goes to MIDI on its own; the monophonic internal
+    // synth is moved to the top note once the whole batch is translated.
+    if ((event.flags & PhraseRuntime::kEventChordVoice) != 0) {
+      chordActions = true;
+      if (translateChordVoiceAction_(idx, action) &&
+          static_cast<int>(event.note) == topAfter) {
+        topRestarted = true;
+      }
+      continue;
+    }
+    if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Start) {
+      monoStart = true;
+    }
 
     // RuntimeSynthPlaybackState owns the logical replacement as Release ->
     // Start. TB303's accepted legacy slide, however, is legato only while the
@@ -4005,6 +4028,98 @@ void MiniAcid::consumePatternPlaybackActions_(
         break;
     }
   }
+
+  if (!chordActions) return;
+  if (monoStart) {
+    // A one-note onset ended the chord and already took the internal synth.
+    chordInternalNote_[idx] = -1;
+    return;
+  }
+  followChordWithInternalVoice_(idx, topRestarted);
+}
+
+// One chord-voice action on the MIDI wire. Returns true when it (re)started
+// the note, so the internal synth can re-attack if that note is the top one.
+bool MiniAcid::translateChordVoiceAction_(
+    int synthIdx, const PhraseRuntime::RuntimeSynthPlaybackAction& action) {
+  const int idx = clamp303Voice(synthIdx);
+  const PhraseRuntime::RuntimeSynthEvent& event = action.event;
+  const bool accent = (event.flags & PhraseRuntime::kEventAccent) != 0;
+  if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Release) {
+    publishChordNoteOff_(idx, event.note);
+    return false;
+  }
+  if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Retrigger) {
+    publishChordNoteOff_(idx, event.note);
+  }
+  publishChordNoteOn_(idx, event.note, event.velocity, accent);
+  LedManager::instance().onVoiceTriggered(
+      idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+      sceneManager_.currentScene().led);
+  return true;
+}
+
+void MiniAcid::followChordWithInternalVoice_(int synthIdx, bool topRestarted) {
+  const int idx = clamp303Voice(synthIdx);
+  const auto& state = patternPlaybackState_[idx];
+  const int top = state.topNote();
+  if (top < 0) {
+    if (chordInternalNote_[idx] >= 0 && synthVoices_[idx]) {
+      synthVoices_[idx]->release();
+    }
+    chordInternalNote_[idx] = -1;
+    const uint8_t clearMask =
+        static_cast<uint8_t>(~static_cast<uint8_t>(1u << idx));
+    patternOwnedMask_.fetch_and(clearMask, std::memory_order_release);
+    return;
+  }
+  if (top == chordInternalNote_[idx] && !topRestarted) return;
+  for (uint8_t v = 0; v < state.voiceCount(); ++v) {
+    const auto& voice = state.voiceEvent(v);
+    if (static_cast<int>(voice.note) != top) continue;
+    if (synthVoices_[idx]) {
+      synthVoices_[idx]->startNote(
+          noteToFreq(voice.note),
+          (voice.flags & PhraseRuntime::kEventAccent) != 0, false,
+          voice.velocity);
+    }
+    break;
+  }
+  chordInternalNote_[idx] = static_cast<int16_t>(top);
+}
+
+void MiniAcid::publishChordNoteOn_(int synthIdx, uint8_t note,
+                                   uint8_t velocity, bool accent) {
+  const int idx = clamp303Voice(synthIdx);
+  patternOwnedMask_.fetch_or(
+      static_cast<uint8_t>(1u << idx), std::memory_order_release);
+  if (!patternEventQueue_) return;
+  const int wireVelocity = static_cast<int>(velocity) +
+      (accent ? kPatternMidiAccentVelocityBoost : 0);
+  patternEventQueue_->tryPush(MusicalEvent{
+      MusicalEventType::NoteOn,
+      MusicalEventSource::PatternPlayer,
+      idx == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+      0,
+      note,
+      static_cast<uint8_t>(std::clamp(wireVelocity, 1, 127)),
+      kMusicalEventChord,
+  });
+}
+
+void MiniAcid::publishChordNoteOff_(int synthIdx, uint8_t note) {
+  const int idx = clamp303Voice(synthIdx);
+  if (!patternEventQueue_) return;
+  // A failed critical enqueue records a target-scoped panic in the queue.
+  patternEventQueue_->tryPush(MusicalEvent{
+      MusicalEventType::NoteOff,
+      MusicalEventSource::PatternPlayer,
+      idx == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+      0,
+      note,
+      0,
+      kMusicalEventChord,
+  });
 }
 
 uint32_t MiniAcid::currentAbsoluteSubtick_() const {
@@ -4060,10 +4175,33 @@ const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
   return nullptr;
 }
 
+void MiniAcid::triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
+                                    uint32_t absoluteStartSubtick) {
+  const auto* phrase = readableWorkingMelody_(voiceIndex);
+  if (phrase == nullptr || phrase->lengthTicks == 0) return;
+  if (!RuntimePhraseEdit::hasOverlappingNotes(*phrase)) {
+    if (const PhraseRuntime::RuntimeSynthEvent* event =
+            phraseEventAt_(voiceIndex, absoluteTick)) {
+      triggerSynthStep_(voiceIndex, *event, absoluteStartSubtick);
+    }
+    return;
+  }
+  // A chord Melody: every note starting on this tick, in event order, so the
+  // ghost/probability draws stay deterministic.
+  const uint16_t phraseTick = phraseRelativeTick_(voiceIndex, absoluteTick);
+  for (uint16_t i = 0; i < phrase->count; ++i) {
+    if (phrase->events[i].startTick == phraseTick) {
+      triggerSynthStep_(voiceIndex, phrase->events[i], absoluteStartSubtick,
+                        true);
+    }
+  }
+}
+
 void MiniAcid::triggerSynthStep_(
     int synthIdx,
     const PhraseRuntime::RuntimeSynthEvent& event,
-    uint32_t absoluteStartSubtick) {
+    uint32_t absoluteStartSubtick,
+    bool chordVoice) {
   const int songPattern = songPatternIndexForTrack(
       synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
   if (songPattern < 0) return;
@@ -4079,7 +4217,11 @@ void MiniAcid::triggerSynthStep_(
 
   consumePatternPlaybackActions_(
       synthIdx,
-      patternPlaybackState_[synthIdx].acceptOnset(event, absoluteStartSubtick));
+      chordVoice
+          ? patternPlaybackState_[synthIdx].acceptChordOnset(
+                event, absoluteStartSubtick)
+          : patternPlaybackState_[synthIdx].acceptOnset(event,
+                                                         absoluteStartSubtick));
 
   RetrigState& retrig = synthIdx == 0 ? retrigA_ : retrigB_;
   retrig.active = false;

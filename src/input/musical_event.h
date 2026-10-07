@@ -30,6 +30,10 @@ enum class MusicalEventTarget : uint8_t {
 // Articulation hints carried by a NoteOn. Sinks that do not understand them
 // ignore the byte; NoteOff and AllNotesOff never carry them.
 constexpr uint8_t kMusicalEventSlide = 1u << 0;
+// One note of a Melody chord. Unlike the other hints it is carried by NoteOn
+// AND NoteOff: the sink keeps chord notes in their own per-note set instead of
+// the one-note Pattern lane, so a NoteOff must say which set it belongs to.
+constexpr uint8_t kMusicalEventChord = 1u << 1;
 
 // channel is a zero-based logical channel. Internal synth outputs ignore it.
 // USB MIDI synth targets map to configured physical channels. For Drums,
