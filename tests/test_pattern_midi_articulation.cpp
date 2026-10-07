@@ -22,7 +22,7 @@ struct Packet {
 class FakeUsbMidiTransport final : public IUsbMidiTransport {
 public:
     bool begin() override { return true; }
-    bool mounted() const override { return true; }
+    bool mounted() const override { return isMounted; }
     bool sendNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) override {
         packets.push_back({PacketType::NoteOn, channel, note, velocity});
         return true;
@@ -37,6 +37,7 @@ public:
     }
     void flush() override {}
     std::vector<Packet> packets;
+    bool isMounted = true;
 };
 
 constexpr uint8_t kSynthAChannel = 7;  // SEQTRAK SYNTH 1 (CH8)
@@ -236,13 +237,15 @@ void testChordNotesHoldTogetherAndReleaseIndividually() {
     for (uint8_t note : {60, 64, 67}) {
         output.handleMusicalEvent(chordEvent(MusicalEventType::NoteOn, note));
     }
-    assert(transport.packets.size() == 3);
-    for (std::size_t i = 0; i < 3; ++i) {
+    // SEQTRAK keeps MONO across a GroovePuter reconnect, so the first chord on
+    // a connection sends POLY once, before its first note; the rest add none.
+    assert(transport.packets.size() == 4);
+    assert(transport.packets[0].type == PacketType::ControlChange);
+    assert(transport.packets[0].data1 == 26 && transport.packets[0].data2 == 1);
+    for (std::size_t i = 1; i < 4; ++i) {
         assert(transport.packets[i].type == PacketType::NoteOn);
         assert(transport.packets[i].channel == kSynthAChannel);
     }
-    // A receiver GroovePuter never forced MONO is not touched.
-    assert(!anyControlChange(transport.packets));
 
     output.handleMusicalEvent(chordEvent(MusicalEventType::NoteOff, 64));
     assert(count(transport.packets, PacketType::NoteOff, 64) == 1);
@@ -255,6 +258,23 @@ void testChordNotesHoldTogetherAndReleaseIndividually() {
     output.handleMusicalEvent(patternAllNotesOff());
     assert(count(transport.packets, PacketType::NoteOff, 60) == 1);
     assert(count(transport.packets, PacketType::NoteOff, 67) == 1);
+
+    // The next chord on the same connection: no CC again.
+    transport.packets.clear();
+    output.handleMusicalEvent(chordEvent(MusicalEventType::NoteOn, 62));
+    assert(!anyControlChange(transport.packets));
+
+    // After a reconnect the receiver's mode is unknown: POLY once more.
+    output.handleMusicalEvent(patternAllNotesOff());
+    transport.isMounted = false;  // USB unplugged and plugged back
+    output.pollConnection();
+    transport.isMounted = true;
+    output.pollConnection();
+    transport.packets.clear();
+    output.handleMusicalEvent(chordEvent(MusicalEventType::NoteOn, 62));
+    assert(!transport.packets.empty());
+    assert(transport.packets[0].type == PacketType::ControlChange &&
+           transport.packets[0].data1 == 26 && transport.packets[0].data2 == 1);
 }
 
 void testChordAfterSlideSwitchesReceiverToPoly() {

@@ -210,6 +210,8 @@ private:
     // Per wire channel: MONO + portamento time sent for Pattern slide, and
     // whether PORTAMENTO SWITCH is currently on.
     uint16_t patternSlideReady_;
+    // Channels whose receiver GroovePuter has put into POLY on this connection.
+    uint16_t patternPolyKnown_ = 0;
     uint16_t patternPortamentoOn_;
     // Melody chord notes of Synth A / Synth B, and the ones whose NoteOff did
     // not reach the wire yet (retried before the next event on that lane).
