@@ -16,6 +16,7 @@
 #include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
+#include "../melody_slot_browse.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
 #include "../phrase_notes_delete_edit.h"
@@ -652,7 +653,47 @@ bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
     if (target < 0) return false;
     pattern = target;
   }
+  return switchToMelodySlot(bank, pattern);
+}
 
+// On MELODY, [ / ] step to the previous/next slot that holds an accepted
+// Melody, across both banks (A1..A8, B1..B8, wrapping); step slots are skipped.
+bool SynthSequencerPage::stepMelodySlot(int direction) {
+  if (mini_acid_.songModeEnabled()) {
+    UI::showToast("SONG ON: SONG PICKS SLOTS", 1000);
+    return true;
+  }
+  constexpr int kPerBank = Bank<SynthPattern>::kPatterns;
+  const int current =
+      mini_acid_.current303BankIndex(voice_index_) * kPerBank +
+      mini_acid_.display303LocalPatternIndex(voice_index_);
+  const int slot = MelodySlotBrowse::neighbour(
+      current, direction, kBankCount * kPerBank, [&](int candidate) {
+        return mini_acid_.isMelodySlot(voice_index_, candidate / kPerBank,
+                                       candidate % kPerBank);
+      });
+  if (slot < 0) {
+    UI::showToast("NO OTHER MELODY", 900);
+    return true;
+  }
+  return switchToMelodySlot(slot / kPerBank, slot % kPerBank);
+}
+
+// Ctrl+Left/Right on MELODY: the cursor jumps to the previous/next bar.
+bool SynthSequencerPage::jumpPhraseBar(int direction) {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseInstrumentControls::jumpBar(
+      phrase_cursor_, direction, phrase.lengthTicks);
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "MELODY BAR %u/%u",
+                static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
+                static_cast<unsigned>(
+                    PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
+  UI::showToast(toast, 900);
+  return true;
+}
+
+bool SynthSequencerPage::switchToMelodySlot(int bank, int pattern) {
   std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> melody(
       new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
   if (!melody) {
@@ -872,16 +913,9 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // [ / ] browse Melodies; the bar jump they used to do is Ctrl+Left/Right.
   if (!ui_event.alt && (ui_event.key == '[' || ui_event.key == ']')) {
-    phrase_cursor_ = PhraseInstrumentControls::jumpBar(
-        phrase_cursor_, ui_event.key == ']' ? +1 : -1, phrase.lengthTicks);
-    char toast[32];
-    std::snprintf(toast, sizeof(toast), "MATERIAL BAR %u/%u",
-                  static_cast<unsigned>(PhraseNotesCursor::focusBar(phrase_cursor_) + 1),
-                  static_cast<unsigned>(
-                      PhraseInstrumentControls::lengthBars(phrase.lengthTicks)));
-    UI::showToast(toast, 900);
-    return true;
+    return stepMelodySlot(ui_event.key == ']' ? +1 : -1);
   }
   const bool isBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
 
@@ -1208,6 +1242,14 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (phraseNotes && ui_event.event_type == GROOVEPUTER_KEY_DOWN && ui_event.ctrl &&
       !ui_event.alt && !ui_event.meta && (ui_event.key == '\b' || ui_event.key == 0x7F)) {
     return clearMelody();
+  }
+
+  if (phraseNotes && ui_event.event_type == GROOVEPUTER_KEY_DOWN &&
+      ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    const int nav = UIInput::navCode(ui_event);
+    if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+      return jumpPhraseBar(nav == GROOVEPUTER_RIGHT ? +1 : -1);
+    }
   }
 
   if (phraseNotes && handleMelodySlotKey(ui_event)) return true;

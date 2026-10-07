@@ -51,7 +51,8 @@ The active page gets first refusal before global fallbacks.
 | `4` | SYNTH A | `9` | MIDI KEYBOARD |
 | `5` | SYNTH B | `0` | MIDI PLAYER |
 
-PROJECT opens from `Fn+M`; MATERIAL BANK is `]` from MATERIAL. On MIDI
+PROJECT opens from `Fn+M`. MATERIAL BANK has no direct key yet (open UI
+issue: `[`/`]` are Tab-only peers on SONG and MATERIAL). On MIDI
 PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 
 ## MIDI KEYBOARD / PERFORM
@@ -132,6 +133,8 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+R` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; empty slot -> `NO MELODY`, unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
+| `[` / `]` on MELODY | Previous / next saved Melody of this synth across both banks; `NO OTHER MELODY` if none |
+| `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
@@ -147,7 +150,9 @@ variation, repeat cycle `1/2/4/8`, and presets.
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
 change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
-`J` joins it to the next note, and `G` changes the grid. `[` / `]` move by bar;
+`J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
+to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
+this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 

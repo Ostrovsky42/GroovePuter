@@ -62,6 +62,18 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_melody_slot_browse.cpp" \
+  -o "${BUILD_DIR}/test_melody_slot_browse"
+
+"${BUILD_DIR}/test_melody_slot_browse"
+python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_atlas_runtime.cpp" \
   "${ROOT_DIR}/src/dsp/atlas_runtime.cpp" \

@@ -85,8 +85,9 @@ inline int normalizeLegacyPage(int page) {
 // Alt/Fn+1..0 follow the workflows left to right (GENERATE, HUB, SONG,
 // PERFORM), one live page per digit. The old table pointed 3/4/8 at legacy
 // ids that resolve to SYNTH A/B and FEEL again, and left GENRE, MATERIAL,
-// KEYBOARD and PLAYER without a digit. PROJECT stays on Fn+M; MATERIAL BANK
-// is `]` from MATERIAL. Returns -1 for keys that are not page digits.
+// KEYBOARD and PLAYER without a digit. PROJECT stays on Fn+M. MATERIAL BANK
+// has no digit (and today no direct key at all: an open UI issue).
+// Returns -1 for keys that are not page digits.
 inline int directJumpPage(char key) {
     switch (key) {
         case '1': return kGenre;
