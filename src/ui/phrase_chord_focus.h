@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "src/generation/tonal/scale_catalog.h"
 #include "src/phrase/runtime_phrase_edit.h"
 
 // Melody editor chords (0.9.17): which note of a chord the editor works on,
@@ -116,11 +117,30 @@ inline AddResult prepareAddNote(const Buffer& live, int base, uint8_t note,
   return AddResult::Ready;
 }
 
-// A: a chord tone a third above the chord's top note (a major third over a
-// single note, a minor third over a chord), starting with `base` and lasting
-// as long. The caller edits its pitch afterwards.
-inline AddResult prepareAddTone(const Buffer& live, int base, Buffer& after,
-                                int& newIndex) {
+// The chord tone above `top` in the project key: the lowest scale tone at
+// least a minor third up. In a seven-note scale that is the diatonic third
+// (major or minor as the key decides); in a pentatonic, the next tone that
+// still sounds as a chord tone. Chromatic (or no scale) keeps the plain rule:
+// a major third over a single note, a minor third over a chord.
+inline int chordToneAbove(int top, bool single, uint8_t rootPitchClass,
+                          GroovePuterRhythm::ScaleTypeValue scale) {
+  const auto def = GroovePuterRhythm::scaleDefinitionFor(scale);
+  if (def.intervals == nullptr || def.count >= 12) return top + (single ? 4 : 3);
+  for (int note = top + 3; note <= top + 12; ++note) {
+    const int degree = ((note - rootPitchClass) % 12 + 12) % 12;
+    for (uint8_t i = 0; i < def.count; ++i) {
+      if (def.intervals[i] == degree) return note;
+    }
+  }
+  return top + (single ? 4 : 3);
+}
+
+// A: a chord tone above the chord's top note (see chordToneAbove), starting
+// with `base` and lasting as long. The caller edits its pitch afterwards.
+inline AddResult prepareAddTone(
+    const Buffer& live, int base, Buffer& after, int& newIndex,
+    uint8_t rootPitchClass = 0,
+    GroovePuterRhythm::ScaleTypeValue scale = GroovePuterRhythm::kScaleChromatic) {
   newIndex = -1;
   if (base < 0 || base >= live.count) return AddResult::NoTarget;
   if (live.count >= PhraseRuntime::kMaxSynthEvents) return AddResult::Full;
@@ -132,7 +152,8 @@ inline AddResult prepareAddTone(const Buffer& live, int base, Buffer& after,
     ++sameStart;
     if (live.events[i].note > top) top = live.events[i].note;
   }
-  const int note = top + (sameStart <= 1 ? 4 : 3);
+  const int note =
+      chordToneAbove(top, sameStart <= 1, rootPitchClass, scale);
   if (note > 127) return AddResult::PitchLimit;
 
   after = live;

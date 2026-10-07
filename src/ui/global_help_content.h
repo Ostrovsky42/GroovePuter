@@ -17,7 +17,7 @@ constexpr const char* kGlobalLines[] = {
     "Fn+[ / ]    Prev/next workflow",
     "Alt+[ / ]   Prev/next pattern page",
     "Alt/Fn+digit Jump to page:",
-    " 1 GENRE 2 FEEL 3 OVW 4 SYN-A 5 SYN-B",
+    " 1 GENRE 2 PROJ 3 OVW 4 SYN-A 5 SYN-B",
     " 6 DRUMS 7 SONG 8 MAT 9 KEYS 0 PLAYER",
     "Space       Active transport",
     "Alt+P       MIDI Player",

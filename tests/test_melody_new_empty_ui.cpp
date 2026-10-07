@@ -91,6 +91,9 @@ int main() {
   engine.init();
   engine.setSongMode(false);
   engine.set303PatternIndex(0, 3);  // A4
+  // A builds chord tones in the project key: C major here.
+  engine.sceneManager().currentScene().generatorParams.scaleRoot = 0;
+  engine.sceneManager().currentScene().generatorParams.scale = MAJOR;
   const int stepsBefore =
       stepNotes(engine.sceneManager().currentScene().synthABanks[0].patterns[3]);
   assert(stepsBefore > 0);  // the default scene fills every slot with steps
@@ -153,7 +156,13 @@ int main() {
   for (uint16_t i = 0; i < 3; ++i) {
     assert(melody.events[i].startTick == melody.events[0].startTick);
   }
-  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  {
+    using namespace GroovePuterRhythm;
+    const int third = PhraseChordFocus::chordToneAbove(rootNote, true, 0, kScaleMajor);
+    const int fifth = PhraseChordFocus::chordToneAbove(third, false, 0, kScaleMajor);
+    assert(melody.events[1].note == third && melody.events[2].note == fifth);
+  }
+  const int third = melody.events[1].note, fifth = melody.events[2].note;
   assert(RuntimePhraseEdit::hasOverlappingNotes(melody));
 
   // C from the just-added top note wraps to the lowest; Up raises only it.
@@ -162,14 +171,14 @@ int main() {
   auto up = scan(GROOVEPUTER_UP);
   display.handleEvent(up);
   assert(melody.events[0].note == rootNote + 1);
-  assert(melody.events[1].note == rootNote + 4 && melody.events[2].note == rootNote + 7);
+  assert(melody.events[1].note == third && melody.events[2].note == fifth);
   // C again: the middle note, and Up raises that one.
   auto c2 = key('c');
   display.handleEvent(c2);
   auto up2 = scan(GROOVEPUTER_UP);
   display.handleEvent(up2);
-  assert(melody.events[1].note == rootNote + 5);
-  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == rootNote + 7);
+  assert(melody.events[1].note == third + 1);
+  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == fifth);
 
   // Keyboard recording: keys pressed together land as one chord on the cursor
   // cell; a key played later goes to the next cell.
