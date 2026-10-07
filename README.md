@@ -1,6 +1,6 @@
 # GroovePuter
 
-[![Status](https://img.shields.io/badge/status-public%20beta%20candidate-orange)](#current-status)
+[![Status](https://img.shields.io/badge/status-0.9.17%20productization-orange)](#current-status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20ADV-blue)](#hardware)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -24,6 +24,23 @@ GroovePuter works standalone with its internal synths and drums, and can also pl
 
 Originally based on [MiniAcid](https://github.com/urtubia/miniacid); the current project has grown into a substantially larger composition, sequencing, MIDI and musical-material system.
 
+## Start in five minutes
+
+If this is your first session, start with **[`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md)**.
+
+The first-session key vocabulary is intentionally small:
+
+```text
+Space     PLAY / STOP
+Fn+M      workspace launcher → GENRE / MATERIAL
+G         generate the thing on screen
+D         DEVELOP on MATERIAL
+Ctrl+Z    undo
+Alt+H     help for this page
+```
+
+The full expert key map remains available after you have made some music; it is not prerequisite reading.
+
 ## Why it is different
 
 ### Generate
@@ -37,42 +54,46 @@ The development workflow is built around a different question from ordinary rand
 
 > Given the material I accepted, what may change, what must stay recognizable, and what related section should come next?
 
-That machinery is still being productized, but it is the central direction of GroovePuter.
-
 ## Current status
 
-The active line is a **0.9.14 / 0.9.15 public-beta candidate**. Software CI is consolidated into seven product-facing pipelines; Cardputer ADV hardware acceptance for the current USB Host / external-keyboard line is still in progress.
+**v0.9.16 — Foundation Freeze** is the current public hardware-accepted foundation. It freezes the ownership, persistence, MIDI, generation, memory and hardware-validation work that the product now builds on.
 
-This means:
+The active **0.9.17 — First Five Minutes** line is deliberately narrower. Its job is to make a new owner install GroovePuter, understand the essential controls, create a musical result and recover from mistakes without learning the internal architecture first.
 
-- the project is actively developed and tested;
-- the current candidate is ahead of the last packaged GitHub release;
-- a green build is not automatically a hardware-release claim;
-- public installer/Launcher packaging for the new candidate is not finished yet.
+0.9.17 therefore prioritizes:
 
-Until hardware closure is complete, use the candidate branch and its acceptance notes rather than assuming `main` or the old release assets describe the newest firmware.
+- first-session documentation and on-device help;
+- a stable beginner key vocabulary;
+- install / boot / first-sound friction;
+- clear musical wording for refusals and preconditions;
+- external first-user observation.
 
-Current integration work: [`#477`](https://github.com/Ostrovsky42/GroovePuter/pull/477).
+It does **not** reopen the Foundation Freeze for speculative musical architecture.
 
-## First musical win on the current candidate
+Release: [`v0.9.16 — Foundation Freeze`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
 
-The intended product gesture is simple:
+## First musical win
+
+The current bounded development gesture is:
 
 ```text
-CREATE TAKE
-    ↓
+CHOOSE DIRECTION
+      ↓
+MAKE TAKE
+      ↓
 DEVELOP
 ```
 
 The default MATERIAL settings (`LENGTH 4B`, `STYLE REWORK`) make a TAKE that `D` can develop:
 
 1. `Space` — start playback.
-2. `Alt+V` — open GENRE; choose Genre / Variant / Rhythm.
+2. `Alt+V` (or `Fn+M` -> GENRE) — choose Genre / Variant / Rhythm.
 3. `G` — generate and listen.
 4. `Fn+M` — open the workspace launcher and go to MATERIAL.
 5. `G` — create a fresh TAKE.
 6. `D` — develop it into related DEVELOPMENT / BREAK material.
 7. `Ctrl+Z` — undo the retained cycle if you do not want it.
+8. `Alt+2` — PROJECT; use the on-screen Save action.
 
 Acid and House do not grow: pick another genre on GENRE first.
 
@@ -105,7 +126,7 @@ GroovePuter is **standalone-first, but not standalone-only**.
  live performance        external keyboard      downstream arrange
 ```
 
-The musical material should remain independent of where sound is produced. A bass or melody idea can belong to GroovePuter even when an external device owns the actual synth voice.
+The musical material remains independent of where sound is produced. A bass or melody idea can belong to GroovePuter even when an external device owns the actual synth voice.
 
 ## Hardware
 
@@ -116,11 +137,11 @@ Primary target:
 - DRAM-only product configuration (no PSRAM dependency);
 - internal synth and drum engines;
 - SD-backed project/material storage;
-- USB/MIDI integration depending on the selected boot role/profile.
+- USB Device / USB Host MIDI roles supported by the accepted foundation.
 
 Yamaha SEQTRAK is the main external reference device but is optional.
 
-## Building the current candidate
+## Building
 
 For development builds:
 
@@ -130,7 +151,7 @@ bash tests/run_host_tests.sh
 bash scripts/build.sh --warnings all
 ```
 
-The accepted Cardputer path uses the repository's FS1B dynamic-FatFs build and the exact release/hardware procedure tied to the candidate SHA. Do not flash an arbitrary stock-FatFs build as a substitute for release evidence.
+Release artifacts and exact acceptance evidence belong to the corresponding GitHub release and release documents; a green arbitrary development build is not automatically a hardware-release claim.
 
 The active GitHub Actions surface is intentionally small:
 
@@ -152,10 +173,12 @@ Start at [`docs/README.md`](docs/README.md).
 
 Useful direct links:
 
+- [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) — first session;
+- [`MANUAL.md`](MANUAL.md) — complete current user workflow manual;
 - [`src/ui/docs/keys.md`](src/ui/docs/keys.md) — canonical current key map;
 - [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md) — product boundaries and long-term direction;
 - [`docs/releases/`](docs/releases/) — release and hardware-acceptance evidence;
-- [`docs/0.9.14/`](docs/0.9.14/) — current musical-development research and contracts;
+- [`docs/0.9.14/`](docs/0.9.14/) — musical-development research and contracts incorporated into the foundation;
 - [`docs/ci/CI_ORCHESTRATION.md`](docs/ci/CI_ORCHESTRATION.md) — CI ownership after productization.
 
 The repository contains a large historical research corpus. Historical stage/checkpoint documents are evidence and design history; they are not automatically descriptions of the current UI.

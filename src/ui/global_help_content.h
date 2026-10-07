@@ -40,6 +40,8 @@ constexpr const char* kGenreLines[] = {
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/rhythm/apply",
+    "G           Generate full material",
+    "P           CANON / VAR / TRANS",
     "Alt+L/R     Morph selected variant",
     "Enter       Apply profile/materialize",
     "M           Cycle apply mode",
@@ -217,14 +219,16 @@ constexpr const char* kSongLines[] = {
 };
 
 constexpr const char* kPhraseProductLines[] = {
-    "=== PHRASE ===",
+    "=== MATERIAL ===",
     "Up/Down     Focus field",
     "Left/Right  Adjust focused field",
     "TO          APPEND or EXPLICIT",
     "Enter(TO)   Explicit -> Append",
     "Enter(BAR)  Focus accepted bar",
-    "G           Generate at TO",
-    "P           Cycle DEPTH",
+    "G           New TAKE at TO",
+    "P           Cycle STYLE",
+    "D           DEVELOP fresh TAKE",
+    "R           Make room / reuse",
     "LAST        Retrospective only",
     "FREE/OCCUPIED/NO ROOM at TO",
 };

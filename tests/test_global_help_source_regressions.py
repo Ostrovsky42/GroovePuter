@@ -15,14 +15,15 @@ workflow = (ROOT / "src/ui/workflow_mode.h").read_text()
 readme = (ROOT / "README.md").read_text()
 manual = (ROOT / "MANUAL.md").read_text()
 keys = (ROOT / "src/ui/docs/keys.md").read_text()
+docs_index = (ROOT / "docs/README.md").read_text()
+quickstart_path = ROOT / "docs/user/QUICKSTART.md"
 groove_lab = (ROOT / "docs/GROOVE_LAB.md").read_text()
 release = (ROOT / "docs/releases/0_9_1_RELEASE.md").read_text()
 integration = (
     ROOT / "docs/stages/INTEGRATED_GENERATE_PHRASE_ACCEPTANCE.md"
 ).read_text()
 
-# Existing on-device help routing remains intact. The embedded string table itself is
-# intentionally unchanged by this docs-only PR.
+# Existing on-device help routing remains intact.
 assert '"Alt+H       Toggle this help"' in help_content
 assert "Ctrl+H" not in help_content
 assert '"HELP: %s  ESC/ALT+H"' in overlay
@@ -58,10 +59,8 @@ assert '"G:GEN Alt+G:ALL Q-I:PAT B:Bank"' in drum_legacy
 assert '"DRUM Alt[]:PG"' in drum_legacy
 assert '"REF         Mutable pattern references"' in help_content
 
-# Runtime workflow truth: 12 active pages (PHW-P1 split PHRASE CORE out of
-# PHRASE as its own separately-reachable Song-workflow page). Generation/
-# Texture and standalone SOUND ids remain persisted compatibility aliases,
-# not live pages.
+# Runtime workflow truth: 12 active pages. Generation/Texture and standalone
+# SOUND ids remain persisted compatibility aliases, not live pages.
 assert "case WorkflowMode::Perform: return 2;" in workflow
 assert "case WorkflowMode::Generate: return 2;" in workflow
 assert "case WorkflowMode::Hub: return 4;" in workflow
@@ -73,41 +72,97 @@ assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
 
-# The public README now routes users through the documentation facade. Keep
-# navigation and truthful release status checked without freezing old marketing
-# copy. MANUAL and the historical release record remain separately validated.
+# 0.9.17 First Five Minutes product documentation contract.
 assert readme.startswith("# GroovePuter\n")
 assert "M5Stack Cardputer ADV" in readme
+assert "v0.9.16" in readme
+assert "docs/user/QUICKSTART.md" in readme
+assert "0.9.14 / 0.9.15 public-beta candidate" not in readme
 assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
-assert "hardware-release claim" in readme
 assert "GENRE != FEEL != SOUND" in readme
-facade = (ROOT / "docs/README.md").read_text()
-assert "../src/ui/docs/keys.md" in facade
-assert "releases/0.9.15-hardware-acceptance.md" in facade
+assert "Fn+M      workspace launcher" in readme
 
-assert manual.startswith("# GroovePuter 0.9.14 Manual")
+assert quickstart_path.exists(), "0.9.17 user quick start is missing"
+quickstart = quickstart_path.read_text()
+assert quickstart.startswith("# GroovePuter 0.9.17 — First Five Minutes")
+for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
+    assert action in quickstart, action
+for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "ReferenceRole"):
+    assert internal_term not in quickstart, internal_term
+assert "legacy FEEL page" not in quickstart
+assert "`Alt+V` opens GENRE" in quickstart
+
+assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
+assert "0.9.16" in docs_index
+assert "older 0.9.1-era manual" not in docs_index
+
+assert manual.startswith("# GroovePuter 0.9.17 Manual")
+assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
-assert "DEVELOP + BREAK 8B" in manual
-assert "Alt+Enter` ACCEPTs" in manual
-assert "uses Pattern steps or Melody" in manual
+assert "DEVELOP + BREAK" in manual
+assert "`Alt+Enter` / `Ctrl+Enter`: ACCEPT" in manual
+assert "Pattern or Melody" in manual
 assert "GENERATION -> FEEL" in manual
 assert "TEXTURE    -> FEEL" in manual
 assert "GENRE 1/3" not in manual
 assert "GENERATION 3/3" not in manual
 
-# The canonical manual and key map follow the current development workflow, while
-# the 0.9.1 release record remains frozen below.
-assert keys.startswith("# GroovePuter 0.9.14 Key Map")
+# Hard-global ownership is part of the key truth. The v0.9.16 Foundation sent
+# Alt+V to legacy page 11 (FEEL); the focused 0.9.17 navigation fix routes it to
+# GENRE, and this witness changed together with the docs, as intended.
+alt_v_handler = re.search(
+    r"if \(event\.alt && \(event\.key == 'v'.*?return true;\n\s*}",
+    display,
+    re.S,
+)
+assert alt_v_handler, "Alt+V global handler missing"
+assert "goToPage(WorkflowPages::kGenre);" in alt_v_handler.group(0)
+assert "kGeneration = 11" in workflow
+assert "if (page == kTexture || page == kGeneration) return kFeel;" in workflow
+assert "Fn+M -> GENRE" in manual
+assert "Alt+V` is **not** a reachable Synth CONNECT shortcut" in manual
+assert "Alt+X` is **not** a reachable Synth DISCARD shortcut" in manual
+
+# Alt+X is hard-global LiveMix before page dispatch. The key map must not claim
+# it as Synth DISCARD, while Alt+Backspace remains the documented reachable path.
+assert "LiveMix: ON" in display and "event.alt && (event.key == 'x'" in display
+assert "| `Alt+Backspace` / `Alt+X` | Discard working edits" not in keys
+assert "| `Alt+Backspace` | Discard working edits to accepted material |" in keys
+assert "`Alt+X` is reserved globally for LiveMix" in keys
+
+# Canonical key map: beginner constitution at the top plus full expert reference.
+assert keys.startswith("# GroovePuter 0.9.17 Key Map")
+assert "## First Five Minutes" in keys
+for expected in (
+    "`Space`",
+    "`Fn+M`",
+    "Generate the thing you are looking at",
+    "`D`",
+    "`Ctrl+Z`",
+    "`Alt+H`",
+):
+    assert expected in keys
+assert "| `Alt+V` | GENRE |" in keys
 assert "GENERATE: GENRE -> FEEL" in keys
-assert "MATERIAL BANK`, `D` still means derive" in keys
+assert "MATERIAL BANK keeps `D` as derive" in keys
 assert "slot's saved descriptor selects" in keys
 assert "## GENRE 1/2" in keys
 assert "## FEEL 2/2" in keys
 assert "## MATERIAL BANK" in keys
 assert "## GENERATION 3/3" not in keys
 assert "PAUSE MIDI FIRST" not in keys
+
+# On-device Help must be truthful about current hard-global navigation and expose
+# the actual MATERIAL hero actions.
+assert '"Fn+M        Workspace launcher"' in help_content
+assert '"Alt+V       GENRE"' in help_content
+assert '"Alt+V       FEEL (legacy)"' not in help_content
+assert '"Alt+V       Groove Lab"' not in help_content
+assert '"G           New TAKE at TO"' in help_content
+assert '"D           DEVELOP fresh TAKE"' in help_content
+assert '"R           Make room / reuse"' in help_content
 
 assert groove_lab.startswith("# Groove Lab — Historical Page Note")
 assert "Mode Page is retired" in groove_lab

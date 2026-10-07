@@ -1,7 +1,25 @@
-# GroovePuter 0.9.14 Key Map — Cardputer ADV
+# GroovePuter 0.9.17 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.14 development runtime. `Alt+H`
-opens page-aware on-device help; this file is the fuller release reference.
+This is the canonical external key reference for the current 0.9.17 productization runtime built on the hardware-accepted v0.9.16 Foundation Freeze. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+
+## First Five Minutes
+
+You do not need the whole table below before making music. Start with these rules:
+
+| Key | Beginner meaning |
+|---|---|
+| `Space` | Play / Stop |
+| `Fn+M` | Workspace launcher; choose GENRE or MATERIAL |
+| `G` | Generate the thing you are looking at |
+| `D` on MATERIAL | DEVELOP the fresh TAKE |
+| `Ctrl+Z` | Undo the last retained Pattern / Song / Phrase edit |
+| `Alt+H` | Help for the current page |
+
+These are beginner rules, not global overrides. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
+
+`Alt+V` opens GENRE (0.9.17; the v0.9.16 foundation sent it to FEEL).
+
+For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
 
 ## Workflows
 
@@ -39,7 +57,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+M` | Song mode ON/OFF |
 | `Alt+\` | `CARBON <-> CYBER` |
 
-The active page gets first refusal before global fallbacks.
+Hard-global Alt shortcuts are handled before page-local input. Outside those reserved chords, the active page gets first refusal before late global fallbacks.
 
 `Alt/Fn+digit` jumps to one page per digit; `2` is PROJECT, the rest follow the
 workflows left to right:
@@ -143,10 +161,12 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
 | `Alt+Enter` / `Ctrl+Enter` | Accept working material |
-| `Alt+Backspace` / `Alt+X` | Discard working edits to accepted material |
+| `Alt+Backspace` | Discard working edits to accepted material |
 | `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
 | `Esc` with NEXT ready | Cancel NEXT, or disarm queued GO while keeping NEXT |
 | `Ctrl+C/V` | Copy / Paste |
+
+`Alt+X` is reserved globally for LiveMix and therefore is not a Synth DISCARD chord. Likewise, the current hard-global `Alt+V` route is not a reachable Synth CONNECT shortcut.
 
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
 move the note to the next note of the project key shown as `KEY C DOR` in the
@@ -256,7 +276,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
-| `Alt+J` | Jump to PHRASE with this row as the explicit `TO` destination |
+| `Alt+J` | Jump to MATERIAL with this row as the explicit `TO` destination |
 
 For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
 Pattern or Melody playback; the row does not store a separate type. Accepted Melody
