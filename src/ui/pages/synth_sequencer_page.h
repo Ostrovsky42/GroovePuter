@@ -97,6 +97,8 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool newEmptyMelody();
+  bool newMelodyInSlot(int bank, int pattern);
+  bool toggleSource();
   bool switchToMelodySlot(int bank, int pattern);
   bool jumpPhraseBar(int direction);
 
@@ -116,14 +118,18 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // share operations but not presentation.
   uint16_t phrase_list_top_ = 0;
   // Browsing offset for the pitch window only. It is view state, never
-  // musical state: it is clamped so the selected sound stays visible and
-  // it is not persisted, so looking around can never be mistaken for an
-  // edit or survive as one.
+  // musical state, and it is not persisted, so looking around can never be
+  // mistaken for an edit or survive as one. Alt+Up/Down scroll it freely
+  // (0.9.17: it used to snap back within 10 rows of the selected sound); it
+  // returns to the selected sound when that sound changes (another pick, a
+  // pitch edit).
   // Lowest visible semitone. The window holds still while the selected
   // sound is inside it and moves only far enough to bring it back when it
   // leaves an edge: recentring on every pick rearranged the whole picture
   // and made the melody hard to follow. 0 means "not established yet".
   int phrase_pitch_lowest_ = 0;
+  // Selected sound (index * 128 + pitch) the window last followed; -1 none.
+  int phrase_pitch_followed_ = -1;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;

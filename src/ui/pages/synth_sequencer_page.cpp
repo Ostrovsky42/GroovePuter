@@ -350,8 +350,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
                 static_cast<unsigned>(viewport.totalBars));
   gfx.drawText(bounds.x + bounds.w - 4 - textWidth(gfx, where), bounds.y + 9, where);
 
-  const int planeX = bounds.x + 4;
-  const int planeW = std::max(32, bounds.w - 8);
+  // A narrow left column names the rows (top, bottom and every C).
+  constexpr int kPitchGutterW = 20;
+  const int planeX = bounds.x + 4 + kPitchGutterW;
+  const int planeW = std::max(32, bounds.w - 8 - kPitchGutterW);
   const int planeTop = bounds.y + 17;
   constexpr int kRowH = 5;
   constexpr int kVisibleNotes = 11;
@@ -375,14 +377,36 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   if (phrase_pitch_lowest_ == 0) {
     phrase_pitch_lowest_ = static_cast<int>(anchorNote) - halfWindow;
   }
-  if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
-    phrase_pitch_lowest_ = static_cast<int>(anchorNote);
-  } else if (static_cast<int>(anchorNote) >=
-             phrase_pitch_lowest_ + kVisibleNotes) {
-    phrase_pitch_lowest_ =
-        static_cast<int>(anchorNote) - (kVisibleNotes - 1);
+  // Follow the selected sound only when it changed; otherwise keep where
+  // Alt+Up/Down scrolled to.
+  const int followed = selection.active
+      ? static_cast<int>(selection.eventIndex) * 128 + anchorNote
+      : -1;
+  if (followed != phrase_pitch_followed_) {
+    phrase_pitch_followed_ = followed;
+    if (static_cast<int>(anchorNote) < phrase_pitch_lowest_) {
+      phrase_pitch_lowest_ = static_cast<int>(anchorNote);
+    } else if (static_cast<int>(anchorNote) >=
+               phrase_pitch_lowest_ + kVisibleNotes) {
+      phrase_pitch_lowest_ =
+          static_cast<int>(anchorNote) - (kVisibleNotes - 1);
+    }
   }
   const int lowestNote = phrase_pitch_lowest_;
+
+  // Row names: the top and bottom rows, and every C in between when it does
+  // not crowd them (a label is taller than a row).
+  for (int row = 0; row < kVisibleNotes; ++row) {
+    const int note = lowestNote + kVisibleNotes - 1 - row;
+    const bool edge = row == 0 || row == kVisibleNotes - 1;
+    const bool octave = (note % 12) == 0 && row >= 2 && row <= kVisibleNotes - 3;
+    if (!edge && !octave) continue;
+    if (note < 0 || note > 127) continue;
+    char label[8];
+    formatNoteName(static_cast<uint8_t>(note), label, sizeof(label));
+    gfx.setTextColor(octave ? COLOR_WHITE : COLOR_LABEL);
+    gfx.drawText(bounds.x + 4, planeTop + row * kRowH - 1, label);
+  }
 
   const auto noteToY = [&](uint8_t note) -> int {
     const int row = (lowestNote + kVisibleNotes - 1) - static_cast<int>(note);
@@ -468,13 +492,17 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     }
   }
 
+  // How many sounds of this bar lie above / below the window (Alt+Up/Down).
+  char more[8];
   if (aboveWindow > 0) {
+    std::snprintf(more, sizeof(more), "^%d", aboveWindow);
     gfx.setTextColor(voiceColor);
-    gfx.drawText(planeX + planeW - 8, planeTop - 1, "^");
+    gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop - 1, more);
   }
   if (belowWindow > 0) {
+    std::snprintf(more, sizeof(more), "v%d", belowWindow);
     gfx.setTextColor(voiceColor);
-    gfx.drawText(planeX + planeW - 8, planeTop + kPlaneH - 6, "v");
+    gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop + kPlaneH - 6, more);
   }
 
   const int cursorX = tickToX(cursorTick);
@@ -739,8 +767,7 @@ bool SynthSequencerPage::switchToMelodySlot(int bank, int pattern) {
     case Result::AlreadyCurrent:
       return true;
     case Result::NoMelody:
-      UI::showToast("NO MELODY", 900);
-      return true;
+      return newMelodyInSlot(bank, pattern);
     case Result::Unsaved:
       UI::showToast("ALT+ENTER SAVE", 1200);
       return true;
@@ -949,6 +976,35 @@ bool SynthSequencerPage::handleExternalMod() {
 // copy of them. This is Alt+R plus a clear, each with its own Ctrl+Z; the
 // slot's steps are only replaced once the Melody is saved (Alt+Enter).
 // Unsaved Melody edits block it, like Q..I.
+// Q..I / B on the Melody, to a slot holding steps only: a new empty Melody
+// there, the way the owner did it by hand (STEPS, pick the slot, Alt+N).
+// The slot's steps stay until Alt+Enter, as with Alt+N.
+bool SynthSequencerPage::newMelodyInSlot(int bank, int pattern) {
+  const bool wasMelody = mini_acid_.currentSequencedSource(voice_index_) ==
+                         MiniAcid::SequencedSource::Phrase;
+  if (wasMelody) {
+    const auto result =
+        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
+  bool moved = false;
+  const auto apply = [&]() {
+    moved = mini_acid_.tryManual303TargetSwitch(voice_index_, bank, pattern);
+  };
+  if (audio_guard_) audio_guard_(apply);
+  else apply();
+  if (!moved) {
+    // Stay where the user was: back to this slot's Melody.
+    if (wasMelody) PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+    UI::showToast("SLOT BUSY  ALT+ENTER SAVE", 1400);
+    return true;
+  }
+  return newEmptyMelody();
+}
+
 bool SynthSequencerPage::newEmptyMelody() {
   const bool onMelody = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
@@ -1570,7 +1626,29 @@ void SynthSequencerPage::draw(IGfx& gfx) {
   drawTabIndicator(gfx);
 }
 
+// Alt+R on NOTES, or the Cardputer Opt key from any tab: STEPS <-> MELODY.
+bool SynthSequencerPage::toggleSource() {
+  if (synth_tab_ != SynthTab::Notes) setSynthTab(SynthTab::Notes);
+  const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
+  if (result == PhraseSourceToggle::Result::MadePhrase) {
+    UI::showToast("MELODY <- STEPS", 1200);
+  } else if (result == PhraseSourceToggle::Result::Rejected) {
+    UI::showToast("MELODY FAILED", 1500);
+  } else {
+    UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
+                          MiniAcid::SequencedSource::Phrase
+                      ? "SOURCE: MELODY"
+                      : "SOURCE: STEPS",
+                  1000);
+  }
+  return true;
+}
+
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+    return toggleSource();
+  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE) {
     return handleExternalNudge(ui_event.x);
@@ -1653,19 +1731,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (synth_tab_ == SynthTab::Notes && isSourceToggleKey(ui_event)) {
-    const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-    if (result == PhraseSourceToggle::Result::MadePhrase) {
-      UI::showToast("MELODY <- STEPS", 1200);
-    } else if (result == PhraseSourceToggle::Result::Rejected) {
-      UI::showToast("MELODY FAILED", 1500);
-    } else {
-      UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
-                            MiniAcid::SequencedSource::Phrase
-                        ? "SOURCE: MELODY"
-                        : "SOURCE: STEPS",
-                    1000);
-    }
-    return true;
+    return toggleSource();
   }
 
   if (synth_tab_ == SynthTab::Notes && isNewMelodyKey(ui_event)) {

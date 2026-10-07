@@ -148,7 +148,7 @@ int main() {
   display.handleEvent(altH);
   gfx.texts.clear();
   display.update();
-  assert(gfx.has("--- MELODY (Alt+R) ---"));
+  assert(gfx.has("--- MELODY (Alt+R / Opt) ---"));
   auto altH2 = altKey('h');
   display.handleEvent(altH2);
 
@@ -331,6 +331,37 @@ int main() {
     if (melody.events[i].startTick > melody.events[5].startTick) ++arpNotes;
   }
   assert(arpNotes >= 4);
+
+  // Q..I on the Melody to a slot holding only steps: a new empty Melody there
+  // (no detour through STEPS). Save this one first; it stays in A4.
+  UIEvent save{};
+  save.event_type = GROOVEPUTER_KEY_DOWN;
+  save.key = '\n';
+  save.alt = true;
+  display.handleEvent(save);
+  assert(engine.isMelodySlot(0, 0, 3));
+  assert(!engine.isMelodySlot(0, 0, 1));
+  auto w = key('w');  // slot 2
+  display.handleEvent(w);
+  assert(engine.display303LocalPatternIndex(0) == 1);
+  assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
+  assert(engine.currentPhraseBuffer(0).count == 0);
+  assert(engine.isMelodySlot(0, 0, 3));  // the saved one is still there
+
+  // Opt (Cardputer): one key for Alt+R, from any synth tab.
+  UIEvent opt{};
+  opt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+  opt.app_event_type = GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE;
+  assert(display.handleEvent(opt));
+  assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern);
+  delay(300);
+  auto tabKey = key('\t');  // NOTES -> KNOBS
+  display.handleEvent(tabKey);
+  assert(!display.repeatsAltVertical());
+  UIEvent opt2 = opt;
+  assert(display.handleEvent(opt2));
+  assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
+  assert(display.repeatsAltVertical());  // back on the NOTES tab, Melody shown
 
   return 0;
 }

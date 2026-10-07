@@ -60,6 +60,9 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
   // External keyboard gesture Sustain held + Mod: clear the whole melody on the notes tab.
   GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
+  // Cardputer Opt key (one key for Alt+R): a synth page switches its source
+  // STEPS <-> MELODY, from any tab.
+  GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
