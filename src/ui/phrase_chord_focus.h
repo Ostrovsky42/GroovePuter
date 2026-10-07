@@ -78,6 +78,8 @@ enum class AddResult : uint8_t {
   PitchLimit,
   Invalid,
   AlreadyInChord,
+  NoChord,
+  TooShort,
 };
 
 // Keys landing within this many milliseconds of each other were played as one
@@ -135,8 +137,10 @@ inline int chordToneAbove(int top, bool single, uint8_t rootPitchClass,
   return top + (single ? 4 : 3);
 }
 
-// A: a chord tone above the chord's top note (see chordToneAbove), starting
-// with `base` and lasting as long. The caller edits its pitch afterwards.
+// A: over a single note, the whole triad of the key at once (one key press
+// gives a chord, no theory needed); over a chord, one more tone on top (a
+// triad becomes a seventh chord). New tones start with `base` and last as
+// long; `newIndex` is the highest one added. The caller edits pitch after.
 inline AddResult prepareAddTone(
     const Buffer& live, int base, Buffer& after, int& newIndex,
     uint8_t rootPitchClass = 0,
@@ -152,20 +156,91 @@ inline AddResult prepareAddTone(
     ++sameStart;
     if (live.events[i].note > top) top = live.events[i].note;
   }
-  const int note =
-      chordToneAbove(top, sameStart <= 1, rootPitchClass, scale);
-  if (note > 127) return AddResult::PitchLimit;
+  const bool single = sameStart <= 1;
+  const int third = chordToneAbove(top, single, rootPitchClass, scale);
+  const int fifth = single ? chordToneAbove(third, false, rootPitchClass, scale)
+                           : third;
+  if (fifth > 127) return AddResult::PitchLimit;
+  if (single && live.count + 2u > PhraseRuntime::kMaxSynthEvents) {
+    return AddResult::Full;
+  }
 
   after = live;
-  auto& added = after.events[after.count];
-  added = source;
-  added.note = static_cast<uint8_t>(note);
-  newIndex = after.count;
-  ++after.count;
+  const int tones[2] = {third, fifth};
+  for (uint8_t t = 0; t < (single ? 2 : 1); ++t) {
+    auto& added = after.events[after.count];
+    added = source;
+    added.note = static_cast<uint8_t>(tones[t]);
+    newIndex = after.count;
+    ++after.count;
+  }
   if (!RuntimePhraseEdit::validate(after)) {
     newIndex = -1;
     return AddResult::Invalid;
   }
+  return AddResult::Ready;
+}
+
+// Alt+A: the chord in the cursor cell becomes an arpeggio. Its notes play one
+// after another on the grid, low to high and around again, for as long as the
+// chord lasted (cut at the next note that starts later). Nothing overlaps
+// afterwards, so the internal synth plays it too. `steps` gets the note count.
+inline AddResult prepareArpeggio(const Buffer& live, uint16_t cellTick,
+                                 uint16_t cellTicks, uint16_t gridTicks,
+                                 Buffer& after, uint16_t& steps) {
+  steps = 0;
+  uint16_t chord[kMaxCellNotes];
+  const uint8_t n = notesInCell(live, cellTick, cellTicks, chord, kMaxCellNotes);
+  if (n < 2) return AddResult::NoChord;
+  if (gridTicks == 0) return AddResult::Invalid;
+
+  uint32_t start = 0xFFFFFFFFu;
+  uint32_t end = 0;
+  for (uint8_t i = 0; i < n; ++i) {
+    const auto& e = live.events[chord[i]];
+    const uint32_t s = static_cast<uint32_t>(e.startTick) * PhraseRuntime::kSubticksPerTick;
+    if (e.startTick < start) start = e.startTick;
+    const uint32_t eEnd = (s + e.durationSubticks) / PhraseRuntime::kSubticksPerTick;
+    if (eEnd > end) end = eEnd;
+  }
+  bool inChord[PhraseRuntime::kMaxSynthEvents] = {};
+  for (uint8_t i = 0; i < n; ++i) inChord[chord[i]] = true;
+  for (uint16_t i = 0; i < live.count; ++i) {
+    if (inChord[i]) continue;
+    const uint32_t s = live.events[i].startTick;
+    if (s > start && s < end) end = s;
+  }
+  if (end > live.lengthTicks) end = live.lengthTicks;
+  const uint32_t count = (end - start) / gridTicks;
+  if (count < 2) return AddResult::TooShort;
+  if (live.count - n + count > PhraseRuntime::kMaxSynthEvents) {
+    return AddResult::Full;
+  }
+
+  after = live;
+  after.count = 0;
+  for (uint16_t i = 0; i < live.count; ++i) {
+    if (!inChord[i]) after.events[after.count++] = live.events[i];
+  }
+  for (uint32_t k = 0; k < count; ++k) {
+    auto& e = after.events[after.count++];
+    e = live.events[chord[k % n]];
+    e.startTick = static_cast<uint16_t>(start + k * gridTicks);
+    e.durationSubticks = static_cast<decltype(e.durationSubticks)>(
+        gridTicks * PhraseRuntime::kSubticksPerTick);
+  }
+  // Keep the buffer in time order.
+  for (uint16_t i = 1; i < after.count; ++i) {
+    const auto moving = after.events[i];
+    uint16_t j = i;
+    while (j > 0 && after.events[j - 1].startTick > moving.startTick) {
+      after.events[j] = after.events[j - 1];
+      --j;
+    }
+    after.events[j] = moving;
+  }
+  if (!RuntimePhraseEdit::validate(after)) return AddResult::Invalid;
+  steps = static_cast<uint16_t>(count);
   return AddResult::Ready;
 }
 

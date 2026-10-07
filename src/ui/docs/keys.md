@@ -158,13 +158,16 @@ this synth (both banks, step slots skipped; same unsaved-edit rule as `Q..I`);
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 
-Chords: `A` adds a chord tone a third above the chord's top note, in the project
-key (the scale GENRE generates in: a diatonic third, so `A`, `A` builds the
-key's own triad); `C` cycles the notes of the chord in the cursor
+Chords: `A` on a single note builds the project key's triad on it in one press
+(the scale GENRE generates in); `A` on a chord adds one more tone on top (a
+triad becomes a seventh chord). `C` cycles the notes of the chord in the cursor
 cell, low to high, and `Up/Down`, `Backspace`, `Alt+Left/Right` then act on that
-note. Keys pressed together on an external keyboard (within 40 ms) are recorded
-as one chord on the cursor cell. Chords play on SEQTRAK over MIDI; the internal
-synth stays mono and plays the chord's top note. Thin lines separate the pitch
+note. `Alt+A` turns the chord into an arpeggio: its notes one per grid step, low
+to high and around, for as long as the chord lasts (lengthen a note first with
+`Alt+Right`); `Ctrl+Z` brings the chord back. Keys pressed together on an
+external keyboard (within 40 ms) are recorded as one chord on the cursor cell.
+Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the
+chord's top note (an arpeggio plays everywhere). Thin lines separate the pitch
 rows; the dotted one is the key's tonic.
 
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
