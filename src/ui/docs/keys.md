@@ -150,7 +150,11 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Ctrl+C/V` | Copy / Paste |
 
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
-change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
+move the note to the next note of the project key shown as `KEY C DOR` in the
+header (a note outside the key goes to the nearest key note); `Ctrl+Up/Down`
+move it by exactly one semitone. `K` raises the key's tonic a semitone and `M`
+picks the next scale; notes stay where they are, and G generates in the same
+key. `V` switches to list view. `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
 `J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
 to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
@@ -160,12 +164,15 @@ roll's pitch window (held, it repeats; elsewhere modified keys never repeat).
 `L` / `Alt+L` change Melody length when the added/removed bar does not truncate a
 note. `Ctrl+Z` undoes a retained note edit.
 
-Chords: `A` on a single note builds the project key's triad on it in one press
-(the scale GENRE generates in); `A` on a chord adds one more tone on top (a
-triad becomes a seventh chord). `C` cycles the notes of the chord in the cursor
-cell, low to high, and `Up/Down`, `Backspace`, `Alt+Left/Right` then act on that
-note. `Alt+A` turns the chord into an arpeggio: its notes one per grid step, low
-to high and around, for as long as the chord lasts (lengthen a note first with
+The STEPS letters work on the Melody too: `A`/`Z` move the note one key note
+up/down, `S`/`X` an octave, `Alt+A` toggles its accent.
+
+Chords: `H` on a single note builds the project key's triad on it in one press;
+`H` on a chord adds one more tone on top (a triad becomes a seventh chord). `C`
+cycles the notes of the chord in the cursor cell, low to high, and the pitch
+keys, `Backspace`, `Alt+A` and `Alt+Left/Right` then act on that note. `Alt+C`
+turns the chord into an arpeggio: its notes one per grid step, low to high and
+around, for as long as the chord lasts (lengthen a note first with
 `Alt+Right`); `Ctrl+Z` brings the chord back. Keys pressed together on an
 external keyboard (within 40 ms) are recorded as one chord on the cursor cell.
 Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the

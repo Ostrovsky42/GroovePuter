@@ -20,6 +20,7 @@
 #include "src/ui/workflow_mode.h"
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/ui/phrase_chord_focus.h"
+#include "src/ui/project_key.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -132,7 +133,7 @@ int main() {
   display.handleEvent(altN2);
   assert(engine.currentPhraseBuffer(0).count == 0);
 
-  // Chords: Enter adds a note, A builds the key's triad on it in one press,
+  // Chords: Enter adds a note, H builds the key's triad on it in one press,
   // C cycles its notes and Up edits the chosen one.
   auto key = [](char value) {
     UIEvent e{};
@@ -153,8 +154,8 @@ int main() {
   const uint8_t rootNote = melody.events[0].note;
   auto left = scan(GROOVEPUTER_LEFT);
   display.handleEvent(left);
-  auto a1 = key('a');
-  display.handleEvent(a1);
+  auto h1 = key('h');
+  display.handleEvent(h1);
   assert(melody.count == 3);
   for (uint16_t i = 0; i < 3; ++i) {
     assert(melody.events[i].startTick == melody.events[0].startTick);
@@ -168,20 +169,79 @@ int main() {
   const int third = melody.events[1].note, fifth = melody.events[2].note;
   assert(RuntimePhraseEdit::hasOverlappingNotes(melody));
 
-  // C from the just-added top note wraps to the lowest; Up raises only it.
+  // C from the just-added top note wraps to the lowest; Up raises only it,
+  // to the next note of the key (C major: no sharps).
   auto c = key('c');
   display.handleEvent(c);
   auto up = scan(GROOVEPUTER_UP);
   display.handleEvent(up);
-  assert(melody.events[0].note == rootNote + 1);
+  const int rootUp = ProjectKey::step(rootNote, +1, 0, GroovePuterRhythm::kScaleMajor);
+  assert(melody.events[0].note == rootUp);
+  assert(ProjectKey::inScale(rootUp, 0, GroovePuterRhythm::kScaleMajor));
   assert(melody.events[1].note == third && melody.events[2].note == fifth);
   // C again: the middle note, and Up raises that one.
   auto c2 = key('c');
   display.handleEvent(c2);
   auto up2 = scan(GROOVEPUTER_UP);
   display.handleEvent(up2);
-  assert(melody.events[1].note == third + 1);
-  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == fifth);
+  const int thirdUp = ProjectKey::step(third, +1, 0, GroovePuterRhythm::kScaleMajor);
+  assert(melody.events[1].note == thirdUp);
+  assert(melody.events[0].note == rootUp && melody.events[2].note == fifth);
+  // Ctrl+Up: exactly one semitone, out of the key if asked.
+  UIEvent ctrlUp{};
+  ctrlUp.event_type = GROOVEPUTER_KEY_DOWN;
+  ctrlUp.scancode = GROOVEPUTER_UP;
+  ctrlUp.ctrl = true;
+  display.handleEvent(ctrlUp);
+  assert(melody.events[1].note == thirdUp + 1);
+  UIEvent ctrlDown = ctrlUp;
+  ctrlDown.scancode = GROOVEPUTER_DOWN;
+  display.handleEvent(ctrlDown);
+  assert(melody.events[1].note == thirdUp);
+
+  // The key is on screen; K moves its tonic, M its scale, notes stay.
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("KEY C MAJ"));
+  auto k = key('k');
+  display.handleEvent(k);
+  auto& params = engine.sceneManager().currentScene().generatorParams;
+  assert(params.scaleRoot == 1);
+  auto m = key('m');
+  display.handleEvent(m);
+  assert(params.scale == DORIAN);
+  assert(melody.events[1].note == thirdUp);
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("KEY C# DOR"));
+  params.scaleRoot = 0;
+  params.scale = MAJOR;
+
+  // The STEPS letters work here too: A/Z a key note up/down, S/X an octave,
+  // Alt+A accent, all on the chosen chord note.
+  auto ka = key('a');
+  display.handleEvent(ka);
+  const int aUp = ProjectKey::step(thirdUp, +1, 0, GroovePuterRhythm::kScaleMajor);
+  assert(melody.events[1].note == aUp);
+  auto kz = key('z');
+  display.handleEvent(kz);
+  assert(melody.events[1].note == thirdUp);
+  auto ks = key('s');
+  display.handleEvent(ks);
+  assert(melody.events[1].note == thirdUp + 12);
+  auto kx = key('x');
+  display.handleEvent(kx);
+  assert(melody.events[1].note == thirdUp);
+  UIEvent accent{};
+  accent.event_type = GROOVEPUTER_KEY_DOWN;
+  accent.key = 'a';
+  accent.alt = true;
+  display.handleEvent(accent);
+  assert((melody.events[1].flags & PhraseRuntime::kEventAccent) != 0);
+  assert((melody.events[0].flags & PhraseRuntime::kEventAccent) == 0);
+  UIEvent accentOff = accent;
+  display.handleEvent(accentOff);
+  assert((melody.events[1].flags & PhraseRuntime::kEventAccent) == 0);
 
   // Keyboard recording: keys pressed together land as one chord on the cursor
   // cell; a key played later goes to the next cell.
@@ -212,15 +272,15 @@ int main() {
   assert(melody.count == 6);
   assert(melody.events[5].note == 67 && melody.events[5].startTick > chordStart);
 
-  // Alt+A: a chord held for four steps becomes four arpeggio notes. A builds
+  // Alt+C: a chord held for four steps becomes four arpeggio notes. H builds
   // the triad, Alt+Right lengthens its top note (the focused one).
   auto right2 = scan(GROOVEPUTER_RIGHT);
   display.handleEvent(right2);
   auto enter2 = key('\n');
   display.handleEvent(enter2);
   assert(melody.count == 7);
-  auto a3 = key('a');
-  display.handleEvent(a3);
+  auto h3 = key('h');
+  display.handleEvent(h3);
   assert(melody.count == 9);
   for (int i = 0; i < 3; ++i) {
     UIEvent longer{};
@@ -231,7 +291,7 @@ int main() {
   }
   UIEvent arpKey{};
   arpKey.event_type = GROOVEPUTER_KEY_DOWN;
-  arpKey.key = 'a';
+  arpKey.key = 'c';
   arpKey.alt = true;
   assert(display.handleEvent(arpKey));
   assert(melody.count == 10);  // 9 - 3 chord notes + 4 arpeggio steps

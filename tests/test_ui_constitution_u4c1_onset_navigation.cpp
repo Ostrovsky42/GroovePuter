@@ -112,7 +112,7 @@ int main() {
   //    micro-timing put projected onsets between grid cells by construction,
   //    so a cursor that addresses cells while selection reads a single tick
   //    selects nothing at all -- pressing RIGHT would land on a note and
-  //    report "NO SOUND HERE".
+  //    report "NO NOTE HERE".
   {
     Buffer offGrid{};
     offGrid.lengthTicks = PhraseRuntime::kTicksPerBar;

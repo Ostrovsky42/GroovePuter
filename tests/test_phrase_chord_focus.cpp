@@ -1,6 +1,8 @@
 #include <cassert>
+#include <string>
 
 #include "src/ui/phrase_chord_focus.h"
+#include "src/ui/project_key.h"
 
 namespace {
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
@@ -110,6 +112,21 @@ int main() {
   // Not a chord, or too short for two steps.
   assert(prepareArpeggio(arp, 48, 24, 24, after, steps) == AddResult::NoChord);
   assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::TooShort);
+
+  // Up/Down along the key: whole and half steps as the scale has them; a
+  // note outside the key lands on the nearest key note that way.
+  assert(ProjectKey::step(60, +1, 0, kScaleMajor) == 62);
+  assert(ProjectKey::step(64, +1, 0, kScaleMajor) == 65);
+  assert(ProjectKey::step(60, -1, 0, kScaleMajor) == 59);
+  assert(ProjectKey::step(61, +1, 0, kScaleMajor) == 62);
+  assert(ProjectKey::step(61, -1, 0, kScaleMajor) == 60);
+  assert(ProjectKey::step(63, +1, 0, kScalePentatonicMinor) == 65);
+  assert(ProjectKey::step(60, +1, 0, kScaleChromatic) == 61);
+  assert(ProjectKey::step(127, +1, 0, kScaleMajor) == -1);
+  assert(ProjectKey::nextScale(kScaleChromatic) == kScaleMinor);
+  char label[16];
+  ProjectKey::format(9, kScaleMinor, label, sizeof(label));
+  assert(std::string(label) == "KEY A MIN");
 
   // Recording: keys within the window form one chord; later ones do not.
   assert(sameChordOnset(1000, 1000 + kChordWindowMs));

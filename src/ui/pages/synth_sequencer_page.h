@@ -89,6 +89,11 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool cycleChordFocus();
   bool addChordTone();
   bool arpeggiateChord();
+  enum class PitchStep : uint8_t { Key, Semitone, Octave };
+  bool shiftPitch(int direction, PitchStep stepKind);
+  int editTargetNote() const;
+  bool toggleAccent();
+  bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool stepMelodySlot(int direction);
   bool newEmptyMelody();
