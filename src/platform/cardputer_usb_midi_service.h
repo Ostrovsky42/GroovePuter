@@ -68,6 +68,10 @@ bool applyCardputerMidiInputRuntimeRoutingConfig(
 void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
                                         uint32_t playbackStartMicros);
 
+// How long after a block's anchor its frame-0 events leave the device. Clock
+// follow locks phase to this emission time rather than to the render.
+uint32_t cardputerUsbMidiOutputLatencyUs();
+
 // Safe snapshot used by the SMF producer to schedule events several audio
 // blocks ahead. This is an anchor, not an independent wall-clock scheduler.
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,

@@ -37,12 +37,16 @@ public:
     static constexpr double kSourceBpmHysteresis = 0.15;
     static constexpr uint32_t kClockCoalesceWindowUs = 1000;
 
+    // outputLatencyMicros: how long after a block starts rendering its first
+    // MIDI events leave the device. Phase is locked so that those events, not
+    // the render, coincide with the master's position.
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
             TransportClockSource source,
             uint32_t nowMicros,
             bool followEnabled =
-                transportClockRuntime().externalFollowEnabled()) {
+                transportClockRuntime().externalFollowEnabled(),
+            uint32_t outputLatencyMicros = 0) {
         ExternalClockBlockResult result{};
         if (!haveSource_ || source != source_) {
             source_ = source;
@@ -150,7 +154,10 @@ public:
             result.command = ExternalTransportCommand::Stop;
         }
         result.estimate = tracker_.estimate(nowMicros);
-        applyBoundedPhaseLock(result, result.sourceChanged || result.followChanged);
+        applyBoundedPhaseLock(result,
+                              result.sourceChanged || result.followChanged,
+                              tracker_.predictedAbsoluteProjectSteps(
+                                  nowMicros + outputLatencyMicros));
         return result;
     }
 
@@ -201,27 +208,36 @@ private:
             else if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
             return;
         }
+        // Release only after the error crosses zero by the exit margin. Releasing
+        // short of zero left a steady clock-rate difference sawtoothing on one
+        // side, a constant early or late offset of several milliseconds.
         if (phaseTrimDirection_ > 0) {
             if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
-            else if (errorSteps < kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+            else if (errorSteps < -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
             return;
         }
         if (errorSteps > kPhaseTrimEnterSteps) phaseTrimDirection_ = 1;
-        else if (errorSteps > -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+        else if (errorSteps > kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
     }
 
+    // masterStepsAtEmission: the master's position when this block's first
+    // events leave the device (now + output latency).
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
-                               bool controlChanged) {
+                               bool controlChanged,
+                               double masterStepsAtEmission) {
         ExternalClockEstimate& estimate = result.estimate;
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
 
-        const bool driveBaseChanged = updateDriveBase(
+        // A new drive base restarts the trim decision (updateDriveBase clears
+        // the direction) but must not skip this block's phase measurement:
+        // while the base tracks a jittery source, skipping let phase drift.
+        updateDriveBase(
             estimate.sourceBpmQ16,
             controlChanged || result.command == ExternalTransportCommand::Start);
         if (driveBaseBpmQ16_ != 0) estimate.bpmQ16 = driveBaseBpmQ16_;
 
-        if (controlChanged || driveBaseChanged || !followEnabled_ ||
+        if (controlChanged || !followEnabled_ ||
             result.command == ExternalTransportCommand::Start ||
             result.command == ExternalTransportCommand::Stop ||
             !estimate.transportRunning || !estimate.validTempo ||
@@ -241,7 +257,7 @@ private:
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(local.sampleRate));
         const double error = wrapProjectPhaseError(
-            estimate.absoluteProjectSteps -
+            masterStepsAtEmission -
             (local.absoluteSteps() + renderedSteps));
         estimate.phaseErrorSteps = error;
         updateTrimDirection(error);

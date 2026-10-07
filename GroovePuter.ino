@@ -49,6 +49,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/midi/external_midi_clock_follower.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/audio/follow_mute_ramp.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -127,8 +128,12 @@ void audioTask(void *param) {
       const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
       const auto clockSource =
           GroovePuterMidi::transportClockRuntime().source();
+      // Notes of this block leave one output latency after `now`; follow the
+      // master at that moment so the notes, not the render, land on its beat.
       const auto externalClock = g_externalClockFollower.processBlock(
-          g_externalMidiTransportQueue, clockSource, now);
+          g_externalMidiTransportQueue, clockSource, now,
+          GroovePuterMidi::transportClockRuntime().externalFollowEnabled(),
+          cardputerUsbMidiOutputLatencyUs());
       GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
           externalClock.estimate, g_externalClockFollower.failureCount());
 
@@ -139,6 +144,11 @@ void audioTask(void *param) {
       if (externalClock.sourceChanged &&
           clockSource != GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
         g_miniAcid->restoreProjectBpm();
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
+      }
+      // A new Start from the master is a new take: GroovePuter sounds again.
+      if (externalClock.command == GroovePuterMidi::ExternalTransportCommand::Start) {
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
       }
 
       bool restartFromBeginning = true;
@@ -181,6 +191,12 @@ void audioTask(void *param) {
           restartFromBeginning);
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
       g_patternMusicalEventQueue.endMidiRenderBlock();
+      // Space while following silences GroovePuter but keeps it rendering in
+      // phase; MidiDispatchTask silences its MIDI notes on the same flag.
+      static float followMuteGain = 1.0f;
+      followMuteGain = applyFollowMuteRamp(
+          g_audioBuffer, kBlockFrames, followMuteGain,
+          GroovePuterMidi::followOutputSilenced() ? 0.0f : 1.0f);
       publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -650,7 +666,7 @@ void loop() {
 
   if (M5Cardputer.BtnA.wasClicked()) {
     if (GroovePuterMidi::externalClockOwnsTransport()) {
-      UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
+      UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
     } else {
       AudioMutationScope mutationScope(g_audioMutationGate);
       if (g_miniAcid->isPlaying()) {
@@ -789,7 +805,7 @@ void loop() {
         needsDraw = true;
       } else if (c == ' ') {
         if (GroovePuterMidi::externalClockOwnsTransport()) {
-          UI::showToast(GroovePuterMidi::kExternalTransportHint, 900);
+          UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
         } else if (g_miniAcid->isPlaying()) {
           g_miniAcid->stop();
         } else {
