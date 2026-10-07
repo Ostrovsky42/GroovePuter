@@ -1,4 +1,5 @@
 #include "song_page.h"
+#include "../screen_geometry.h"
 #include "../../../scenes.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
@@ -1727,9 +1728,12 @@ void SongPage::draw(IGfx& gfx) {
 void SongPage::drawMinimalStyle(IGfx &gfx) {
   const Rect &bounds = getBoundaries();
   const int x = bounds.x;
-  const int y = bounds.y;
+  // The page gets the whole screen, but the shell draws its header and bottom
+  // bars over it: keep the status line and the rows inside Layout::CONTENT.
+  const int y = std::max(bounds.y, static_cast<int>(Layout::CONTENT.y));
   const int w = bounds.w;
-  const int h = bounds.h;
+  const int h = std::min(bounds.y + bounds.h,
+                         static_cast<int>(Layout::CONTENT.y + Layout::CONTENT.h) + 11) - y;
   if (w <= 0 || h <= 0)
     return;
 
@@ -2313,9 +2317,13 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
 void SongPage::drawRetroClassicStyle(IGfx &gfx) {
   const Rect &bounds = getBoundaries();
   const int x = bounds.x;
-  const int y = bounds.y;
+  // The shell draws its header and bottom bars over the page: the 12 px
+  // header bar below stays under the shell header, the status line starts at
+  // Layout::CONTENT and the last row ends with it (row 8 sat under the bar).
+  const int y = std::max(bounds.y, static_cast<int>(Layout::CONTENT.y) - 14);
   const int w = bounds.w;
-  const int h = bounds.h;
+  const int h = std::min(bounds.y + bounds.h,
+                         static_cast<int>(Layout::CONTENT.y + Layout::CONTENT.h) + 12) - y;
   const int activeSlot = mini_acid_.activeSongSlot();
   const int playSlot = mini_acid_.songPlaybackSlot();
   const bool liveMix = mini_acid_.liveMixModeEnabled();

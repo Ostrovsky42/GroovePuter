@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "src/generation/tonal/scale_catalog.h"
+#include "src/input/performance_instrument_types.h"
 
 // The project key (0.9.17): tonic and scale from Scene::generatorParams, the
 // same key G generates in. The Melody editor shows it, changes it (K / M) and
@@ -68,6 +69,39 @@ inline void format(uint8_t root, ScaleTypeValue scale, char* out,
 inline ScaleTypeValue nextScale(ScaleTypeValue scale) {
   return static_cast<ScaleTypeValue>((scale + 1u) %
                                      GroovePuterRhythm::kScaleTypeCount);
+}
+
+// KEYBOARD plays in the project key too (0.9.17): same ten scales, other order.
+inline PerformanceScale toPerformanceScale(ScaleTypeValue scale) {
+  using namespace GroovePuterRhythm;
+  switch (scale) {
+    case kScaleMinor: return PerformanceScale::NaturalMinor;
+    case kScaleMajor: return PerformanceScale::Major;
+    case kScaleDorian: return PerformanceScale::Dorian;
+    case kScalePhrygian: return PerformanceScale::Phrygian;
+    case kScaleLydian: return PerformanceScale::Lydian;
+    case kScaleMixolydian: return PerformanceScale::Mixolydian;
+    case kScaleLocrian: return PerformanceScale::Locrian;
+    case kScalePentatonicMajor: return PerformanceScale::MajorPentatonic;
+    case kScalePentatonicMinor: return PerformanceScale::MinorPentatonic;
+    default: return PerformanceScale::Chromatic;
+  }
+}
+
+inline ScaleTypeValue fromPerformanceScale(PerformanceScale scale) {
+  using namespace GroovePuterRhythm;
+  switch (scale) {
+    case PerformanceScale::NaturalMinor: return kScaleMinor;
+    case PerformanceScale::Major: return kScaleMajor;
+    case PerformanceScale::Dorian: return kScaleDorian;
+    case PerformanceScale::Phrygian: return kScalePhrygian;
+    case PerformanceScale::Lydian: return kScaleLydian;
+    case PerformanceScale::Mixolydian: return kScaleMixolydian;
+    case PerformanceScale::Locrian: return kScaleLocrian;
+    case PerformanceScale::MajorPentatonic: return kScalePentatonicMajor;
+    case PerformanceScale::MinorPentatonic: return kScalePentatonicMinor;
+    default: return kScaleChromatic;
+  }
 }
 
 }  // namespace ProjectKey

@@ -452,12 +452,14 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     const int endX = tickToX(span.endTick);
     const int y = noteToY(note);
     const int h = kRowH - 1;
-    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    // Accented notes are amber as a whole: a 1 px stripe went unnoticed.
+    const bool accented = (phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0;
+    const IGfxColor fill = selected ? COLOR_WHITE : (accented ? COLOR_WARN : COLOR_LABEL);
 
     if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
     drawMutedTail(gfx, audibleX, endX, y, h, fill);
-    if ((phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0) {
-      gfx.fillRect(x0, y, std::max(1, endX - x0), 1, voiceColor);
+    if (accented && selected) {
+      gfx.fillRect(x0, y, std::max(1, endX - x0), 1, COLOR_WARN);
     }
     gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? voiceColor
                                                         : IGfxColor::Black());
@@ -501,7 +503,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
             phrase.events[selection.eventIndex].durationSubticks /
             PhraseRuntime::kSubticksPerTick),
         length, sizeof(length));
-    std::snprintf(status, sizeof(status), "SELECTED %s   %s", name, length);
+    const bool accented =
+        (phrase.events[selection.eventIndex].flags & PhraseRuntime::kEventAccent) != 0;
+    std::snprintf(status, sizeof(status), "SELECTED %s   %s%s", name, length,
+                  accented ? "  ACC" : "");
     gfx.setTextColor(COLOR_WHITE);
   } else {
     std::snprintf(status, sizeof(status), "EMPTY HERE   ENTER ADDS A NOTE");
@@ -646,11 +651,12 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
                                  ? barTicks
                                  : audibleEnd - (event.startTick - start));
     const int xEnd = toX(storedEnd - (event.startTick - start));
-    const IGfxColor fill = selected ? COLOR_WHITE : COLOR_LABEL;
+    const bool accented = (event.flags & PhraseRuntime::kEventAccent) != 0;
+    const IGfxColor fill = selected ? COLOR_WHITE : (accented ? COLOR_WARN : COLOR_LABEL);
     if (xAudible > x0) gfx.fillRect(x0, y + 2, xAudible - x0, 5, fill);
     drawMutedTail(gfx, xAudible, xEnd, y + 2, 5, fill);
-    if ((event.flags & PhraseRuntime::kEventAccent) != 0) {
-      gfx.fillRect(x0, y + 1, std::max(1, xEnd - x0), 1, voiceColor);
+    if (accented && selected) {
+      gfx.fillRect(x0, y + 1, std::max(1, xEnd - x0), 1, COLOR_WARN);
     }
   }
 

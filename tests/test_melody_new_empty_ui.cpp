@@ -223,6 +223,13 @@ int main() {
   gfx.texts.clear();
   display.update();
   assert(gfx.has("KEY C# DOR"));
+  // One key for the project: KEYBOARD follows K/M, and its own scale change
+  // comes back to the project (and so to the Melody and G).
+  assert(keyboard.rootPitchClass() == 1 &&
+         keyboard.scale() == PerformanceScale::Dorian);
+  keyboard.cycleScale(+1);  // as the KEYBOARD page does: Dorian -> Phrygian
+  display.update();
+  assert(params.scale == PHRYGIAN && params.scaleRoot == 1);
   params.scaleRoot = 0;
   params.scale = MAJOR;
 

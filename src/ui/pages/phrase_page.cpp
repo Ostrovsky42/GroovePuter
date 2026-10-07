@@ -688,7 +688,8 @@ void PhrasePage::drawProductView(IGfx& gfx) {
     if (pos.patterns[static_cast<int>(SongTrack::SynthB)] >= 0) occB = true;
     if (pos.patterns[static_cast<int>(SongTrack::Drums)] >= 0) occD = true;
   }
-  std::snprintf(line, sizeof(line), "OCC %c%c%c",
+  // Which tracks already hold something in the target Song rows.
+  std::snprintf(line, sizeof(line), "USED %c%c%c",
                 occA ? 'A' : '.', occB ? 'B' : '.', occD ? 'D' : '.');
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(2), line);
@@ -1736,7 +1737,8 @@ void PhrasePage::draw(IGfx& gfx) {
           (preview_.resolvedMask & PhraseCore::kTrackDrums) != 0,
       refD, palette.drums, palette);
 
-  const int actionY = LayoutManager::lineY(7);
+  // Two pixels up: at lineY(7) the last pixel row ran under the shell bar.
+  const int actionY = LayoutManager::lineY(7) - 2;
   std::snprintf(line, sizeof(line), "CAP %uB %s  NEW %uB  P:%s",
                 static_cast<unsigned>(capture_length_),
                 roleShort(capture_role_),

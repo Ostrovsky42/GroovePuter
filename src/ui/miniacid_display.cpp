@@ -3,6 +3,7 @@
 #include "src/midi/transport_clock_runtime.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
+#include "src/ui/project_key.h"
 #include "src/state/undo_owner.h"
 #include "undo_ux.h"
 #include "src/platform/cardputer_ui_session.h"
@@ -236,7 +237,38 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
     audio_recorder_ = recorder;
 }
 
+// One key for the whole project (0.9.17): the scene's key (Melody K/M, G)
+// and the KEYBOARD's scale/root are the same setting. The scene owns it; a
+// change made on KEYBOARD is written back, any other change (K/M, a loaded
+// scene) is pushed to the KEYBOARD. Runs once per frame on the UI thread.
+void MiniAcidDisplay::syncProjectKey_() {
+    auto& params = mini_acid_.sceneManager().currentScene().generatorParams;
+    const uint8_t sceneRoot = ProjectKey::pitchClass(params.scaleRoot);
+    const PerformanceScale sceneScale = ProjectKey::toPerformanceScale(
+        static_cast<ProjectKey::ScaleTypeValue>(params.scale));
+    const uint8_t keyboardRoot = performance_keyboard_.rootPitchClass();
+    const PerformanceScale keyboardScale = performance_keyboard_.scale();
+    const bool keyboardEdited = key_synced_ &&
+        (keyboardRoot != synced_key_root_ || keyboardScale != synced_key_scale_);
+    if (keyboardEdited) {
+        withAudioGuard([&]() {
+            params.scaleRoot = keyboardRoot;
+            params.scale = static_cast<ScaleType>(
+                ProjectKey::fromPerformanceScale(keyboardScale));
+        });
+        GroovePuterState::markSceneMutated();
+    } else if (!key_synced_ || keyboardRoot != sceneRoot ||
+               keyboardScale != sceneScale) {
+        performance_keyboard_.setRootPitchClass(sceneRoot);
+        performance_keyboard_.setScale(sceneScale);
+    }
+    key_synced_ = true;
+    synced_key_root_ = performance_keyboard_.rootPitchClass();
+    synced_key_scale_ = performance_keyboard_.scale();
+}
+
 void MiniAcidDisplay::update() {
+    syncProjectKey_();
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
