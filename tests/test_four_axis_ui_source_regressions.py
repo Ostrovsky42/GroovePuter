@@ -50,7 +50,7 @@ for filename in (
 
 for needle in (
     '"GENRE 1/2"',
-    '"CORRIDOR / VOCABULARY"',
+    '"WHAT G GENERATES"',
     "GenreCatalog::grooveboxModeForRecipe",
     '"PROFILE ONLY"',
     '"MATERIALIZE"',

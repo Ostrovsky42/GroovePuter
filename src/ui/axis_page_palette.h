@@ -55,7 +55,9 @@ inline void drawAxisTag(IGfx& gfx,
   gfx.setTextColor(color);
   gfx.drawText(x + 3, y + 2, axis);
   gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 58, y + 2, subtitle);
+  // At least a space after the tag: "GENRE 1/2" ran into a fixed x + 58.
+  const int tagEnd = x + 3 + gfx.textWidth(axis) + 6;
+  gfx.drawText(tagEnd > x + 58 ? tagEnd : x + 58, y + 2, subtitle);
 }
 
 inline void drawValueRow(IGfx& gfx,

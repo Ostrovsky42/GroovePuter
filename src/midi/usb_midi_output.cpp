@@ -272,6 +272,11 @@ void UsbMidiOutput::ensurePerformanceReceiverMode(
     // The receiver mode on this channel is no longer the one Pattern slide
     // established; send MONO again before the next Pattern slide.
     patternSlideReady_ &= static_cast<uint16_t>(~(1u << channel));
+    if (polyphonic) {
+        patternPolyKnown_ |= static_cast<uint16_t>(1u << channel);
+    } else {
+        patternPolyKnown_ &= static_cast<uint16_t>(~(1u << channel));
+    }
 }
 
 void UsbMidiOutput::applyPatternSlide(uint8_t channel, bool slide) {
@@ -289,6 +294,7 @@ void UsbMidiOutput::applyPatternSlide(uint8_t channel, bool slide) {
             return;  // retry on the next slide note
         }
         patternSlideReady_ |= bit;
+        patternPolyKnown_ &= static_cast<uint16_t>(~bit);
         for (MusicalEventTarget target :
              {MusicalEventTarget::SynthA, MusicalEventTarget::SynthB,
               MusicalEventTarget::Dx}) {
@@ -924,20 +930,24 @@ void UsbMidiOutput::setPatternChordNote(
     }
 }
 
-// A chord needs a polyphonic receiver. Only a channel GroovePuter itself put
-// into MONO (Pattern slide) is switched back; a slide note later sends MONO
-// again because patternSlideReady_ is cleared here.
+// A chord needs a polyphonic receiver. GroovePuter cannot read the receiver's
+// mode, and SEQTRAK keeps MONO across a GroovePuter reconnect (every flash):
+// waiting for "we put it into MONO" left chords sounding as one note. So the
+// first chord after a (re)connect or after a Pattern slide's MONO sends POLY
+// once; a later slide note sends MONO again because patternSlideReady_ is
+// cleared here.
 void UsbMidiOutput::ensurePatternChordPoly(uint8_t channel) {
     if (!seqtrakReceiverModeControl_ || !mounted_) return;
     const uint16_t bit = static_cast<uint16_t>(1u << clampChannel(channel));
-    if ((patternSlideReady_ & bit) == 0) return;
-    applyPatternSlide(channel, false);
+    if ((patternPolyKnown_ & bit) != 0) return;
+    if ((patternSlideReady_ & bit) != 0) applyPatternSlide(channel, false);
     if (!transport_.sendControlChange(
             channel, kSeqtrakMonoPolyController, kSeqtrakPolyValue)) {
         return;  // retried on the next chord note
     }
     transport_.flush();
     patternSlideReady_ &= static_cast<uint16_t>(~bit);
+    patternPolyKnown_ |= bit;
     for (MusicalEventTarget target :
          {MusicalEventTarget::SynthA, MusicalEventTarget::SynthB,
           MusicalEventTarget::Dx}) {
@@ -1169,6 +1179,7 @@ bool UsbMidiOutput::releasePendingChannelPanics() {
 void UsbMidiOutput::clearActiveState() {
     // After (re)connection the receiver state is unknown again.
     patternSlideReady_ = 0;
+    patternPolyKnown_ = 0;
     patternPortamentoOn_ = 0;
     for (std::size_t index = 0; index < 2; ++index) {
         for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
