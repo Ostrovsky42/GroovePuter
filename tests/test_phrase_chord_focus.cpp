@@ -36,12 +36,14 @@ int main() {
   assert(!valid(b, 24, 24, 3));  // single note is not a chord focus
   assert(!valid(b, 0, 24, 3));   // D is not in this cell
 
-  // A over a single note adds a major third; over a chord a minor third on top.
+  // A over a single note builds the whole triad at once; over a chord it adds
+  // one tone on top. Chromatic (no key): major then minor third.
   Buffer after{};
   int added = -1;
   assert(prepareAddTone(b, 3, after, added) == AddResult::Ready);
-  assert(added == 4 && after.count == 5 && after.events[4].note == 66);
-  assert(after.events[4].startTick == 24);
+  assert(added == 5 && after.count == 6);
+  assert(after.events[4].note == 66 && after.events[5].note == 69);
+  assert(after.events[4].startTick == 24 && after.events[5].startTick == 24);
   assert(prepareAddTone(b, 1, after, added) == AddResult::Ready);
   assert(after.events[added].note == 70 && after.events[added].startTick == 0);
   assert(RuntimePhraseEdit::hasOverlappingNotes(after));
@@ -71,7 +73,43 @@ int main() {
   assert(chordToneAbove(60, true, 0, kScaleChromatic) == 64);
   assert(chordToneAbove(60, false, 0, kScaleChromatic) == 63);
   assert(prepareAddTone(b, 3, after, added, 0, kScaleDorian) == AddResult::Ready);
-  assert(after.events[added].note == 65);  // D + F in C Dorian, not F#
+  assert(after.events[4].note == 65 && after.events[5].note == 69);  // D F A, not D F# A
+  // Over the C Dorian triad C Eb G a fourth A adds Bb: a seventh chord.
+  Buffer triad{};
+  triad.lengthTicks = PhraseRuntime::kTicksPerBar;
+  add(triad, 0, 60);
+  assert(prepareAddTone(triad, 0, after, added, 0, kScaleDorian) == AddResult::Ready);
+  assert(after.events[1].note == 63 && after.events[2].note == 67);
+  Buffer seventh = after;
+  assert(prepareAddTone(seventh, 0, after, added, 0, kScaleDorian) == AddResult::Ready);
+  assert(after.count == 4 && after.events[added].note == 70);
+
+  // Alt+A: the chord becomes one note per grid step, low to high and around,
+  // for as long as the chord lasts, stopping at the next note.
+  Buffer arp{};
+  arp.lengthTicks = PhraseRuntime::kTicksPerBar;
+  add(arp, 0, 67);
+  add(arp, 0, 60);
+  add(arp, 0, 64);
+  arp.events[0].durationSubticks = 96 * PhraseRuntime::kSubticksPerTick;  // a beat
+  add(arp, 192, 62);
+  uint16_t steps = 0;
+  assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Ready);
+  assert(steps == 4 && after.count == 5);
+  const uint8_t expect[4] = {60, 64, 67, 60};
+  for (int k = 0; k < 4; ++k) {
+    assert(after.events[k].startTick == k * 24 && after.events[k].note == expect[k]);
+    assert(after.events[k].durationSubticks == 24 * PhraseRuntime::kSubticksPerTick);
+  }
+  assert(after.events[4].note == 62 && after.events[4].startTick == 192);
+  assert(!RuntimePhraseEdit::hasOverlappingNotes(after));
+  // A later note cuts the arpeggio short.
+  arp.events[3].startTick = 48;
+  assert(prepareArpeggio(arp, 0, 24, 24, after, steps) == AddResult::Ready);
+  assert(steps == 2 && after.events[2].note == 62);
+  // Not a chord, or too short for two steps.
+  assert(prepareArpeggio(arp, 48, 24, 24, after, steps) == AddResult::NoChord);
+  assert(prepareArpeggio(b, 0, 24, 24, after, steps) == AddResult::TooShort);
 
   // Recording: keys within the window form one chord; later ones do not.
   assert(sameChordOnset(1000, 1000 + kChordWindowMs));

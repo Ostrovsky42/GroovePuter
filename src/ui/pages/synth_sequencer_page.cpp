@@ -1052,11 +1052,16 @@ bool SynthSequencerPage::addChordTone() {
       UI::showToast("PITCH LIMIT", 900);
       return true;
     case PhraseChordFocus::AddResult::Invalid:
+    case PhraseChordFocus::AddResult::AlreadyInChord:
+    case PhraseChordFocus::AddResult::NoChord:
+    case PhraseChordFocus::AddResult::TooShort:
       UI::showToast("EDIT FAILED", 1000);
       return true;
     case PhraseChordFocus::AddResult::Ready:
       break;
   }
+  const bool wasSingle = after->count == phrase.count + 2u;
+  const uint8_t rootNote = base >= 0 ? phrase.events[base].note : 0;
   if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
                                        phrase, *after)) {
     UI::showToast("EDIT STALE", 1000);
@@ -1067,9 +1072,51 @@ bool SynthSequencerPage::addChordTone() {
   phrase_selection_ = PhraseSelectionState::at(now, static_cast<uint16_t>(added));
   char name[8];
   formatNoteName(now.events[added].note, name, sizeof(name));
+  char toast[40];
+  if (wasSingle) {
+    char low[8], mid[8];
+    formatNoteName(rootNote, low, sizeof(low));
+    formatNoteName(now.events[added - 1].note, mid, sizeof(mid));
+    std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+A ARP", low, mid, name);
+  } else {
+    std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
+  }
+  UI::showToast(toast, 1400);
+  return true;
+}
+
+bool SynthSequencerPage::arpeggiateChord() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) {
+    UI::showToast("EDIT FAILED", 1000);
+    return true;
+  }
+  uint16_t steps = 0;
+  const auto result = PhraseChordFocus::prepareArpeggio(
+      phrase, PhraseNotesCursor::tick(phrase_cursor_),
+      PhraseNotesCursor::quantumTicks(phrase_cursor_.grid),
+      RuntimePhraseEdit::gridTicks(phrase_cursor_.grid), *after, steps);
+  if (result != PhraseChordFocus::AddResult::Ready) {
+    const char* why = "EDIT FAILED";
+    if (result == PhraseChordFocus::AddResult::NoChord) why = "NO CHORD HERE  A MAKES ONE";
+    else if (result == PhraseChordFocus::AddResult::TooShort) why = "CHORD TOO SHORT  ALT+RIGHT";
+    else if (result == PhraseChordFocus::AddResult::Full) why = "MELODY FULL";
+    UI::showToast(why, 1400);
+    return true;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    UI::showToast("EDIT STALE", 1000);
+    return true;
+  }
+  chord_focus_event_ = -1;
   char toast[32];
-  std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
-  UI::showToast(toast, 1200);
+  std::snprintf(toast, sizeof(toast), "ARP %u NOTES  CTRL+Z UNDO",
+                static_cast<unsigned>(steps));
+  UI::showToast(toast, 1400);
   return true;
 }
 
@@ -1176,6 +1223,11 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
     UI::showToast(committed ? "NOTE DELETED" : "EDIT STALE", 900);
     return true;
+  }
+
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    return arpeggiateChord();
   }
 
   if (ui_event.alt) {
