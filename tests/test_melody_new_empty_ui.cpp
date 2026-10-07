@@ -20,6 +20,7 @@
 #include "src/ui/workflow_mode.h"
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/ui/phrase_chord_focus.h"
+#include "src/ui/project_key.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -168,20 +169,53 @@ int main() {
   const int third = melody.events[1].note, fifth = melody.events[2].note;
   assert(RuntimePhraseEdit::hasOverlappingNotes(melody));
 
-  // C from the just-added top note wraps to the lowest; Up raises only it.
+  // C from the just-added top note wraps to the lowest; Up raises only it,
+  // to the next note of the key (C major: no sharps).
   auto c = key('c');
   display.handleEvent(c);
   auto up = scan(GROOVEPUTER_UP);
   display.handleEvent(up);
-  assert(melody.events[0].note == rootNote + 1);
+  const int rootUp = ProjectKey::step(rootNote, +1, 0, GroovePuterRhythm::kScaleMajor);
+  assert(melody.events[0].note == rootUp);
+  assert(ProjectKey::inScale(rootUp, 0, GroovePuterRhythm::kScaleMajor));
   assert(melody.events[1].note == third && melody.events[2].note == fifth);
   // C again: the middle note, and Up raises that one.
   auto c2 = key('c');
   display.handleEvent(c2);
   auto up2 = scan(GROOVEPUTER_UP);
   display.handleEvent(up2);
-  assert(melody.events[1].note == third + 1);
-  assert(melody.events[0].note == rootNote + 1 && melody.events[2].note == fifth);
+  const int thirdUp = ProjectKey::step(third, +1, 0, GroovePuterRhythm::kScaleMajor);
+  assert(melody.events[1].note == thirdUp);
+  assert(melody.events[0].note == rootUp && melody.events[2].note == fifth);
+  // Ctrl+Up: exactly one semitone, out of the key if asked.
+  UIEvent ctrlUp{};
+  ctrlUp.event_type = GROOVEPUTER_KEY_DOWN;
+  ctrlUp.scancode = GROOVEPUTER_UP;
+  ctrlUp.ctrl = true;
+  display.handleEvent(ctrlUp);
+  assert(melody.events[1].note == thirdUp + 1);
+  UIEvent ctrlDown = ctrlUp;
+  ctrlDown.scancode = GROOVEPUTER_DOWN;
+  display.handleEvent(ctrlDown);
+  assert(melody.events[1].note == thirdUp);
+
+  // The key is on screen; K moves its tonic, M its scale, notes stay.
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("KEY C MAJ"));
+  auto k = key('k');
+  display.handleEvent(k);
+  auto& params = engine.sceneManager().currentScene().generatorParams;
+  assert(params.scaleRoot == 1);
+  auto m = key('m');
+  display.handleEvent(m);
+  assert(params.scale == DORIAN);
+  assert(melody.events[1].note == thirdUp);
+  gfx.texts.clear();
+  display.update();
+  assert(gfx.has("KEY C# DOR"));
+  params.scaleRoot = 0;
+  params.scale = MAJOR;
 
   // Keyboard recording: keys pressed together land as one chord on the cursor
   // cell; a key played later goes to the next cell.

@@ -150,7 +150,11 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Ctrl+C/V` | Copy / Paste |
 
 On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
-change pitch in piano-roll view (`V` switches to list view). `Enter` adds a note,
+move the note to the next note of the project key shown as `KEY C DOR` in the
+header (a note outside the key goes to the nearest key note); `Ctrl+Up/Down`
+move it by exactly one semitone. `K` raises the key's tonic a semitone and `M`
+picks the next scale; notes stay where they are, and G generates in the same
+key. `V` switches to list view. `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
 `J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
 to the previous/next bar. `[` / `]` switch to the previous/next saved Melody of
