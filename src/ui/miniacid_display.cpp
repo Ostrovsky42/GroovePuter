@@ -660,7 +660,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            // Page 11 is the legacy GENERATION id, which resolves to FEEL.
+            // GENRE (0.9.17); legacy page id 11 would resolve to FEEL.
             goToPage(WorkflowPages::kGenre);
             return true;
         }
