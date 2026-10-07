@@ -1091,7 +1091,7 @@ bool SynthSequencerPage::addChordTone() {
     char low[8], mid[8];
     formatNoteName(rootNote, low, sizeof(low));
     formatNoteName(now.events[added - 1].note, mid, sizeof(mid));
-    std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+A ARP", low, mid, name);
+    std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+C ARP", low, mid, name);
   } else {
     std::snprintf(toast, sizeof(toast), "CHORD + %s  UP/DN PITCH", name);
   }
@@ -1115,7 +1115,7 @@ bool SynthSequencerPage::arpeggiateChord() {
       RuntimePhraseEdit::gridTicks(phrase_cursor_.grid), *after, steps);
   if (result != PhraseChordFocus::AddResult::Ready) {
     const char* why = "EDIT FAILED";
-    if (result == PhraseChordFocus::AddResult::NoChord) why = "NO CHORD HERE  A MAKES ONE";
+    if (result == PhraseChordFocus::AddResult::NoChord) why = "NO CHORD HERE  H MAKES ONE";
     else if (result == PhraseChordFocus::AddResult::TooShort) why = "CHORD TOO SHORT  ALT+RIGHT";
     else if (result == PhraseChordFocus::AddResult::Full) why = "MELODY FULL";
     UI::showToast(why, 1400);
@@ -1239,8 +1239,14 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Same letters as STEPS: Alt+A accent. Alt+C arpeggiates the chord (C
+  // works on chords; Alt+H is global help).
   if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (lower == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    return toggleAccent();
+  }
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'c' || ui_event.scancode == GROOVEPUTER_C)) {
     return arpeggiateChord();
   }
 
@@ -1387,14 +1393,22 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Chords: C picks the next note of the chord at the cursor, A adds one.
+  // Chords: H (harmony) builds or grows the chord, C picks its next note.
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (lower == 'c' || ui_event.scancode == GROOVEPUTER_C)) {
     return cycleChordFocus();
   }
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
-      (lower == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+      (lower == 'h' || ui_event.scancode == GROOVEPUTER_H)) {
     return addChordTone();
+  }
+  // Same letters as STEPS: A/Z one note up/down (along the key here), S/X an
+  // octave.
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta) {
+    if (lower == 'a' || ui_event.scancode == GROOVEPUTER_A) return shiftPitch(+1, PitchStep::Key);
+    if (lower == 'z' || ui_event.scancode == GROOVEPUTER_Z) return shiftPitch(-1, PitchStep::Key);
+    if (lower == 's' || ui_event.scancode == GROOVEPUTER_S) return shiftPitch(+1, PitchStep::Octave);
+    if (lower == 'x' || ui_event.scancode == GROOVEPUTER_X) return shiftPitch(-1, PitchStep::Octave);
   }
 
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
@@ -1416,7 +1430,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       : nav == GROOVEPUTER_DOWN;
 
   if (pitchUp || pitchDown) {
-    return shiftPitch(pitchUp ? 1 : -1, false);
+    return shiftPitch(pitchUp ? 1 : -1, PitchStep::Key);
   }
 
   // K: the key's tonic up a semitone; M: the next scale. Shared with G.
@@ -1433,25 +1447,32 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
 // Up/Down move the note to the next note of the project key, so a melody
 // stays in tune; Ctrl+Up/Down (chromatic) moves it by one semitone.
-bool SynthSequencerPage::shiftPitch(int direction, bool chromatic) {
+int SynthSequencerPage::editTargetNote() const {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const int focus = chordFocusInCell();
+  if (focus >= 0) return focus;
+  const PhraseNotesSelection::Selection selection = PhraseNotesSelection::derive(
+      phrase, PhraseNotesCursor::tick(PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks)));
+  return selection.active ? static_cast<int>(selection.eventIndex) : -1;
+}
+
+bool SynthSequencerPage::shiftPitch(int direction, PitchStep stepKind) {
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
   phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
-  int target = chordFocusInCell();
+  const int target = editTargetNote();
   if (target < 0) {
-    const PhraseNotesSelection::Selection selection =
-        PhraseNotesSelection::derive(phrase, PhraseNotesCursor::tick(phrase_cursor_));
-    if (!selection.active) {
-      UI::showToast("NO NOTE", 900);
-      return true;
-    }
-    target = selection.eventIndex;
+    UI::showToast("NO NOTE", 900);
+    return true;
   }
   const int note = phrase.events[target].note;
   const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
-  const int next = chromatic
-      ? note + direction
-      : ProjectKey::step(note, direction, ProjectKey::pitchClass(key.scaleRoot),
-                         static_cast<ProjectKey::ScaleTypeValue>(key.scale));
+  int next = note + direction;
+  if (stepKind == PitchStep::Octave) {
+    next = note + 12 * direction;
+  } else if (stepKind == PitchStep::Key) {
+    next = ProjectKey::step(note, direction, ProjectKey::pitchClass(key.scaleRoot),
+                            static_cast<ProjectKey::ScaleTypeValue>(key.scale));
+  }
   PhraseNotesPitchEdit::Prepared prepared{};
   const auto result = (next < 0 || next > 127)
       ? PhraseNotesPitchEdit::Result::Rejected
@@ -1474,6 +1495,36 @@ bool SynthSequencerPage::shiftPitch(int direction, bool chromatic) {
   char toast[24];
   std::snprintf(toast, sizeof(toast), "NOTE %s", name);
   UI::showToast(toast, 700);
+  return true;
+}
+
+// Alt+A, as on STEPS: accent on the note being edited (a chord note with C).
+bool SynthSequencerPage::toggleAccent() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const int target = editTargetNote();
+  if (target < 0) {
+    UI::showToast("NO NOTE", 900);
+    return true;
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) {
+    UI::showToast("EDIT FAILED", 1000);
+    return true;
+  }
+  const auto result = RuntimePhraseEdit::prepare(
+      phrase, *after, [&](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+        candidate.events[target].flags ^= PhraseRuntime::kEventAccent;
+      });
+  if (result != RuntimePhraseEdit::PrepareResult::Ready ||
+      !commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
+    return true;
+  }
+  const bool on = (mini_acid_.currentPhraseBuffer(voice_index_).events[target].flags &
+                   PhraseRuntime::kEventAccent) != 0;
+  UI::showToast(on ? "ACCENT ON" : "ACCENT OFF", 800);
   return true;
 }
 
@@ -1627,7 +1678,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       return jumpPhraseBar(nav == GROOVEPUTER_RIGHT ? +1 : -1);
     }
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-      return shiftPitch(nav == GROOVEPUTER_UP ? +1 : -1, true);
+      return shiftPitch(nav == GROOVEPUTER_UP ? +1 : -1, PitchStep::Semitone);
     }
   }
 

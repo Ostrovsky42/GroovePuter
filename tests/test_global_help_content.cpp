@@ -57,6 +57,9 @@ int main() {
     assert(globalContains("Waveform except CORE"));
     assert(!globalContains("Ctrl+H"));
     assert(globalContains("1 GENRE 2 PROJ 3 OVW"));
+    // The synth help also covers the Melody editor, with the STEPS letters.
+    assert(sectionContains(WorkflowPages::kSynthA, "--- MELODY (Alt+R) ---"));
+    assert(sectionContains(WorkflowPages::kSynthB, "Alt+C       Chord -> arpeggio"));
 
     // Alt/Fn+1..0: ten digits, ten different live pages. The old table sent
     // 3/4/8 to legacy ids that resolved to SYNTH A/B and FEEL again.

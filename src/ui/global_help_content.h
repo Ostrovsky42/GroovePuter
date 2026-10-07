@@ -73,6 +73,18 @@ constexpr const char* kSynthALines[] = {
     "Alt+G       Legacy synth (no P)",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
+    "--- MELODY (Alt+R) ---",
+    "Up/Dn A/Z   Note along the key",
+    "Ctrl+Up/Dn  Semitone",
+    "S/X         Octave +/-",
+    "Alt+A       Accent",
+    "H           Chord / one more tone",
+    "C           Next note of chord",
+    "Alt+C       Chord -> arpeggio",
+    "K / M       Key tonic / scale",
+    "[ / ]       Prev/next melody",
+    "Ctrl+L/R    Prev/next bar",
+    "Alt+N       New empty melody",
 };
 
 constexpr const char* kSynthBLines[] = {
@@ -101,6 +113,18 @@ constexpr const char* kSynthBLines[] = {
     "Alt+G       Legacy synth (no P)",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
+    "--- MELODY (Alt+R) ---",
+    "Up/Dn A/Z   Note along the key",
+    "Ctrl+Up/Dn  Semitone",
+    "S/X         Octave +/-",
+    "Alt+A       Accent",
+    "H           Chord / one more tone",
+    "C           Next note of chord",
+    "Alt+C       Chord -> arpeggio",
+    "K / M       Key tonic / scale",
+    "[ / ]       Prev/next melody",
+    "Ctrl+L/R    Prev/next bar",
+    "Alt+N       New empty melody",
 };
 
 constexpr const char* kSynthASoundLines[] = {
