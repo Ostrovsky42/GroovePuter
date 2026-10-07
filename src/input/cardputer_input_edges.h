@@ -136,7 +136,12 @@ inline bool wordLetterAlreadyDispatched(WordChar value, uint32_t mask) {
   return (mask & letterDispatchMask(static_cast<char>(value))) != 0u;
 }
 
-inline bool mayRepeat(const UIEvent& event) {
+// `altVertical`: the current page scrolls with Alt+Up/Down, so that one
+// modified pair repeats too (MiniAcidDisplay::repeatsAltVertical).
+inline bool mayRepeat(const UIEvent& event, bool altVertical = false) {
+  if (altVertical && event.alt && !event.ctrl && !event.shift && !event.meta) {
+    return event.scancode == GROOVEPUTER_UP || event.scancode == GROOVEPUTER_DOWN;
+  }
   if (event.alt || event.ctrl || event.shift || event.meta) return false;
   return event.scancode == GROOVEPUTER_UP ||
          event.scancode == GROOVEPUTER_DOWN ||
@@ -154,8 +159,9 @@ inline bool isCardputerArrowHid(uint8_t hid) {
 template <typename KeysState>
 inline bool mayArmRepeatForPhysicalKey(const KeysState& state,
                                        uint8_t hid,
-                                       const UIEvent& event) {
-  if (!mayRepeat(event) || state.hid_keys.size() != 1) return false;
+                                       const UIEvent& event,
+                                       bool altVertical = false) {
+  if (!mayRepeat(event, altVertical) || state.hid_keys.size() != 1) return false;
 
   // Cardputer arrow legends occupy punctuation positions. Some M5Cardputer
   // versions report the physical arrow simultaneously through hid_keys and

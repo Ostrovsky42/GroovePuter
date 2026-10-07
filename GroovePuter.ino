@@ -946,7 +946,8 @@ void loop() {
       dispatched = true;
 
       if (GroovePuterInput::mayArmRepeatForPhysicalKey(
-              ks, static_cast<uint8_t>(hid), evt)) {
+              ks, static_cast<uint8_t>(hid), evt,
+              g_miniDisplay != nullptr && g_miniDisplay->repeatsAltVertical())) {
         repeatEvent = evt;
         repeatHid = static_cast<uint8_t>(hid);
         repeatPressId = pressId;

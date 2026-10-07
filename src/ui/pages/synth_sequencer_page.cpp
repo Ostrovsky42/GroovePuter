@@ -827,6 +827,12 @@ bool SynthSequencerPage::insertAtCursor(int pitch, uint8_t velocity) {
   return true;
 }
 
+bool SynthSequencerPage::repeatsAltVertical() const {
+  return synth_tab_ == SynthTab::Notes &&
+         mini_acid_.currentSequencedSource(voice_index_) ==
+             MiniAcid::SequencedSource::Phrase;
+}
+
 bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
   if (synth_tab_ != SynthTab::Notes ||
       mini_acid_.currentSequencedSource(voice_index_) != MiniAcid::SequencedSource::Phrase) {
