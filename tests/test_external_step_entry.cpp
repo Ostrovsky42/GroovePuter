@@ -90,6 +90,9 @@ int main() {
   assert(foundFirst);
 
   // The cursor moved on: the next note lands on a later cell, with its own pitch and velocity.
+  // (Step entry releases the key first; keys held together become a chord, 0.9.17.)
+  UIEvent firstOff = external(62, 0);
+  assert(page.handleEvent(firstOff));
   UIEvent second = external(65, 40);
   assert(page.handleEvent(second));
   assert(phrase.count == before + 2);

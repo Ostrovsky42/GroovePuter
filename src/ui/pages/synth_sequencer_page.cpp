@@ -879,15 +879,18 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
     external_audition_note_ = -1;
     return true;
   }
+  // A chord is keys held together: the previous key must still be down.
+  const bool previousHeld = external_audition_note_ >= 0;
   if (external_audition_note_ >= 0) {
     const uint8_t previous = static_cast<uint8_t>(external_audition_note_);
     guarded([&]() { mini_acid_.liveNoteOff(voice_index_, previous); });
     external_audition_note_ = -1;
   }
   // Keys pressed together arrive as NoteOns a few ms apart: they become one
-  // chord on the first key's cell instead of an arpeggio across cells.
+  // chord on the first key's cell instead of an arpeggio across cells. A key
+  // played after the previous one was released is the next step, however fast.
   const uint32_t now = millis();
-  if (!(last_recorded_note_ >= 0 &&
+  if (!(previousHeld && last_recorded_note_ >= 0 &&
         PhraseChordFocus::sameChordOnset(last_recorded_ms_, now) &&
         joinRecordedChord(note, velocity))) {
     insertAtCursor(note, velocity);
