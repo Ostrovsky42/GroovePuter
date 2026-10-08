@@ -39,8 +39,18 @@ int main(int argc, char** argv) {
                       {GenerativeMode::House, "house", 122.0f},
                       {GenerativeMode::HipHop, "hiphop", 90.0f},
                       {GenerativeMode::UkGarage, "ukg", 132.0f},
-                      {GenerativeMode::LoFi, "lofi", 78.0f}};
+                      {GenerativeMode::LoFi, "lofi", 78.0f},
+                      {GenerativeMode::Outrun, "outrun", 108.0f},
+                      {GenerativeMode::Darksynth, "darksynth", 120.0f},
+                      {GenerativeMode::Techno, "techno", 126.0f},
+                      {GenerativeMode::FunkSoul, "funksoul", 104.0f},
+                      {GenerativeMode::Electro, "electro", 124.0f},
+                      {GenerativeMode::Broken, "broken", 120.0f},
+                      {GenerativeMode::DrumAndBass, "dnb", 172.0f},
+                      {GenerativeMode::Chip, "chip", 140.0f}};
+  const std::string only = argc > 4 ? argv[4] : "";
   for (const auto& g : genres) {
+    if (!only.empty() && only.find(std::string(",") + g.name + ",") == std::string::npos) continue;
     const uint32_t takes = argc > 3 ? static_cast<uint32_t>(std::atoi(argv[3])) : 2;
     for (uint32_t take = 1; take <= takes; ++take) {
       const auto root = std::filesystem::temp_directory_path() / ("gp_idiomrender_" + tag);

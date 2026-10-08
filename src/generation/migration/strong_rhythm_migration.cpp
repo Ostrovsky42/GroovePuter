@@ -1206,6 +1206,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     idiom.barOrdinal = context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
         ? GenreIdiom::kNoBarOrdinal
         : context.phraseBarOrdinal;
+    idiom.phraseBars = context.ideaPhraseBars;
     idiom.salt = static_cast<uint32_t>(context.patternAddress) * 131u +
                  context.generationAttemptOrdinal * 977u +
                  context.ideaPress * 0x2545F491u;

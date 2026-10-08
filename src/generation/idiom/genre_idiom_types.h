@@ -40,9 +40,12 @@ struct IdiomLevel {
 };
 
 // levels[0..2] = the dataset's P1 BASE, P2 VARIATION, P3 sparse drop.
+// progression: scale-degree shift of each phrase bar (0 = as written); the
+// dataset templates move harmony inside the bar and keep it at 0.
 struct IdiomVariant {
   const char* name;
   IdiomLevel levels[3];
+  int8_t progression[4];
 };
 
 }  // namespace GenreIdiom

@@ -29,6 +29,7 @@ struct Request {
   uint8_t level = 1;  // template level 0..2 (P1, P2, P3)
   uint8_t barOrdinal = kNoBarOrdinal;
   uint8_t liveliness = 1;  // 0 CALM, 1 NORMAL, 2 LIVELY
+  uint8_t phraseBars = 0;  // 0 = unknown (read as 4); 2 plays A B
   uint32_t salt = 0;
   uint32_t press = 0;     // successive presses walk the idea deck
   uint32_t deckSeed = 0;  // the deck's order (stable for one slot / one Melody)
@@ -70,6 +71,29 @@ inline int mapSemi(int semi, uint8_t scale) {
     }
   }
   return octave * 12 + mapped + chroma;
+}
+
+// Moves a C-minor template semitone by whole scale degrees (a chromatic note
+// keeps its offset from the degree below it), so a bar follows its chord.
+inline int transposeDegrees(int semi, int steps) {
+  if (steps == 0) return semi;
+  static constexpr int8_t kMinorDegree[12] = {0, -1, 1, 2, -1, 3, -1, 4, 5, -1, 6, -1};
+  static constexpr int8_t kMinor[7] = {0, 2, 3, 5, 7, 8, 10};
+  int octave = floorDiv12(semi);
+  int pc = semi - octave * 12;
+  int chroma = 0;
+  while (kMinorDegree[pc] < 0) {
+    --pc;
+    ++chroma;
+  }
+  int degree = kMinorDegree[pc] + steps;
+  while (degree < 0) {
+    degree += 7;
+    --octave;
+  }
+  octave += degree / 7;
+  degree %= 7;
+  return octave * 12 + kMinor[degree] + chroma;
 }
 
 inline void clear(SynthPattern& pattern) {
@@ -125,6 +149,24 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
     case 0:  // Acid
       if (recipe != 0) return nullptr;
       return (salt & 1u) ? &k_acid_rolling : &k_acid_chicago_jack;
+    case 1:  // Outrun
+      return recipe == 0 ? &k_outrun_drive : nullptr;
+    case 2:  // Darksynth
+      return recipe == 0 ? &k_darksynth_drive : nullptr;
+    case 3:  // Electro
+      return recipe == 0 ? &k_electro_machine : nullptr;
+    case 7:  // Broken
+      return recipe == 0 ? &k_broken_bruk : nullptr;
+    case 8:  // Chip
+      return recipe == 0 ? &k_chip_arp : nullptr;
+    case 10:  // Techno: dub-techno stab and repetition
+      if (recipe != 0) return nullptr;
+      return (salt & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;
+    case 12:  // FunkSoul
+      return recipe == 0 ? &k_funk_pocket : nullptr;
+    case 14:  // DnB
+      if (recipe != 0) return nullptr;
+      return (salt & 1u) ? &k_jungle_classic_amen : &k_jungle_atmospheric;
     case 9:  // House
       return recipe == 0 ? &k_house_deep_offbeat : nullptr;
     case 11:  // HipHop
@@ -454,6 +496,8 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   // its bars that loop plays, and no answer ending (it would loop).
   const bool singleBar = request.barOrdinal == kNoBarOrdinal;
   int role = singleBar ? 0 : request.barOrdinal % 4;
+  // A two-bar phrase is statement and answer: A B.
+  if (!singleBar && request.phraseBars == 2) role = (request.barOrdinal % 2) ? 3 : 0;
   if (singleBar) {
     switch (plan.idea) {
       case Idea::LowHighAnswer:
@@ -468,7 +512,15 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   const int shift = root >= 6 ? root - 12 : root;  // keep registers near C
   const int bassBase = 36 + shift;
   const int leadBase = 60 + shift;
-  auto map = [&](int semi) { return detail::mapSemi(semi, request.scale); };
+  // This bar's chord: a degree shift from the variant's progression, folded so
+  // the line moves at most three degrees either way.
+  int degreeShift = singleBar ? 0 : variant->progression[role];
+  if (degreeShift > 3) degreeShift -= 7;
+  if (degreeShift < -3) degreeShift += 7;
+  auto map = [&](int semi) {
+    return detail::mapSemi(detail::transposeDegrees(semi, degreeShift), request.scale);
+  };
+  auto mapHome = [&](int semi) { return detail::mapSemi(semi, request.scale); };
   auto substitute = [&](int semi) {
     if (plan.substituteFrom < 0) return semi;
     const int pc = ((semi % 12) + 12) % 12;
@@ -513,7 +565,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
     if (plan.ending == Ending::Minimal && shape.answer && note.step != 0) continue;
     if (!plays(note.step, note.flags)) continue;
     const int semi = substitute(note.semi) + shape.bassOctave;
-    detail::place(bass, note.step, bassBase + map(semi), note.len, note.velocity,
+    detail::place(bass, note.step, bassBase + mapHome(semi), note.len, note.velocity,
                   (note.flags & kAccent) != 0);
     if (note.flags & kSlideOut) slideOut[note.step] = 1;
   }
@@ -522,36 +574,36 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
       case Ending::RunUp:
         if (runningBass) {
           // Octave run with a glide back into the downbeat.
-          detail::place(bass, 12, bassBase + map(0), 1, 104, true);
-          detail::place(bass, 13, bassBase + map(12), 1, 84, false);
-          detail::place(bass, 14, bassBase + map(0), 1, 92, false);
-          detail::place(bass, 15, bassBase + map(12), 1, 96, false);
+          detail::place(bass, 12, bassBase + mapHome(0), 1, 104, true);
+          detail::place(bass, 13, bassBase + mapHome(12), 1, 84, false);
+          detail::place(bass, 14, bassBase + mapHome(0), 1, 92, false);
+          detail::place(bass, 15, bassBase + mapHome(12), 1, 96, false);
           slideOut[14] = 1;
         } else {
           // Fifth, then b7 stepping up into the root of bar 1.
-          detail::place(bass, 12, bassBase + map(-5), 2, 90, false);
-          detail::place(bass, 14, bassBase + map(-2), 2, 86, false);
+          detail::place(bass, 12, bassBase + mapHome(-5), 2, 90, false);
+          detail::place(bass, 14, bassBase + mapHome(-2), 2, 86, false);
         }
         break;
       case Ending::Minimal:
-        detail::place(bass, 14, bassBase + map(-2), 2, 80, false);
+        detail::place(bass, 14, bassBase + mapHome(-2), 2, 80, false);
         break;
       case Ending::Late:
         if (acid) {
-          detail::place(bass, 12, bassBase + map(0), 1, 100, true);
-          detail::place(bass, 14, bassBase + map(-2), 2, 88, false);
+          detail::place(bass, 12, bassBase + mapHome(0), 1, 100, true);
+          detail::place(bass, 14, bassBase + mapHome(-2), 2, 88, false);
         } else {
-          detail::place(bass, 12, bassBase + map(0), 2, 92, false);
-          detail::place(bass, 15, bassBase + map(-2), 1, 80, false);
+          detail::place(bass, 12, bassBase + mapHome(0), 2, 92, false);
+          detail::place(bass, 15, bassBase + mapHome(-2), 1, 80, false);
         }
         break;
       default:
         if (runningBass) {
-          detail::place(bass, 12, bassBase + map(0), 1, 104, true);
-          detail::place(bass, 14, bassBase + map(12), 1, 92, false);
+          detail::place(bass, 12, bassBase + mapHome(0), 1, 104, true);
+          detail::place(bass, 14, bassBase + mapHome(12), 1, 92, false);
           slideOut[12] = 1;
         } else {
-          detail::place(bass, 14, bassBase + map(plan.ending == Ending::Fifth ? 7 : -2), 2, 88, false);
+          detail::place(bass, 14, bassBase + mapHome(plan.ending == Ending::Fifth ? 7 : -2), 2, 88, false);
         }
         break;
     }
@@ -639,7 +691,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   if (shape.answer) {
     int tonic = leadBase;
     while (tonic + 12 <= previous + 6) tonic += 12;
-    int fifth = tonic + map(7);
+    int fifth = tonic + mapHome(7);
     if (fifth > previous + 7) fifth -= 12;
     switch (plan.ending) {
       case Ending::Tonic: detail::place(lead, 12, tonic, 4, 92, true); break;

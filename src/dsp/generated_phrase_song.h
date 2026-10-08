@@ -182,10 +182,12 @@ inline void applyCurrentMigration(
     int variationCoordinate,
     uint8_t phraseBarOrdinal,
     PhraseGenerator::PhraseBar& bar,
-    uint32_t ideaPress = 0) {
+    uint32_t ideaPress = 0,
+    uint8_t ideaPhraseBars = 0) {
   auto context = migrationContextFor(
       scene, variationCoordinate, phraseBarOrdinal);
   context.ideaPress = ideaPress;
+  context.ideaPhraseBars = ideaPhraseBars;
   (void)GroovePuterRhythm::migrateStrongRhythmMaterial(
       genre, context, bar.drums, bar.synthA, bar.synthB);
 }
@@ -222,7 +224,8 @@ inline bool materializeLegacyBar(
             bar.synthA, bar.synthB, bar.drums, nullptr)) {
       return false;
     }
-    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar, ideaPress);
+    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar, ideaPress,
+                          prepared.request.bars);
     return true;
   }
 
@@ -238,7 +241,7 @@ inline bool materializeLegacyBar(
       bar.drums, prepared.legacyParams, prepared.legacyBehavior);
 
   applyCurrentMigration(scene, genre, legacyMigrationCoordinate,
-                        phraseBarOrdinal, bar, ideaPress);
+                        phraseBarOrdinal, bar, ideaPress, prepared.request.bars);
   PhraseGenerator::deriveBar(bar, role, prepared.request.seed, barIndex, bar);
   return true;
 }

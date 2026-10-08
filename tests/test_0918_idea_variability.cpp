@@ -35,7 +35,10 @@ struct Genre {
   const char* name;
 };
 constexpr Genre kGenres[] = {
-    {0, "Acid"}, {9, "House"}, {13, "UKG"}, {11, "HipHop"}, {15, "LoFi"}};
+    {0, "Acid"},      {9, "House"},    {13, "UKG"},    {11, "HipHop"},
+    {15, "LoFi"},     {1, "Outrun"},   {2, "Darksynth"}, {10, "Techno"},
+    {12, "FunkSoul"}, {3, "Electro"},  {7, "Broken"},  {14, "DnB"},
+    {8, "Chip"}};
 
 struct Phrase {
   SynthPattern bass[4];
@@ -179,7 +182,8 @@ void testEightPressesGiveDistinctIdeas() {
     assert(signatures.size() >= 6);
     total += static_cast<int>(signatures.size());
   }
-  std::printf("DISTINCT_SIGNATURE_COUNT total %d/40\n", total);
+  std::printf("DISTINCT_SIGNATURE_COUNT total %d/%zu\n", total,
+              8 * (sizeof(kGenres) / sizeof(kGenres[0])));
 }
 
 // T3 + T6: every note is in the project scale or is a template note mapped
@@ -198,7 +202,10 @@ void testPitchSetAndRange() {
         bool allowed[12] = {};
         for (int pc = 0; pc < 12; ++pc) allowed[pc] = inScale[pc];
         auto allow = [&](int semi) {
-          allowed[(((GenreIdiom::detail::mapSemi(semi, kDorian) + kRoot) % 12) + 12) % 12] = true;
+          for (int shift = -3; shift <= 3; ++shift) {
+            const int moved = GenreIdiom::detail::transposeDegrees(semi, shift);
+            allowed[(((GenreIdiom::detail::mapSemi(moved, kDorian) + kRoot) % 12) + 12) % 12] = true;
+          }
         };
         for (uint8_t i = 0; i < level.bassCount; ++i) allow(level.bass[i].semi);
         for (uint8_t i = 0; i < level.melodyCount; ++i) allow(level.melody[i].semi);
