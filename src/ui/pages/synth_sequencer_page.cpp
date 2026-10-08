@@ -31,6 +31,7 @@
 #include "../phrase_notes_join_edit.h"
 #include "../phrase_selection_state.h"
 #include "../phrase_source_toggle.h"
+#include "src/dsp/slot_reuse.h"
 #include "../phrase_notes_pitch_edit.h"
 #include "../phrase_notes_viewport.h"
 #include "../phrase_instrument_controls.h"
@@ -1604,6 +1605,63 @@ bool SynthSequencerPage::replaceMelodyFor(
   return commitRuntimePhraseEditWithUndo(mini_acid, audio_guard, voice,
                                          mini_acid.currentPhraseBuffer(voice),
                                          melody);
+}
+
+bool SynthSequencerPage::voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice) {
+  if (voice < 0 || voice > 1) return true;
+  return mini_acid.hasUnsavedWorkingMelody(voice) ||
+         mini_acid.hasModifiedWorking303Pattern(voice);
+}
+
+SynthSequencerPage::GrabSlotResult SynthSequencerPage::grabIntoFreeSlot(
+    MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+    int& bankOut, int& patternOut) {
+  if (voice < 0 || voice > 1 || !RuntimePhraseEdit::validate(melody)) {
+    return GrabSlotResult::MelodyFailed;
+  }
+  if (voiceHasUnsavedEdits(mini_acid, voice)) return GrabSlotResult::Unsaved;
+
+  const Scene& scene = mini_acid.sceneManager().currentScene();
+  const int page = mini_acid.currentPageIndex();
+  int slot = -1;
+  for (int candidate = 0; candidate < kPatternsPerPage; ++candidate) {
+    if (SlotReuse::slotIsFree(scene, page, candidate) &&
+        SlotReuse::holders(mini_acid, scene, candidate) == 0) {
+      slot = candidate;
+      break;
+    }
+  }
+  if (slot < 0) return GrabSlotResult::NoFreeSlot;
+  const int bank = slot / Bank<SynthPattern>::kPatterns;
+  const int pattern = slot % Bank<SynthPattern>::kPatterns;
+
+  // STEPS first, as newMelodyInSlot does: a slot move happens on the steps.
+  const bool wasMelody = mini_acid.currentSequencedSource(voice) ==
+                         MiniAcid::SequencedSource::Phrase;
+  if (wasMelody &&
+      PhraseSourceToggle::toggle(mini_acid, audio_guard, voice) ==
+          PhraseSourceToggle::Result::Rejected) {
+    return GrabSlotResult::MoveFailed;
+  }
+  bool moved = false;
+  const auto move = [&]() {
+    moved = mini_acid.tryManual303TargetSwitch(voice, bank, pattern);
+  };
+  if (audio_guard) audio_guard(move);
+  else move();
+  if (!moved) {
+    if (wasMelody) PhraseSourceToggle::toggle(mini_acid, audio_guard, voice);
+    return GrabSlotResult::MoveFailed;
+  }
+  if (!replaceMelodyFor(mini_acid, audio_guard, voice, melody)) {
+    return GrabSlotResult::MelodyFailed;
+  }
+  bankOut = bank;
+  patternOut = pattern;
+  return mini_acid.acceptMaterialWorking(voice) == MiniAcid::AcceptResult::Accepted
+      ? GrabSlotResult::Saved
+      : GrabSlotResult::AcceptFailed;
 }
 
 bool SynthSequencerPage::generateMelodyFor(MiniAcid& mini_acid,

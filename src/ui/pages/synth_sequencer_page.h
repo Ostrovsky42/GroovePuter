@@ -23,6 +23,23 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   static bool replaceMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
                                int voice,
                                const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  // GRAB into a new slot: the first slot free by the generator's rule
+  // (SlotReuse: empty, no Song/Phrase/current/Working/NEXT/Undo/Melody holder)
+  // becomes a saved Melody slot, by the same steps a user takes by hand:
+  // STEPS, move to the slot (as Q..I), new Melody (Alt+N), notes, Alt+Enter.
+  enum class GrabSlotResult : uint8_t {
+    Saved = 0,
+    Unsaved,       // the voice has unsaved edits: never moved away from
+    NoFreeSlot,
+    MoveFailed,
+    MelodyFailed,
+    AcceptFailed,  // the notes are the Working Melody; Alt+Enter can retry
+  };
+  static GrabSlotResult grabIntoFreeSlot(
+      MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+      int& bankOut, int& patternOut);
+  static bool voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice);
   static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
                                 int voice);
 

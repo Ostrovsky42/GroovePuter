@@ -989,6 +989,14 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             UI::showToast("GRAB BUSY", 700);
             return true;
         }
+        const int targetVoice = GroovePuterState::melodyTargetVoice() == 1 ? 1 : 0;
+        if (SynthSequencerPage::voiceHasUnsavedEdits(mini_acid_, targetVoice)) {
+            midiGrabArmed_ = false;
+            UI::showToast(targetVoice == 0 ? "SAVE OR DISCARD SYNTH A FIRST"
+                                           : "SAVE OR DISCARD SYNTH B FIRST",
+                          1400);
+            return true;
+        }
         const auto& layer = projection.layers.layers[selected];
         const uint32_t totalBars = std::max<uint32_t>(player.totalBars, 1u);
         uint32_t startBar = std::max<uint32_t>(player.bar, 1u);
@@ -1016,7 +1024,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             midiGrabStartBar_ = startBar;
             midiGrabEndBar_ = endBar;
             midiGrabVoice_ = static_cast<int8_t>(voice);
-            std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > MEL %c",
+            std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > NEW %c SLOT",
                           static_cast<unsigned>(layer.trackIndex + 1u),
                           static_cast<unsigned long>(startBar),
                           static_cast<unsigned long>(endBar),
@@ -1217,13 +1225,35 @@ void SequencerHubPage::tick() {
     midiGrabPending_ = false;
     const int voice = midiGrabVoice_ == 1 ? 1 : 0;
     char toast[40]{};
-    if (SynthSequencerPage::replaceMelodyFor(mini_acid_, audio_guard_, voice, *melody)) {
-        std::snprintf(toast, sizeof(toast), "GRAB %uN %uB > MEL %c",
-                      static_cast<unsigned>(result.notes),
-                      static_cast<unsigned>(result.bars),
-                      static_cast<char>('A' + voice));
-        UI::showToast(toast, 1600);
-    } else {
-        UI::showToast("GRAB: MELODY CHANGED, RETRY", 1400);
+    int bank = 0;
+    int pattern = 0;
+    using Result = SynthSequencerPage::GrabSlotResult;
+    const Result saved = SynthSequencerPage::grabIntoFreeSlot(
+        mini_acid_, audio_guard_, voice, *melody, bank, pattern);
+    switch (saved) {
+        case Result::Saved:
+            // Slot named as on the synth page: bank letter + Q..I position.
+            std::snprintf(toast, sizeof(toast), "GRAB %uN > SYN %c %c%d",
+                          static_cast<unsigned>(result.notes),
+                          static_cast<char>('A' + voice),
+                          static_cast<char>('A' + bank), pattern + 1);
+            break;
+        case Result::AcceptFailed:
+            std::snprintf(toast, sizeof(toast), "GRAB IN %c%d: ALT+ENTER SAVE",
+                          static_cast<char>('A' + bank), pattern + 1);
+            break;
+        case Result::NoFreeSlot:
+            std::snprintf(toast, sizeof(toast), "NO FREE SLOT ON THIS PAGE");
+            break;
+        case Result::Unsaved:
+            std::snprintf(toast, sizeof(toast), "SAVE OR DISCARD %c FIRST",
+                          static_cast<char>('A' + voice));
+            break;
+        case Result::MoveFailed:
+        case Result::MelodyFailed:
+        default:
+            std::snprintf(toast, sizeof(toast), "GRAB: SLOT BUSY, RETRY");
+            break;
     }
+    UI::showToast(toast, 1800);
 }
