@@ -97,9 +97,21 @@ public:
     void onEnter(int context) override;
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& event) override;
+    void tick() override;
 
 private:
     bool midiOverview_{false};
+    // GRAB (Y twice within kGrabConfirmMs): the armed request, then the
+    // pending one the player task is reading; tick() takes the result.
+    static constexpr uint32_t kGrabConfirmMs = 4000;
+    bool midiGrabArmed_{false};
+    uint32_t midiGrabArmedMs_{0};
+    uint16_t midiGrabTrack_{0};
+    uint16_t midiGrabChannels_{0};
+    uint32_t midiGrabStartBar_{0};
+    uint32_t midiGrabEndBar_{0};
+    int8_t midiGrabVoice_{0};
+    bool midiGrabPending_{false};
     bool midiReturnToPlayer_{false};
     bool midiRouteEdit_{false};
     // O on the MIDI overview: which tracks occupy each SEQTRAK output.

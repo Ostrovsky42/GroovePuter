@@ -454,6 +454,7 @@ Open from MIDI Player with `H` after a file is loaded.
 | `A` | All MIDI tracks on |
 | `Space` | MIDI transport |
 | `O` | SEQTRAK outputs: which tracks occupy KICK..CYM, SYN1, SYN2, DX, and which reach nothing (OFF) |
+| `Y`, `Y` | GRAB (paused): the selected layer over the player's A-B loop (else GEN LENGTH bars from the current bar) becomes the Working Melody of GEN TARGET A/B; the first `Y` shows what and where, the second takes it; Ctrl+Z on the synth page undoes it |
 
 Each row shows where the track sounds now: `SYN1`/`SYN2`/`DX`/`KICK`..`CYM`,
 `DRUM` (GM drums split over the drum outputs), `MULTI`, or `OFF`. AUTO is

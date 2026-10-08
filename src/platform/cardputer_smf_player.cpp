@@ -9,6 +9,7 @@
 
 #include <esp_heap_caps.h>
 #include "src/audio/audio_config.h"
+#include "src/audio/midi_import_projection.h"
 #include "src/midi/midi_transport_capabilities.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/platform/cardputer_usb_midi_service.h"
@@ -192,6 +193,54 @@ bool CardputerSmfPlayerService::markLoopEnd() {
     Command command{};
     command.type = CommandType::MarkLoopEnd;
     return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::requestGrab(const SmfGrabRequest& request) {
+    uint8_t expected = static_cast<uint8_t>(SmfGrabState::Idle);
+    if (!grabState_.compare_exchange_strong(
+            expected, static_cast<uint8_t>(SmfGrabState::Working))) {
+        expected = static_cast<uint8_t>(SmfGrabState::Failed);
+        if (!grabState_.compare_exchange_strong(
+                expected, static_cast<uint8_t>(SmfGrabState::Working))) {
+            return false;  // a grab is running, or a Melody waits to be taken
+        }
+    }
+    Command command{};
+    command.type = CommandType::Grab;
+    command.grab = request;
+    if (!enqueue(command)) {
+        grabState_.store(static_cast<uint8_t>(SmfGrabState::Idle));
+        return false;
+    }
+    return true;
+}
+
+SmfGrabResult CardputerSmfPlayerService::grabResult() const {
+    SmfGrabResult result{};
+    portENTER_CRITICAL(&snapshotMux_);
+    result = grabInfo_;
+    portEXIT_CRITICAL(&snapshotMux_);
+    result.state = static_cast<SmfGrabState>(grabState_.load());
+    return result;
+}
+
+bool CardputerSmfPlayerService::takeGrabbedMelody(
+        PhraseRuntime::RuntimeSynthEventBuffer& out) {
+    if (grabState_.load() != static_cast<uint8_t>(SmfGrabState::Ready) || !grabBuffer_) {
+        return false;
+    }
+    out = *grabBuffer_;
+    // ~1.3 KB of DRAM back to the heap until the next GRAB; the player task
+    // touches the buffer only while Working, so the UI may drop it here.
+    grabBuffer_.reset();
+    grabState_.store(static_cast<uint8_t>(SmfGrabState::Idle));
+    return true;
+}
+
+void CardputerSmfPlayerService::acknowledgeGrab() {
+    if (grabState_.load() != static_cast<uint8_t>(SmfGrabState::Failed)) return;
+    grabBuffer_.reset();
+    grabState_.store(static_cast<uint8_t>(SmfGrabState::Idle));
 }
 
 bool CardputerSmfPlayerService::persistTrackOutputRoutes(uint32_t generation) {
@@ -815,6 +864,9 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
         case CommandType::MarkLoopStart:
         case CommandType::MarkLoopEnd:
             applyLoopCommand(command.type);
+            break;
+        case CommandType::Grab:
+            runGrab(command.grab);
             break;
     }
 }
@@ -1763,4 +1815,92 @@ void CardputerSmfPlayerService::restartLoop() {
     if (started && tempoMode_ == SmfTempoMode::Project) {
         (void)queueSongPositionPointerAtCurrentAnchor(tick);
     }
+}
+
+void CardputerSmfPlayerService::finishGrab(SmfGrabState state, const char* message) {
+    portENTER_CRITICAL(&snapshotMux_);
+    copyText(grabInfo_.message, sizeof(grabInfo_.message), message);
+    portEXIT_CRITICAL(&snapshotMux_);
+    grabState_.store(static_cast<uint8_t>(state));
+}
+
+// Player task. Reads the window like a seek (a backward reposition rescans the
+// file), feeds the events of one track/channel set to the Melody projection and
+// puts the stream back at the paused position. Nothing reaches the MIDI event
+// queue or the wire.
+void CardputerSmfPlayerService::runGrab(const SmfGrabRequest& request) {
+    portENTER_CRITICAL(&snapshotMux_);
+    grabInfo_ = SmfGrabResult{};
+    portEXIT_CRITICAL(&snapshotMux_);
+    if (!loaded_ || !timing_.valid()) {
+        finishGrab(SmfGrabState::Failed, "LOAD MIDI FIRST");
+        return;
+    }
+    const SmfPlayerState state = snapshot().state;
+    if (state != SmfPlayerState::Paused && state != SmfPlayerState::Stopped) {
+        finishGrab(SmfGrabState::Failed, "PAUSE TO GRAB");
+        return;
+    }
+    if (request.trackIndex >= fileIndex_.trackCount || request.startBar < 1u ||
+        request.endBar < request.startBar) {
+        finishGrab(SmfGrabState::Failed, "GRAB: BAD RANGE");
+        return;
+    }
+    if (!grabBuffer_) {
+        grabBuffer_.reset(new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+        if (!grabBuffer_) {
+            finishGrab(SmfGrabState::Failed, "NO MEMORY FOR GRAB");
+            return;
+        }
+    }
+
+    MidiImport::GrabWindow window{};
+    window.division = fileIndex_.division;
+    window.startTick = timing_.tickForBar(request.startBar);
+    window.endTick = timing_.tickForBar(request.endBar + 1u);
+    window.channelMask = request.channelMask;
+    MidiImport::MelodyGrabBuilder builder;
+    MidiImport::GrabStatus status = builder.begin(window, *grabBuffer_);
+    if (status == MidiImport::GrabStatus::Ok) {
+        if (!prepareStreamAt(window.startTick)) {
+            status = MidiImport::GrabStatus::Invalid;
+        } else {
+            SmfStreamEvent event{};
+            bool havePending = hasPendingEvent_;
+            if (havePending) event = pendingEvent_;
+            hasPendingEvent_ = false;
+            streamPreparedValid_ = false;
+            while (true) {
+                if (!havePending && !stream_.next(event)) {
+                    streamEnded_ = true;
+                    break;
+                }
+                havePending = false;
+                if (event.event.tick >= window.endTick) {
+                    pendingEvent_ = event;  // stream head for the reposition below
+                    hasPendingEvent_ = true;
+                    break;
+                }
+                if (event.trackIndex == request.trackIndex) builder.feed(event.event);
+            }
+            status = builder.finish();
+        }
+    }
+    // Back to where the user paused, so Space resumes exactly there.
+    streamPreparedValid_ = false;
+    prepareStreamAt(pausedTick_);
+    updatePlaybackSnapshot();
+
+    if (status != MidiImport::GrabStatus::Ok) {
+        finishGrab(SmfGrabState::Failed, MidiImport::grabStatusText(status));
+        return;
+    }
+    const MidiImport::GrabReport& report = builder.report();
+    portENTER_CRITICAL(&snapshotMux_);
+    grabInfo_.notes = report.notes;
+    grabInfo_.bars = report.bars;
+    grabInfo_.cutAtEnd = report.cutAtEnd;
+    grabInfo_.startedBefore = report.startedBefore;
+    portEXIT_CRITICAL(&snapshotMux_);
+    finishGrab(SmfGrabState::Ready, "GRABBED");
 }

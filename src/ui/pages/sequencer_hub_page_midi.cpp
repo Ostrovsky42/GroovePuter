@@ -9,6 +9,9 @@
 #include "../player_hub_navigation.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "synth_sequencer_page.h"
+#include "src/state/generation_shape_state.h"
+#include "src/state/phrase_generation_request_state.h"
 #include "src/midi/smf_effective_route.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/smf_session_generation.h"
@@ -972,6 +975,69 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         }
         return true;
     }
+    // GRAB: Y shows what would be taken (layer, bars, target voice), Y again
+    // within kGrabConfirmMs takes it. Range = the player's A-B loop, else
+    // GEN LENGTH bars from the current bar. Only while paused or stopped.
+    if (event.key == 'y' || event.key == 'Y') {
+        if (player.state != SmfPlayerState::Paused &&
+            player.state != SmfPlayerState::Stopped) {
+            midiGrabArmed_ = false;
+            UI::showToast("PAUSE TO GRAB (SPACE)", 1000);
+            return true;
+        }
+        if (midiGrabPending_) {
+            UI::showToast("GRAB BUSY", 700);
+            return true;
+        }
+        const auto& layer = projection.layers.layers[selected];
+        const uint32_t totalBars = std::max<uint32_t>(player.totalBars, 1u);
+        uint32_t startBar = std::max<uint32_t>(player.bar, 1u);
+        uint32_t endBar = startBar + GroovePuterState::requestedPhraseBars() - 1u;
+        if (player.loopMode == SmfLoopMode::Section && player.loopStartBar != 0u &&
+            player.loopEndBar >= player.loopStartBar) {
+            startBar = player.loopStartBar;
+            endBar = player.loopEndBar;
+        }
+        endBar = std::min(endBar, totalBars);
+        const int voice = GroovePuterState::melodyTargetVoice() == 1 ? 1 : 0;
+        const uint32_t now = millis();
+        const bool confirm = midiGrabArmed_ &&
+            now - midiGrabArmedMs_ <= kGrabConfirmMs &&
+            midiGrabTrack_ == layer.trackIndex &&
+            midiGrabChannels_ == layer.channelMask &&
+            midiGrabStartBar_ == startBar && midiGrabEndBar_ == endBar &&
+            midiGrabVoice_ == voice;
+        char toast[40]{};
+        if (!confirm) {
+            midiGrabArmed_ = true;
+            midiGrabArmedMs_ = now;
+            midiGrabTrack_ = layer.trackIndex;
+            midiGrabChannels_ = layer.channelMask;
+            midiGrabStartBar_ = startBar;
+            midiGrabEndBar_ = endBar;
+            midiGrabVoice_ = static_cast<int8_t>(voice);
+            std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > MEL %c",
+                          static_cast<unsigned>(layer.trackIndex + 1u),
+                          static_cast<unsigned long>(startBar),
+                          static_cast<unsigned long>(endBar),
+                          static_cast<char>('A' + voice));
+            UI::showToast(toast, kGrabConfirmMs);
+            return true;
+        }
+        midiGrabArmed_ = false;
+        SmfGrabRequest request{};
+        request.trackIndex = layer.trackIndex;
+        request.channelMask = layer.channelMask != 0u ? layer.channelMask : 0xFFFFu;
+        request.startBar = startBar;
+        request.endBar = endBar;
+        if (!service || !service->requestGrab(request)) {
+            UI::showToast("GRAB BUSY", 800);
+            return true;
+        }
+        midiGrabPending_ = true;
+        UI::showToast("GRABBING...", 2000);
+        return true;
+    }
     if (event.key >= '1' && event.key <= '9') {
         if (!toggleMidiLayer(static_cast<uint8_t>(event.key - '1'))) {
             UI::showToast("MIDI LAYER UNAVAILABLE", 800);
@@ -1115,3 +1181,49 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      projection.layers.partial);
 }
 
+
+// Takes a finished GRAB from the player mailbox into the target voice's
+// Working Melody (one Undo step, on the synth page).
+void SequencerHubPage::tick() {
+    SequencerHubPageBase::tick();
+    if (!midiGrabPending_) return;
+    ISmfPlayerService* service = smfPlayerService();
+    if (!service) {
+        midiGrabPending_ = false;
+        return;
+    }
+    const SmfGrabResult result = service->grabResult();
+    if (result.state == SmfGrabState::Working) return;
+    if (result.state == SmfGrabState::Failed) {
+        midiGrabPending_ = false;
+        UI::showToast(result.message[0] ? result.message : "GRAB FAILED", 1400);
+        service->acknowledgeGrab();
+        return;
+    }
+    if (result.state != SmfGrabState::Ready) {
+        midiGrabPending_ = false;
+        return;
+    }
+    // Ready stays in the mailbox until it is copied out; without memory for
+    // the copy, try again on the next tick rather than lose or wedge it.
+    std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> melody(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+    if (!melody) return;
+    if (!service->takeGrabbedMelody(*melody)) {
+        midiGrabPending_ = false;
+        UI::showToast("GRAB FAILED", 1000);
+        return;
+    }
+    midiGrabPending_ = false;
+    const int voice = midiGrabVoice_ == 1 ? 1 : 0;
+    char toast[40]{};
+    if (SynthSequencerPage::replaceMelodyFor(mini_acid_, audio_guard_, voice, *melody)) {
+        std::snprintf(toast, sizeof(toast), "GRAB %uN %uB > MEL %c",
+                      static_cast<unsigned>(result.notes),
+                      static_cast<unsigned>(result.bars),
+                      static_cast<char>('A' + voice));
+        UI::showToast(toast, 1600);
+    } else {
+        UI::showToast("GRAB: MELODY CHANGED, RETRY", 1400);
+    }
+}

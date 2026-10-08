@@ -5,6 +5,10 @@
 
 #include "smf_channel_inspector.h"
 #include "smf_loop.h"
+
+namespace PhraseRuntime {
+struct RuntimeSynthEventBuffer;
+}
 #include "smf_midi_visual.h"
 
 namespace GroovePuterMidi {
@@ -79,6 +83,32 @@ struct SmfPlayerPerformanceSnapshot {
     uint32_t tempoReanchors{0};
 };
 
+// GRAB: one bar window of one HUB layer (a track plus its channels) projected
+// into a Melody by the player task, which owns the file. Only while paused or
+// stopped: reading rescans the file, which would stall playback.
+enum class SmfGrabState : uint8_t {
+    Idle = 0,
+    Working,
+    Ready,
+    Failed,
+};
+
+struct SmfGrabRequest {
+    uint16_t trackIndex{0};
+    uint16_t channelMask{0xFFFFu};
+    uint32_t startBar{1};   // one-based
+    uint32_t endBar{1};     // one-based, inclusive
+};
+
+struct SmfGrabResult {
+    SmfGrabState state{SmfGrabState::Idle};
+    uint16_t notes{0};
+    uint8_t bars{0};
+    uint16_t cutAtEnd{0};
+    uint16_t startedBefore{0};
+    char message[24]{};
+};
+
 struct SmfPlayerSnapshot {
     SmfPlayerState state{SmfPlayerState::Unloaded};
     char filename[48]{};
@@ -127,6 +157,19 @@ public:
     virtual bool cycleLoopMode() { return false; }
     virtual bool markLoopStart() { return false; }
     virtual bool markLoopEnd() { return false; }
+    // GRAB mailbox: request (Idle/Failed -> Working), then poll grabResult();
+    // Ready -> takeGrabbedMelody() copies the Melody and returns to Idle,
+    // Failed -> acknowledgeGrab() returns to Idle.
+    virtual bool requestGrab(const SmfGrabRequest& request) {
+        (void)request;
+        return false;
+    }
+    virtual SmfGrabResult grabResult() const { return SmfGrabResult{}; }
+    virtual bool takeGrabbedMelody(PhraseRuntime::RuntimeSynthEventBuffer& out) {
+        (void)out;
+        return false;
+    }
+    virtual void acknowledgeGrab() {}
     virtual bool persistTrackOutputRoutes(uint32_t generation) {
         (void)generation;
         return false;

@@ -73,6 +73,22 @@ public:
         return ensureStarted() && player_.markLoopEnd();
     }
 
+    bool requestGrab(const SmfGrabRequest& request) override {
+        return ensureStarted() && player_.requestGrab(request);
+    }
+
+    SmfGrabResult grabResult() const override {
+        return started_ ? player_.grabResult() : SmfGrabResult{};
+    }
+
+    bool takeGrabbedMelody(PhraseRuntime::RuntimeSynthEventBuffer& out) override {
+        return started_ && player_.takeGrabbedMelody(out);
+    }
+
+    void acknowledgeGrab() override {
+        if (started_) player_.acknowledgeGrab();
+    }
+
     // Every ISmfPlayerService method must be forwarded here: an unforwarded
     // one silently falls back to the interface default (false / empty), which
     // read as "MIDI PLAYER BUSY", "SAVE BUSY" and a file manager that could

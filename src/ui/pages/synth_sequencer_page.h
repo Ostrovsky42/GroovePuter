@@ -18,6 +18,11 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // G into a Melody (Alt+G here; plain G on STEPS and GENRE when the GEN
   // panel says MELODY): a LENGTH-bar phrase for `voice`, switching it to its
   // Melody first if it is on steps. Shows the result as a toast.
+  // GRAB and other whole-Melody sources: the voice switches to MELODY if
+  // needed (as G does) and the Melody is replaced in one Undo step.
+  static bool replaceMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                               int voice,
+                               const PhraseRuntime::RuntimeSynthEventBuffer& melody);
   static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
                                 int voice);
 

@@ -1588,6 +1588,24 @@ bool SynthSequencerPage::shiftPitch(int direction, PitchStep stepKind) {
   return true;
 }
 
+bool SynthSequencerPage::replaceMelodyFor(
+    MiniAcid& mini_acid,
+    const AudioGuard& audio_guard,
+    int voice,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+  if (voice < 0 || voice > 1 || !RuntimePhraseEdit::validate(melody)) return false;
+  if (mini_acid.currentSequencedSource(voice) != MiniAcid::SequencedSource::Phrase) {
+    const auto result = PhraseSourceToggle::toggle(mini_acid, audio_guard, voice);
+    if (result == PhraseSourceToggle::Result::Rejected ||
+        mini_acid.currentSequencedSource(voice) != MiniAcid::SequencedSource::Phrase) {
+      return false;
+    }
+  }
+  return commitRuntimePhraseEditWithUndo(mini_acid, audio_guard, voice,
+                                         mini_acid.currentPhraseBuffer(voice),
+                                         melody);
+}
+
 bool SynthSequencerPage::generateMelodyFor(MiniAcid& mini_acid,
                                            const AudioGuard& audio_guard,
                                            int voice) {

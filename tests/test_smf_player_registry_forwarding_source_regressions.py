@@ -15,7 +15,7 @@ service = (ROOT / "src/midi/smf_player_service.h").read_text(encoding="latin-1")
 registry = (ROOT / "src/platform/cardputer_smf_player_registry.cpp").read_text(encoding="latin-1")
 
 start = service.index("class ISmfPlayerService")
-body = service[start:service.index("};", start)]
+body = service[start:service.index("\n};", start)]  # class end, not a "{};" inside
 methods = sorted(set(re.findall(r"virtual\s+[\w:<>]+\s+(\w+)\s*\(", body)))
 assert methods, "no ISmfPlayerService methods found"
 
