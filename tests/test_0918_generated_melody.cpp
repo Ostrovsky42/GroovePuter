@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <set>
 
@@ -14,6 +15,7 @@
 #include "../src/audio/pattern_paging.h"
 #include "../src/dsp/generated_melody.h"
 #include "../src/dsp/miniacid_engine.h"
+#include "../src/generation/migration/quantized_generation_commit.h"
 #include "../src/state/generation_shape_state.h"
 #include "../src/platform/cardputer_material_publication_session.h"
 
@@ -162,6 +164,55 @@ void testNoteLengthHoldsWithoutOverlap(MiniAcid& engine) {
   GroovePuterState::setGenerationNoteLength(GenerationNoteLength::Short);
 }
 
+bool sameDrums(const DrumPatternSet& a, const DrumPatternSet& b) {
+  return std::memcmp(&a, &b, sizeof(DrumPatternSet)) == 0;
+}
+
+bool sameSynth(const SynthPattern& a, const SynthPattern& b) {
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    if (a.steps[step].note != b.steps[step].note) return false;
+  }
+  return true;
+}
+
+// GEN DRUMS: a full G with KEEP leaves the slot's drums exactly as they were
+// and still writes new synths; NEW changes the drums.
+void testKeepDrumsRegeneratesOnlySynths(MiniAcid& engine) {
+  using namespace GroovePuterRhythm;
+  for (const GenerativeMode mode : {GenerativeMode::Acid, GenerativeMode::House,
+                                    GenerativeMode::LoFi}) {
+    selectGenre(engine, static_cast<int>(mode));
+    Scene& scene = engine.sceneManager().currentScene();
+    const auto target = QuantizedGenerationDetail::captureTarget(engine.sceneManager());
+    auto drumsNow = [&]() {
+      return scene.drumBanks[target.drumBank].patterns[target.drumSlot];
+    };
+    auto synthNow = [&](int voice) {
+      return voice == 0 ? scene.synthABanks[target.synthBank[0]].patterns[target.synthSlot[0]]
+                        : scene.synthBBanks[target.synthBank[1]].patterns[target.synthSlot[1]];
+    };
+    const GenreSettings settings = scene.genre;
+    const GrooveboxMode grooveMode = engine.grooveboxMode();
+
+    assert(regenerateWithQuantizedCommit(engine, settings, grooveMode, false,
+                                         engine.bpm(), false) ==
+           QuantizedGenerationResult::CommittedNow);
+    const DrumPatternSet drums = drumsNow();
+    const SynthPattern synthA = synthNow(0);
+    const SynthPattern synthB = synthNow(1);
+
+    bool synthsChanged = false;
+    for (int press = 0; press < 3 && !synthsChanged; ++press) {
+      assert(regenerateWithQuantizedCommit(engine, settings, grooveMode, false,
+                                           engine.bpm(), true) ==
+             QuantizedGenerationResult::CommittedNow);
+      assert(sameDrums(drumsNow(), drums));
+      synthsChanged = !sameSynth(synthNow(0), synthA) || !sameSynth(synthNow(1), synthB);
+    }
+    assert(synthsChanged);
+  }
+}
+
 void testInvalidRequestsLeaveNothingToCommit(MiniAcid& engine) {
   selectGenre(engine, 0);
   Buffer phrase{};
@@ -195,6 +246,7 @@ int main() {
   testInvalidRequestsLeaveNothingToCommit(engine);
   testLivelinessMovesDensity(engine);
   testNoteLengthHoldsWithoutOverlap(engine);
+  testKeepDrumsRegeneratesOnlySynths(engine);
   std::printf("0.9.18 generated melody: OK\n");
   return 0;
 }

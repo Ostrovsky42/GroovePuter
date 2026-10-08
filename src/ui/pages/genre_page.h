@@ -36,6 +36,7 @@ class GenrePage : public IPage {
 
   enum class GenRow : uint8_t {
     Target = 0,
+    Drums,
     Length,
     Lively,
     Notes,

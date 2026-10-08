@@ -130,6 +130,7 @@ musical identity through the bounded session attempt stream.
 | Field | Values | What it does |
 |---|---|---|
 | `TARGET` | `STEPS` / `MELODY A` / `MELODY B` | Where plain `G` writes. `MELODY A/B`: `G` on GENRE writes a phrase into that synth's Melody; `G` on a synth's STEPS writes that synth's Melody. The synth switches to its Melody first; drums and steps stay. |
+| `DRUMS` | `NEW` / `KEEP` | With `TARGET STEPS`: `NEW` makes a whole new TAKE (drums and both synths); `KEEP` rebuilds only the two synths against the drums already in the slot. A Melody never touches the drums. Enter with APPLY NEW TAKE follows it too. |
 | `LENGTH` | `1/2/4/8` bars | Phrase length for a Melody (`G`, `Alt+G`) and for the MATERIAL TAKE; the same value as MATERIAL `LENGTH`. |
 | `LIVELY` | `CALM` / `NORMAL` / `LIVELY` | How busy Synth B comes out: the lead in melodic genres, the chords in chord genres (Reggae, TripHop). `CALM` prefers sparse cells and long chords, `LIVELY` dense lines and stabs; `NORMAL` is the genre as it is. |
 | `NOTES` | `SHORT` / `MIXED` / `LONG` | How long generated Melody notes ring: the genre's gate, some held on to the next note (more before rests), or all legato. Steps have no note length. |

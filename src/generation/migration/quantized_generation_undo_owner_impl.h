@@ -510,7 +510,8 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     const GenreSettings& requestedGenre,
     GrooveboxMode requestedMode,
     bool applyTempo,
-    float requestedBpm) {
+    float requestedBpm,
+    bool keepDrums = false) {
   using namespace QuantizedGenerationDetail;
 
   SceneManager& scenes = engine.sceneManager();
@@ -546,7 +547,8 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
           requestLevel,
           attemptOrdinal,
           lease.hasPreviousPending,
-          candidate)) {
+          candidate,
+          keepDrums)) {
     releaseWriteSlot(lease.slot);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),

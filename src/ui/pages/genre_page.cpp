@@ -234,12 +234,14 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     // AudioMutationGate. AudioTask keeps rendering the current bar while the
     // complete next-bar candidate is built and atomically published.
     generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
-        mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+        mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm,
+        GroovePuterState::generationKeepsDrums());
   } else {
     withAudioGuard([&]() {
       if (doRegenerate) {
         generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
-            mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+            mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm,
+            GroovePuterState::generationKeepsDrums());
         return;
       }
       activeSettings = requestedSettings;
@@ -327,13 +329,21 @@ bool GenrePage::generateFromG() {
 bool GenrePage::handleGenPanelNav(int nav) {
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
     gen_focus_ = static_cast<GenRow>(
-        wrapIndex(static_cast<int>(gen_focus_) + (nav == GROOVEPUTER_UP ? -1 : 1), 4));
+        wrapIndex(static_cast<int>(gen_focus_) + (nav == GROOVEPUTER_UP ? -1 : 1), 5));
     return true;
   }
   if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
   const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
   switch (gen_focus_) {
     case GenRow::Target: (void)GroovePuterState::cycleGenerationTarget(delta); break;
+    case GenRow::Drums:
+      if (GroovePuterState::generationTarget() ==
+          GroovePuterState::GenerationTarget::Melody) {
+        UI::showToast("MELODY KEEPS DRUMS", 900);
+      } else {
+        (void)GroovePuterState::toggleGenerationKeepsDrums();
+      }
+      break;
     case GenRow::Length: (void)GroovePuterState::cycleRequestedPhraseBars(delta); break;
     case GenRow::Lively: (void)GroovePuterState::cycleGenerationLiveliness(delta); break;
     case GenRow::Notes: (void)GroovePuterState::cycleGenerationNoteLength(delta); break;
@@ -360,14 +370,18 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
   else std::snprintf(value, sizeof(value), "STEPS");
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "TARGET", value,
                        gen_focus_ == GenRow::Target, axisColor, palette);
+  const bool keepDrums = melody || GroovePuterState::generationKeepsDrums();
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "DRUMS",
+                       melody ? "KEEP (MELODY)" : keepDrums ? "KEEP" : "NEW",
+                       gen_focus_ == GenRow::Drums, axisColor, palette);
   std::snprintf(value, sizeof(value), "%u BAR%s", bars, bars == 1 ? "" : "S");
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "LENGTH", value,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "LENGTH", value,
                        gen_focus_ == GenRow::Length, axisColor, palette);
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "LIVELY",
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "LIVELY",
                        GroovePuterState::generationLivelinessName(
                            GroovePuterState::generationLiveliness()),
                        gen_focus_ == GenRow::Lively, axisColor, palette);
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "NOTES",
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "NOTES",
                        GroovePuterState::generationNoteLengthName(
                            GroovePuterState::generationNoteLength()),
                        gen_focus_ == GenRow::Notes, axisColor, palette);
@@ -375,12 +389,12 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   if (melody) {
     std::snprintf(value, sizeof(value), "G: %uB PHRASE -> SYNTH %c MELODY", bars, synth);
-    gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
-    gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, "DRUMS + STEPS STAY  G IN MELODY TOO");
   } else {
-    gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, "G: NEW TAKE IN STEPS");
-    gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, "LENGTH/NOTES: MELODY G + TAKE");
+    std::snprintf(value, sizeof(value), "%s", keepDrums
+        ? "G: NEW SYNTHS ON THESE DRUMS"
+        : "G: NEW TAKE, DRUMS + SYNTHS");
   }
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
   UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GENERATE");
 }
 

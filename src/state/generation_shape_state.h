@@ -34,6 +34,10 @@ inline GenerationLiveliness& livelinessStorage() {
   static GenerationLiveliness liveliness = GenerationLiveliness::Normal;
   return liveliness;
 }
+inline bool& keepDrumsStorage() {
+  static bool keep = false;
+  return keep;
+}
 inline GenerationNoteLength& noteLengthStorage() {
   static GenerationNoteLength length = GenerationNoteLength::Short;
   return length;
@@ -65,6 +69,18 @@ inline GenerationTarget cycleGenerationTarget(int direction = 1) {
   target = position == 0 ? GenerationTarget::Steps : GenerationTarget::Melody;
   if (position > 0) voice = static_cast<uint8_t>(position - 1);
   return target;
+}
+
+// DRUMS KEEP: a STEPS G from GENRE rebuilds only the synths, against the
+// drums already there. NEW (default) regenerates the drums too.
+inline bool generationKeepsDrums() {
+  return generation_shape_detail::keepDrumsStorage();
+}
+
+inline bool toggleGenerationKeepsDrums() {
+  bool& keep = generation_shape_detail::keepDrumsStorage();
+  keep = !keep;
+  return keep;
 }
 
 inline GenerationLiveliness generationLiveliness() {

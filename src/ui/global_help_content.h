@@ -51,6 +51,7 @@ constexpr const char* kGenreLines[] = {
     "No texture or feel changes",
     "--- GEN 2/3 (Tab) ---",
     "TARGET      G into STEPS or MELODY",
+    "DRUMS       NEW, or KEEP: synths only",
     "LENGTH      Melody/TAKE bars 1/2/4/8",
     "LIVELY      CALM / NORMAL / LIVELY",
     "NOTES       Melody SHORT/MIXED/LONG",
