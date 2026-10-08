@@ -19,6 +19,7 @@
 #include "../phrase_chord_focus.h"
 #include "../project_key.h"
 #include "src/dsp/generated_melody.h"
+#include "src/state/generation_shape_state.h"
 #include "src/state/phrase_generation_request_state.h"
 #include "src/state/scene_revision.h"
 #include "../phrase_notes_projection.h"
@@ -1487,15 +1488,10 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
     if (lower == 'x' || ui_event.scancode == GROOVEPUTER_X) return shiftPitch(-1, PitchStep::Octave);
   }
 
-  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+  // G generates here as on every page; the grid step is Aa (Ctrl+G on SDL).
+  if (!ui_event.alt && !ui_event.meta &&
       (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
-    phrase_cursor_ = PhraseNotesCursor::changeGrid(
-        phrase_cursor_, 1, phrase.lengthTicks);
-    char toast[24];
-    std::snprintf(toast, sizeof(toast), "STEP %s",
-                  PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
-    UI::showToast(toast, 900);
-    return true;
+    return ui_event.ctrl ? cycleMelodyGrid() : generateMelodyPhrase();
   }
 
   const bool pitchUp = phrase_view_ == PhraseView::List
@@ -1574,36 +1570,65 @@ bool SynthSequencerPage::shiftPitch(int direction, PitchStep stepKind) {
   return true;
 }
 
-// Alt+G on the Melody: a 1/2/4/8-bar phrase (MATERIAL LENGTH) from the genre,
-// key and STYLE, replacing this Melody as one edit (Ctrl+Z restores it).
-bool SynthSequencerPage::generateMelodyPhrase() {
-  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+bool SynthSequencerPage::generateMelodyFor(MiniAcid& mini_acid,
+                                           const AudioGuard& audio_guard,
+                                           int voice) {
+  if (voice < 0 || voice > 1) return false;
+  GroovePuterState::setLastSynthVoice(voice);
+  if (mini_acid.currentSequencedSource(voice) != MiniAcid::SequencedSource::Phrase) {
+    const auto result = PhraseSourceToggle::toggle(mini_acid, audio_guard, voice);
+    if (result == PhraseSourceToggle::Result::Rejected ||
+        mini_acid.currentSequencedSource(voice) != MiniAcid::SequencedSource::Phrase) {
+      UI::showToast("MELODY FAILED", 1500);
+      return true;
+    }
+  }
   std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
       new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
   if (!after) {
     UI::showToast("NO MEMORY FOR MELODY", 1200);
     return true;
   }
+  // Each press is a new phrase; the same count on the same settings repeats.
+  static uint32_t presses[2] = {0, 0};
   const uint8_t bars = GroovePuterState::requestedPhraseBars();
-  const auto status = GeneratedMelody::generate(
-      mini_acid_, voice_index_, bars, ++melody_generation_count_, *after);
+  const auto status = GeneratedMelody::generate(mini_acid, voice, bars,
+                                                ++presses[voice], *after);
   if (status != GeneratedMelody::Status::Ready) {
     UI::showToast(GeneratedMelody::statusText(status), 1400);
     return true;
   }
-  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
-                                       phrase, *after)) {
+  if (!commitRuntimePhraseEditWithUndo(mini_acid, audio_guard, voice,
+                                       mini_acid.currentPhraseBuffer(voice),
+                                       *after)) {
     UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
     return true;
   }
+  char toast[40];
+  std::snprintf(toast, sizeof(toast), "MELODY %c %uB  G AGAIN  CTRL+Z",
+                static_cast<char>('A' + voice), static_cast<unsigned>(bars));
+  UI::showToast(toast, 1600);
+  return true;
+}
+
+// Aa on the Cardputer, Ctrl+G: the Melody grid step 1/16 -> 1/8 -> ...
+bool SynthSequencerPage::cycleMelodyGrid() {
+  phrase_cursor_ = PhraseNotesCursor::changeGrid(
+      phrase_cursor_, 1, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
+  char toast[24];
+  std::snprintf(toast, sizeof(toast), "STEP %s",
+                PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
+  UI::showToast(toast, 900);
+  return true;
+}
+
+// G (and Alt+G) on the Melody.
+bool SynthSequencerPage::generateMelodyPhrase() {
+  const bool handled = generateMelodyFor(mini_acid_, audio_guard_, voice_index_);
   chord_focus_event_ = -1;
   phrase_cursor_ = PhraseNotesCursor::clamp(
       phrase_cursor_, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
-  char toast[40];
-  std::snprintf(toast, sizeof(toast), "MELODY %u BARS  ALT+G AGAIN  CTRL+Z",
-                static_cast<unsigned>(bars));
-  UI::showToast(toast, 1600);
-  return true;
+  return handled;
 }
 
 // Alt+A, as on STEPS: accent on the note being edited (a chord note with C).
@@ -1690,9 +1715,21 @@ bool SynthSequencerPage::toggleSource() {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    GroovePuterState::setLastSynthVoice(voice_index_);
+  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
     return toggleSource();
+  }
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_CYCLE_GRID) {
+    if (synth_tab_ != SynthTab::Notes ||
+        mini_acid_.currentSequencedSource(voice_index_) !=
+            MiniAcid::SequencedSource::Phrase) {
+      return false;
+    }
+    return cycleMelodyGrid();
   }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE) {

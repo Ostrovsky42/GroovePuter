@@ -107,20 +107,20 @@ int main() {
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
 
-    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
+    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/3"));
     assert(sectionContains(WorkflowPages::kGenre, "Generate full material"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
-    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 3/3"));
     assert(sectionContains(WorkflowPages::kFeel, "Profile     Straight/Swing/Laid/Push"));
     assert(sectionContains(WorkflowPages::kFeel, "Next gen; clock/pitch unchanged"));
 
     // Historical GENERATION/TEXTURE page ids remain readable but both resolve
     // to FEEL content; neither is a normal navigation destination anymore.
     assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kGeneration), "FEEL") == 0);
-    assert(sectionContains(WorkflowPages::kGeneration, "FEEL 2/2"));
+    assert(sectionContains(WorkflowPages::kGeneration, "FEEL 3/3"));
     assert(!sectionContains(WorkflowPages::kGeneration, "GENERATION"));
     assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kTexture), "FEEL") == 0);
-    assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/2"));
+    assert(sectionContains(WorkflowPages::kTexture, "FEEL 3/3"));
     assert(!sectionContains(WorkflowPages::kTexture, "TEXTURE"));
 
     std::cout << "global help content tests passed\n";

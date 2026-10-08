@@ -63,6 +63,9 @@ enum ApplicationEventType {
   // Cardputer Opt key (one key for Alt+R): a synth page switches its source
   // STEPS <-> MELODY, from any tab.
   GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE,
+  // Cardputer Aa (Shift) tapped alone: the Melody editor steps its grid
+  // (G there generates, as everywhere; Ctrl+G is the same grid step for SDL).
+  GROOVEPUTER_APP_EVENT_CYCLE_GRID,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };

@@ -108,7 +108,7 @@ scancode.
 Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
 ownership; internal Synth A/B remain sequencer/pattern instruments.
 
-## GENRE 1/2
+## GENRE 1/3
 
 | Key | Action |
 |---|---|
@@ -123,7 +123,20 @@ During PLAY, accepted full generation publishes at the next real `BAR_START`; wh
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
 musical identity through the bounded session attempt stream.
 
-## FEEL 2/2
+## GEN 2/3
+
+`Tab` from GENRE opens GEN, `Tab` again goes on to FEEL, `Esc` returns to GENRE.
+
+| Field | Values | What it does |
+|---|---|---|
+| `TARGET` | `STEPS` / `MELODY A/B` | Where plain `G` writes, on GENRE and on a synth's STEPS. `MELODY` writes a phrase into the Melody of the synth (on GENRE: the synth last opened), switching it to its Melody first; drums and steps stay. |
+| `LENGTH` | `1/2/4/8` bars | Phrase length for a Melody (`G`, `Alt+G`) and for the MATERIAL TAKE; the same value as MATERIAL `LENGTH`. |
+| `LIVELY` | `CALM` / `NORMAL` / `LIVELY` | How busy Synth B comes out: the lead in melodic genres, the chords in chord genres (Reggae, TripHop). `CALM` prefers sparse cells and long chords, `LIVELY` dense lines and stabs; `NORMAL` is the genre as it is. |
+| `NOTES` | `SHORT` / `MIXED` / `LONG` | How long generated Melody notes ring: the genre's gate, some held on to the next note (more before rests), or all legato. Steps have no note length. |
+
+Settings live for the session.
+
+## FEEL 3/3
 
 | Key | Action |
 |---|---|
@@ -175,7 +188,7 @@ move it by exactly one semitone. `K` raises the key's tonic a semitone and `M`
 picks the next scale; notes stay where they are, and G generates in the same
 key. `V` switches to list view. `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
-`J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
+`J` joins it to the next note, and `Aa` (`Ctrl+G` on SDL) changes the grid. `Ctrl+Left/Right` jump
 to the previous/next bar. `[` / `]` switch the workflow page as on every page;
 `Q..I` and `B` pick a saved Melody;
 `Alt+Up/Down` scroll the
@@ -201,10 +214,12 @@ Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the
 chord's top note (an arpeggio plays everywhere). Thin lines separate the pitch
 rows; the dotted one is the key's tonic.
 
-`Alt+G` on the Melody generates a whole phrase from the genre, key and STYLE:
+`G` (or `Alt+G`) on the Melody generates a whole phrase from the genre, key and STYLE:
 as many bars as MATERIAL LENGTH asks for (1, 2, 4 or 8), for this synth only,
 replacing the Melody as one edit. Each press gives another phrase; `Ctrl+Z`
 brings the previous Melody back. Steps, slots and Song rows are not touched.
+GEN `LIVELY` and `NOTES` shape it. The grid step that `G` used to cycle is the
+Cardputer `Aa` key tapped alone (`Ctrl+G` on the emulator).
 
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.

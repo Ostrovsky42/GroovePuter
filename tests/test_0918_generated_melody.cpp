@@ -14,6 +14,7 @@
 #include "../src/audio/pattern_paging.h"
 #include "../src/dsp/generated_melody.h"
 #include "../src/dsp/miniacid_engine.h"
+#include "../src/state/generation_shape_state.h"
 #include "../src/platform/cardputer_material_publication_session.h"
 
 SerialMock Serial;
@@ -90,6 +91,77 @@ void testLeadsAreMelodies(MiniAcid& engine) {
   }
 }
 
+// GEN panel LIVELY: across melodic genres and presses, LIVELY leads carry more notes
+// than CALM ones; NORMAL is the genre untouched (the tests above run on it).
+void testLivelinessMovesDensity(MiniAcid& engine) {
+  using GroovePuterState::GenerationLiveliness;
+  auto notesAt = [&](GenerationLiveliness liveliness) {
+    GroovePuterState::setGenerationLiveliness(liveliness);
+    uint32_t total = 0;
+    for (int mode = 0; mode < kGenerativeModeCount; ++mode) {
+      // Reggae and TripHop play chords on Synth B: LIVELY changes their
+      // rhythm (stabs, not held pads), not the event count.
+      if (mode == static_cast<int>(GenerativeMode::Reggae) ||
+          mode == static_cast<int>(GenerativeMode::TripHop)) continue;
+      selectGenre(engine, mode);
+      for (uint32_t salt = 1; salt <= 12; ++salt) {
+        Buffer phrase{};
+        assert(GeneratedMelody::generate(engine, 1, 4, salt, phrase) ==
+               GeneratedMelody::Status::Ready);
+        total += phrase.count;
+      }
+    }
+    return total;
+  };
+  const uint32_t calm = notesAt(GenerationLiveliness::Calm);
+  const uint32_t normal = notesAt(GenerationLiveliness::Normal);
+  const uint32_t lively = notesAt(GenerationLiveliness::Lively);
+  std::printf("lead notes CALM %u NORMAL %u LIVELY %u\n", calm, normal, lively);
+  std::fflush(stdout);
+  assert(calm < normal);
+  assert(normal < lively);
+  GroovePuterState::setGenerationLiveliness(GenerationLiveliness::Normal);
+}
+
+// GEN panel NOTES: the same notes, held longer, never overlapping.
+void testNoteLengthHoldsWithoutOverlap(MiniAcid& engine) {
+  using GroovePuterState::GenerationNoteLength;
+  for (int mode = 0; mode < kGenerativeModeCount; ++mode) {
+    selectGenre(engine, mode);
+    uint64_t shortTotal = 0, mixedTotal = 0, longTotal = 0;
+    for (uint32_t salt = 1; salt <= 4; ++salt) {
+      Buffer shortNotes{}, mixed{}, legato{};
+      GroovePuterState::setGenerationNoteLength(GenerationNoteLength::Short);
+      assert(GeneratedMelody::generate(engine, 1, 4, salt, shortNotes) ==
+             GeneratedMelody::Status::Ready);
+      GroovePuterState::setGenerationNoteLength(GenerationNoteLength::Mixed);
+      assert(GeneratedMelody::generate(engine, 1, 4, salt, mixed) ==
+             GeneratedMelody::Status::Ready);
+      GroovePuterState::setGenerationNoteLength(GenerationNoteLength::Long);
+      assert(GeneratedMelody::generate(engine, 1, 4, salt, legato) ==
+             GeneratedMelody::Status::Ready);
+      for (const Buffer* b : {&mixed, &legato}) {
+        assert(b->count == shortNotes.count);
+        assert(RuntimePhraseEdit::validate(*b));
+        assert(!RuntimePhraseEdit::hasOverlappingNotes(*b));
+        for (uint16_t i = 0; i < b->count; ++i) {
+          assert(b->events[i].startTick == shortNotes.events[i].startTick);
+          assert(b->events[i].note == shortNotes.events[i].note);
+          assert(b->events[i].durationSubticks >= shortNotes.events[i].durationSubticks);
+        }
+      }
+      for (uint16_t i = 0; i < shortNotes.count; ++i) {
+        shortTotal += shortNotes.events[i].durationSubticks;
+        mixedTotal += mixed.events[i].durationSubticks;
+        longTotal += legato.events[i].durationSubticks;
+      }
+    }
+    assert(shortTotal <= mixedTotal && mixedTotal <= longTotal);
+    assert(shortTotal < longTotal);
+  }
+  GroovePuterState::setGenerationNoteLength(GenerationNoteLength::Short);
+}
+
 void testInvalidRequestsLeaveNothingToCommit(MiniAcid& engine) {
   selectGenre(engine, 0);
   Buffer phrase{};
@@ -121,6 +193,8 @@ int main() {
   testEveryGenreGivesAPlayablePhrase(engine);
   testLeadsAreMelodies(engine);
   testInvalidRequestsLeaveNothingToCommit(engine);
+  testLivelinessMovesDensity(engine);
+  testNoteLengthHoldsWithoutOverlap(engine);
   std::printf("0.9.18 generated melody: OK\n");
   return 0;
 }

@@ -5,6 +5,7 @@
 #include <new>
 
 #include "generated_phrase_song.h"
+#include "src/state/generation_shape_state.h"
 #include "src/phrase/runtime_phrase_edit.h"
 #include "src/phrase/runtime_synth_events.h"
 
@@ -143,6 +144,36 @@ inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
                                           : Status::ProjectionFailed;
 }
 
+// GEN panel NOTES: hold notes towards the next attack. Never shortens a note
+// and never reaches the next attack, so nothing overlaps.
+inline void applyNoteLength(PhraseRuntime::RuntimeSynthEventBuffer& phrase,
+                            GroovePuterState::GenerationNoteLength length,
+                            uint32_t salt) {
+  using GroovePuterState::GenerationNoteLength;
+  if (length == GenerationNoteLength::Short) return;
+  constexpr uint32_t kRestTicks = PhraseRuntime::kTicksPerBar / 8;  // two steps
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    auto& event = phrase.events[i];
+    uint32_t next = phrase.lengthTicks;
+    for (uint16_t j = 0; j < phrase.count; ++j) {
+      const uint32_t start = phrase.events[j].startTick;
+      if (start > event.startTick && start < next) next = start;
+    }
+    uint32_t span = next - event.startTick;
+    if (span > PhraseRuntime::kTicksPerBar) span = PhraseRuntime::kTicksPerBar;
+    if (length == GenerationNoteLength::Mixed) {
+      // Before a rest, two notes in three ring on; elsewhere one in three.
+      const uint32_t hash = (event.startTick * 0x9E3779B1u) ^ (salt * 0x85EBCA6Bu);
+      const bool beforeRest = next - event.startTick >= kRestTicks;
+      if ((hash >> 16) % 3u >= (beforeRest ? 2u : 1u)) continue;
+    }
+    const uint32_t subticks = span * PhraseRuntime::kSubticksPerTick;
+    if (subticks > event.durationSubticks && subticks <= 0xFFFFu) {
+      event.durationSubticks = static_cast<uint16_t>(subticks);
+    }
+  }
+}
+
 }  // namespace detail
 
 // `salt` separates successive presses: the same salt and settings give the
@@ -163,18 +194,25 @@ inline Status generate(MiniAcid& engine, int voice, uint8_t bars, uint32_t salt,
     status = detail::generateAt(engine, voice, bars, salt, coordinate, out);
     if (status != Status::Ready) return status;
     const uint8_t pitches = detail::distinctPitches(out);
-    if (pitches >= 2 && out.count >= bars) return Status::Ready;
+    if (pitches >= 2 && out.count >= bars) {
+      detail::applyNoteLength(out, GroovePuterState::generationNoteLength(), salt);
+      return Status::Ready;
+    }
     const uint32_t score = (static_cast<uint32_t>(pitches) << 16) | out.count;
     if (!best || score > bestScore) {
       if (!best) {
         best.reset(new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
-        if (!best) return Status::Ready;  // keep this attempt
+        if (!best) {  // keep this attempt
+          detail::applyNoteLength(out, GroovePuterState::generationNoteLength(), salt);
+          return Status::Ready;
+        }
       }
       *best = out;
       bestScore = score;
     }
   }
   out = *best;
+  detail::applyNoteLength(out, GroovePuterState::generationNoteLength(), salt);
   return Status::Ready;
 }
 

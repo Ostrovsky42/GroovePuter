@@ -15,6 +15,12 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
   SynthSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
 
+  // G into a Melody (Alt+G here; plain G on STEPS and GENRE when the GEN
+  // panel says MELODY): a LENGTH-bar phrase for `voice`, switching it to its
+  // Melody first if it is on steps. Shows the result as a toast.
+  static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                                int voice);
+
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
@@ -95,8 +101,8 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int editTargetNote() const;
   bool toggleAccent();
   bool generateMelodyPhrase();
+  bool cycleMelodyGrid();
   // Successive Alt+G presses give different phrases (deterministic per count).
-  uint32_t melody_generation_count_ = 0;
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool newEmptyMelody();

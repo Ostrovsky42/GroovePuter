@@ -36,7 +36,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/2 ===",
+    "=== GENRE 1/3 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/rhythm/apply",
@@ -49,6 +49,11 @@ constexpr const char* kGenreLines[] = {
     "MATERIALIZE Regenerate patterns",
     "RHYTHM AUTO or fixed identity",
     "No texture or feel changes",
+    "--- GEN 2/3 (Tab) ---",
+    "TARGET      G into STEPS or MELODY",
+    "LENGTH      Melody/TAKE bars 1/2/4/8",
+    "LIVELY      CALM / NORMAL / LIVELY",
+    "NOTES       Melody SHORT/MIXED/LONG",
 };
 
 constexpr const char* kSynthALines[] = {
@@ -85,7 +90,8 @@ constexpr const char* kSynthALines[] = {
     "H           Chord / one more tone",
     "C           Next note of chord",
     "Alt+C       Chord -> arpeggio",
-    "Alt+G       Generate phrase (LENGTH)",
+    "G / Alt+G   Generate phrase (GEN)",
+    "Aa/Ctrl+G   Grid step",
     "K / M       Key tonic / scale",
     "Q..I / B    Melody slot, new if none",
     "Ctrl+L/R    Prev/next bar",
@@ -126,7 +132,8 @@ constexpr const char* kSynthBLines[] = {
     "H           Chord / one more tone",
     "C           Next note of chord",
     "Alt+C       Chord -> arpeggio",
-    "Alt+G       Generate phrase (LENGTH)",
+    "G / Alt+G   Generate phrase (GEN)",
+    "Aa/Ctrl+G   Grid step",
     "K / M       Key tonic / scale",
     "Q..I / B    Melody slot, new if none",
     "Ctrl+L/R    Prev/next bar",
@@ -274,7 +281,7 @@ constexpr const char* kHubLines[] = {
 };
 
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/2 ===",
+    "=== FEEL 3/3 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",

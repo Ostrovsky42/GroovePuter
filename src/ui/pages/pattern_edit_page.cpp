@@ -1,4 +1,6 @@
 #include "pattern_edit_page.h"
+#include "synth_sequencer_page.h"
+#include "src/state/generation_shape_state.h"
 
 #include <algorithm>
 #include <cctype>
@@ -747,6 +749,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // the retained legacy handler.
   if (!note_entry_mode_ && keyG &&
       !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    // GEN panel TARGET MELODY: the phrase goes into this synth's Melody.
+    if (GroovePuterState::generationTarget() ==
+        GroovePuterState::GenerationTarget::Melody) {
+      return SynthSequencerPage::generateMelodyFor(mini_acid_, audio_guard_,
+                                                   voice_index_);
+    }
     using GroovePuterRhythm::QuantizedGenerationResult;
     QuantizedGenerationResult result = QuantizedGenerationResult::Failed;
     const auto generate = [&]() {

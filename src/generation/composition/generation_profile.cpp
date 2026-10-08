@@ -4,6 +4,7 @@
 
 #include "../../../scenes.h"
 #include "../../dsp/genre_manager.h"
+#include "../../state/generation_shape_state.h"
 
 namespace GroovePuterRhythm {
 namespace {
@@ -583,6 +584,90 @@ bool selectWeightedIdentityFromView(
   return false;
 }
 
+namespace {
+
+// Rough onsets per bar of each cell, for the GEN panel LIVELY setting.
+uint8_t melodicDensity(uint8_t id) {
+  switch (static_cast<MelodicRhythmId>(id)) {
+    case MelodicRhythmId::LongTone:
+    case MelodicRhythmId::RestHeavy:
+    case MelodicRhythmId::SparseCall: return 1;
+    case MelodicRhythmId::DelayedAnswer:
+    case MelodicRhythmId::TwoNoteHook:
+    case MelodicRhythmId::BarEndResponse:
+    case MelodicRhythmId::SlowPair: return 2;
+    case MelodicRhythmId::PickupPhrase:
+    case MelodicRhythmId::DriftPhrase:
+    case MelodicRhythmId::PedalCell:
+    case MelodicRhythmId::BreakAnswer:
+    case MelodicRhythmId::LateMotif: return 3;
+    case MelodicRhythmId::SyncopatedMotif:
+    case MelodicRhythmId::RepeatedCell:
+    case MelodicRhythmId::OffbeatCell:
+    case MelodicRhythmId::AngularCell:
+    case MelodicRhythmId::ShiftedCell: return 4;
+    case MelodicRhythmId::FunkCell: return 5;
+    case MelodicRhythmId::HookSix: return 6;
+    case MelodicRhythmId::RunningLine:
+    case MelodicRhythmId::EighthArp: return 8;
+    default: return 3;
+  }
+}
+
+uint8_t chordDensity(uint8_t id) {
+  switch (static_cast<ChordRhythmId>(id)) {
+    case ChordRhythmId::HeldPad:
+    case ChordRhythmId::WholeBarHold: return 1;
+    case ChordRhythmId::HalfBarChange:
+    case ChordRhythmId::BackbeatStab:
+    case ChordRhythmId::AnticipatedChange:
+    case ChordRhythmId::DubChordSpace: return 2;
+    case ChordRhythmId::SparseChordReply: return 3;
+    case ChordRhythmId::OffbeatStab: return 4;
+    case ChordRhythmId::SyncopatedComp: return 5;
+    default: return 3;
+  }
+}
+
+// CALM favours sparse cells and drops the dense lines; LIVELY the reverse.
+// When the genre has nothing on the wanted side, one cell from it is added so
+// the setting is always audible. NORMAL returns the genre's view untouched.
+WeightedIdentityView shapeByLiveliness(
+    WeightedIdentityView input, uint8_t (*density)(uint8_t),
+    uint8_t calmExtra, uint8_t livelyExtra,
+    WeightedIdentityCandidate (&storage)[kMaxWeightedCandidates]) {
+  const auto liveliness = GroovePuterState::generationLiveliness();
+  if (liveliness == GroovePuterState::GenerationLiveliness::Normal ||
+      input.candidates == nullptr || input.count == 0 ||
+      input.count >= kMaxWeightedCandidates) {
+    return input;
+  }
+  const bool calm = liveliness == GroovePuterState::GenerationLiveliness::Calm;
+  uint8_t count = 0;
+  uint16_t total = 0;
+  bool wantedSide = false;
+  for (uint8_t index = 0; index < input.count; ++index) {
+    const WeightedIdentityCandidate candidate = input.candidates[index];
+    const uint8_t d = density(candidate.id);
+    uint8_t factor = 1;
+    if (calm) factor = d <= 2 ? 3 : d == 3 ? 2 : d <= 5 ? 1 : 0;
+    else factor = d <= 2 ? 0 : d == 3 ? 1 : d <= 5 ? 2 : 4;
+    if (calm ? d <= 3 : d >= 6) wantedSide = true;
+    const uint16_t weight = static_cast<uint16_t>(candidate.weight) * factor;
+    if (weight == 0) continue;
+    storage[count++] = weighted(candidate.id, static_cast<uint8_t>(weight > 255 ? 255 : weight));
+    total = static_cast<uint16_t>(total + (weight > 255 ? 255 : weight));
+  }
+  if (!wantedSide || count == 0) {
+    const uint16_t weight = total == 0 ? 100 : (total < 2 ? 1 : total / 2);
+    storage[count++] = weighted(calm ? calmExtra : livelyExtra,
+                                static_cast<uint8_t>(weight > 255 ? 255 : weight));
+  }
+  return WeightedIdentityView{storage, count};
+}
+
+}  // namespace
+
 GenerationCompositionResult resolveGenerationComposition(
     const GenreSettings& settings, const GenerationContext& generation) {
   GenerationCompositionResult result{};
@@ -604,12 +689,30 @@ GenerationCompositionResult resolveGenerationComposition(
   result.secondaryRole = profile.secondaryRole;
 
   const uint32_t baseSalt = profileSalt(profile);
+  // LIVELY shapes the part Synth B plays: the lead in melodic genres (busier
+  // chords there would only block lead onsets), the chords in chord genres.
+  const bool chordLead = profile.secondaryRole != CompositionSecondaryRole::Melodic;
+  WeightedIdentityCandidate chordStorage[kMaxWeightedCandidates]{};
+  WeightedIdentityCandidate melodicStorage[kMaxWeightedCandidates]{};
+  const WeightedIdentityView chordRhythms = chordLead
+      ? shapeByLiveliness(profile.chordRhythms, chordDensity,
+                          static_cast<uint8_t>(ChordRhythmId::HeldPad),
+                          static_cast<uint8_t>(ChordRhythmId::OffbeatStab),
+                          chordStorage)
+      : profile.chordRhythms;
+  const WeightedIdentityView melodicRhythms = !chordLead ||
+          profile.secondaryRole == CompositionSecondaryRole::ChordWithMelodicFill
+      ? shapeByLiveliness(profile.melodicRhythms, melodicDensity,
+                          static_cast<uint8_t>(MelodicRhythmId::SlowPair),
+                          static_cast<uint8_t>(MelodicRhythmId::HookSix),
+                          melodicStorage)
+      : profile.melodicRhythms;
   uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0;
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
       !selectWeightedIdentityFromView(profile.bassRhythms, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
-      !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
+      !selectWeightedIdentityFromView(chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
       !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
-      !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
+      !selectWeightedIdentityFromView(melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
       !selectWeightedIdentityFromView(profile.motifShapes, GenerationDomain::MotifSelection, rhythm.archetypeId, baseSalt | melodic, generation, motif) ||
       !selectWeightedIdentityFromView(profile.phraseLaws, GenerationDomain::PhraseLawSelection, rhythm.archetypeId, baseSalt, generation, phraseChoice)) {
     result.status = GenerationCompositionStatus::InvalidProfile;

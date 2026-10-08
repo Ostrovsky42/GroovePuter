@@ -14,6 +14,9 @@
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
 #include "../../state/generation_request_state.h"
+#include "../../state/generation_shape_state.h"
+#include "../../state/phrase_generation_request_state.h"
+#include "synth_sequencer_page.h"
 #include "../../state/scene_revision.h"
 
 namespace {
@@ -285,10 +288,110 @@ void GenrePage::updateFromEngine() {
   rhythmFallbackPending_ = normalizePendingRhythm(false);
 }
 
+// The pending GENRE/RECIPE/RHYTHM choice, without a new TAKE: a Melody from G
+// must follow what the page shows.
+void GenrePage::applyPendingProfile() {
+  const auto genre = static_cast<GenerativeMode>(genre_index_);
+  const auto recipe = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  recipeIndex_ = static_cast<int>(recipe);
+  normalizePendingRhythm(true);
+  const GenreSettings requested = pendingSettings();
+  const GrooveboxMode nextMode = GenreCatalog::grooveboxModeForRecipe(recipe, genre);
+  auto& active = mini_acid_.sceneManager().currentScene().genre;
+  if (active.generativeMode == requested.generativeMode &&
+      active.recipe == requested.recipe &&
+      active.rhythmSelectionMode == requested.rhythmSelectionMode &&
+      active.rhythmArchetypeId == requested.rhythmArchetypeId &&
+      mini_acid_.grooveboxMode() == nextMode) {
+    return;
+  }
+  withAudioGuard([&]() {
+    active = requested;
+    mini_acid_.setGrooveboxMode(nextMode);
+  });
+  GroovePuterState::markSceneMutated();
+}
+
+bool GenrePage::generateFromG() {
+  if (GroovePuterState::generationTarget() ==
+      GroovePuterState::GenerationTarget::Melody) {
+    applyPendingProfile();
+    return SynthSequencerPage::generateMelodyFor(
+        mini_acid_, audio_guard_, GroovePuterState::lastSynthVoice());
+  }
+  applyCurrent(true);
+  return true;
+}
+
+bool GenrePage::handleGenPanelNav(int nav) {
+  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    gen_focus_ = static_cast<GenRow>(
+        wrapIndex(static_cast<int>(gen_focus_) + (nav == GROOVEPUTER_UP ? -1 : 1), 4));
+    return true;
+  }
+  if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
+  const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+  switch (gen_focus_) {
+    case GenRow::Target: (void)GroovePuterState::cycleGenerationTarget(); break;
+    case GenRow::Length: (void)GroovePuterState::cycleRequestedPhraseBars(delta); break;
+    case GenRow::Lively: (void)GroovePuterState::cycleGenerationLiveliness(delta); break;
+    case GenRow::Notes: (void)GroovePuterState::cycleGenerationNoteLength(delta); break;
+  }
+  return true;
+}
+
+void GenrePage::drawGenPanel(IGfx& gfx) {
+  const AxisUI::Palette palette = AxisUI::paletteFor(style_);
+  const IGfxColor axisColor = palette.genre;
+  UI::drawStandardHeader(gfx, mini_acid_, "GENRE");
+  LayoutManager::clearContent(gfx);
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GEN 2/3",
+                      "HOW G GENERATES", axisColor, palette);
+
+  const bool melody = GroovePuterState::generationTarget() ==
+                      GroovePuterState::GenerationTarget::Melody;
+  const char synth = static_cast<char>('A' + GroovePuterState::lastSynthVoice());
+  const unsigned bars = GroovePuterState::requestedPhraseBars();
+  char value[48];
+  if (melody) std::snprintf(value, sizeof(value), "MELODY %c", synth);
+  else std::snprintf(value, sizeof(value), "STEPS");
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "TARGET", value,
+                       gen_focus_ == GenRow::Target, axisColor, palette);
+  std::snprintf(value, sizeof(value), "%u BAR%s", bars, bars == 1 ? "" : "S");
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "LENGTH", value,
+                       gen_focus_ == GenRow::Length, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "LIVELY",
+                       GroovePuterState::generationLivelinessName(
+                           GroovePuterState::generationLiveliness()),
+                       gen_focus_ == GenRow::Lively, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "NOTES",
+                       GroovePuterState::generationNoteLengthName(
+                           GroovePuterState::generationNoteLength()),
+                       gen_focus_ == GenRow::Notes, axisColor, palette);
+
+  gfx.setTextColor(palette.muted);
+  if (melody) {
+    std::snprintf(value, sizeof(value), "G: %uB PHRASE -> SYNTH %c MELODY", bars, synth);
+    gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
+    gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, "DRUMS + STEPS STAY  G IN MELODY TOO");
+  } else {
+    gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, "G: NEW TAKE IN STEPS");
+    gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, "LENGTH/NOTES: MELODY G + TAKE");
+  }
+  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GENERATE");
+}
+
 void GenrePage::draw(IGfx& gfx) {
   if (rhythmFallbackPending_) {
     UI::showToast("RHYTHM RESET TO AUTO", 1200);
     rhythmFallbackPending_ = false;
+  }
+  if (panel_ == Panel::Gen) {
+    drawGenPanel(gfx);
+    return;
   }
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
@@ -305,7 +408,7 @@ void GenrePage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
-  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/2",
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/3",
                       "WHAT G GENERATES", axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
@@ -358,7 +461,7 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
-  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:NEW TAKE P:STYLE M:APPLY");
+  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE", "G:NEW TAKE P:STYLE M:APPLY");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -393,13 +496,24 @@ bool GenrePage::handleEvent(UIEvent& event) {
 
   if (!event.ctrl && !event.alt && !event.meta) {
     if (UIInput::isTab(event)) {
-      requestPageTransition(WorkflowPages::kFeel);
+      if (panel_ == Panel::Genre) {
+        panel_ = Panel::Gen;
+      } else {
+        panel_ = Panel::Genre;
+        requestPageTransition(WorkflowPages::kFeel);
+      }
+      return true;
+    }
+    if (panel_ == Panel::Gen &&
+        (event.key == 0x1B || event.scancode == GROOVEPUTER_ESCAPE)) {
+      panel_ = Panel::Genre;
       return true;
     }
     if (event.key == '[' || event.key == ']') return true;
   }
 
   const int nav = UIInput::navCode(event);
+  if (panel_ == Panel::Gen && handleGenPanelNav(nav)) return true;
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
     moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);
     return true;
@@ -429,8 +543,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return true;
   }
   if (keyG && !event.ctrl && !event.alt && !event.meta) {
-    applyCurrent(true);
-    return true;
+    return generateFromG();
   }
 
   if (keyP && !event.ctrl && !event.alt && !event.meta) {

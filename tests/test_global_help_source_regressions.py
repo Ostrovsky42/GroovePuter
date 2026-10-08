@@ -148,8 +148,8 @@ assert "| `Alt+V` | GENRE |" in keys
 assert "GENERATE: GENRE -> FEEL" in keys
 assert "MATERIAL BANK keeps `D` as derive" in keys
 assert "slot's saved descriptor selects" in keys
-assert "## GENRE 1/2" in keys
-assert "## FEEL 2/2" in keys
+assert "## GENRE 1/3" in keys
+assert "## FEEL 3/3" in keys
 assert "## MATERIAL BANK" in keys
 assert "## GENERATION 3/3" not in keys
 assert "PAUSE MIDI FIRST" not in keys
