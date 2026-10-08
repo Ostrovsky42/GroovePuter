@@ -356,6 +356,11 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
   -o "${BUILD_DIR}/test_smf_loop"
 "${BUILD_DIR}/test_smf_loop"
 
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_import_projection.cpp" \
+  -o "${BUILD_DIR}/test_midi_import_projection"
+"${BUILD_DIR}/test_midi_import_projection"
+
 "${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
 
 "${BUILD_DIR}/test_smf_track_route_profile"
