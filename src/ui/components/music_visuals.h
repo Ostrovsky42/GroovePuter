@@ -178,6 +178,27 @@ inline void drawTinyNoteLabel(IGfx& gfx,
     drawTinyText(gfx, centerX - tinyTextWidth(label) / 2, y, label, color);
 }
 
+// Piano key names in the regular UI font (0.9.17: the 3x5 tiny font was too
+// small to read on the device). White keys say "C3"; black keys, narrower,
+// say only "D#" (the octave reads from the white neighbours). A key too narrow
+// for the regular font keeps the tiny label.
+inline void drawKeyNoteLabel(IGfx& gfx, int centerX, int bottomY, int keyW,
+                             uint8_t note, bool black, IGfxColor color) {
+    char label[5];
+    if (black) {
+        std::snprintf(label, sizeof(label), "%s", pitchClassName(note));
+    } else {
+        formatNoteLabel(note, label);
+    }
+    const int width = gfx.textWidth(label);
+    if (width + 2 > keyW) {
+        drawTinyNoteLabel(gfx, centerX, bottomY - 5, note, color);
+        return;
+    }
+    gfx.setTextColor(color);
+    gfx.drawText(centerX - width / 2, bottomY - gfx.fontHeight(), label);
+}
+
 inline void drawPianoKeyRow(IGfx& gfx,
                             int x,
                             int y,
@@ -217,8 +238,8 @@ inline void drawPianoKeyRow(IGfx& gfx,
             gfx.fillRect(keyX + 2, y + 2, keyW - 4, 3, palette.accent2);
         }
         if (!black) {
-            drawTinyNoteLabel(gfx, keyX + keyW / 2, y + h - 7,
-                              note, labelColor);
+            drawKeyNoteLabel(gfx, keyX + keyW / 2, y + h - 2, keyW, note,
+                             false, labelColor);
         }
     }
 
@@ -244,8 +265,8 @@ inline void drawPianoKeyRow(IGfx& gfx,
         if (held && blackW > 6) {
             gfx.fillRect(blackX + 2, y + 2, blackW - 4, 2, palette.active);
         }
-        drawTinyNoteLabel(gfx, blackX + blackW / 2, y + blackH - 7,
-                          note, labelColor);
+        drawKeyNoteLabel(gfx, blackX + blackW / 2, y + blackH - 2, blackW, note,
+                         true, labelColor);
     }
 }
 
