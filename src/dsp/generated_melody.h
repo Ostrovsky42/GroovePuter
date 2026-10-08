@@ -114,7 +114,8 @@ inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
   out.lengthTicks = lengthTicks;
   for (int index = 0; index < bars; ++index) {
     if (!GeneratedPhraseSong::materializeLegacyBar(engine, scene, *prepared,
-                                                   index, *bar, coordinate)) {
+                                                   index, *bar, coordinate,
+                                                   salt)) {
       return Status::BarFailed;
     }
     const SynthPattern& part = voice == 0 ? bar->synthA : bar->synthB;

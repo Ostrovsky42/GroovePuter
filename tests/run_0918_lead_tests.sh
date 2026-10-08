@@ -17,7 +17,7 @@ build_and_run() {
     src/generation/tonal/tonal_projector.cpp
     src/generation/tonal/tonal_materializer.cpp
     src/generation/migration/tonal_pattern_adapter.cpp)
-  for test in lead_phrase connected_bass tonal_profile_scope; do
+  for test in lead_phrase connected_bass tonal_profile_scope idea_variability; do
     "$compiler" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -Wno-unused-parameter -I. "$@" \
       "${sources[@]}" "tests/test_0918_${test}.cpp" -o "$BUILD/${test}_$suffix"
     "$BUILD/${test}_$suffix"

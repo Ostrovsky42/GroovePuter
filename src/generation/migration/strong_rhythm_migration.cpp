@@ -1202,11 +1202,17 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const auto liveliness = GroovePuterState::generationLiveliness();
     if (liveliness == GroovePuterState::GenerationLiveliness::Calm) idiom.level = 2;
     if (liveliness == GroovePuterState::GenerationLiveliness::Lively) idiom.level = 1;
+    idiom.liveliness = static_cast<uint8_t>(liveliness);
     idiom.barOrdinal = context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
         ? GenreIdiom::kNoBarOrdinal
         : context.phraseBarOrdinal;
     idiom.salt = static_cast<uint32_t>(context.patternAddress) * 131u +
-                 context.generationAttemptOrdinal * 977u;
+                 context.generationAttemptOrdinal * 977u +
+                 context.ideaPress * 0x2545F491u;
+    // Successive presses walk one idea deck: steps G counts attempts on its
+    // slot, Melody G / TAKE bring their own press.
+    idiom.press = context.ideaPress != 0 ? context.ideaPress : context.generationAttemptOrdinal;
+    idiom.deckSeed = context.ideaPress != 0 ? 0u : static_cast<uint32_t>(context.patternAddress);
     (void)GenreIdiom::apply(idiom, nextSynthA, nextSynthB);
   }
 

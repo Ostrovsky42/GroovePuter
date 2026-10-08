@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_TYPES_H
+#define GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_TYPES_H
 
 #include <cstdint>
 
@@ -45,3 +46,5 @@ struct IdiomVariant {
 };
 
 }  // namespace GenreIdiom
+
+#endif  // GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_TYPES_H

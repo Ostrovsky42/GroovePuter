@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_H
+#define GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_H
 
 #include <cstdint>
 #include <cstdlib>
@@ -27,7 +28,10 @@ struct Request {
   uint8_t scale = GroovePuterRhythm::kScaleMinor;
   uint8_t level = 1;  // template level 0..2 (P1, P2, P3)
   uint8_t barOrdinal = kNoBarOrdinal;
+  uint8_t liveliness = 1;  // 0 CALM, 1 NORMAL, 2 LIVELY
   uint32_t salt = 0;
+  uint32_t press = 0;     // successive presses walk the idea deck
+  uint32_t deckSeed = 0;  // the deck's order (stable for one slot / one Melody)
 };
 
 namespace detail {
@@ -139,19 +143,67 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
   }
 }
 
-// One press's variation, the same for every bar of a phrase so the hook
-// still returns: which template, how the bass is bent, how the lead starts,
-// where A' moves and how the B bar answers.
-struct Variation {
-  uint8_t bassMutation = 0;   // 0 none, 1 degree swap, 2 nudge a weak note, 3 ghost note
-  uint8_t bassNote = 0;       // which bass note the mutation (and the octave flip) touches
-  bool octaveFlip = false;
-  uint8_t leadStart = 0;      // index into the lead start targets
-  int8_t melodyNudge = 0;     // -1/0/+1 scale step on one melody note
-  uint8_t melodyNote = 0;
-  int8_t primeShift = 1;      // A': +1 or -1 chord tone
-  uint8_t answer = 0;         // B ending: 0 tonic, 1 fifth, 2 run up to tonic, 3 echo of the start
+// ---- Phrase ideas -------------------------------------------------------
+//
+// A press picks one IdeaPlan for the whole phrase before any bar is written;
+// bass and lead read the same plan. The plan is a musical strategy over the
+// same template (one primary idea, at most one secondary touch), not new
+// notes: the reference corpus (docs/midi, Hotline Miami OST) varies a 4-bar
+// group by repetition, a lifted or dropped register, shortening and silence,
+// and keeps the bass rhythm whole.
+
+enum class Idea : uint8_t {
+  Original = 0,       // A A' A B
+  LowHighAnswer,      // bar 2 lifted an octave, back down to close
+  MotifSubstitution,  // one template degree swapped for another, phrase-wide
+  CallResponse,       // bar 3 cut to its first half, bar 4 answers
+  RegisterArc,        // a directed rise or dip over the four bars, then home
+  DelayedAnswer,      // bar 4 opens with silence, the answer comes late
+  Turnaround,         // bar 4 turns back into bar 1
+  ReducedMotif,       // bar 3 thinned to its strong steps, bar 4 minimal
+  Count,
 };
+
+enum class Ending : uint8_t {
+  Tonic = 0,   // rings on the tonic
+  Fifth,       // rings on the fifth
+  RunUp,       // scale run into the next bar's first note
+  Late,        // silence, then the tonic late in the bar
+  Minimal,     // a single tonic, bass on the downbeat only
+};
+
+enum class Secondary : uint8_t {
+  None = 0,
+  LeadStart,     // the line starts from another chord tone
+  PrimeDown,     // A' moves the line down instead of up
+  FifthEnding,   // the answer lands on the fifth
+};
+
+struct IdeaPlan {
+  Idea idea = Idea::Original;
+  Secondary secondary = Secondary::None;
+  uint8_t leadStart = 0;
+  int8_t primeShift = 1;
+  Ending ending = Ending::Tonic;
+  bool arcRises = true;
+  int8_t substituteFrom = -1;  // pitch class (C-minor template space)
+  int8_t substituteTo = -1;
+};
+
+inline const char* ideaName(Idea idea) {
+  switch (idea) {
+    case Idea::Original: return "ORIGINAL";
+    case Idea::LowHighAnswer: return "LOW/HIGH ANSWER";
+    case Idea::MotifSubstitution: return "MOTIF SUBSTITUTION";
+    case Idea::CallResponse: return "CALL/RESPONSE";
+    case Idea::RegisterArc: return "REGISTER ARC";
+    case Idea::DelayedAnswer: return "DELAYED ANSWER";
+    case Idea::Turnaround: return "TURNAROUND";
+    case Idea::ReducedMotif: return "REDUCED MOTIF";
+    case Idea::Count: break;
+  }
+  return "?";
+}
 
 inline uint32_t mix(uint32_t value) {
   value ^= value >> 16;
@@ -162,96 +214,346 @@ inline uint32_t mix(uint32_t value) {
   return value;
 }
 
-inline Variation variationFor(uint32_t salt) {
-  // One independent hash per field: bits of a single hash correlated.
-  auto field = [&](uint32_t index) { return mix(salt * 0x9E3779B1u + index * 0x85EBCA77u + 1u); };
-  Variation v{};
-  v.bassMutation = static_cast<uint8_t>(field(1) % 4u);
-  v.bassNote = static_cast<uint8_t>(field(2) & 0xFFu);
-  v.octaveFlip = (field(3) % 2u) != 0;
-  v.leadStart = static_cast<uint8_t>(field(4) % 4u);
-  v.melodyNudge = static_cast<int8_t>(static_cast<int>(field(5) % 3u) - 1);
-  v.melodyNote = static_cast<uint8_t>(field(6) & 0xFFu);
-  v.primeShift = (field(7) % 2u) ? -1 : 1;
-  v.answer = static_cast<uint8_t>(field(8) % 4u);
-  return v;
+namespace detail {
+
+inline uint32_t field(uint32_t salt, uint32_t index) {
+  return mix(salt * 0x9E3779B1u + index * 0x85EBCA77u + 1u);
 }
 
-// Writes Synth A (bass) and Synth B (lead) for one bar. False (and nothing
-// written) when the genre has no idiom.
-inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead) {
-  const uint32_t pick = mix(request.salt);
+// Idea weights by genre character and LIVELY (CALM leans to space and
+// reduction, LIVELY to motion and turnarounds; NORMAL is even). Acid keeps its
+// running line: a delayed answer is rare there; UKG, LoFi and HipHop favour
+// space; House avoids register arcs that would turn stabs into a moving lead.
+inline uint8_t ideaWeight(uint8_t generativeMode, uint8_t liveliness, Idea idea) {
+  static constexpr uint8_t kBase[3][8] = {
+      // ORIG LOWHI SUBST CALL ARC DELAY TURN REDUCE
+      {3, 2, 3, 4, 2, 5, 2, 6},   // CALM
+      {4, 4, 4, 4, 4, 4, 4, 4},   // NORMAL
+      {3, 6, 4, 3, 6, 2, 6, 2},   // LIVELY
+  };
+  uint8_t weight = kBase[liveliness > 2 ? 2 : liveliness][static_cast<uint8_t>(idea)];
+  const bool spacious = generativeMode == 11 || generativeMode == 13 || generativeMode == 15;
+  if (generativeMode == 0 && idea == Idea::DelayedAnswer) weight = 1;
+  if (spacious && (idea == Idea::DelayedAnswer || idea == Idea::CallResponse)) weight += 2;
+  if (generativeMode == 9 && idea == Idea::RegisterArc) weight = weight > 2 ? weight - 2 : 1;
+  return weight;
+}
+
+}  // namespace detail
+
+// Pitch classes (C-minor template space) the level actually uses: a motif
+// substitution only swaps one of them for another, so it never leaves the
+// template's material.
+inline uint16_t templatePitchClasses(const IdiomLevel& level, bool bassPart) {
+  uint16_t mask = 0;
+  const IdiomNote* notes = bassPart ? level.bass : level.melody;
+  const uint8_t count = bassPart ? level.bassCount : level.melodyCount;
+  for (uint8_t i = 0; i < count; ++i) mask |= 1u << (((notes[i].semi % 12) + 12) % 12);
+  return mask;
+}
+
+// Successive presses deal from a deck of ten: every idea once plus two
+// extra picks by weight (so CALM/LIVELY and the genre lean the deck), in a
+// weighted order that never deals the same idea twice in a row. Independent
+// draws repeated one idea three times in eight presses.
+inline Idea ideaFromDeck(uint8_t generativeMode, uint8_t liveliness, uint32_t deckSeed,
+                         uint32_t press, bool* repeatOut = nullptr) {
+  constexpr uint8_t kIdeas = static_cast<uint8_t>(Idea::Count);
+  constexpr uint8_t kDeck = kIdeas + 2;
+  const uint32_t cycle = press / kDeck;
+  const uint32_t position = press % kDeck;
+  uint32_t seed = mix(deckSeed * 0x9E3779B1u + cycle * 0x85EBCA77u +
+                      generativeMode * 0xC2B2AE3Du + liveliness * 0x27D4EB2Fu + 7u);
+  auto next = [&]() {
+    seed = mix(seed + 0x9E3779B9u);
+    return seed;
+  };
+  auto weightOf = [&](uint8_t idea) {
+    return detail::ideaWeight(generativeMode, liveliness, static_cast<Idea>(idea));
+  };
+  uint8_t items[kDeck];
+  for (uint8_t i = 0; i < kIdeas; ++i) items[i] = i;
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < kIdeas; ++i) total += weightOf(i);
+  for (uint8_t extra = kIdeas; extra < kDeck; ++extra) {
+    uint32_t pick = next() % total;
+    uint8_t idea = 0;
+    while (pick >= weightOf(idea)) pick -= weightOf(idea++);
+    items[extra] = idea;
+  }
+  uint8_t order[kDeck];
+  bool used[kDeck] = {};
+  int last = -1;
+  for (uint8_t slot = 0; slot < kDeck; ++slot) {
+    uint32_t sum = 0;
+    bool alternative = false;
+    for (uint8_t i = 0; i < kDeck; ++i) {
+      if (!used[i] && items[i] != last) alternative = true;
+    }
+    for (uint8_t i = 0; i < kDeck; ++i) {
+      if (!used[i] && (!alternative || items[i] != last)) sum += weightOf(items[i]);
+    }
+    uint32_t pick = next() % sum;
+    for (uint8_t i = 0; i < kDeck; ++i) {
+      if (used[i] || (alternative && items[i] == last)) continue;
+      if (pick < weightOf(items[i])) {
+        used[i] = true;
+        order[slot] = items[i];
+        last = items[i];
+        break;
+      }
+      pick -= weightOf(items[i]);
+    }
+  }
+  if (repeatOut != nullptr) {
+    *repeatOut = false;
+    for (uint32_t earlier = 0; earlier < position; ++earlier) {
+      if (order[earlier] == order[position]) *repeatOut = true;
+    }
+  }
+  return static_cast<Idea>(order[position]);
+}
+
+inline IdeaPlan ideaPlanFor(const Request& request, const IdiomLevel& level) {
+  IdeaPlan plan{};
+  bool repeat = false;
+  plan.idea = ideaFromDeck(request.generativeMode, request.liveliness, request.deckSeed,
+                           request.press, &repeat);
+  plan.arcRises = (detail::field(request.salt, 2) % 2u) == 0;
+
+  // At most one secondary touch.
+  const uint32_t secondary = detail::field(request.salt, 3) % 6u;
+  plan.secondary = secondary < 3 ? static_cast<Secondary>(secondary + 1) : Secondary::None;
+  if (plan.secondary == Secondary::LeadStart) {
+    plan.leadStart = static_cast<uint8_t>(1 + detail::field(request.salt, 4) % 3u);
+  }
+  if (plan.secondary == Secondary::PrimeDown) plan.primeShift = -1;
+
+  switch (plan.idea) {
+    case Idea::DelayedAnswer: plan.ending = Ending::Late; break;
+    case Idea::Turnaround: plan.ending = Ending::RunUp; break;
+    // A running 303 line is never cut to one note: it reduces bar 3 only.
+    case Idea::ReducedMotif:
+      plan.ending = level.bassCount >= 10 ? Ending::Tonic : Ending::Minimal;
+      break;
+    default:
+      plan.ending = plan.secondary == Secondary::FifthEnding ? Ending::Fifth : Ending::Tonic;
+      break;
+  }
+
+  // A fifth ending means nothing to an idea with its own ending: it starts
+  // the line from another chord tone instead.
+  if (plan.secondary == Secondary::FifthEnding && plan.ending != Ending::Tonic &&
+      plan.ending != Ending::Fifth) {
+    plan.secondary = Secondary::LeadStart;
+    plan.leadStart = static_cast<uint8_t>(1 + detail::field(request.salt, 4) % 3u);
+  }
+
+  // The second deal of an idea in one deck plays it the other way round.
+  if (repeat) {
+    plan.primeShift = static_cast<int8_t>(-plan.primeShift);
+    plan.leadStart = static_cast<uint8_t>((plan.leadStart + 2u) & 3u);
+    plan.arcRises = !plan.arcRises;
+  }
+
+  if (plan.idea == Idea::MotifSubstitution) {
+    // Swap one non-root degree of the bass for another degree the template
+    // already uses (root stays the anchor).
+    const uint16_t used = templatePitchClasses(level, true) | templatePitchClasses(level, false);
+    int8_t from[12];
+    int fromCount = 0;
+    for (int pc = 1; pc < 12; ++pc) {
+      if (templatePitchClasses(level, true) & (1u << pc)) from[fromCount++] = static_cast<int8_t>(pc);
+    }
+    int8_t to[12];
+    int toCount = 0;
+    for (int pc = 1; pc < 12; ++pc) {
+      if (used & (1u << pc)) to[toCount++] = static_cast<int8_t>(pc);
+    }
+    if (fromCount > 0 && toCount > 1) {
+      plan.substituteFrom = from[detail::field(request.salt, 5) % fromCount];
+      for (int attempt = 0; attempt < toCount; ++attempt) {
+        const int8_t candidate = to[(detail::field(request.salt, 6) + attempt) % toCount];
+        if (candidate != plan.substituteFrom) {
+          plan.substituteTo = candidate;
+          break;
+        }
+      }
+    }
+    if (plan.substituteTo < 0) plan.idea = Idea::Original;
+  }
+  return plan;
+}
+
+// Per-bar shape of an idea: octave offsets, chord-tone rank shift of the
+// lead, how much of the bar plays, and whether this is the answer bar.
+struct BarShape {
+  int bassOctave = 0;
+  int leadRank = 0;
+  uint8_t keepFrom = 0;   // first step that plays
+  uint8_t keepTo = 16;    // steps from here on are silent (before the ending)
+  bool strongOnly = false;
+  bool answer = false;
+};
+
+inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
+  BarShape shape{};
+  shape.answer = role == 3;
+  const int prime = plan.primeShift;
+  switch (plan.idea) {
+    case Idea::Original:
+    case Idea::MotifSubstitution:
+    case Idea::Turnaround:
+    case Idea::DelayedAnswer:
+      if (role == 1) shape.leadRank = prime;
+      break;
+    case Idea::LowHighAnswer:
+      if (role == 1) {
+        shape.bassOctave = 12;
+        shape.leadRank = prime > 0 ? 2 : 1;
+      }
+      break;
+    case Idea::CallResponse:
+      if (role == 1) shape.leadRank = prime;
+      if (role == 2) shape.keepTo = 8;
+      break;
+    case Idea::RegisterArc:
+      if (plan.arcRises) {
+        static constexpr int kRank[4] = {-1, 0, 1, 0};
+        shape.leadRank = kRank[role];
+        if (role == 2) shape.bassOctave = 12;
+      } else {
+        static constexpr int kRank[4] = {0, -1, 0, 0};
+        shape.leadRank = kRank[role];
+        if (role == 1 && bassBase - 12 >= 28) shape.bassOctave = -12;
+      }
+      break;
+    case Idea::ReducedMotif:
+      if (role == 1) shape.leadRank = prime;
+      if (role == 2) shape.strongOnly = true;
+      break;
+    case Idea::Count:
+      break;
+  }
+  return shape;
+}
+
+// Writes Synth A (bass) and Synth B (lead) for one bar of the phrase. False
+// (and nothing written) when the genre has no idiom.
+inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
+                  IdeaPlan* planOut = nullptr) {
   const IdiomVariant* variant =
-      variantFor(request.generativeMode, request.recipe, pick >> 7);
+      variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
   if (variant == nullptr) return false;
   const IdiomLevel& level = variant->levels[request.level > 2 ? 2 : request.level];
   if (level.bass == nullptr) return false;
-  const Variation v = variationFor(request.salt);
+  const IdeaPlan plan = ideaPlanFor(request, level);
+  if (planOut != nullptr) *planOut = plan;
 
-  const int role = request.barOrdinal == kNoBarOrdinal ? 0 : request.barOrdinal % 4;
-  const bool answerBar = role == 3;
+  // A single looping bar (G on STEPS) has no phrase: the idea picks which of
+  // its bars that loop plays, and no answer ending (it would loop).
+  const bool singleBar = request.barOrdinal == kNoBarOrdinal;
+  int role = singleBar ? 0 : request.barOrdinal % 4;
+  if (singleBar) {
+    switch (plan.idea) {
+      case Idea::LowHighAnswer:
+      case Idea::Turnaround: role = 1; break;
+      case Idea::CallResponse:
+      case Idea::ReducedMotif: role = 2; break;
+      case Idea::RegisterArc: role = plan.arcRises ? 2 : 1; break;
+      default: role = 0; break;
+    }
+  }
   const int root = request.rootPitchClass % 12;
   const int shift = root >= 6 ? root - 12 : root;  // keep registers near C
   const int bassBase = 36 + shift;
   const int leadBase = 60 + shift;
   auto map = [&](int semi) { return detail::mapSemi(semi, request.scale); };
+  auto substitute = [&](int semi) {
+    if (plan.substituteFrom < 0) return semi;
+    const int pc = ((semi % 12) + 12) % 12;
+    return pc == plan.substituteFrom ? semi - pc + plan.substituteTo : semi;
+  };
+  BarShape shape = barShapeFor(plan, role, bassBase);
+  if (singleBar) {
+    shape.answer = false;
+    // Delayed answer as a loop: the lead enters a beat late.
+    if (plan.idea == Idea::DelayedAnswer) shape.keepFrom = 4;
+  }
+  const bool acid = request.generativeMode == 0;
+  const bool runningBass = level.bassCount >= 8;
+  // keepFrom delays only the lead; the bass keeps its downbeat.
+  auto plays = [&](uint8_t step, uint8_t flags, bool leadPart = false) {
+    if ((leadPart && step < shape.keepFrom) || step >= shape.keepTo) return false;
+    if (shape.strongOnly && (flags & kAccent) == 0) {
+      // Thinned to the beats; a running line keeps its eighths.
+      if (step % (runningBass ? 2 : 4) != 0) return false;
+    }
+    return true;
+  };
 
-  // ---- Synth A: the template bass with this press's bend, a fill on B.
+  // How bar 4 ends decides how much of it the template still plays.
+  uint8_t answerFrom = 16;
+  if (shape.answer) {
+    switch (plan.ending) {
+      case Ending::Tonic:
+      case Ending::Fifth: answerFrom = 12; break;
+      case Ending::RunUp: answerFrom = 12; break;
+      case Ending::Late: answerFrom = acid ? 12 : 8; break;
+      case Ending::Minimal: answerFrom = 4; break;
+    }
+  }
+
+  // ---- Synth A
   detail::clear(bass);
   uint8_t slideOut[16] = {};
-  // Never the downbeat note: it anchors the bar.
-  const int touched = level.bassCount > 1 ? 1 + v.bassNote % (level.bassCount - 1) : -1;
-  bool occupied[16] = {};
-  for (uint8_t i = 0; i < level.bassCount; ++i) {
-    for (uint8_t k = 0; k < level.bass[i].len && level.bass[i].step + k < 16; ++k) {
-      occupied[level.bass[i].step + k] = true;
-    }
-  }
   for (uint8_t i = 0; i < level.bassCount; ++i) {
     const IdiomNote& note = level.bass[i];
-    int semi = note.semi;
-    int step = note.step;
-    uint8_t velocity = note.velocity;
-    if (static_cast<int>(i) == touched) {
-      if (v.octaveFlip) semi += semi < 6 ? 12 : -12;
-      // A dense line has no free step to push a note into or ghost on: it
-      // takes the degree swap instead.
-      const bool dense = level.bassCount >= 10;
-      if (v.bassMutation == 1 || (dense && v.bassMutation >= 2)) {
-        // Neighbouring chord tone: R <-> 5, b3 -> 5, b7 -> R.
-        const int pc = ((semi % 12) + 12) % 12;
-        const int octave = semi - pc;
-        semi = octave + (pc == 0 ? 7 : pc == 7 ? 12 : pc == 3 ? 7 : pc == 10 ? 12 : pc);
-      } else if (v.bassMutation == 2) {
-        // Push a weak note one step later when that step is free.
-        if (step + 1 < 16 && !occupied[step + 1] && (step % 4) != 0) ++step;
-      }
-    }
-    if (answerBar && step >= 12) continue;
-    detail::place(bass, static_cast<uint8_t>(step), bassBase + map(semi), note.len,
-                  velocity, (note.flags & kAccent) != 0);
-    if (note.flags & kSlideOut) slideOut[step] = 1;
+    if (note.step >= answerFrom && !(plan.ending == Ending::Minimal && note.step == 0)) continue;
+    if (plan.ending == Ending::Minimal && shape.answer && note.step != 0) continue;
+    if (!plays(note.step, note.flags)) continue;
+    const int semi = substitute(note.semi) + shape.bassOctave;
+    detail::place(bass, note.step, bassBase + map(semi), note.len, note.velocity,
+                  (note.flags & kAccent) != 0);
+    if (note.flags & kSlideOut) slideOut[note.step] = 1;
   }
-  if (v.bassMutation == 3 && level.bassCount < 10) {
-    // A quiet ghost root on the first free off-beat sixteenth.
-    for (int step = 1 + static_cast<int>(v.bassNote % 4) * 4 + 2; step < (answerBar ? 12 : 16); step += 4) {
-      if (bass.steps[step].note < 0) {
-        detail::place(bass, static_cast<uint8_t>(step), bassBase + map(0), 1, 54, false);
-        bass.steps[step].ghost = true;
+  if (shape.answer) {
+    switch (plan.ending) {
+      case Ending::RunUp:
+        if (runningBass) {
+          // Octave run with a glide back into the downbeat.
+          detail::place(bass, 12, bassBase + map(0), 1, 104, true);
+          detail::place(bass, 13, bassBase + map(12), 1, 84, false);
+          detail::place(bass, 14, bassBase + map(0), 1, 92, false);
+          detail::place(bass, 15, bassBase + map(12), 1, 96, false);
+          slideOut[14] = 1;
+        } else {
+          // Fifth, then b7 stepping up into the root of bar 1.
+          detail::place(bass, 12, bassBase + map(-5), 2, 90, false);
+          detail::place(bass, 14, bassBase + map(-2), 2, 86, false);
+        }
         break;
-      }
-    }
-  }
-  if (answerBar) {
-    // Back to the root of the next bar: octave run with a glide, or a b7 pickup.
-    if (level.bassCount >= 8) {
-      detail::place(bass, 12, bassBase + map(0), 1, 104, true);
-      detail::place(bass, 13, bassBase + map(12), 1, 84, false);
-      detail::place(bass, 14, bassBase + map(0), 1, 92, false);
-      detail::place(bass, 15, bassBase + map(12), 1, 96, false);
-      slideOut[14] = 1;
-    } else {
-      detail::place(bass, 14, bassBase + map(v.answer & 1u ? 7 : -2), 2, 88, false);
+      case Ending::Minimal:
+        detail::place(bass, 14, bassBase + map(-2), 2, 80, false);
+        break;
+      case Ending::Late:
+        if (acid) {
+          detail::place(bass, 12, bassBase + map(0), 1, 100, true);
+          detail::place(bass, 14, bassBase + map(-2), 2, 88, false);
+        } else {
+          detail::place(bass, 12, bassBase + map(0), 2, 92, false);
+          detail::place(bass, 15, bassBase + map(-2), 1, 80, false);
+        }
+        break;
+      default:
+        if (runningBass) {
+          detail::place(bass, 12, bassBase + map(0), 1, 104, true);
+          detail::place(bass, 14, bassBase + map(12), 1, 92, false);
+          slideOut[12] = 1;
+        } else {
+          detail::place(bass, 14, bassBase + map(plan.ending == Ending::Fifth ? 7 : -2), 2, 88, false);
+        }
+        break;
     }
   }
   detail::connectSlides(bass, slideOut);
@@ -259,12 +561,12 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   // ---- Synth B: stabs as one moving top voice, melody notes as its peaks.
   detail::clear(lead);
   static constexpr int kTargets[4] = {7, 10, 3, 12};
-  int previous = leadBase + kTargets[v.leadStart & 3u];
+  // `previous` follows the unshifted line (as in A); a shifted bar plays that
+  // same line one chord tone up or down, so its contour survives.
+  int previous = leadBase + kTargets[plan.leadStart & 3u];
+  int sounding = previous;
   const int lo = leadBase - 3;
   const int hi = leadBase + 19;
-  // A' (role 1) keeps the rhythm and moves the line one chord tone up or down
-  // (melody notes one scale step).
-  const int rankShift = role == 1 ? v.primeShift : 0;
   bool inScale[12] = {};
   {
     static constexpr int8_t kMinor[7] = {0, 2, 3, 5, 7, 8, 10};
@@ -280,24 +582,25 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   int8_t melodyAt[16];
   for (auto& m : melodyAt) m = -1;
   for (uint8_t i = 0; i < level.melodyCount; ++i) melodyAt[level.melody[i].step] = static_cast<int8_t>(i);
-  const int nudged = level.melodyCount > 0 ? v.melodyNote % level.melodyCount : -1;
-  int firstPitches[4] = {-1, -1, -1, -1};
-  int firstCount = 0;
-  int lastStep = -1;
+  int firstPitch = -1;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    if (answerBar && step >= 12) break;
+    if (step >= answerFrom) break;
     int placed = -1;
     if (melodyAt[step] >= 0) {
       const IdiomNote& note = level.melody[melodyAt[step]];
-      int pitch = leadBase + map(note.semi);
-      if (melodyAt[step] == nudged) pitch = scaleStep(pitch, v.melodyNudge);
-      pitch = scaleStep(pitch, rankShift);
+      if (!plays(step, note.flags, true)) continue;
+      int pitch = leadBase + map(substitute(note.semi));
+      for (int r = 0; r < std::abs(shape.leadRank); ++r) pitch = scaleStep(pitch, shape.leadRank > 0 ? 1 : -1);
       detail::place(lead, step, pitch, note.len, note.velocity, (note.flags & kAccent) != 0);
-      placed = pitch;
+      placed = leadBase + map(substitute(note.semi));
+      sounding = pitch;
     } else {
       for (uint8_t i = 0; i < level.stabCount; ++i) {
         const IdiomStab& stab = level.stabs[i];
         if (stab.step != step) continue;
+        // Reduced bars keep the stabs on the beat grid only.
+        if (shape.strongOnly && (step % 4) != 0 && step != level.stabs[0].step) continue;
+        if (!plays(step, 0, true) && !shape.strongOnly) continue;
         bool tone[12] = {};
         for (int interval = 0; interval < 24; ++interval) {
           if ((stab.intervalMask & (1u << interval)) == 0) continue;
@@ -308,7 +611,6 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
         for (int pitch = lo; pitch <= hi && count < 24; ++pitch) {
           if (tone[((pitch - leadBase) % 12 + 12) % 12]) candidates[count++] = pitch;
         }
-        // Move to the nearest chord tone, but not onto the same note.
         int bestIndex = -1;
         int bestCost = 1 << 30;
         for (int c = 0; c < count; ++c) {
@@ -319,49 +621,47 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
           }
         }
         if (bestIndex >= 0) {
-          int index = bestIndex + rankShift;
+          int index = bestIndex + shape.leadRank;
           if (index >= count) index = count - 1;
           if (index < 0) index = 0;
           detail::place(lead, step, candidates[index], stab.len, stab.velocity, false);
-          placed = candidates[index];
+          placed = candidates[bestIndex];
+          sounding = candidates[index];
         }
       }
     }
     if (placed >= 0) {
       previous = placed;
-      lastStep = step;
-      if (firstCount < 4) firstPitches[firstCount++] = placed;
+      if (firstPitch < 0) firstPitch = placed;
     }
+    (void)sounding;
   }
-  if (answerBar) {
+  if (shape.answer) {
     int tonic = leadBase;
     while (tonic + 12 <= previous + 6) tonic += 12;
-    const uint8_t start = lastStep >= 11 ? 13 : 12;
-    switch (v.answer) {
-      case 1:  // land on the fifth
-        detail::place(lead, start, tonic + map(7) - (tonic + map(7) > previous + 7 ? 12 : 0), 4, 90, true);
-        break;
-      case 2: {  // scale run up into the tonic
-        int pitch = scaleStep(scaleStep(tonic, -1), -1);
-        for (uint8_t step = 12; step < 15; ++step) {
-          detail::place(lead, step, pitch, 1, static_cast<uint8_t>(76 + (step - 12) * 6), false);
+    int fifth = tonic + map(7);
+    if (fifth > previous + 7) fifth -= 12;
+    switch (plan.ending) {
+      case Ending::Tonic: detail::place(lead, 12, tonic, 4, 92, true); break;
+      case Ending::Fifth: detail::place(lead, 12, fifth, 4, 90, true); break;
+      case Ending::Late: detail::place(lead, acid ? 13 : 11, tonic, acid ? 3 : 5, 94, true); break;
+      case Ending::Minimal: detail::place(lead, 12, tonic, 4, 84, false); break;
+      case Ending::RunUp: {
+        // A scale run that ends one step under bar 1's first note, so the
+        // phrase turns back into its own beginning.
+        const int target = firstPitch >= 0 ? firstPitch : tonic;
+        int pitch = scaleStep(scaleStep(scaleStep(scaleStep(target, -1), -1), -1), -1);
+        for (uint8_t step = 12; step < 16; ++step) {
+          detail::place(lead, step, pitch, 1, static_cast<uint8_t>(74 + (step - 12) * 6), step == 15);
           pitch = scaleStep(pitch, 1);
         }
-        detail::place(lead, 15, tonic, 1, 96, true);
         break;
       }
-      case 3:  // echo the bar's opening notes, then home
-        for (int i = 0; i < 3 && i < firstCount; ++i) {
-          detail::place(lead, static_cast<uint8_t>(12 + i), firstPitches[i], 1, 80, false);
-        }
-        detail::place(lead, 15, tonic, 1, 92, true);
-        break;
-      default:  // ring on the tonic
-        detail::place(lead, start, tonic, 4, 92, true);
-        break;
     }
   }
   return true;
 }
 
 }  // namespace GenreIdiom
+
+#endif  // GROOVEPUTER_GENERATION_IDIOM_GENRE_IDIOM_H
