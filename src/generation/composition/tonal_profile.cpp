@@ -18,13 +18,28 @@ constexpr uint16_t melodicContours(std::initializer_list<MelodicContourId> ids) 
   return mask;
 }
 
-constexpr BassBehaviorPolicy bassPolicy(uint16_t allowed,
-                                        uint16_t preferred = 0) {
-  return {allowed,
-          preferred,
-          bassArticulationStyleBit(BassArticulationStyleId::Plain),
-          0};
+constexpr BassBehaviorPolicy bassPolicy(
+    uint16_t allowed,
+    uint16_t preferred = 0,
+    uint16_t allowedArticulations =
+        bassArticulationStyleBit(BassArticulationStyleId::Plain),
+    uint16_t preferredArticulations = 0) {
+  return {allowed, preferred, allowedArticulations, preferredArticulations};
 }
+
+// 0.9.18 prototype: every genre had Plain articulation, so no generated bass
+// ever slid or accented -- not even Acid, where slide and accent are the style.
+constexpr uint16_t kArticulationAcidAllowed =
+    bassArticulationStyleBit(BassArticulationStyleId::Plain) |
+    bassArticulationStyleBit(BassArticulationStyleId::AccentPulse) |
+    bassArticulationStyleBit(BassArticulationStyleId::LegatoApproach) |
+    bassArticulationStyleBit(BassArticulationStyleId::Dynamic);
+constexpr uint16_t kArticulationAcidPreferred =
+    bassArticulationStyleBit(BassArticulationStyleId::Dynamic) |
+    bassArticulationStyleBit(BassArticulationStyleId::LegatoApproach);
+constexpr uint16_t kArticulationPulse =
+    bassArticulationStyleBit(BassArticulationStyleId::Plain) |
+    bassArticulationStyleBit(BassArticulationStyleId::AccentPulse);
 
 constexpr MelodicIntentPolicy melodicPolicy(uint16_t allowedContours,
                                             uint16_t preferredContours = 0) {
@@ -152,15 +167,22 @@ constexpr uint16_t kMelodySlowPreferred = melodicContours({
     MelodicContourId::Arch,
     MelodicContourId::InvertedArch,
 });
+// 0.9.18 prototype: the Acid lead could only stay or step to a neighbour.
 constexpr uint16_t kMelodyAcidAllowed = melodicContours({
     MelodicContourId::Static,
     MelodicContourId::Neighbor,
     MelodicContourId::RepeatThenUp,
     MelodicContourId::RepeatThenDown,
+    MelodicContourId::StepUp,
+    MelodicContourId::StepDown,
+    MelodicContourId::LeapReturn,
+    MelodicContourId::Arch,
 });
 constexpr uint16_t kMelodyAcidPreferred = melodicContours({
-    MelodicContourId::Static,
     MelodicContourId::Neighbor,
+    MelodicContourId::RepeatThenUp,
+    MelodicContourId::LeapReturn,
+    MelodicContourId::StepUp,
 });
 
 constexpr TonalRegisterCorridor kStaticBassRegister{24, 47, 12};
@@ -181,10 +203,19 @@ constexpr TonalGenerationProfile kStaticProfile = {
     bassPolicy(kBassRoot), melodicPolicy(kMelodyStatic),
     kStaticBassRegister, kSecondaryRegister};
 constexpr TonalGenerationProfile kAcidProfile = tonal(
-    bassPolicy(kBassAcidAllowed, kBassAcidPreferred),
+    bassPolicy(kBassAcidAllowed, kBassAcidPreferred,
+               kArticulationAcidAllowed, kArticulationAcidPreferred),
     melodicPolicy(kMelodyAcidAllowed, kMelodyAcidPreferred));
 constexpr TonalGenerationProfile kSynthProfile = tonal(
     bassPolicy(kBassSynthAllowed, kBassSynthPreferred),
+    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
+// 0.9.18 prototype: Synthwave bass gets accents; House leaves the static
+// profile (one-pitch lead, root-only bass) for a moving bass and a Drive lead.
+constexpr TonalGenerationProfile kOutrunProfile = tonal(
+    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
+constexpr TonalGenerationProfile kHouseProfile = tonal(
+    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
     melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
 constexpr TonalGenerationProfile kBrokenProfile = tonal(
     bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred),
@@ -212,7 +243,7 @@ constexpr TonalProfileRow row(GenerativeMode mode,
 // avoids a GenerativeMode switch in roles/tonal code.
 constexpr TonalProfileRow kRows[] = {
     row(GenerativeMode::Acid, kAcidProfile),
-    row(GenerativeMode::Outrun, kSynthProfile),
+    row(GenerativeMode::Outrun, kOutrunProfile),
     row(GenerativeMode::Darksynth, kSynthProfile),
     row(GenerativeMode::Electro, kBrokenProfile),
     row(GenerativeMode::Rave, kStaticProfile),
@@ -220,7 +251,7 @@ constexpr TonalProfileRow kRows[] = {
     row(GenerativeMode::TripHop, kSlowProfile),
     row(GenerativeMode::Broken, kBrokenProfile),
     row(GenerativeMode::Chip, kSynthProfile),
-    row(GenerativeMode::House, kStaticProfile),
+    row(GenerativeMode::House, kHouseProfile),
     row(GenerativeMode::Techno, kStaticProfile),
     row(GenerativeMode::HipHop, kSlowProfile),
     row(GenerativeMode::FunkSoul, kSlowProfile),

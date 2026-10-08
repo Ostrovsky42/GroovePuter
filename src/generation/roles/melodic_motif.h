@@ -20,6 +20,10 @@ enum class MelodicRhythmId : uint8_t {
   SyncopatedMotif,
   DriftPhrase,
   RepeatedCell,
+  // 0.9.18 lead density: lines with enough onsets to carry a melody (the
+  // cells above give 1-4). Bass/chord onsets still block, so they interlock.
+  RunningLine,
+  EighthArp,
   Count,
 };
 

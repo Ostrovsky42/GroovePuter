@@ -189,13 +189,20 @@ MelodicMotifResult realizeMelodicMotif(const MelodicMotifRequest& request) {
       continuations = mask({4, 5, 12, 13});
       break;
     case MelodicRhythmId::RepeatedCell: onsets = mask({0, 4, 8, 12}); break;
+    case MelodicRhythmId::RunningLine: onsets = mask({0, 2, 3, 6, 8, 10, 11, 14}); break;
+    case MelodicRhythmId::EighthArp: onsets = mask({0, 2, 4, 6, 8, 10, 12, 14}); break;
     case MelodicRhythmId::Auto:
     case MelodicRhythmId::Count:
       return result;
   }
 
+  // A dense line sits an octave or two above the bass: sharing its onsets is
+  // fine, and removing them left 2 notes out of 8 over an eighth-note bass.
+  const bool denseLine = rhythm == MelodicRhythmId::RunningLine ||
+                         rhythm == MelodicRhythmId::EighthArp;
   const StepMask blocked = static_cast<StepMask>(
-      request.protectedSpace | request.bassOnsets | request.chordOnsets);
+      request.protectedSpace | (denseLine ? 0 : request.bassOnsets) |
+      request.chordOnsets);
   onsets = static_cast<StepMask>(onsets & ~blocked);
   continuations = static_cast<StepMask>(
       continuations & ~request.protectedSpace & ~onsets);
@@ -223,6 +230,8 @@ const char* melodicRhythmName(MelodicRhythmId id) {
     case MelodicRhythmId::SyncopatedMotif: return "SYNCOPATED MOTIF";
     case MelodicRhythmId::DriftPhrase: return "DRIFT PHRASE";
     case MelodicRhythmId::RepeatedCell: return "REPEATED CELL";
+    case MelodicRhythmId::RunningLine: return "RUNNING LINE";
+    case MelodicRhythmId::EighthArp: return "EIGHTH ARP";
     case MelodicRhythmId::Count: break;
   }
   return "INVALID";
