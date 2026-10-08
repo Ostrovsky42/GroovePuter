@@ -318,7 +318,7 @@ bool GenrePage::generateFromG() {
       GroovePuterState::GenerationTarget::Melody) {
     applyPendingProfile();
     return SynthSequencerPage::generateMelodyFor(
-        mini_acid_, audio_guard_, GroovePuterState::lastSynthVoice());
+        mini_acid_, audio_guard_, GroovePuterState::melodyTargetVoice());
   }
   applyCurrent(true);
   return true;
@@ -333,7 +333,7 @@ bool GenrePage::handleGenPanelNav(int nav) {
   if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
   const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
   switch (gen_focus_) {
-    case GenRow::Target: (void)GroovePuterState::cycleGenerationTarget(); break;
+    case GenRow::Target: (void)GroovePuterState::cycleGenerationTarget(delta); break;
     case GenRow::Length: (void)GroovePuterState::cycleRequestedPhraseBars(delta); break;
     case GenRow::Lively: (void)GroovePuterState::cycleGenerationLiveliness(delta); break;
     case GenRow::Notes: (void)GroovePuterState::cycleGenerationNoteLength(delta); break;
@@ -353,7 +353,7 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
 
   const bool melody = GroovePuterState::generationTarget() ==
                       GroovePuterState::GenerationTarget::Melody;
-  const char synth = static_cast<char>('A' + GroovePuterState::lastSynthVoice());
+  const char synth = static_cast<char>('A' + GroovePuterState::melodyTargetVoice());
   const unsigned bars = GroovePuterState::requestedPhraseBars();
   char value[48];
   if (melody) std::snprintf(value, sizeof(value), "MELODY %c", synth);

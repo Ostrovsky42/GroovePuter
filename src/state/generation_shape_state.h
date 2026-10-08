@@ -38,7 +38,7 @@ inline GenerationNoteLength& noteLengthStorage() {
   static GenerationNoteLength length = GenerationNoteLength::Short;
   return length;
 }
-inline uint8_t& lastSynthVoiceStorage() {
+inline uint8_t& melodyVoiceStorage() {
   static uint8_t voice = 0;
   return voice;
 }
@@ -48,10 +48,22 @@ inline GenerationTarget generationTarget() {
   return generation_shape_detail::targetStorage();
 }
 
-inline GenerationTarget cycleGenerationTarget() {
+// The synth a G from GENRE writes a Melody for (TARGET MELODY A / B). On a
+// synth's own page G always writes that synth.
+inline int melodyTargetVoice() {
+  return generation_shape_detail::melodyVoiceStorage();
+}
+
+// TARGET steps STEPS -> MELODY A -> MELODY B (and back with direction < 0).
+inline GenerationTarget cycleGenerationTarget(int direction = 1) {
   auto& target = generation_shape_detail::targetStorage();
-  target = target == GenerationTarget::Steps ? GenerationTarget::Melody
-                                             : GenerationTarget::Steps;
+  auto& voice = generation_shape_detail::melodyVoiceStorage();
+  int position = target == GenerationTarget::Steps ? 0 : 1 + (voice ? 1 : 0);
+  position += direction < 0 ? -1 : 1;
+  if (position < 0) position = 2;
+  if (position > 2) position = 0;
+  target = position == 0 ? GenerationTarget::Steps : GenerationTarget::Melody;
+  if (position > 0) voice = static_cast<uint8_t>(position - 1);
   return target;
 }
 
@@ -107,14 +119,5 @@ inline const char* generationNoteLengthName(GenerationNoteLength length) {
   return "SHORT";
 }
 
-// The synth a G from GENRE writes a Melody for: the one last opened.
-inline int lastSynthVoice() {
-  return generation_shape_detail::lastSynthVoiceStorage();
-}
-
-inline void setLastSynthVoice(int voice) {
-  if (voice < 0 || voice > 1) return;
-  generation_shape_detail::lastSynthVoiceStorage() = static_cast<uint8_t>(voice);
-}
 
 }  // namespace GroovePuterState

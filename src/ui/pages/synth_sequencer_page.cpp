@@ -1574,7 +1574,6 @@ bool SynthSequencerPage::generateMelodyFor(MiniAcid& mini_acid,
                                            const AudioGuard& audio_guard,
                                            int voice) {
   if (voice < 0 || voice > 1) return false;
-  GroovePuterState::setLastSynthVoice(voice);
   if (mini_acid.currentSequencedSource(voice) != MiniAcid::SequencedSource::Phrase) {
     const auto result = PhraseSourceToggle::toggle(mini_acid, audio_guard, voice);
     if (result == PhraseSourceToggle::Result::Rejected ||
@@ -1715,9 +1714,6 @@ bool SynthSequencerPage::toggleSource() {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
-    GroovePuterState::setLastSynthVoice(voice_index_);
-  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
     return toggleSource();
