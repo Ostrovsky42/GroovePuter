@@ -82,6 +82,18 @@ constexpr uint16_t kBassSynthPreferred = bassContours({
     BassPitchContourId::LeapReturn,
     BassPitchContourId::NeighborReturn,
 });
+// 0.9.18 prototype: Outrun/Darksynth reference basses (Nightcall, Hotline
+// Miami) sit on the chord root -- 65% repeated notes against 2-4% from the
+// Synth vocabulary above. Pedal on the root, or bounce it an octave.
+constexpr uint16_t kBassPedalAllowed = bassContours({
+    BassPitchContourId::RootAnchor,
+    BassPitchContourId::RootOctave,
+    BassPitchContourId::PedalTurn,
+});
+constexpr uint16_t kBassPedalPreferred = bassContours({
+    BassPitchContourId::RootAnchor,
+    BassPitchContourId::RootOctave,
+});
 constexpr uint16_t kBassBrokenAllowed = bassContours({
     BassPitchContourId::RootAnchor,
     BassPitchContourId::RootFifth,
@@ -223,7 +235,7 @@ constexpr TonalGenerationProfile kSynthProfile = tonal(
 // 0.9.18 prototype: Synthwave bass gets accents; House leaves the static
 // profile (one-pitch lead, root-only bass) for a moving bass and a Drive lead.
 constexpr TonalGenerationProfile kOutrunProfile = tonal(
-    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    bassPolicy(kBassPedalAllowed, kBassPedalPreferred, kArticulationPulse),
     melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
                   static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
 constexpr TonalGenerationProfile kHouseProfile = tonal(
@@ -244,6 +256,10 @@ constexpr TonalGenerationProfile kDubProfile = tonal(
 // exact rows below).
 constexpr TonalGenerationProfile kDriveLeadProfile = tonal(
     bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
+constexpr TonalGenerationProfile kDarksynthProfile = tonal(
+    bassPolicy(kBassPedalAllowed, kBassPedalPreferred, kArticulationPulse),
     melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
                   static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
 // Rave: a repeated hook that jumps a fourth/fifth and comes back.
@@ -292,7 +308,7 @@ constexpr TonalProfileRow kRows[] = {
     {static_cast<uint8_t>(GenerativeMode::Acid), 6, kAcidAtlasProfile},
     {static_cast<uint8_t>(GenerativeMode::Acid), 7, kAcidAtlasProfile},
     row(GenerativeMode::Outrun, kOutrunProfile),
-    row(GenerativeMode::Darksynth, kDriveLeadProfile),
+    row(GenerativeMode::Darksynth, kDarksynthProfile),
     row(GenerativeMode::Electro, kBrokenLiveProfile),
     row(GenerativeMode::Rave, kRaveProfile),
     {static_cast<uint8_t>(GenerativeMode::Rave), 4, kStaticProfile},
