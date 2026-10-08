@@ -61,6 +61,34 @@ public:
         return ensureStarted() && player_.cycleVelocityBoost();
     }
 
+    bool cycleLoopMode() override {
+        return ensureStarted() && player_.cycleLoopMode();
+    }
+
+    bool markLoopStart() override {
+        return ensureStarted() && player_.markLoopStart();
+    }
+
+    bool markLoopEnd() override {
+        return ensureStarted() && player_.markLoopEnd();
+    }
+
+    // Every ISmfPlayerService method must be forwarded here: an unforwarded
+    // one silently falls back to the interface default (false / empty), which
+    // read as "MIDI PLAYER BUSY", "SAVE BUSY" and a file manager that could
+    // rename the file the player is reading.
+    bool persistTrackOutputRoutes(uint32_t generation) override {
+        return started_ && player_.persistTrackOutputRoutes(generation);
+    }
+
+    bool currentFilePath(char* output, std::size_t outputSize) const override {
+        if (!started_) {
+            if (output && outputSize > 0) output[0] = '\0';
+            return false;
+        }
+        return player_.currentFilePath(output, outputSize);
+    }
+
     SmfPlayerSnapshot snapshot() const override {
         return player_.snapshot();
     }
