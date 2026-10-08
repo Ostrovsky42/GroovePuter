@@ -87,6 +87,37 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       return undoPreparedSongState();
     }
 
+    // Opt on a Synth A/B cell: that voice's STEPS <-> MELODY, the same owner
+    // as Opt on the synth page (the source belongs to the voice, not the cell).
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+      bool valid = false;
+      const SongTrack track = trackForColumn(cursorTrack(), valid);
+      if (!valid || (track != SongTrack::SynthA && track != SongTrack::SynthB)) {
+        showToast("OPT: ON SYNTH A/B COLUMN", 900);
+        return true;
+      }
+      const int voice = track == SongTrack::SynthA ? 0 : 1;
+      const auto result = PhraseSourceToggle::toggle(
+          mini_acid_,
+          [&](const std::function<void()>& body) { withAudioGuard(body); },
+          voice);
+      const char label = voice == 0 ? 'A' : 'B';
+      char toast[24];
+      if (result == PhraseSourceToggle::Result::Rejected) {
+        std::snprintf(toast, sizeof(toast), "%c: MELODY FAILED", label);
+      } else if (result == PhraseSourceToggle::Result::MadePhrase) {
+        std::snprintf(toast, sizeof(toast), "%c: MELODY <- STEPS", label);
+      } else {
+        std::snprintf(toast, sizeof(toast), "%c: %s", label,
+                      mini_acid_.currentSequencedSource(voice) ==
+                              MiniAcid::SequencedSource::Phrase
+                          ? "MELODY"
+                          : "STEPS");
+      }
+      showToast(toast, 1000);
+      return true;
+    }
+
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_CUT ||
         ui_event.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
       const bool wholeSongScope = cursorOnModeButton() || cursorOnPlayheadLabel();

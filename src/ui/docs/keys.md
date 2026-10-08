@@ -286,6 +286,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Backspace` | Clear current cell / selected Song cells |
 | `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Alt+B` | Flip stored-reference/selection bank |
+| `Opt` | (Cardputer) Synth A/B column: that voice's source STEPS <-> MELODY, as `Opt` on the synth page |
 | `Ctrl+B` | Play Song slot A/B |
 | `Alt+[` / `Alt+]` | Previous / next pattern page when the resident 16-slot page is full |
 | `Ctrl+N` / `Ctrl+M` | Insert / remove row |
@@ -440,6 +441,13 @@ Open from MIDI Player with `H` after a file is loaded.
 | `S` | Solo selected layer |
 | `A` | All MIDI tracks on |
 | `Space` | MIDI transport |
+| `O` | SEQTRAK outputs: which tracks occupy KICK..CYM, SYN1, SYN2, DX, and which reach nothing (OFF) |
+
+Each row shows where the track sounds now: `SYN1`/`SYN2`/`DX`/`KICK`..`CYM`,
+`DRUM` (GM drums split over the drum outputs), `MULTI`, or `OFF`. AUTO is
+resolved from the source channel (CH1/2/3 -> SYN1/SYN2/DX, CH10 -> drums,
+others -> OFF). A per-track choice is blue; OFF and two unmuted tracks on one
+SYN1/SYN2/DX are red.
 
 Route changes work during PLAY and persist immediately per matching file identity.
 There is no pause-first or Enter-to-commit route mode. RAW routing keeps source

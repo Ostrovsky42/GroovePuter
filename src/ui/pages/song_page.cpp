@@ -24,6 +24,7 @@ using UI::showToast;
 
 #include "../help_dialog_frames.h"
 #include "../components/mode_button.h"
+#include "../phrase_source_toggle.h"
 
 namespace {
 inline IGfxColor song303Color(int synthIndex) {
