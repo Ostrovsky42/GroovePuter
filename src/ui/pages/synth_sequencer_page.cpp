@@ -813,8 +813,16 @@ bool SynthSequencerPage::insertAtCursor(int pitch, uint8_t velocity) {
   const PhraseNotesSelection::Selection anchor =
       PhraseNotesSelection::deriveInCell(phrase, target, step);
   if (anchor.active && step > 0) {
-    target = static_cast<uint16_t>(
-        phrase.events[anchor.eventIndex].startTick + step);
+    // After the whole selected sound: a held (longer) note's tail cells are
+    // not free, or the next key would start inside it.
+    const auto& selected = phrase.events[anchor.eventIndex];
+    const uint32_t endTick =
+        (static_cast<uint32_t>(selected.startTick) * PhraseRuntime::kSubticksPerTick +
+         selected.durationSubticks + PhraseRuntime::kSubticksPerTick - 1u) /
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t afterEnd = (endTick + step - 1u) / step * step;
+    target = static_cast<uint16_t>(std::min<uint32_t>(
+        std::max<uint32_t>(selected.startTick + step, afterEnd), UINT16_MAX));
     while (target < phrase.lengthTicks) {
       bool occupied = false;
       for (uint16_t i = 0; i < phrase.count; ++i) {
@@ -880,6 +888,7 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
     if (external_audition_note_ != static_cast<int16_t>(note)) return false;
     guarded([&]() { mini_acid_.liveNoteOff(voice_index_, note); });
     external_audition_note_ = -1;
+    hold_active_ = false;
     return true;
   }
   // A chord is keys held together: the previous key must still be down.
@@ -896,8 +905,17 @@ bool SynthSequencerPage::handleExternalNote(uint8_t note, uint8_t velocity) {
   if (!(previousHeld && last_recorded_note_ >= 0 &&
         PhraseChordFocus::sameChordOnset(last_recorded_ms_, now) &&
         joinRecordedChord(note, velocity))) {
+    const uint16_t countBefore = mini_acid_.currentPhraseBuffer(voice_index_).count;
     insertAtCursor(note, velocity);
+    const bool inserted =
+        mini_acid_.currentPhraseBuffer(voice_index_).count > countBefore;
     rememberRecordedNote(note);
+    // A chord joined above keeps the first key's hold; a new note starts one.
+    // Only a note this key just added may grow: its Undo receipt is the one
+    // a held note's growth relies on (see extendHeldNote).
+    hold_active_ = inserted && last_recorded_note_ >= 0;
+    hold_press_ms_ = now;
+    hold_grown_cells_ = 0;
   }
   last_recorded_ms_ = now;
   guarded([&]() { mini_acid_.liveNoteOn(voice_index_, note, velocity); });
@@ -1921,7 +1939,102 @@ void SynthSequencerPage::setVisualStyle(VisualStyle style) {
   if (params_page_) params_page_->setVisualStyle(style);
 }
 
+// A recorded key held past kHoldThresholdMs: the note (every note of its chord)
+// grows one grid cell, then one more per cell of time at the current tempo,
+// until the key is released, the next cell holds another note, or the Melody
+// ends. The cursor follows the end so the next key lands after it.
+//
+// Growth deliberately publishes no Undo receipt of its own: the retained
+// receipt is the one the key's insert just committed (state before the key),
+// so Ctrl+Z removes the whole held note in one step, as one gesture.
+void SynthSequencerPage::extendHeldNote() {
+  if (!hold_active_) return;
+  if (external_audition_note_ < 0 || last_recorded_note_ < 0 ||
+      synth_tab_ != SynthTab::Notes ||
+      mini_acid_.currentSequencedSource(voice_index_) !=
+          MiniAcid::SequencedSource::Phrase) {
+    hold_active_ = false;
+    return;
+  }
+  const uint32_t elapsed = millis() - hold_press_ms_;
+  if (elapsed < kHoldThresholdMs) return;
+  const RuntimePhraseEdit::Grid grid = phrase_cursor_.grid;
+  const uint16_t cell = PhraseNotesCursor::quantumTicks(grid);
+  const float bpm = mini_acid_.bpm();
+  if (cell == 0 || !(bpm > 0.0f)) {
+    hold_active_ = false;
+    return;
+  }
+  // A bar is four beats: one cell lasts cell / kTicksPerBar of 240000 / bpm ms.
+  const float cellMs = static_cast<float>(cell) * 240000.0f /
+                       (static_cast<float>(PhraseRuntime::kTicksPerBar) * bpm);
+  const uint32_t due = 1u + static_cast<uint32_t>(
+      static_cast<float>(elapsed - kHoldThresholdMs) / cellMs);
+  if (hold_grown_cells_ >= due) return;
+
+  const auto& live = mini_acid_.currentPhraseBuffer(voice_index_);
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) return;
+  const uint16_t start = last_recorded_start_;
+  uint16_t grown = 0;
+  bool blocked = false;
+  uint32_t endTick = 0;
+  const auto result = RuntimePhraseEdit::prepare(
+      live, *after, [&](PhraseRuntime::RuntimeSynthEventBuffer& candidate) {
+        while (!blocked && hold_grown_cells_ + grown < due) {
+          uint32_t endSubtick = 0;
+          for (uint16_t i = 0; i < candidate.count; ++i) {
+            const auto& event = candidate.events[i];
+            if (event.startTick != start) continue;
+            endSubtick = std::max<uint32_t>(
+                endSubtick,
+                static_cast<uint32_t>(event.startTick) *
+                        PhraseRuntime::kSubticksPerTick +
+                    event.durationSubticks);
+          }
+          endTick = (endSubtick + PhraseRuntime::kSubticksPerTick - 1u) /
+                    PhraseRuntime::kSubticksPerTick;
+          if (endSubtick == 0 || endTick + cell > candidate.lengthTicks) {
+            blocked = true;
+            break;
+          }
+          for (uint16_t i = 0; i < candidate.count; ++i) {
+            const uint16_t other = candidate.events[i].startTick;
+            if (other != start && other >= endTick && other < endTick + cell) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) break;
+          for (uint16_t i = 0; i < candidate.count; ++i) {
+            if (candidate.events[i].startTick != start) continue;
+            if (RuntimePhraseEdit::resizeEventByGrid(candidate, i, 1, grid) !=
+                RuntimePhraseEdit::EventEditResult::Changed) {
+              blocked = true;
+            }
+          }
+          if (blocked) break;
+          endTick += cell;
+          ++grown;
+        }
+      });
+  if (blocked) hold_active_ = false;
+  if (result != RuntimePhraseEdit::PrepareResult::Ready || grown == 0) return;
+
+  const auto apply = [&]() {
+    (void)RuntimePhraseEdit::commit(mini_acid_.currentPhraseBuffer(voice_index_),
+                                    *after);
+  };
+  if (audio_guard_) audio_guard_(apply);
+  else apply();
+  hold_grown_cells_ = static_cast<uint16_t>(hold_grown_cells_ + grown);
+  phrase_cursor_.cell = static_cast<uint8_t>((endTick - 1u) / cell);
+  phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after->lengthTicks);
+}
+
 void SynthSequencerPage::tick() {
+  extendHeldNote();
   if (synth_tab_ == SynthTab::Notes && pattern_page_ &&
       mini_acid_.currentSequencedSource(voice_index_) == MiniAcid::SequencedSource::Pattern) {
     pattern_page_->syncSongPatternContext();

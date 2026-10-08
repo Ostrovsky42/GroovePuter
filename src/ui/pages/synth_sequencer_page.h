@@ -92,6 +92,13 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   uint16_t last_recorded_start_ = 0;
   bool joinRecordedChord(uint8_t note, uint8_t velocity);
   void rememberRecordedNote(uint8_t note);
+  // A recorded key held past kHoldThresholdMs grows its note one grid cell per
+  // cell of time at the current tempo until released (extendHeldNote in tick).
+  static constexpr uint32_t kHoldThresholdMs = 300;
+  bool hold_active_ = false;
+  uint32_t hold_press_ms_ = 0;
+  uint16_t hold_grown_cells_ = 0;
+  void extendHeldNote();
   int chordFocusInCell() const;
   bool cycleChordFocus();
   bool addChordTone();

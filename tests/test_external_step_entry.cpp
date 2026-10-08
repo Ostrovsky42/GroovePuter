@@ -183,6 +183,71 @@ int main() {
     assert(!page.handleEvent(clear));                        // not a melody voice
   }
 
+  // A held key grows its note one cell per cell of time at the tempo, once held
+  // past the threshold; the next key lands after it; Ctrl+Z removes the whole
+  // held note in one step.
+  {
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+    assert(engine.currentPhraseBuffer(0).count == 0);
+    engine.setBpm(120.0f);  // 1/16 cell = 125 ms
+    UIEvent home{};
+    home.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    home.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+    home.x = -1;
+    for (int i = 0; i < 64; ++i) page.handleEvent(home);   // cursor to the first cell
+
+    const auto& held = engine.currentPhraseBuffer(0);
+    const uint32_t cellSub = (PhraseRuntime::kTicksPerBar / 16) * PhraseRuntime::kSubticksPerTick;
+    UIEvent press = external(60, 100);
+    assert(page.handleEvent(press));
+    assert(held.count == 1 && held.events[0].durationSubticks == cellSub);
+    delay(150);
+    page.tick();
+    assert(held.events[0].durationSubticks == cellSub);       // a short press stays one cell
+    delay(250);                                                // ~400 ms held
+    page.tick();
+    assert(held.events[0].durationSubticks >= 2 * cellSub);
+    delay(400);                                                // ~800 ms held: 1 + 500/125 = 5
+    page.tick();
+    assert(held.events[0].durationSubticks >= 4 * cellSub);
+    UIEvent release = external(60, 0);
+    assert(page.handleEvent(release));
+    const uint16_t grownTo = held.events[0].durationSubticks;
+    delay(300);
+    page.tick();
+    assert(held.events[0].durationSubticks == grownTo);        // released: no more growth
+
+    UIEvent undo{};
+    undo.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    undo.app_event_type = GROOVEPUTER_APP_EVENT_UNDO;
+    assert(page.handleEvent(undo));
+    assert(engine.currentPhraseBuffer(0).count == 0);          // the whole held note, one step
+
+    // Again, then the next key goes after the held note's end, not into its tail.
+    for (int i = 0; i < 64; ++i) page.handleEvent(home);
+    UIEvent again = external(60, 100);
+    assert(page.handleEvent(again));
+    delay(450);
+    page.tick();
+    UIEvent againOff = external(60, 0);
+    assert(page.handleEvent(againOff));
+    const uint32_t endSub = static_cast<uint32_t>(held.events[0].startTick) *
+                                PhraseRuntime::kSubticksPerTick +
+                            held.events[0].durationSubticks;
+    assert(endSub >= 2 * cellSub);
+    UIEvent next = external(64, 100);
+    assert(page.handleEvent(next));
+    UIEvent nextOff = external(64, 0);
+    assert(page.handleEvent(nextOff));
+    assert(held.count == 2);
+    for (uint16_t i = 0; i < held.count; ++i) {
+      if (held.events[i].note == 64) {
+        assert(static_cast<uint32_t>(held.events[i].startTick) *
+                   PhraseRuntime::kSubticksPerTick == endSub);
+      }
+    }
+  }
+
   std::puts("external keyboard step entry on the MELODY notes tab: PASS");
   return 0;
 }
