@@ -26,6 +26,7 @@
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_host_midi.h"
+#include "src/platform/battery_status.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/ui/save_probe.h"
 
@@ -1792,6 +1793,28 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawText(Layout::COL_1 + 6, rowY, label);
     const int valueX = Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(line);
     gfx.drawText(valueX, rowY, line);
+  }
+  // DEVICE: battery as an information row below the settings (not focusable).
+  // The percent is an estimate from the voltage, so the voltage is shown too;
+  // this board has no charging signal, so no charging icon is claimed.
+  if (sectionIdx == 1) {
+    const int infoRow = rowBase + (lastFocus - firstFocus + 1);
+    if (infoRow < rowBase + visibleRows) {
+      const auto battery = GroovePuterPlatform::batteryStatus();
+      char value[24];
+      if (battery.available) {
+        std::snprintf(value, sizeof(value), "%d%%  %u.%02uV",
+                      static_cast<int>(battery.percent),
+                      static_cast<unsigned>(battery.millivolts / 1000u),
+                      static_cast<unsigned>((battery.millivolts % 1000u) / 10u));
+      } else {
+        std::snprintf(value, sizeof(value), "N/A");
+      }
+      const int rowY = LayoutManager::lineY(infoRow);
+      gfx.setTextColor(battery.available && battery.percent <= 15 ? COLOR_DANGER : palette.dim);
+      gfx.drawText(Layout::COL_1 + 6, rowY, "Battery");
+      gfx.drawText(Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(value), rowY, value);
+    }
   }
   char hint[64] = "[ENTER] SELECT";
   if (section_ == ProjectSection::Midi) {
