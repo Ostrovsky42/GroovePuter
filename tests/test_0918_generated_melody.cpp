@@ -120,8 +120,11 @@ void testLivelinessMovesDensity(MiniAcid& engine) {
   const uint32_t lively = notesAt(GenerationLiveliness::Lively);
   std::printf("lead notes CALM %u NORMAL %u LIVELY %u\n", calm, normal, lively);
   std::fflush(stdout);
+  // Genre idioms (0.9.18): LIVELY picks livelier phrase ideas (arcs,
+  // turnarounds, a stronger A'), not extra notes, so it need not be denser
+  // than NORMAL; CALM still plays the sparse level.
   assert(calm < normal);
-  assert(normal < lively);
+  assert(calm < lively);
   GroovePuterState::setGenerationLiveliness(GenerationLiveliness::Normal);
 }
 

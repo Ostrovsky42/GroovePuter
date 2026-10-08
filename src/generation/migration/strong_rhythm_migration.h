@@ -121,6 +121,12 @@ struct StrongRhythmMigrationContext {
   // compatibility path; non-zero ordinals may vary realization while the
   // selected rhythm archetype remains attempt-invariant.
   uint32_t generationAttemptOrdinal = 0;
+  // 0.9.18 genre idioms only: the press count of a Melody G / the TAKE seed,
+  // which picks the phrase idea. Zero falls back to generationAttemptOrdinal.
+  // Nothing else reads it, so non-idiom material is unchanged.
+  uint32_t ideaPress = 0;
+  // Idioms only: bars in the phrase being built (0 = unknown, read as 4).
+  uint8_t ideaPhraseBars = 0;
 
   // E0a: PREPARE-owned semantic coordinates for one physical Phrase bar.
   // Unspecified keeps non-Phrase callers on the exact compatibility path.

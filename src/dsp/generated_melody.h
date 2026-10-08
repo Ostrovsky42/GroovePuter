@@ -114,7 +114,8 @@ inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
   out.lengthTicks = lengthTicks;
   for (int index = 0; index < bars; ++index) {
     if (!GeneratedPhraseSong::materializeLegacyBar(engine, scene, *prepared,
-                                                   index, *bar, coordinate)) {
+                                                   index, *bar, coordinate,
+                                                   salt)) {
       return Status::BarFailed;
     }
     const SynthPattern& part = voice == 0 ? bar->synthA : bar->synthB;
@@ -140,6 +141,30 @@ inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
       out.events[out.count++] = event;
     }
   }
+  // A held step note (same pitch, slid into) projects as a run of short notes;
+  // in a Melody it is one note.
+  uint16_t kept = 0;
+  for (uint16_t i = 0; i < out.count; ++i) {
+    if (kept > 0) {
+      auto& previous = out.events[kept - 1];
+      const uint32_t previousEnd =
+          static_cast<uint32_t>(previous.startTick) * PhraseRuntime::kSubticksPerTick +
+          previous.durationSubticks;
+      const uint32_t start =
+          static_cast<uint32_t>(out.events[i].startTick) * PhraseRuntime::kSubticksPerTick;
+      const uint32_t stepSubticks =
+          (PhraseRuntime::kTicksPerBar / 16) * PhraseRuntime::kSubticksPerTick;
+      if (out.events[i].note == previous.note && previous.durationSubticks >= stepSubticks &&
+          start <= previousEnd) {
+        const uint32_t end = start + out.events[i].durationSubticks;
+        previous.durationSubticks = static_cast<uint16_t>(
+            end - static_cast<uint32_t>(previous.startTick) * PhraseRuntime::kSubticksPerTick);
+        continue;
+      }
+    }
+    out.events[kept++] = out.events[i];
+  }
+  out.count = kept;
   return RuntimePhraseEdit::validate(out) ? Status::Ready
                                           : Status::ProjectionFailed;
 }
