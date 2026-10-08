@@ -9,6 +9,7 @@
 #include "../player_hub_navigation.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "src/midi/smf_effective_route.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
@@ -22,7 +23,8 @@ namespace {
 using namespace GroovePuterMidi;
 constexpr uint8_t kVisibleMidiRows = 7u;
 constexpr uint8_t kArrangementSegments = kSmfStructuralFormSegments;
-constexpr int kLayerLabelWidth = 60;
+// Name (6 chars) and where the track sounds (5 chars): SYN1, DX, DRUM, OFF.
+constexpr int kLayerLabelWidth = 86;
 constexpr int kOverlayBandHeight = 11;
 constexpr int kCellGap = 1;
 
@@ -35,6 +37,10 @@ constexpr IGfxColor kOverlayScrim(0x020406);
 constexpr IGfxColor kBodyText(0xD2DAE2);
 constexpr IGfxColor kMutedText(0x56616B);
 constexpr IGfxColor kAccent(0xE6B85C);
+// Route label colours: a per-track choice, and a route that needs attention
+// (OFF: the track reaches nothing; two parts sharing SYN1/SYN2/DX).
+constexpr IGfxColor kRouteManual(0x7FC8F8);
+constexpr IGfxColor kRouteWarn(0xE07A5F);
 
 constexpr IGfxColor kActivityRamp[8] = {
     IGfxColor(0x0A2632),
@@ -329,6 +335,61 @@ IGfxColor activityColor(uint8_t level, bool isMuted) {
     return isMuted ? kMutedActivityRamp[index] : kActivityRamp[index];
 }
 
+// Unmuted tracks per SEQTRAK output, to flag two parts on one melodic voice.
+struct HubOutputLoad {
+    uint8_t unmuted[kSmfSeqtrakOutputChannelCount]{};
+};
+
+SmfEffectiveRoute hubTrackRoute(const HubMidiProjection& projection,
+                                bool rawRouting,
+                                uint16_t track) {
+    const SmfTrackInfoSnapshot* info = track < projection.tracks.trackCount
+        ? &projection.tracks.tracks[track]
+        : nullptr;
+    return effectiveSmfTrackRoute(rawRouting, info,
+                                  projection.routes.destinationFor(track));
+}
+
+HubOutputLoad hubOutputLoad(const HubMidiProjection& projection, bool rawRouting) {
+    HubOutputLoad load{};
+    const uint16_t count = std::min<uint16_t>(
+        projection.tracks.trackCount,
+        static_cast<uint16_t>(kSmfTrackInspectorMaxTracks));
+    for (uint16_t track = 0u; track < count; ++track) {
+        if (!projection.tracks.tracks[track].audible()) continue;
+        if (muted(projection.mute, track)) continue;
+        const SmfEffectiveRoute route = hubTrackRoute(projection, rawRouting, track);
+        if (route.kind == SmfEffectiveRouteKind::Output && route.output >= 0) {
+            ++load.unmuted[route.output];
+        }
+    }
+    return load;
+}
+
+IGfxColor hubRouteColor(const SmfEffectiveRoute& route,
+                        const HubOutputLoad& load,
+                        bool isMuted) {
+    if (isMuted) return kMutedText;
+    if (route.kind == SmfEffectiveRouteKind::Off) return kRouteWarn;
+    if (route.kind == SmfEffectiveRouteKind::Output &&
+        smfOutputIsMelodic(route.output) && load.unmuted[route.output] > 1u) {
+        return kRouteWarn;
+    }
+    return route.overridden ? kRouteManual : kBodyText;
+}
+
+void formatHubTrackName(const SmfTrackInfoSnapshot* info,
+                        uint16_t track,
+                        int width,
+                        char* output,
+                        std::size_t outputSize) {
+    if (info && info->hasName()) {
+        std::snprintf(output, outputSize, "%.*s", width, info->name);
+    } else {
+        std::snprintf(output, outputSize, "T%02u", static_cast<unsigned>(track + 1u));
+    }
+}
+
 void drawArrangementRow(IGfx& gfx,
                         int screenWidth,
                         int contentTop,
@@ -338,7 +399,9 @@ void drawArrangementRow(IGfx& gfx,
                         const SmfStructuralLayerSnapshot& layer,
                         const SmfTrackInfoSnapshot* info,
                         bool isMuted,
-                        bool isSelected) {
+                        bool isSelected,
+                        const char* routeLabel,
+                        IGfxColor routeColor) {
     const int y0 = contentTop +
                    (static_cast<int>(row) * contentHeight) / kVisibleMidiRows;
     const int y1 = contentTop +
@@ -361,9 +424,12 @@ void drawArrangementRow(IGfx& gfx,
 
     const char* label = info && info->hasName() ? info->name : roleLabel(layer.role);
     char clippedLabel[9]{};
-    std::snprintf(clippedLabel, sizeof(clippedLabel), "%.8s", label);
+    std::snprintf(clippedLabel, sizeof(clippedLabel), "%.6s", label);
     gfx.setTextColor(isMuted ? kMutedText : kBodyText);
     gfx.drawText(12, textY, clippedLabel);
+    // Where this track sounds right now: read here instead of by ear.
+    gfx.setTextColor(routeColor);
+    gfx.drawText(52, textY, routeLabel ? routeLabel : "");
 
     for (uint8_t segment = 0u; segment < kArrangementSegments; ++segment) {
         const int x0 = gridX +
@@ -403,7 +469,7 @@ void drawOverlayBands(IGfx& gfx,
                       const SmfPlayerSnapshot& player,
                       const SmfStructuralLayerSnapshot& selectedLayer,
                       const SmfTrackInfoSnapshot* selectedInfo,
-                      int8_t destinationChannel,
+                      const SmfEffectiveRoute& route,
                       uint8_t trackLevel,
                       bool soloActive,
                       bool partial) {
@@ -415,10 +481,13 @@ void drawOverlayBands(IGfx& gfx,
 
     char line[64]{};
     gfx.setTextColor(kBodyText);
-    std::snprintf(line, sizeof(line), "%.23s%s",
+    std::snprintf(line, sizeof(line), "%.17s%s",
                   player.filename[0] ? player.filename : "NO FILE",
                   partial ? "*" : "");
     gfx.drawText(3, 2, line);
+    gfx.setTextColor(kMutedText);
+    gfx.drawText(3 + 19 * 6, 2, "O:OUTS");
+    gfx.setTextColor(kBodyText);
 
     std::snprintf(line, sizeof(line), "BAR %lu/%lu",
                   static_cast<unsigned long>(player.bar),
@@ -429,10 +498,7 @@ void drawOverlayBands(IGfx& gfx,
     char destination[8]{};
     char range[12]{};
     formatTrackChannel(selectedInfo, channel, sizeof(channel));
-    formatRouteDestination(destinationChannel,
-                           false,
-                           destination,
-                           sizeof(destination));
+    formatEffectiveSmfRoute(route, destination, sizeof(destination));
     formatPitchRange(selectedLayer, range, sizeof(range));
     if (player.rawRouting) {
         std::snprintf(line,
@@ -489,10 +555,107 @@ bool selectProjectedLayer(const HubMidiProjection& projection,
         projection.layers.layers[layerIndex].trackIndex,
         projection.generation);
 }
+
+// O: who occupies which SEQTRAK output, so a free voice can be chosen at a
+// glance. Muted tracks are counted but not named; two unmuted parts on one
+// SYN1/SYN2/DX, and tracks that reach nothing (OFF), are flagged.
+void drawHubMidiOutputs(IGfx& gfx,
+                        const SmfPlayerSnapshot& player,
+                        const HubMidiProjection& projection) {
+    const int width = gfx.width();
+    gfx.fillRect(0, 0, width, gfx.height(), kScreenBackground);
+    gfx.fillRect(0, 0, width, kOverlayBandHeight, kOverlayScrim);
+    gfx.setTextColor(kBodyText);
+    gfx.drawText(3, 2, "SEQTRAK OUTPUTS");
+    gfx.setTextColor(kMutedText);
+    gfx.drawText(std::max(3, width - gfx.textWidth("O:BACK") - 3), 2, "O:BACK");
+    if (player.rawRouting) {
+        gfx.setTextColor(kBodyText);
+        gfx.drawText(3, 24, "RAW ROUTING:");
+        gfx.drawText(3, 36, "SOURCE CHANNELS PASS THROUGH");
+        return;
+    }
+
+    const HubOutputLoad load = hubOutputLoad(projection, false);
+    const uint16_t count = std::min<uint16_t>(
+        projection.tracks.trackCount,
+        static_cast<uint16_t>(kSmfTrackInspectorMaxTracks));
+    constexpr int kLineHeight = 11;
+    constexpr int kTop = kOverlayBandHeight + 2;
+    char line[64]{};
+    char name[8]{};
+
+    bool anyDrumSplit = false;
+    for (uint16_t track = 0u; track < count; ++track) {
+        if (!projection.tracks.tracks[track].audible()) continue;
+        if (hubTrackRoute(projection, false, track).kind ==
+            SmfEffectiveRouteKind::DrumSplit) {
+            anyDrumSplit = true;
+        }
+    }
+
+    for (int8_t output = 0;
+         output < static_cast<int8_t>(kSmfSeqtrakOutputChannelCount);
+         ++output) {
+        int used = std::snprintf(line, sizeof(line), "%-5s ", seqtrakOutputName(output));
+        unsigned mutedCount = 0u;
+        bool any = false;
+        for (uint16_t track = 0u; track < count; ++track) {
+            if (!projection.tracks.tracks[track].audible()) continue;
+            const SmfEffectiveRoute route = hubTrackRoute(projection, false, track);
+            if (route.kind != SmfEffectiveRouteKind::Output || route.output != output) continue;
+            any = true;
+            if (muted(projection.mute, track)) {
+                ++mutedCount;
+                continue;
+            }
+            formatHubTrackName(&projection.tracks.tracks[track], track, 6, name, sizeof(name));
+            if (used < static_cast<int>(sizeof(line)) - 1) {
+                used += std::snprintf(line + used, sizeof(line) - used, "%s ", name);
+            }
+        }
+        if (output <= 6 && anyDrumSplit && used < static_cast<int>(sizeof(line)) - 1) {
+            used += std::snprintf(line + used, sizeof(line) - used, "+GM ");
+            any = true;
+        }
+        if (mutedCount > 0u && used < static_cast<int>(sizeof(line)) - 1) {
+            used += std::snprintf(line + used, sizeof(line) - used, "(%uM)", mutedCount);
+        }
+        if (!any && used < static_cast<int>(sizeof(line)) - 1) {
+            std::snprintf(line + used, sizeof(line) - used, "--");
+        }
+        const bool clash = smfOutputIsMelodic(output) && load.unmuted[output] > 1u;
+        gfx.setTextColor(clash ? kRouteWarn : (any ? kBodyText : kMutedText));
+        gfx.drawText(3, kTop + output * kLineHeight, line);
+    }
+
+    // Tracks that reach nothing, and GM drum tracks split over KICK..CYM.
+    int used = std::snprintf(line, sizeof(line), "OFF   ");
+    bool anyOff = false;
+    for (uint16_t track = 0u; track < count; ++track) {
+        if (!projection.tracks.tracks[track].audible()) continue;
+        if (muted(projection.mute, track)) continue;
+        const SmfEffectiveRoute route = hubTrackRoute(projection, false, track);
+        if (route.kind != SmfEffectiveRouteKind::Off &&
+            route.kind != SmfEffectiveRouteKind::Multi) {
+            continue;
+        }
+        anyOff = true;
+        formatHubTrackName(&projection.tracks.tracks[track], track, 6, name, sizeof(name));
+        if (used < static_cast<int>(sizeof(line)) - 1) {
+            used += std::snprintf(line + used, sizeof(line) - used, "%s%s ", name,
+                                  route.kind == SmfEffectiveRouteKind::Multi ? "*" : "");
+        }
+    }
+    if (!anyOff) std::snprintf(line + used, sizeof(line) - used, "--");
+    gfx.setTextColor(anyOff ? kRouteWarn : kMutedText);
+    gfx.drawText(3, kTop + static_cast<int>(kSmfSeqtrakOutputChannelCount) * kLineHeight, line);
+}
 }  // namespace
 
 void SequencerHubPage::onEnter(int context) {
     midiRouteEdit_ = false;
+    midiOutputsView_ = false;
     midiRouteDraft_ = kSmfTrackOutputRouteAuto;
     if (context == PlayerHubNavigation::kOpenMidiFromPlayerContext) {
         midiOverview_ = true;
@@ -566,6 +729,7 @@ void SequencerHubPage::syncMidiSessionSelection() {
 
 void SequencerHubPage::returnFromMidiOverview() {
     midiRouteEdit_ = false;
+    midiOutputsView_ = false;
     midiRouteDraft_ = kSmfTrackOutputRouteAuto;
     if (midiReturnToPlayer_) {
         midiOverview_ = false;
@@ -660,6 +824,11 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     if (event.key == 'm' || event.key == 'M') {
         midiOverview_ = false;
         midiReturnToPlayer_ = false;
+        midiOutputsView_ = false;
+        return true;
+    }
+    if (event.key == 'o' || event.key == 'O') {
+        midiOutputsView_ = !midiOutputsView_;
         return true;
     }
     if (event.key == ' ') {
@@ -758,10 +927,24 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             service->persistTrackOutputRoutes(projection.generation);
         char destinationText[20]{};
         char toast[40]{};
-        formatRouteDestination(destination,
-                               false,
-                               destinationText,
-                               sizeof(destinationText));
+        if (destination == kSmfTrackOutputRouteAuto) {
+            // AUTO alone says nothing about the sound: name what it resolves to.
+            char resolved[8]{};
+            // projection predates this change: resolve the new AUTO directly.
+            const SmfTrackInfoSnapshot* info =
+                selectedTrack < projection.tracks.trackCount
+                    ? &projection.tracks.tracks[selectedTrack]
+                    : nullptr;
+            formatEffectiveSmfRoute(
+                effectiveSmfTrackRoute(false, info, kSmfTrackOutputRouteAuto),
+                resolved, sizeof(resolved));
+            std::snprintf(destinationText, sizeof(destinationText), "AUTO %s", resolved);
+        } else {
+            formatRouteDestination(destination,
+                                   true,
+                                   destinationText,
+                                   sizeof(destinationText));
+        }
         std::snprintf(toast,
                       sizeof(toast),
                       saveQueued
@@ -865,7 +1048,12 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
     const int rowsTop = std::min(kOverlayBandHeight, screenHeight);
     const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);
     const int rowsHeight = std::max(0, rowsBottom - rowsTop);
+    if (midiOutputsView_) {
+        drawHubMidiOutputs(gfx, player, projection);
+        return;
+    }
     gfx.fillRect(0, 0, screenWidth, screenHeight, kScreenBackground);
+    const HubOutputLoad load = hubOutputLoad(projection, player.rawRouting);
 
     for (uint8_t row = 0u; row < kVisibleMidiRows; ++row) {
         const uint8_t index = static_cast<uint8_t>(midiScroll_ + row);
@@ -885,6 +1073,11 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
             layer.trackIndex < projection.tracks.trackCount
                 ? &projection.tracks.tracks[layer.trackIndex]
                 : nullptr;
+        const bool rowMuted = muted(projection.mute, layer.trackIndex);
+        const SmfEffectiveRoute rowRoute =
+            hubTrackRoute(projection, player.rawRouting, layer.trackIndex);
+        char routeLabel[8]{};
+        formatEffectiveSmfRoute(rowRoute, routeLabel, sizeof(routeLabel));
         drawArrangementRow(
             gfx,
             screenWidth,
@@ -894,8 +1087,10 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
             index,
             layer,
             info,
-            muted(projection.mute, layer.trackIndex),
-            index == selected);
+            rowMuted,
+            index == selected,
+            routeLabel,
+            hubRouteColor(rowRoute, load, rowMuted));
     }
 
     const int gridX = std::min(kLayerLabelWidth, screenWidth);
@@ -912,9 +1107,11 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      player,
                      selectedLayer,
                      selectedInfo,
-                     projection.routes.destinationFor(selectedLayer.trackIndex),
+                     hubTrackRoute(projection, player.rawRouting,
+                                   selectedLayer.trackIndex),
                      smfTrackLevelState().levelFor(selectedLayer.trackIndex),
                      selectedTrackIsSolo(projection.generation,
                                          selectedLayer.trackIndex),
                      projection.layers.partial);
 }
+

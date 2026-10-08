@@ -102,6 +102,8 @@ private:
     bool midiOverview_{false};
     bool midiReturnToPlayer_{false};
     bool midiRouteEdit_{false};
+    // O on the MIDI overview: which tracks occupy each SEQTRAK output.
+    bool midiOutputsView_{false};
     int8_t midiRouteDraft_{-1};
     uint8_t midiSelected_{0};
     uint8_t midiScroll_{0};
