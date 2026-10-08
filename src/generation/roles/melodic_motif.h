@@ -24,6 +24,16 @@ enum class MelodicRhythmId : uint8_t {
   // cells above give 1-4). Bass/chord onsets still block, so they interlock.
   RunningLine,
   EighthArp,
+  // 0.9.18 genre cells (onsets in the comments of melodic_motif.cpp).
+  HookSix,
+  OffbeatCell,
+  PedalCell,
+  AngularCell,
+  ShiftedCell,
+  BreakAnswer,
+  FunkCell,
+  LateMotif,
+  SlowPair,
   Count,
 };
 

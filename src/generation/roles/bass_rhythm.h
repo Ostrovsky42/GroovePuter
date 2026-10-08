@@ -20,6 +20,7 @@ enum class BassRhythmId : uint8_t {
   HalfTimePocket,
   SyncopatedHook,
   SustainAndDrop,
+  ConnectedHook,
   Count,
 };
 

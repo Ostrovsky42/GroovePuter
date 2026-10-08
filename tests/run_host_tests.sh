@@ -661,6 +661,8 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_chord_stage10_tests.sh"
 
+bash "${ROOT_DIR}/tests/run_0918_lead_tests.sh"
+
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_melodic_stage11_tests.sh"
 

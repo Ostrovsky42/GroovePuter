@@ -191,6 +191,15 @@ MelodicMotifResult realizeMelodicMotif(const MelodicMotifRequest& request) {
     case MelodicRhythmId::RepeatedCell: onsets = mask({0, 4, 8, 12}); break;
     case MelodicRhythmId::RunningLine: onsets = mask({0, 2, 3, 6, 8, 10, 11, 14}); break;
     case MelodicRhythmId::EighthArp: onsets = mask({0, 2, 4, 6, 8, 10, 12, 14}); break;
+    case MelodicRhythmId::HookSix: onsets = mask({0, 3, 5, 8, 11, 13}); break;  // Rave: repeat with a fourth/fifth and return
+    case MelodicRhythmId::OffbeatCell: onsets = mask({1, 5, 9, 13}); break;  // Darksynth: between an eighth-note bass
+    case MelodicRhythmId::PedalCell: onsets = mask({1, 7, 13}); break;  // Techno: a pedal with one neighbour
+    case MelodicRhythmId::AngularCell: onsets = mask({2, 5, 11, 15}); break;  // Electro / UK Garage
+    case MelodicRhythmId::ShiftedCell: onsets = mask({2, 6, 11, 15}); break;  // Broken
+    case MelodicRhythmId::BreakAnswer: onsets = mask({3, 11, 15}); break;  // Drum & Bass: a short answer between bass hits {2,7,10,14}
+    case MelodicRhythmId::FunkCell: onsets = mask({1, 4, 7, 10, 13}); break;  // Funk / Soul
+    case MelodicRhythmId::LateMotif: onsets = mask({4, 9, 12}); break;  // Hip-Hop: after the boom-bap bass {2,7,10,14}
+    case MelodicRhythmId::SlowPair: onsets = mask({4, 12}); break;  // Lo-Fi
     case MelodicRhythmId::Auto:
     case MelodicRhythmId::Count:
       return result;
@@ -232,6 +241,15 @@ const char* melodicRhythmName(MelodicRhythmId id) {
     case MelodicRhythmId::RepeatedCell: return "REPEATED CELL";
     case MelodicRhythmId::RunningLine: return "RUNNING LINE";
     case MelodicRhythmId::EighthArp: return "EIGHTH ARP";
+    case MelodicRhythmId::HookSix: return "HOOK SIX";
+    case MelodicRhythmId::OffbeatCell: return "OFFBEAT CELL";
+    case MelodicRhythmId::PedalCell: return "PEDAL CELL";
+    case MelodicRhythmId::AngularCell: return "ANGULAR CELL";
+    case MelodicRhythmId::ShiftedCell: return "SHIFTED CELL";
+    case MelodicRhythmId::BreakAnswer: return "BREAK ANSWER";
+    case MelodicRhythmId::FunkCell: return "FUNK CELL";
+    case MelodicRhythmId::LateMotif: return "LATE MOTIF";
+    case MelodicRhythmId::SlowPair: return "SLOW PAIR";
     case MelodicRhythmId::Count: break;
   }
   return "INVALID";
