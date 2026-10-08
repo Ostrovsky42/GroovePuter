@@ -36,6 +36,9 @@ public:
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
+    bool cycleLoopMode() override;
+    bool markLoopStart() override;
+    bool markLoopEnd() override;
     bool persistTrackOutputRoutes(uint32_t generation) override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
     GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
@@ -71,6 +74,9 @@ private:
         AdjustTempoBpm,
         ResetTempo,
         CycleVelocityBoost,
+        CycleLoopMode,
+        MarkLoopStart,
+        MarkLoopEnd,
     };
 
     enum class ProjectTransportReadResult : uint8_t {
@@ -179,6 +185,17 @@ private:
     GroovePuterMidi::SmfStreamEvent pendingEvent_{};
     bool hasPendingEvent_{false};
     bool streamEnded_{true};
+    // Loop (player task only). A held boundary keeps the first event past it
+    // pending until the audio clock reaches the boundary, then restarts.
+    GroovePuterMidi::SmfLoopRegion loopRegion_{};
+    bool loopBoundaryHeld_{false};
+    uint32_t loopCount_{0};
+    void applyLoopCommand(CommandType type);
+    void publishLoopSnapshot();
+    bool loopBoundaryReached(uint32_t boundaryTick,
+                             uint32_t anchorBlock,
+                             const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    void restartLoop();
     // Memo of the tick prepareStreamAt() last positioned the stream at, so a
     // repeat request skips the scan entirely.
     uint32_t streamPreparedTick_{0};

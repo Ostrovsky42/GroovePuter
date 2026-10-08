@@ -426,6 +426,18 @@ Fresh multi-row Phrase generation is STOP-only. During PLAY it reports
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
 
+### MIDI PLAYER LOOP
+
+| Key | Action |
+|---|---|
+| `L` | Loop `OFF -> SONG -> A-B -> OFF` (A-B without marks: 4 bars from the playhead) |
+| `S` | Mark A (loop start) at the current bar |
+| `E` | Mark B (loop end, inclusive) at the current bar and loop A-B |
+
+The header chip shows `LOOP` (whole song) or `L5-8` (bars). The loop restarts
+through the ordinary start path, so each wrap has a short gap; in PROJECT tempo
+it re-arms on the next master bar like a seek. A new file clears the A/B marks.
+
 ### HUB MIDI
 
 Open from MIDI Player with `H` after a file is loaded.

@@ -610,6 +610,51 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         GroovePuterUi::midiFileManager().open();
         return true;
     }
+    // Loop: L cycles OFF -> SONG -> A-B; S marks A (start), E marks B (end,
+    // and loops A-B). [ and ] stay global page navigation.
+    // The toast predicts the result with the same rules the player applies.
+    const bool loopKey = event.key == 'l' || event.key == 'L';
+    const bool markA = event.key == 's' || event.key == 'S';
+    const bool markB = event.key == 'e' || event.key == 'E';
+    if (loopKey || markA || markB) {
+        if (state.state == SmfPlayerState::Unloaded || state.state == SmfPlayerState::Error) {
+            UI::showToast("LOAD MIDI FIRST", 800);
+            return true;
+        }
+        SmfLoopRegion region{};
+        region.mode = state.loopMode;
+        region.startBar = state.loopStartBar;
+        region.endBar = state.loopEndBar;
+        const uint32_t totalBars = std::max<uint32_t>(state.totalBars, 1u);
+        bool queued = false;
+        if (markA) {
+            markSmfLoopStart(region, state.bar, totalBars);
+            queued = player_->markLoopStart();
+        } else if (markB) {
+            markSmfLoopEnd(region, state.bar, totalBars);
+            queued = player_->markLoopEnd();
+        } else {
+            cycleSmfLoopMode(region, state.bar, totalBars);
+            queued = player_->cycleLoopMode();
+        }
+        char toast[32];
+        if (!queued) {
+            std::snprintf(toast, sizeof(toast), "MIDI PLAYER BUSY");
+        } else if (markA && region.mode != SmfLoopMode::Section) {
+            std::snprintf(toast, sizeof(toast), "LOOP A = BAR %lu",
+                          static_cast<unsigned long>(region.startBar));
+        } else if (region.mode == SmfLoopMode::Song) {
+            std::snprintf(toast, sizeof(toast), "LOOP: WHOLE SONG");
+        } else if (region.mode == SmfLoopMode::Section) {
+            std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
+                          static_cast<unsigned long>(region.startBar),
+                          static_cast<unsigned long>(region.endBar));
+        } else {
+            std::snprintf(toast, sizeof(toast), "LOOP: OFF");
+        }
+        UI::showToast(toast, 900);
+        return true;
+    }
     if (event.key == 'm' || event.key == 'M') {
         const bool queued = player_->toggleRouting();
         UI::showToast(queued
@@ -671,7 +716,15 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     char chip[20];
     std::snprintf(chip, sizeof(chip), "+%uV", static_cast<unsigned>(state.velocityBoost));
-    MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0);
+    x += MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0) + 3;
+    if (state.loopMode == SmfLoopMode::Song) {
+        MusicVisuals::drawChip(gfx, x, chipY, "LOOP", true, MusicVisuals::accentForStyle());
+    } else if (state.loopMode == SmfLoopMode::Section) {
+        std::snprintf(chip, sizeof(chip), "L%lu-%lu",
+                      static_cast<unsigned long>(state.loopStartBar),
+                      static_cast<unsigned long>(state.loopEndBar));
+        MusicVisuals::drawChip(gfx, x, chipY, chip, true, MusicVisuals::accentForStyle());
+    }
 
     gfx.setTextColor(COLOR_TEXT);
     char line[64];

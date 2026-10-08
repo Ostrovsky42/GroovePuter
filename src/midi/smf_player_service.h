@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "smf_channel_inspector.h"
+#include "smf_loop.h"
 #include "smf_midi_visual.h"
 
 namespace GroovePuterMidi {
@@ -94,6 +95,10 @@ struct SmfPlayerSnapshot {
     bool rawRouting{true};
     SmfTempoMode tempoMode{SmfTempoMode::Original};
     SmfLaunchMode launchMode{SmfLaunchMode::NextBar};
+    SmfLoopMode loopMode{SmfLoopMode::Off};
+    uint32_t loopStartBar{0};
+    uint32_t loopEndBar{0};
+    uint32_t loopCount{0};
     SmfPlayerPerformanceSnapshot performance{};
     SmfMidiVisualSnapshot midiVisual{};
 };
@@ -117,6 +122,11 @@ public:
     virtual bool adjustTempoBpm(int deltaBpm) = 0;
     virtual bool resetTempo() = 0;
     virtual bool cycleVelocityBoost() = 0;
+    // Loop: L cycles OFF -> SONG -> A-B, S marks A and E marks B at the
+    // current bar (B arms the section loop).
+    virtual bool cycleLoopMode() { return false; }
+    virtual bool markLoopStart() { return false; }
+    virtual bool markLoopEnd() { return false; }
     virtual bool persistTrackOutputRoutes(uint32_t generation) {
         (void)generation;
         return false;

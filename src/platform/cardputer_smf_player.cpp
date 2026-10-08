@@ -176,6 +176,24 @@ bool CardputerSmfPlayerService::cycleVelocityBoost() {
     return enqueue(command);
 }
 
+bool CardputerSmfPlayerService::cycleLoopMode() {
+    Command command{};
+    command.type = CommandType::CycleLoopMode;
+    return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::markLoopStart() {
+    Command command{};
+    command.type = CommandType::MarkLoopStart;
+    return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::markLoopEnd() {
+    Command command{};
+    command.type = CommandType::MarkLoopEnd;
+    return enqueue(command);
+}
+
 bool CardputerSmfPlayerService::persistTrackOutputRoutes(uint32_t generation) {
     return smfTrackRouteProfileRuntime().requestSave(generation);
 }
@@ -793,12 +811,24 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             snapshot_.velocityBoost = velocityBoost_;
             portEXIT_CRITICAL(&snapshotMux_);
             break;
+        case CommandType::CycleLoopMode:
+        case CommandType::MarkLoopStart:
+        case CommandType::MarkLoopEnd:
+            applyLoopCommand(command.type);
+            break;
     }
 }
 
 bool CardputerSmfPlayerService::loadFile(const char* path) {
     stopAndCleanup(false);
     resetMidiVisual();
+    // Bar marks belong to the previous file; a song loop stays on.
+    if (loopRegion_.mode == SmfLoopMode::Section) loopRegion_.mode = SmfLoopMode::Off;
+    loopRegion_.startBar = 0;
+    loopRegion_.endBar = 0;
+    loopBoundaryHeld_ = false;
+    loopCount_ = 0;
+    publishLoopSnapshot();
     source_.close();
     loaded_ = false;
     haveLastProjectTransport_ = false;
@@ -961,6 +991,8 @@ bool CardputerSmfPlayerService::scanMetadata() {
 
 bool CardputerSmfPlayerService::prepareStreamAt(uint32_t tick) {
     if (!loaded_) return false;
+    // Any reposition discards a held loop boundary with the pending event.
+    loopBoundaryHeld_ = false;
     // The stream is already positioned exactly where this call would leave it,
     // which is the common pause -> resume and routing-toggle case.
     if (streamPreparedValid_ && streamPreparedTick_ == tick) return true;
@@ -1279,8 +1311,12 @@ void CardputerSmfPlayerService::scheduleAhead() {
     const uint32_t lookaheadBlocks = tempoMode_ == SmfTempoMode::Project
         ? kProjectScheduleLookaheadBlocks
         : kScheduleLookaheadBlocks;
+    const uint32_t loopBoundary = smfLoopBoundaryTick(
+        loopRegion_, endTick_,
+        [this](uint32_t bar) { return timing_.tickForBar(bar); });
 
-    while (eventQueue_.approximateSize() < kQueueFillLimit) {
+    while (!loopBoundaryHeld_ &&
+           eventQueue_.approximateSize() < kQueueFillLimit) {
         SmfStreamEvent event{};
         if (hasPendingEvent_) {
             event = pendingEvent_;
@@ -1290,6 +1326,12 @@ void CardputerSmfPlayerService::scheduleAhead() {
 
         pendingEvent_ = event;
         hasPendingEvent_ = true;
+        // Loop: nothing past the boundary is scheduled; the event waits here
+        // and is discarded by the restart's reposition.
+        if (event.event.tick >= loopBoundary) {
+            loopBoundaryHeld_ = true;
+            break;
+        }
 
         SmfScheduledPosition position{};
         bool scheduled = false;
@@ -1393,7 +1435,14 @@ void CardputerSmfPlayerService::scheduleAhead() {
         perfMaxScheduleMicros_ = scheduleMicros;
     }
 
-    if (streamEnded_ && !hasPendingEvent_ &&
+    const bool fileEnded = streamEnded_ && !hasPendingEvent_;
+    if (loopBoundary != kSmfNoLoopBoundary && (loopBoundaryHeld_ || fileEnded)) {
+        if (loopBoundaryReached(loopBoundary, anchorBlock, projectTransport)) {
+            restartLoop();
+        }
+        return;
+    }
+    if (fileEnded &&
         static_cast<int32_t>(anchorBlock - lastScheduledBlock_) > 1) {
         pausedTick_ = musicStartTick_;
         projectLaunchPlanned_ = false;
@@ -1623,4 +1672,95 @@ const char* CardputerSmfPlayerService::basename(const char* path) {
     if (!path) return "";
     const char* slash = std::strrchr(path, '/');
     return slash ? slash + 1 : path;
+}
+
+void CardputerSmfPlayerService::publishLoopSnapshot() {
+    portENTER_CRITICAL(&snapshotMux_);
+    snapshot_.loopMode = loopRegion_.mode;
+    snapshot_.loopStartBar = loopRegion_.startBar;
+    snapshot_.loopEndBar = loopRegion_.endBar;
+    snapshot_.loopCount = loopCount_;
+    portEXIT_CRITICAL(&snapshotMux_);
+}
+
+void CardputerSmfPlayerService::applyLoopCommand(CommandType type) {
+    if (!loaded_ || !timing_.valid()) return;
+    const SmfPlayerState state = snapshot().state;
+    const uint32_t tick = state == SmfPlayerState::Playing
+        ? currentTickFromAudioClock()
+        : pausedTick_;
+    const uint32_t bar = timing_.barBeatForTick(tick).bar;
+    const uint32_t totalBars = timing_.barBeatForTick(endTick_).bar;
+    switch (type) {
+        case CommandType::CycleLoopMode:
+            cycleSmfLoopMode(loopRegion_, bar, totalBars);
+            break;
+        case CommandType::MarkLoopStart:
+            markSmfLoopStart(loopRegion_, bar, totalBars);
+            break;
+        case CommandType::MarkLoopEnd:
+            markSmfLoopEnd(loopRegion_, bar, totalBars);
+            break;
+        default:
+            return;
+    }
+    // A boundary held for the previous region no longer applies: scheduling
+    // resumes with the pending event, or holds again at the new boundary.
+    loopBoundaryHeld_ = false;
+    publishLoopSnapshot();
+}
+
+// True once the audio clock has reached the loop boundary tick, on the same
+// timeline the scheduler uses for notes.
+bool CardputerSmfPlayerService::loopBoundaryReached(
+        uint32_t boundaryTick,
+        uint32_t anchorBlock,
+        const ProjectTransportBlockSnapshot& transport) {
+    SmfScheduledPosition position{};
+    bool scheduled = false;
+    if (tempoMode_ == SmfTempoMode::Project) {
+        ProjectScheduledPosition projectPosition{};
+        scheduled = scheduleProjectSmfTick(
+                        transport,
+                        ProjectSmfLatePolicy::DispatchNoteOffImmediately,
+                        fileIndex_.division,
+                        projectOriginSmfTick_,
+                        projectOriginStep_,
+                        playbackOriginBlock_,
+                        playbackOriginFrame_,
+                        boundaryTick,
+                        projectBpmX10_,
+                        kSampleRate,
+                        static_cast<uint16_t>(kBlockFrames),
+                        projectPosition) == ProjectSmfScheduleResult::Scheduled;
+        position.blockSequence = projectPosition.blockSequence;
+    } else {
+        scheduled = scheduleSmfTick(timing_,
+                                    playbackOriginTick_,
+                                    playbackOriginBlock_,
+                                    boundaryTick,
+                                    kSampleRate,
+                                    static_cast<uint16_t>(kBlockFrames),
+                                    position,
+                                    tempoScalePermille_);
+    }
+    // A boundary the timeline cannot place must not hold playback forever.
+    if (!scheduled) return true;
+    return static_cast<int32_t>(anchorBlock - position.blockSequence) >= 0;
+}
+
+// The ordinary start path (as a seek does): panic/NoteOff cleanup and the
+// generation filter own every note across the jump. Project mode re-arms on
+// the next master bar and re-sends Song Position, like a seek.
+void CardputerSmfPlayerService::restartLoop() {
+    const uint32_t tick = smfLoopRestartTick(
+        loopRegion_, musicStartTick_,
+        [this](uint32_t bar) { return timing_.tickForBar(bar); });
+    loopBoundaryHeld_ = false;
+    ++loopCount_;
+    publishLoopSnapshot();
+    const bool started = startFromTick(tick);
+    if (started && tempoMode_ == SmfTempoMode::Project) {
+        (void)queueSongPositionPointerAtCurrentAnchor(tick);
+    }
 }
