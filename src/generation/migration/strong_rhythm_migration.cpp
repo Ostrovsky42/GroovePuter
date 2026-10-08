@@ -1,4 +1,6 @@
 #include "strong_rhythm_migration.h"
+#include "../idiom/genre_idiom.h"
+#include "../../state/generation_shape_state.h"
 #include "../roles/bar_function_roles.h"
 
 #include "../generation_context.h"
@@ -1183,6 +1185,29 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       result.melodicRhythmApplied = true;
     }
     result.tonalMaterializationApplied = true;
+  }
+
+  // 0.9.18 genre idioms: for the genres that have one, bass and lead come from
+  // a paired template instead of the role vocabulary (drums, harmony and feel
+  // above are kept).
+  {
+    GenreIdiom::Request idiom{};
+    idiom.generativeMode = settings.generativeMode;
+    idiom.recipe = settings.recipe;
+    if (context.tonalMaterializationEnabled) {
+      idiom.rootPitchClass = context.rootPitchClass;
+      idiom.scale = context.scaleTypeValue;
+    }
+    idiom.level = context.level == RealizationLevel::P1Canonical ? 0 : 1;
+    const auto liveliness = GroovePuterState::generationLiveliness();
+    if (liveliness == GroovePuterState::GenerationLiveliness::Calm) idiom.level = 2;
+    if (liveliness == GroovePuterState::GenerationLiveliness::Lively) idiom.level = 1;
+    idiom.barOrdinal = context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
+        ? GenreIdiom::kNoBarOrdinal
+        : context.phraseBarOrdinal;
+    idiom.salt = static_cast<uint32_t>(context.patternAddress) * 131u +
+                 context.generationAttemptOrdinal * 977u;
+    (void)GenreIdiom::apply(idiom, nextSynthA, nextSynthB);
   }
 
   if (replaceDrums) {

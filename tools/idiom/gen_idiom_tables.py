@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Emit src/generation/idiom/genre_idiom_tables.h from the owner's SEQTRAK genre
+dataset (track_patterns.csv) plus the hand-written House idiom below.
+
+Usage: tools/idiom/gen_idiom_tables.py <path/to/track_patterns.csv> > src/generation/idiom/genre_idiom_tables.h
+
+Pitches become semitones: bass relative to C2, melody relative to C4; chords
+become a root (relative to C) and an interval mask. The dataset is in C minor;
+GenreIdiom maps every semitone onto the project key and scale at runtime.
+"""
+import csv
+import sys
+
+VARIANTS = [
+    "acid_chicago_jack", "acid_rolling",
+    "lofi_classic_chill", "lofi_drunken",
+    "boombap_golden_era", "boombap_dusty_jazz",
+    "ukg_classic_2step", "ukg_dark_skippy",
+]
+
+NOTE_PC = {"C": 0, "Db": 1, "D": 2, "Eb": 3, "E": 4, "F": 5, "Gb": 6, "G": 7,
+           "Ab": 8, "A": 9, "Bb": 10, "B": 11}
+
+CHORD_INTERVALS = {
+    "m": [0, 3, 7], "m7": [0, 3, 7, 10], "m9": [0, 3, 7, 10, 14],
+    "m11": [0, 3, 7, 10, 14, 17], "maj7": [0, 4, 7, 11], "": [0, 4, 7],
+    "6": [0, 4, 7, 9], "7alt": [0, 4, 10, 13], "9": [0, 4, 7, 10, 14],
+}
+
+# Hand-written House (not in the dataset): offbeat bass with an octave pop,
+# minor-9 stabs between kick and bass, a pickup melody. 1-based steps like the
+# CSV. Research: docs/superpowers/plans/2026-10-08-0918-genre-idioms-research.md
+HOUSE = {
+    "P1": {"SYNTH1": ("3|7|11|15", "C2|C2|C3|C2", "1|1|1|1", "104|92|98|90", ""),
+           "SYNTH2": ("4|8|12", "Cm9|Cm9|Fm9", "1|2|2", "78|72|80"),
+           "DX": ("16", "Bb4", "1", "64")},
+    "P2": {"SYNTH1": ("3|7|8|11|15|16", "C2|C2|Bb1|C3|C2|G1", "1|1|1|1|1|1",
+                      "104|92|70|98|90|72", "11:accent=1"),
+           "SYNTH2": ("4|8|12|15", "Cm9|Cm9|Fm9|Fm9", "1|2|2|1", "78|72|80|66"),
+           "DX": ("6|16", "G4|Bb4", "2|1", "60|66")},
+    "P3": {"SYNTH1": ("3|11", "C2|C3", "2|2", "100|94", ""),
+           "SYNTH2": ("4|12", "Cm9|Fm9", "3|3", "76|78"),
+           "DX": ("", "", "", "")},
+}
+
+
+def pitch_semi(name, base_octave):
+    i = 1
+    if len(name) > 1 and name[1] in "b#":
+        i = 2
+    pc = NOTE_PC[name[:i].replace("#", "")] + (1 if "#" in name[:i] else 0)
+    octave = int(name[i:])
+    return pc + 12 * (octave - base_octave)
+
+
+def chord(name):
+    name = name.split("/")[0]
+    i = 1
+    if len(name) > 1 and name[1] in "b#":
+        i = 2
+    root = NOTE_PC[name[:i]]
+    quality = name[i:]
+    mask = 0
+    for interval in CHORD_INTERVALS[quality]:
+        mask |= 1 << interval
+    return root, mask
+
+
+def split(field):
+    return [x for x in field.split("|") if x != ""] if field else []
+
+
+def locks(field):
+    out = {}
+    for part in split(field):
+        step, _, rest = part.partition(":")
+        flags = 0
+        for item in rest.split(";"):
+            if item == "accent=1":
+                flags |= 1
+            if item == "slide=1":
+                flags |= 2
+        out[int(step)] = flags
+    return out
+
+
+def notes(steps, pitches, lengths, velocities, lock_field, base_octave):
+    lk = locks(lock_field)
+    rows = []
+    for s, p, l, v in zip(split(steps), split(pitches), split(lengths), split(velocities)):
+        rows.append("{%d, %d, %d, %d, %d}" % (int(s) - 1, pitch_semi(p, base_octave),
+                                              int(l), int(v), lk.get(int(s), 0)))
+    return rows
+
+
+def stabs(steps, chords, lengths, velocities):
+    rows = []
+    for s, c, l, v in zip(split(steps), split(chords), split(lengths), split(velocities)):
+        root, mask = chord(c)
+        rows.append("{%d, %d, 0x%Xu, %d, %d}" % (int(s) - 1, root, mask, int(l), int(v)))
+    return rows
+
+
+def emit_level(name, level, data):
+    b = notes(*data["SYNTH1"], 2)
+    s = stabs(*data["SYNTH2"])
+    m = notes(*data["DX"], "", 4)
+    out = []
+    for kind, rows, typ in (("bass", b, "IdiomNote"), ("stab", s, "IdiomStab"),
+                            ("melody", m, "IdiomNote")):
+        if rows:
+            out.append("inline constexpr %s k_%s_%s_%s[] = {%s};" % (
+                typ, name, level, kind, ", ".join(rows)))
+    ref = []
+    for kind, rows in (("bass", b), ("stab", s), ("melody", m)):
+        ref.append(("k_%s_%s_%s" % (name, level, kind), len(rows)) if rows else ("nullptr", 0))
+    return out, "{%s, %d, %s, %d, %s, %d}" % (ref[0][0], ref[0][1], ref[1][0], ref[1][1],
+                                              ref[2][0], ref[2][1])
+
+
+def main():
+    rows = {}
+    with open(sys.argv[1], encoding="utf-8-sig") as handle:
+        for r in csv.DictReader(handle):
+            if r["variant_id"] in VARIANTS and r["track_id"] in ("SYNTH1", "SYNTH2", "DX"):
+                tr = r["track_id"]
+                fields = (r["active_steps"], r["pitches"], r["note_lengths_steps"], r["velocities"])
+                if tr == "SYNTH1":
+                    fields = fields + (r["parameter_locks"],)
+                rows.setdefault(r["variant_id"], {}).setdefault(r["pattern_id"], {})[tr] = fields
+    rows["house_deep_offbeat"] = HOUSE
+    print("// Generated by tools/idiom/gen_idiom_tables.py from the SEQTRAK genre")
+    print("// dataset (track_patterns.csv) + hand-written House. Do not edit by hand.")
+    print("#pragma once\n\n#include \"genre_idiom_types.h\"\n\nnamespace GenreIdiom {\n")
+    variants = []
+    for name in VARIANTS + ["house_deep_offbeat"]:
+        levels = []
+        for level in ("P1", "P2", "P3"):
+            data = rows[name][level]
+            decls, ref = emit_level(name, level, data)
+            print("\n".join(decls))
+            levels.append(ref)
+        variants.append((name, levels))
+    print()
+    for name, levels in variants:
+        print("inline constexpr IdiomVariant k_%s = {\"%s\", {%s}};" % (name, name, ", ".join(levels)))
+    print("\n}  // namespace GenreIdiom")
+
+
+if __name__ == "__main__":
+    main()
