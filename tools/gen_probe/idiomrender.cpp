@@ -41,7 +41,8 @@ int main(int argc, char** argv) {
                       {GenerativeMode::UkGarage, "ukg", 132.0f},
                       {GenerativeMode::LoFi, "lofi", 78.0f}};
   for (const auto& g : genres) {
-    for (uint32_t take = 1; take <= 2; ++take) {
+    const uint32_t takes = argc > 3 ? static_cast<uint32_t>(std::atoi(argv[3])) : 2;
+    for (uint32_t take = 1; take <= takes; ++take) {
       const auto root = std::filesystem::temp_directory_path() / ("gp_idiomrender_" + tag);
       std::error_code ec;
       std::filesystem::remove_all(root, ec);

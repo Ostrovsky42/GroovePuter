@@ -139,14 +139,54 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
   }
 }
 
+// One press's variation, the same for every bar of a phrase so the hook
+// still returns: which template, how the bass is bent, how the lead starts,
+// where A' moves and how the B bar answers.
+struct Variation {
+  uint8_t bassMutation = 0;   // 0 none, 1 degree swap, 2 nudge a weak note, 3 ghost note
+  uint8_t bassNote = 0;       // which bass note the mutation (and the octave flip) touches
+  bool octaveFlip = false;
+  uint8_t leadStart = 0;      // index into the lead start targets
+  int8_t melodyNudge = 0;     // -1/0/+1 scale step on one melody note
+  uint8_t melodyNote = 0;
+  int8_t primeShift = 1;      // A': +1 or -1 chord tone
+  uint8_t answer = 0;         // B ending: 0 tonic, 1 fifth, 2 run up to tonic, 3 echo of the start
+};
+
+inline uint32_t mix(uint32_t value) {
+  value ^= value >> 16;
+  value *= 0x7FEB352Du;
+  value ^= value >> 15;
+  value *= 0x846CA68Bu;
+  value ^= value >> 16;
+  return value;
+}
+
+inline Variation variationFor(uint32_t salt) {
+  // One independent hash per field: bits of a single hash correlated.
+  auto field = [&](uint32_t index) { return mix(salt * 0x9E3779B1u + index * 0x85EBCA77u + 1u); };
+  Variation v{};
+  v.bassMutation = static_cast<uint8_t>(field(1) % 4u);
+  v.bassNote = static_cast<uint8_t>(field(2) & 0xFFu);
+  v.octaveFlip = (field(3) % 2u) != 0;
+  v.leadStart = static_cast<uint8_t>(field(4) % 4u);
+  v.melodyNudge = static_cast<int8_t>(static_cast<int>(field(5) % 3u) - 1);
+  v.melodyNote = static_cast<uint8_t>(field(6) & 0xFFu);
+  v.primeShift = (field(7) % 2u) ? -1 : 1;
+  v.answer = static_cast<uint8_t>(field(8) % 4u);
+  return v;
+}
+
 // Writes Synth A (bass) and Synth B (lead) for one bar. False (and nothing
 // written) when the genre has no idiom.
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead) {
+  const uint32_t pick = mix(request.salt);
   const IdiomVariant* variant =
-      variantFor(request.generativeMode, request.recipe, request.salt);
+      variantFor(request.generativeMode, request.recipe, pick >> 7);
   if (variant == nullptr) return false;
   const IdiomLevel& level = variant->levels[request.level > 2 ? 2 : request.level];
   if (level.bass == nullptr) return false;
+  const Variation v = variationFor(request.salt);
 
   const int role = request.barOrdinal == kNoBarOrdinal ? 0 : request.barOrdinal % 4;
   const bool answerBar = role == 3;
@@ -154,23 +194,53 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   const int shift = root >= 6 ? root - 12 : root;  // keep registers near C
   const int bassBase = 36 + shift;
   const int leadBase = 60 + shift;
-  const uint32_t salt = request.salt;
   auto map = [&](int semi) { return detail::mapSemi(semi, request.scale); };
 
-  // ---- Synth A: the template bass, one octave flip per press, a fill on B.
+  // ---- Synth A: the template bass with this press's bend, a fill on B.
   detail::clear(bass);
   uint8_t slideOut[16] = {};
-  const int flipIndex = level.bassCount > 1 && ((salt >> 2) & 1u)
-      ? 1 + static_cast<int>((salt >> 3) % (level.bassCount - 1))
-      : -1;
+  // Never the downbeat note: it anchors the bar.
+  const int touched = level.bassCount > 1 ? 1 + v.bassNote % (level.bassCount - 1) : -1;
+  bool occupied[16] = {};
+  for (uint8_t i = 0; i < level.bassCount; ++i) {
+    for (uint8_t k = 0; k < level.bass[i].len && level.bass[i].step + k < 16; ++k) {
+      occupied[level.bass[i].step + k] = true;
+    }
+  }
   for (uint8_t i = 0; i < level.bassCount; ++i) {
     const IdiomNote& note = level.bass[i];
-    if (answerBar && note.step >= 12) continue;
     int semi = note.semi;
-    if (static_cast<int>(i) == flipIndex) semi += semi < 6 ? 12 : -12;
-    detail::place(bass, note.step, bassBase + map(semi), note.len, note.velocity,
-                  (note.flags & kAccent) != 0);
-    if (note.flags & kSlideOut) slideOut[note.step] = 1;
+    int step = note.step;
+    uint8_t velocity = note.velocity;
+    if (static_cast<int>(i) == touched) {
+      if (v.octaveFlip) semi += semi < 6 ? 12 : -12;
+      // A dense line has no free step to push a note into or ghost on: it
+      // takes the degree swap instead.
+      const bool dense = level.bassCount >= 10;
+      if (v.bassMutation == 1 || (dense && v.bassMutation >= 2)) {
+        // Neighbouring chord tone: R <-> 5, b3 -> 5, b7 -> R.
+        const int pc = ((semi % 12) + 12) % 12;
+        const int octave = semi - pc;
+        semi = octave + (pc == 0 ? 7 : pc == 7 ? 12 : pc == 3 ? 7 : pc == 10 ? 12 : pc);
+      } else if (v.bassMutation == 2) {
+        // Push a weak note one step later when that step is free.
+        if (step + 1 < 16 && !occupied[step + 1] && (step % 4) != 0) ++step;
+      }
+    }
+    if (answerBar && step >= 12) continue;
+    detail::place(bass, static_cast<uint8_t>(step), bassBase + map(semi), note.len,
+                  velocity, (note.flags & kAccent) != 0);
+    if (note.flags & kSlideOut) slideOut[step] = 1;
+  }
+  if (v.bassMutation == 3 && level.bassCount < 10) {
+    // A quiet ghost root on the first free off-beat sixteenth.
+    for (int step = 1 + static_cast<int>(v.bassNote % 4) * 4 + 2; step < (answerBar ? 12 : 16); step += 4) {
+      if (bass.steps[step].note < 0) {
+        detail::place(bass, static_cast<uint8_t>(step), bassBase + map(0), 1, 54, false);
+        bass.steps[step].ghost = true;
+        break;
+      }
+    }
   }
   if (answerBar) {
     // Back to the root of the next bar: octave run with a glide, or a b7 pickup.
@@ -181,7 +251,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
       detail::place(bass, 15, bassBase + map(12), 1, 96, false);
       slideOut[14] = 1;
     } else {
-      detail::place(bass, 14, bassBase + map(-2), 2, 88, false);
+      detail::place(bass, 14, bassBase + map(v.answer & 1u ? 7 : -2), 2, 88, false);
     }
   }
   detail::connectSlides(bass, slideOut);
@@ -189,19 +259,20 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   // ---- Synth B: stabs as one moving top voice, melody notes as its peaks.
   detail::clear(lead);
   static constexpr int kTargets[4] = {7, 10, 3, 12};
-  int previous = leadBase + kTargets[salt % 4];
+  int previous = leadBase + kTargets[v.leadStart & 3u];
   const int lo = leadBase - 3;
   const int hi = leadBase + 19;
-  // A' (role 1) keeps the rhythm and lifts the line: every stab one chord tone
-  // higher, every melody note one scale step higher.
-  const int rankShift = role == 1 ? 1 : 0;
+  // A' (role 1) keeps the rhythm and moves the line one chord tone up or down
+  // (melody notes one scale step).
+  const int rankShift = role == 1 ? v.primeShift : 0;
   bool inScale[12] = {};
   {
     static constexpr int8_t kMinor[7] = {0, 2, 3, 5, 7, 8, 10};
     for (int degree : kMinor) inScale[((map(degree) % 12) + 12) % 12] = true;
   }
-  auto scaleStepUp = [&](int pitch) {
-    for (int next = pitch + 1; next <= pitch + 4; ++next) {
+  auto scaleStep = [&](int pitch, int direction) {
+    if (direction == 0) return pitch;
+    for (int next = pitch + direction; std::abs(next - pitch) <= 4; next += direction) {
       if (inScale[((next - leadBase) % 12 + 12) % 12]) return next;
     }
     return pitch;
@@ -209,59 +280,86 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   int8_t melodyAt[16];
   for (auto& m : melodyAt) m = -1;
   for (uint8_t i = 0; i < level.melodyCount; ++i) melodyAt[level.melody[i].step] = static_cast<int8_t>(i);
+  const int nudged = level.melodyCount > 0 ? v.melodyNote % level.melodyCount : -1;
+  int firstPitches[4] = {-1, -1, -1, -1};
+  int firstCount = 0;
   int lastStep = -1;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
     if (answerBar && step >= 12) break;
+    int placed = -1;
     if (melodyAt[step] >= 0) {
       const IdiomNote& note = level.melody[melodyAt[step]];
       int pitch = leadBase + map(note.semi);
-      if (rankShift > 0) pitch = scaleStepUp(pitch);
+      if (melodyAt[step] == nudged) pitch = scaleStep(pitch, v.melodyNudge);
+      pitch = scaleStep(pitch, rankShift);
       detail::place(lead, step, pitch, note.len, note.velocity, (note.flags & kAccent) != 0);
-      previous = pitch;
-      lastStep = step;
-      continue;
-    }
-    for (uint8_t i = 0; i < level.stabCount; ++i) {
-      const IdiomStab& stab = level.stabs[i];
-      if (stab.step != step) continue;
-      bool tone[12] = {};
-      for (int interval = 0; interval < 24; ++interval) {
-        if ((stab.intervalMask & (1u << interval)) == 0) continue;
-        tone[((map(stab.root + interval) % 12) + 12) % 12] = true;
-      }
-      int candidates[24];
-      int count = 0;
-      for (int pitch = lo; pitch <= hi && count < 24; ++pitch) {
-        if (tone[((pitch - leadBase) % 12 + 12) % 12]) candidates[count++] = pitch;
-      }
-      // Move to the nearest chord tone, but not onto the same note.
-      int bestIndex = -1;
-      int bestCost = 1 << 30;
-      for (int c = 0; c < count; ++c) {
-        const int cost = std::abs(candidates[c] - previous) + (candidates[c] == previous ? 3 : 0);
-        if (cost < bestCost) {
-          bestCost = cost;
-          bestIndex = c;
+      placed = pitch;
+    } else {
+      for (uint8_t i = 0; i < level.stabCount; ++i) {
+        const IdiomStab& stab = level.stabs[i];
+        if (stab.step != step) continue;
+        bool tone[12] = {};
+        for (int interval = 0; interval < 24; ++interval) {
+          if ((stab.intervalMask & (1u << interval)) == 0) continue;
+          tone[((map(stab.root + interval) % 12) + 12) % 12] = true;
+        }
+        int candidates[24];
+        int count = 0;
+        for (int pitch = lo; pitch <= hi && count < 24; ++pitch) {
+          if (tone[((pitch - leadBase) % 12 + 12) % 12]) candidates[count++] = pitch;
+        }
+        // Move to the nearest chord tone, but not onto the same note.
+        int bestIndex = -1;
+        int bestCost = 1 << 30;
+        for (int c = 0; c < count; ++c) {
+          const int cost = std::abs(candidates[c] - previous) + (candidates[c] == previous ? 3 : 0);
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestIndex = c;
+          }
+        }
+        if (bestIndex >= 0) {
+          int index = bestIndex + rankShift;
+          if (index >= count) index = count - 1;
+          if (index < 0) index = 0;
+          detail::place(lead, step, candidates[index], stab.len, stab.velocity, false);
+          placed = candidates[index];
         }
       }
-      int best = -1;
-      if (bestIndex >= 0) {
-        int index = bestIndex + rankShift;
-        if (index >= count) index = count - 1;
-        best = candidates[index];
-      }
-      if (best >= 0) {
-        detail::place(lead, step, best, stab.len, stab.velocity, false);
-        previous = best;
-        lastStep = step;
-      }
+    }
+    if (placed >= 0) {
+      previous = placed;
+      lastStep = step;
+      if (firstCount < 4) firstPitches[firstCount++] = placed;
     }
   }
   if (answerBar) {
-    // The answer lands on the tonic nearest the line and rings to the bar end.
     int tonic = leadBase;
     while (tonic + 12 <= previous + 6) tonic += 12;
-    detail::place(lead, lastStep >= 11 ? 13 : 12, tonic, 4, 92, true);
+    const uint8_t start = lastStep >= 11 ? 13 : 12;
+    switch (v.answer) {
+      case 1:  // land on the fifth
+        detail::place(lead, start, tonic + map(7) - (tonic + map(7) > previous + 7 ? 12 : 0), 4, 90, true);
+        break;
+      case 2: {  // scale run up into the tonic
+        int pitch = scaleStep(scaleStep(tonic, -1), -1);
+        for (uint8_t step = 12; step < 15; ++step) {
+          detail::place(lead, step, pitch, 1, static_cast<uint8_t>(76 + (step - 12) * 6), false);
+          pitch = scaleStep(pitch, 1);
+        }
+        detail::place(lead, 15, tonic, 1, 96, true);
+        break;
+      }
+      case 3:  // echo the bar's opening notes, then home
+        for (int i = 0; i < 3 && i < firstCount; ++i) {
+          detail::place(lead, static_cast<uint8_t>(12 + i), firstPitches[i], 1, 80, false);
+        }
+        detail::place(lead, 15, tonic, 1, 92, true);
+        break;
+      default:  // ring on the tonic
+        detail::place(lead, start, tonic, 4, 92, true);
+        break;
+    }
   }
   return true;
 }

@@ -41,6 +41,30 @@ int main(int argc, char** argv) {
   engine.init();
   engine.setSongMode(false);
   const int modes[] = {0, 9, 11, 13, 15};
+  if (argc > 2 && std::string(argv[2]) == "distinct") {
+    std::printf("genre\tvoice\tdistinct/8\tbar1 distinct/8\n");
+    for (int mode : modes) {
+      engine.genreManager().setGenerativeMode(static_cast<GenerativeMode>(mode));
+      engine.genreManager().setRecipe(0);
+      for (int voice = 0; voice < 2; ++voice) {
+        std::set<std::string> whole, first;
+        for (uint32_t salt = 1; salt <= 8; ++salt) {
+          PhraseRuntime::RuntimeSynthEventBuffer a{};
+          GeneratedMelody::generate(engine, voice, bars, salt, a);
+          std::string w, f;
+          for (uint16_t i = 0; i < a.count; ++i) {
+            const std::string e = std::to_string(a.events[i].startTick) + ":" + std::to_string(a.events[i].note) + ",";
+            w += e;
+            if (a.events[i].startTick < PhraseRuntime::kTicksPerBar) f += e;
+          }
+          whole.insert(w); first.insert(f);
+        }
+        std::printf("%s\t%s\t%zu\t%zu\n", kGenre[mode], voice ? "B" : "A", whole.size(), first.size());
+      }
+    }
+    return 0;
+  }
+
   for (int mode : modes) {
     engine.genreManager().setGenerativeMode(static_cast<GenerativeMode>(mode));
     engine.genreManager().setRecipe(0);
