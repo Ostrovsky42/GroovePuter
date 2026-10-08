@@ -299,6 +299,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
 | `Alt+J` | Jump to MATERIAL with this row as the explicit `TO` destination |
+| `F` | FORM: energy curve. `Up/Down` energy 0..4, `Left/Right` section, `Enter` 4/8 bars, `N` add, `Backspace` delete, `1/2/3` BUILD/DROP/WAVE, `G` insert rows after the source block (selection, else the TAKE at the cursor), one Ctrl+Z; `F`/`Esc` back to GRID |
 
 For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
 Pattern or Melody playback; the row does not store a separate type. Accepted Melody
@@ -425,6 +426,13 @@ Fresh multi-row Phrase generation is STOP-only. During PLAY it reports
 | `Q..I` | Select local pattern |
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
+
+### SONG FORM energy levels
+
+`0` silence, `1` drums, `2` drums + bass (A), `3` + lead (B) resting on the
+third bar of every four, `4` everything incl. the Voice lane. The curve builds
+ordinary rows from existing material only; editing them later in GRID is never
+undone by the curve.
 
 ### MIDI PLAYER LOOP
 

@@ -11,6 +11,7 @@
 #include "../../dsp/song_pattern_materializer.h"
 #include "src/state/scene_revision.h"
 #include "src/state/song_edit.h"
+#include "src/state/energy_curve.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/quantized_generation_commit.h"
@@ -156,6 +157,16 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool toggleLoopMode();
   bool insertRowAtCursor();
   bool deleteRowAtCursor();
+
+  // F: FORM view, an energy curve that inserts ordinary rows after the source
+  // block (src/state/energy_curve.h). GRID stays the authority on the sound.
+  bool form_view_ = false;
+  EnergyCurve::Curve form_curve_ = EnergyCurve::presetCurve(EnergyCurve::Preset::Wave);
+  uint8_t form_section_ = 0;
+  bool handleFormEvent(UIEvent& ui_event);
+  void drawForm(IGfx& gfx);
+  void formSourceBlock(int& first, int& count) const;
+  bool applyForm();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

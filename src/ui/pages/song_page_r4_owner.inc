@@ -82,6 +82,18 @@ bool SongPage::undoPreparedSongState() {
 bool SongPage::handleEvent(UIEvent& ui_event) {
   using namespace GroovePuterUndo;
 
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && !ui_event.alt &&
+      !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'f' || ui_event.key == 'F')) {
+    // The selection stays: it is the FORM source block.
+    form_view_ = !form_view_;
+    UI::showToast(form_view_ ? "SONG: FORM" : "SONG: GRID", 600);
+    return true;
+  }
+  if (form_view_ && ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    return handleFormEvent(ui_event);
+  }
+
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
       return undoPreparedSongState();
