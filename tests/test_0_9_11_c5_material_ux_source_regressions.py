@@ -47,8 +47,10 @@ def main() -> None:
 
     # Local editor may reveal the sounding representation, but not Pattern/Phrase
     # as competing user entities and not a MAKE PHRASE conversion command.
-    require('"MATERIAL"' in synth and '"PLAY:MELODY"' in synth,
-            "melody editor must stay inside the MATERIAL model while telling source truth")
+    # 0.9.17: the editor names which Melody plays and whether it is saved
+    # ("MEL A4*") instead of a generic MATERIAL / PLAY:MELODY pair.
+    require('"MEL %c%d%s"' in synth and '"SOURCE: MELODY"' in synth,
+            "melody editor must tell source truth: which Melody, saved or not")
     require('"SOURCE: STEPS"' in synth and '"SOURCE: MELODY"' in synth,
             "source truth must use representation vocabulary")
     require('"MAKE PHRASE"' not in synth,

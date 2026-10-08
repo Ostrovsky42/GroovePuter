@@ -803,7 +803,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::CycleAlreadyPublished: message = "ALREADY GROWN"; break;
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
     case S::NotAdmitted:
-      // A new TAKE in the same genre is refused the same way; say what helps.
+      // Another TAKE in the same genre is refused the same way; say what helps.
       std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: FN+M GENRE",
                     GenreManager::generativeModeName(
                         mini_acid_.genreManager().generativeMode()));

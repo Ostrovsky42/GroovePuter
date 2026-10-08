@@ -7,6 +7,14 @@
 
 namespace PhraseRuntime {
 
+// Runtime-only event flag (0.9.17): set by RuntimeSynthPlaybackState on a note
+// it holds as one voice of a chord (a Melody with overlapping notes). Never
+// stored. Kept out of runtime_synth_events.h, whose public surface is frozen
+// by the P1C contract; the bit is unused by the stored flags there.
+constexpr uint8_t kEventChordVoice = 1u << 7u;
+static_assert((kEventChordVoice & (kEventAccent | kEventSlide | kEventGhost)) == 0,
+              "chord-voice bit must not collide with a stored event flag");
+
 enum class RuntimeSynthPlaybackActionType : uint8_t {
   Release = 0,
   Start,

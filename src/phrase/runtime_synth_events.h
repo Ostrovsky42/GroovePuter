@@ -19,9 +19,6 @@ enum RuntimeSynthEventFlag : uint8_t {
   kEventAccent = 1u << 0u,
   kEventSlide = 1u << 1u,
   kEventGhost = 1u << 2u,
-  // Runtime-only: set by RuntimeSynthPlaybackState on a note it holds as one
-  // voice of a chord (a Melody with overlapping notes). Never stored.
-  kEventChordVoice = 1u << 7u,
 };
 
 struct RuntimeSynthEvent {
