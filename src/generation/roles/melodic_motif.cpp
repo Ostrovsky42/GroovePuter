@@ -212,7 +212,18 @@ MelodicMotifResult realizeMelodicMotif(const MelodicMotifRequest& request) {
   const StepMask blocked = static_cast<StepMask>(
       request.protectedSpace | (denseLine ? 0 : request.bassOnsets) |
       request.chordOnsets);
+  const StepMask cell = onsets;
   onsets = static_cast<StepMask>(onsets & ~blocked);
+  // A short cell can land entirely on bass and chord attacks. Unless this bar
+  // may rest, sounding together beats silence: first allow the bass attacks,
+  // then the chord attacks too (0.9.18: empty leads on single G).
+  if (onsets == 0 && !request.allowEmptyBar) {
+    onsets = static_cast<StepMask>(
+        cell & ~(request.protectedSpace | request.chordOnsets));
+    if (onsets == 0) {
+      onsets = static_cast<StepMask>(cell & ~request.protectedSpace);
+    }
+  }
   continuations = static_cast<StepMask>(
       continuations & ~request.protectedSpace & ~onsets);
   continuations = anchoredContinuations(onsets, continuations);

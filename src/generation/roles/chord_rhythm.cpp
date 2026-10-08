@@ -148,9 +148,27 @@ ChordRhythmResult realizeChordRhythm(const ChordRhythmRequest& request) {
       return result;
   }
 
+  // A held chord sounds under the bass, so it may start with it; only stabs
+  // stay out of the bass attacks. Blocking a downbeat pad by a downbeat bass
+  // note left the whole bar empty (0.9.18: TripHop, Reggae).
+  const bool held = id == ChordRhythmId::HeldPad ||
+                    id == ChordRhythmId::WholeBarHold ||
+                    id == ChordRhythmId::HalfBarChange;
   const StepMask blocked = static_cast<StepMask>(
-      request.protectedSpace | request.bassOnsets);
+      request.protectedSpace | (held ? 0 : request.bassOnsets));
+  const StepMask cell = onsets;
   onsets = static_cast<StepMask>(onsets & ~blocked);
+  // Unless this bar may rest, a chord never vanishes: stabs that all fall on
+  // bass attacks play with the bass, and a cell with no free step at all
+  // (a bass reply inside the protected space) moves to a free offbeat pair.
+  if (onsets == 0 && !request.allowEmptyBar) {
+    onsets = static_cast<StepMask>(cell & ~request.protectedSpace);
+    const StepMask fallbacks[] = {mask({6, 14}), mask({2, 10}), mask({4, 12})};
+    for (const StepMask fallback : fallbacks) {
+      if (onsets != 0) break;
+      onsets = static_cast<StepMask>(fallback & ~request.protectedSpace);
+    }
+  }
   continuations = static_cast<StepMask>(
       continuations & ~request.protectedSpace & ~onsets);
   continuations = anchoredContinuations(onsets, continuations);

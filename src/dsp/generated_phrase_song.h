@@ -202,7 +202,8 @@ inline bool materializeLegacyBar(
     const Scene& scene,
     const PreparedPhraseArrangement& prepared,
     int barIndex,
-    PhraseGenerator::PhraseBar& bar) {
+    PhraseGenerator::PhraseBar& bar,
+    int legacyMigrationCoordinate = 0) {
   bar = PhraseGenerator::PhraseBar{};
   const GenreSettings& genre = prepared.genre;
   const auto role = PhraseGenerator::roleForBar(prepared.request.bars, barIndex);
@@ -230,7 +231,8 @@ inline bool materializeLegacyBar(
   scratchMode.generateDrumPattern(
       bar.drums, prepared.legacyParams, prepared.legacyBehavior);
 
-  applyCurrentMigration(scene, genre, 0, phraseBarOrdinal, bar);
+  applyCurrentMigration(scene, genre, legacyMigrationCoordinate,
+                        phraseBarOrdinal, bar);
   PhraseGenerator::deriveBar(bar, role, prepared.request.seed, barIndex, bar);
   return true;
 }

@@ -697,7 +697,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  // A rest bar only makes sense inside a phrase; a single G on one slot that
+  // comes out empty reads as a broken generator (0.9.18, LoFi on odd slots).
   const bool allowSparse =
+      context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal &&
       sparseSemanticBarsAllowed(settings, definition->family);
   const uint8_t barOrdinal = semanticBarOrdinal(settings, context);
   const TonalGenerationProfile tonalProfile =

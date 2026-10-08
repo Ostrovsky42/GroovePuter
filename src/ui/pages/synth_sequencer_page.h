@@ -94,6 +94,9 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool shiftPitch(int direction, PitchStep stepKind);
   int editTargetNote() const;
   bool toggleAccent();
+  bool generateMelodyPhrase();
+  // Successive Alt+G presses give different phrases (deterministic per count).
+  uint32_t melody_generation_count_ = 0;
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool newEmptyMelody();

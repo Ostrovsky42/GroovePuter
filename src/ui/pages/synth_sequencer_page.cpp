@@ -18,6 +18,8 @@
 #include "../key_normalize.h"
 #include "../phrase_chord_focus.h"
 #include "../project_key.h"
+#include "src/dsp/generated_melody.h"
+#include "src/state/phrase_generation_request_state.h"
 #include "src/state/scene_revision.h"
 #include "../phrase_notes_projection.h"
 #include "../phrase_notes_selection.h"
@@ -1318,6 +1320,11 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       (lower == 'c' || ui_event.scancode == GROOVEPUTER_C)) {
     return arpeggiateChord();
   }
+  // Alt+G: generate a whole phrase straight into this Melody (plain G is grid).
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (lower == 'g' || ui_event.scancode == GROOVEPUTER_G)) {
+    return generateMelodyPhrase();
+  }
 
   if (ui_event.alt) {
     if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
@@ -1564,6 +1571,38 @@ bool SynthSequencerPage::shiftPitch(int direction, PitchStep stepKind) {
   char toast[24];
   std::snprintf(toast, sizeof(toast), "NOTE %s", name);
   UI::showToast(toast, 700);
+  return true;
+}
+
+// Alt+G on the Melody: a 1/2/4/8-bar phrase (MATERIAL LENGTH) from the genre,
+// key and STYLE, replacing this Melody as one edit (Ctrl+Z restores it).
+bool SynthSequencerPage::generateMelodyPhrase() {
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!after) {
+    UI::showToast("NO MEMORY FOR MELODY", 1200);
+    return true;
+  }
+  const uint8_t bars = GroovePuterState::requestedPhraseBars();
+  const auto status = GeneratedMelody::generate(
+      mini_acid_, voice_index_, bars, ++melody_generation_count_, *after);
+  if (status != GeneratedMelody::Status::Ready) {
+    UI::showToast(GeneratedMelody::statusText(status), 1400);
+    return true;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_,
+                                       phrase, *after)) {
+    UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
+    return true;
+  }
+  chord_focus_event_ = -1;
+  phrase_cursor_ = PhraseNotesCursor::clamp(
+      phrase_cursor_, mini_acid_.currentPhraseBuffer(voice_index_).lengthTicks);
+  char toast[40];
+  std::snprintf(toast, sizeof(toast), "MELODY %u BARS  ALT+G AGAIN  CTRL+Z",
+                static_cast<unsigned>(bars));
+  UI::showToast(toast, 1600);
   return true;
 }
 

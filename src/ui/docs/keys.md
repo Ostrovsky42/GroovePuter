@@ -201,6 +201,11 @@ Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the
 chord's top note (an arpeggio plays everywhere). Thin lines separate the pitch
 rows; the dotted one is the key's tonic.
 
+`Alt+G` on the Melody generates a whole phrase from the genre, key and STYLE:
+as many bars as MATERIAL LENGTH asks for (1, 2, 4 or 8), for this synth only,
+replacing the Melody as one edit. Each press gives another phrase; `Ctrl+Z`
+brings the previous Melody back. Steps, slots and Song rows are not touched.
+
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.
 
