@@ -272,6 +272,11 @@ void UsbMidiOutput::ensurePerformanceReceiverMode(
     // The receiver mode on this channel is no longer the one Pattern slide
     // established; send MONO again before the next Pattern slide.
     patternSlideReady_ &= static_cast<uint16_t>(~(1u << channel));
+    if (polyphonic) {
+        patternPolyKnown_ |= static_cast<uint16_t>(1u << channel);
+    } else {
+        patternPolyKnown_ &= static_cast<uint16_t>(~(1u << channel));
+    }
 }
 
 void UsbMidiOutput::applyPatternSlide(uint8_t channel, bool slide) {
@@ -289,6 +294,7 @@ void UsbMidiOutput::applyPatternSlide(uint8_t channel, bool slide) {
             return;  // retry on the next slide note
         }
         patternSlideReady_ |= bit;
+        patternPolyKnown_ &= static_cast<uint16_t>(~bit);
         for (MusicalEventTarget target :
              {MusicalEventTarget::SynthA, MusicalEventTarget::SynthB,
               MusicalEventTarget::Dx}) {
@@ -870,6 +876,10 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
             releasePercussiveLane(lanes_[i]);
         } else {
             releaseActiveNote(lanes_[i]);
+            if (source == MusicalEventSource::PatternPlayer) {
+                const int chord = patternChordIndex(target);
+                if (chord >= 0) releasePatternChordNotes(lanes_[i], chord);
+            }
         }
     }
     releasePendingChannelPanics();
@@ -882,12 +892,144 @@ void UsbMidiOutput::releaseAllActiveNotes() {
             releasePercussiveLane(lanes_[i]);
         } else {
             releaseActiveNote(lanes_[i]);
+            if (lanes_[i].source == MusicalEventSource::PatternPlayer) {
+                const int chord = patternChordIndex(lanes_[i].target);
+                if (chord >= 0) releasePatternChordNotes(lanes_[i], chord);
+            }
         }
     }
     releaseGeneratedTarget(MusicalEventTarget::SynthA);
     releaseGeneratedTarget(MusicalEventTarget::SynthB);
     releaseGeneratedTarget(MusicalEventTarget::Dx);
     releasePendingChannelPanics();
+}
+
+int UsbMidiOutput::patternChordIndex(MusicalEventTarget target) {
+    if (target == MusicalEventTarget::SynthA) return 0;
+    if (target == MusicalEventTarget::SynthB) return 1;
+    return -1;
+}
+
+bool UsbMidiOutput::patternChordNoteActive(int index, uint8_t note) const {
+    if (index < 0 || index > 1) return false;
+    note = clampDataByte(note);
+    return (patternChordActive_[index][note >> 3u] &
+            static_cast<uint8_t>(1u << (note & 7u))) != 0u;
+}
+
+void UsbMidiOutput::setPatternChordNote(
+    uint8_t (&set)[2][kGeneratedBitsetBytes], int index, uint8_t note,
+    bool value) {
+    if (index < 0 || index > 1) return;
+    note = clampDataByte(note);
+    const uint8_t mask = static_cast<uint8_t>(1u << (note & 7u));
+    if (value) {
+        set[index][note >> 3u] |= mask;
+    } else {
+        set[index][note >> 3u] &= static_cast<uint8_t>(~mask);
+    }
+}
+
+// A chord needs a polyphonic receiver. GroovePuter cannot read the receiver's
+// mode, and SEQTRAK keeps MONO across a GroovePuter reconnect (every flash):
+// waiting for "we put it into MONO" left chords sounding as one note. So the
+// first chord after a (re)connect or after a Pattern slide's MONO sends POLY
+// once; a later slide note sends MONO again because patternSlideReady_ is
+// cleared here.
+void UsbMidiOutput::ensurePatternChordPoly(uint8_t channel) {
+    if (!seqtrakReceiverModeControl_ || !mounted_) return;
+    const uint16_t bit = static_cast<uint16_t>(1u << clampChannel(channel));
+    if ((patternPolyKnown_ & bit) != 0) return;
+    if ((patternSlideReady_ & bit) != 0) applyPatternSlide(channel, false);
+    if (!transport_.sendControlChange(
+            channel, kSeqtrakMonoPolyController, kSeqtrakPolyValue)) {
+        return;  // retried on the next chord note
+    }
+    transport_.flush();
+    patternSlideReady_ &= static_cast<uint16_t>(~bit);
+    patternPolyKnown_ |= bit;
+    for (MusicalEventTarget target :
+         {MusicalEventTarget::SynthA, MusicalEventTarget::SynthB,
+          MusicalEventTarget::Dx}) {
+        const int index = generatedTargetIndex(target);
+        if (index >= 0 && generatedChannel(target) == channel) {
+            performanceReceiverMode_[index] = PerformanceReceiverMode::Poly;
+        }
+    }
+}
+
+bool UsbMidiOutput::acquirePatternChordNote(MidiVoiceLane& lane, int index,
+                                            uint8_t note, uint8_t velocity) {
+    if (index < 0 || index > 1) return false;
+    note = clampDataByte(note);
+    velocity = clampDataByte(velocity);
+    if (velocity < 1) velocity = 1;
+
+    if (patternChordNoteActive(index, note)) {
+        // Same pitch restarted by the Melody: already owned, re-attack only.
+        if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
+        transport_.flush();
+        setPatternChordNote(patternChordPending_, index, note, false);
+        return true;
+    }
+    auto* cell = owners_.open(lane.channel, note);
+    if (cell == nullptr) return false;
+    if (cell->wire == 255u) {
+        owners_.prune();
+        return false;
+    }
+    if (cell->wire == 0u) {
+        if (!transport_.sendNoteOn(lane.channel, note, velocity)) {
+            owners_.prune();
+            return false;
+        }
+        transport_.flush();
+    }
+    ++cell->wire;
+    setPatternChordNote(patternChordActive_, index, note, true);
+    setPatternChordNote(patternChordPending_, index, note, false);
+    return true;
+}
+
+bool UsbMidiOutput::releasePatternChordNote(MidiVoiceLane& lane, int index,
+                                            uint8_t note, uint8_t velocity) {
+    if (index < 0 || index > 1) return true;
+    note = clampDataByte(note);
+    if (!patternChordNoteActive(index, note)) {
+        setPatternChordNote(patternChordPending_, index, note, false);
+        return true;
+    }
+    auto* cell = owners_.peek(lane.channel, note);
+    const uint8_t owners = cell ? cell->wire : 0;
+    if (owners != 1u) {
+        // Another owner keeps the note on the wire, or nobody does any more.
+        if (owners > 1u) --cell->wire;
+        setPatternChordNote(patternChordActive_, index, note, false);
+        setPatternChordNote(patternChordPending_, index, note, false);
+        return true;
+    }
+    velocity = clampDataByte(velocity);
+    if (!mounted_ || !transport_.sendNoteOff(lane.channel, note, velocity)) {
+        setPatternChordNote(patternChordPending_, index, note, true);
+        return false;
+    }
+    transport_.flush();
+    cell->wire = 0;
+    owners_.prune();
+    setPatternChordNote(patternChordActive_, index, note, false);
+    setPatternChordNote(patternChordPending_, index, note, false);
+    return true;
+}
+
+bool UsbMidiOutput::releasePatternChordNotes(MidiVoiceLane& lane, int index) {
+    if (index < 0 || index > 1) return true;
+    bool allReleased = true;
+    for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+        const uint8_t midiNote = static_cast<uint8_t>(note);
+        if (!patternChordNoteActive(index, midiNote)) continue;
+        if (!releasePatternChordNote(lane, index, midiNote)) allReleased = false;
+    }
+    return allReleased;
 }
 
 bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
@@ -1037,7 +1179,14 @@ bool UsbMidiOutput::releasePendingChannelPanics() {
 void UsbMidiOutput::clearActiveState() {
     // After (re)connection the receiver state is unknown again.
     patternSlideReady_ = 0;
+    patternPolyKnown_ = 0;
     patternPortamentoOn_ = 0;
+    for (std::size_t index = 0; index < 2; ++index) {
+        for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
+            patternChordActive_[index][byte] = 0;
+            patternChordPending_[index][byte] = 0;
+        }
+    }
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanes_[i].activeNote = -1;
         lanes_[i].activeCount = 0;
@@ -1111,8 +1260,31 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         return;
     }
 
+    const int chord = event.source == MusicalEventSource::PatternPlayer
+        ? patternChordIndex(event.target)
+        : -1;
+    const bool chordNote = chord >= 0 && (event.flags & kMusicalEventChord) != 0;
+    if (chord >= 0) {
+        // NoteOffs that did not reach the wire are retried first.
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            const uint8_t midiNote = static_cast<uint8_t>(note);
+            const uint8_t mask = static_cast<uint8_t>(1u << (midiNote & 7u));
+            if ((patternChordPending_[chord][midiNote >> 3u] & mask) != 0u) {
+                releasePatternChordNote(*lane, chord, midiNote);
+            }
+        }
+    }
+
     switch (event.type) {
         case MusicalEventType::NoteOn:
+            if (chordNote) {
+                if (lane->activeNote >= 0) releaseActiveNote(*lane);
+                ensurePatternChordPoly(lane->channel);
+                acquirePatternChordNote(*lane, chord, event.note, event.velocity);
+                break;
+            }
+            // A one-note Pattern/Melody onset ends any chord left on the lane.
+            if (chord >= 0) releasePatternChordNotes(*lane, chord);
             if (event.source == MusicalEventSource::PatternPlayer) {
                 applyPatternSlide(
                     lane->channel, (event.flags & kMusicalEventSlide) != 0);
@@ -1120,6 +1292,10 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             replaceActiveNote(*lane, event.note, event.velocity);
             break;
         case MusicalEventType::NoteOff:
+            if (chordNote) {
+                releasePatternChordNote(*lane, chord, event.note, event.velocity);
+                break;
+            }
             if (lane->activeNote == static_cast<int16_t>(clampDataByte(event.note))) {
                 releaseActiveNote(*lane, event.velocity);
             }

@@ -58,6 +58,8 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_global_help_content"
 
+python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -181,6 +183,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_scheduled_musical_event_queue"
 
 "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_musical_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_musical_event_queue"
+
+"${BUILD_DIR}/test_musical_event_queue"
 
 "${CXX}" \
   -std=c++17 \
@@ -506,6 +519,17 @@ echo "Tee MIDI transport: OK"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follow_loop.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
   -o "${BUILD_DIR}/test_usb_endpoint_health"
 
@@ -649,3 +673,8 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 # Unified Song slots: ownership, exact Pattern/Melody playback and display source contract.
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_unified_song_slots_tests.sh"
+
+# Melody slot navigation (Q..I / B) and the UI navigation tests: TEMPO + MIDI
+# IN Space mute, Alt+N new empty Melody. Both were written but never run.
+bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
+bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"

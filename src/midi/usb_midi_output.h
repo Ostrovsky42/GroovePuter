@@ -178,6 +178,18 @@ private:
     void releaseTargetAllNotes(MusicalEventSource source,
                                MusicalEventTarget target);
     void releaseAllActiveNotes();
+    // Melody chords: Pattern notes flagged kMusicalEventChord, held per note
+    // on the Pattern lane's channel instead of the one-note lane.
+    static int patternChordIndex(MusicalEventTarget target);
+    bool patternChordNoteActive(int index, uint8_t note) const;
+    void setPatternChordNote(uint8_t (&set)[2][kGeneratedBitsetBytes],
+                             int index, uint8_t note, bool value);
+    void ensurePatternChordPoly(uint8_t channel);
+    bool acquirePatternChordNote(MidiVoiceLane& lane, int index,
+                                 uint8_t note, uint8_t velocity);
+    bool releasePatternChordNote(MidiVoiceLane& lane, int index,
+                                 uint8_t note, uint8_t velocity = 0);
+    bool releasePatternChordNotes(MidiVoiceLane& lane, int index);
     void requestChannelPanic(uint8_t channel);
     bool releasePendingChannelPanics();
     void clearActiveState();
@@ -198,7 +210,13 @@ private:
     // Per wire channel: MONO + portamento time sent for Pattern slide, and
     // whether PORTAMENTO SWITCH is currently on.
     uint16_t patternSlideReady_;
+    // Channels whose receiver GroovePuter has put into POLY on this connection.
+    uint16_t patternPolyKnown_ = 0;
     uint16_t patternPortamentoOn_;
+    // Melody chord notes of Synth A / Synth B, and the ones whose NoteOff did
+    // not reach the wire yet (retried before the next event on that lane).
+    uint8_t patternChordActive_[2][kGeneratedBitsetBytes]{};
+    uint8_t patternChordPending_[2][kGeneratedBitsetBytes]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;

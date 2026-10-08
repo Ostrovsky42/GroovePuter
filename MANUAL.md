@@ -1,15 +1,12 @@
-# GroovePuter 0.9.14 Manual
+# GroovePuter 0.9.17 Manual
 
-This manual describes the user-facing workflows on the current 0.9.14 development
-line. It focuses on Cardputer ADV controls and notes where the SDL keyboard differs.
-For the exact key-by-key reference use [`src/ui/docs/keys.md`](src/ui/docs/keys.md).
+This manual describes the current user-facing GroovePuter workflow on the 0.9.17 productization line, built on the hardware-accepted **v0.9.16 Foundation Freeze**.
 
-For the current generated musical-play cycle, see
-[`docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md`](docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md).
+If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
+
+For the exact key-by-key reference use [`src/ui/docs/keys.md`](src/ui/docs/keys.md). For the bounded generated musical-play implementation and its research evidence see [`docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md`](docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md).
 
 ## 1. Workflow map
-
-Main workflows:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
@@ -19,27 +16,35 @@ SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
 ```
 
-Global navigation:
+The main navigation model is:
 
-- `Fn+Tab` / `Fn+Shift+Tab`: next / previous workflow;
-- `[` / `]`: previous / next page inside the workflow;
-- `Fn+[` / `Fn+]`: previous / next workflow;
 - `Fn+M`: workspace launcher;
+- `Fn+Tab` / `Fn+Shift+Tab`: next / previous workflow;
+- `[` / `]`: previous / next page inside the current workflow;
+- `Fn+[` / `Fn+]`: previous / next workflow;
 - `Alt+H`: page-aware on-device help;
 - `Alt+P`: MIDI Player;
-- `Alt+V`: GENRE;
-- `Alt+W`: waveform overlay except MATERIAL BANK `Alt+W` REPLACE;
 - `Alt+X`: LiveMix;
 - `Alt+M`: Song mode;
-- `Alt+\`: public `CARBON <-> CYBER` theme cycle.
+- `Alt+\`: `CARBON <-> CYBER` theme cycle.
 
-The active page receives input before global digit/mute fallbacks. `Alt+H` opens
-page-aware help; use the on-screen page title and footer to confirm the current
-context before using a page-specific shortcut.
+### A current navigation defect worth knowing
+
+The v0.9.16 foundation still routes hard-global `Alt+V` through legacy page id 11. That id normalizes to **FEEL**, not GENRE. Therefore the truthful 0.9.17 first-session path is:
+
+```text
+Fn+M -> GENRE
+```
+
+not `Alt+V -> GENRE`.
+
+This is a bounded 0.9.17 navigation defect. It does not change Genre generation itself.
+
+Hard-global Alt shortcuts run before page-local input. That is why a page must not document a local action on a chord already owned globally.
 
 ### Compatibility page IDs
 
-The following old persisted values are decode/navigation aliases only:
+The following persisted values remain decode/navigation aliases:
 
 ```text
 GENERATION -> FEEL
@@ -48,12 +53,38 @@ Synth A SOUND -> SYNTH A
 Synth B SOUND -> SYNTH B
 ```
 
-There is no active standalone GENERATION, TEXTURE or SOUND workflow page.
-Synth sound editing lives in each synth's local `NOTES -> KNOBS -> MORE` tabs.
+There is no active standalone GENERATION, TEXTURE or SOUND workflow page. Synth sound editing lives in each Synth page's local `NOTES -> KNOBS -> MORE` tabs.
 
-## 2. GENRE and FEEL
+## 2. First-session key constitution
 
-The musical ownership rule is:
+```text
+Space     PLAY / STOP
+Fn+M      choose GENRE / MATERIAL / other workspace
+G         generate the thing on screen
+D         DEVELOP on MATERIAL
+Ctrl+Z    undo the last retained edit
+Alt+H     help for this page
+```
+
+These are musician-facing rules, not a claim that every key is globally identical.
+
+### `G` — Generate the thing you are looking at
+
+- GENRE: generate the full musical material;
+- Synth A/B: generate that selected Synth lane when NOTE ENTRY is off;
+- DRUMS: generate drums;
+- SONG: generate/assign material in the selected Song context;
+- MATERIAL: create a TAKE at the displayed destination.
+
+### `D` — contextual, not global
+
+In the First Five Minutes workflow, `D` means **DEVELOP** only on MATERIAL.
+
+Elsewhere it has page-local expert meanings. MATERIAL BANK, for example, uses `D` for derive. Do not infer a global `D = develop` rule from the beginner path.
+
+## 3. GENRE and FEEL
+
+The ownership rule is:
 
 ```text
 GENRE != FEEL != GENERATION REQUEST != SOUND
@@ -65,19 +96,16 @@ GENRE owns the musical corridor, Variant/recipe, Rhythm identity and Apply polic
 
 Main controls:
 
-- `G`: explicit full Stage 15 generation;
+- `Tab` / `Up/Down`: select the visible field;
+- `Left/Right`: change the selected Genre/Variant/Rhythm/Apply field;
+- `G`: full Stage 15 generation;
 - `P`: `P1 CANON -> P2 VAR -> P3 TRANS`;
-- `M`: apply policy (`PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM`);
-- `Enter`: apply according to the selected policy;
-- arrows/Tab: browse the visible Genre fields.
+- `M`: cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM`;
+- `Enter`: apply the selected policy.
 
-While stopped, accepted generation commits immediately. While PLAY is active, full
-Genre material is prepared away from the sounding bar and the complete Synth A +
-Synth B + Drums result publishes at the next real `BAR_START`. The transport is not
-stopped/restarted around generation.
+While stopped, accepted generation commits immediately. During PLAY the full Synth A + Synth B + Drums result publishes at the next real `BAR_START` instead of replacing the sounding bar mid-cycle.
 
-Repeated accepted `G` requests use a bounded session reroll attempt while keeping the
-selected Genre/Variant/P-level composition identity.
+Repeated accepted `G` requests reroll the same selected musical direction through the bounded session attempt stream.
 
 ### FEEL 2/2
 
@@ -89,23 +117,31 @@ FEEL owns timing and velocity only:
 - velocity variation;
 - repeat cycle `1/2/4/8`;
 - FEEL presets;
-- the same shared `P` selector.
+- the shared request level.
 
 FEEL does not select notes, harmony, synth TYPE or timbre.
 
-### P1 / P2 / P3
+### FAITHFUL / VARIANT / REWORK versus P1 / P2 / P3
+
+The engine still uses the bounded P-level vocabulary internally:
 
 ```text
-P1 CANON  clearest identity / least transformation
-P2 VAR    recognizable variation; boot/session default
-P3 TRANS  stronger related transformation where vocabulary allows
+P1 CANON
+P2 VAR
+P3 TRANS
 ```
 
-P3 is not CHAOS. Drums `Alt+G` is the separate explicit chaos command.
+On the user-facing Synth path the same intent is presented more musically as:
 
-## 3. Synth A and Synth B
+```text
+FAITHFUL -> VARIANT -> REWORK
+```
 
-Current selectable synth engines are:
+A new user should not need to understand the internal P naming before making music.
+
+## 4. SYNTH A / SYNTH B
+
+Current selectable engines include:
 
 - `TB303`;
 - `SID`;
@@ -114,219 +150,175 @@ Current selectable synth engines are:
 - `SN76489`;
 - `WAVEMORPH`.
 
-Legacy OPL2 scene values are decode-only; OPL2 is not a current selectable engine.
-
-Each synth page owns one `Tab` cycle:
+Each Synth page uses:
 
 ```text
-[N]KM  NOTES
-N[K]M  KNOBS
-NK[M]  MORE
+NOTES -> KNOBS -> MORE
 ```
 
+with `Tab` cycling the local tabs.
+
 ### NOTES
+
+Important controls:
 
 - `Q..I`: pattern slot `1..8` outside NOTE ENTRY;
 - `B`: bank A/B;
 - `Alt+[` / `Alt+]`: pattern page;
 - arrows: step cursor;
 - `N`: NOTE ENTRY on/off;
-- `C` inside NOTE ENTRY: repeat the last entered pitch on the current step;
-- `F`: toggle audible step retrigger; enabling starts at `R2`;
-- `Alt+Up/Down`: adjust retrigger count `1..8` while retrigger is active;
-- `G`: reroll only the selected Synth A or Synth B lane when NOTE ENTRY is off.
+- `C`: repeat the last entered pitch at the current step while in NOTE ENTRY;
+- `F`: audible step retrigger on/off;
+- `Alt+Up/Down`: retrigger count;
+- `G`: selected-Synth Genre/recipe/STYLE/harmony generation when NOTE ENTRY is off;
+- `P`: `FAITHFUL / VARIANT / REWORK` for the next selected-Synth `G`;
+- `Alt+G`: legacy selected-Synth generation without the shared STYLE request;
+- `Ctrl+C/V`: Copy / Paste.
 
-Selected-lane `G` uses the active Genre/Variant/Rhythm/P-level/harmony composition
-identity. During PLAY it publishes at `BAR_START`. Drums and the neighboring synth are
-not replaced. Inside NOTE ENTRY, `G` remains a note key.
+Inside NOTE ENTRY, pitch keys retain their note-input meaning. A repeated/held pitch may continue into the next step as a `TI` continuation rather than a new attack.
+
+### Pattern and Melody source
+
+A Pattern address is:
+
+```text
+PAGE x BANK x SLOT
+```
+
+for example `2B7`.
+
+`Alt+R` switches a Synth slot between STEPS and MELODY source. If no accepted Melody exists yet, the conversion path creates one from the Pattern steps first. A Song row later resolves the slot's saved material descriptor; it does not need a second Pattern/Melody type flag in the row itself.
+
+### Working material: ACCEPT / DISCARD / NEXT
+
+- `D`: prepare the current local REVOICE development action where the Synth page owns it;
+- `Enter` with NEXT ready: request GO; during PLAY activation waits for the next bar;
+- `Esc`: cancel NEXT, or disarm a queued GO while keeping NEXT;
+- `Alt+Enter` / `Ctrl+Enter`: ACCEPT working material;
+- `Alt+Backspace`: DISCARD working edits to the accepted version;
+- `Ctrl+Z`: bounded retained Undo where supported.
+
+Two historical documentation claims are deliberately removed in 0.9.17:
+
+- `Alt+V` is **not** a reachable Synth CONNECT shortcut because the display owns it as a hard-global navigation chord before the page sees the event;
+- `Alt+X` is **not** a reachable Synth DISCARD shortcut because it is hard-global LiveMix.
+
+The CONNECT operation may exist internally, but the current front-panel reference must not invent a key that cannot reach it.
 
 ### KNOBS / MORE
 
-These tabs own synth TYPE, engine parameters and supported FX/sound editing. They are
-not separate workflow pages.
+These tabs own Synth TYPE, engine parameters and supported FX/sound editing. They are not separate workflow pages.
 
-## 4. Drums
+## 5. DRUMS
 
-The main drum-grid generation commands are deliberately distinct:
+The main generation controls are intentionally distinct:
 
 ```text
-G             drums-only strong generation at current P-level
+G             drums-only strong generation at current request level
 Ctrl+G        randomize focused drum voice
-Alt+G         explicit full-pattern CHAOS
+Alt+G         full-pattern CHAOS
 Ctrl+Alt+G    Stage 12 phrase audition/probe
-P             shared P1/P2/P3 selector
+P             shared request level
 ```
 
-Pattern navigation remains `Q..I`, bank A/B and pattern page selection. The lane
-labels include the matching global mute keys (`3KIK .. 0CLP`; SP12 uses `0RIM / 9CLP`). `A` toggles accent
-only on the selected existing hit, and the accent marker is drawn on that hit rather
-than in a separate aggregate ACC row.
+The grid uses `Q..I` for patterns, `B` for bank, arrows for the cursor, `Enter` for the selected hit and `A` for accent on an existing hit.
 
-## 5. Pattern, Melody and note entry
+## 6. SONG
 
-A pattern address is:
+Song rows refer to pattern/material slots. For Synth A/B, the saved slot descriptor decides whether playback uses Pattern or Melody.
+
+Important controls include:
+
+- `Up/Down`: Song row;
+- `Left/Right`: move across Synth A -> Synth B -> Drums;
+- `Q..I`: assign an existing slot;
+- `G`: generate safe material and assign the selected cell;
+- double `G`: materialize Synth A + Synth B + Drums for the current row;
+- `Backspace`: clear the current/selected Song cell;
+- `Ctrl+N` / `Ctrl+M`: insert / remove row;
+- `Alt+J`: open MATERIAL with the row as an explicit destination;
+- `Alt+X`: global LiveMix, not a Song-local discard command.
+
+A working Melody can keep sounding while being edited. ACCEPT/DISCARD belongs to the material/Synth ownership path; do not rely on the obsolete `Alt+X = DISCARD` wording from older documentation.
+
+## 7. MATERIAL — the first-session composition page
+
+MATERIAL exposes the generated-Phrase product workflow through:
 
 ```text
-PAGE 1..16 x BANK A/B x SLOT 1..8
+LENGTH
+STYLE
+TO
+LAST ACCEPTED
 ```
 
-Example: `2B7`.
-
-Synth A and Synth B slots can contain either Pattern steps or an accepted Melody.
-On a Synth page, `Alt+R` switches between `STEPS` and `MELODY`. If a slot has no
-Melody yet, switching to MELODY first creates one from its Pattern steps. On the
-MELODY source, `Q..I` selects the accepted Melody in that slot and `B` selects the
-same slot number in the other bank. An empty slot reports `NO MELODY`. If the current
-working Melody has unsaved edits, changing slots asks for `Alt+Enter SAVE` instead of
-silently replacing those edits.
-
-In `STEPS`, press `N` to enable NOTE ENTRY. Note keys enter pitches at the selected
-step. Repeating or holding the same pitch can continue it into the next step as a
-tie; the continuation is not a new note attack. The grid displays a continuation as
-`TI`. `Z` is a pitch key only while NOTE ENTRY is active. Check the selected source
-and step shown on screen before editing.
-
-Pattern address remains `PAGE × BANK × SLOT`, for example `2B7`. Project-scoped
-storage keeps one project's pattern pages separate from another's. Song/Phrase
-generation checks its destination rather than silently overwriting referenced
-material.
-
-## 6. Song
-
-Song has two arrangement slots, A and B. Each row stores a slot number for a track;
-for Synth A and Synth B, that slot's saved descriptor determines whether playback
-uses Pattern steps or Melody. The row does not store a second copy of the material
-type. A saved arrangement can therefore play Pattern X → Melody Y → Pattern Z
-without manual source switching, including after project reload, when the Melody data
-has been accepted and saved.
-
-During playback the row display identifies a synth as `PAT`, `MEL`, `HOLD`, `WAIT`
-or `FAIL`. A working Melody can keep sounding while it is edited. Use `Alt+Enter`
-to accept the edited Melody or `Alt+X` to discard the edits and return to the saved
-material assigned to the current Song row. Song prepares an upcoming Melody before
-its row boundary. Manual NEXT is refused only when it would conflict with the next
-Song Melody for that synth.
-
-Horizontal edit navigation is one bounded strip across Synth A → Synth B → Drums;
-crossing the outer track edge moves between edit Song A/B.
-
-Important bank/slot controls:
-
-- `B`: change visible `PAT:A/B` assignment context only;
-- `Alt+B`: flip stored-reference/selection bank;
-- `Ctrl+B`: choose playback Song slot A/B;
-- `Q..I`: assign an existing slot from the visible pattern context;
-- `G`: generate safe free material and assign the selected cell;
-- double `G`: materialize Synth A + Synth B + Drums for the current row as one logical mutation;
-- `Ctrl+N` / `Ctrl+M`: insert / delete row.
-
-Copy-on-write generation must not silently replace a pattern still referenced by other
-Song/Phrase locations.
-
-Song references a slot; playback resolves the slot's current saved material kind.
-Save after editing/accepting a Melody and assigning the arrangement so its Melody
-data, descriptor and Song rows are available together after reload.
-
-## 7. MATERIAL and Phrase workflows
-
-### MATERIAL — generated Phrase
-
-The `MATERIAL` page creates generated phrases in the Song arrangement. Its request
-fields are `LENGTH`, `STYLE` and `TO`; the last accepted phrase and its Song rows are
-shown separately. Up/Down selects a field and Left/Right changes it. `G` creates a
-TAKE at the displayed destination. `TO APPEND` follows the current end of Song;
-`TO EXPLICIT` addresses the selected row. The page displays `FREE`, `OCCUPIED`,
-`NO ROOM` or `NO SLOTS` before generation.
-
-To create the current short development cycle:
-
-1. Set `LENGTH 4B` and `STYLE REWORK` (P3).
-2. Press `G` to create a new TAKE.
-3. While that generated TAKE remains unedited and in the same source context, press
-   `D` (`GROW`).
-4. The page reports either `DEVELOP + BREAK 8B` or `BREAK ONLY 4B` and shows the
-   Song rows. During playback, the new rows activate at the next bar boundary.
-5. Press `Ctrl+Z` to undo the complete added cycle in one step.
-
-This operation requires a fresh, unedited 4-bar TAKE made at P3. The default STYLE is
-P2, so choose REWORK before pressing `G`; changing STYLE afterwards does not change
-the existing TAKE. Some styles are not admitted. Editing the TAKE, changing its
-source context, or lacking Song rows/pattern slots causes a clear refusal instead of
-growth. Acid and House, edited-source growth, repeated multi-cycle development and
-persistent development history are outside this first slice. The separate `D`
-command on `MATERIAL BANK` means derive and is not `GROW`.
-
-When `G` or `D` answers `NO ROOM: R MAKES ROOM`, the page has no run of consecutive free pattern slots,
-usually because earlier generated patterns are still stored after their Song rows were deleted. Press plain `R`
-on `MATERIAL`. The page asks `REUSE n UNUSED TAKES?`: takes generated in this session, not in Song and not edited
-by you. `Enter` says yes (you return with `ROOM FOR 4B: PRESS G`), `Esc` says no. Nothing is erased: the next `G`/`D`
-uses free slots first and replaces these only when nothing else fits. **After a replacement Undo restores the Song
-rows but not the old content.** Older material, hand-made or edited patterns, anything in Song, the CURRENT selection
-and the live Undo are never offered automatically; press `S` on the question to choose slots yourself in a grid
-(`~` unused, `*` allowed, letters mark what holds a slot). Permissions are session-only: they end on scene load,
-new scene and page change, and editing a slot cancels its permission.
-
-Typical deletion path before using it: on `SONG`, `Backspace` clears the selected cell(s), or `Ctrl+M` removes the
-row. A row deleted this way no longer references its pattern, but the pattern stays in its slot until replaced.
-
-### MATERIAL BANK — Phrase Core
-
-`MATERIAL BANK` is the legacy capture/derive/write workspace. It has four saved
-slots (`A/B/C/D`) and a Song destination `TO:`.
-
-Main controls:
+The beginner model is:
 
 ```text
-1..4              select Phrase A/B/C/D
-Up/Down           length 1/2/4/8 bars
+G  -> NEW TAKE
+D  -> DEVELOP eligible fresh TAKE
+R  -> MAKE ROOM when slots are exhausted
+```
+
+### First bounded development cycle
+
+1. `Fn+M` -> MATERIAL.
+2. Set `LENGTH 4B`.
+3. Set `STYLE REWORK`.
+4. Leave `TO APPEND` for the simplest workflow.
+5. Press `G` for a fresh TAKE.
+6. While that TAKE remains unedited and in the same source context, press `D`.
+7. Listen through the resulting `DEVELOP + BREAK` or `BREAK ONLY` section.
+8. `Ctrl+Z` removes the retained added cycle if you do not want it.
+
+The current implementation intentionally supports a bounded first slice. It is better for the UI to say “make a fresh 4B REWORK TAKE first” than to expose semantic/depth implementation vocabulary.
+
+Acid/House development, edited-source growth, repeated multi-cycle development and persistent development history remain outside this bounded slice unless a later release explicitly closes them.
+
+### Make room
+
+When `G` or `D` says `NO ROOM`, press plain `R`.
+
+The automatic offer is limited to generated takes from the current session that:
+
+- are no longer used by Song;
+- have not been hand-edited;
+- are not CURRENT/working/NEXT/Undo-protected material.
+
+`Enter` allows those slots to be reused later; `Esc` cancels; `S` opens the expert slot-by-slot chooser. Granting permission does not erase material immediately.
+
+## 8. MATERIAL BANK
+
+MATERIAL BANK is the older capture/derive/write workspace and remains a separate expert page.
+
+```text
+1..4              Phrase A/B/C/D
+Up/Down           1/2/4/8-bar length
 Left/Right        preview saved Phrase bar
-Ctrl+Left/Right   TO +/-1 row
-Ctrl+Up/Down      TO +/-8 rows
+Ctrl+Left/Right   TO +/-1
+Ctrl+Up/Down      TO +/-8
 Enter             capture current Song region
 D                 derive parent into selected slot
-G                 generate fresh connected material at TO
-W                 INSERT saved Phrase before TO and shift later rows
-Alt+W             REPLACE Phrase lanes at TO without row shift
+G                 generate connected material at TO
+W                 INSERT before TO
+Alt+W             REPLACE at TO
 ```
 
-Fresh multi-row Phrase generation is deliberately STOP-only. During PLAY it reports
-`STOP PLAYBACK FOR PHRASE` instead of stopping and restarting transport implicitly.
-Successful `G` or `W` advances `TO:` by the Phrase length. These controls and their
-destination are independent of the generated-Phrase request on `MATERIAL`.
+Fresh multi-row Phrase generation is STOP-only. Here `D` means derive, not the MATERIAL DEVELOP action.
 
-Phrase storage remains `REFERENCE VIEW / REF MUTABLE`: saved Phrase slots keep bounded
-references to pattern material rather than secretly taking a second copy of note
-ownership.
+## 9. PERFORM and external keyboard
 
-## 8. PERFORM and PERFORMANCE TOOLS
+MIDI KEYBOARD is the live performance surface. `Tab` opens PERFORMANCE TOOLS with KEY / CHORD / ARP / RHYTHM contexts.
 
-MIDI KEYBOARD provides the live scale-aware QWERTY performance surface. `Tab` opens
-PERFORMANCE TOOLS. On Cardputer ADV the physical comma/period positions are
-navigation arrows, so change SCALE from the KEY tools row with `Left/Right`;
-the `, / .` shortcuts remain SDL/external-keyboard compatibility only:
+The v0.9.16 Foundation Freeze includes the accepted USB Host external-keyboard path through PERFORM. The PROJECT MIDI setup chooses the boot USB role (`COMPUTER`, `KEYBOARD`, or `OFF`), applied across the explicit reboot boundary.
 
-| Key | Tool |
-|---|---|
-| `1` | ARPEGGIATOR |
-| `2` | DIRECTION |
-| `3` | CHORD |
-| `4` | MEMORY |
-| `5` | STRUM |
-| `6` | RATCHET |
-| `7` | EUCLIDEAN |
-| `8` | ROTATE |
-| `9` | receiver `MONO/POLY` |
-| `-` / `+` | performance velocity `10..120` |
+A connected keyboard feeds the existing PERFORM owner rather than bypassing it with a second note/performance engine. Accepted paths include CHORD, ARP, LATCH, rhythm and receiver mono/poly behavior documented in the release evidence.
 
-Receiver MONO/POLY is an external-MIDI receiver contract. Internal Synth A/B remain
-sequencer/pattern instruments. SEQTRAK Synth/DX targets use the current receiver-mode
-MIDI control path.
+## 10. MIDI Player and HUB MIDI
 
-## 9. MIDI Player and HUB MIDI
+Open MIDI Player with `Alt+P`.
 
-Open MIDI Player with `Alt+P`, choose a file and press `Enter`.
-
-Main Player controls include:
+Core controls include:
 
 - `Space`: MIDI transport;
 - `1..9`: physical-track mute;
@@ -353,78 +345,37 @@ With a loaded MIDI session:
 - `A`: all MIDI tracks on;
 - `H`: return to Player.
 
-There is no pause-first or Enter-to-commit route-edit mode. Route revisions reject
-stale queued events from the previous target and scoped cleanup NoteOff prevents stuck
-notes without a global panic.
+Route changes invalidate stale queued events from the previous destination and perform scoped cleanup rather than forcing a global panic.
 
-RAW routing preserves source channels and does not accept explicit SEQTRAK destination
-overrides. SEQTRAK-safe mapping uses drums on `CH1..CH7`, Synth 1 on `CH8`, Synth 2 on
-`CH9`, and DX on `CH10`.
+## 11. Save and Undo
 
-## 10. Project save, ACCEPT, DISCARD and Undo
+Project Save/Load lives on PROJECT. It is distinct from Synth `Alt+Enter`, which ACCEPTs working material.
 
-Project Save/Load is reached from the Project page. Use its on-screen scene
-selection and actions; this is separate from `Alt+Enter`, which accepts working
-material on the Synth pages.
+`Ctrl+Z` is the public global Undo chord for the current bounded retained edit. GroovePuter intentionally does not pretend to provide an unlimited DAW-style history.
 
-On Synth A/B material:
+After a meaningful first session, save and reload once to confirm that the project, material descriptors and Song references return together.
 
-- `D` prepares a REVOICE candidate in NEXT; `Alt+V` prepares CONNECT. These actions
-  prepare material and do not immediately replace the sounding CURRENT.
-- `Enter` requests GO. While playing, NEXT activates at a musical bar boundary.
-  `Esc` cancels a pending candidate, or disarms a queued GO while keeping NEXT.
-- `Alt+Enter` ACCEPTs working material as the accepted version.
-- `Alt+Backspace` or `Alt+X` DISCARDs working edits and restores the accepted version.
-- `Ctrl+Z` undoes the last retained edit on a supported page. Undo is one-step, not
-  a durable project history.
+## 12. Help strategy
 
-Pattern/Melody data, Song references, synth TYPE and supported parameters,
-project-scoped pattern pages, Phrase state and supported UI state are persisted
-through their respective project storage paths. Save after changing arrangement or
-scene state. Accepted Melody data is stored in its selected slot; save the project
-so its Song descriptor and arrangement return together after reload.
+Use documentation in this order:
 
-A loaded synth patch remains the owner of its saved TYPE/parameters; loading a project
-must not silently replace it with hidden genre timbre defaults.
+1. on-screen footer;
+2. `Alt+H` page-aware help;
+3. [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md);
+4. [`src/ui/docs/keys.md`](src/ui/docs/keys.md) for the complete key map;
+5. this manual for workflow detail;
+6. research/architecture documents only when investigating implementation or design history.
 
-Historical release checklists apply to the specific release named in each document;
-they are not a current feature list.
+The goal of 0.9.17 is that a musician reaches a first useful result before needing levels 4-6.
 
-## 11. Waveform HUD
+## 13. Build / install boundary
 
-The bottom performance HUD has one compositing owner. The optional waveform is cleared
-and redrawn without accumulating stale pixels, runs beneath mute/activity digits, and
-uses bounded visual auto-gain. MIDI Player uses the taller progress waveform from the
-current MIDI Player HUD.
+Developer builds still use the repository scripts and CI. A normal user should not need Arduino tooling as the primary install path; 0.9.17 productization work should make the accepted release artifact installable through a user-oriented launcher/burner flow.
 
-## 12. Developer build and flash
+The public hardware-accepted foundation remains `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the GitHub release and `docs/releases/` records.
 
-```bash
-bash scripts/install_arduino_deps.sh
-bash tests/run_host_tests.sh
-bash scripts/build_cardputer_dynbuffers.sh
-bash scripts/check_cardputer_dram_budget.sh \
-  build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
-bash scripts/build_seqtrak_midi_only.sh --warnings all
-bash scripts/upload.sh /dev/ttyACM0
-arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
-```
+## 14. Product boundary
 
-## 13. Feature boundaries
+0.9.17 is **First Five Minutes**, not a new music-architecture cycle.
 
-Keep these distinctions in mind when interpreting visible controls:
-
-- The four-slot arrangement Phrase Bank is reachable. The separate eight-slot
-  QWERTYUI state helper is not wired into the production workflow.
-- REVOICE and CONNECT prepare NEXT candidates. They do not directly replace accepted
-  material; use GO to activate a candidate.
-- The current DEVELOP workflow is the bounded MATERIAL cycle above. Arbitrary
-  multi-bar growth from an edited Pattern or Melody is not available.
-- Existing USB MIDI Device, DIN and SEQTRAK paths are separate from USB Host. USB
-  Host/nanoKEY2 is not part of the supported workflow described here.
-- Song synth rows resolve Pattern or Melody slots. Other kinds of material are not
-  supported as Song-row sources, and development history is not retained across
-  project reload.
-
-For release acceptance status, use current documents under [`docs/releases/`](docs/releases/)
-and [`docs/0.9.14/`](docs/0.9.14/).
+Do not reopen the Foundation Freeze for speculative lineage, genre or generation subsystems merely to improve onboarding. If first-user observation proves a specific musical or runtime gap, open the smallest evidence-backed follow-up.

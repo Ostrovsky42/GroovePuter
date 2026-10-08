@@ -195,7 +195,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
         ("distortion", "DST", "Toggle"),
         ("delay", "DLY", "Toggle"),
         ("source", "SRC", "Stepper"),
-        ("make_phrase", "MAKE PHRASE", "Stepper"),
+        ("make_phrase", "MAKE MELODY", "Stepper"),
     )
     for control, label, style in expected_rows:
         assignment = next(

@@ -208,7 +208,9 @@ struct MidiDispatchDiagnostics {
     uint32_t externalRxStop{0};
     uint32_t externalRxIgnored{0};
     uint32_t externalRxMasterIgnored{0};
+    uint32_t uartRxBytes{0};
     uint32_t outboundTransportSuppressed{0};
+    uint32_t followMuteDrops{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -416,6 +418,30 @@ void dispatchPatternPanics() {
     }
 }
 
+// Space while following MIDI IN silences GroovePuter in place. Entering the
+// mute releases every sequenced note GroovePuter owns on the wire (Pattern and
+// MIDI Player); while muted their NoteOns are dropped before the write. NoteOn
+// carries no cleanup duty, so dropping it leaves ownership consistent. Live
+// PERFORM notes are deliberate playing and stay untouched.
+void serviceFollowMute() {
+    static bool wasSilenced = false;
+    const bool silenced = GroovePuterMidi::followOutputSilenced();
+    if (silenced && !wasSilenced) {
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthA));
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthB));
+        g_patternDrumGates.clear();
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::Drums));
+        beginSmfCleanup();
+    }
+    wasSilenced = silenced;
+}
+
 void dispatchControlPanics() {
     const uint8_t mask = g_controlQueue.takePendingAllNotesOffMask();
     if (mask & MidiControlEventQueue::kSynthAMask) {
@@ -540,6 +566,54 @@ void syncUsbMidiInputLifecycle() {
     }
 }
 
+// Clock, Start, Continue and Stop from any input (USB or DIN) go to the one
+// follower queue. Ignored while GroovePuter owns the clock.
+void pushExternalRealtime(ExternalMidiTransportEventType type) {
+    if (GroovePuterMidi::transportClockRuntime().source() !=
+        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+        ++g_diagnostics.externalRxMasterIgnored;
+        return;
+    }
+
+    const uint32_t receivedAtMicros = micros();
+    switch (type) {
+        case ExternalMidiTransportEventType::Clock:
+            ++g_externalRxPulseOrdinal;
+            if (g_externalTransportQueue->tryPushClock(
+                    receivedAtMicros, g_externalRxPulseOrdinal)) {
+                ++g_diagnostics.externalRxClock;
+            }
+            break;
+        case ExternalMidiTransportEventType::Start:
+        case ExternalMidiTransportEventType::Continue:
+        case ExternalMidiTransportEventType::Stop:
+            if (g_externalTransportQueue->tryPushCritical(
+                    type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                if (type == ExternalMidiTransportEventType::Start) ++g_diagnostics.externalRxStart;
+                else if (type == ExternalMidiTransportEventType::Continue) ++g_diagnostics.externalRxContinue;
+                else ++g_diagnostics.externalRxStop;
+            }
+            break;
+    }
+}
+
+// DIN MIDI IN (Unit MIDI in SEPARATE mode). Only realtime transport bytes are
+// consumed: they are what clock follow needs. DIN notes are not routed yet, so
+// an external sequencer's own pattern cannot play the internal synths.
+void drainIncomingUartRealtime() {
+    if (g_externalTransportQueue == nullptr) return;
+    auto& uart = GroovePuterMidi::cardputerUartMidiTransport();
+    uint8_t byte = 0;
+    for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
+        if (!uart.readByte(byte)) break;
+        ++g_diagnostics.uartRxBytes;
+        ExternalMidiTransportEventType type{};
+        if (GroovePuterMidi::parseMidiRealtimeTransportByte(byte, type)) {
+            pushExternalRealtime(type);
+        }
+    }
+}
+
 void drainIncomingMidiPackets() {
     if (g_externalTransportQueue == nullptr) return;
 
@@ -576,32 +650,7 @@ void drainIncomingMidiPackets() {
         ExternalMidiTransportEventType type{};
         if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
                 packet.header, packet.byte1, type)) {
-            if (GroovePuterMidi::transportClockRuntime().source() !=
-                GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-                ++g_diagnostics.externalRxMasterIgnored;
-                continue;
-            }
-
-            const uint32_t receivedAtMicros = micros();
-            switch (type) {
-                case ExternalMidiTransportEventType::Clock:
-                    ++g_externalRxPulseOrdinal;
-                    if (g_externalTransportQueue->tryPushClock(
-                            receivedAtMicros, g_externalRxPulseOrdinal)) {
-                        ++g_diagnostics.externalRxClock;
-                    }
-                    break;
-                case ExternalMidiTransportEventType::Start:
-                case ExternalMidiTransportEventType::Continue:
-                case ExternalMidiTransportEventType::Stop:
-                    if (g_externalTransportQueue->tryPushCritical(
-                            type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                        if (type == ExternalMidiTransportEventType::Start) ++g_diagnostics.externalRxStart;
-                        else if (type == ExternalMidiTransportEventType::Continue) ++g_diagnostics.externalRxContinue;
-                        else ++g_diagnostics.externalRxStop;
-                    }
-                    break;
-            }
+            pushExternalRealtime(type);
             continue;
         }
 
@@ -958,10 +1007,12 @@ void midiDispatchTask(void*) {
         // transport queues and this drains what the UART driver will take.
         GroovePuterMidi::cardputerUartMidiTransport().service();
         drainIncomingMidiPackets();
+        drainIncomingUartRealtime();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
         // lifecycle traffic. SMF cleanup is independent and cannot silence a
         // Pattern/PERFORM owner of the same physical channel+note.
+        serviceFollowMute();
         dispatchPatternPanics();
         dispatchControlPanics();
         dispatchSmfPanic();
@@ -1228,6 +1279,12 @@ void midiDispatchTask(void*) {
                 bool dispatch = true;
                 if (pendingMusical.event.source ==
                         MusicalEventSource::PatternPlayer &&
+                    pendingMusical.event.type == MusicalEventType::NoteOn &&
+                    GroovePuterMidi::followOutputSilenced()) {
+                    dispatch = false;
+                    ++g_diagnostics.followMuteDrops;
+                } else if (pendingMusical.event.source ==
+                        MusicalEventSource::PatternPlayer &&
                     pendingMusical.event.target == MusicalEventTarget::Drums &&
                     pendingMusical.event.type == MusicalEventType::NoteOn) {
                     dispatch = g_patternDrumGates.scheduleOrExtend(
@@ -1278,6 +1335,10 @@ void midiDispatchTask(void*) {
                        GroovePuterMidi::smfTrackMuteState().isMuted(
                            pendingSmf.trackIndex)) {
                 ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       GroovePuterMidi::followOutputSilenced()) {
+                ++g_diagnostics.followMuteDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
                        !projectSmfNoteOnStillCurrent(pendingSmf)) {
@@ -1585,7 +1646,12 @@ bool registerCardputerUsbMidiSink(
 
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
-    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{true, false, true, true});
+    // Incoming notes are for an external keyboard plugged into the Cardputer
+    // (USB Host). In the COMPUTER role the other side is a sequencer or DAW:
+    // its pattern notes must not play PERFORM or step-record into MELODY.
+    // Realtime Clock/Start/Stop is handled before this route and still follows.
+    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{
+        usbHostRole(), false, true, true});
     // An external keyboard (Host) plays through the external output too; a Device session
     // must not echo the computer's notes back to it.
     UsbMidiOutput::setMidiInputThru(usbHostRole());
@@ -1676,6 +1742,10 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
     notifyDispatcher();
 }
 
+uint32_t cardputerUsbMidiOutputLatencyUs() {
+    return kOutputLatencyUs;
+}
+
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
                                          uint32_t& playbackStartMicros) {
     return g_anchorClock.snapshot(blockSequence, playbackStartMicros);
@@ -1732,6 +1802,21 @@ uint32_t cardputerUsbDispatchStackFreeBytes() {
     return g_dispatchTaskHandle != nullptr
         ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(g_dispatchTaskHandle) * sizeof(StackType_t))
         : 0u;
+}
+
+void cardputerUsbClockRxText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    // Racy reads of monotonically increasing counters; display only.
+    std::snprintf(out, size, "RX pk=%lu din=%lu f8=%lu ign=%lu fa=%lu fc=%lu",
+                  static_cast<unsigned long>(g_transport.diagnostics().rxPackets),
+                  static_cast<unsigned long>(g_diagnostics.uartRxBytes),
+                  static_cast<unsigned long>(g_diagnostics.externalRxClock),
+                  static_cast<unsigned long>(g_diagnostics.externalRxMasterIgnored),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStart),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStop));
+#else
+    if (size > 0) out[0] = '\0';
+#endif
 }
 
 void cardputerUsbLastRawText(char* out, size_t size) {

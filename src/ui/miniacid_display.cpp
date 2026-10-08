@@ -1,7 +1,9 @@
 #include "src/ui/save_probe.h"
 #include "miniacid_display.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
+#include "src/ui/project_key.h"
 #include "src/state/undo_owner.h"
 #include "undo_ux.h"
 #include "src/platform/cardputer_ui_session.h"
@@ -235,7 +237,38 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
     audio_recorder_ = recorder;
 }
 
+// One key for the whole project (0.9.17): the scene's key (Melody K/M, G)
+// and the KEYBOARD's scale/root are the same setting. The scene owns it; a
+// change made on KEYBOARD is written back, any other change (K/M, a loaded
+// scene) is pushed to the KEYBOARD. Runs once per frame on the UI thread.
+void MiniAcidDisplay::syncProjectKey_() {
+    auto& params = mini_acid_.sceneManager().currentScene().generatorParams;
+    const uint8_t sceneRoot = ProjectKey::pitchClass(params.scaleRoot);
+    const PerformanceScale sceneScale = ProjectKey::toPerformanceScale(
+        static_cast<ProjectKey::ScaleTypeValue>(params.scale));
+    const uint8_t keyboardRoot = performance_keyboard_.rootPitchClass();
+    const PerformanceScale keyboardScale = performance_keyboard_.scale();
+    const bool keyboardEdited = key_synced_ &&
+        (keyboardRoot != synced_key_root_ || keyboardScale != synced_key_scale_);
+    if (keyboardEdited) {
+        withAudioGuard([&]() {
+            params.scaleRoot = keyboardRoot;
+            params.scale = static_cast<ScaleType>(
+                ProjectKey::fromPerformanceScale(keyboardScale));
+        });
+        GroovePuterState::markSceneMutated();
+    } else if (!key_synced_ || keyboardRoot != sceneRoot ||
+               keyboardScale != sceneScale) {
+        performance_keyboard_.setRootPitchClass(sceneRoot);
+        performance_keyboard_.setScale(sceneScale);
+    }
+    key_synced_ = true;
+    synced_key_root_ = performance_keyboard_.rootPitchClass();
+    synced_key_scale_ = performance_keyboard_.scale();
+}
+
 void MiniAcidDisplay::update() {
+    syncProjectKey_();
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
@@ -314,6 +347,10 @@ void MiniAcidDisplay::update() {
     if (global_help_overlay_.isVisible()) {
         global_help_overlay_.setPageContext(page_index_);
         global_help_overlay_.draw(gfx_);
+    }
+
+    if (global_midi_sync_overlay_.isVisible()) {
+        global_midi_sync_overlay_.draw(gfx_, mini_acid_);
     }
     
     drawToast();
@@ -508,13 +545,54 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     }
 }
 
+// Help opens at the section of what the page shows now (SYNTH help starts at
+// MELODY on the Melody editor, not at the pattern keys 25 lines above).
+void MiniAcidDisplay::openPageHelp_() {
+    global_help_overlay_.setPageContext(page_index_);
+    IPage* page = getPage_(page_index_);
+    const char* anchor = page ? page->helpAnchor() : nullptr;
+    global_help_overlay_.toggle(HelpContent::findLine(page_index_, anchor));
+}
+
+bool MiniAcidDisplay::repeatsAltVertical() {
+    if (splash_active_ || global_midi_sync_overlay_.isVisible() ||
+        global_help_overlay_.isVisible() || workspace_launcher_.isVisible()) {
+        return false;
+    }
+    IPage* page = getPage_(page_index_);
+    return page != nullptr && page->repeatsAltVertical();
+}
+
 void MiniAcidDisplay::dismissSplash() {
     splash_active_ = false;
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    if (global_midi_sync_overlay_.isVisible()) {
+        global_midi_sync_overlay_.handleEvent(event);
+        const int tempoDelta = global_midi_sync_overlay_.takeTempoDelta();
+        const auto& clock = GroovePuterMidi::transportClockRuntime();
+        const bool followsMidiClock = clock.source() ==
+            GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
+            clock.externalFollowEnabled();
+        if (tempoDelta != 0 && !followsMidiClock) {
+            const float before = mini_acid_.projectBpm();
+            withAudioGuard([&]() { mini_acid_.setBpm(before + tempoDelta); });
+            if (mini_acid_.projectBpm() != before) GroovePuterState::markSceneMutated();
+        }
+        return true;
+    }
+
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
+    }
+
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
+        !event.ctrl && !event.meta && !event.shift &&
+        (event.key == 'y' || event.key == 'Y')) {
+        workspace_launcher_.close();
+        global_midi_sync_overlay_.open();
+        return true;
     }
 
     if (workspace_launcher_.isVisible()) {
@@ -523,8 +601,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             if (workspace_launcher_.takePageRequest(requestedPage)) {
                 transitionToPage_(requestedPage);
             } else if (workspace_launcher_.takeHelpRequest()) {
-                global_help_overlay_.setPageContext(page_index_);
-                global_help_overlay_.toggle();
+                openPageHelp_();
+            } else if (workspace_launcher_.takeSyncRequest()) {
+                global_midi_sync_overlay_.open();
             }
             return true;
         }
@@ -564,8 +643,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
             workspace_launcher_.close();
-            global_help_overlay_.setPageContext(page_index_);
-            global_help_overlay_.toggle();
+            openPageHelp_();
             return true;
         }
 
@@ -582,8 +660,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            Serial.println("[UI] Shortcut Alt+V -> Page 11");
-            goToPage(11);
+            // GENRE (0.9.17); legacy page id 11 would resolve to FEEL.
+            goToPage(WorkflowPages::kGenre);
             return true;
         }
 
@@ -648,20 +726,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             page_index_ == kSmfPlayerPage && event.meta && !event.alt &&
             !event.ctrl && event.key >= '1' && event.key <= '9';
         if ((event.alt || event.meta) && !event.ctrl && !smfPlayerFnNumber) {
-            int targetPage = -1;
-            switch (event.key) {
-                case '1': targetPage = 1; break;
-                case '2': targetPage = 2; break;
-                case '3': targetPage = WorkflowPages::kSynthA; break;
-                case '4': targetPage = WorkflowPages::kSynthB; break;
-                case '5': targetPage = 5; break;
-                case '6': targetPage = 6; break;
-                case '7': targetPage = 7; break;
-                case '8': targetPage = 8; break;
-                case '9': targetPage = 9; break;
-                case '0': targetPage = 10; break;
-                default: break;
-            }
+            const int targetPage = WorkflowPages::directJumpPage(event.key);
             if (targetPage >= 0) {
                 Serial.printf("[UI] Shortcut Alt+%c -> Page %d\n", event.key, targetPage);
                 goToPage(targetPage);
@@ -691,6 +756,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     // Pages get first refusal on Space. This lets MIDI Player own its transport
     // without also toggling the global GroovePuter transport.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+            showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
+            return true;
+        }
         if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
         withAudioGuard([&]() {
             if (mini_acid_.isPlaying()) mini_acid_.stop();

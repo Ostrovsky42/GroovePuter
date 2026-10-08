@@ -49,6 +49,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/midi/external_midi_clock_follower.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/audio/follow_mute_ramp.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -127,8 +128,12 @@ void audioTask(void *param) {
       const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
       const auto clockSource =
           GroovePuterMidi::transportClockRuntime().source();
+      // Notes of this block leave one output latency after `now`; follow the
+      // master at that moment so the notes, not the render, land on its beat.
       const auto externalClock = g_externalClockFollower.processBlock(
-          g_externalMidiTransportQueue, clockSource, now);
+          g_externalMidiTransportQueue, clockSource, now,
+          GroovePuterMidi::transportClockRuntime().externalFollowEnabled(),
+          cardputerUsbMidiOutputLatencyUs());
       GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
           externalClock.estimate, g_externalClockFollower.failureCount());
 
@@ -139,6 +144,11 @@ void audioTask(void *param) {
       if (externalClock.sourceChanged &&
           clockSource != GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
         g_miniAcid->restoreProjectBpm();
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
+      }
+      // A new Start from the master is a new take: GroovePuter sounds again.
+      if (externalClock.command == GroovePuterMidi::ExternalTransportCommand::Start) {
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
       }
 
       bool restartFromBeginning = true;
@@ -153,9 +163,15 @@ void audioTask(void *param) {
           }
         }
       }
+      // Start arrives with the master's downbeat. Begin where the master will
+      // be when this block's notes leave, so the first bar is on its grid
+      // instead of catching up through the bounded trim.
+      double startedAtPhaseSteps = 0.0;
       switch (externalClock.command) {
         case GroovePuterMidi::ExternalTransportCommand::Start:
           g_miniAcid->start();
+          startedAtPhaseSteps =
+              g_miniAcid->advanceStartPhase(externalClock.startPhaseSteps);
           break;
         case GroovePuterMidi::ExternalTransportCommand::Continue:
           g_miniAcid->continueTransport();
@@ -178,9 +194,16 @@ void audioTask(void *param) {
           g_miniAcid->isPlaying(),
           GroovePuterMidi::transportClockSourcePublishesOutboundClock(
               clockSource),
-          restartFromBeginning);
+          restartFromBeginning,
+          static_cast<float>(startedAtPhaseSteps));
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
       g_patternMusicalEventQueue.endMidiRenderBlock();
+      // Space while following silences GroovePuter but keeps it rendering in
+      // phase; MidiDispatchTask silences its MIDI notes on the same flag.
+      static float followMuteGain = 1.0f;
+      followMuteGain = applyFollowMuteRamp(
+          g_audioBuffer, kBlockFrames, followMuteGain,
+          GroovePuterMidi::followOutputSilenced() ? 0.0f : 1.0f);
       publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -649,9 +672,8 @@ void loop() {
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (GroovePuterMidi::transportClockRuntime().source() ==
-        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-      UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    if (GroovePuterMidi::externalClockOwnsTransport()) {
+      UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
     } else {
       AudioMutationScope mutationScope(g_audioMutationGate);
       if (g_miniAcid->isPlaying()) {
@@ -789,9 +811,8 @@ void loop() {
       } else if (c == ';' || c == '\'') {
         needsDraw = true;
       } else if (c == ' ') {
-        if (GroovePuterMidi::transportClockRuntime().source() ==
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-          UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+          UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
         } else if (g_miniAcid->isPlaying()) {
           g_miniAcid->stop();
         } else {
@@ -925,7 +946,8 @@ void loop() {
       dispatched = true;
 
       if (GroovePuterInput::mayArmRepeatForPhysicalKey(
-              ks, static_cast<uint8_t>(hid), evt)) {
+              ks, static_cast<uint8_t>(hid), evt,
+              g_miniDisplay != nullptr && g_miniDisplay->repeatsAltVertical())) {
         repeatEvent = evt;
         repeatHid = static_cast<uint8_t>(hid);
         repeatPressId = pressId;
@@ -992,6 +1014,16 @@ void loop() {
   const Keyboard_Class::KeysState currentKeysState =
       M5Cardputer.Keyboard.keysState();
   reconcilePerformanceKeys(currentKeysState);
+  // Opt alone (a modifier the library reports without a key code): one key
+  // for Alt+R, STEPS <-> MELODY on the synth pages. Alt+R stays for SDL.
+  if (currentKeysState.opt && !(hasPreviousKeysState && previousKeysState.opt) &&
+      currentKeysState.hid_keys.empty() && currentKeysState.word.empty() &&
+      g_miniDisplay) {
+    UIEvent toggle{};
+    toggle.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    toggle.app_event_type = GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE;
+    if (!g_miniDisplay->handleEvent(toggle)) UI::showToast("OPT: ON SYNTH A/B", 900);
+  }
 
   const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
                       GroovePuterInput::containsWord(currentKeysState, 'h') ||
@@ -1072,8 +1104,7 @@ void loop() {
                (unsigned long)g_queueLatency.percentileUs(50), (unsigned long)g_queueLatency.percentileUs(95),
                (unsigned long)g_queueLatency.maxUs());
       g_display.drawText(0, 100, line);
-      snprintf(line, sizeof(line), "PLAY=%d up=%lus us p50/p95/max", g_miniAcid->isPlaying() ? 1 : 0,
-               (unsigned long)(millis() / 1000));
+      cardputerUsbClockRxText(line, sizeof(line));
       g_display.drawText(0, 109, line);
       cardputerUsbLastRawText(line, sizeof(line));
       g_display.drawText(0, 118, line);

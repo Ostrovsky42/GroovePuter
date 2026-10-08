@@ -82,6 +82,29 @@ inline int normalizeLegacyPage(int page) {
     return page;
 }
 
+// Alt/Fn+1..0 follow the workflows left to right (GENERATE, HUB, SONG,
+// PERFORM), one live page per digit. The old table pointed 3/4/8 at legacy
+// ids that resolve to SYNTH A/B and FEEL again, and left GENRE, MATERIAL,
+// KEYBOARD and PLAYER without a digit. 2 is PROJECT (owner, 0.9.17): load and
+// save are needed far more often than FEEL, which stays one [ ] away from
+// GENRE. MATERIAL BANK has no digit (and today no direct key at all).
+// Returns -1 for keys that are not page digits.
+inline int directJumpPage(char key) {
+    switch (key) {
+        case '1': return kGenre;
+        case '2': return kProject;
+        case '3': return kPattern;   // OVERVIEW
+        case '4': return kSynthA;
+        case '5': return kSynthB;
+        case '6': return kDrums;
+        case '7': return kArrange;   // SONG
+        case '8': return kPhrase;    // MATERIAL
+        case '9': return kPerform;   // MIDI KEYBOARD
+        case '0': return kPlayer;    // MIDI PLAYER
+        default: return -1;
+    }
+}
+
 inline bool isPerformWorkflowPage(int page) {
     page = normalizeLegacyPage(page);
     return page == kPerform || page == kPlayer;

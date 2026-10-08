@@ -57,6 +57,37 @@ inline Result prepareSelected(const Buffer& live,
   return Result::Ready;
 }
 
+// Several one-semitone steps as one edit (one undo): a step along the project
+// key can be a whole tone or more. Each step keeps the one-semitone contract.
+inline Result prepareSelectedBy(const Buffer& live,
+                                uint16_t eventIndex,
+                                int semitones,
+                                Prepared& out) {
+  out.before = live;
+  out.after = live;
+  if (semitones == 0 || semitones > 12 || semitones < -12) {
+    return Result::Rejected;
+  }
+  if (!RuntimePhraseEdit::validate(live)) return Result::Rejected;
+  if (eventIndex >= live.count) return Result::NoTarget;
+
+  const int direction = semitones > 0 ? 1 : -1;
+  bool changed = true;
+  const RuntimePhraseEdit::PrepareResult prepareResult =
+      RuntimePhraseEdit::prepare(live, out.after, [&](Buffer& candidate) {
+        for (int i = 0; i < semitones * direction && changed; ++i) {
+          changed = RuntimePhraseEdit::transposeEvent(candidate, eventIndex,
+                                                      direction) ==
+                    RuntimePhraseEdit::EventEditResult::Changed;
+        }
+      });
+  if (!changed || prepareResult != RuntimePhraseEdit::PrepareResult::Ready) {
+    out.after = live;
+    return Result::Rejected;
+  }
+  return Result::Ready;
+}
+
 inline Result prepare(const Buffer& live,
                       uint16_t cursorTick,
                       int direction,

@@ -306,7 +306,7 @@ void GenrePage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/2",
-                      "CORRIDOR / VOCABULARY", axisColor, palette);
+                      "WHAT G GENERATES", axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "GENRE",

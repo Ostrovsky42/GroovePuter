@@ -80,6 +80,7 @@ SOURCES := \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
+	../src/ui/global_midi_sync_overlay.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
 	../src/ui/ui_core.cpp \
@@ -197,3 +198,11 @@ clean:
 	rm -rf $(APP_BUNDLE)
 
 .PHONY: all clean wasm bundle e1-live-bridge-characterization
+
+TEMPO_SYNC_UI_TARGET := tempo_sync_ui_test
+TEMPO_SYNC_UI_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_tempo_sync_ui.cpp
+$(TEMPO_SYNC_UI_TARGET): $(TEMPO_SYNC_UI_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+tempo-sync-ui-test: $(TEMPO_SYNC_UI_TARGET)
+	./$(TEMPO_SYNC_UI_TARGET)

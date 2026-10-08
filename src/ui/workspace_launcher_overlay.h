@@ -28,12 +28,14 @@ public:
         }
         page_request_ = -1;
         help_request_ = false;
+        sync_request_ = false;
     }
 
     void close() {
         visible_ = false;
         page_request_ = -1;
         help_request_ = false;
+        sync_request_ = false;
     }
 
     void toggle(Workspace workspace,
@@ -53,6 +55,12 @@ public:
     bool takeHelpRequest() {
         if (!help_request_) return false;
         help_request_ = false;
+        return true;
+    }
+
+    bool takeSyncRequest() {
+        if (!sync_request_) return false;
+        sync_request_ = false;
         return true;
     }
 
@@ -196,7 +204,7 @@ public:
 
 private:
     static constexpr int kWorkflowEntryCount = 5;
-    static constexpr int kEntryCount = 6;
+    static constexpr int kEntryCount = 7;
 
     void loadRememberedPages_(const int8_t* pages, int count) {
         if (!pages || count <= 0) return;
@@ -248,6 +256,7 @@ private:
             case 3: return "SONG";
             case 4: return "SETTINGS";
             case 5: return "HELP";
+            case 6: return "TEMPO";
             default: return "?";
         }
     }
@@ -264,6 +273,7 @@ private:
 
     static const char* childLabel(int entry, int child) {
         if (entry == 5) return "CONTROLS";
+        if (entry == 6) return "BPM / MIDI CLOCK";
         return WorkflowPages::pageName(childPage(entry, child));
     }
 
@@ -337,12 +347,22 @@ private:
             line2 = "shortcuts / controls";
             return;
         }
+        if (entry == 6) {
+            line1 = "project BPM";
+            line2 = "or follow MIDI clock";
+            return;
+        }
         descriptionForPage(childPage(entry, child), line1, line2);
     }
 
     void activateSelection() {
         if (selected_ == 5) {
             help_request_ = true;
+            visible_ = false;
+            return;
+        }
+        if (selected_ == 6) {
+            sync_request_ = true;
             visible_ = false;
             return;
         }
@@ -359,4 +379,5 @@ private:
     int child_by_workflow_[kWorkflowEntryCount]{0, 0, 0, 0, 0};
     int page_request_ = -1;
     bool help_request_ = false;
+    bool sync_request_ = false;
 };

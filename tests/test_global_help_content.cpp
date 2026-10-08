@@ -56,12 +56,33 @@ int main() {
     assert(globalContains("Track mute fallback"));
     assert(globalContains("Waveform except CORE"));
     assert(!globalContains("Ctrl+H"));
+    assert(globalContains("1 GENRE 2 PROJ 3 OVW"));
+    // The synth help also covers the Melody editor, with the STEPS letters.
+    assert(sectionContains(WorkflowPages::kSynthA, "--- MELODY (Alt+R / Opt) ---"));
+    assert(sectionContains(WorkflowPages::kSynthB, "Alt+C       Chord -> arpeggio"));
+
+    // Alt/Fn+1..0: ten digits, ten different live pages. The old table sent
+    // 3/4/8 to legacy ids that resolved to SYNTH A/B and FEEL again.
+    {
+        int seen[10];
+        const char digits[] = "1234567890";
+        for (int i = 0; i < 10; ++i) {
+            const int page = WorkflowPages::directJumpPage(digits[i]);
+            assert(page >= 0);
+            assert(WorkflowPages::normalizeLegacyPage(page) == page);
+            for (int j = 0; j < i; ++j) assert(seen[j] != page);
+            seen[i] = page;
+        }
+        assert(WorkflowPages::directJumpPage('1') == WorkflowPages::kGenre);
+        assert(WorkflowPages::directJumpPage('2') == WorkflowPages::kProject);
+        assert(WorkflowPages::directJumpPage('a') == -1);
+    }
 
     assert(sectionContains(WorkflowPages::kArrange, "Assign existing pattern"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate/materialize cell"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate current row"));
-    // PHRASE CORE retains the legacy capture/derive/write help content,
-    // split out of PHRASE into its own page in PHW-P1.
+    // MATERIAL BANK retains the legacy capture/derive/write help content,
+    // split out of MATERIAL into its own page in PHW-P1.
     assert(sectionContains(WorkflowPages::kPhraseCore, "PHRASE CORE"));
     assert(sectionContains(WorkflowPages::kPhraseCore, "Mutable pattern references"));
     assert(sectionContains(WorkflowPages::kPhraseCore, "Ctrl+L/R    Move TO row +/-1"));
@@ -71,10 +92,13 @@ int main() {
     assert(sectionContains(WorkflowPages::kPhraseCore, "REPLACE at TO row"));
     assert(sectionContains(WorkflowPages::kPhraseCore, "No row shift"));
 
-    // PHRASE (product) no longer carries CORE's write/insert help text or a
-    // V:CORE mode switch -- placement is APPEND/EXPLICIT via a TO focus.
-    assert(sectionContains(WorkflowPages::kPhrase, "=== PHRASE ==="));
+    // MATERIAL (generated-Phrase product page) no longer carries MATERIAL BANK's
+    // write/insert help text. Placement is APPEND/EXPLICIT via a TO focus.
+    assert(sectionContains(WorkflowPages::kPhrase, "=== MATERIAL ==="));
     assert(sectionContains(WorkflowPages::kPhrase, "APPEND or EXPLICIT"));
+    assert(sectionContains(WorkflowPages::kPhrase, "New TAKE at TO"));
+    assert(sectionContains(WorkflowPages::kPhrase, "DEVELOP fresh TAKE"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Make room / reuse"));
     assert(sectionContains(WorkflowPages::kPhrase, "FREE/OCCUPIED/NO ROOM"));
     assert(!sectionContains(WorkflowPages::kPhrase, "PHRASE CORE"));
     assert(!sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
@@ -84,6 +108,7 @@ int main() {
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
 
     assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
+    assert(sectionContains(WorkflowPages::kGenre, "Generate full material"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
     assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
     assert(sectionContains(WorkflowPages::kFeel, "Profile     Straight/Swing/Laid/Push"));

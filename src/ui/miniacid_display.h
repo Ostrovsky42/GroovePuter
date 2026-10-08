@@ -14,7 +14,9 @@
 #include "ui_view_continuity.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
+#include "global_midi_sync_overlay.h"
 #include "workflow_mode.h"
+#include "src/input/performance_instrument_types.h"
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/state/ui_session_state.h"
@@ -46,6 +48,11 @@ public:
   void dismissSplash();
   bool handleEvent(UIEvent event);
   int currentPageIndex() const { return page_index_; }
+  // True when a held Alt+Up/Down should repeat: the current page scrolls with
+  // it and no overlay takes the keys.
+  bool repeatsAltVertical();
+  void openPageHelp_();
+  void syncProjectKey_();
 
 private:
   void initMuteButtons(int x, int y, int w, int h);
@@ -72,6 +79,9 @@ private:
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   PerformanceKeyboard& performance_keyboard_;
+  bool key_synced_ = false;
+  uint8_t synced_key_root_ = 0;
+  PerformanceScale synced_key_scale_ = PerformanceScale::Chromatic;
   int page_index_ = 0;
   bool first_draw_trace_pending_ = true;
   int previous_page_index_ = 0;  // For Backspace/` toggle
@@ -81,6 +91,7 @@ private:
   bool help_dialog_visible_ = false;
   std::unique_ptr<MultiPageHelpDialog> help_dialog_;
   GlobalHelpOverlay global_help_overlay_;
+  GlobalMidiSyncOverlay global_midi_sync_overlay_;
   WorkspaceLauncherOverlay workspace_launcher_;
 
   AudioGuard audio_guard_;

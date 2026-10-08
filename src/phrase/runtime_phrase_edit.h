@@ -121,6 +121,29 @@ inline bool validate(const Buffer& phrase) {
   return true;
 }
 
+// True when two notes sound at the same time (a chord, or one note held while
+// another starts). Such a Melody plays through the chord voices; one without
+// overlaps keeps the one-note path unchanged. Notes merely touching
+// (end == next start) do not overlap.
+inline bool hasOverlappingNotes(const Buffer& phrase) {
+  const uint16_t count = phrase.count > PhraseRuntime::kMaxSynthEvents
+      ? PhraseRuntime::kMaxSynthEvents
+      : phrase.count;
+  for (uint16_t i = 0; i < count; ++i) {
+    const uint32_t startI = static_cast<uint32_t>(phrase.events[i].startTick) *
+                            PhraseRuntime::kSubticksPerTick;
+    const uint32_t endI = startI + phrase.events[i].durationSubticks;
+    for (uint16_t j = static_cast<uint16_t>(i + 1u); j < count; ++j) {
+      const uint32_t startJ =
+          static_cast<uint32_t>(phrase.events[j].startTick) *
+          PhraseRuntime::kSubticksPerTick;
+      const uint32_t endJ = startJ + phrase.events[j].durationSubticks;
+      if (startI < endJ && startJ < endI) return true;
+    }
+  }
+  return false;
+}
+
 inline bool same(const Buffer& lhs, const Buffer& rhs) {
   return std::memcmp(&lhs, &rhs, sizeof(Buffer)) == 0;
 }

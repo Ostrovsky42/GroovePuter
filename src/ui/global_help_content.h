@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #include "workflow_mode.h"
 
 namespace HelpContent {
@@ -16,10 +18,13 @@ constexpr const char* kGlobalLines[] = {
     "[ / ]       Prev/next page",
     "Fn+[ / ]    Prev/next workflow",
     "Alt+[ / ]   Prev/next pattern page",
-    "Alt/Fn+1..0 Direct page jump",
+    "Alt/Fn+digit Jump to page:",
+    " 1 GENRE 2 PROJ 3 OVW 4 SYN-A 5 SYN-B",
+    " 6 DRUMS 7 SONG 8 MAT 9 KEYS 0 PLAYER",
     "Space       Active transport",
     "Alt+P       MIDI Player",
-    "Alt+V       Groove Lab",
+    "Alt+Y       Tempo / MIDI clock",
+    "Alt+V       GENRE",
     "Alt+W       Waveform except CORE",
     "Alt+\\       Theme CARBON/CYBER",
     "Alt+X       LiveMix ON/OFF",
@@ -35,6 +40,8 @@ constexpr const char* kGenreLines[] = {
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/rhythm/apply",
+    "G           Generate full material",
+    "P           CANON / VAR / TRANS",
     "Alt+L/R     Morph selected variant",
     "Enter       Apply profile/materialize",
     "M           Cycle apply mode",
@@ -70,6 +77,18 @@ constexpr const char* kSynthALines[] = {
     "Alt+G       Legacy synth (no P)",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
+    "--- MELODY (Alt+R / Opt) ---",
+    "Up/Dn A/Z   Note along the key",
+    "Ctrl+Up/Dn  Semitone",
+    "S/X         Octave +/-",
+    "Alt+A       Accent",
+    "H           Chord / one more tone",
+    "C           Next note of chord",
+    "Alt+C       Chord -> arpeggio",
+    "K / M       Key tonic / scale",
+    "Q..I / B    Melody slot, new if none",
+    "Ctrl+L/R    Prev/next bar",
+    "Alt+N       New empty melody",
 };
 
 constexpr const char* kSynthBLines[] = {
@@ -98,6 +117,18 @@ constexpr const char* kSynthBLines[] = {
     "Alt+G       Legacy synth (no P)",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
+    "--- MELODY (Alt+R / Opt) ---",
+    "Up/Dn A/Z   Note along the key",
+    "Ctrl+Up/Dn  Semitone",
+    "S/X         Octave +/-",
+    "Alt+A       Accent",
+    "H           Chord / one more tone",
+    "C           Next note of chord",
+    "Alt+C       Chord -> arpeggio",
+    "K / M       Key tonic / scale",
+    "Q..I / B    Melody slot, new if none",
+    "Ctrl+L/R    Prev/next bar",
+    "Alt+N       New empty melody",
 };
 
 constexpr const char* kSynthASoundLines[] = {
@@ -188,14 +219,16 @@ constexpr const char* kSongLines[] = {
 };
 
 constexpr const char* kPhraseProductLines[] = {
-    "=== PHRASE ===",
+    "=== MATERIAL ===",
     "Up/Down     Focus field",
     "Left/Right  Adjust focused field",
     "TO          APPEND or EXPLICIT",
     "Enter(TO)   Explicit -> Append",
     "Enter(BAR)  Focus accepted bar",
-    "G           Generate at TO",
-    "P           Cycle DEPTH",
+    "G           New TAKE at TO",
+    "P           Cycle STYLE",
+    "D           DEVELOP fresh TAKE",
+    "R           Make room / reuse",
     "LAST        Retrospective only",
     "FREE/OCCUPIED/NO ROOM at TO",
 };
@@ -367,6 +400,18 @@ inline const char* getLine(int pageIndex, int index) {
     const int globalIdx = index - pageCount;
     if (globalIdx < 0 || globalIdx >= globalCount) return nullptr;
     return kGlobalLines[globalIdx];
+}
+
+// First line of the page's help starting with `prefix`, or 0.
+inline int findLine(int pageIndex, const char* prefix) {
+    if (!prefix) return 0;
+    const int total = getTotalLines(pageIndex);
+    const std::size_t n = std::strlen(prefix);
+    for (int i = 0; i < total; ++i) {
+        const char* line = getLine(pageIndex, i);
+        if (line && std::strncmp(line, prefix, n) == 0) return i;
+    }
+    return 0;
 }
 
 } // namespace HelpContent
