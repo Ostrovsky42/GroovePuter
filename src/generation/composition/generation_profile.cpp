@@ -117,12 +117,15 @@ constexpr WeightedIdentityCandidate kBassChip[] = {
     weighted(BassRhythmId::RollingDrive, 95),
     weighted(BassRhythmId::SyncopatedHook, 110),
 };
+// 0.9.18 prototype: the Lo-Fi reference bass plays the root on beat 1 and the
+// fifth/octave on beat 3 in every bar. SparseAnchor (one note per two bars)
+// was the most likely choice.
 constexpr WeightedIdentityCandidate kBassLoFi[] = {
-    weighted(BassRhythmId::KickAnswer, 60),
-    weighted(BassRhythmId::GapFill, 40),
-    weighted(BassRhythmId::SparseAnchor, 150),
-    weighted(BassRhythmId::HalfTimePocket, 135),
-    weighted(BassRhythmId::SustainAndDrop, 115),
+    weighted(BassRhythmId::RootPulse, 180),
+    weighted(BassRhythmId::SustainAndDrop, 100),
+    weighted(BassRhythmId::HalfTimePocket, 60),
+    weighted(BassRhythmId::KickAnswer, 30),
+    weighted(BassRhythmId::SparseAnchor, 30),
 };
 constexpr WeightedIdentityCandidate kBassBoomBap[] = {
     weighted(BassRhythmId::KickAnswer, 110),
@@ -211,11 +214,16 @@ constexpr WeightedIdentityCandidate kProgressionFunk[] = {
     weighted(ProgressionId::PopCycle, 90),
     weighted(ProgressionId::BorrowedLift, 85),
 };
+// 0.9.18 prototype: the Lo-Fi reference (midi/calm_melancholic_lofi_3min.mid)
+// cycles i-VI-III-V7, one chord per bar. ParallelShift slid the root a
+// semitone (Db/B under C minor) and PedalDrone held one chord for the whole
+// TAKE; both are now rare.
 constexpr WeightedIdentityCandidate kProgressionLoFi[] = {
-    weighted(ProgressionId::TwoFiveOne, 130),
-    weighted(ProgressionId::ParallelShift, 135),
-    weighted(ProgressionId::PedalDrone, 100),
-    weighted(ProgressionId::BorrowedLift, 70),
+    weighted(ProgressionId::MinorFall, 170),
+    weighted(ProgressionId::TwoFiveOne, 120),
+    weighted(ProgressionId::BorrowedLift, 80),
+    weighted(ProgressionId::ParallelShift, 20),
+    weighted(ProgressionId::PedalDrone, 20),
 };
 constexpr WeightedIdentityCandidate kProgressionChip[] = {
     weighted(ProgressionId::PopCycle, 120),
@@ -280,9 +288,12 @@ constexpr WeightedIdentityCandidate kMelodicFunk[] = {
     weighted(MelodicRhythmId::FunkCell, 120),
     weighted(MelodicRhythmId::LateMotif, 50),
 };
+// 0.9.18 prototype: SlowPair over a Static contour held one note for the
+// whole TAKE. LazyArp follows the Lo-Fi reference; SlowPair stays the CALM end.
 constexpr WeightedIdentityCandidate kMelodicLoFiPair[] = {
-    weighted(MelodicRhythmId::SlowPair, 120),
-    weighted(MelodicRhythmId::SparseCall, 40),
+    weighted(MelodicRhythmId::LazyArp, 160),
+    weighted(MelodicRhythmId::SlowPair, 40),
+    weighted(MelodicRhythmId::SparseCall, 20),
 };
 // House: chord stabs take the late offbeats, so the lead keeps to the lines.
 constexpr WeightedIdentityCandidate kMelodicHouseDense[] = {
@@ -605,7 +616,8 @@ uint8_t melodicDensity(uint8_t id) {
     case MelodicRhythmId::RepeatedCell:
     case MelodicRhythmId::OffbeatCell:
     case MelodicRhythmId::AngularCell:
-    case MelodicRhythmId::ShiftedCell: return 4;
+    case MelodicRhythmId::ShiftedCell:
+    case MelodicRhythmId::LazyArp: return 4;
     case MelodicRhythmId::FunkCell: return 5;
     case MelodicRhythmId::HookSix: return 6;
     case MelodicRhythmId::RunningLine:

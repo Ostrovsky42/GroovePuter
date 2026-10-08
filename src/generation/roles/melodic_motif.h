@@ -34,6 +34,9 @@ enum class MelodicRhythmId : uint8_t {
   FunkCell,
   LateMotif,
   SlowPair,
+  // 0.9.18 Lo-Fi reference: a lazy chord-tone line just after the bass, with
+  // a pickup into the next four bars.
+  LazyArp,
   Count,
 };
 

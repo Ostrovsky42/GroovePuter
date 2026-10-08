@@ -245,6 +245,25 @@ constexpr TonalGenerationProfile kHouseProfile = tonal(
 constexpr TonalGenerationProfile kBrokenProfile = tonal(
     bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred),
     melodicPolicy(kMelodyBrokenAllowed, kMelodyBrokenPreferred));
+// 0.9.18 prototype: the Lo-Fi reference bass is root then fifth or octave,
+// never a neighbour; the Slow vocabulary (shared with TripHop, HipHop and
+// FunkSoul) preferred PedalTurn/NeighborReturn/StepApproach.
+constexpr TonalGenerationProfile kLoFiProfile = tonal(
+    bassPolicy(bassContours({BassPitchContourId::RootAnchor,
+                             BassPitchContourId::RootFifth,
+                             BassPitchContourId::RootOctave,
+                             BassPitchContourId::StepApproach}),
+               bassContours({BassPitchContourId::RootFifth,
+                             BassPitchContourId::RootOctave})),
+    // The reference melody falls (G Eb D C) or arches (Eb G Bb G); a Static
+    // preference held one pitch for the whole TAKE.
+    melodicPolicy(static_cast<uint16_t>(kMelodySlowAllowed |
+                                        melodicContours({MelodicContourId::StepUp,
+                                                         MelodicContourId::StepDown})),
+                  melodicContours({MelodicContourId::StepDown,
+                                   MelodicContourId::Arch,
+                                   MelodicContourId::InvertedArch,
+                                   MelodicContourId::RepeatThenDown})));
 constexpr TonalGenerationProfile kSlowProfile = tonal(
     bassPolicy(kBassSlowAllowed, kBassSlowPreferred),
     melodicPolicy(kMelodySlowAllowed, kMelodySlowPreferred));
@@ -327,7 +346,7 @@ constexpr TonalProfileRow kRows[] = {
     row(GenerativeMode::FunkSoul, kSlowProfile),
     row(GenerativeMode::UkGarage, kBrokenLiveProfile),
     row(GenerativeMode::DrumAndBass, kBrokenLiveProfile),
-    row(GenerativeMode::LoFi, kSlowProfile),
+    row(GenerativeMode::LoFi, kLoFiProfile),
 };
 
 }  // namespace

@@ -1,6 +1,6 @@
 // Listening render (analysis): G on MATERIAL -> 4-bar TAKE, looped twice to WAV (8 bars).
 // Outrun, Darksynth and Rave (control), presses 1..3 with the same seeds as idiomprobe.
-// Usage: takerender <out-dir> <tag>
+// Usage: takerender <out-dir> <tag> [lofi]   (lofi: LoFi at 72 BPM instead of the default three)
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -111,7 +111,9 @@ int main(int argc, char** argv) {
   const std::string out = std::filesystem::absolute(argc > 1 ? argv[1] : ".").string();
   const std::string tag = argc > 2 ? argv[2] : "x";
   struct G { int mode; const char* name; float bpm; };
-  const G genres[] = {{1, "outrun", 108.0f}, {2, "darksynth", 120.0f}, {4, "rave", 136.0f}};
+  const std::vector<G> genres = argc > 3 && std::string(argv[3]) == "lofi"
+      ? std::vector<G>{{15, "lofi", 72.0f}}
+      : std::vector<G>{{1, "outrun", 108.0f}, {2, "darksynth", 120.0f}, {4, "rave", 136.0f}};
   for (const auto& gg : genres) {
     const auto root = std::filesystem::temp_directory_path() / ("gp_takerender_" + tag + std::to_string(gg.mode));
     std::error_code ec;

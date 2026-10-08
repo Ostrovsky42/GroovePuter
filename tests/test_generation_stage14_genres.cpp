@@ -177,7 +177,9 @@ void testLoFiMelodicPaletteIsSparseByConstruction() {
     const MelodicMotifResult result = realizeMelodicMotif(request);
     assert(result.status == MelodicMotifStatus::Ok ||
            result.status == MelodicMotifStatus::ValidButEmpty);
-    assert(popcount16(result.plan.onsets) <= 3);
+    // 0.9.18: LazyArp follows the Lo-Fi references (four notes a bar on a
+    // dotted-eighth grid, then a rest and a pickup); still no running lines.
+    assert(popcount16(result.plan.onsets) <= 4);
   }
 }
 

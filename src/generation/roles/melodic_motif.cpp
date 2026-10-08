@@ -200,6 +200,13 @@ MelodicMotifResult realizeMelodicMotif(const MelodicMotifRequest& request) {
     case MelodicRhythmId::FunkCell: onsets = mask({1, 4, 7, 10, 13}); break;  // Funk / Soul
     case MelodicRhythmId::LateMotif: onsets = mask({4, 9, 12}); break;  // Hip-Hop: after the boom-bap bass {2,7,10,14}
     case MelodicRhythmId::SlowPair: onsets = mask({4, 12}); break;  // Lo-Fi
+    // Lo-Fi reference (calm_melancholic_lofi_3min.mid): notes a 16th after
+    // beats 1/2 and between 3/4 dodge a {0,8} bass; every fourth bar rests
+    // until a three-note pickup into the next phrase.
+    case MelodicRhythmId::LazyArp:
+      onsets = (request.barOrdinal % 4u) == 3u ? mask({10, 12, 14})
+                                               : mask({1, 4, 7, 10});
+      break;
     case MelodicRhythmId::Auto:
     case MelodicRhythmId::Count:
       return result;
@@ -261,6 +268,7 @@ const char* melodicRhythmName(MelodicRhythmId id) {
     case MelodicRhythmId::FunkCell: return "FUNK CELL";
     case MelodicRhythmId::LateMotif: return "LATE MOTIF";
     case MelodicRhythmId::SlowPair: return "SLOW PAIR";
+    case MelodicRhythmId::LazyArp: return "LAZY ARP";
     case MelodicRhythmId::Count: break;
   }
   return "INVALID";
