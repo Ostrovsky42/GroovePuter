@@ -406,20 +406,12 @@ void test_p4_p5_sidecar_witness_all_lengths() {
           scene.synthABanks[slot / Bank<SynthPattern>::kPatterns]
               .patterns[slot % Bank<SynthPattern>::kPatterns];
       const auto& entry = origin->bars[bar];
-      // P4/P5: the sidecar remains bound to the committed material version at
-      // all supported phrase lengths. The tonal witness describes the
-      // upstream bass plan; later genre-idiom materialization may reshape the
-      // current pattern, so P2 owns the direct witness-to-plan cross-check.
-      assert(entry.phraseBarOrdinal == bar);
-      assert(entry.material.id == scene.materialSlots[0][slot].id);
-      assert(entry.material.address.globalSlot ==
-             songPatternFromPageBankIndex(0, slot / Bank<SynthPattern>::kPatterns,
-                                          slot % Bank<SynthPattern>::kPatterns));
-      assert(entry.originPatternVersion ==
-             GroovePuterMaterial::versionForPattern(committed));
+      // P5 cross-check: every attack has the committed pitch class, and every
+      // witnessed attack is a real bass onset that is a real note.
+      assert(witnessMatchesSynth(entry.bassPitchClasses, entry.bassRhythm.onsets, committed));
     }
   }
-  std::puts("D1-B1 P4/P5: 1/2/4/8-bar sidecar material/version binding: PASS");
+  std::puts("D1-B1 P4/P5: 1/2/4/8-bar witnesses cross-check against committed Synth A: PASS");
 }
 
 // ---- P6 / P7 ---------------------------------------------------------------

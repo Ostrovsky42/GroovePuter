@@ -414,16 +414,18 @@ void testProtectedInteractionSpaceSurvivesMaterialMigration() {
     if (item.idea == GenreIdiom::Idea::DelayedAnswer) {
       bool pickup = false;
       for (uint8_t step = 0; step < 8; ++step) {
-        require(bass.steps[step].note < 0 && lead.steps[step].note < 0,
+        require(lead.steps[step].note < 0,
                 "downstream migration filled the delayed response space");
       }
       for (uint8_t step = 8; step < SynthPattern::kSteps; ++step) {
-        pickup = pickup || bass.steps[step].note >= 0 || lead.steps[step].note >= 0;
+        pickup = pickup || lead.steps[step].note >= 0;
       }
+      require(!synthIsEmpty(bass), "the bass must keep the groove under the space");
       require(pickup, "delayed response has no template pickup after protected space");
     } else {
-      require(synthIsEmpty(bass) && synthIsEmpty(lead),
+      require(synthIsEmpty(lead),
               "downstream migration filled a protected interaction bar");
+      require(!synthIsEmpty(bass), "the bass must keep the groove under the space");
     }
   }
   GroovePuterState::setGenerationLiveliness(previousLiveliness);

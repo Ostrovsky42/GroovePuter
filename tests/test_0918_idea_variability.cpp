@@ -193,8 +193,9 @@ void testCallResponseProtectsTheWholeThirdBar() {
   SynthPattern bass{};
   SynthPattern lead{};
   assert(GenreIdiom::apply(request, bass, lead));
-  assert(bass.isEmpty());
+  // One voice keeps the space, the bass keeps the groove.
   assert(lead.isEmpty());
+  assert(!bass.isEmpty());
 }
 
 void testShortCallAndDelayedResponseOwnTheirSpace() {
@@ -215,10 +216,10 @@ void testShortCallAndDelayedResponseOwnTheirSpace() {
   GenreIdiom::IdeaPlan plan{};
   assert(GenreIdiom::apply(request, bass, lead, &plan));
   assert(plan.interactionShape == GenreIdiom::InteractionShape::ShortCall);
-  assert(bass.isEmpty() && lead.isEmpty());
+  assert(lead.isEmpty() && !bass.isEmpty());
   request.barOrdinal = 2;
   assert(GenreIdiom::apply(request, bass, lead));
-  assert(!bass.isEmpty() || !lead.isEmpty());
+  assert(!lead.isEmpty());
 
   request = requestFor(13, delayedPress, 1);
   request.phraseBars = 4;
@@ -228,12 +229,36 @@ void testShortCallAndDelayedResponseOwnTheirSpace() {
   bool lateMaterial = false;
   for (int step = 0; step < 16; ++step) {
     if (step < 8) {
-      assert(bass.steps[step].note < 0 && lead.steps[step].note < 0);
-    } else if (bass.steps[step].note >= 0 || lead.steps[step].note >= 0) {
+      assert(lead.steps[step].note < 0);
+    } else if (lead.steps[step].note >= 0) {
       lateMaterial = true;
     }
   }
   assert(lateMaterial);  // The allowed pickup region still uses template notes.
+  assert(!bass.isEmpty());
+}
+
+// No idea ever leaves a looping single bar without a synth, and in a phrase
+// the bass plays every bar: protected silence belongs to the upper voice.
+void testNoEmptySynths() {
+  for (const Genre& genre : kGenres) {
+    for (uint32_t press = 1; press <= 40; ++press) {
+      for (uint8_t liveliness = 0; liveliness < 3; ++liveliness) {
+        GenreIdiom::Request request = requestFor(genre.mode, press, liveliness);
+        SynthPattern bass{};
+        SynthPattern lead{};
+        assert(GenreIdiom::apply(request, bass, lead));
+        assert(!bass.isEmpty());
+        assert(!lead.isEmpty());
+        request.phraseBars = 4;
+        for (uint8_t bar = 0; bar < 4; ++bar) {
+          request.barOrdinal = bar;
+          assert(GenreIdiom::apply(request, bass, lead));
+          assert(!bass.isEmpty());
+        }
+      }
+    }
+  }
 }
 
 std::string noteName(int note) {
@@ -425,6 +450,7 @@ void testSingleBarPressesDiffer() {
 }  // namespace
 
 int main() {
+  testNoEmptySynths();
   testOriginalPhraseTopologyBaseline();
   testCallResponseProtectsTheWholeThirdBar();
   testShortCallAndDelayedResponseOwnTheirSpace();

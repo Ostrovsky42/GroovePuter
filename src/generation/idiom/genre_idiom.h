@@ -412,16 +412,16 @@ inline IdeaPlan ideaPlanFor(const Request& request, const IdiomLevel& level) {
   plan.idea = ideaFromDeck(request.generativeMode, request.liveliness, request.deckSeed,
                            request.press, &repeat);
   plan.interactionShape = interactionShapeForIdea(plan.idea);
-  const bool acidLine = request.generativeMode == 0;
+  // One voice keeps the space, the other keeps the groove: the upper voice
+  // falls silent and the bass owns that bar (CR-P0: "one voice intentionally
+  // silent"; the docs/midi corpus leaves lead bars empty, never the bass).
+  // protectedBassSilence stays for ANTIPHONY, which hands the call to the bass.
   if (plan.interactionShape == InteractionShape::CallResponse) {
-    plan.protectedLeadSilence[2] = 0xFFFFu;
-    if (!acidLine) plan.protectedBassSilence[2] = 0xFFFFu;
+    plan.protectedLeadSilence[2] = 0xFFFFu;   // A | A' | _ | B
   } else if (plan.interactionShape == InteractionShape::ShortCall) {
-    plan.protectedLeadSilence[1] = 0xFFFFu;
-    if (!acidLine) plan.protectedBassSilence[1] = 0xFFFFu;
+    plan.protectedLeadSilence[1] = 0xFFFFu;   // A | _ | A' | B
   } else if (plan.interactionShape == InteractionShape::DelayedResponse) {
-    plan.protectedLeadSilence[2] = 0x00FFu;
-    plan.protectedBassSilence[2] = 0x00FFu;
+    plan.protectedLeadSilence[2] = 0x00FFu;   // A | A' | [space + pickup] | B
   }
   plan.arcRises = (detail::field(request.salt, 2) % 2u) == 0;
 
@@ -498,7 +498,6 @@ struct BarShape {
   uint8_t keepTo = 16;    // steps from here on are silent (before the ending)
   bool strongOnly = false;
   bool answer = false;
-  bool leadSilent = false;  // protected silence: the bass owns this bar
 };
 
 inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
@@ -601,20 +600,21 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   const bool dnb = request.generativeMode == 14;
   // DnB: fast drums, never a sixteenth bass run, even in an answer.
   const bool runningBass = level.bassCount >= 8 && !dnb;
-  // DnB call and response: A A' _ B -- the lead leaves bar 3 to the bass whole.
-  if (dnb && plan.idea == Idea::CallResponse && role == 2 && !singleBar) {
-    shape.keepTo = 16;
-    shape.leadSilent = true;
-  }
   // keepFrom delays only the lead; the bass keeps its downbeat.
   auto plays = [&](uint8_t step, uint8_t flags, bool leadPart = false) {
-    const uint16_t silence = leadPart ? plan.protectedLeadSilence[role]
-                                      : plan.protectedBassSilence[role];
+    // A single looping bar (G on STEPS) has no phrase to leave space in: a
+    // protected bar there would loop as an empty synth.
+    const uint16_t silence = singleBar ? 0
+        : leadPart ? plan.protectedLeadSilence[role] : plan.protectedBassSilence[role];
     if ((silence & (1u << step)) != 0) return false;
     if ((leadPart && step < shape.keepFrom) || step >= shape.keepTo) return false;
     if (shape.strongOnly && (flags & kAccent) == 0) {
-      // Thinned to the beats; a running line keeps its eighths.
-      if (step % (runningBass ? 2 : 4) != 0) return false;
+      // Thinned to the beats; a running line keeps its eighths; each part
+      // keeps its first note, so an off-beat line is thinned, never emptied.
+      const uint8_t first = leadPart
+          ? (level.melodyCount > 0 ? level.melody[0].step : 0xFF)
+          : level.bass[0].step;
+      if (step != first && step % (runningBass ? 2 : 4) != 0) return false;
     }
     return true;
   };
@@ -711,7 +711,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   for (uint8_t i = 0; i < level.melodyCount; ++i) melodyAt[level.melody[i].step] = static_cast<int8_t>(i);
   int firstPitch = -1;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    if (step >= answerFrom || shape.leadSilent) break;
+    if (step >= answerFrom) break;
     int placed = -1;
     if (melodyAt[step] >= 0) {
       const IdiomNote& note = level.melody[melodyAt[step]];
@@ -727,6 +727,9 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
         if (stab.step != step) continue;
         // Reduced bars keep the stabs on the beat grid only.
         if (shape.strongOnly && (step % 4) != 0 && step != level.stabs[0].step) continue;
+        // Protected silence wins over everything, the thinned bar included.
+        const uint16_t silence = singleBar ? 0 : plan.protectedLeadSilence[role];
+        if ((silence & (1u << step)) != 0) continue;
         if (!plays(step, 0, true) && !shape.strongOnly) continue;
         bool tone[12] = {};
         for (int interval = 0; interval < 24; ++interval) {
