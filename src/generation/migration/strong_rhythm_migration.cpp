@@ -1214,7 +1214,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     // slot, Melody G / TAKE bring their own press.
     idiom.press = context.ideaPress != 0 ? context.ideaPress : context.generationAttemptOrdinal;
     idiom.deckSeed = context.ideaPress != 0 ? 0u : static_cast<uint32_t>(context.patternAddress);
-    (void)GenreIdiom::apply(idiom, nextSynthA, nextSynthB);
+    // DnB writes its drum grammar too, but only when this G replaces drums.
+    (void)GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
+                            replaceDrums ? &nextDrums : nullptr);
   }
 
   if (replaceDrums) {

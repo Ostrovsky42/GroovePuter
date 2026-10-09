@@ -164,9 +164,15 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
       return (salt & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;
     case 12:  // FunkSoul
       return recipe == 0 ? &k_funk_pocket : nullptr;
-    case 14:  // DnB
-      if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_jungle_classic_amen : &k_jungle_atmospheric;
+    case 14:  // DnB: four poles on one two-step core; BASE plays the dance pole.
+      switch (recipe) {
+        case 0: return &k_dnb_dance;
+        case 18: return &k_dnb_atmos;
+        case 19: return &k_dnb_funk;
+        case 20: return &k_dnb_dance;
+        case 21: return &k_dnb_neuro;
+        default: return nullptr;
+      }
     case 9:  // House
       return recipe == 0 ? &k_house_deep_offbeat : nullptr;
     case 11:  // HipHop
@@ -319,6 +325,9 @@ inline uint8_t ideaWeight(uint8_t generativeMode, uint8_t liveliness, Idea idea)
   if (generativeMode == 0 && idea == Idea::DelayedAnswer) weight = 1;
   if (spacious && (idea == Idea::DelayedAnswer || idea == Idea::CallResponse)) weight += 2;
   if (generativeMode == 9 && idea == Idea::RegisterArc) weight = weight > 2 ? weight - 2 : 1;
+  // DnB: the lead needs silence, so call and response leads the deck.
+  if (generativeMode == 14 && idea == Idea::CallResponse) weight += 4;
+  if (generativeMode == 14 && idea == Idea::DelayedAnswer) weight += 2;
   return weight;
 }
 
@@ -489,6 +498,7 @@ struct BarShape {
   uint8_t keepTo = 16;    // steps from here on are silent (before the ending)
   bool strongOnly = false;
   bool answer = false;
+  bool leadSilent = false;  // protected silence: the bass owns this bar
 };
 
 inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
@@ -534,8 +544,11 @@ inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
 
 // Writes Synth A (bass) and Synth B (lead) for one bar of the phrase. False
 // (and nothing written) when the genre has no idiom.
+inline void applyDnbDrums(const Request& request, const IdeaPlan& plan, int role,
+                          bool singleBar, DrumPatternSet& drums);
+
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
-                  IdeaPlan* planOut = nullptr) {
+                  IdeaPlan* planOut = nullptr, DrumPatternSet* drums = nullptr) {
   const IdiomVariant* variant =
       variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
   if (variant == nullptr) return false;
@@ -585,7 +598,14 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
     if (plan.idea == Idea::DelayedAnswer) shape.keepFrom = 4;
   }
   const bool acid = request.generativeMode == 0;
-  const bool runningBass = level.bassCount >= 8;
+  const bool dnb = request.generativeMode == 14;
+  // DnB: fast drums, never a sixteenth bass run, even in an answer.
+  const bool runningBass = level.bassCount >= 8 && !dnb;
+  // DnB call and response: A A' _ B -- the lead leaves bar 3 to the bass whole.
+  if (dnb && plan.idea == Idea::CallResponse && role == 2 && !singleBar) {
+    shape.keepTo = 16;
+    shape.leadSilent = true;
+  }
   // keepFrom delays only the lead; the bass keeps its downbeat.
   auto plays = [&](uint8_t step, uint8_t flags, bool leadPart = false) {
     const uint16_t silence = leadPart ? plan.protectedLeadSilence[role]
@@ -691,7 +711,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   for (uint8_t i = 0; i < level.melodyCount; ++i) melodyAt[level.melody[i].step] = static_cast<int8_t>(i);
   int firstPitch = -1;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    if (step >= answerFrom) break;
+    if (step >= answerFrom || shape.leadSilent) break;
     int placed = -1;
     if (melodyAt[step] >= 0) {
       const IdiomNote& note = level.melody[melodyAt[step]];
@@ -754,6 +774,11 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
       case Ending::Late: detail::place(lead, acid ? 13 : 11, tonic, acid ? 3 : 5, 94, true); break;
       case Ending::Minimal: detail::place(lead, 12, tonic, 4, 84, false); break;
       case Ending::RunUp: {
+        // Neuro keeps the lead a rare stab: one pickup note, the bass turns.
+        if (dnb && request.recipe == 21) {
+          detail::place(lead, 14, tonic, 2, 90, true);
+          break;
+        }
         // A scale run that ends one step under bar 1's first note, so the
         // phrase turns back into its own beginning.
         const int target = firstPitch >= 0 ? firstPitch : tonic;
@@ -766,7 +791,78 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
       }
     }
   }
+  if (dnb && drums != nullptr) applyDnbDrums(request, plan, role, singleBar, *drums);
   return true;
+}
+
+// DnB drums: deterministic two-step anchors (kick 1 + 11, snare 5 + 13),
+// eighth hats, and probabilistic ghosts on top -- anchors fixed, ghosts
+// chance, never the reverse. The idea shapes the bar: a neuro push, a late
+// second snare in A', a half-time bar 3 in a reduced phrase, a snare fill
+// into bar 1.
+inline void applyDnbDrums(const Request& request, const IdeaPlan& plan, int role,
+                          bool singleBar, DrumPatternSet& drums) {
+  // Voice order of DrumPatternSet (8 voices; the kit has no cymbal lane).
+  enum : int { kKick = 0, kSnare, kClosedHat, kOpenHat, kMidTom, kHighTom, kRim, kClap };
+  const bool neuro = request.recipe == 21;
+  const bool atmos = request.recipe == 18;
+  const bool funk = request.recipe == 19;
+  const bool dance = !neuro && !atmos && !funk;
+  for (auto& voice : drums.voices) {
+    for (auto& step : voice.steps) step = DrumStep{};
+  }
+  auto hit = [&](int voice, int step, uint8_t velocity, uint8_t probability = 100,
+                 bool accent = false) {
+    if (voice >= DrumPatternSet::kVoices || step < 0 || step >= DrumPattern::kSteps) return;
+    DrumStep& s = drums.voices[voice].steps[step];
+    s.hit = 1;
+    s.accent = accent;
+    s.velocity = velocity;
+    s.probability = probability;
+  };
+  const bool halfTime = plan.idea == Idea::ReducedMotif && role == 2;
+  const bool fill = !singleBar && role == 3 &&
+                    (plan.idea == Idea::Turnaround || plan.idea == Idea::Original ||
+                     plan.idea == Idea::LowHighAnswer);
+  const bool lateSnare = (dance || funk) && role == 1 &&
+                         (plan.idea == Idea::LowHighAnswer || plan.idea == Idea::RegisterArc);
+
+  // Anchors.
+  hit(kKick, 0, 118, 100, true);
+  if (!halfTime) hit(kKick, neuro ? 7 : 10, 108);
+  if (halfTime) {
+    hit(kSnare, 8, 116, 100, true);
+  } else {
+    hit(kSnare, 4, 116, 100, true);
+    hit(kSnare, lateSnare ? 14 : 12, 116, 100, true);
+  }
+  if (fill) {
+    // Snare roll into the next bar's downbeat.
+    hit(kSnare, 13, 62);
+    hit(kSnare, 14, 78);
+    hit(kSnare, 15, 94);
+  }
+
+  // Hats: eighths, then quiet sixteenths by chance (more with LIVELY).
+  const uint8_t ghostChance = request.liveliness == 0 ? 0 : request.liveliness == 2 ? 60 : 35;
+  for (int step = 0; step < 16; step += 2) hit(kClosedHat, step, (step % 4) == 2 ? 92 : 70);
+  if (ghostChance > 0 && !atmos) {
+    for (int step = 1; step < 16; step += 2) {
+      if (fill && step >= 13) continue;
+      hit(kClosedHat, step, 40, ghostChance);
+    }
+  }
+  // Ghost snares between the anchors.
+  if (funk) {
+    hit(kRim, 7, 46, 70);
+    hit(kRim, 15, 42, 60);
+  } else if (dance) {
+    hit(kRim, 15, 40, 50);
+    hit(kOpenHat, 14, 70);
+    if (!singleBar && role == 0) hit(kOpenHat, 0, 96, 100, true);  // opens the phrase
+  } else if (atmos) {
+    hit(kRim, 7, 36, 40);
+  }
 }
 
 }  // namespace GenreIdiom

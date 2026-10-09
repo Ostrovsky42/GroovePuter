@@ -34,7 +34,7 @@ static void writeWav(const std::string& path, const std::vector<int16_t>& pcm, u
 int main(int argc, char** argv) {
   const std::string out = argc > 1 ? argv[1] : ".";
   const std::string tag = argc > 2 ? argv[2] : "x";
-  struct G { GenerativeMode mode; const char* name; float bpm; };
+  struct G { GenerativeMode mode; const char* name; float bpm; uint8_t recipe = 0; };
   const G genres[] = {{GenerativeMode::Acid, "acid", 128.0f},
                       {GenerativeMode::House, "house", 122.0f},
                       {GenerativeMode::HipHop, "hiphop", 90.0f},
@@ -47,7 +47,11 @@ int main(int argc, char** argv) {
                       {GenerativeMode::Electro, "electro", 124.0f},
                       {GenerativeMode::Broken, "broken", 120.0f},
                       {GenerativeMode::DrumAndBass, "dnb", 172.0f},
-                      {GenerativeMode::Chip, "chip", 140.0f}};
+                      {GenerativeMode::Chip, "chip", 140.0f},
+                      {GenerativeMode::DrumAndBass, "dnb_atmos", 172.0f, kDnbAtmosRecipeId},
+                      {GenerativeMode::DrumAndBass, "dnb_funk", 174.0f, kDnbFunkRecipeId},
+                      {GenerativeMode::DrumAndBass, "dnb_dance", 174.0f, kDnbDanceRecipeId},
+                      {GenerativeMode::DrumAndBass, "dnb_neuro", 174.0f, kDnbNeuroRecipeId}};
   const std::string only = argc > 4 ? argv[4] : "";
   for (const auto& g : genres) {
     if (!only.empty() && only.find(std::string(",") + g.name + ",") == std::string::npos) continue;
@@ -67,7 +71,7 @@ int main(int argc, char** argv) {
       engine.init();
       engine.setSongMode(false);
       engine.genreManager().setGenerativeMode(g.mode);
-      engine.genreManager().setRecipe(0);
+      engine.genreManager().setRecipe(g.recipe);
       engine.setBpm(g.bpm);
       auto& scene = engine.sceneManager().currentScene();
       for (uint32_t press = 0; press < take; ++press) {

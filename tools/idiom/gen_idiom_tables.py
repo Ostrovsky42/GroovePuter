@@ -118,6 +118,54 @@ HAND = {
                     ("5|8|16", "Eb5|G4|Bb4", "1|1|1", "66|72|70")),
         "P3": level(("1|9", "C2|Bb1", "3|3", "98|88", ""),
                     ("3", "Cm9", "4", "74"), ("8", "G4", "1", "70"))},
+    # ---- Drum & Bass poles (docs/superpowers/plans/2026-10-09-0918-dnb-genre-spec.md).
+    # Fast drums, slow everything else: the bass moves in eighths or slower and
+    # leaves the second kick (step 11) alone; the lead needs silence; harmony
+    # changes every two bars or not at all.
+    # DANCE (Pendulum): a short, clear, repeated bass hook on 1/octave/5/b7 and a
+    # three-note lead hook with space after it; anthemic i-i-VI-VII.
+    "dnb_dance": {"progression": (0, 0, 5, 6),
+        "P1": level(("1|4|7|9|12|15", "C2|C2|C3|C2|Bb1|G1", "2|2|1|2|2|1",
+                     "108|90|96|104|88|84", "1:accent=1|9:accent=1"), NONE4,
+                    ("3|5|7|13", "G4|Bb4|C5|Bb4", "1|1|2|2", "88|80|92|78")),
+        "P2": level(("1|4|7|9|12|15|16", "C2|C2|C3|C2|Bb1|G1|C3", "2|2|1|2|2|1|1",
+                     "108|90|96|104|88|84|80", "1:accent=1|9:accent=1"), NONE4,
+                    ("3|5|7|11|13", "G4|Bb4|C5|Eb5|Bb4", "1|1|2|1|2", "88|80|92|76|78")),
+        "P3": level(("1|9", "C2|C2", "6|6", "104|98", ""), NONE4,
+                    ("3|7", "G4|C5", "2|4", "84|88"))},
+    # NEURO (Noisia): one to three bass pitches in short accented cells with
+    # rests and octave drops (the drop answers the pushed kick on 8); harmony
+    # does not move; the lead is a rare stab.
+    "dnb_neuro": {"progression": (0, 0, 0, 0),
+        "P1": level(("1|2|4|7|9|13|15", "C2|C2|C3|C2|C1|C2|C3", "1|1|1|1|1|1|1",
+                     "112|80|100|96|108|90|104", "1:accent=1|4:accent=1|9:accent=1|15:accent=1"),
+                    ("9", "Cm", "2", "80"), NONE4),
+        "P2": level(("1|2|4|7|9|10|13|15", "C2|C2|C3|C2|C1|C2|C2|C3", "1|1|1|1|1|1|1|1",
+                     "112|80|100|96|108|84|90|104", "1:accent=1|4:accent=1|9:accent=1|15:accent=1"),
+                    ("9|15", "Cm|Cm", "2|1", "80|70"), NONE4),
+        "P3": level(("1|4|9|13", "C2|C3|C1|C2", "2|2|2|2", "108|96|104|90",
+                     "1:accent=1|9:accent=1"),
+                    ("9", "Cm", "2", "76"), NONE4)},
+    # FUNK (Roni Size): a walking double-bass phrase, chord stabs answering it; i-i-iv-i.
+    "dnb_funk": {"progression": (0, 0, 3, 0),
+        "P1": level(("1|4|6|8|10|13|15", "C2|Eb2|F2|G2|Bb1|C2|G1", "2|1|2|1|2|2|1",
+                     "104|84|90|86|96|92|80", ""),
+                    ("3|11", "Cm7|Cm7", "1|1", "72|70"), ("16", "Bb4", "1", "70")),
+        "P2": level(("1|4|6|8|10|12|13|15", "C2|Eb2|F2|G2|Bb1|Eb2|C2|G1", "2|1|2|1|2|1|1|1",
+                     "104|84|90|86|96|74|92|80", ""),
+                    ("3|7|11", "Cm7|Cm7|Cm7", "1|1|1", "72|66|70"),
+                    ("8|16", "G4|Bb4", "1|1", "68|70")),
+        "P3": level(("1|6|10|15", "C2|F2|Bb1|G1", "3|3|3|1", "100|88|92|80", ""),
+                    ("3", "Cm7", "2", "70"), NONE4)},
+    # ATMOS (Goldie / LTJ Bukem): long sub notes under a held minor-9 pad, one
+    # chord per two bars, a high answer late in the bar.
+    "dnb_atmos": {"progression": (0, 0, 5, 5),
+        "P1": level(("1|15", "C2|Bb1", "12|2", "100|84", ""),
+                    ("1", "Cm9", "12", "70"), ("13", "D5", "4", "76")),
+        "P2": level(("1|8|15", "C2|G1|Bb1", "7|6|2", "100|88|84", ""),
+                    ("1", "Cm9", "12", "70"), ("13|15", "D5|C5", "2|2", "76|72")),
+        "P3": level(("1", "C2", "16", "96", ""),
+                    ("1", "Cm9", "16", "66"), NONE4)},
     # Chiptune: octave bass in eighths, the fast arpeggio as the lead; i-VI-VII-i.
     "chip_arp": {"progression": (0, 5, 6, 0),
         "P1": level(("1|3|5|7|9|11|13|15", "C2|C3|C2|C3|C2|C3|C2|C3", "1|1|1|1|1|1|1|1",
