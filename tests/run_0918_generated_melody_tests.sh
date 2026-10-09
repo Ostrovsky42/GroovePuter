@@ -42,16 +42,18 @@ CXXFLAGS_COMMON=(
   $SDL_CFLAGS $SDL_GFX_CFLAGS
 )
 
-"$CXX" "${CXXFLAGS_COMMON[@]}" -O2 \
-  "${SDL_SOURCES[@]}" ../tests/test_0918_generated_melody.cpp \
-  $SDL_LIBS $SDL_GFX_LIBS -o "$BUILD/gcc"
-"$BUILD/gcc"
+for test in generated_melody dnb_genre; do
+  "$CXX" "${CXXFLAGS_COMMON[@]}" -O2 \
+    "${SDL_SOURCES[@]}" "../tests/test_0918_${test}.cpp" \
+    $SDL_LIBS $SDL_GFX_LIBS -o "$BUILD/${test}_gcc"
+  "$BUILD/${test}_gcc"
 
-"$CXX" "${CXXFLAGS_COMMON[@]}" -O1 -g -fno-omit-frame-pointer \
-  -fsanitize=address,undefined -fno-sanitize-recover=undefined \
-  "${SDL_SOURCES[@]}" ../tests/test_0918_generated_melody.cpp \
-  $SDL_LIBS $SDL_GFX_LIBS -o "$BUILD/sanitize"
-ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" "$BUILD/sanitize"
+  "$CXX" "${CXXFLAGS_COMMON[@]}" -O1 -g -fno-omit-frame-pointer \
+    -fsanitize=address,undefined -fno-sanitize-recover=undefined \
+    "${SDL_SOURCES[@]}" "../tests/test_0918_${test}.cpp" \
+    $SDL_LIBS $SDL_GFX_LIBS -o "$BUILD/${test}_sanitize"
+  ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" "$BUILD/${test}_sanitize"
+done
 
 popd >/dev/null
 echo '0.9.18 generated melody gate: OK'

@@ -418,7 +418,8 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::HipHop, 0, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicHipHop), view(kMotifLoFi), view(kPhraseBroken), {76,104,90,16,3,10}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::FunkSoul, 0, view(kFeelSwingDrive), view(kBassBoomBap), view(kChordLoFi), view(kProgressionFunk), view(kMelodicFunk), view(kMotifLoFi), view(kPhraseBroken), {88,116,102,16,4,11}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::UkGarage, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicUkg), view(kMotifAnswer), view(kPhraseBroken), {126,140,132,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
+    // DnB: 168-176, 174 by default; the poles narrow it (genre spec 2026-10-09).
+    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {168,176,174,16,7,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::LoFi, 0, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFiPair), view(kMotifLoFi), view(kPhraseSlow), {54,90,72,16,2,8}, CompositionSecondaryRole::Melodic),
 
     profile(GenerativeMode::Broken, 1, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {125,138,132,16,5,13}, CompositionSecondaryRole::Melodic),
@@ -439,6 +440,10 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::LoFi, kMinimalSleepRecipeId, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {42,66,54,16,1,5}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::HipHop, kGoldenEraRecipeId, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {82,100,92,16,4,10}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::HipHop, kDustyJazzRecipeId, view(kFeelDrunkenPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {70,94,84,16,3,9}, CompositionSecondaryRole::ChordWithMelodicFill),
+    profile(GenerativeMode::DrumAndBass, kDnbAtmosRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {170,174,172,16,5,10}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbFunkRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {170,176,174,16,7,13}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbDanceRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {174,176,174,16,7,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbNeuroRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {172,176,174,16,6,12}, CompositionSecondaryRole::Melodic),
 };
 
 const ProfileDefinition* definitionFor(const GenreSettings& settings) {
