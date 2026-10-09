@@ -2460,8 +2460,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   const bool tapeFxEnabled = tapeState.fxEnabled;
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
-  // Fine-grained profiling is expensive, so we do it periodically.
-  const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x7Fu) == 0);
+  // Fine-grained profiling costs a few micros() calls per sample, so it runs on
+  // one block in 128 (about every 3 s) and no longer needs the per-sample
+  // AudioDiagnostics: the [PERF] line's dsp=voices/drums/sampler/fx split is
+  // what tells which part of the render is over budget.
+  const bool detailedProfile = (perfDetailCounter_++ & 0x7Fu) == 0;
 
   // FX safety guard: if previous callback was near/over budget, reduce FX wet path
   // first (Tape/Looper) to avoid audible underruns, then recover gradually.
