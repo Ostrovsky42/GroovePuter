@@ -221,8 +221,20 @@ enum class Secondary : uint8_t {
   FifthEnding,   // the answer lands on the fifth
 };
 
+// Phrase-wide interaction topology. The existing Idea deck remains the
+// deterministic selector; this names the call/space/answer contract that all
+// paired materializers share.
+enum class InteractionShape : uint8_t {
+  Repeat = 0,
+  CallResponse,
+  ShortCall,
+  DelayedResponse,
+  Antiphony,  // Reserved until role-level activity can be expressed safely.
+};
+
 struct IdeaPlan {
   Idea idea = Idea::Original;
+  InteractionShape interactionShape = InteractionShape::Repeat;
   Secondary secondary = Secondary::None;
   uint8_t leadStart = 0;
   int8_t primeShift = 1;
@@ -230,7 +242,20 @@ struct IdeaPlan {
   bool arcRises = true;
   int8_t substituteFrom = -1;  // pitch class (C-minor template space)
   int8_t substituteTo = -1;
+  // A set bit owns silence at that step for the corresponding phrase bar.
+  // Materializers must not treat these steps as available filler capacity.
+  uint16_t protectedBassSilence[4]{};
+  uint16_t protectedLeadSilence[4]{};
 };
+
+inline InteractionShape interactionShapeForIdea(Idea idea) {
+  switch (idea) {
+    case Idea::CallResponse: return InteractionShape::CallResponse;
+    case Idea::ReducedMotif: return InteractionShape::ShortCall;
+    case Idea::DelayedAnswer: return InteractionShape::DelayedResponse;
+    default: return InteractionShape::Repeat;
+  }
+}
 
 inline const char* ideaName(Idea idea) {
   switch (idea) {
@@ -274,6 +299,22 @@ inline uint8_t ideaWeight(uint8_t generativeMode, uint8_t liveliness, Idea idea)
       {3, 6, 4, 3, 6, 2, 6, 2},   // LIVELY
   };
   uint8_t weight = kBase[liveliness > 2 ? 2 : liveliness][static_cast<uint8_t>(idea)];
+  // Genre-specific interaction-shape bias, kept beside the phrase decision
+  // weights rather than the timbre/recipe tables.
+  if (generativeMode == 0) {  // Acid: protect the running 303 identity.
+    if (idea == Idea::CallResponse || idea == Idea::DelayedAnswer) weight = 1;
+    if (idea == Idea::ReducedMotif) weight = weight > 2 ? weight - 2 : 1;
+  } else if (generativeMode == 9) {  // House: repeat first, use compact replies.
+    if (idea == Idea::CallResponse) weight += 1;
+    if (idea == Idea::DelayedAnswer) weight = weight > 1 ? weight - 1 : 1;
+  } else if (generativeMode == 13) {  // UKG: space and late pickup.
+    if (idea == Idea::CallResponse) weight += 2;
+    if (idea == Idea::DelayedAnswer) weight += 2;
+  } else if (generativeMode == 11) {  // HipHop: short call / answer.
+    if (idea == Idea::ReducedMotif || idea == Idea::CallResponse) weight += 2;
+  } else if (generativeMode == 15) {  // LoFi: shortened phrases and space.
+    if (idea == Idea::ReducedMotif || idea == Idea::DelayedAnswer) weight += 2;
+  }
   const bool spacious = generativeMode == 11 || generativeMode == 13 || generativeMode == 15;
   if (generativeMode == 0 && idea == Idea::DelayedAnswer) weight = 1;
   if (spacious && (idea == Idea::DelayedAnswer || idea == Idea::CallResponse)) weight += 2;
@@ -361,6 +402,18 @@ inline IdeaPlan ideaPlanFor(const Request& request, const IdiomLevel& level) {
   bool repeat = false;
   plan.idea = ideaFromDeck(request.generativeMode, request.liveliness, request.deckSeed,
                            request.press, &repeat);
+  plan.interactionShape = interactionShapeForIdea(plan.idea);
+  const bool acidLine = request.generativeMode == 0;
+  if (plan.interactionShape == InteractionShape::CallResponse) {
+    plan.protectedLeadSilence[2] = 0xFFFFu;
+    if (!acidLine) plan.protectedBassSilence[2] = 0xFFFFu;
+  } else if (plan.interactionShape == InteractionShape::ShortCall) {
+    plan.protectedLeadSilence[1] = 0xFFFFu;
+    if (!acidLine) plan.protectedBassSilence[1] = 0xFFFFu;
+  } else if (plan.interactionShape == InteractionShape::DelayedResponse) {
+    plan.protectedLeadSilence[2] = 0x00FFu;
+    plan.protectedBassSilence[2] = 0x00FFu;
+  }
   plan.arcRises = (detail::field(request.salt, 2) % 2u) == 0;
 
   // At most one secondary touch.
@@ -457,7 +510,6 @@ inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
       break;
     case Idea::CallResponse:
       if (role == 1) shape.leadRank = prime;
-      if (role == 2) shape.keepTo = 8;
       break;
     case Idea::RegisterArc:
       if (plan.arcRises) {
@@ -536,6 +588,9 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   const bool runningBass = level.bassCount >= 8;
   // keepFrom delays only the lead; the bass keeps its downbeat.
   auto plays = [&](uint8_t step, uint8_t flags, bool leadPart = false) {
+    const uint16_t silence = leadPart ? plan.protectedLeadSilence[role]
+                                      : plan.protectedBassSilence[role];
+    if ((silence & (1u << step)) != 0) return false;
     if ((leadPart && step < shape.keepFrom) || step >= shape.keepTo) return false;
     if (shape.strongOnly && (flags & kAccent) == 0) {
       // Thinned to the beats; a running line keeps its eighths.

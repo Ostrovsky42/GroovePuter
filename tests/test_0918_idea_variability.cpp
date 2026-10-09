@@ -77,7 +77,9 @@ Phrase phraseFor(uint8_t mode, uint32_t press, uint8_t liveliness = 1) {
       phrase.plan = plan;
     } else {
       // T2: one plan for the whole phrase, whatever the bar.
-      assert(plan.idea == phrase.plan.idea && plan.ending == phrase.plan.ending &&
+      assert(plan.idea == phrase.plan.idea &&
+             plan.interactionShape == phrase.plan.interactionShape &&
+             plan.ending == phrase.plan.ending &&
              plan.substituteFrom == phrase.plan.substituteFrom);
     }
   }
@@ -133,6 +135,105 @@ int onsetCount(const Phrase& phrase) {
     }
   }
   return count;
+}
+
+uint16_t onsetMask(const SynthPattern& pattern) {
+  uint16_t mask = 0;
+  for (int step = 0; step < 16; ++step) {
+    if (isOnset(pattern, step)) mask |= static_cast<uint16_t>(1u << step);
+  }
+  return mask;
+}
+
+// Characterization: the existing REPEAT topology is A | A' | A | B.
+// This catches a production change that moves the return away from bar 3,
+// changes the paired A rhythm, or stops bar 4 from closing the phrase.
+void testOriginalPhraseTopologyBaseline() {
+  // Characterize the existing repeat topology across the five target genres.
+  for (std::size_t genreIndex = 0; genreIndex < 5; ++genreIndex) {
+    const Genre& genre = kGenres[genreIndex];
+    uint32_t originalPress = 0;
+    for (uint32_t press = 1; press <= 32; ++press) {
+      if (GenreIdiom::ideaFromDeck(genre.mode, 1, kAddress, press) == Idea::Original) {
+        originalPress = press;
+        break;
+      }
+    }
+    assert(originalPress != 0);
+    const Phrase phrase = phraseFor(genre.mode, originalPress);
+    assert(phrase.plan.idea == Idea::Original);
+
+    // Bass and upper voice share the same A / A' / A placement decision.
+    assert(onsetMask(phrase.bass[0]) == onsetMask(phrase.bass[2]));
+    assert(onsetMask(phrase.lead[0]) == onsetMask(phrase.lead[2]));
+    assert(onsetMask(phrase.bass[0]) == onsetMask(phrase.bass[1]));
+    assert(onsetMask(phrase.lead[0]) == onsetMask(phrase.lead[1]));
+
+    // B carries the genre-aware cadence; the paired bass remains active.
+    assert(phrase.lead[3].steps[12].note >= 0);
+    assert(onsetMask(phrase.bass[3]) != 0);
+    std::printf("%s A A' A B baseline: OK\n", genre.name);
+  }
+}
+
+// Regression target for the new CALL_RESPONSE shape: bar 3 is an owned
+// structural rest. This catches the old half-bar cut and any later filler.
+void testCallResponseProtectsTheWholeThirdBar() {
+  uint32_t callResponsePress = 0;
+  for (uint32_t press = 1; press <= 32; ++press) {
+    if (GenreIdiom::ideaFromDeck(13, 1, kAddress, press) == Idea::CallResponse) {
+      callResponsePress = press;
+      break;
+    }
+  }
+  assert(callResponsePress != 0);
+  GenreIdiom::Request request = requestFor(13, callResponsePress, 1);
+  request.phraseBars = 4;
+  request.barOrdinal = 2;
+  SynthPattern bass{};
+  SynthPattern lead{};
+  assert(GenreIdiom::apply(request, bass, lead));
+  assert(bass.isEmpty());
+  assert(lead.isEmpty());
+}
+
+void testShortCallAndDelayedResponseOwnTheirSpace() {
+  uint32_t shortPress = 0;
+  uint32_t delayedPress = 0;
+  for (uint32_t press = 1; press <= 32; ++press) {
+    const Idea idea = GenreIdiom::ideaFromDeck(13, 1, kAddress, press);
+    if (idea == Idea::ReducedMotif && shortPress == 0) shortPress = press;
+    if (idea == Idea::DelayedAnswer && delayedPress == 0) delayedPress = press;
+  }
+  assert(shortPress != 0 && delayedPress != 0);
+
+  GenreIdiom::Request request = requestFor(13, shortPress, 1);
+  request.phraseBars = 4;
+  request.barOrdinal = 1;
+  SynthPattern bass{};
+  SynthPattern lead{};
+  GenreIdiom::IdeaPlan plan{};
+  assert(GenreIdiom::apply(request, bass, lead, &plan));
+  assert(plan.interactionShape == GenreIdiom::InteractionShape::ShortCall);
+  assert(bass.isEmpty() && lead.isEmpty());
+  request.barOrdinal = 2;
+  assert(GenreIdiom::apply(request, bass, lead));
+  assert(!bass.isEmpty() || !lead.isEmpty());
+
+  request = requestFor(13, delayedPress, 1);
+  request.phraseBars = 4;
+  request.barOrdinal = 2;
+  assert(GenreIdiom::apply(request, bass, lead, &plan));
+  assert(plan.interactionShape == GenreIdiom::InteractionShape::DelayedResponse);
+  bool lateMaterial = false;
+  for (int step = 0; step < 16; ++step) {
+    if (step < 8) {
+      assert(bass.steps[step].note < 0 && lead.steps[step].note < 0);
+    } else if (bass.steps[step].note >= 0 || lead.steps[step].note >= 0) {
+      lateMaterial = true;
+    }
+  }
+  assert(lateMaterial);  // The allowed pickup region still uses template notes.
 }
 
 std::string noteName(int note) {
@@ -324,6 +425,9 @@ void testSingleBarPressesDiffer() {
 }  // namespace
 
 int main() {
+  testOriginalPhraseTopologyBaseline();
+  testCallResponseProtectsTheWholeThirdBar();
+  testShortCallAndDelayedResponseOwnTheirSpace();
   testEightPressesGiveDistinctIdeas();
   testPitchSetAndRange();
   testAcidSlideTopology();
