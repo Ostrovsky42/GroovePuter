@@ -541,11 +541,11 @@ inline BarShape barShapeFor(const IdeaPlan& plan, int role, int bassBase) {
   return shape;
 }
 
+inline void applyTwoStepBreakDrums(const Request& request, const IdeaPlan& plan, int role,
+                                   bool singleBar, DrumPatternSet& drums);
+
 // Writes Synth A (bass) and Synth B (lead) for one bar of the phrase. False
 // (and nothing written) when the genre has no idiom.
-inline void applyDnbDrums(const Request& request, const IdeaPlan& plan, int role,
-                          bool singleBar, DrumPatternSet& drums);
-
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
                   IdeaPlan* planOut = nullptr, DrumPatternSet* drums = nullptr) {
   const IdiomVariant* variant =
@@ -794,7 +794,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
       }
     }
   }
-  if (dnb && drums != nullptr) applyDnbDrums(request, plan, role, singleBar, *drums);
+  if (dnb && drums != nullptr) applyTwoStepBreakDrums(request, plan, role, singleBar, *drums);
   return true;
 }
 
@@ -803,8 +803,8 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
 // chance, never the reverse. The idea shapes the bar: a neuro push, a late
 // second snare in A', a half-time bar 3 in a reduced phrase, a snare fill
 // into bar 1.
-inline void applyDnbDrums(const Request& request, const IdeaPlan& plan, int role,
-                          bool singleBar, DrumPatternSet& drums) {
+inline void applyTwoStepBreakDrums(const Request& request, const IdeaPlan& plan, int role,
+                                   bool singleBar, DrumPatternSet& drums) {
   // Voice order of DrumPatternSet (8 voices; the kit has no cymbal lane).
   enum : int { kKick = 0, kSnare, kClosedHat, kOpenHat, kMidTom, kHighTom, kRim, kClap };
   const bool neuro = request.recipe == 21;
