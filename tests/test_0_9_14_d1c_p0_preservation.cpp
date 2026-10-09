@@ -315,7 +315,11 @@ void test_positive_matrix() {
 
 // ---- F, G : R2 failures ---------------------------------------------------
 void test_displace_and_thin() {
-  Fixture f("d1c-fg", GenerativeMode::Acid, 0, 2, 0);
+  // 0.9.18: Acid's genre idiom is a running sixteenth 303 line, which a
+  // 1/32 DISPLACE cannot move without overlapping itself (the operation then
+  // refuses, as it should). The R2 semantics under test need displaceable
+  // material, so this case uses Rave, whose generator the idioms leave alone.
+  Fixture f("d1c-fg", GenerativeMode::Rave, 0, 2, 0);
   auto displace = f.develop(Dev::TransformationKind::Displace, 0, 12);
   assert(f.lastResult.success);
   assert(displace.available);
