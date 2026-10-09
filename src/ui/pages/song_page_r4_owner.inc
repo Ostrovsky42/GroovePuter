@@ -114,9 +114,15 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           [&](const std::function<void()>& body) { withAudioGuard(body); },
           voice);
       const char label = voice == 0 ? 'A' : 'B';
-      char toast[24];
+      char toast[32];
       if (result == PhraseSourceToggle::Result::Rejected) {
-        std::snprintf(toast, sizeof(toast), "%c: MELODY FAILED", label);
+        // Name the slot and which path refused, so a device report is exact.
+        const int bank = mini_acid_.current303BankIndex(voice);
+        const int pattern = mini_acid_.display303LocalPatternIndex(voice);
+        const bool melodySlot = mini_acid_.isMelodySlot(voice, bank, pattern);
+        std::snprintf(toast, sizeof(toast), melodySlot ? "%c %c%d MELODY: CAN'T LOAD"
+                                                       : "%c %c%d: CAN'T MAKE MELODY",
+                      label, static_cast<char>('A' + bank), pattern + 1);
       } else if (result == PhraseSourceToggle::Result::MadePhrase) {
         std::snprintf(toast, sizeof(toast), "%c: MELODY <- STEPS", label);
       } else {
