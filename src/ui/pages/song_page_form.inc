@@ -23,7 +23,9 @@ bool formRowHasMaterial(const Song& song, int row) {
 }  // namespace
 
 // Source = the selected rows (up to 8), else the run of rows with material
-// starting at the cursor (up to 8): normally the TAKE the cursor is on.
+// at the cursor (up to 8): normally the TAKE the cursor is on. On an empty row
+// (typically just below the TAKE, or after a previous insert) the nearest TAKE
+// above the cursor is used, so the curve lands after what the user sees.
 void SongPage::formSourceBlock(int& first, int& count) const {
   const Song& song = mini_acid_.sceneManager().currentScene().songs[
       mini_acid_.activeSongSlot()];
@@ -38,6 +40,18 @@ void SongPage::formSourceBlock(int& first, int& count) const {
   }
   first = std::max(0, std::min(cursorRow(), length - 1));
   count = 1;
+  if (!formRowHasMaterial(song, first)) {
+    int last = first;
+    while (last > 0 && !formRowHasMaterial(song, last)) --last;
+    if (!formRowHasMaterial(song, last)) return;  // nothing above: NoSource
+    first = last;
+    while (count < EnergyCurve::kMaxSourceRows && first > 0 &&
+           formRowHasMaterial(song, first - 1)) {
+      --first;
+      ++count;
+    }
+    return;
+  }
   while (count < EnergyCurve::kMaxSourceRows && first + count < length &&
          formRowHasMaterial(song, first + count)) {
     ++count;
@@ -142,10 +156,18 @@ void SongPage::drawForm(IGfx& gfx) {
   int first = 0, count = 1;
   formSourceBlock(first, count);
   char line[48];
-  std::snprintf(line, sizeof(line), "SRC %d-%d  INSERT AT %d  %u BARS",
-                first + 1, first + count, first + count + 1,
-                static_cast<unsigned>(EnergyCurve::totalBars(curve)));
-  gfx.setTextColor(palette.secondary);
+  const Song& song = mini_acid_.sceneManager().currentScene().songs[
+      mini_acid_.activeSongSlot()];
+  bool anySource = false;
+  for (int r = first; r < first + count; ++r) anySource = anySource || formRowHasMaterial(song, r);
+  if (anySource) {
+    std::snprintf(line, sizeof(line), "SRC %d-%d  INSERT AT %d  %u BARS",
+                  first + 1, first + count, first + count + 1,
+                  static_cast<unsigned>(EnergyCurve::totalBars(curve)));
+  } else {
+    std::snprintf(line, sizeof(line), "SRC --  PUT CURSOR ON A TAKE");
+  }
+  gfx.setTextColor(anySource ? palette.secondary : palette.warning);
   gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
   // One column per section: height = energy, width ~ bars.
