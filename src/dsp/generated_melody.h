@@ -57,9 +57,21 @@ inline uint8_t distinctPitches(const PhraseRuntime::RuntimeSynthEventBuffer& b) 
 }
 
 // One attempt at a given rhythm-migration coordinate.
+// Transient UI-thread scratch for one generation (about 3.7 KB), allocated
+// once for all attempts: the free heap on the DRAM-only build is a few KB and
+// fragments if every attempt allocates again.
+struct Scratch {
+  std::unique_ptr<GeneratedPhraseSong::PreparedPhraseArrangement> prepared{
+      new (std::nothrow) GeneratedPhraseSong::PreparedPhraseArrangement()};
+  std::unique_ptr<PhraseGenerator::PhraseBar> bar{new (std::nothrow) PhraseGenerator::PhraseBar()};
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> one{
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer()};
+  bool ok() const { return prepared && bar && one; }
+};
+
 inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
                          uint32_t salt, int coordinate,
-                         PhraseRuntime::RuntimeSynthEventBuffer& out) {
+                         PhraseRuntime::RuntimeSynthEventBuffer& out, Scratch& scratch) {
   const uint16_t barTicks = PhraseRuntime::kTicksPerBar;
   const uint16_t lengthTicks = RuntimePhraseEdit::lengthTicksForBars(bars);
   if (voice < 0 || voice > 1 || lengthTicks == 0 ||
@@ -69,14 +81,11 @@ inline Status generateAt(MiniAcid& engine, int voice, uint8_t bars,
   const int page = engine.currentPageIndex();
   if (page < 0 || page >= kMaxPages) return Status::InvalidRequest;
 
-  // Transient UI-thread scratch (about 4 KB), released on return.
-  std::unique_ptr<GeneratedPhraseSong::PreparedPhraseArrangement> prepared(
-      new (std::nothrow) GeneratedPhraseSong::PreparedPhraseArrangement());
-  std::unique_ptr<PhraseGenerator::PhraseBar> bar(
-      new (std::nothrow) PhraseGenerator::PhraseBar());
-  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> one(
-      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
-  if (!prepared || !bar || !one) return Status::OutOfMemory;
+  if (!scratch.ok()) return Status::OutOfMemory;
+  auto& prepared = scratch.prepared;
+  auto& bar = scratch.bar;
+  auto& one = scratch.one;
+  *prepared = GeneratedPhraseSong::PreparedPhraseArrangement{};
 
   const Scene& scene = engine.sceneManager().currentScene();
   auto& genreManager = engine.genreManager();
@@ -208,15 +217,20 @@ inline void applyNoteLength(PhraseRuntime::RuntimeSynthEventBuffer& phrase,
 inline Status generate(MiniAcid& engine, int voice, uint8_t bars, uint32_t salt,
                        PhraseRuntime::RuntimeSynthEventBuffer& out) {
   constexpr int kAttempts = 6;
-  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> best;
-  uint32_t bestScore = 0;
-  Status status = Status::BarFailed;
-  for (int attempt = 0; attempt < kAttempts; ++attempt) {
+  detail::Scratch scratch;
+  if (!scratch.ok()) return Status::OutOfMemory;
+  auto coordinateFor = [&](int attempt) {
     // Any value in the pattern-address range the migration context accepts.
-    const int coordinate = static_cast<int>(
-        (salt * 37u + static_cast<uint32_t>(attempt) * 101u) %
-        kMaxGlobalPatterns);
-    status = detail::generateAt(engine, voice, bars, salt, coordinate, out);
+    return static_cast<int>((salt * 37u + static_cast<uint32_t>(attempt) * 101u) %
+                            kMaxGlobalPatterns);
+  };
+  // No copy of the best attempt is kept (another 1.3 KB): generation is
+  // deterministic, so the best one is generated again at the end.
+  int bestAttempt = 0;
+  uint32_t bestScore = 0;
+  for (int attempt = 0; attempt < kAttempts; ++attempt) {
+    const Status status =
+        detail::generateAt(engine, voice, bars, salt, coordinateFor(attempt), out, scratch);
     if (status != Status::Ready) return status;
     const uint8_t pitches = detail::distinctPitches(out);
     if (pitches >= 2 && out.count >= bars) {
@@ -224,19 +238,16 @@ inline Status generate(MiniAcid& engine, int voice, uint8_t bars, uint32_t salt,
       return Status::Ready;
     }
     const uint32_t score = (static_cast<uint32_t>(pitches) << 16) | out.count;
-    if (!best || score > bestScore) {
-      if (!best) {
-        best.reset(new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
-        if (!best) {  // keep this attempt
-          detail::applyNoteLength(out, GroovePuterState::generationNoteLength(), salt);
-          return Status::Ready;
-        }
-      }
-      *best = out;
+    if (attempt == 0 || score > bestScore) {
       bestScore = score;
+      bestAttempt = attempt;
     }
   }
-  out = *best;
+  if (bestAttempt != kAttempts - 1) {
+    const Status status = detail::generateAt(engine, voice, bars, salt,
+                                             coordinateFor(bestAttempt), out, scratch);
+    if (status != Status::Ready) return status;
+  }
   detail::applyNoteLength(out, GroovePuterState::generationNoteLength(), salt);
   return Status::Ready;
 }
