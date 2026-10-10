@@ -24,6 +24,7 @@ using UI::showToast;
 
 #include "../help_dialog_frames.h"
 #include "../components/mode_button.h"
+#include "../phrase_source_toggle.h"
 
 namespace {
 inline IGfxColor song303Color(int synthIndex) {
@@ -1702,6 +1703,10 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
+  if (form_view_) {
+    drawForm(gfx);
+    return;
+  }
   switch (visual_style_) {
     case ::VisualStyle::RETRO_CLASSIC:
       drawRetroClassicStyle(gfx);
@@ -3153,3 +3158,4 @@ bool SongPage::generateEntireRow() {
 }
 
 #include "song_page_r4_owner.inc"
+#include "song_page_form.inc"

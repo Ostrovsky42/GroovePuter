@@ -315,7 +315,11 @@ void test_positive_matrix() {
 
 // ---- F, G : R2 failures ---------------------------------------------------
 void test_displace_and_thin() {
-  Fixture f("d1c-fg", GenerativeMode::Acid, 0, 2, 0);
+  // 0.9.18: Acid's genre idiom is a running sixteenth 303 line, which a
+  // 1/32 DISPLACE cannot move without overlapping itself (the operation then
+  // refuses, as it should). The R2 semantics under test need displaceable
+  // material, so this case uses Rave, whose generator the idioms leave alone.
+  Fixture f("d1c-fg", GenerativeMode::Rave, 0, 2, 0);
   auto displace = f.develop(Dev::TransformationKind::Displace, 0, 12);
   assert(f.lastResult.success);
   assert(displace.available);
@@ -342,7 +346,16 @@ void test_chromatic_candidate() {
   uint8_t steps[16];
   assert(f.engine.acquireWorkingMelodySourceImpl_(0, source, &steps));
   auto candidate = source;
-  candidate.events[1].note = static_cast<uint8_t>(candidate.events[1].note + 1);
+  // The second runtime event may be a continuation. R3 compares pitch at
+  // authoritative bass attacks, so mutate an actual attack after the anchor.
+  uint16_t attack = source.count;
+  for (uint16_t i = 1; i < source.count; ++i) {
+    if ((f.origin().bassRhythm.onsets & stepBit(steps[i])) == 0) continue;
+    attack = i;
+    break;
+  }
+  assert(attack < source.count);
+  candidate.events[attack].note = static_cast<uint8_t>(candidate.events[attack].note + 1);
   const auto a = Sem::evaluateP0Preservation(f.origin(), source, steps, candidate);
   assert(a.r2BassOnsetTopology == SemStatus::Pass);
   assert(a.r3PitchClassAtOnset == SemStatus::Fail);

@@ -15,6 +15,34 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
   SynthSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
 
+  // G into a Melody (Alt+G here; plain G on STEPS and GENRE when the GEN
+  // panel says MELODY): a LENGTH-bar phrase for `voice`, switching it to its
+  // Melody first if it is on steps. Shows the result as a toast.
+  // GRAB and other whole-Melody sources: the voice switches to MELODY if
+  // needed (as G does) and the Melody is replaced in one Undo step.
+  static bool replaceMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                               int voice,
+                               const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  // GRAB into a new slot: the first slot free by the generator's rule
+  // (SlotReuse: empty, no Song/Phrase/current/Working/NEXT/Undo/Melody holder)
+  // becomes a saved Melody slot, by the same steps a user takes by hand:
+  // STEPS, move to the slot (as Q..I), new Melody (Alt+N), notes, Alt+Enter.
+  enum class GrabSlotResult : uint8_t {
+    Saved = 0,
+    Unsaved,       // the voice has unsaved edits: never moved away from
+    NoFreeSlot,
+    MoveFailed,
+    MelodyFailed,
+    AcceptFailed,  // the notes are the Working Melody; Alt+Enter can retry
+  };
+  static GrabSlotResult grabIntoFreeSlot(
+      MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+      int& bankOut, int& patternOut);
+  static bool voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice);
+  static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                                int voice);
+
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
@@ -86,6 +114,13 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   uint16_t last_recorded_start_ = 0;
   bool joinRecordedChord(uint8_t note, uint8_t velocity);
   void rememberRecordedNote(uint8_t note);
+  // A recorded key held past kHoldThresholdMs grows its note one grid cell per
+  // cell of time at the current tempo until released (extendHeldNote in tick).
+  static constexpr uint32_t kHoldThresholdMs = 300;
+  bool hold_active_ = false;
+  uint32_t hold_press_ms_ = 0;
+  uint16_t hold_grown_cells_ = 0;
+  void extendHeldNote();
   int chordFocusInCell() const;
   bool cycleChordFocus();
   bool addChordTone();
@@ -94,6 +129,9 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool shiftPitch(int direction, PitchStep stepKind);
   int editTargetNote() const;
   bool toggleAccent();
+  bool generateMelodyPhrase();
+  bool cycleMelodyGrid();
+  // Successive Alt+G presses give different phrases (deterministic per count).
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool newEmptyMelody();

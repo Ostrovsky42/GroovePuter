@@ -273,7 +273,9 @@ int lastNoteStep(const SynthPattern& p) {
 //  1. semantic UNKNOWN does NOT prevent generation, development or NEXT.
 //  2. semantic CONTINUES does NOT mean the candidate is musically good.
 void test_unknown_never_blocks() {
-  Fixture f("m0a-unknown", GenerativeMode::Acid, 0, 2, 0);
+  // 0.9.18: Acid's genre idiom is a running sixteenth line that DISPLACE/THIN
+  // correctly refuse, so the UNKNOWN cases run on Rave (as in D1-C).
+  Fixture f("m0a-unknown", GenerativeMode::Rave, 0, 2, 0);
   size_t unknownCases = 0;
   for (auto kind : {Dev::TransformationKind::Displace, Dev::TransformationKind::Thin}) {
     auto obs = f.develop(kind);

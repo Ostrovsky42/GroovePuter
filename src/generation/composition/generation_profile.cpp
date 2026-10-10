@@ -4,6 +4,7 @@
 
 #include "../../../scenes.h"
 #include "../../dsp/genre_manager.h"
+#include "../../state/generation_shape_state.h"
 
 namespace GroovePuterRhythm {
 namespace {
@@ -72,6 +73,11 @@ constexpr WeightedIdentityCandidate kFeelLoFiHouse[] = {
     weighted(FeelProfileId::PushPullControlled, 90),
 };
 
+// 0.9.18 audition: an explicit connected cell lets Acid articulation express
+// slides without changing the timing owner or forcing slides across silence.
+constexpr WeightedIdentityCandidate kBassAcid[] = {
+    weighted(BassRhythmId::ConnectedHook, 100),
+};
 constexpr WeightedIdentityCandidate kBassDrive[] = {
     weighted(BassRhythmId::KickLock, 70),
     weighted(BassRhythmId::OffbeatPush, 90),
@@ -111,12 +117,15 @@ constexpr WeightedIdentityCandidate kBassChip[] = {
     weighted(BassRhythmId::RollingDrive, 95),
     weighted(BassRhythmId::SyncopatedHook, 110),
 };
+// 0.9.18 prototype: the Lo-Fi reference bass plays the root on beat 1 and the
+// fifth/octave on beat 3 in every bar. SparseAnchor (one note per two bars)
+// was the most likely choice.
 constexpr WeightedIdentityCandidate kBassLoFi[] = {
-    weighted(BassRhythmId::KickAnswer, 60),
-    weighted(BassRhythmId::GapFill, 40),
-    weighted(BassRhythmId::SparseAnchor, 150),
-    weighted(BassRhythmId::HalfTimePocket, 135),
-    weighted(BassRhythmId::SustainAndDrop, 115),
+    weighted(BassRhythmId::RootPulse, 180),
+    weighted(BassRhythmId::SustainAndDrop, 100),
+    weighted(BassRhythmId::HalfTimePocket, 60),
+    weighted(BassRhythmId::KickAnswer, 30),
+    weighted(BassRhythmId::SparseAnchor, 30),
 };
 constexpr WeightedIdentityCandidate kBassBoomBap[] = {
     weighted(BassRhythmId::KickAnswer, 110),
@@ -205,11 +214,16 @@ constexpr WeightedIdentityCandidate kProgressionFunk[] = {
     weighted(ProgressionId::PopCycle, 90),
     weighted(ProgressionId::BorrowedLift, 85),
 };
+// 0.9.18 prototype: the Lo-Fi reference (midi/calm_melancholic_lofi_3min.mid)
+// cycles i-VI-III-V7, one chord per bar. ParallelShift slid the root a
+// semitone (Db/B under C minor) and PedalDrone held one chord for the whole
+// TAKE; both are now rare.
 constexpr WeightedIdentityCandidate kProgressionLoFi[] = {
-    weighted(ProgressionId::TwoFiveOne, 130),
-    weighted(ProgressionId::ParallelShift, 135),
-    weighted(ProgressionId::PedalDrone, 100),
-    weighted(ProgressionId::BorrowedLift, 70),
+    weighted(ProgressionId::MinorFall, 170),
+    weighted(ProgressionId::TwoFiveOne, 120),
+    weighted(ProgressionId::BorrowedLift, 80),
+    weighted(ProgressionId::ParallelShift, 20),
+    weighted(ProgressionId::PedalDrone, 20),
 };
 constexpr WeightedIdentityCandidate kProgressionChip[] = {
     weighted(ProgressionId::PopCycle, 120),
@@ -222,6 +236,69 @@ constexpr WeightedIdentityCandidate kMelodicDrive[] = {
     weighted(MelodicRhythmId::PickupPhrase, 85),
     weighted(MelodicRhythmId::SyncopatedMotif, 110),
     weighted(MelodicRhythmId::RepeatedCell, 100),
+};
+// 0.9.18 prototype: a lead that can carry a melody for Acid, Synthwave and
+// House (recipe 0). The other Drive genres keep kMelodicDrive.
+constexpr WeightedIdentityCandidate kMelodicDriveDense[] = {
+    weighted(MelodicRhythmId::RunningLine, 120),
+    weighted(MelodicRhythmId::EighthArp, 100),
+    weighted(MelodicRhythmId::SyncopatedMotif, 60),
+};
+// 0.9.18 genre leads (recipe 0 only; owner-accepted direction after the
+// Acid/Synthwave/House prototype). Cells come from melodic_motif.cpp.
+constexpr WeightedIdentityCandidate kMelodicDarksynth[] = {
+    weighted(MelodicRhythmId::OffbeatCell, 120),
+    weighted(MelodicRhythmId::RunningLine, 60),
+};
+constexpr WeightedIdentityCandidate kMelodicChip[] = {
+    weighted(MelodicRhythmId::EighthArp, 140),
+    weighted(MelodicRhythmId::RunningLine, 70),
+};
+constexpr WeightedIdentityCandidate kMelodicRave[] = {
+    weighted(MelodicRhythmId::HookSix, 120),
+    weighted(MelodicRhythmId::RunningLine, 50),
+};
+constexpr WeightedIdentityCandidate kMelodicTechno[] = {
+    weighted(MelodicRhythmId::PedalCell, 120),
+    weighted(MelodicRhythmId::SyncopatedMotif, 40),
+};
+constexpr WeightedIdentityCandidate kMelodicElectro[] = {
+    weighted(MelodicRhythmId::AngularCell, 120),
+    weighted(MelodicRhythmId::SyncopatedMotif, 60),
+    weighted(MelodicRhythmId::DelayedAnswer, 40),
+};
+constexpr WeightedIdentityCandidate kMelodicShifted[] = {
+    weighted(MelodicRhythmId::ShiftedCell, 120),
+    weighted(MelodicRhythmId::AngularCell, 60),
+    weighted(MelodicRhythmId::BarEndResponse, 40),
+};
+constexpr WeightedIdentityCandidate kMelodicUkg[] = {
+    weighted(MelodicRhythmId::AngularCell, 120),
+    weighted(MelodicRhythmId::ShiftedCell, 80),
+};
+constexpr WeightedIdentityCandidate kMelodicDnb[] = {
+    weighted(MelodicRhythmId::BreakAnswer, 120),
+    weighted(MelodicRhythmId::DelayedAnswer, 60),
+};
+constexpr WeightedIdentityCandidate kMelodicHipHop[] = {
+    weighted(MelodicRhythmId::LateMotif, 120),
+    weighted(MelodicRhythmId::TwoNoteHook, 60),
+};
+constexpr WeightedIdentityCandidate kMelodicFunk[] = {
+    weighted(MelodicRhythmId::FunkCell, 120),
+    weighted(MelodicRhythmId::LateMotif, 50),
+};
+// 0.9.18 prototype: SlowPair over a Static contour held one note for the
+// whole TAKE. LazyArp follows the Lo-Fi reference; SlowPair stays the CALM end.
+constexpr WeightedIdentityCandidate kMelodicLoFiPair[] = {
+    weighted(MelodicRhythmId::LazyArp, 160),
+    weighted(MelodicRhythmId::SlowPair, 40),
+    weighted(MelodicRhythmId::SparseCall, 20),
+};
+// House: chord stabs take the late offbeats, so the lead keeps to the lines.
+constexpr WeightedIdentityCandidate kMelodicHouseDense[] = {
+    weighted(MelodicRhythmId::RunningLine, 90),
+    weighted(MelodicRhythmId::EighthArp, 110),
 };
 constexpr WeightedIdentityCandidate kMelodicBroken[] = {
     weighted(MelodicRhythmId::SparseCall, 55),
@@ -326,23 +403,24 @@ constexpr ProfileDefinition profile(
 }
 
 constexpr ProfileDefinition kProfiles[] = {
-    profile(GenerativeMode::Acid, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {118,150,132,16,6,14}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Outrun, 0, view(kFeelStraightDrive), view(kBassChip), view(kChordSlow), view(kProgressionPop), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {88,125,108,16,4,11}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Darksynth, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionDark), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {122,148,134,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Electro, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {102,132,116,16,4,12}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Rave, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {132,160,145,16,7,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Acid, 0, view(kFeelStraightDrive), view(kBassAcid), view(kChordDrive), view(kProgressionStatic), view(kMelodicDriveDense), view(kMotifDrive), view(kPhraseDrive), {118,150,132,16,6,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Outrun, 0, view(kFeelStraightDrive), view(kBassChip), view(kChordSlow), view(kProgressionPop), view(kMelodicDriveDense), view(kMotifDrive), view(kPhraseDrive), {88,125,108,16,4,11}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Darksynth, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionDark), view(kMelodicDarksynth), view(kMotifDrive), view(kPhraseDrive), {122,148,134,16,5,13}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Electro, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicElectro), view(kMotifAnswer), view(kPhraseBroken), {102,132,116,16,4,12}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Rave, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicRave), view(kMotifDrive), view(kPhraseCompact), {132,160,145,16,7,15}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Reggae, 0, view(kFeelDubPocket), view(kBassDub), view(kChordDub), view(kProgressionDub), view(kMelodicDub), view(kMotifSparse), view(kPhraseSlow), {68,105,82,16,2,9}, CompositionSecondaryRole::Chord),
     profile(GenerativeMode::TripHop, 0, view(kFeelSlowPocket), view(kBassSlow), view(kChordSlow), view(kProgressionTrip), view(kMelodicSlow), view(kMotifSparse), view(kPhraseSlow), {66,98,80,16,2,9}, CompositionSecondaryRole::Chord),
-    profile(GenerativeMode::Broken, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {118,148,132,16,5,14}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Chip, 0, view(kFeelStraightDrive), view(kBassChip), view(kChordDrive), view(kProgressionChip), view(kMelodicDrive), view(kMotifDrive), view(kPhraseCompact), {96,170,128,16,5,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Broken, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicShifted), view(kMotifAnswer), view(kPhraseBroken), {118,148,132,16,5,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Chip, 0, view(kFeelStraightDrive), view(kBassChip), view(kChordDrive), view(kProgressionChip), view(kMelodicChip), view(kMotifDrive), view(kPhraseCompact), {96,170,128,16,5,15}, CompositionSecondaryRole::Melodic),
 
-    profile(GenerativeMode::House, 0, view(kFeelSwingDrive), view(kBassDrive), view(kChordDrive), view(kProgressionPop), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {112,128,122,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::Techno, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicDrive), view(kMotifDrive), view(kPhraseDrive), {124,146,134,16,5,14}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::HipHop, 0, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {76,104,90,16,3,10}, CompositionSecondaryRole::ChordWithMelodicFill),
-    profile(GenerativeMode::FunkSoul, 0, view(kFeelSwingDrive), view(kBassBoomBap), view(kChordLoFi), view(kProgressionFunk), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {88,116,102,16,4,11}, CompositionSecondaryRole::ChordWithMelodicFill),
-    profile(GenerativeMode::UkGarage, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {126,140,132,16,5,13}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
-    profile(GenerativeMode::LoFi, 0, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {54,90,72,16,2,8}, CompositionSecondaryRole::ChordWithMelodicFill),
+    profile(GenerativeMode::House, 0, view(kFeelSwingDrive), view(kBassDrive), view(kChordDrive), view(kProgressionPop), view(kMelodicHouseDense), view(kMotifDrive), view(kPhraseDrive), {112,128,122,16,5,13}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::Techno, 0, view(kFeelStraightDrive), view(kBassDrive), view(kChordDrive), view(kProgressionStatic), view(kMelodicTechno), view(kMotifDrive), view(kPhraseDrive), {124,146,134,16,5,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::HipHop, 0, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicHipHop), view(kMotifLoFi), view(kPhraseBroken), {76,104,90,16,3,10}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::FunkSoul, 0, view(kFeelSwingDrive), view(kBassBoomBap), view(kChordLoFi), view(kProgressionFunk), view(kMelodicFunk), view(kMotifLoFi), view(kPhraseBroken), {88,116,102,16,4,11}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::UkGarage, 0, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicUkg), view(kMotifAnswer), view(kPhraseBroken), {126,140,132,16,5,13}, CompositionSecondaryRole::Melodic),
+    // DnB: 168-176, 174 by default; the poles narrow it (genre spec 2026-10-09).
+    profile(GenerativeMode::DrumAndBass, 0, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {168,176,174,16,7,15}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::LoFi, 0, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFiPair), view(kMotifLoFi), view(kPhraseSlow), {54,90,72,16,2,8}, CompositionSecondaryRole::Melodic),
 
     profile(GenerativeMode::Broken, 1, view(kFeelSwingDrive), view(kBassMachine), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseBroken), {125,138,132,16,5,13}, CompositionSecondaryRole::Melodic),
     profile(GenerativeMode::Broken, 2, view(kFeelStraightDrive), view(kBassDrive), view(kChordBroken), view(kProgressionBroken), view(kMelodicBroken), view(kMotifAnswer), view(kPhraseCompact), {160,180,174,16,7,15}, CompositionSecondaryRole::Melodic),
@@ -362,6 +440,10 @@ constexpr ProfileDefinition kProfiles[] = {
     profile(GenerativeMode::LoFi, kMinimalSleepRecipeId, view(kFeelLoFiPocket), view(kBassLoFi), view(kChordLoFi), view(kProgressionLoFi), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {42,66,54,16,1,5}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::HipHop, kGoldenEraRecipeId, view(kFeelLoFiPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseBroken), {82,100,92,16,4,10}, CompositionSecondaryRole::ChordWithMelodicFill),
     profile(GenerativeMode::HipHop, kDustyJazzRecipeId, view(kFeelDrunkenPocket), view(kBassBoomBap), view(kChordLoFi), view(kProgressionHipHop), view(kMelodicLoFi), view(kMotifLoFi), view(kPhraseSlow), {70,94,84,16,3,9}, CompositionSecondaryRole::ChordWithMelodicFill),
+    profile(GenerativeMode::DrumAndBass, kDnbAtmosRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {170,174,172,16,5,10}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbFunkRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {170,176,174,16,7,13}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbDanceRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {174,176,174,16,7,14}, CompositionSecondaryRole::Melodic),
+    profile(GenerativeMode::DrumAndBass, kDnbNeuroRecipeId, view(kFeelStraightDrive), view(kBassBreakbeat), view(kChordBroken), view(kProgressionBroken), view(kMelodicDnb), view(kMotifAnswer), view(kPhraseCompact), {172,176,174,16,6,12}, CompositionSecondaryRole::Melodic),
 };
 
 const ProfileDefinition* definitionFor(const GenreSettings& settings) {
@@ -518,6 +600,91 @@ bool selectWeightedIdentityFromView(
   return false;
 }
 
+namespace {
+
+// Rough onsets per bar of each cell, for the GEN panel LIVELY setting.
+uint8_t melodicDensity(uint8_t id) {
+  switch (static_cast<MelodicRhythmId>(id)) {
+    case MelodicRhythmId::LongTone:
+    case MelodicRhythmId::RestHeavy:
+    case MelodicRhythmId::SparseCall: return 1;
+    case MelodicRhythmId::DelayedAnswer:
+    case MelodicRhythmId::TwoNoteHook:
+    case MelodicRhythmId::BarEndResponse:
+    case MelodicRhythmId::SlowPair: return 2;
+    case MelodicRhythmId::PickupPhrase:
+    case MelodicRhythmId::DriftPhrase:
+    case MelodicRhythmId::PedalCell:
+    case MelodicRhythmId::BreakAnswer:
+    case MelodicRhythmId::LateMotif: return 3;
+    case MelodicRhythmId::SyncopatedMotif:
+    case MelodicRhythmId::RepeatedCell:
+    case MelodicRhythmId::OffbeatCell:
+    case MelodicRhythmId::AngularCell:
+    case MelodicRhythmId::ShiftedCell:
+    case MelodicRhythmId::LazyArp: return 4;
+    case MelodicRhythmId::FunkCell: return 5;
+    case MelodicRhythmId::HookSix: return 6;
+    case MelodicRhythmId::RunningLine:
+    case MelodicRhythmId::EighthArp: return 8;
+    default: return 3;
+  }
+}
+
+uint8_t chordDensity(uint8_t id) {
+  switch (static_cast<ChordRhythmId>(id)) {
+    case ChordRhythmId::HeldPad:
+    case ChordRhythmId::WholeBarHold: return 1;
+    case ChordRhythmId::HalfBarChange:
+    case ChordRhythmId::BackbeatStab:
+    case ChordRhythmId::AnticipatedChange:
+    case ChordRhythmId::DubChordSpace: return 2;
+    case ChordRhythmId::SparseChordReply: return 3;
+    case ChordRhythmId::OffbeatStab: return 4;
+    case ChordRhythmId::SyncopatedComp: return 5;
+    default: return 3;
+  }
+}
+
+// CALM favours sparse cells and drops the dense lines; LIVELY the reverse.
+// When the genre has nothing on the wanted side, one cell from it is added so
+// the setting is always audible. NORMAL returns the genre's view untouched.
+WeightedIdentityView shapeByLiveliness(
+    WeightedIdentityView input, uint8_t (*density)(uint8_t),
+    uint8_t calmExtra, uint8_t livelyExtra,
+    WeightedIdentityCandidate (&storage)[kMaxWeightedCandidates]) {
+  const auto liveliness = GroovePuterState::generationLiveliness();
+  if (liveliness == GroovePuterState::GenerationLiveliness::Normal ||
+      input.candidates == nullptr || input.count == 0 ||
+      input.count >= kMaxWeightedCandidates) {
+    return input;
+  }
+  const bool calm = liveliness == GroovePuterState::GenerationLiveliness::Calm;
+  uint8_t count = 0;
+  uint16_t total = 0;
+  bool wantedSide = false;
+  for (uint8_t index = 0; index < input.count; ++index) {
+    const WeightedIdentityCandidate candidate = input.candidates[index];
+    const uint8_t d = density(candidate.id);
+    uint8_t factor = 1;
+    if (calm) factor = d <= 2 ? 3 : d == 3 ? 2 : d <= 5 ? 1 : 0;
+    else factor = d <= 2 ? 0 : d == 3 ? 1 : d <= 5 ? 2 : 4;
+    if (calm ? d <= 3 : d >= 6) wantedSide = true;
+    const uint16_t weight = static_cast<uint16_t>(candidate.weight) * factor;
+    if (weight == 0) continue;
+    storage[count++] = weighted(candidate.id, static_cast<uint8_t>(weight > 255 ? 255 : weight));
+    total = static_cast<uint16_t>(total + (weight > 255 ? 255 : weight));
+  }
+  if (!wantedSide || count == 0) {
+    const uint16_t weight = total == 0 ? 100 : (total < 2 ? 1 : total / 2);
+    storage[count++] = weighted(calm ? calmExtra : livelyExtra,
+                                static_cast<uint8_t>(weight > 255 ? 255 : weight));
+  }
+  return WeightedIdentityView{storage, count};
+}
+
+}  // namespace
+
 GenerationCompositionResult resolveGenerationComposition(
     const GenreSettings& settings, const GenerationContext& generation) {
   GenerationCompositionResult result{};
@@ -539,12 +706,30 @@ GenerationCompositionResult resolveGenerationComposition(
   result.secondaryRole = profile.secondaryRole;
 
   const uint32_t baseSalt = profileSalt(profile);
+  // LIVELY shapes the part Synth B plays: the lead in melodic genres (busier
+  // chords there would only block lead onsets), the chords in chord genres.
+  const bool chordLead = profile.secondaryRole != CompositionSecondaryRole::Melodic;
+  WeightedIdentityCandidate chordStorage[kMaxWeightedCandidates]{};
+  WeightedIdentityCandidate melodicStorage[kMaxWeightedCandidates]{};
+  const WeightedIdentityView chordRhythms = chordLead
+      ? shapeByLiveliness(profile.chordRhythms, chordDensity,
+                          static_cast<uint8_t>(ChordRhythmId::HeldPad),
+                          static_cast<uint8_t>(ChordRhythmId::OffbeatStab),
+                          chordStorage)
+      : profile.chordRhythms;
+  const WeightedIdentityView melodicRhythms = !chordLead ||
+          profile.secondaryRole == CompositionSecondaryRole::ChordWithMelodicFill
+      ? shapeByLiveliness(profile.melodicRhythms, melodicDensity,
+                          static_cast<uint8_t>(MelodicRhythmId::SlowPair),
+                          static_cast<uint8_t>(MelodicRhythmId::HookSix),
+                          melodicStorage)
+      : profile.melodicRhythms;
   uint8_t feel=0,bass=0,chord=0,progression=0,melodic=0,motif=0,phraseChoice=0;
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
       !selectWeightedIdentityFromView(profile.bassRhythms, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
-      !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
+      !selectWeightedIdentityFromView(chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
       !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
-      !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
+      !selectWeightedIdentityFromView(melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
       !selectWeightedIdentityFromView(profile.motifShapes, GenerationDomain::MotifSelection, rhythm.archetypeId, baseSalt | melodic, generation, motif) ||
       !selectWeightedIdentityFromView(profile.phraseLaws, GenerationDomain::PhraseLawSelection, rhythm.archetypeId, baseSalt, generation, phraseChoice)) {
     result.status = GenerationCompositionStatus::InvalidProfile;

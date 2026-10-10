@@ -20,6 +20,23 @@ enum class MelodicRhythmId : uint8_t {
   SyncopatedMotif,
   DriftPhrase,
   RepeatedCell,
+  // 0.9.18 lead density: lines with enough onsets to carry a melody (the
+  // cells above give 1-4). Bass/chord onsets still block, so they interlock.
+  RunningLine,
+  EighthArp,
+  // 0.9.18 genre cells (onsets in the comments of melodic_motif.cpp).
+  HookSix,
+  OffbeatCell,
+  PedalCell,
+  AngularCell,
+  ShiftedCell,
+  BreakAnswer,
+  FunkCell,
+  LateMotif,
+  SlowPair,
+  // 0.9.18 Lo-Fi reference: a lazy chord-tone line just after the bass, with
+  // a pickup into the next four bars.
+  LazyArp,
   Count,
 };
 

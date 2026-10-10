@@ -108,7 +108,7 @@ scancode.
 Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
 ownership; internal Synth A/B remain sequencer/pattern instruments.
 
-## GENRE 1/2
+## GENRE 1/3
 
 | Key | Action |
 |---|---|
@@ -123,7 +123,21 @@ During PLAY, accepted full generation publishes at the next real `BAR_START`; wh
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
 musical identity through the bounded session attempt stream.
 
-## FEEL 2/2
+## GEN 2/3
+
+`Tab` from GENRE opens GEN, `Tab` again goes on to FEEL, `Esc` returns to GENRE.
+
+| Field | Values | What it does |
+|---|---|---|
+| `TARGET` | `STEPS` / `MELODY A` / `MELODY B` | Where plain `G` writes. `MELODY A/B`: `G` on GENRE writes a phrase into that synth's Melody; `G` on a synth's STEPS writes that synth's Melody. The synth switches to its Melody first; drums and steps stay. |
+| `DRUMS` | `NEW` / `KEEP` | With `TARGET STEPS`: `NEW` makes a whole new TAKE (drums and both synths); `KEEP` rebuilds only the two synths against the drums already in the slot. A Melody never touches the drums. Enter with APPLY NEW TAKE follows it too. |
+| `LENGTH` | `1/2/4/8` bars | Phrase length for a Melody (`G`, `Alt+G`) and for the MATERIAL TAKE; the same value as MATERIAL `LENGTH`. |
+| `LIVELY` | `CALM` / `NORMAL` / `LIVELY` | How busy Synth B comes out: the lead in melodic genres, the chords in chord genres (Reggae, TripHop). `CALM` prefers sparse cells and long chords, `LIVELY` dense lines and stabs; `NORMAL` is the genre as it is. |
+| `NOTES` | `SHORT` / `MIXED` / `LONG` | How long generated Melody notes ring: the genre's gate, some held on to the next note (more before rests), or all legato. Steps have no note length. |
+
+Settings live for the session.
+
+## FEEL 3/3
 
 | Key | Action |
 |---|---|
@@ -175,7 +189,7 @@ move it by exactly one semitone. `K` raises the key's tonic a semitone and `M`
 picks the next scale; notes stay where they are, and G generates in the same
 key. `V` switches to list view. `Enter` adds a note,
 `Backspace` deletes the note at the cursor, `Alt+Left/Right` shortens/lengthens it,
-`J` joins it to the next note, and `G` changes the grid. `Ctrl+Left/Right` jump
+`J` joins it to the next note, and `Aa` (`Ctrl+G` on SDL) changes the grid. `Ctrl+Left/Right` jump
 to the previous/next bar. `[` / `]` switch the workflow page as on every page;
 `Q..I` and `B` pick a saved Melody;
 `Alt+Up/Down` scroll the
@@ -200,6 +214,13 @@ external keyboard (within 40 ms) are recorded as one chord on the cursor cell.
 Chords play on SEQTRAK over MIDI; the internal synth stays mono and plays the
 chord's top note (an arpeggio plays everywhere). Thin lines separate the pitch
 rows; the dotted one is the key's tonic.
+
+`G` (or `Alt+G`) on the Melody generates a whole phrase from the genre, key and STYLE:
+as many bars as MATERIAL LENGTH asks for (1, 2, 4 or 8), for this synth only,
+replacing the Melody as one edit. Each press gives another phrase; `Ctrl+Z`
+brings the previous Melody back. Steps, slots and Song rows are not touched.
+GEN `LIVELY` and `NOTES` shape it. The grid step that `G` used to cycle is the
+Cardputer `Aa` key tapped alone (`Ctrl+G` on the emulator).
 
 In NOTE ENTRY, repeating or holding the same pitch can extend the note into the
 next step as a continuation (shown as `TI`), rather than entering a new attack.
@@ -265,6 +286,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Backspace` | Clear current cell / selected Song cells |
 | `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Alt+B` | Flip stored-reference/selection bank |
+| `Opt` | (Cardputer) Synth A/B column: that voice's source STEPS <-> MELODY, as `Opt` on the synth page |
 | `Ctrl+B` | Play Song slot A/B |
 | `Alt+[` / `Alt+]` | Previous / next pattern page when the resident 16-slot page is full |
 | `Ctrl+N` / `Ctrl+M` | Insert / remove row |
@@ -277,6 +299,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
 | `Alt+J` | Jump to MATERIAL with this row as the explicit `TO` destination |
+| `F` | FORM: energy curve. `Up/Down` energy 0..4, `Left/Right` section, `Enter` 4/8 bars, `N` add, `Backspace` delete, `1/2/3` BUILD/DROP/WAVE, `G` insert rows after the source block (selection, else the TAKE at the cursor), one Ctrl+Z; `F`/`Esc` back to GRID |
 
 For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
 Pattern or Melody playback; the row does not store a separate type. Accepted Melody
@@ -404,6 +427,25 @@ Fresh multi-row Phrase generation is STOP-only. During PLAY it reports
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
 
+### SONG FORM energy levels
+
+`0` silence, `1` drums, `2` drums + bass (A), `3` + lead (B) resting on the
+third bar of every four, `4` everything incl. the Voice lane. The curve builds
+ordinary rows from existing material only; editing them later in GRID is never
+undone by the curve.
+
+### MIDI PLAYER LOOP
+
+| Key | Action |
+|---|---|
+| `L` | Loop `OFF -> SONG -> A-B -> OFF` (A-B without marks: 4 bars from the playhead) |
+| `S` | Mark A (loop start) at the current bar |
+| `E` | Mark B (loop end, inclusive) at the current bar and loop A-B |
+
+The header chip shows `LOOP` (whole song) or `L5-8` (bars). The loop restarts
+through the ordinary start path, so each wrap has a short gap; in PROJECT tempo
+it re-arms on the next master bar like a seek. A new file clears the A/B marks.
+
 ### HUB MIDI
 
 Open from MIDI Player with `H` after a file is loaded.
@@ -419,6 +461,14 @@ Open from MIDI Player with `H` after a file is loaded.
 | `S` | Solo selected layer |
 | `A` | All MIDI tracks on |
 | `Space` | MIDI transport |
+| `O` | SEQTRAK outputs: which tracks occupy KICK..CYM, SYN1, SYN2, DX, and which reach nothing (OFF) |
+| `Y`, `Y` | GRAB (paused): the selected layer over the player's A-B loop (else GEN LENGTH bars from the current bar) becomes the Working Melody of GEN TARGET A/B; the first `Y` shows what and where, the second takes it; Ctrl+Z on the synth page undoes it |
+
+Each row shows where the track sounds now: `SYN1`/`SYN2`/`DX`/`KICK`..`CYM`,
+`DRUM` (GM drums split over the drum outputs), `MULTI`, or `OFF`. AUTO is
+resolved from the source channel (CH1/2/3 -> SYN1/SYN2/DX, CH10 -> drums,
+others -> OFF). A per-track choice is blue; OFF and two unmuted tracks on one
+SYN1/SYN2/DX are red.
 
 Route changes work during PLAY and persist immediately per matching file identity.
 There is no pause-first or Enter-to-commit route mode. RAW routing keeps source

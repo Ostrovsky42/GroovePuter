@@ -1,4 +1,6 @@
 #include "strong_rhythm_migration.h"
+#include "../idiom/genre_idiom.h"
+#include "../../state/generation_shape_state.h"
 #include "../roles/bar_function_roles.h"
 
 #include "../generation_context.h"
@@ -668,6 +670,30 @@ uint8_t filteredMelodicOffsets(const MelodicPitchIntentPlan& plan,
 
 namespace {
 
+// Attacks, held steps (same pitch, slid into) and the pitch class at each
+// attack, read back from a committed bass pattern.
+void rebuildBassEvidenceFromPattern(const SynthPattern& bass,
+                                    StrongRhythmMigrationResult& result) {
+  StepMask onsets = 0;
+  StepMask continuations = 0;
+  BassPitchClassWitness witness{};
+  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+    const SynthStep& event = bass.steps[step];
+    if (event.note < 0) continue;
+    const bool held = step > 0 && event.slide && bass.steps[step - 1].note == event.note;
+    if (held) {
+      continuations = static_cast<StepMask>(continuations | stepBit(step));
+    } else {
+      onsets = static_cast<StepMask>(onsets | stepBit(step));
+      (void)witness.setPitchClass(step, static_cast<uint8_t>(event.note % 12));
+    }
+  }
+  result.bassRhythmPlan.onsets = onsets;
+  result.bassRhythmPlan.continuations = continuations;
+  result.bassPitchClassWitness = witness;
+  result.bassPitchClassWitnessAvailable = true;
+}
+
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
@@ -697,7 +723,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  // A rest bar only makes sense inside a phrase; a single G on one slot that
+  // comes out empty reads as a broken generator (0.9.18, LoFi on odd slots).
   const bool allowSparse =
+      context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal &&
       sparseSemanticBarsAllowed(settings, definition->family);
   const uint8_t barOrdinal = semanticBarOrdinal(settings, context);
   const TonalGenerationProfile tonalProfile =
@@ -1182,6 +1211,48 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.tonalMaterializationApplied = true;
   }
 
+  bool idiomApplied = false;
+  // 0.9.18 genre idioms: for the genres that have one, bass and lead come from
+  // a paired template instead of the role vocabulary (drums, harmony and feel
+  // above are kept).
+  {
+    GenreIdiom::Request idiom{};
+    idiom.generativeMode = settings.generativeMode;
+    idiom.recipe = settings.recipe;
+    if (context.tonalMaterializationEnabled) {
+      idiom.rootPitchClass = context.rootPitchClass;
+      idiom.scale = context.scaleTypeValue;
+    }
+    idiom.level = context.level == RealizationLevel::P1Canonical ? 0 : 1;
+    const auto liveliness = GroovePuterState::generationLiveliness();
+    if (liveliness == GroovePuterState::GenerationLiveliness::Calm) idiom.level = 2;
+    if (liveliness == GroovePuterState::GenerationLiveliness::Lively) idiom.level = 1;
+    idiom.liveliness = static_cast<uint8_t>(liveliness);
+    idiom.barOrdinal = context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
+        ? GenreIdiom::kNoBarOrdinal
+        : context.phraseBarOrdinal;
+    idiom.phraseBars = context.ideaPhraseBars;
+    // A prepared phrase execution must not depend on where its bars are
+    // written (the cycle and the kept phrase rebuild bars from the recipe), so
+    // its deck follows the phrase identity, never the pattern address.
+    const bool phraseExecution =
+        context.ideaPress == 0 &&
+        context.phraseGenerationIdentity != kUnspecifiedPhraseGenerationIdentity;
+    const uint32_t place = phraseExecution
+        ? static_cast<uint32_t>(context.phraseGenerationIdentity)
+        : static_cast<uint32_t>(context.patternAddress);
+    idiom.salt = place * 131u +
+                 context.generationAttemptOrdinal * 977u +
+                 context.ideaPress * 0x2545F491u;
+    // Successive presses walk one idea deck: steps G counts attempts on its
+    // slot, Melody G / TAKE bring their own press.
+    idiom.press = context.ideaPress != 0 ? context.ideaPress : context.generationAttemptOrdinal;
+    idiom.deckSeed = context.ideaPress != 0 ? 0u : place;
+    // DnB writes its drum grammar too, but only when this G replaces drums.
+    idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
+                                     replaceDrums ? &nextDrums : nullptr);
+  }
+
   if (replaceDrums) {
     const bool unchanged =
         sameDrumMaterial(nextDrums, drums) &&
@@ -1202,6 +1273,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
           context.generationAttemptOrdinal, nextSynthB);
     }
   }
+  // The idiom wrote Synth A after the role plan was exported: the origin
+  // evidence (bass rhythm plan + pitch-class witness, read by DEVELOP's P0
+  // preservation) must describe the bass that was actually committed.
+  if (idiomApplied) rebuildBassEvidenceFromPattern(nextSynthA, result);
   synthA = nextSynthA;
   synthB = nextSynthB;
   return result;

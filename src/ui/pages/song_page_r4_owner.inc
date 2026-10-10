@@ -82,9 +82,58 @@ bool SongPage::undoPreparedSongState() {
 bool SongPage::handleEvent(UIEvent& ui_event) {
   using namespace GroovePuterUndo;
 
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && !ui_event.alt &&
+      !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'f' || ui_event.key == 'F')) {
+    // The selection stays: it is the FORM source block.
+    form_view_ = !form_view_;
+    UI::showToast(form_view_ ? "SONG: FORM" : "SONG: GRID", 600);
+    return true;
+  }
+  if (form_view_ && ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    return handleFormEvent(ui_event);
+  }
+
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
       return undoPreparedSongState();
+    }
+
+    // Opt on a Synth A/B cell: that voice's STEPS <-> MELODY, the same owner
+    // as Opt on the synth page (the source belongs to the voice, not the cell).
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+      bool valid = false;
+      const SongTrack track = trackForColumn(cursorTrack(), valid);
+      if (!valid || (track != SongTrack::SynthA && track != SongTrack::SynthB)) {
+        showToast("OPT: ON SYNTH A/B COLUMN", 900);
+        return true;
+      }
+      const int voice = track == SongTrack::SynthA ? 0 : 1;
+      const auto result = PhraseSourceToggle::toggle(
+          mini_acid_,
+          [&](const std::function<void()>& body) { withAudioGuard(body); },
+          voice);
+      const char label = voice == 0 ? 'A' : 'B';
+      char toast[32];
+      if (result == PhraseSourceToggle::Result::Rejected) {
+        // Name the slot and which path refused, so a device report is exact.
+        const int bank = mini_acid_.current303BankIndex(voice);
+        const int pattern = mini_acid_.display303LocalPatternIndex(voice);
+        const bool melodySlot = mini_acid_.isMelodySlot(voice, bank, pattern);
+        std::snprintf(toast, sizeof(toast), melodySlot ? "%c %c%d MELODY: CAN'T LOAD"
+                                                       : "%c %c%d: CAN'T MAKE MELODY",
+                      label, static_cast<char>('A' + bank), pattern + 1);
+      } else if (result == PhraseSourceToggle::Result::MadePhrase) {
+        std::snprintf(toast, sizeof(toast), "%c: MELODY <- STEPS", label);
+      } else {
+        std::snprintf(toast, sizeof(toast), "%c: %s", label,
+                      mini_acid_.currentSequencedSource(voice) ==
+                              MiniAcid::SequencedSource::Phrase
+                          ? "MELODY"
+                          : "STEPS");
+      }
+      showToast(toast, 1000);
+      return true;
     }
 
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_CUT ||

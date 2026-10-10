@@ -1024,6 +1024,30 @@ void loop() {
     toggle.app_event_type = GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE;
     if (!g_miniDisplay->handleEvent(toggle)) UI::showToast("OPT: ON SYNTH A/B", 900);
   }
+  // Aa (Shift) tapped alone: the Melody grid step. Fires on release, and only
+  // when nothing else was pressed while it was held, so Shift+arrows and
+  // capitals keep working.
+  static bool shiftTapArmed = false;
+  const bool shiftAlone = currentKeysState.shift && currentKeysState.hid_keys.empty() &&
+                          currentKeysState.word.empty() && !currentKeysState.alt &&
+                          !currentKeysState.ctrl && !currentKeysState.fn &&
+                          !currentKeysState.opt && !currentKeysState.tab &&
+                          !currentKeysState.del && !currentKeysState.enter &&
+                          !currentKeysState.space;
+  if (currentKeysState.shift && !(hasPreviousKeysState && previousKeysState.shift)) {
+    shiftTapArmed = shiftAlone;
+  } else if (currentKeysState.shift && !shiftAlone) {
+    shiftTapArmed = false;
+  } else if (!currentKeysState.shift && hasPreviousKeysState &&
+             previousKeysState.shift && shiftTapArmed) {
+    shiftTapArmed = false;
+    if (g_miniDisplay) {
+      UIEvent grid{};
+      grid.event_type = GROOVEPUTER_APPLICATION_EVENT;
+      grid.app_event_type = GROOVEPUTER_APP_EVENT_CYCLE_GRID;
+      if (!g_miniDisplay->handleEvent(grid)) UI::showToast("Aa: GRID ON MELODY", 900);
+    }
+  }
 
   const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
                       GroovePuterInput::containsWord(currentKeysState, 'h') ||

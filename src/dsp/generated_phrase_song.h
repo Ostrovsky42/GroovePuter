@@ -181,9 +181,13 @@ inline void applyCurrentMigration(
     const GenreSettings& genre,
     int variationCoordinate,
     uint8_t phraseBarOrdinal,
-    PhraseGenerator::PhraseBar& bar) {
-  const auto context = migrationContextFor(
+    PhraseGenerator::PhraseBar& bar,
+    uint32_t ideaPress = 0,
+    uint8_t ideaPhraseBars = 0) {
+  auto context = migrationContextFor(
       scene, variationCoordinate, phraseBarOrdinal);
+  context.ideaPress = ideaPress;
+  context.ideaPhraseBars = ideaPhraseBars;
   (void)GroovePuterRhythm::migrateStrongRhythmMaterial(
       genre, context, bar.drums, bar.synthA, bar.synthB);
 }
@@ -202,7 +206,12 @@ inline bool materializeLegacyBar(
     const Scene& scene,
     const PreparedPhraseArrangement& prepared,
     int barIndex,
-    PhraseGenerator::PhraseBar& bar) {
+    PhraseGenerator::PhraseBar& bar,
+    int legacyMigrationCoordinate = 0,
+    uint32_t ideaPress = 0) {
+  // The phrase idea of a genre idiom follows the TAKE seed unless the caller
+  // (Melody G) counts presses itself.
+  if (ideaPress == 0) ideaPress = prepared.request.seed | 1u;
   bar = PhraseGenerator::PhraseBar{};
   const GenreSettings& genre = prepared.genre;
   const auto role = PhraseGenerator::roleForBar(prepared.request.bars, barIndex);
@@ -215,7 +224,8 @@ inline bool materializeLegacyBar(
             bar.synthA, bar.synthB, bar.drums, nullptr)) {
       return false;
     }
-    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar);
+    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar, ideaPress,
+                          prepared.request.bars);
     return true;
   }
 
@@ -230,7 +240,8 @@ inline bool materializeLegacyBar(
   scratchMode.generateDrumPattern(
       bar.drums, prepared.legacyParams, prepared.legacyBehavior);
 
-  applyCurrentMigration(scene, genre, 0, phraseBarOrdinal, bar);
+  applyCurrentMigration(scene, genre, legacyMigrationCoordinate,
+                        phraseBarOrdinal, bar, ideaPress, prepared.request.bars);
   PhraseGenerator::deriveBar(bar, role, prepared.request.seed, barIndex, bar);
   return true;
 }

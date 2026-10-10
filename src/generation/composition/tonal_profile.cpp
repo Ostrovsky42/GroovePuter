@@ -18,13 +18,28 @@ constexpr uint16_t melodicContours(std::initializer_list<MelodicContourId> ids) 
   return mask;
 }
 
-constexpr BassBehaviorPolicy bassPolicy(uint16_t allowed,
-                                        uint16_t preferred = 0) {
-  return {allowed,
-          preferred,
-          bassArticulationStyleBit(BassArticulationStyleId::Plain),
-          0};
+constexpr BassBehaviorPolicy bassPolicy(
+    uint16_t allowed,
+    uint16_t preferred = 0,
+    uint16_t allowedArticulations =
+        bassArticulationStyleBit(BassArticulationStyleId::Plain),
+    uint16_t preferredArticulations = 0) {
+  return {allowed, preferred, allowedArticulations, preferredArticulations};
 }
+
+// 0.9.18 prototype: every genre had Plain articulation, so no generated bass
+// ever slid or accented -- not even Acid, where slide and accent are the style.
+constexpr uint16_t kArticulationAcidAllowed =
+    bassArticulationStyleBit(BassArticulationStyleId::Plain) |
+    bassArticulationStyleBit(BassArticulationStyleId::AccentPulse) |
+    bassArticulationStyleBit(BassArticulationStyleId::LegatoApproach) |
+    bassArticulationStyleBit(BassArticulationStyleId::Dynamic);
+constexpr uint16_t kArticulationAcidPreferred =
+    bassArticulationStyleBit(BassArticulationStyleId::Dynamic) |
+    bassArticulationStyleBit(BassArticulationStyleId::LegatoApproach);
+constexpr uint16_t kArticulationPulse =
+    bassArticulationStyleBit(BassArticulationStyleId::Plain) |
+    bassArticulationStyleBit(BassArticulationStyleId::AccentPulse);
 
 constexpr MelodicIntentPolicy melodicPolicy(uint16_t allowedContours,
                                             uint16_t preferredContours = 0) {
@@ -66,6 +81,18 @@ constexpr uint16_t kBassSynthPreferred = bassContours({
     BassPitchContourId::RootFifth,
     BassPitchContourId::LeapReturn,
     BassPitchContourId::NeighborReturn,
+});
+// 0.9.18 prototype: Outrun/Darksynth reference basses (Nightcall, Hotline
+// Miami) sit on the chord root -- 65% repeated notes against 2-4% from the
+// Synth vocabulary above. Pedal on the root, or bounce it an octave.
+constexpr uint16_t kBassPedalAllowed = bassContours({
+    BassPitchContourId::RootAnchor,
+    BassPitchContourId::RootOctave,
+    BassPitchContourId::PedalTurn,
+});
+constexpr uint16_t kBassPedalPreferred = bassContours({
+    BassPitchContourId::RootAnchor,
+    BassPitchContourId::RootOctave,
 });
 constexpr uint16_t kBassBrokenAllowed = bassContours({
     BassPitchContourId::RootAnchor,
@@ -152,16 +179,27 @@ constexpr uint16_t kMelodySlowPreferred = melodicContours({
     MelodicContourId::Arch,
     MelodicContourId::InvertedArch,
 });
+// 0.9.18 prototype: the Acid lead could only stay or step to a neighbour.
 constexpr uint16_t kMelodyAcidAllowed = melodicContours({
     MelodicContourId::Static,
     MelodicContourId::Neighbor,
     MelodicContourId::RepeatThenUp,
     MelodicContourId::RepeatThenDown,
+    MelodicContourId::StepUp,
+    MelodicContourId::StepDown,
+    MelodicContourId::LeapReturn,
+    MelodicContourId::Arch,
 });
 constexpr uint16_t kMelodyAcidPreferred = melodicContours({
-    MelodicContourId::Static,
     MelodicContourId::Neighbor,
+    MelodicContourId::RepeatThenUp,
+    MelodicContourId::LeapReturn,
+    MelodicContourId::StepUp,
 });
+// The owner preferred the wide prototype lead to a lead built mostly from
+// MotifAnswer (narrower). MotifAnswer stays as one preferred contour among
+// several: an occasional motif-and-answer bar, not the main voice.
+constexpr uint16_t kMotifAnswerBit = melodicContourBit(MelodicContourId::MotifAnswer);
 
 constexpr TonalRegisterCorridor kStaticBassRegister{24, 47, 12};
 // Any production profile that combines a moving harmonic root with tagged
@@ -181,20 +219,94 @@ constexpr TonalGenerationProfile kStaticProfile = {
     bassPolicy(kBassRoot), melodicPolicy(kMelodyStatic),
     kStaticBassRegister, kSecondaryRegister};
 constexpr TonalGenerationProfile kAcidProfile = tonal(
-    bassPolicy(kBassAcidAllowed, kBassAcidPreferred),
+    bassPolicy(kBassAcidAllowed, kBassAcidPreferred,
+               kArticulationAcidAllowed, kArticulationAcidPreferred),
+    melodicPolicy(static_cast<uint16_t>(kMelodyAcidAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyAcidPreferred | kMotifAnswerBit)));
+// Atlas recipes keep the prototype's tonal policy (no MotifAnswer); exact rows
+// keep recipe inheritance explicit.
+constexpr TonalGenerationProfile kAcidAtlasProfile = tonal(
+    bassPolicy(kBassAcidAllowed, kBassAcidPreferred,
+               kArticulationAcidAllowed, kArticulationAcidPreferred),
     melodicPolicy(kMelodyAcidAllowed, kMelodyAcidPreferred));
 constexpr TonalGenerationProfile kSynthProfile = tonal(
     bassPolicy(kBassSynthAllowed, kBassSynthPreferred),
     melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
+// 0.9.18 prototype: Synthwave bass gets accents; House leaves the static
+// profile (one-pitch lead, root-only bass) for a moving bass and a Drive lead.
+constexpr TonalGenerationProfile kOutrunProfile = tonal(
+    bassPolicy(kBassPedalAllowed, kBassPedalPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
+constexpr TonalGenerationProfile kHouseProfile = tonal(
+    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
 constexpr TonalGenerationProfile kBrokenProfile = tonal(
     bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred),
     melodicPolicy(kMelodyBrokenAllowed, kMelodyBrokenPreferred));
+// 0.9.18 prototype: the Lo-Fi reference bass is root then fifth or octave,
+// never a neighbour; the Slow vocabulary (shared with TripHop, HipHop and
+// FunkSoul) preferred PedalTurn/NeighborReturn/StepApproach.
+constexpr TonalGenerationProfile kLoFiProfile = tonal(
+    bassPolicy(bassContours({BassPitchContourId::RootAnchor,
+                             BassPitchContourId::RootFifth,
+                             BassPitchContourId::RootOctave,
+                             BassPitchContourId::StepApproach}),
+               bassContours({BassPitchContourId::RootFifth,
+                             BassPitchContourId::RootOctave})),
+    // The reference melody falls (G Eb D C) or arches (Eb G Bb G); a Static
+    // preference held one pitch for the whole TAKE.
+    melodicPolicy(static_cast<uint16_t>(kMelodySlowAllowed |
+                                        melodicContours({MelodicContourId::StepUp,
+                                                         MelodicContourId::StepDown})),
+                  melodicContours({MelodicContourId::StepDown,
+                                   MelodicContourId::Arch,
+                                   MelodicContourId::InvertedArch,
+                                   MelodicContourId::RepeatThenDown})));
 constexpr TonalGenerationProfile kSlowProfile = tonal(
     bassPolicy(kBassSlowAllowed, kBassSlowPreferred),
     melodicPolicy(kMelodySlowAllowed, kMelodySlowPreferred));
 constexpr TonalGenerationProfile kDubProfile = tonal(
     bassPolicy(kBassDubAllowed, kBassDubPreferred),
     melodicPolicy(kMelodyStatic));
+
+// 0.9.18 genre leads (recipe 0; other recipes keep their profile through
+// exact rows below).
+constexpr TonalGenerationProfile kDriveLeadProfile = tonal(
+    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
+constexpr TonalGenerationProfile kDarksynthProfile = tonal(
+    bassPolicy(kBassPedalAllowed, kBassPedalPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyDriveAllowed | kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyDrivePreferred | kMotifAnswerBit)));
+// Rave: a repeated hook that jumps a fourth/fifth and comes back.
+constexpr TonalGenerationProfile kRaveProfile = tonal(
+    bassPolicy(kBassSynthAllowed, kBassSynthPreferred, kArticulationPulse),
+    melodicPolicy(melodicContours({MelodicContourId::Static,
+                                   MelodicContourId::Neighbor,
+                                   MelodicContourId::LeapReturn,
+                                   MelodicContourId::RepeatThenUp,
+                                   MelodicContourId::RepeatThenDown}),
+                  melodicContours({MelodicContourId::LeapReturn,
+                                   MelodicContourId::RepeatThenUp,
+                                   MelodicContourId::Neighbor})));
+// Techno stays nearly static (owner): root bass, a pedal lead that may step
+// to a neighbour and back.
+constexpr TonalGenerationProfile kTechnoProfile = {
+    bassPolicy(kBassRoot),
+    melodicPolicy(melodicContours({MelodicContourId::Static,
+                                   MelodicContourId::Neighbor}),
+                  melodicContours({MelodicContourId::Neighbor})),
+    kStaticBassRegister, kSecondaryRegister};
+// Broken family: accents on the bass, the lead may also leap and answer.
+constexpr TonalGenerationProfile kBrokenLiveProfile = tonal(
+    bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred, kArticulationPulse),
+    melodicPolicy(static_cast<uint16_t>(kMelodyBrokenAllowed |
+                                        melodicContourBit(MelodicContourId::LeapReturn) |
+                                        kMotifAnswerBit),
+                  static_cast<uint16_t>(kMelodyBrokenPreferred | kMotifAnswerBit)));
 
 struct TonalProfileRow {
   uint8_t mode = 0;
@@ -212,21 +324,29 @@ constexpr TonalProfileRow row(GenerativeMode mode,
 // avoids a GenerativeMode switch in roles/tonal code.
 constexpr TonalProfileRow kRows[] = {
     row(GenerativeMode::Acid, kAcidProfile),
-    row(GenerativeMode::Outrun, kSynthProfile),
-    row(GenerativeMode::Darksynth, kSynthProfile),
-    row(GenerativeMode::Electro, kBrokenProfile),
-    row(GenerativeMode::Rave, kStaticProfile),
+    {static_cast<uint8_t>(GenerativeMode::Acid), 6, kAcidAtlasProfile},
+    {static_cast<uint8_t>(GenerativeMode::Acid), 7, kAcidAtlasProfile},
+    row(GenerativeMode::Outrun, kOutrunProfile),
+    row(GenerativeMode::Darksynth, kDarksynthProfile),
+    row(GenerativeMode::Electro, kBrokenLiveProfile),
+    row(GenerativeMode::Rave, kRaveProfile),
+    {static_cast<uint8_t>(GenerativeMode::Rave), 4, kStaticProfile},
     row(GenerativeMode::Reggae, kDubProfile),
     row(GenerativeMode::TripHop, kSlowProfile),
-    row(GenerativeMode::Broken, kBrokenProfile),
-    row(GenerativeMode::Chip, kSynthProfile),
-    row(GenerativeMode::House, kStaticProfile),
-    row(GenerativeMode::Techno, kStaticProfile),
+    row(GenerativeMode::Broken, kBrokenLiveProfile),
+    {static_cast<uint8_t>(GenerativeMode::Broken), 1, kBrokenProfile},
+    {static_cast<uint8_t>(GenerativeMode::Broken), 2, kBrokenProfile},
+    {static_cast<uint8_t>(GenerativeMode::Broken), 3, kBrokenProfile},
+    {static_cast<uint8_t>(GenerativeMode::Broken), 8, kBrokenProfile},
+    {static_cast<uint8_t>(GenerativeMode::Broken), 9, kBrokenProfile},
+    row(GenerativeMode::Chip, kDriveLeadProfile),
+    row(GenerativeMode::House, kHouseProfile),
+    row(GenerativeMode::Techno, kTechnoProfile),
     row(GenerativeMode::HipHop, kSlowProfile),
     row(GenerativeMode::FunkSoul, kSlowProfile),
-    row(GenerativeMode::UkGarage, kBrokenProfile),
-    row(GenerativeMode::DrumAndBass, kBrokenProfile),
-    row(GenerativeMode::LoFi, kSlowProfile),
+    row(GenerativeMode::UkGarage, kBrokenLiveProfile),
+    row(GenerativeMode::DrumAndBass, kBrokenLiveProfile),
+    row(GenerativeMode::LoFi, kLoFiProfile),
 };
 
 }  // namespace

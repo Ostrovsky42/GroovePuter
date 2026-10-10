@@ -49,7 +49,7 @@ for filename in (
         raise AssertionError(f"removed or legacy axis source must not exist: {filename}")
 
 for needle in (
-    '"GENRE 1/2"',
+    '"GENRE 1/3"',
     '"WHAT G GENERATES"',
     "GenreCatalog::grooveboxModeForRecipe",
     '"PROFILE ONLY"',
@@ -85,7 +85,7 @@ forbid(
 )
 
 for needle in (
-    '"FEEL 2/2"',
+    '"FEEL 3/3"',
     '"TIMING / VELOCITY"',
     "scene.feel.timingProfile",
     "mini_acid_.applyFeelTimingFromScene_();",
@@ -183,7 +183,7 @@ forbid(session_hub_list,
        ("SessionPages::kSynthAParameters", "SessionPages::kSynthBParameters"),
        "persisted normal HUB navigation")
 
-for title in ("GENRE 1/2", "FEEL 2/2"):
+for title in ("GENRE 1/3", "FEEL 3/3"):
     require(HELP, title, f"Alt+H section missing: {title}")
 forbid(HELP,
        ("GENERATION 3/3", "GEN 3/3", "TEXTURE 4/4", "LIVE SOUND SURFACE"),

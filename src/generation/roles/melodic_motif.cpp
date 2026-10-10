@@ -189,14 +189,48 @@ MelodicMotifResult realizeMelodicMotif(const MelodicMotifRequest& request) {
       continuations = mask({4, 5, 12, 13});
       break;
     case MelodicRhythmId::RepeatedCell: onsets = mask({0, 4, 8, 12}); break;
+    case MelodicRhythmId::RunningLine: onsets = mask({0, 2, 3, 6, 8, 10, 11, 14}); break;
+    case MelodicRhythmId::EighthArp: onsets = mask({0, 2, 4, 6, 8, 10, 12, 14}); break;
+    case MelodicRhythmId::HookSix: onsets = mask({0, 3, 5, 8, 11, 13}); break;  // Rave: repeat with a fourth/fifth and return
+    case MelodicRhythmId::OffbeatCell: onsets = mask({1, 5, 9, 13}); break;  // Darksynth: between an eighth-note bass
+    case MelodicRhythmId::PedalCell: onsets = mask({1, 7, 13}); break;  // Techno: a pedal with one neighbour
+    case MelodicRhythmId::AngularCell: onsets = mask({2, 5, 11, 15}); break;  // Electro / UK Garage
+    case MelodicRhythmId::ShiftedCell: onsets = mask({2, 6, 11, 15}); break;  // Broken
+    case MelodicRhythmId::BreakAnswer: onsets = mask({3, 11, 15}); break;  // Drum & Bass: a short answer between bass hits {2,7,10,14}
+    case MelodicRhythmId::FunkCell: onsets = mask({1, 4, 7, 10, 13}); break;  // Funk / Soul
+    case MelodicRhythmId::LateMotif: onsets = mask({4, 9, 12}); break;  // Hip-Hop: after the boom-bap bass {2,7,10,14}
+    case MelodicRhythmId::SlowPair: onsets = mask({4, 12}); break;  // Lo-Fi
+    // Lo-Fi reference (calm_melancholic_lofi_3min.mid): notes a 16th after
+    // beats 1/2 and between 3/4 dodge a {0,8} bass; every fourth bar rests
+    // until a three-note pickup into the next phrase.
+    case MelodicRhythmId::LazyArp:
+      onsets = (request.barOrdinal % 4u) == 3u ? mask({10, 12, 14})
+                                               : mask({1, 4, 7, 10});
+      break;
     case MelodicRhythmId::Auto:
     case MelodicRhythmId::Count:
       return result;
   }
 
+  // A dense line sits an octave or two above the bass: sharing its onsets is
+  // fine, and removing them left 2 notes out of 8 over an eighth-note bass.
+  const bool denseLine = rhythm == MelodicRhythmId::RunningLine ||
+                         rhythm == MelodicRhythmId::EighthArp;
   const StepMask blocked = static_cast<StepMask>(
-      request.protectedSpace | request.bassOnsets | request.chordOnsets);
+      request.protectedSpace | (denseLine ? 0 : request.bassOnsets) |
+      request.chordOnsets);
+  const StepMask cell = onsets;
   onsets = static_cast<StepMask>(onsets & ~blocked);
+  // A short cell can land entirely on bass and chord attacks. Unless this bar
+  // may rest, sounding together beats silence: first allow the bass attacks,
+  // then the chord attacks too (0.9.18: empty leads on single G).
+  if (onsets == 0 && !request.allowEmptyBar) {
+    onsets = static_cast<StepMask>(
+        cell & ~(request.protectedSpace | request.chordOnsets));
+    if (onsets == 0) {
+      onsets = static_cast<StepMask>(cell & ~request.protectedSpace);
+    }
+  }
   continuations = static_cast<StepMask>(
       continuations & ~request.protectedSpace & ~onsets);
   continuations = anchoredContinuations(onsets, continuations);
@@ -223,6 +257,18 @@ const char* melodicRhythmName(MelodicRhythmId id) {
     case MelodicRhythmId::SyncopatedMotif: return "SYNCOPATED MOTIF";
     case MelodicRhythmId::DriftPhrase: return "DRIFT PHRASE";
     case MelodicRhythmId::RepeatedCell: return "REPEATED CELL";
+    case MelodicRhythmId::RunningLine: return "RUNNING LINE";
+    case MelodicRhythmId::EighthArp: return "EIGHTH ARP";
+    case MelodicRhythmId::HookSix: return "HOOK SIX";
+    case MelodicRhythmId::OffbeatCell: return "OFFBEAT CELL";
+    case MelodicRhythmId::PedalCell: return "PEDAL CELL";
+    case MelodicRhythmId::AngularCell: return "ANGULAR CELL";
+    case MelodicRhythmId::ShiftedCell: return "SHIFTED CELL";
+    case MelodicRhythmId::BreakAnswer: return "BREAK ANSWER";
+    case MelodicRhythmId::FunkCell: return "FUNK CELL";
+    case MelodicRhythmId::LateMotif: return "LATE MOTIF";
+    case MelodicRhythmId::SlowPair: return "SLOW PAIR";
+    case MelodicRhythmId::LazyArp: return "LAZY ARP";
     case MelodicRhythmId::Count: break;
   }
   return "INVALID";

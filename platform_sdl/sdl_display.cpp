@@ -180,7 +180,11 @@ void SDLDisplay::drawImage(int x, int y, const uint16_t* pixels, int w, int h) {
     for (int col = 0; col < w; ++col) {
       int dst_x = x + col;
       if (dst_x < 0 || dst_x >= w_) continue;
-      uint16_t src = pixels[row * w + col];
+      // Same contract as CardputerDisplay::drawImage: pixels are RGB565 in the
+      // panel's byte order (IGfxColor::toCardputerColor). Read as plain RGB565
+      // they turned the near-black skin background purple in SDL screenshots.
+      const uint16_t raw = pixels[row * w + col];
+      const uint16_t src = static_cast<uint16_t>((raw >> 8) | (raw << 8));
       setDrawColor565(renderer_, src);
       SDL_RenderDrawPoint(renderer_, dst_x, dst_y);
     }
@@ -333,8 +337,9 @@ void SDLDisplay::drawCircle(int x, int y, int r, IGfxColor color) {
 void SDLDisplay::drawKnobFace(int cx, int cy, int radius, IGfxColor ringColor,
                               IGfxColor bgColor) {
   if (!renderer_ || radius <= 0) return;
-  uint16_t ring565 = ringColor.color16();
-  uint16_t bg565 = bgColor.color16();
+  // Panel byte order, as drawImage() expects.
+  uint16_t ring565 = ringColor.toCardputerColor();
+  uint16_t bg565 = bgColor.toCardputerColor();
 
   auto it = std::find_if(knob_faces_.begin(), knob_faces_.end(),
                          [&](const KnobFaceCache& cache) {

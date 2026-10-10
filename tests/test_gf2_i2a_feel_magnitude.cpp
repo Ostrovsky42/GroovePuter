@@ -60,8 +60,8 @@ constexpr int16_t kPatternAddress = 3;
 //
 // The counts are pinned so a vocabulary edit that silently flips a recipe
 // between classes has to be acknowledged.
-constexpr int kExpectedActiveRecipes = 16;
-constexpr int kExpectedStraightRecipes = 11;
+constexpr int kExpectedActiveRecipes = 17;
+constexpr int kExpectedStraightRecipes = 10;
 constexpr int kExpectedSwingCompatibleRecipes = 6;
 
 int g_failures = 0;
