@@ -48,12 +48,18 @@ enum Section : uint8_t {
   Sampler,
   Vocal,
   Tail,      // looper, tape FX, master chain, dither, output
+  // Parts of Voices (each only while that synth is not muted):
+  SynthA,    // Synth A process()
+  FxA,       // its distortion + track volume + delay
+  SynthB,
+  FxB,
   Count
 };
 
 inline const char* sectionName(uint8_t s) {
   static const char* const kNames[Count] = {"pre", "seq", "retrig", "voices",
-                                            "drums", "sampler", "vocal", "tail"};
+                                            "drums", "sampler", "vocal", "tail",
+                                            "synthA", "fxA", "synthB", "fxB"};
   return s < Count ? kNames[s] : "?";
 }
 

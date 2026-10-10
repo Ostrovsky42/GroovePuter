@@ -138,8 +138,8 @@ void testAudioBlockLoadRunsAndWindows() {
 
 void testRenderSectionProfile() {
   RenderProfile::SectionProfile p;
-  uint32_t a[RenderProfile::Count] = {240, 2400, 0, 24000, 48000, 0, 0, 4800};
-  uint32_t b[RenderProfile::Count] = {240, 7200, 0, 24000, 24000, 0, 0, 4800};
+  uint32_t a[RenderProfile::Count] = {240, 2400, 0, 24000, 48000, 0, 0, 4800, 0, 0, 0, 0};
+  uint32_t b[RenderProfile::Count] = {240, 7200, 0, 24000, 24000, 0, 0, 4800, 0, 0, 0, 0};
   p.publish(a);
   p.publish(b);
   const auto w = p.take(240);  // 240 cycles per us

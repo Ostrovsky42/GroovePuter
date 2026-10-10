@@ -2498,6 +2498,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   uint32_t tVocalTotal = 0;
   uint32_t tSeqTotal = 0;
   uint32_t tRetrigTotal = 0;
+  uint32_t tSynthATotal = 0;
+  uint32_t tFxATotal = 0;
+  uint32_t tSynthBTotal = 0;
+  uint32_t tFxBTotal = 0;
   uint32_t tLoopStart = micros();
   const uint32_t tPreTotal = RenderProfile::cycles() - profileEntryCycles;
 
@@ -2601,15 +2605,22 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     // the audio output and release tails can complete naturally.
     if (!mute303 && synthVoices_[0]) {
       float v = synthVoices_[0]->process() * 0.5f;
+      const uint32_t tFx = RenderProfile::cycles();
+      tSynthATotal += tFx - tV0;
       v = distortion303.process(v);
       v *= trackVolumes[(int)VoiceId::SynthA];
       sample303 += delay303.process(v);
+      tFxATotal += RenderProfile::cycles() - tFx;
     } else delay303.process(0.0f);
+    const uint32_t tB0 = RenderProfile::cycles();
     if (!mute303_2 && synthVoices_[1]) {
       float v = synthVoices_[1]->process() * 0.5f;
+      const uint32_t tFx = RenderProfile::cycles();
+      tSynthBTotal += tFx - tB0;
       v = distortion3032.process(v);
       v *= trackVolumes[(int)VoiceId::SynthB];
       sample303 += delay3032.process(v);
+      tFxBTotal += RenderProfile::cycles() - tFx;
     } else delay3032.process(0.0f);
     if (detailedProfile) tVoicesTotal += (RenderProfile::cycles() - tV0);
 
@@ -2719,7 +2730,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     perfStats.dspFxUs = tFxTotal / perUs;
     const uint32_t sections[RenderProfile::Count] = {
         tPreTotal, tSeqTotal, tRetrigTotal, tVoicesTotal,
-        tDrumsTotal, tSamplerTotal, tVocalTotal, tFxTotal};
+        tDrumsTotal, tSamplerTotal, tVocalTotal, tFxTotal,
+        tSynthATotal, tFxATotal, tSynthBTotal, tFxBTotal};
     renderProfile_.publish(sections);
   }
 
