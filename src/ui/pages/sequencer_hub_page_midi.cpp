@@ -9,6 +9,7 @@
 #include "../player_hub_navigation.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "smf_loop_keys.h"
 #include "synth_sequencer_page.h"
 #include "src/state/generation_shape_state.h"
 #include "src/state/phrase_generation_request_state.h"
@@ -966,7 +967,20 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
 
-    if (event.key == 'a' || event.key == 'A') {
+    // The player's loop, set here where the layers are chosen (0.9.19):
+    // A marks the start, E the end, L cycles OFF -> SONG -> A-B.
+    if ((event.key == 'a' || event.key == 'A' || event.key == 'e' ||
+         event.key == 'E' || event.key == 'l' || event.key == 'L') &&
+        smfPlayerService() != nullptr) {
+        const SmfLoopKey key = (event.key == 'a' || event.key == 'A')
+            ? SmfLoopKey::MarkStart
+            : (event.key == 'e' || event.key == 'E') ? SmfLoopKey::MarkEnd
+                                                     : SmfLoopKey::CycleMode;
+        handleSmfLoopKey(*smfPlayerService(), player, key);
+        return true;
+    }
+    // 0 = all tracks on, next to 1..9 that toggle single tracks (was A).
+    if (event.key == '0') {
         clearHubMidiSoloTracking();
         if (smfTrackMuteState().clear(projection.generation)) {
             UI::showToast("ALL MIDI TRACKS ON", 800);
