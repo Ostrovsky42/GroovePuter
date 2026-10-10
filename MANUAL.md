@@ -1,6 +1,6 @@
-# GroovePuter 0.9.18 Manual
+# GroovePuter 0.9.19 Manual
 
-This manual describes the current user-facing GroovePuter workflow on the tagged **v0.9.18** source baseline. **v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation underneath it.
+This manual describes the current user-facing GroovePuter workflow on the tagged and packaged **v0.9.19** source baseline. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the v0.9.19 release notes for the exact binary and acceptance boundary.
 
 If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
 
@@ -396,13 +396,13 @@ Use documentation in this order:
 5. this manual for workflow detail;
 6. research/architecture documents only when investigating implementation or design history.
 
-The goal is that a musician reaches a first useful result before needing levels 4-6. The 0.9.18 additions stay optional until the musician asks for more control over target, form or captured MIDI material.
+The goal is that a musician reaches a first useful result before needing levels 4-6. The GEN, FORM and GRAB controls stay optional until the musician asks for more control over target, form or captured MIDI material.
 
 ## 13. Build / install boundary
 
 Developer builds still use the repository scripts and CI. A normal user should not need Arduino tooling as the primary install path; productization work should make accepted release artifacts installable through a user-oriented launcher/burner flow.
 
-The current tagged source baseline is `v0.9.18`. The latest packaged GitHub Release and hardware-accepted foundation remains `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the matching tag/release and `docs/releases/` records.
+The current tagged source baseline and latest packaged GitHub Release is `v0.9.19`. The earlier hardware-accepted foundation is `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the matching release notes and `docs/releases/` records.
 
 ## 14. Product boundary
 

@@ -1,4 +1,4 @@
-# GroovePuter 0.9.18 — First Five Minutes
+# GroovePuter 0.9.19 — First Five Minutes
 
 This page is for the first session on a M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to

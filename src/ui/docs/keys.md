@@ -1,6 +1,6 @@
-# GroovePuter 0.9.18 Key Map — Cardputer ADV
+# GroovePuter 0.9.19 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current tagged v0.9.18 source baseline. v0.9.16 remains the latest packaged GitHub Release and hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical external key reference for the current tagged and packaged v0.9.19 source baseline. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 

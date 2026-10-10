@@ -1,6 +1,6 @@
 # GroovePuter
 
-[![Status](https://img.shields.io/badge/status-v0.9.18%20tagged-orange)](#current-status)
+[![Status](https://img.shields.io/badge/status-v0.9.19%20release-blue)](#current-status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20ADV-blue)](#hardware)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -56,13 +56,13 @@ The development workflow is built around a different question from ordinary rand
 
 ## Current status
 
-**v0.9.18** is the current tagged source baseline. The tag points at the merged 0.9.18 line with genre idioms, phrase ideas, DnB, GRAB, FORM and the local GEN generation-control panel.
+**v0.9.19** is the current tagged source baseline and packaged GitHub Release. It includes the 0.9.18 genre idioms, phrase ideas, DnB, GRAB, FORM and local GEN generation-control panel, plus fixes for SYNTH B, MIDI/SD watchdog and synth-engine reboots, cheaper audio rendering, and MIDI loop controls from HUB MIDI.
 
-**v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. The newer v0.9.18 source is tagged, but it does not currently have a separate GitHub Release object/package.
+**v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. For the exact v0.9.19 binary, build provenance and acceptance boundary, use its release notes.
 
 The first-user goal remains deliberately small: a new owner should be able to start GroovePuter, choose a musical direction, generate a result, make a TAKE, develop it, recover from a mistake and save without first learning the internal architecture.
 
-The 0.9.18 GENERATE workflow still has **two workflow pages**:
+The 0.9.19 GENERATE workflow still has **two workflow pages**:
 
 ```text
 GENRE -> FEEL
@@ -70,8 +70,8 @@ GENRE -> FEEL
 
 Inside GENRE, `Tab` opens the `GEN 2/3` local panel; another `Tab` continues to FEEL. **GEN is the optional middle local panel** for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
 
-Packaged release: [`v0.9.16 — Foundation Freeze`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
-Tagged source baseline: [`v0.9.18`](https://github.com/Ostrovsky42/GroovePuter/tree/v0.9.18).
+Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19).
+Earlier hardware-accepted foundation: [`v0.9.16`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
 
 ## First musical win
 

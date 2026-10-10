@@ -78,14 +78,14 @@ assert "panel_ = Panel::Gen;" in genre_page
 assert "requestPageTransition(WorkflowPages::kFeel);" in genre_page
 assert '"GEN 2/3"' in genre_page
 
-# 0.9.18 first-user documentation contract. v0.9.18 is a real annotated tag
-# on the merged source baseline. v0.9.16 remains the latest packaged GitHub
-# Release/hardware-accepted foundation; the facade must not present 0.9.17 as
-# the active source line.
+# 0.9.19 first-user documentation contract. v0.9.19 is the tagged product
+# package; v0.9.16 remains the earlier hardware-accepted foundation.
 assert readme.startswith("# GroovePuter\n")
 assert "M5Stack Cardputer ADV" in readme
 assert "v0.9.16" in readme
-assert "v0.9.18" in readme
+assert "v0.9.19" in readme
+assert "releases/tag/v0.9.19" in readme
+assert "v0.9.16 — Foundation Freeze** remains the latest packaged" not in readme
 assert "docs/user/QUICKSTART.md" in readme
 assert "active **0.9.17" not in readme
 assert "0.9.14 / 0.9.15 public-beta candidate" not in readme
@@ -94,14 +94,14 @@ assert "docs/PRODUCT_POSITIONING.md" in readme
 assert "GENRE != FEEL != SOUND" in readme
 assert "Fn+M      workspace launcher" in readme
 assert "tagged source baseline" in readme
-assert "latest packaged GitHub Release" in readme
+assert "latest packaged github release" in readme.lower()
 assert "GEN is the optional middle page" not in readme
 assert "GEN is the optional middle" in readme
 assert "two workflow pages" in readme
 
-assert quickstart_path.exists(), "0.9.18 user quick start is missing"
+assert quickstart_path.exists(), "0.9.19 user quick start is missing"
 quickstart = quickstart_path.read_text()
-assert quickstart.startswith("# GroovePuter 0.9.18 — First Five Minutes")
+assert quickstart.startswith("# GroovePuter 0.9.19 — First Five Minutes")
 for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
     assert action in quickstart, action
 for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "ReferenceRole"):
@@ -112,13 +112,13 @@ assert "middle **GEN** panel" in quickstart
 assert "You do not need this panel for" in quickstart
 
 assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
-assert "0.9.18 First Five Minutes" in docs_index
-assert "current 0.9.18 user workflow manual" in docs_index
+assert "0.9.19 First Five Minutes" in docs_index
+assert "current 0.9.19 user workflow manual" in docs_index
 assert "tagged source baseline" in docs_index
 assert "latest packaged GitHub Release" in docs_index
 assert "older 0.9.1-era manual" not in docs_index
 
-assert manual.startswith("# GroovePuter 0.9.18 Manual")
+assert manual.startswith("# GroovePuter 0.9.19 Manual")
 assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "GEN is the optional local generation-target panel inside GENRE" in manual
@@ -161,7 +161,7 @@ assert "| `Alt+Backspace` | Discard working edits to accepted material |" in key
 assert "`Alt+X` is reserved globally for LiveMix" in keys
 
 # Canonical key map: current version plus beginner constitution and full expert reference.
-assert keys.startswith("# GroovePuter 0.9.18 Key Map")
+assert keys.startswith("# GroovePuter 0.9.19 Key Map")
 assert "## First Five Minutes" in keys
 for expected in (
     "`Space`",
