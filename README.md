@@ -56,19 +56,19 @@ The development workflow is built around a different question from ordinary rand
 
 ## Current status
 
-**v0.9.18** is the current tagged source baseline. The tag points at the merged 0.9.18 line with genre idioms, phrase ideas, DnB, GRAB, FORM and the `GENRE -> GEN -> FEEL` generation workflow.
+**v0.9.18** is the current tagged source baseline. The tag points at the merged 0.9.18 line with genre idioms, phrase ideas, DnB, GRAB, FORM and the local GEN generation-control panel.
 
 **v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. The newer v0.9.18 source is tagged, but it does not currently have a separate GitHub Release object/package.
 
 The first-user goal remains deliberately small: a new owner should be able to start GroovePuter, choose a musical direction, generate a result, make a TAKE, develop it, recover from a mistake and save without first learning the internal architecture.
 
-The 0.9.18 GENERATE workflow now has three pages:
+The 0.9.18 GENERATE workflow still has **two workflow pages**:
 
 ```text
-GENRE -> GEN -> FEEL
+GENRE -> FEEL
 ```
 
-GEN is the optional middle page for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
+Inside GENRE, `Tab` opens the `GEN 2/3` local panel; another `Tab` continues to FEEL. **GEN is the optional middle local panel** for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
 
 Packaged release: [`v0.9.16 — Foundation Freeze`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
 Tagged source baseline: [`v0.9.18`](https://github.com/Ostrovsky42/GroovePuter/tree/v0.9.18).
