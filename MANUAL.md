@@ -368,7 +368,8 @@ With a loaded MIDI session:
 - `Fn+Left/Right`: physical-track level;
 - `Enter` or `1..9`: mute/unmute;
 - `S`: solo;
-- `A`: all MIDI tracks on;
+- `L`: cycle the player loop mode; `A` marks its start and `E` marks its end;
+- `0`: all MIDI tracks on;
 - `O`: show which tracks occupy the SEQTRAK outputs;
 - `Y`, then `Y`: GRAB the selected layer into a Working Melody while paused;
 - `H`: return to Player.
