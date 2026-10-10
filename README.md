@@ -1,6 +1,6 @@
 # GroovePuter
 
-[![Status](https://img.shields.io/badge/status-0.9.17%20productization-orange)](#current-status)
+[![Status](https://img.shields.io/badge/status-v0.9.18%20tagged-orange)](#current-status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20ADV-blue)](#hardware)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -56,21 +56,22 @@ The development workflow is built around a different question from ordinary rand
 
 ## Current status
 
-**v0.9.16 — Foundation Freeze** is the current public hardware-accepted foundation. It freezes the ownership, persistence, MIDI, generation, memory and hardware-validation work that the product now builds on.
+**v0.9.18** is the current tagged source baseline. The tag points at the merged 0.9.18 line with genre idioms, phrase ideas, DnB, GRAB, FORM and the `GENRE -> GEN -> FEEL` generation workflow.
 
-The active **0.9.17 — First Five Minutes** line is deliberately narrower. Its job is to make a new owner install GroovePuter, understand the essential controls, create a musical result and recover from mistakes without learning the internal architecture first.
+**v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. The newer v0.9.18 source is tagged, but it does not currently have a separate GitHub Release object/package.
 
-0.9.17 therefore prioritizes:
+The first-user goal remains deliberately small: a new owner should be able to start GroovePuter, choose a musical direction, generate a result, make a TAKE, develop it, recover from a mistake and save without first learning the internal architecture.
 
-- first-session documentation and on-device help;
-- a stable beginner key vocabulary;
-- install / boot / first-sound friction;
-- clear musical wording for refusals and preconditions;
-- external first-user observation.
+The 0.9.18 GENERATE workflow now has three pages:
 
-It does **not** reopen the Foundation Freeze for speculative musical architecture.
+```text
+GENRE -> GEN -> FEEL
+```
 
-Release: [`v0.9.16 — Foundation Freeze`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
+GEN is the optional middle page for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
+
+Packaged release: [`v0.9.16 — Foundation Freeze`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
+Tagged source baseline: [`v0.9.18`](https://github.com/Ostrovsky42/GroovePuter/tree/v0.9.18).
 
 ## First musical win
 
