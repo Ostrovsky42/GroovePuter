@@ -59,6 +59,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_global_help_content"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_grab_panel_state.cpp" \
+  -o "${BUILD_DIR}/test_smf_grab_panel_state"
+
+"${BUILD_DIR}/test_smf_grab_panel_state"
+
 python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 
 "${CXX}" \

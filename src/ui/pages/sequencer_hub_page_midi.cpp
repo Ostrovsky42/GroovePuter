@@ -10,6 +10,7 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "smf_loop_keys.h"
+#include "smf_grab_panel_state.h"
 #include "synth_sequencer_page.h"
 #include "src/state/generation_shape_state.h"
 #include "src/state/phrase_generation_request_state.h"
@@ -658,6 +659,7 @@ void drawHubMidiOutputs(IGfx& gfx,
 }  // namespace
 
 void SequencerHubPage::onEnter(int context) {
+    midiGrabPanel_ = false;
     midiRouteEdit_ = false;
     midiOutputsView_ = false;
     midiRouteDraft_ = kSmfTrackOutputRouteAuto;
@@ -681,6 +683,7 @@ void SequencerHubPage::draw(IGfx& gfx) {
 
 bool SequencerHubPage::handleEvent(UIEvent& event) {
     if (event.event_type == GROOVEPUTER_KEY_DOWN &&
+        !midiGrabPanel_ &&
         !event.alt && !event.ctrl && !event.meta &&
         (event.key == 'm' || event.key == 'M') &&
         mode_ == Mode::OVERVIEW) {
@@ -732,6 +735,7 @@ void SequencerHubPage::syncMidiSessionSelection() {
 }
 
 void SequencerHubPage::returnFromMidiOverview() {
+    midiGrabPanel_ = false;
     midiRouteEdit_ = false;
     midiOutputsView_ = false;
     midiRouteDraft_ = kSmfTrackOutputRouteAuto;
@@ -774,6 +778,7 @@ bool SequencerHubPage::toggleMidiLayer(uint8_t layerIndex) {
 
 bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+    if (midiGrabPanel_) return handleMidiGrabPanelEvent(event);
 
     const bool hubShortcut =
         !event.alt && !event.ctrl && (event.key == 'h' || event.key == 'H');
@@ -989,13 +994,10 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         }
         return true;
     }
-    // GRAB: Y shows what would be taken (layer, bars, target voice), Y again
-    // within kGrabConfirmMs takes it. Range = the player's A-B loop, else
-    // GEN LENGTH bars from the current bar. Only while paused or stopped.
+    // GRAB selection is explicit and stays local to this panel.
     if (event.key == 'y' || event.key == 'Y') {
         if (player.state != SmfPlayerState::Paused &&
             player.state != SmfPlayerState::Stopped) {
-            midiGrabArmed_ = false;
             UI::showToast("PAUSE TO GRAB (SPACE)", 1000);
             return true;
         }
@@ -1003,61 +1005,16 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             UI::showToast("GRAB BUSY", 700);
             return true;
         }
-        const int targetVoice = GroovePuterState::melodyTargetVoice() == 1 ? 1 : 0;
-        if (SynthSequencerPage::voiceHasUnsavedEdits(mini_acid_, targetVoice)) {
-            midiGrabArmed_ = false;
-            UI::showToast(targetVoice == 0 ? "SAVE OR DISCARD SYNTH A FIRST"
-                                           : "SAVE OR DISCARD SYNTH B FIRST",
-                          1400);
-            return true;
-        }
         const auto& layer = projection.layers.layers[selected];
-        const uint32_t totalBars = std::max<uint32_t>(player.totalBars, 1u);
-        uint32_t startBar = std::max<uint32_t>(player.bar, 1u);
-        uint32_t endBar = startBar + GroovePuterState::requestedPhraseBars() - 1u;
-        if (player.loopMode == SmfLoopMode::Section && player.loopStartBar != 0u &&
-            player.loopEndBar >= player.loopStartBar) {
-            startBar = player.loopStartBar;
-            endBar = player.loopEndBar;
-        }
-        endBar = std::min(endBar, totalBars);
-        const int voice = GroovePuterState::melodyTargetVoice() == 1 ? 1 : 0;
-        const uint32_t now = millis();
-        const bool confirm = midiGrabArmed_ &&
-            now - midiGrabArmedMs_ <= kGrabConfirmMs &&
-            midiGrabTrack_ == layer.trackIndex &&
-            midiGrabChannels_ == layer.channelMask &&
-            midiGrabStartBar_ == startBar && midiGrabEndBar_ == endBar &&
-            midiGrabVoice_ == voice;
-        char toast[40]{};
-        if (!confirm) {
-            midiGrabArmed_ = true;
-            midiGrabArmedMs_ = now;
-            midiGrabTrack_ = layer.trackIndex;
-            midiGrabChannels_ = layer.channelMask;
-            midiGrabStartBar_ = startBar;
-            midiGrabEndBar_ = endBar;
-            midiGrabVoice_ = static_cast<int8_t>(voice);
-            std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > NEW %c SLOT",
-                          static_cast<unsigned>(layer.trackIndex + 1u),
-                          static_cast<unsigned long>(startBar),
-                          static_cast<unsigned long>(endBar),
-                          static_cast<char>('A' + voice));
-            UI::showToast(toast, kGrabConfirmMs);
-            return true;
-        }
-        midiGrabArmed_ = false;
-        SmfGrabRequest request{};
-        request.trackIndex = layer.trackIndex;
-        request.channelMask = layer.channelMask != 0u ? layer.channelMask : 0xFFFFu;
-        request.startBar = startBar;
-        request.endBar = endBar;
-        if (!service || !service->requestGrab(request)) {
-            UI::showToast("GRAB BUSY", 800);
-            return true;
-        }
-        midiGrabPending_ = true;
-        UI::showToast("GRABBING...", 2000);
+        midiGrabSelection_ = SmfGrabPanelState::open(
+            player.bar, player.totalBars,
+            player.loopMode == SmfLoopMode::Section,
+            player.loopStartBar, player.loopEndBar);
+        midiGrabGeneration_ = projection.generation;
+        midiGrabTrack_ = layer.trackIndex;
+        midiGrabChannels_ = layer.channelMask;
+        midiOutputsView_ = false;
+        midiGrabPanel_ = true;
         return true;
     }
     if (event.key >= '1' && event.key <= '9') {
@@ -1087,6 +1044,60 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         }
         return true;
     }
+    return true;
+}
+
+bool SequencerHubPage::handleMidiGrabPanelEvent(UIEvent& event) {
+    if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event)) {
+        midiGrabPanel_ = false;
+        return true;
+    }
+    if (event.alt || event.ctrl || event.meta) return true;
+    if (UIInput::isUp(event) || UIInput::isDown(event)) {
+        midiGrabSelection_.moveFocus(UIInput::isDown(event) ? 1 : -1);
+        return true;
+    }
+    if (UIInput::isLeft(event) || UIInput::isRight(event)) {
+        midiGrabSelection_.adjust(UIInput::isRight(event) ? 1 : -1);
+        return true;
+    }
+    if (event.key != '\n' && event.key != '\r') return true;
+    if (!midiGrabSelection_.valid()) {
+        UI::showToast("GRAB: MAX 8 BARS", 1000);
+        return true;
+    }
+    ISmfPlayerService* service = smfPlayerService();
+    const SmfPlayerSnapshot player = service ? service->snapshot() : SmfPlayerSnapshot{};
+    const HubMidiProjection projection = captureHubMidiProjection();
+    if (!service || (player.state != SmfPlayerState::Paused &&
+                     player.state != SmfPlayerState::Stopped)) {
+        UI::showToast("PAUSE TO GRAB (SPACE)", 1000);
+        return true;
+    }
+    if (!projection.ready() || projection.generation != midiGrabGeneration_) {
+        midiGrabPanel_ = false;
+        UI::showToast("MIDI FILE CHANGED: RETRY", 1100);
+        return true;
+    }
+    const int voice = midiGrabSelection_.toVoice;
+    if (SynthSequencerPage::voiceHasUnsavedEdits(mini_acid_, voice)) {
+        UI::showToast(voice == 0 ? "SAVE OR DISCARD SYNTH A FIRST"
+                                 : "SAVE OR DISCARD SYNTH B FIRST", 1400);
+        return true;
+    }
+    SmfGrabRequest request{};
+    request.trackIndex = midiGrabTrack_;
+    request.channelMask = midiGrabChannels_ != 0u ? midiGrabChannels_ : 0xFFFFu;
+    request.startBar = midiGrabSelection_.fromBar;
+    request.endBar = midiGrabSelection_.endBar();
+    if (!service->requestGrab(request)) {
+        UI::showToast("GRAB BUSY", 800);
+        return true;
+    }
+    midiGrabVoice_ = static_cast<int8_t>(voice);
+    midiGrabPanel_ = false;
+    midiGrabPending_ = true;
+    UI::showToast("GRABBING...", 2000);
     return true;
 }
 
@@ -1201,6 +1212,43 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      selectedTrackIsSolo(projection.generation,
                                          selectedLayer.trackIndex),
                      projection.layers.partial);
+    if (midiGrabPanel_) drawMidiGrabPanel(gfx);
+}
+
+void SequencerHubPage::drawMidiGrabPanel(IGfx& gfx) {
+    const int width = std::min(gfx.width() - 12, 226);
+    const int height = 106;
+    const int x = (gfx.width() - width) / 2;
+    const int y = (gfx.height() - height) / 2;
+    gfx.fillRect(x, y, width, height, kSelectedRowBackground);
+    gfx.fillRect(x, y, width, 2, kAccent);
+    char line[48]{};
+    std::snprintf(line, sizeof(line), "GRAB T%02u  BARS %lu-%lu",
+                  static_cast<unsigned>(midiGrabTrack_ + 1u),
+                  static_cast<unsigned long>(midiGrabSelection_.fromBar),
+                  static_cast<unsigned long>(midiGrabSelection_.endBar()));
+    gfx.setTextColor(kAccent);
+    gfx.drawText(x + 7, y + 6, line);
+    std::snprintf(line, sizeof(line), "FROM  %lu",
+                  static_cast<unsigned long>(midiGrabSelection_.fromBar));
+    gfx.setTextColor(midiGrabSelection_.focus == 0 ? kAccent : kBodyText);
+    gfx.drawText(x + 10, y + 27, line);
+    if (midiGrabSelection_.lengthChoice == 4) {
+        std::snprintf(line, sizeof(line), "LEN   LOOP (%lu)",
+                      static_cast<unsigned long>(midiGrabSelection_.lengthBars()));
+    } else {
+        std::snprintf(line, sizeof(line), "LEN   %lu",
+                      static_cast<unsigned long>(midiGrabSelection_.lengthBars()));
+    }
+    gfx.setTextColor(midiGrabSelection_.focus == 1 ? kAccent : kBodyText);
+    gfx.drawText(x + 10, y + 44, line);
+    gfx.setTextColor(midiGrabSelection_.focus == 2 ? kAccent : kBodyText);
+    gfx.drawText(x + 10, y + 61,
+                 midiGrabSelection_.toVoice == 0 ? "TO    SYNTH A" : "TO    SYNTH B");
+    gfx.setTextColor(midiGrabSelection_.valid() ? kMutedText : kRouteWarn);
+    gfx.drawText(x + 7, y + 86,
+                 midiGrabSelection_.valid() ? "ARROWS EDIT   ENTER GRAB   ESC"
+                                            : "MAX 8 BARS   ARROWS EDIT   ESC");
 }
 
 

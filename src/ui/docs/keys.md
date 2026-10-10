@@ -463,7 +463,7 @@ Open from MIDI Player with `H` after a file is loaded.
 | `0` | All MIDI tracks on |
 | `Space` | MIDI transport |
 | `O` | SEQTRAK outputs: which tracks occupy KICK..CYM, SYN1, SYN2, DX, and which reach nothing (OFF) |
-| `Y`, `Y` | GRAB (paused): the selected layer over the player's A-B loop (else GEN LENGTH bars from the current bar) becomes the Working Melody of GEN TARGET A/B; the first `Y` shows what and where, the second takes it; Ctrl+Z on the synth page undoes it |
+| `Y` | Open GRAB while paused or stopped. In the panel, Up/Down selects FROM, LEN or TO; Left/Right edits it; Enter takes the chosen bars into a new Melody slot on Synth A/B; Esc cancels. LEN can be 1/2/4/8 bars or the A-B loop length. Ctrl+Z on the synth page undoes the edit. |
 
 Each row shows where the track sounds now: `SYN1`/`SYN2`/`DX`/`KICK`..`CYM`,
 `DRUM` (GM drums split over the drum outputs), `MULTI`, or `OFF`. AUTO is
