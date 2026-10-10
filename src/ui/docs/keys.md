@@ -1,6 +1,6 @@
-# GroovePuter 0.9.17 Key Map — Cardputer ADV
+# GroovePuter 0.9.19 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.17 productization runtime built on the hardware-accepted v0.9.16 Foundation Freeze. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical external key reference for the current tagged and packaged v0.9.19 source baseline. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 
@@ -17,7 +17,7 @@ You do not need the whole table below before making music. Start with these rule
 
 These are beginner rules, not global overrides. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
 
-`Alt+V` opens GENRE (0.9.17; the v0.9.16 foundation sent it to FEEL).
+`Alt+V` opens GENRE directly.
 
 For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
 
@@ -30,6 +30,8 @@ HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
 SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
 ```
+
+GEN is a local panel inside GENRE, not a third WorkflowPages destination. `Tab` opens it; `Tab` again moves to FEEL.
 
 There are **12 active pages**. Persisted `GENERATION` and `TEXTURE` IDs resolve to
 FEEL. Persisted standalone Synth SOUND IDs resolve to their owning Synth A/B page;
@@ -237,7 +239,6 @@ Undo before that boundary cancels the pending activation; Redo during PLAY and
 Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 
 ### KNOBS / MORE
-
 | Key | Action |
 |---|---|
 | `Tab` | Cycle NOTES / KNOBS / MORE |

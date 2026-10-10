@@ -1,4 +1,4 @@
-# GroovePuter 0.9.17 — First Five Minutes
+# GroovePuter 0.9.19 — First Five Minutes
 
 This page is for the first session on a M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to
@@ -21,6 +21,9 @@ this quick start only on the **MATERIAL** page; other expert pages keep their ow
 actions.
 
 `Alt+V` opens GENRE directly; `Fn+M` reaches it through the workspace launcher.
+Inside GENRE, `Tab` opens the middle **GEN** panel for generation target and
+phrase-shape options; another `Tab` continues to FEEL. You do not need this panel for
+this first groove; the defaults are enough.
 
 ## 1. Hear something
 
