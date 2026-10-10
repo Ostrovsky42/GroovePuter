@@ -2382,6 +2382,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   if (!buffer || numSamples == 0) return;
+  const uint32_t profileEntryCycles = RenderProfile::cycles();
 
   // Test Tone Mode (Hardware diagnostic)
   if (testToneEnabled_) {
@@ -2460,11 +2461,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   const bool tapeFxEnabled = tapeState.fxEnabled;
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
-  // Fine-grained profiling makes ten micros() calls per sample: the profiled
-  // block costs about four plain ones (47 ms against a 23 ms budget on the
-  // Cardputer), so it stutters audio and MIDI. It stays behind AudioDiagnostics
-  // and runs on one block in 128.
-  const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x7Fu) == 0);
+  // 0.9.19: every section of every block is timed with the CPU cycle counter
+  // (one instruction; the micros() profile it replaces cost a 47 ms block and
+  // ran only with AudioDiagnostics). Totals are in cycles until published.
+  constexpr bool detailedProfile = true;
 
   // FX safety guard: if previous callback was near/over budget, reduce FX wet path
   // first (Tape/Looper) to avoid audible underruns, then recover gradually.
@@ -2496,9 +2496,13 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   uint32_t tSamplerTotal = 0;
   uint32_t tFxTotal = 0;
   uint32_t tVocalTotal = 0;
+  uint32_t tSeqTotal = 0;
+  uint32_t tRetrigTotal = 0;
   uint32_t tLoopStart = micros();
+  const uint32_t tPreTotal = RenderProfile::cycles() - profileEntryCycles;
 
   for (size_t i = 0; i < numSamples; ++i) {
+    const uint32_t tSeq0 = RenderProfile::cycles();
     if (playing) {
       tickPhaseAccum_ += tickPhaseInc_;
       if (tickPhaseAccum_ >= 0x100000000ULL) {
@@ -2516,6 +2520,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
             synth, patternPlaybackState_[synth].releaseDue(absoluteSubtick));
       }
     }
+    const uint32_t tRetrig0 = RenderProfile::cycles();
+    tSeqTotal += tRetrig0 - tSeq0;
 
     float sample = 0.0f;
     float sample303 = 0.0f;
@@ -2588,7 +2594,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
 
     uint32_t tV0 = 0;
-    if (detailedProfile) tV0 = micros();
+    if (detailedProfile) tV0 = RenderProfile::cycles();
+    tRetrigTotal += tV0 - tRetrig0;
     // Synth voices are instruments as well as sequencer voices. Their envelopes
     // must be rendered while transport is stopped so live NoteOn/NoteOff reaches
     // the audio output and release tails can complete naturally.
@@ -2604,10 +2611,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       v *= trackVolumes[(int)VoiceId::SynthB];
       sample303 += delay3032.process(v);
     } else delay3032.process(0.0f);
-    if (detailedProfile) tVoicesTotal += (micros() - tV0);
+    if (detailedProfile) tVoicesTotal += (RenderProfile::cycles() - tV0);
 
     uint32_t tD0 = 0;
-    if (detailedProfile) tD0 = micros();
+    if (detailedProfile) tD0 = RenderProfile::cycles();
     if (playing) {
       // Engine-wide drum state must not depend on any individual mute.
       drums->beginSample();
@@ -2635,10 +2642,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       sample += drumsMix;
     }
     sample += sample303;
-    if (detailedProfile) tDrumsTotal += (micros() - tD0);
+    if (detailedProfile) tDrumsTotal += (RenderProfile::cycles() - tD0);
 
     uint32_t tS0 = 0;
-    if (detailedProfile) tS0 = micros();
+    if (detailedProfile) tS0 = RenderProfile::cycles();
     if (hasSampleStore) {
       // Tick/retrig dispatch above can start a sampler voice at this exact
       // frame. Render only after those triggers so the WAV stays aligned with
@@ -2646,18 +2653,18 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       samplerTrack->processFrame(samplerSample, *sampleStore);
       sample += samplerSample;
     }
-    if (detailedProfile) tSamplerTotal += (micros() - tS0);
+    if (detailedProfile) tSamplerTotal += (RenderProfile::cycles() - tS0);
     uint32_t tVocal0 = 0;
-    if (detailedProfile) tVocal0 = micros();
+    if (detailedProfile) tVocal0 = RenderProfile::cycles();
     float vocalSample = 0.0f;
     if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
       vocalSample = voiceCompressor_.process(vocalSynth_.process());
     }
     sample += vocalSample;
-    if (detailedProfile) tVocalTotal += (micros() - tVocal0);
+    if (detailedProfile) tVocalTotal += (RenderProfile::cycles() - tVocal0);
 
     uint32_t tF0 = 0;
-    if (detailedProfile) tF0 = micros();
+    if (detailedProfile) tF0 = RenderProfile::cycles();
     if (diagEnabled) {
       diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, tapeLooper->getPeak(), 0.0f);
     }
@@ -2699,16 +2706,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     if (finalSample < -1.0f) finalSample = -1.0f;
     if (diagEnabled) diag.accumulate(preLimiter, limited);
     buffer[i] = (int16_t)(finalSample * 32767.0f);
-    if (detailedProfile) tFxTotal += (micros() - tF0);
+    if (detailedProfile) tFxTotal += (RenderProfile::cycles() - tF0);
   }
   // seq handled by wrapper for accuracy
 
   perfStats.dspTimeUs = micros() - tLoopStart;
-  if (detailedProfile) {
-    perfStats.dspVoicesUs = tVoicesTotal;
-    perfStats.dspDrumsUs = tDrumsTotal;
-    perfStats.dspSamplerUs = tSamplerTotal + tVocalTotal;
-    perfStats.dspFxUs = tFxTotal;
+  {
+    const uint32_t perUs = RenderProfile::cyclesPerUs();
+    perfStats.dspVoicesUs = tVoicesTotal / perUs;
+    perfStats.dspDrumsUs = tDrumsTotal / perUs;
+    perfStats.dspSamplerUs = (tSamplerTotal + tVocalTotal) / perUs;
+    perfStats.dspFxUs = tFxTotal / perUs;
+    const uint32_t sections[RenderProfile::Count] = {
+        tPreTotal, tSeqTotal, tRetrigTotal, tVoicesTotal,
+        tDrumsTotal, tSamplerTotal, tVocalTotal, tFxTotal};
+    renderProfile_.publish(sections);
   }
 
   // Tape looper can change mode internally (e.g. REC->PLAY, safety DUB->PLAY).

@@ -324,6 +324,16 @@ static void logUiFrameWindow() {
         (unsigned)a.blocks, (unsigned)a.avgUs(), (unsigned)a.maxUs,
         (unsigned)kAudioBlockBudgetUs, (unsigned)a.overBudget,
         (unsigned)a.longestRun);
+    const auto p = g_miniAcid->takeRenderProfile();
+    char sect[200];
+    int len = snprintf(sect, sizeof(sect), "[AUDIO-SECT] n=%u avg/max us", (unsigned)p.blocks);
+    for (uint8_t i = 0; i < RenderProfile::Count && len > 0 &&
+                        len < static_cast<int>(sizeof(sect)); ++i) {
+      len += snprintf(sect + len, sizeof(sect) - len, " %s=%u/%u",
+                      RenderProfile::sectionName(i), (unsigned)p.avgUs[i],
+                      (unsigned)p.maxUs[i]);
+    }
+    Serial.println(sect);
   }
   const UiFrameProbe::Window w = g_miniDisplay->takeUiFrameWindow();
   const uint32_t n = w.frames ? w.frames : 1;

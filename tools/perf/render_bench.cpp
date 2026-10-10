@@ -120,5 +120,12 @@ int main(int argc, char** argv) {
               engine.currentSynthEngineName(0).c_str(),
               engine.currentSynthEngineName(1).c_str(), mute.c_str(), blocks,
               sum / blocks, mx, rms(stopped), rms(played));
+  const auto prof = engine.takeRenderProfile();
+  std::printf("  sections avg/max us:");
+  for (uint8_t i = 0; i < RenderProfile::Count; ++i) {
+    std::printf(" %s=%u/%u", RenderProfile::sectionName(i), (unsigned)prof.avgUs[i],
+                (unsigned)prof.maxUs[i]);
+  }
+  std::printf("\n");
   return 0;
 }

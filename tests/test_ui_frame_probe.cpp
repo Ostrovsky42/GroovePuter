@@ -5,6 +5,7 @@
 #include <initializer_list>
 
 #include "src/audio/audio_block_load.h"
+#include "src/dsp/render_section_profile.h"
 #include "src/ui/ui_frame_probe.h"
 
 using UiFrameProbe::AudioBusyClock;
@@ -135,6 +136,23 @@ void testAudioBlockLoadRunsAndWindows() {
   std::puts("Audio block load: average, max, over-budget blocks, longest run, windows: PASS");
 }
 
+void testRenderSectionProfile() {
+  RenderProfile::SectionProfile p;
+  uint32_t a[RenderProfile::Count] = {240, 2400, 0, 24000, 48000, 0, 0, 4800};
+  uint32_t b[RenderProfile::Count] = {240, 7200, 0, 24000, 24000, 0, 0, 4800};
+  p.publish(a);
+  p.publish(b);
+  const auto w = p.take(240);  // 240 cycles per us
+  assert(w.blocks == 2);
+  assert(w.avgUs[RenderProfile::Pre] == 1);
+  assert(w.avgUs[RenderProfile::Seq] == 20);
+  assert(w.maxUs[RenderProfile::Seq] == 30);
+  assert(w.avgUs[RenderProfile::Drums] == 150 && w.maxUs[RenderProfile::Drums] == 200);
+  const auto e = p.take(240);
+  assert(e.blocks == 0 && e.avgUs[RenderProfile::Voices] == 0 && e.maxUs[RenderProfile::Voices] == 0);
+  std::puts("Render section profile: per-section average and max per window: PASS");
+}
+
 }  // namespace
 
 int main() {
@@ -144,6 +162,7 @@ int main() {
   testTakeResetsAndMarksOutsideAFrameAreIgnored();
   testAudioBusyClockCountsTheBlockInProgress();
   testAudioBlockLoadRunsAndWindows();
+  testRenderSectionProfile();
   std::puts("UI frame probe: GREEN");
   return 0;
 }
