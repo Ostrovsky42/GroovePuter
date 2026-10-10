@@ -11,6 +11,7 @@ display = (ROOT / "src/ui/miniacid_display.cpp").read_text()
 smf = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text()
 drum = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text()
 drum_legacy = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text()
+genre_page = (ROOT / "src/ui/pages/genre_page.cpp").read_text()
 workflow = (ROOT / "src/ui/workflow_mode.h").read_text()
 readme = (ROOT / "README.md").read_text()
 manual = (ROOT / "MANUAL.md").read_text()
@@ -59,7 +60,9 @@ assert '"G:GEN Alt+G:ALL Q-I:PAT B:Bank"' in drum_legacy
 assert '"DRUM Alt[]:PG"' in drum_legacy
 assert '"REF         Mutable pattern references"' in help_content
 
-# Runtime workflow truth: 12 active pages. Generation/Texture and standalone
+# Runtime workflow truth: 12 active pages. GENERATE still has two top-level
+# pages, GENRE and FEEL. The 0.9.18 GEN 2/3 surface is a local panel inside
+# GenrePage, not a third WorkflowPages page. Generation/Texture and standalone
 # SOUND ids remain persisted compatibility aliases, not live pages.
 assert "case WorkflowMode::Perform: return 2;" in workflow
 assert "case WorkflowMode::Generate: return 2;" in workflow
@@ -71,15 +74,20 @@ assert "if (page == kSynthAParameters) return kSynthA;" in workflow
 assert "if (page == kSynthBParameters) return kSynthB;" in workflow
 assert "kGenre, kFeel" in workflow
 assert "kPattern, kSynthA, kSynthB, kDrums" in workflow
+assert "panel_ = Panel::Gen;" in genre_page
+assert "requestPageTransition(WorkflowPages::kFeel);" in genre_page
+assert '"GEN 2/3"' in genre_page
 
-# 0.9.18 first-user documentation contract. v0.9.16 remains the latest
-# published GitHub release, while dev_0.9.13 now contains the merged 0.9.18
-# development baseline. The first-user facade must not still present 0.9.17 as
-# the active productization line.
+# 0.9.18 first-user documentation contract. v0.9.18 is a real annotated tag
+# on the merged source baseline. v0.9.16 remains the latest packaged GitHub
+# Release/hardware-accepted foundation; the facade must not present 0.9.17 as
+# the active source line.
 assert readme.startswith("# GroovePuter\n")
 assert "M5Stack Cardputer ADV" in readme
 assert "v0.9.16" in readme
-assert "0.9.18" in readme
+assert "v0.9.18" in readme
+assert "tagged source baseline" in readme
+assert "latest packaged GitHub Release" in readme
 assert "docs/user/QUICKSTART.md" in readme
 assert "active **0.9.17" not in readme
 assert "0.9.14 / 0.9.15 public-beta candidate" not in readme
@@ -87,6 +95,9 @@ assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
 assert "GENRE != FEEL != SOUND" in readme
 assert "Fn+M      workspace launcher" in readme
+assert "GEN is the optional middle page" not in readme
+assert "GEN is the optional middle" in readme
+assert "two workflow pages" in readme
 
 assert quickstart_path.exists(), "0.9.18 user quick start is missing"
 quickstart = quickstart_path.read_text()
@@ -97,15 +108,20 @@ for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "Referen
     assert internal_term not in quickstart, internal_term
 assert "legacy FEEL page" not in quickstart
 assert "`Alt+V` opens GENRE" in quickstart
+assert "middle **GEN** page" in quickstart
+assert "You do not need it for this first" in quickstart
 
 assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
 assert "0.9.18 First Five Minutes" in docs_index
 assert "current 0.9.18 user workflow manual" in docs_index
+assert "tagged source baseline" in docs_index
+assert "latest packaged GitHub Release" in docs_index
 assert "older 0.9.1-era manual" not in docs_index
 
 assert manual.startswith("# GroovePuter 0.9.18 Manual")
 assert "docs/user/QUICKSTART.md" in manual
-assert "GENERATE: GENRE -> GEN -> FEEL" in manual
+assert "GENERATE: GENRE -> FEEL" in manual
+assert "GEN is the optional generation-target" in manual
 assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
 assert "DEVELOP + BREAK" in manual
 assert "`Alt+Enter` / `Ctrl+Enter`: ACCEPT" in manual
@@ -117,6 +133,11 @@ assert "Alt+V` through legacy page id 11" not in manual
 assert "`Alt+V` opens GENRE" in manual
 assert "GENRE 1/2" not in manual
 assert "FEEL 2/2" not in manual
+assert "### GENRE 1/3" in manual
+assert "### GEN 2/3" in manual
+assert "### FEEL 3/3" in manual
+assert "### FORM" in manual
+assert "GRAB" in manual
 
 # Hard-global ownership is part of the key truth. Alt+V is the accepted direct
 # GENRE shortcut in current runtime; Alt+X remains LiveMix before page dispatch.
@@ -152,7 +173,8 @@ for expected in (
 ):
     assert expected in keys
 assert "| `Alt+V` | GENRE |" in keys
-assert "GENERATE: GENRE -> GEN -> FEEL" in keys
+assert "GENERATE: GENRE -> FEEL" in keys
+assert "GEN is a local panel inside GENRE" in keys
 assert "MATERIAL BANK keeps `D` as derive" in keys
 assert "slot's saved descriptor selects" in keys
 assert "## GENRE 1/3" in keys
@@ -163,7 +185,7 @@ assert "## GENERATION 3/3" not in keys
 assert "PAUSE MIDI FIRST" not in keys
 
 # On-device Help must remain truthful about current hard-global navigation and expose
-# the actual MATERIAL hero actions. GEN is discoverable as the middle GENERATE tab.
+# the actual MATERIAL hero actions. GEN is discoverable as the middle local panel.
 assert '"Fn+M        Workspace launcher"' in help_content
 assert '"Alt+V       GENRE"' in help_content
 assert '"Alt+V       FEEL (legacy)"' not in help_content
