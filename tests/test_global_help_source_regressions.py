@@ -86,8 +86,6 @@ assert readme.startswith("# GroovePuter\n")
 assert "M5Stack Cardputer ADV" in readme
 assert "v0.9.16" in readme
 assert "v0.9.18" in readme
-assert "tagged source baseline" in readme
-assert "latest packaged GitHub Release" in readme
 assert "docs/user/QUICKSTART.md" in readme
 assert "active **0.9.17" not in readme
 assert "0.9.14 / 0.9.15 public-beta candidate" not in readme
@@ -95,6 +93,8 @@ assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
 assert "GENRE != FEEL != SOUND" in readme
 assert "Fn+M      workspace launcher" in readme
+assert "tagged source baseline" in readme
+assert "latest packaged GitHub Release" in readme
 assert "GEN is the optional middle page" not in readme
 assert "GEN is the optional middle" in readme
 assert "two workflow pages" in readme
@@ -108,8 +108,8 @@ for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "Referen
     assert internal_term not in quickstart, internal_term
 assert "legacy FEEL page" not in quickstart
 assert "`Alt+V` opens GENRE" in quickstart
-assert "middle **GEN** page" in quickstart
-assert "You do not need it for this first" in quickstart
+assert "middle **GEN** panel" in quickstart
+assert "You do not need this panel for" in quickstart
 
 assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
 assert "0.9.18 First Five Minutes" in docs_index
@@ -121,7 +121,7 @@ assert "older 0.9.1-era manual" not in docs_index
 assert manual.startswith("# GroovePuter 0.9.18 Manual")
 assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
-assert "GEN is the optional generation-target" in manual
+assert "GEN is the optional local generation-target panel inside GENRE" in manual
 assert "SONG:     SONG -> MATERIAL -> MATERIAL BANK" in manual
 assert "DEVELOP + BREAK" in manual
 assert "`Alt+Enter` / `Ctrl+Enter`: ACCEPT" in manual
