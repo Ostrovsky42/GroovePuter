@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "../components/music_visuals.h"
+#include "smf_loop_keys.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/smf_track_inspector.h"
@@ -610,49 +611,18 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         GroovePuterUi::midiFileManager().open();
         return true;
     }
-    // Loop: L cycles OFF -> SONG -> A-B; S marks A (start), E marks B (end,
-    // and loops A-B). [ and ] stay global page navigation.
-    // The toast predicts the result with the same rules the player applies.
-    const bool loopKey = event.key == 'l' || event.key == 'L';
-    const bool markA = event.key == 's' || event.key == 'S';
-    const bool markB = event.key == 'e' || event.key == 'E';
-    if (loopKey || markA || markB) {
-        if (state.state == SmfPlayerState::Unloaded || state.state == SmfPlayerState::Error) {
-            UI::showToast("LOAD MIDI FIRST", 800);
-            return true;
-        }
-        SmfLoopRegion region{};
-        region.mode = state.loopMode;
-        region.startBar = state.loopStartBar;
-        region.endBar = state.loopEndBar;
-        const uint32_t totalBars = std::max<uint32_t>(state.totalBars, 1u);
-        bool queued = false;
-        if (markA) {
-            markSmfLoopStart(region, state.bar, totalBars);
-            queued = player_->markLoopStart();
-        } else if (markB) {
-            markSmfLoopEnd(region, state.bar, totalBars);
-            queued = player_->markLoopEnd();
-        } else {
-            cycleSmfLoopMode(region, state.bar, totalBars);
-            queued = player_->cycleLoopMode();
-        }
-        char toast[32];
-        if (!queued) {
-            std::snprintf(toast, sizeof(toast), "MIDI PLAYER BUSY");
-        } else if (markA && region.mode != SmfLoopMode::Section) {
-            std::snprintf(toast, sizeof(toast), "LOOP A = BAR %lu",
-                          static_cast<unsigned long>(region.startBar));
-        } else if (region.mode == SmfLoopMode::Song) {
-            std::snprintf(toast, sizeof(toast), "LOOP: WHOLE SONG");
-        } else if (region.mode == SmfLoopMode::Section) {
-            std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
-                          static_cast<unsigned long>(region.startBar),
-                          static_cast<unsigned long>(region.endBar));
-        } else {
-            std::snprintf(toast, sizeof(toast), "LOOP: OFF");
-        }
-        UI::showToast(toast, 900);
+    // Loop: L cycles OFF -> SONG -> A-B; S or A marks A (start), E marks B
+    // (end, and loops A-B). [ and ] stay global page navigation.
+    if (event.key == 'l' || event.key == 'L') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::CycleMode);
+        return true;
+    }
+    if (event.key == 's' || event.key == 'S' || event.key == 'a' || event.key == 'A') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::MarkStart);
+        return true;
+    }
+    if (event.key == 'e' || event.key == 'E') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::MarkEnd);
         return true;
     }
     if (event.key == 'm' || event.key == 'M') {

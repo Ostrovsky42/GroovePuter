@@ -1066,8 +1066,19 @@ bool CardputerSmfPlayerService::prepareStreamAt(uint32_t tick) {
     streamPreparedTick_ = tick;
     streamPreparedValid_ = true;
 
+    // A rescan of a long file reads the SD card for seconds, and this task
+    // runs above the CPU0 idle task: give the core away every ~20 ms or the
+    // task watchdog resets the device (coredump 2026-10-10: IDLE0 starved
+    // while prepareStreamAt rescanned to tick 7680 with nobody touching it).
+    constexpr uint32_t kRescanYieldMs = 20;
+    uint32_t lastYieldMs = millis();
     SmfStreamEvent event{};
     while (stream_.next(event)) {
+        const uint32_t nowMs = millis();
+        if (nowMs - lastYieldMs >= kRescanYieldMs) {
+            lastYieldMs = nowMs;
+            vTaskDelay(1);
+        }
         if (event.event.tick < tick) continue;
         pendingEvent_ = event;
         hasPendingEvent_ = true;

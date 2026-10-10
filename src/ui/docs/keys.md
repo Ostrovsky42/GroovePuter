@@ -440,7 +440,7 @@ undone by the curve.
 | Key | Action |
 |---|---|
 | `L` | Loop `OFF -> SONG -> A-B -> OFF` (A-B without marks: 4 bars from the playhead) |
-| `S` | Mark A (loop start) at the current bar |
+| `S` / `A` | Mark A (loop start) at the current bar |
 | `E` | Mark B (loop end, inclusive) at the current bar and loop A-B |
 
 The header chip shows `LOOP` (whole song) or `L5-8` (bars). The loop restarts
@@ -460,7 +460,8 @@ Open from MIDI Player with `H` after a file is loaded.
 | `Enter` | Mute/unmute selected layer |
 | `1..9` | Mute/unmute physical tracks directly |
 | `S` | Solo selected layer |
-| `A` | All MIDI tracks on |
+| `L` / `A` / `E` | The player loop, as on MIDI PLAYER: loop mode, mark A, mark B |
+| `0` | All MIDI tracks on |
 | `Space` | MIDI transport |
 | `O` | SEQTRAK outputs: which tracks occupy KICK..CYM, SYN1, SYN2, DX, and which reach nothing (OFF) |
 | `Y`, `Y` | GRAB (paused): the selected layer over the player's A-B loop (else GEN LENGTH bars from the current bar) becomes the Working Melody of GEN TARGET A/B; the first `Y` shows what and where, the second takes it; Ctrl+Z on the synth page undoes it |

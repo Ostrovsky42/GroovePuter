@@ -106,6 +106,7 @@ TempoDelay::TempoDelay(float sampleRate)
 }
 
 void TempoDelay::init(float maxSeconds) {
+  silentRun_ = 0;
   if (maxSeconds <= 0.0f) maxSeconds = 1.0f;
   
   // Calculate required
@@ -145,6 +146,7 @@ void TempoDelay::reset() {
     return;
   std::fill(buffer.begin(), buffer.end(), 0.0f);
   writeIndex = 0;
+  silentRun_ = 0;
   if (delaySamples < 1)
     delaySamples = 1;
   if (delaySamples >= maxDelaySamples)
@@ -163,6 +165,7 @@ void TempoDelay::setSampleRate(float sr) {
   if (!buffer.empty()) {
     buffer.assign(static_cast<size_t>(maxDelaySamples), 0.0f);
   }
+  silentRun_ = 0;
   if (delaySamples >= maxDelaySamples)
     delaySamples = maxDelaySamples - 1;
   if (delaySamples < 1)
@@ -212,6 +215,12 @@ float TempoDelay::process(float input) {
   if (!enabled || buffer.empty()) {
     return input;
   }
+  // Silent and already rung out: every slot holds 0, so the full path below
+  // would read 0, write 0 and return input + 0. Same bits, no work.
+  if (input == 0.0f && silentRun_ >= maxDelaySamples) {
+    if (++writeIndex >= maxDelaySamples) writeIndex = 0;
+    return input + 0.0f;
+  }
 
   int readIndex = writeIndex - delaySamples;
   if (readIndex < 0)
@@ -222,6 +231,11 @@ float TempoDelay::process(float input) {
   float fbSum = input + delayed * feedback;
   fbSum = fbSum / (1.0f + fabsf(fbSum) * 0.8f);  // gentle limiting
   buffer[writeIndex] = fbSum;
+  if (input == 0.0f && delayed == 0.0f && fbSum == 0.0f) {
+    if (silentRun_ < maxDelaySamples) ++silentRun_;
+  } else {
+    silentRun_ = 0;
+  }
 
   writeIndex++;
   if (writeIndex >= maxDelaySamples)
@@ -2254,7 +2268,10 @@ void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet
         int engineIdx = static_cast<int>(value * static_cast<float>(kEngineCount));
         if (engineIdx < 0) engineIdx = 0;
         if (engineIdx >= kEngineCount) engineIdx = kEngineCount - 1;
-        setDrumEngine(kEngineByLaneValue[engineIdx]);
+        // AudioTask: never allocate a drum engine here. The UI applies the
+        // request on its next frame, under the audio guard (0.9.19).
+        pendingDrumEngineLane_.store(static_cast<int8_t>(engineIdx),
+                                     std::memory_order_release);
         break;
       }
       default:
@@ -2543,8 +2560,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         if (retrigB_.countRemaining <= 0) retrigB_.active = false;
       }
     }
+    if (playing && currentStepIndex >= 0)
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-        if (!playing || currentStepIndex < 0) continue;
         if (retrigDrums_[v].active) {
              if (--retrigDrums_[v].counter <= 0 && retrigDrums_[v].countRemaining > 0) {
                  const DrumPattern& pattern = activeDrumPattern(v);
@@ -6157,6 +6174,41 @@ bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSl
   pending.songRow = static_cast<int8_t>(row);
   pending.queued = true;
   return true;
+}
+
+bool MiniAcid::drumEngineSwitchDue() const {
+  return pendingDrumEngineLane_.load(std::memory_order_acquire) >= 0;
+}
+
+void MiniAcid::applyPendingDrumEngineSwitch() {
+  static const char* kEngineByLaneValue[] = {"808", "909", "606", "CR78", "KPR77", "SP12"};
+  const int8_t idx = pendingDrumEngineLane_.exchange(-1, std::memory_order_acq_rel);
+  if (idx < 0 || idx >= static_cast<int8_t>(sizeof(kEngineByLaneValue) /
+                                            sizeof(kEngineByLaneValue[0]))) {
+    return;
+  }
+  setDrumEngine(kEngineByLaneValue[idx]);
+}
+
+bool MiniAcid::synthEngineSwitchDue() const {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MiniAcid::commitSettledSynthEngineSwitches() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      synthVoices_[idx].commitSwitch();
+    }
+  }
 }
 
 void MiniAcid::serviceSongMaterial() {

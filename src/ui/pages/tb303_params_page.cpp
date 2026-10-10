@@ -655,6 +655,9 @@ void TB303ParamsPage::restoreFocusedSlot() {
 }
 
 void TB303ParamsPage::updateTabFocusability() {
+  // Components exist only after setBoundaries() -> initComponents();
+  // layoutComponents() applies the tab on every draw after that.
+  if (!initialized_) return;
   const bool main = !more_tab_;
   cutoff_knob_->setFocusable(main);
   resonance_knob_->setFocusable(main);
@@ -673,6 +676,13 @@ void TB303ParamsPage::updateTabFocusability() {
 
 void TB303ParamsPage::setActiveTab(bool more) {
   if (more_tab_ == more) return;
+  // 0.9.19 S1 (coredump 2026-10-10, StoreProhibited at 0x18): a recreated
+  // Synth page restores its remembered MORE tab in restoreViewContinuity(),
+  // before setBoundaries() has created any component. Only remember the tab.
+  if (!initialized_) {
+    more_tab_ = more;
+    return;
+  }
   rememberFocusedSlot();
   more_tab_ = more;
   updateTabFocusability();

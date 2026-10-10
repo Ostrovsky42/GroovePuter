@@ -702,3 +702,9 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 # IN Space mute, Alt+N new empty Melody. Both were written but never run.
 bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
 bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"
+
+# 0.9.19 S1: synth engine switches never free or swap an engine in the AudioTask.
+bash "${ROOT_DIR}/tests/run_s1_synth_engine_switch_tests.sh"
+
+# 0.9.19 S1: Synth page restores the MORE tab before its components exist.
+bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
