@@ -2,7 +2,9 @@
 // and the AudioTask busy clock.
 #include <cassert>
 #include <cstdio>
+#include <initializer_list>
 
+#include "src/audio/audio_block_load.h"
 #include "src/ui/ui_frame_probe.h"
 
 using UiFrameProbe::AudioBusyClock;
@@ -110,6 +112,29 @@ void testAudioBusyClockCountsTheBlockInProgress() {
   std::puts("UI frame probe: audio busy clock = finished blocks + the block in progress: PASS");
 }
 
+void testAudioBlockLoadRunsAndWindows() {
+  AudioBlockLoad load;
+  constexpr uint32_t kBudget = 23219;
+  for (uint32_t us : {10000u, 24000u, 25000u, 30000u, 9000u, 24000u, 8000u}) {
+    load.record(us, kBudget);
+  }
+  const auto w = load.take();
+  assert(w.blocks == 7);
+  assert(w.renderUs == 130000);
+  assert(w.avgUs() == 18571);
+  assert(w.maxUs == 30000);
+  assert(w.overBudget == 4);
+  assert(w.longestRun == 3);
+  // A run that continues across windows is counted in the window it reaches.
+  load.record(24000, kBudget);
+  load.record(5000, kBudget);
+  const auto v = load.take();
+  assert(v.blocks == 2 && v.overBudget == 1 && v.longestRun == 1 && v.maxUs == 24000);
+  const auto e = load.take();
+  assert(e.blocks == 0 && e.avgUs() == 0 && e.maxUs == 0 && e.longestRun == 0);
+  std::puts("Audio block load: average, max, over-budget blocks, longest run, windows: PASS");
+}
+
 }  // namespace
 
 int main() {
@@ -118,6 +143,7 @@ int main() {
   testWorstFrameAndRepeatedStage();
   testTakeResetsAndMarksOutsideAFrameAreIgnored();
   testAudioBusyClockCountsTheBlockInProgress();
+  testAudioBlockLoadRunsAndWindows();
   std::puts("UI frame probe: GREEN");
   return 0;
 }

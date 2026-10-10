@@ -62,6 +62,7 @@ CardputerAudioRecorder* g_audioRecorder = nullptr;
 #include "src/sampler/ram_sample_store.h"
 #include "src/audio/audio_out_i2s.h"
 #include "src/ui/ui_frame_probe.h"
+#include "src/audio/audio_block_load.h"
 RamSampleStore g_sampleStore;
 
 static AudioOutI2S g_audioOut;
@@ -109,6 +110,10 @@ static float readPatternSequencerPhase(void* context) {
 // 0.9.19 UI frame probe: render time of the AudioTask as a running total, so a
 // UI stage can tell how much of its wall time core 1 spent rendering audio.
 static UiFrameProbe::AudioBusyClock g_audioBusyClock;
+// Per-block render time for [AUDIO-BLOCK]: over-budget blocks and their runs.
+static AudioBlockLoad g_audioBlockLoad;
+static constexpr uint32_t kAudioBlockBudgetUs =
+    static_cast<uint32_t>((1000000ULL * kBlockFrames) / kSampleRate);
 
 // One loop() iteration, input handling and every drawUI() in it included.
 struct LoopTiming {
@@ -226,6 +231,9 @@ void audioTask(void *param) {
     
     uint32_t dsp_time = micros() - start;
     g_audioBusyClock.endRender(dsp_time);
+    if (warmupBlocks == 0 && g_miniAcid) {
+      g_audioBlockLoad.record(dsp_time, kAudioBlockBudgetUs);
+    }
     
     // Publish one coherent cross-core telemetry snapshot.
     if (g_miniAcid) {
@@ -299,6 +307,18 @@ void drawUI() {
 // frame, wait = waiting for the audio gate, own = the rest.
 static void logUiFrameWindow() {
   if (!g_miniDisplay) return;
+  if (g_miniAcid) {
+    const AudioBlockLoad::Window a = g_audioBlockLoad.take();
+    Serial.printf("[AUDIO-BLOCK] drums=%s synthA=%s synthB=%s playing=%d n=%u "
+                  "avg=%u max=%u budget=%u over=%u run=%u us\n",
+        g_miniAcid->currentDrumEngineName().c_str(),
+        g_miniAcid->currentSynthEngineName(0).c_str(),
+        g_miniAcid->currentSynthEngineName(1).c_str(),
+        g_miniAcid->isPlaying() ? 1 : 0,
+        (unsigned)a.blocks, (unsigned)a.avgUs(), (unsigned)a.maxUs,
+        (unsigned)kAudioBlockBudgetUs, (unsigned)a.overBudget,
+        (unsigned)a.longestRun);
+  }
   const UiFrameProbe::Window w = g_miniDisplay->takeUiFrameWindow();
   const uint32_t n = w.frames ? w.frames : 1;
   const uint32_t waits = g_audioMutationGate.controlWaits();
