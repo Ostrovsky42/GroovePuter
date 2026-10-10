@@ -63,6 +63,12 @@ CardputerAudioRecorder* g_audioRecorder = nullptr;
 #include "src/audio/audio_out_i2s.h"
 #include "src/ui/ui_frame_probe.h"
 #include "src/audio/audio_block_load.h"
+#ifndef GROOVEPUTER_RENDER_BENCH
+#define GROOVEPUTER_RENDER_BENCH 0
+#endif
+#if GROOVEPUTER_RENDER_BENCH
+#include "src/perf/render_bench.h"
+#endif
 RamSampleStore g_sampleStore;
 
 static AudioOutI2S g_audioOut;
@@ -571,6 +577,27 @@ void setup() {
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
+
+#if GROOVEPUTER_RENDER_BENCH
+  // 0.9.19 diagnostic build: interleaved vs blockwise render of each engine
+  // (src/perf/render_bench.h). Waits for a serial monitor, pauses the
+  // AudioTask at a block boundary so it does not steal the core, then boots on.
+  {
+    const uint32_t waitStart = millis();
+    while (!Serial && millis() - waitStart < 30000) delay(10);
+    delay(500);
+    Serial.printf("[BENCH] begin freeInt=%u largest=%u\n",
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    AudioMutationScope benchScope(g_audioMutationGate);
+    RenderBench::runAll(
+        static_cast<float>(kSampleRate), 100,
+        []() -> uint32_t { return micros(); },
+        []() { vTaskDelay(1); },
+        [](const char* line) { Serial.println(line); });
+    Serial.println("[BENCH] end");
+  }
+#endif
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
