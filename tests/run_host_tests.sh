@@ -655,6 +655,20 @@ echo "Tee MIDI transport: OK"
 
 "${BUILD_DIR}/test_tr606_drum_voice"
 
+"${CXX}" \
+  -std=c++17 \
+  -O1 \
+  -fsanitize=undefined,float-cast-overflow \
+  -fno-sanitize-recover=all \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_drum_phase_wrap.cpp" \
+  "${ROOT_DIR}/src/dsp/mini_drumvoices.cpp" \
+  "${ROOT_DIR}/src/dsp/audio_wavetables.cpp" \
+  "${ROOT_DIR}/src/dsp/tube_distortion.cpp" \
+  -o "${BUILD_DIR}/test_drum_phase_wrap"
+"${BUILD_DIR}/test_drum_phase_wrap" 808
+"${BUILD_DIR}/test_drum_phase_wrap" 909
+
 
 "${CXX}" \
   -std=c++17 \

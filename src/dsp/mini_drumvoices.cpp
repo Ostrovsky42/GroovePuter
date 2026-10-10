@@ -5,6 +5,14 @@
 // Fast conversion factor: 0..1 float phase -> 0..UINT32_MAX fixed phase
 static constexpr float kPhaseToUint32 = 4294967296.0f;
 
+// Kick phases are wrapped to [0, 1) before conversion. Scale to 2^31 first:
+// even if float rounding reaches that boundary, the cast remains defined.
+// The wavetable reads only the top ten bits, so dropping one low bit is inert.
+// Unsigned harmonic multiplication then wraps modulo one cycle by definition.
+static inline uint32_t kickPhaseToUint32(float phase) {
+  return static_cast<uint32_t>(phase * 2147483648.0f) << 1u;
+}
+
 static inline float fast_tanh(float x) {
   if (x < -3.0f) return -1.0f;
   if (x > 3.0f) return 1.0f;
@@ -394,15 +402,16 @@ float TR808DrumSynthVoice::processKick() {
     kickPhase -= 1.0f;
 
   // Optimized Sine:
-  float body = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32));
+  const uint32_t fixedKickPhase = kickPhaseToUint32(kickPhase);
+  float body = Wavetable::lookupSine(fixedKickPhase);
   // transient is 3x freq
-  float transient = Wavetable::lookupSine((uint32_t)(kickPhase * 3.0f * kPhaseToUint32)) * pitchFactor * 0.25f;
+  float transient = Wavetable::lookupSine(fixedKickPhase * 3u) * pitchFactor * 0.25f;
   
   // === SUB LAYER (NEW) ===
   float subFreq = kickBaseFreq * 0.5f;
   kickSubPhase += subFreq * invSampleRate;
   if (kickSubPhase >= 1.0f) kickSubPhase -= 1.0f;
-  float sub = Wavetable::lookupSine((uint32_t)(kickSubPhase * kPhaseToUint32));
+  float sub = Wavetable::lookupSine(kickPhaseToUint32(kickSubPhase));
   kickSubDecay *= 0.9992f;
   sub *= kickSubDecay * kickSubDecay;
   
@@ -970,8 +979,9 @@ float TR909DrumSynthVoice::processKick() {
   if (kickPhase >= 1.0f)
     kickPhase -= 1.0f;
 
-  float body = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32));
-  float transient = Wavetable::lookupSine((uint32_t)(kickPhase * 4.0f * kPhaseToUint32)) * pitchFactor * 0.2f;
+  const uint32_t fixedKickPhase = kickPhaseToUint32(kickPhase);
+  float body = Wavetable::lookupSine(fixedKickPhase);
+  float transient = Wavetable::lookupSine(fixedKickPhase * 4u) * pitchFactor * 0.2f;
   float click = (frand() * 0.4f + 0.6f) * kickClickEnv * 0.2f;
   float driven = fast_tanh(body * (2.4f + 0.7f * kickEnvAmp));
 
