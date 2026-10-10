@@ -243,6 +243,12 @@ public:
   // Cheap unguarded hint for the UI loop: whether serviceSongMaterial() has
   // anything to do, so the audio guard is not taken on every frame.
   bool songMaterialServiceDue() const;
+  // 0.9.19 S1: a synth engine switch is committed (the old engine freed) on
+  // the UI thread, never in the AudioTask. Due = the crossfade ended, or the
+  // synth is muted (it is not rendered, so its crossfade cannot advance).
+  // The commit must run under the audio guard.
+  bool synthEngineSwitchDue() const;
+  void commitSettledSynthEngineSwitches();
   // Song reached a row but kept this voice where it was, because its Working
   // Melody is unsaved.
   bool songVoiceHeld(int voiceIndex) const;

@@ -6159,6 +6159,27 @@ bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSl
   return true;
 }
 
+bool MiniAcid::synthEngineSwitchDue() const {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MiniAcid::commitSettledSynthEngineSwitches() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      synthVoices_[idx].commitSwitch();
+    }
+  }
+}
+
 void MiniAcid::serviceSongMaterial() {
   if (!songMode_ || isPageLoading()) return;
   const int row = clampSongPosition(sceneManager_.getSongPosition());

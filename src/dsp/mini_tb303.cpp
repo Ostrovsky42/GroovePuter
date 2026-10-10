@@ -1,3 +1,4 @@
+#include <new>
 #include "mini_tb303.h"
 #include "audio_wavetables.h"
 #include "../audio/audio_config.h"
@@ -68,6 +69,7 @@ TB303Voice::TB303Voice(float sampleRateHz)
 
 void TB303Voice::reset() {
   initParameters();
+  updateFilterModel();
   if (!Wavetable::isInitialized()) Wavetable::init();
 
   phase = 0.0f;
@@ -264,7 +266,8 @@ float TB303Voice::oscillatorSample() {
 }
 
 float TB303Voice::svfProcess(float input) {
-  updateFilterModel();
+  // The filter model is rebuilt where FilterType changes (setters, reset), on
+  // the control thread: never allocate in the per-sample path (0.9.19 S1).
 
   freq += (targetFreq - freq) * slideSpeed;
   if (!isfinite(freq)) freq = targetFreq;
@@ -372,10 +375,12 @@ const Parameter& TB303Voice::parameter(TB303ParamId id) const {
 
 void TB303Voice::setParameter(TB303ParamId id, float value) {
   params[static_cast<int>(id)].setValue(value);
+  if (id == TB303ParamId::FilterType) updateFilterModel();
 }
 
 void TB303Voice::setParameterNormalized(TB303ParamId id, float norm) {
   params[static_cast<int>(id)].setNormalized(norm);
+  if (id == TB303ParamId::FilterType) updateFilterModel();
 }
 
 void TB303Voice::setParameterNormalized(uint8_t index, float norm) {
@@ -411,6 +416,7 @@ const Parameter& TB303Voice::getParameter(uint8_t index) const {
 
 void TB303Voice::adjustParameter(TB303ParamId id, int steps) {
   params[static_cast<int>(id)].addSteps(steps);
+  if (id == TB303ParamId::FilterType) updateFilterModel();
 }
 
 float TB303Voice::parameterValue(TB303ParamId id) const {
@@ -481,18 +487,23 @@ void TB303Voice::updateFilterModel() {
   const FilterCore core = kFilterProfiles[
       currentType >= 0 && currentType < kProfileCount ? currentType : 0]
                               .core;
+  // nothrow: with the DRAM heap exhausted a throwing new aborts the device
+  // (no emergency exception pool); keep the current filter instead.
+  AudioFilter* next = nullptr;
   switch (core) {
     case FilterCore::Diode:
-      filter = std::make_unique<DiodeFilter>(sampleRate);
+      next = new (std::nothrow) DiodeFilter(sampleRate);
       break;
     case FilterCore::Ladder:
-      filter = std::make_unique<LadderFilter>(sampleRate);
+      next = new (std::nothrow) LadderFilter(sampleRate);
       break;
     case FilterCore::Chamberlin:
     default:
-      filter = std::make_unique<ChamberlinFilter>(sampleRate);
+      next = new (std::nothrow) ChamberlinFilter(sampleRate);
       break;
   }
+  if (next == nullptr) return;
+  filter.reset(next);
   lastFilterType_ = currentType;
   postLPF_ = 0.0f;
 }
