@@ -1,6 +1,6 @@
-# GroovePuter 0.9.17 Manual
+# GroovePuter 0.9.18 Manual
 
-This manual describes the current user-facing GroovePuter workflow on the 0.9.17 productization line, built on the hardware-accepted **v0.9.16 Foundation Freeze**.
+This manual describes the current user-facing GroovePuter workflow on the tagged **v0.9.18** source baseline. **v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation underneath it.
 
 If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
 
@@ -10,7 +10,7 @@ For the exact key-by-key reference use [`src/ui/docs/keys.md`](src/ui/docs/keys.
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
-GENERATE: GENRE -> FEEL
+GENERATE: GENRE -> GEN -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
 SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
@@ -23,22 +23,13 @@ The main navigation model is:
 - `[` / `]`: previous / next page inside the current workflow;
 - `Fn+[` / `Fn+]`: previous / next workflow;
 - `Alt+H`: page-aware on-device help;
+- `Alt+V`: GENRE;
 - `Alt+P`: MIDI Player;
 - `Alt+X`: LiveMix;
 - `Alt+M`: Song mode;
 - `Alt+\`: `CARBON <-> CYBER` theme cycle.
 
-### A current navigation defect worth knowing
-
-The v0.9.16 foundation still routes hard-global `Alt+V` through legacy page id 11. That id normalizes to **FEEL**, not GENRE. Therefore the truthful 0.9.17 first-session path is:
-
-```text
-Fn+M -> GENRE
-```
-
-not `Alt+V -> GENRE`.
-
-This is a bounded 0.9.17 navigation defect. It does not change Genre generation itself.
+`Alt+V` opens GENRE directly. `Fn+M -> GENRE` is the discoverable launcher path to the same page.
 
 Hard-global Alt shortcuts run before page-local input. That is why a page must not document a local action on a chord already owned globally.
 
@@ -82,7 +73,7 @@ In the First Five Minutes workflow, `D` means **DEVELOP** only on MATERIAL.
 
 Elsewhere it has page-local expert meanings. MATERIAL BANK, for example, uses `D` for derive. Do not infer a global `D = develop` rule from the beginner path.
 
-## 3. GENRE and FEEL
+## 3. GENRE, GEN and FEEL
 
 The ownership rule is:
 
@@ -90,7 +81,7 @@ The ownership rule is:
 GENRE != FEEL != GENERATION REQUEST != SOUND
 ```
 
-### GENRE 1/2
+### GENRE 1/3
 
 GENRE owns the musical corridor, Variant/recipe, Rhythm identity and Apply policy.
 
@@ -107,7 +98,21 @@ While stopped, accepted generation commits immediately. During PLAY the full Syn
 
 Repeated accepted `G` requests reroll the same selected musical direction through the bounded session attempt stream.
 
-### FEEL 2/2
+### GEN 2/3
+
+GEN is the optional generation-target page between GENRE and FEEL. `Tab` moves `GENRE -> GEN -> FEEL`; `Esc` returns to GENRE.
+
+Its musician-facing choices are:
+
+- `TARGET`: `STEPS`, `MELODY A` or `MELODY B`;
+- `DRUMS`: `NEW` or `KEEP`;
+- `LENGTH`: `1/2/4/8` bars for generated Melody/TAKE material;
+- `LIVELY`: calm/normal/lively activity intent;
+- `NOTES`: short/mixed/long note-length intent.
+
+The First Five Minutes path does not require visiting GEN: its defaults are enough for an initial full generation. Use GEN when you want to decide what kind of material the next generation should write, rather than changing the Genre itself.
+
+### FEEL 3/3
 
 FEEL owns timing and velocity only:
 
@@ -198,9 +203,9 @@ for example `2B7`.
 - `Alt+Backspace`: DISCARD working edits to the accepted version;
 - `Ctrl+Z`: bounded retained Undo where supported.
 
-Two historical documentation claims are deliberately removed in 0.9.17:
+Current hard-global ownership means:
 
-- `Alt+V` is **not** a reachable Synth CONNECT shortcut because the display owns it as a hard-global navigation chord before the page sees the event;
+- `Alt+V` is **not** a reachable Synth CONNECT shortcut because the display owns it as the global GENRE navigation chord before the page sees the event;
 - `Alt+X` is **not** a reachable Synth DISCARD shortcut because it is hard-global LiveMix.
 
 The CONNECT operation may exist internally, but the current front-panel reference must not invent a key that cannot reach it.
@@ -234,12 +239,29 @@ Important controls include:
 - `Q..I`: assign an existing slot;
 - `G`: generate safe material and assign the selected cell;
 - double `G`: materialize Synth A + Synth B + Drums for the current row;
+- `Opt` on a Synth A/B cell: toggle that voice's source STEPS <-> MELODY;
 - `Backspace`: clear the current/selected Song cell;
 - `Ctrl+N` / `Ctrl+M`: insert / remove row;
 - `Alt+J`: open MATERIAL with the row as an explicit destination;
+- `F`: open FORM;
 - `Alt+X`: global LiveMix, not a Song-local discard command.
 
 A working Melody can keep sounding while being edited. ACCEPT/DISCARD belongs to the material/Synth ownership path; do not rely on the obsolete `Alt+X = DISCARD` wording from older documentation.
+
+### FORM
+
+FORM builds ordinary Song rows from existing material using an energy curve. Press `F` on SONG to open it.
+
+- `Left/Right`: choose section;
+- `Up/Down`: energy `0..4`;
+- `Enter`: section length `4/8` bars;
+- `N`: add a section;
+- `Backspace`: delete a section;
+- `1/2/3`: BUILD / DROP / WAVE curve;
+- `G`: insert generated form rows after the source block (selection, otherwise the TAKE at the cursor);
+- `F` / `Esc`: back to the normal Song grid.
+
+Energy is structural rather than a timbre macro: `0` is silence, `1` drums, `2` drums+bass, `3` adds the lead with a recurring rest, and `4` uses the full available arrangement including Voice. The inserted rows remain normal editable Song rows; one `Ctrl+Z` undoes the FORM insertion.
 
 ## 7. MATERIAL — the first-session composition page
 
@@ -273,7 +295,7 @@ R  -> MAKE ROOM when slots are exhausted
 
 The current implementation intentionally supports a bounded first slice. It is better for the UI to say “make a fresh 4B REWORK TAKE first” than to expose semantic/depth implementation vocabulary.
 
-Acid/House development, edited-source growth, repeated multi-cycle development and persistent development history remain outside this bounded slice unless a later release explicitly closes them.
+Acid and House do not grow in the current bounded development path. Edited-source growth, repeated multi-cycle development and persistent development history also remain outside this slice unless a later version explicitly closes them.
 
 ### Make room
 
@@ -324,14 +346,18 @@ Core controls include:
 - `1..9`: physical-track mute;
 - `U`: physical mute mixer;
 - `I`: channel inspector;
-- `S`: structural inspector;
+- `S`: structural inspector / mark loop A in loop context;
+- `E`: mark loop B;
 - `D`: performance/throughput panel;
 - `H`: Player <-> HUB MIDI;
 - `M`: RAW / SEQTRAK routing mode;
 - `C`: clock source;
 - `T`: tempo mode;
+- `L`: loop `OFF -> SONG -> A-B -> OFF`;
 - `R`: restart file;
 - `X`: SMF-owned note cleanup/panic.
+
+A-B loop marks are bar-based. Without explicit marks, A-B starts as a four-bar loop from the playhead. A new file clears the marks.
 
 ### HUB MIDI
 
@@ -343,7 +369,11 @@ With a loaded MIDI session:
 - `Enter` or `1..9`: mute/unmute;
 - `S`: solo;
 - `A`: all MIDI tracks on;
+- `O`: show which tracks occupy the SEQTRAK outputs;
+- `Y`, then `Y`: GRAB the selected layer into a Working Melody while paused;
 - `H`: return to Player.
+
+GRAB uses the player's A-B loop when present; otherwise it takes the current GEN LENGTH window from the current bar. The GEN TARGET chooses Melody A or B. The first `Y` previews what will be taken and where; the second performs the grab. On the destination Synth page, `Ctrl+Z` undoes it.
 
 Route changes invalidate stale queued events from the previous destination and perform scoped cleanup rather than forcing a global panic.
 
@@ -366,16 +396,16 @@ Use documentation in this order:
 5. this manual for workflow detail;
 6. research/architecture documents only when investigating implementation or design history.
 
-The goal of 0.9.17 is that a musician reaches a first useful result before needing levels 4-6.
+The goal is that a musician reaches a first useful result before needing levels 4-6. The 0.9.18 additions stay optional until the musician asks for more control over target, form or captured MIDI material.
 
 ## 13. Build / install boundary
 
-Developer builds still use the repository scripts and CI. A normal user should not need Arduino tooling as the primary install path; 0.9.17 productization work should make the accepted release artifact installable through a user-oriented launcher/burner flow.
+Developer builds still use the repository scripts and CI. A normal user should not need Arduino tooling as the primary install path; productization work should make accepted release artifacts installable through a user-oriented launcher/burner flow.
 
-The public hardware-accepted foundation remains `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the GitHub release and `docs/releases/` records.
+The current tagged source baseline is `v0.9.18`. The latest packaged GitHub Release and hardware-accepted foundation remains `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the matching tag/release and `docs/releases/` records.
 
 ## 14. Product boundary
 
-0.9.17 is **First Five Minutes**, not a new music-architecture cycle.
+The first-user facade is an onboarding layer, not permission to reopen the musical architecture.
 
-Do not reopen the Foundation Freeze for speculative lineage, genre or generation subsystems merely to improve onboarding. If first-user observation proves a specific musical or runtime gap, open the smallest evidence-backed follow-up.
+Do not add speculative lineage, genre or generation subsystems merely to improve onboarding. If first-user observation proves a specific musical or runtime gap, open the smallest evidence-backed follow-up.
