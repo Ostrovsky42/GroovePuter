@@ -1232,13 +1232,22 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
         ? GenreIdiom::kNoBarOrdinal
         : context.phraseBarOrdinal;
     idiom.phraseBars = context.ideaPhraseBars;
-    idiom.salt = static_cast<uint32_t>(context.patternAddress) * 131u +
+    // A prepared phrase execution must not depend on where its bars are
+    // written (the cycle and the kept phrase rebuild bars from the recipe), so
+    // its deck follows the phrase identity, never the pattern address.
+    const bool phraseExecution =
+        context.ideaPress == 0 &&
+        context.phraseGenerationIdentity != kUnspecifiedPhraseGenerationIdentity;
+    const uint32_t place = phraseExecution
+        ? static_cast<uint32_t>(context.phraseGenerationIdentity)
+        : static_cast<uint32_t>(context.patternAddress);
+    idiom.salt = place * 131u +
                  context.generationAttemptOrdinal * 977u +
                  context.ideaPress * 0x2545F491u;
     // Successive presses walk one idea deck: steps G counts attempts on its
     // slot, Melody G / TAKE bring their own press.
     idiom.press = context.ideaPress != 0 ? context.ideaPress : context.generationAttemptOrdinal;
-    idiom.deckSeed = context.ideaPress != 0 ? 0u : static_cast<uint32_t>(context.patternAddress);
+    idiom.deckSeed = context.ideaPress != 0 ? 0u : place;
     // DnB writes its drum grammar too, but only when this G replaces drums.
     idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
                                      replaceDrums ? &nextDrums : nullptr);
