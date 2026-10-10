@@ -994,6 +994,13 @@ void midiDispatchTask(void*) {
     uint32_t lastFairnessYieldMs = millis();
     uint32_t pendingSmfLatenessUs = 0;
 
+    // Any wait in this loop gives CPU0 to the idle task, so it also resets
+    // the fairness budget below (no extra 1 ms sleep right after a wait).
+    auto blockFor = [&](TickType_t ticks) {
+        ulTaskNotifyTake(pdTRUE, ticks);
+        lastFairnessYieldMs = millis();
+    };
+
     auto clearPendingSmf = [&]() {
         hasPendingSmf = false;
         smfFailedAttempts = 0;
@@ -1001,6 +1008,20 @@ void midiDispatchTask(void*) {
     };
 
     while (true) {
+        // Every branch that waits for a deadline blocks, but dispatching a
+        // due event and dropping a stale one do not. A backlog of due or
+        // stale events - a saturated queue, a resume anchored in the past -
+        // keeps this loop runnable and starves the CPU0 idle task until the
+        // task watchdog fires. The budget is checked at the top of every
+        // iteration so no `continue` can skip it (it used to sit at the end).
+        {
+            const uint32_t nowMs = millis();
+            if (nowMs - lastFairnessYieldMs >= kDispatchFairnessYieldMs) {
+                lastFairnessYieldMs = nowMs;
+                ++g_diagnostics.dispatchFairnessYields;
+                vTaskDelay(1);
+            }
+        }
         g_output.pollConnection();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
@@ -1131,7 +1152,7 @@ void midiDispatchTask(void*) {
         if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
             GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
             if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
-                ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+                blockFor(pdMS_TO_TICKS(1));
                 continue;
             }
             if (!transport.valid || !transport.playing ||
@@ -1147,7 +1168,7 @@ void midiDispatchTask(void*) {
             !hasPendingDrumGate && !hasPendingSmf) {
             drainControlEvents();
             logDiagnosticsIfDue();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
+            blockFor(pdMS_TO_TICKS(2));
             continue;
         }
 
@@ -1185,7 +1206,7 @@ void midiDispatchTask(void*) {
 
         if (kind == PendingKind::None) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -1215,7 +1236,7 @@ void midiDispatchTask(void*) {
         uint32_t deadlineMicros = 0;
         if (!deadlineFor(blockSequence, frameOffset, deadlineMicros)) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -1224,7 +1245,7 @@ void midiDispatchTask(void*) {
             deadlineMicros - nowMicros);
         if (untilDeadline > 1500) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
         if (untilDeadline > 0) {
@@ -1399,18 +1420,6 @@ void midiDispatchTask(void*) {
         drainControlEvents(2);
         logDiagnosticsIfDue();
 
-        // Every branch that waits for a deadline blocks, but the branch that
-        // dispatches a due event does not. A backlog of already-due events -
-        // a saturated queue, or a resume anchored in the past - therefore keeps
-        // this loop runnable indefinitely and starves the CPU0 idle task until
-        // the task watchdog fires. Yield on a wall-clock budget so the fast
-        // path stays fast while fairness is guaranteed.
-        const uint32_t nowMs = millis();
-        if (nowMs - lastFairnessYieldMs >= kDispatchFairnessYieldMs) {
-            lastFairnessYieldMs = nowMs;
-            ++g_diagnostics.dispatchFairnessYields;
-            vTaskDelay(1);
-        }
     }
 }
 
