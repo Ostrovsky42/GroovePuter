@@ -276,6 +276,14 @@ void MiniAcidDisplay::update() {
     if (mini_acid_.songMaterialServiceDue()) {
         withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
     }
+    // A finished synth engine crossfade is committed here, under the guard:
+    // the AudioTask never frees an engine the UI may be reading.
+    if (mini_acid_.synthEngineSwitchDue()) {
+        withAudioGuard([&]() { mini_acid_.commitSettledSynthEngineSwitches(); });
+    }
+    if (mini_acid_.drumEngineSwitchDue()) {
+        withAudioGuard([&]() { mini_acid_.applyPendingDrumEngineSwitch(); });
+    }
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();

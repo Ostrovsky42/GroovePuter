@@ -260,6 +260,19 @@ def main() -> None:
             "lastFairnessYieldMs" in dispatch_tail,
             "the dispatch loop must yield on a wall-clock budget so a saturated "
             "queue cannot starve the CPU0 idle task")
+    # 0.9.19 S1 (coredump: task watchdog, IDLE0 starved): the budget sat after
+    # the drop/dispatch branches and every `continue` skipped it.
+    loop_body = dispatch_tail[dispatch_tail.index("while (true) {"):]
+    require(loop_body.index("kDispatchFairnessYieldMs") < loop_body.index("continue;"),
+            "the fairness budget must be checked before any `continue` of the "
+            "dispatch loop")
+    rescan = player_service[
+        player_service.index("bool CardputerSmfPlayerService::prepareStreamAt"):
+        player_service.index("bool CardputerSmfPlayerService::startFromTick")
+    ]
+    require("vTaskDelay(1)" in rescan and "kRescanYieldMs" in rescan,
+            "a stream rescan reads the SD card for seconds above the CPU0 idle "
+            "task and must give the core away on a time budget")
     # Auto-resume replayed a multi-second backlog and oscillated
     # stall -> resume -> stall; continuing after a stall is a user action.
     recovery = player_service[
