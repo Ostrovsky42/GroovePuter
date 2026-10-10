@@ -273,10 +273,18 @@ float TB303Voice::svfProcess(float input) {
   if (!isfinite(freq)) freq = targetFreq;
 
   if (gate || env > 0.0001f) {
-    float decaySamples = parameterValue(TB303ParamId::EnvDecay) * sampleRate * 0.001f;
-    if (decaySamples < 1.0f) decaySamples = 1.0f;
-    constexpr float kDecayTargetLog = -4.60517019f;
-    env *= expf(kDecayTargetLog / decaySamples);
+    // 0.9.19 P1: expf only when the decay time or the sample rate changes;
+    // the cached coefficient is the same expression, so env is bit-identical.
+    const float decayMs = parameterValue(TB303ParamId::EnvDecay);
+    if (decayMs != cachedDecayMs_ || sampleRate != cachedDecayRate_) {
+      float decaySamples = decayMs * sampleRate * 0.001f;
+      if (decaySamples < 1.0f) decaySamples = 1.0f;
+      constexpr float kDecayTargetLog = -4.60517019f;
+      cachedDecayCoeff_ = expf(kDecayTargetLog / decaySamples);
+      cachedDecayMs_ = decayMs;
+      cachedDecayRate_ = sampleRate;
+    }
+    env *= cachedDecayCoeff_;
   }
 
   const float maxCutoff = fminf(nyquist * 0.9f, 8000.0f);

@@ -31,4 +31,11 @@ model = tb303[tb303.index("void TB303Voice::updateFilterModel()"):]
 model = model[:model.index("\n}\n")]
 require("make_unique" not in model and "new (std::nothrow)" in model,
         "the filter model is allocated nothrow (a throwing new aborts on the device)")
+engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+lanes = engine[engine.index("void MiniAcid::applyDrumAutomationLanesForStep_("):]
+lanes = lanes[:lanes.index("\n}\n")]
+require("setDrumEngine(" not in lanes and "pendingDrumEngineLane_.store" in lanes,
+        "the drum EngineSwitch lane runs in the AudioTask and only requests a switch")
+require("withAudioGuard([&]() { mini_acid_.applyPendingDrumEngineSwitch(); })" in display,
+        "the UI applies a requested drum engine switch under the audio guard")
 print("S1 synth engine switch source regressions: PASS")

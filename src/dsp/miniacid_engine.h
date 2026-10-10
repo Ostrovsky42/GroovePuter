@@ -96,6 +96,9 @@ private:
 #endif
 
   std::vector<float> buffer;
+  // 0.9.19 P1: consecutive samples that wrote 0 with 0 in and 0 out. Once it
+  // covers the whole buffer, the buffer is all zeros and process(0) is 0.
+  int silentRun_ = 0;
   int writeIndex;
   int delaySamples;
   float sampleRate;
@@ -249,6 +252,10 @@ public:
   // The commit must run under the audio guard.
   bool synthEngineSwitchDue() const;
   void commitSettledSynthEngineSwitches();
+  // The drum EngineSwitch automation lane only requests a switch from the
+  // AudioTask; the UI applies it under the audio guard.
+  bool drumEngineSwitchDue() const;
+  void applyPendingDrumEngineSwitch();
   // Song reached a row but kept this voice where it was, because its Working
   // Melody is unsaved.
   bool songVoiceHeld(int voiceIndex) const;
@@ -832,6 +839,7 @@ private:
   PatternPublishingDrumVoice drums;
   float sampleRateValue;
   std::string drumEngineName_;
+  std::atomic<int8_t> pendingDrumEngineLane_{-1};  // AudioTask -> UI
 
   SceneManager sceneManager_;
   SceneStorage* sceneStorage_;
