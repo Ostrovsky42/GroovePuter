@@ -21,9 +21,9 @@ this quick start only on the **MATERIAL** page; other expert pages keep their ow
 actions.
 
 `Alt+V` opens GENRE directly; `Fn+M` reaches it through the workspace launcher.
-The GENERATE workflow now also has a middle **GEN** page between GENRE and FEEL for
-choosing generation target and phrase-shape options. You do not need it for this first
-groove; the defaults are enough.
+Inside GENRE, `Tab` opens the middle **GEN** panel for generation target and
+phrase-shape options; another `Tab` continues to FEEL. You do not need this panel for
+this first groove; the defaults are enough.
 
 ## 1. Hear something
 
