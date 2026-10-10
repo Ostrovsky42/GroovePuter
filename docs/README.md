@@ -15,7 +15,7 @@ The distinction matters: a document can be valuable evidence without describing 
 - [`releases/0.9.15-midi-ui-polish-2026-10-02.md`](releases/0.9.15-midi-ui-polish-2026-10-02.md) — external-keyboard / PERFORM routing and UI behavior incorporated into the accepted foundation.
 - [`releases/0.9.15-hardware-acceptance.md`](releases/0.9.15-hardware-acceptance.md) — USB Host hardware acceptance procedure and evidence.
 
-The current tagged source baseline is **v0.9.18**. It adds genre idioms, phrase ideas, DnB, GRAB, FORM and the `GENRE -> GEN -> FEEL` generation workflow. The tag points at the merged 0.9.18 source, but there is no separate GitHub Release object/package for v0.9.18.
+The current tagged source baseline is **v0.9.18**. It adds genre idioms, phrase ideas, DnB, GRAB, FORM and the local `GEN 2/3` generation-control panel inside GENRE. The top-level GENERATE workflow remains `GENRE -> FEEL`: `Tab` from GENRE opens GEN, and the next `Tab` continues to FEEL. The tag points at the merged 0.9.18 source, but there is no separate GitHub Release object/package for v0.9.18.
 
 **v0.9.16 — Foundation Freeze** remains the latest packaged GitHub Release and the hardware-accepted foundation. The first-user documentation above follows the newer tagged source while keeping release/hardware claims tied to their exact evidence.
 
