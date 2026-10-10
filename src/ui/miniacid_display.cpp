@@ -299,10 +299,10 @@ void MiniAcidDisplay::update() {
         drawSplashScreen();
         if (millis() - splash_start_ms_ > 2000) dismissSplash();
         if (splash_active_) {
+            // Splash frames (first 2 s) are not timed past this point.
+            frame_probe_.endFrame(readUiFrameClocks());
             gfx_.flush();
             gfx_.endWrite();
-            frame_probe_.mark(Stage::Flush, readUiFrameClocks());
-            frame_probe_.endFrame(readUiFrameClocks());
             return;
         }
     }
