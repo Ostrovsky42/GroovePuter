@@ -10,7 +10,7 @@ For the exact key-by-key reference use [`src/ui/docs/keys.md`](src/ui/docs/keys.
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
-GENERATE: GENRE -> GEN -> FEEL
+GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
 SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
@@ -100,7 +100,7 @@ Repeated accepted `G` requests reroll the same selected musical direction throug
 
 ### GEN 2/3
 
-GEN is the optional generation-target page between GENRE and FEEL. `Tab` moves `GENRE -> GEN -> FEEL`; `Esc` returns to GENRE.
+GEN is the optional local generation-target panel inside GENRE. `Tab` from GENRE opens GEN; `Tab` again requests FEEL; `Esc` returns to GENRE.
 
 Its musician-facing choices are:
 
