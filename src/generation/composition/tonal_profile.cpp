@@ -229,9 +229,6 @@ constexpr TonalGenerationProfile kAcidAtlasProfile = tonal(
     bassPolicy(kBassAcidAllowed, kBassAcidPreferred,
                kArticulationAcidAllowed, kArticulationAcidPreferred),
     melodicPolicy(kMelodyAcidAllowed, kMelodyAcidPreferred));
-constexpr TonalGenerationProfile kSynthProfile = tonal(
-    bassPolicy(kBassSynthAllowed, kBassSynthPreferred),
-    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
 // 0.9.18 prototype: Synthwave bass gets accents; House leaves the static
 // profile (one-pitch lead, root-only bass) for a moving bass and a Drive lead.
 constexpr TonalGenerationProfile kOutrunProfile = tonal(
