@@ -61,6 +61,7 @@ SceneStorageCardputer g_sceneStorage;
 CardputerAudioRecorder* g_audioRecorder = nullptr;
 #include "src/sampler/ram_sample_store.h"
 #include "src/audio/audio_out_i2s.h"
+#include "src/ui/ui_frame_probe.h"
 RamSampleStore g_sampleStore;
 
 static AudioOutI2S g_audioOut;
@@ -105,6 +106,19 @@ static float readPatternSequencerPhase(void* context) {
   return engine ? engine->transportPhaseSteps() : 0.0f;
 }
 
+// 0.9.19 UI frame probe: render time of the AudioTask as a running total, so a
+// UI stage can tell how much of its wall time core 1 spent rendering audio.
+static UiFrameProbe::AudioBusyClock g_audioBusyClock;
+
+// One loop() iteration, input handling and every drawUI() in it included.
+struct LoopTiming {
+  uint32_t count = 0;
+  uint64_t sumUs = 0;
+  uint32_t maxUs = 0;
+  uint32_t draws = 0;
+};
+static LoopTiming g_loopTiming;
+
 void audioTask(void *param) {
   Serial.println("AudioTask: Starting...");
 
@@ -118,6 +132,7 @@ void audioTask(void *param) {
     g_audioMutationGate.waitAtAudioBoundary();
     uint32_t now = micros();
     uint32_t start = now;
+    g_audioBusyClock.beginRender(start);
     static uint32_t warmupBlocks = 32; // ~743ms at 22.05kHz/512 for codec/DMA stability
 
     if (warmupBlocks > 0) {
@@ -210,6 +225,7 @@ void audioTask(void *param) {
     }
     
     uint32_t dsp_time = micros() - start;
+    g_audioBusyClock.endRender(dsp_time);
     
     // Publish one coherent cross-core telemetry snapshot.
     if (g_miniAcid) {
@@ -269,12 +285,65 @@ void audioTask(void *param) {
 }
 
 void drawUI() {
+  ++g_loopTiming.draws;
   const uint32_t startedAt = micros();
   if (g_miniDisplay) g_miniDisplay->update();
   g_lastUiDrawUs = micros() - startedAt;
   if (g_lastUiDrawUs > g_peakUiDrawUs) {
     g_peakUiDrawUs = g_lastUiDrawUs;
   }
+}
+
+// [UI-FRAME] / [UI-STAGE] / [UI-WORST]: what the 5 s window of UI frames
+// spent its wall time on. audio = AudioTask render on core 1 inside the
+// frame, wait = waiting for the audio gate, own = the rest.
+static void logUiFrameWindow() {
+  if (!g_miniDisplay) return;
+  const UiFrameProbe::Window w = g_miniDisplay->takeUiFrameWindow();
+  const uint32_t n = w.frames ? w.frames : 1;
+  const uint32_t waits = g_audioMutationGate.controlWaits();
+  static uint32_t lastWaits = 0;
+  static uint32_t lastHoldUs = 0;
+  const uint32_t holdUs = g_audioMutationGate.controlHoldUsTotal();
+  const uint32_t loops = g_loopTiming.count ? g_loopTiming.count : 1;
+  Serial.printf("[UI-FRAME] n=%u wall=%u/%u audio=%u wait=%u own=%u us(avg/max) "
+                "gate=%u waitMax=%u held=%u holdMax=%u loop=%u/%u draws=%u\n",
+      (unsigned)w.frames,
+      (unsigned)(w.wallUs / n), (unsigned)w.wallMaxUs,
+      (unsigned)(w.audioUs / n), (unsigned)(w.guardUs / n),
+      (unsigned)((w.wallUs - w.audioUs - w.guardUs) / n),
+      (unsigned)(waits - lastWaits),
+      (unsigned)g_audioMutationGate.takeControlWaitMaxUs(),
+      (unsigned)(holdUs - lastHoldUs),
+      (unsigned)g_audioMutationGate.takeControlHoldMaxUs(),
+      (unsigned)(g_loopTiming.sumUs / loops), (unsigned)g_loopTiming.maxUs,
+      (unsigned)g_loopTiming.draws);
+  lastWaits = waits;
+  lastHoldUs = holdUs;
+  g_loopTiming = LoopTiming{};
+
+  char line[256];
+  int len = snprintf(line, sizeof(line), "[UI-STAGE] avg/max us");
+  for (uint8_t i = 0; i < UiFrameProbe::kStageCount && len > 0 &&
+                      len < static_cast<int>(sizeof(line)); ++i) {
+    len += snprintf(line + len, sizeof(line) - len, " %s=%u/%u",
+                    UiFrameProbe::stageName(i),
+                    (unsigned)(w.stageWallUs[i] / n), (unsigned)w.stageMaxUs[i]);
+  }
+  Serial.println(line);
+
+  len = snprintf(line, sizeof(line), "[UI-WORST] wall=%u audio=%u wait=%u own=%u |",
+                 (unsigned)w.worst.wallUs, (unsigned)w.worst.audioUs,
+                 (unsigned)w.worst.guardUs, (unsigned)w.worst.ownUs());
+  for (uint8_t i = 0; i < UiFrameProbe::kStageCount && len > 0 &&
+                      len < static_cast<int>(sizeof(line)); ++i) {
+    const auto& st = w.worstStages[i];
+    if (st.wallUs < 1000) continue;  // only stages of a millisecond or more
+    len += snprintf(line + len, sizeof(line) - len, " %s=%u(a%u w%u)",
+                    UiFrameProbe::stageName(i), (unsigned)st.wallUs,
+                    (unsigned)st.audioUs, (unsigned)st.guardUs);
+  }
+  Serial.println(line);
 }
 
 static void logHeapCaps(const char* tag) {
@@ -525,6 +594,12 @@ void setup() {
       static_cast<AudioMutationGate*>(context)->unlockControl();
   };
   g_miniDisplay->setAudioGuard(guard);
+  UiFrameProbe::sources().audioBusyUs = [](uint32_t nowUs) {
+      return g_audioBusyClock.busyUs(nowUs);
+  };
+  UiFrameProbe::sources().guardWaitUs = []() {
+      return g_audioMutationGate.controlWaitUsTotal();
+  };
   g_miniAcid->setAcceptAudioMutationGate(&g_audioMutationGate);
   
   Serial.println("7c. UI setAudioRecorder");
@@ -571,6 +646,15 @@ static bool applyExternalNudge(int direction) {
 }
 
 void loop() {
+  struct LoopTimer {
+    uint32_t startUs = micros();
+    ~LoopTimer() {
+      const uint32_t us = micros() - startUs;
+      ++g_loopTiming.count;
+      g_loopTiming.sumUs += us;
+      if (us > g_loopTiming.maxUs) g_loopTiming.maxUs = us;
+    }
+  } loopTimer;
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
@@ -1173,6 +1257,7 @@ void loop() {
            (unsigned)freeInt, (unsigned)largestInt,
            (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
        g_peakUiDrawUs = g_lastUiDrawUs;
+       logUiFrameWindow();
     }
   }
 

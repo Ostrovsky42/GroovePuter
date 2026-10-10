@@ -20,6 +20,7 @@
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/state/ui_session_state.h"
+#include "ui_frame_probe.h"
 
 class IAudioRecorder;
 class PerformanceKeyboard;
@@ -31,6 +32,8 @@ public:
   void setAudioGuard(AudioGuard guard);
   void setAudioRecorder(IAudioRecorder* recorder);
   void update();
+  // 0.9.19: per-stage timing of update() since the previous call.
+  UiFrameProbe::Window takeUiFrameWindow() { return frame_probe_.take(); }
   
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -127,6 +130,7 @@ private:
   GroovePuterState::UiSessionState ui_session_{};
   bool ui_session_loaded_ = false;
   bool ui_session_save_pending_ = false;
+  UiFrameProbe::FrameAccumulator frame_probe_;
   unsigned long ui_session_save_due_ms_ = 0;
   uint32_t observed_scene_revision_ = 0;
   bool recovery_save_pending_ = false;

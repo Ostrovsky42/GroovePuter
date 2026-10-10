@@ -702,3 +702,6 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 # IN Space mute, Alt+N new empty Melody. Both were written but never run.
 bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
 bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"
+
+# 0.9.19 UI frame probe and the audio mutation gate it reads.
+bash "${ROOT_DIR}/tests/run_ui_frame_probe_tests.sh"

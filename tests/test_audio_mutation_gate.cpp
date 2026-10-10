@@ -23,9 +23,11 @@ int main() {
     std::this_thread::yield();
   }
 
+  assert(gate.controlWaits() == 0 && gate.controlHoldUsTotal() == 0);
   gate.lockControl();
   assert(gate.pauseRequested());
   assert(gate.audioPaused());
+  assert(gate.controlWaits() == 1);
   const uint32_t pausedAt = blocks.load(std::memory_order_acquire);
   std::this_thread::sleep_for(std::chrono::milliseconds(2));
   assert(blocks.load(std::memory_order_acquire) == pausedAt);
@@ -36,7 +38,12 @@ int main() {
   assert(gate.pauseRequested());
   assert(gate.audioPaused());
 
+  assert(gate.controlWaits() == 1);  // nested lock waits for nothing
   gate.unlockControl();
+  // 0.9.19 probe: the outer hold covered the 2 ms sleep above.
+  assert(gate.controlHoldUsTotal() >= 2000);
+  const uint32_t firstHoldMax = gate.takeControlHoldMaxUs();
+  assert(firstHoldMax >= 2000 && gate.takeControlHoldMaxUs() == 0);
   while (blocks.load(std::memory_order_acquire) == pausedAt) {
     std::this_thread::yield();
   }
@@ -46,10 +53,15 @@ int main() {
   gate.lockControl();
   const uint32_t beforeIo = blocks.load(std::memory_order_acquire);
   assert(gate.openControlIoWindow());
+  const uint32_t holdBeforeIo = gate.controlHoldUsTotal();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
   while (blocks.load(std::memory_order_acquire) == beforeIo) {
     std::this_thread::yield();
   }
+  // Audio runs during the I/O window: that time is not a hold.
+  assert(gate.controlHoldUsTotal() == holdBeforeIo);
   assert(gate.closeControlIoWindow());
+  assert(gate.controlWaits() == 3);  // lock + reacquire after the window
   const uint32_t afterIo = blocks.load(std::memory_order_acquire);
   std::this_thread::sleep_for(std::chrono::milliseconds(2));
   assert(blocks.load(std::memory_order_acquire) == afterIo);

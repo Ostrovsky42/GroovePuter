@@ -267,15 +267,33 @@ void MiniAcidDisplay::syncProjectKey_() {
     synced_key_scale_ = performance_keyboard_.scale();
 }
 
+namespace {
+UiFrameProbe::Reading readUiFrameClocks() {
+    UiFrameProbe::Reading r;
+    r.nowUs = static_cast<uint32_t>(micros());
+    const auto& src = UiFrameProbe::sources();
+    if (src.audioBusyUs) r.audioBusyUs = src.audioBusyUs(r.nowUs);
+    if (src.guardWaitUs) r.guardWaitUs = src.guardWaitUs();
+    return r;
+}
+}  // namespace
+
 void MiniAcidDisplay::update() {
+    using UiFrameProbe::Stage;
+    frame_probe_.beginFrame(readUiFrameClocks());
     syncProjectKey_();
+    frame_probe_.mark(Stage::Key, readUiFrameClocks());
     servicePersistence_();
+    frame_probe_.mark(Stage::Persist, readUiFrameClocks());
     syncVisualStyle_();
+    frame_probe_.mark(Stage::Style, readUiFrameClocks());
     handlePaging_();
+    frame_probe_.mark(Stage::Paging, readUiFrameClocks());
     // Song rows that name a Melody slot are prepared here, off the audio thread.
     if (mini_acid_.songMaterialServiceDue()) {
         withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
     }
+    frame_probe_.mark(Stage::Song, readUiFrameClocks());
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
@@ -283,6 +301,8 @@ void MiniAcidDisplay::update() {
         if (splash_active_) {
             gfx_.flush();
             gfx_.endWrite();
+            frame_probe_.mark(Stage::Flush, readUiFrameClocks());
+            frame_probe_.endFrame(readUiFrameClocks());
             return;
         }
     }
@@ -294,6 +314,7 @@ void MiniAcidDisplay::update() {
     } else {
         gfx_.clear(COLOR_BLACK);
     }
+    frame_probe_.mark(Stage::Background, readUiFrameClocks());
 
     UI::UiStatusContext statusContext = UI::UiStatusContext::Unknown;
     UI::UiLocation statusLocation{};
@@ -303,6 +324,7 @@ void MiniAcidDisplay::update() {
     if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-begin");
     const UI::UiStatusSnapshot frameStatus = UI::captureUiStatusSnapshot(mini_acid_, statusContext);
     if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-end");
+    frame_probe_.mark(Stage::Status, readUiFrameClocks());
     
     UI::UiShellFrameModel shellFrame{};
     UI::beginShellFrameModel(shellFrame);
@@ -313,12 +335,15 @@ void MiniAcidDisplay::update() {
         if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
         if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-tick-begin");
+        frame_probe_.mark(Stage::Status, readUiFrameClocks());
         currentPage->tick();
+        frame_probe_.mark(Stage::Tick, readUiFrameClocks());
         if (g_firstSynthFrameTracePage == page_index_) {
             traceSynthUiStage(page_index_, "frame-tick-end");
             traceSynthUiStage(page_index_, "frame-draw-begin");
         }
         currentPage->draw(gfx_);
+        frame_probe_.mark(Stage::Draw, readUiFrameClocks());
         if (g_firstSynthFrameTracePage == page_index_) {
             traceSynthUiStage(page_index_, "frame-draw-end");
             g_firstSynthFrameTracePage = -1;
@@ -354,8 +379,11 @@ void MiniAcidDisplay::update() {
     }
     
     drawToast();
+    frame_probe_.mark(Stage::Chrome, readUiFrameClocks());
     gfx_.flush();
     gfx_.endWrite();
+    frame_probe_.mark(Stage::Flush, readUiFrameClocks());
+    frame_probe_.endFrame(readUiFrameClocks());
     if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.end");
     first_draw_trace_pending_ = false;
 }
