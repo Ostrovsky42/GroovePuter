@@ -60,6 +60,8 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
   // External keyboard gesture Sustain held + Mod: clear the whole melody on the notes tab.
   GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
+  // Raw external controller diagnostic: x = CC number, y = 7-bit value.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_CC,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
@@ -347,6 +349,8 @@ class IPage : public Container {
   virtual void onEnter(int context) { (void)context; }
   virtual void onExit() {}
   virtual void tick() {}
+  virtual void serviceBackground() {}
+  virtual bool hasBackgroundWork() const { return false; }
   virtual void setContext(int context) { onEnter(context); }
   virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
     (void)state;

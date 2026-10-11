@@ -46,6 +46,8 @@ GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig()
 // External keyboard notes for the PERFORM target. Producer: MidiDispatchTask. Consumer: the loop
 // task, which owns the PERFORM keyboard.
 GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue();
+bool cardputerMidiInputIdentityCurrent(
+    const PerformanceInputIdentity& input);
 
 // Acceptance diagnostics: USB-callback -> dispatch-task latency (needs GROOVEPUTER_USB_ACCEPT_DIAG)
 // and the dispatch task's minimum free stack since start.

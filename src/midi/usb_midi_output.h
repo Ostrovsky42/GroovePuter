@@ -80,6 +80,7 @@ public:
     }
 
     void handleMusicalEvent(const MusicalEvent& event) override;
+    void servicePitchBendRetries();
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -199,6 +200,8 @@ private:
     // whether PORTAMENTO SWITCH is currently on.
     uint16_t patternSlideReady_;
     uint16_t patternPortamentoOn_;
+    uint16_t pendingPitchBendMask_{0};
+    uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;

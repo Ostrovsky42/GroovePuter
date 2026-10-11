@@ -26,6 +26,7 @@ void roundTripsRepresentativePolicies() {
         source.channelMode = MidiInputChannelMode::Single;
         source.channel = 15u;
         source.target = target;
+        source.usbCable = 13u;
         MidiInputRoutingConfig decoded{};
         assert(MidiInputSettings::decodeRoutingConfig(
             MidiInputSettings::encodeRoutingConfig(source), decoded));
@@ -33,7 +34,28 @@ void roundTripsRepresentativePolicies() {
         assert(decoded.channelMode == source.channelMode);
         assert(decoded.channel == source.channel);
         assert(decoded.target == source.target);
+        assert(decoded.pitchBendMode == source.pitchBendMode);
+        assert(decoded.usbCable == source.usbCable);
     }
+
+    MidiInputRoutingConfig legacyNudge{};
+    legacyNudge.pitchBendMode = PitchBendMode::LegacyNudge;
+    MidiInputRoutingConfig decoded{};
+    assert(MidiInputSettings::decodeRoutingConfig(
+        MidiInputSettings::encodeRoutingConfig(legacyNudge), decoded));
+    assert(decoded.pitchBendMode == PitchBendMode::LegacyNudge);
+}
+
+void versionOneSettingsKeepTheLegacyNanoKeyNudge() {
+    const uint32_t oldWord =
+        (static_cast<uint32_t>(MidiInputSettings::kSettingsMagic) << 24u) |
+        (1u << 16u) | 0x01u | (3u << 6u); // enabled, old PERFORM route
+    MidiInputRoutingConfig decoded{};
+    assert(MidiInputSettings::decodeRoutingConfig(oldWord, decoded));
+    assert(decoded.enabled && decoded.target == MidiInputTarget::Perform);
+    assert(decoded.pitchBendMode == PitchBendMode::LegacyNudge);
+    assert(MidiInputSettings::defaultRoutingConfig().pitchBendMode ==
+           PitchBendMode::Musical);
 }
 
 void corruptionFailsClosed() {
@@ -45,7 +67,7 @@ void corruptionFailsClosed() {
 
     MidiInputRoutingConfig valid{};
     const uint32_t word = MidiInputSettings::encodeRoutingConfig(valid);
-    assert(!MidiInputSettings::decodeRoutingConfig(word | 0x00000100u, decoded));
+    assert(!MidiInputSettings::decodeRoutingConfig(word | 0x00004000u, decoded));
     assert(!decoded.enabled);
 
     // The target field is two bits and all four values are public since PERFORM was added (3).
@@ -77,12 +99,17 @@ void uiCyclesAllPublicValues() {
     assert(config.target == MidiInputTarget::SynthA);
     config = GroovePuterUi::MidiInputUi::stepTarget(config, 3);
     assert(config.target == MidiInputTarget::Perform);
+    config = GroovePuterUi::MidiInputUi::stepUsbCable(config, -1);
+    assert(config.usbCable == 15u);
+    config = GroovePuterUi::MidiInputUi::stepUsbCable(config, 1);
+    assert(config.usbCable == 0u);
 }
 }  // namespace
 
 int main() {
     defaultIsFailClosed();
     roundTripsRepresentativePolicies();
+    versionOneSettingsKeepTheLegacyNanoKeyNudge();
     corruptionFailsClosed();
     uiCyclesAllPublicValues();
     return 0;

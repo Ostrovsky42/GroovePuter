@@ -5,6 +5,7 @@
 #include "cardputer_usb_midi_service.h"
 
 #include <Arduino.h>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -49,10 +50,12 @@ namespace {
 constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
 constexpr uint8_t kCinControlChange = 0x0B;
+constexpr uint8_t kCinPitchBend = 0x0E;
 constexpr uint8_t kCinSingleByte = 0x0F;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
 constexpr uint8_t kStatusControlChange = 0xB0;
+constexpr uint8_t kStatusPitchBend = 0xE0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
 constexpr uint8_t kStatusContinue = 0xFB;
@@ -234,6 +237,8 @@ MidiControlEventQueue g_controlQueue;
 GroovePuterMidi::MidiInputQueue g_inputQueue;
 GroovePuterMidi::MidiInputParser g_inputParser;
 GroovePuterMidi::MidiIoState g_midiIoState;
+std::atomic<uint32_t> g_usbInputGenerationPublished{0};
+std::atomic<uint32_t> g_uartInputGenerationPublished{0};
 GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
 GroovePuterMidi::ExternalNoteQueue g_externalNotes;
 GroovePuterMidi::LatencyHistogram g_ringLatency;  // USB callback -> dispatch task (diagnostics)
@@ -496,7 +501,8 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
 bool sameMidiInputConfig(const GroovePuterMidi::MidiInputRoutingConfig& lhs,
                          const GroovePuterMidi::MidiInputRoutingConfig& rhs) {
     return lhs.enabled == rhs.enabled && lhs.channelMode == rhs.channelMode &&
-           lhs.channel == rhs.channel && lhs.target == rhs.target;
+           lhs.channel == rhs.channel && lhs.target == rhs.target &&
+           lhs.pitchBendMode == rhs.pitchBendMode && lhs.usbCable == rhs.usbCable;
 }
 
 void applyPendingMidiInputConfig() {
@@ -508,6 +514,7 @@ void applyPendingMidiInputConfig() {
     portEXIT_CRITICAL(&g_inputConfigMux);
     if (requestedVersion == g_appliedInputConfigVersion) return;
     if (g_inputDispatcher.setConfig(requested)) {
+        (void)g_inputParser.setUsbCable(requested.usbCable);
         g_appliedInputConfigVersion = requestedVersion;
     }
 }
@@ -529,11 +536,15 @@ void syncUsbMidiInputLifecycle() {
     if (mounted && !g_usbInputMounted) {
         g_midiIoState.usbAttached();
         g_midiIoState.usbReady(true, !host);  // a Host session only receives
+        g_usbInputGenerationPublished.store(
+            g_midiIoState.usbInputGeneration(), std::memory_order_release);
         g_inputParser.reset(GroovePuterMidi::InputSession{
             GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = true;
     } else if (!mounted && g_usbInputMounted) {
         g_midiIoState.usbDetached();
+        g_usbInputGenerationPublished.store(
+            g_midiIoState.usbInputGeneration(), std::memory_order_release);
         g_inputParser.reset(GroovePuterMidi::InputSession{
             GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
         g_usbInputMounted = false;
@@ -953,10 +964,12 @@ void midiDispatchTask(void*) {
 
     while (true) {
         g_output.pollConnection();
+        g_output.servicePitchBendRetries();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
         // transport queues and this drains what the UART driver will take.
         GroovePuterMidi::cardputerUartMidiTransport().service();
+        g_wire.service();
         drainIncomingMidiPackets();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
@@ -1550,6 +1563,15 @@ bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
                               velocity);
 }
 
+bool CardputerUsbMidiTransport::sendPitchBend(uint8_t zeroBasedChannel,
+                                              uint16_t value14) {
+    if (value14 > 16383u) value14 = 16383u;
+    return writeChannelPacket(kCinPitchBend, kStatusPitchBend,
+                              zeroBasedChannel,
+                              static_cast<uint8_t>(value14 & 0x7fu),
+                              static_cast<uint8_t>((value14 >> 7u) & 0x7fu));
+}
+
 bool CardputerUsbMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
                                                   uint8_t controller,
                                                   uint8_t value) {
@@ -1593,6 +1615,10 @@ bool registerCardputerUsbMidiSink(
         usbHostRole() ? GroovePuterMidi::UsbRole::Host
                       : GroovePuterMidi::UsbRole::Device);
     g_midiIoState.boot();
+    g_usbInputGenerationPublished.store(
+        g_midiIoState.usbInputGeneration(), std::memory_order_release);
+    g_uartInputGenerationPublished.store(
+        g_midiIoState.uartInputGeneration(), std::memory_order_release);
     g_inputDispatcher.bind(router, g_midiIoState);
     g_inputDispatcher.setPerformSink(&g_externalNotes);
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
@@ -1724,6 +1750,21 @@ bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
 
 GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
     return g_externalNotes;
+}
+
+bool cardputerMidiInputIdentityCurrent(
+    const PerformanceInputIdentity& identity) {
+    if (identity.channel >= 16u) return false;
+    if (identity.source == static_cast<uint8_t>(GroovePuterMidi::InputSource::Usb)) {
+        if (identity.cable != cardputerMidiInputRuntimeRoutingConfig().usbCable) return false;
+        return identity.generation ==
+            g_usbInputGenerationPublished.load(std::memory_order_acquire);
+    }
+    if (identity.source == static_cast<uint8_t>(GroovePuterMidi::InputSource::Uart)) {
+        return identity.generation ==
+            g_uartInputGenerationPublished.load(std::memory_order_acquire);
+    }
+    return false;
 }
 
 const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency() { return g_ringLatency; }

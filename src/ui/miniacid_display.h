@@ -21,6 +21,7 @@
 
 class IAudioRecorder;
 class PerformanceKeyboard;
+struct PerformanceIntent;
 
 class MiniAcidDisplay {
 public:
@@ -45,6 +46,7 @@ public:
   void togglePreviousPage();
   void dismissSplash();
   bool handleEvent(UIEvent event);
+  bool dispatchPerformanceIntent(const PerformanceIntent& intent);
   int currentPageIndex() const { return page_index_; }
 
 private:

@@ -11,6 +11,13 @@
 #include "src/state/reuse_marks.h"
 #include "src/dsp/p0_preservation_types.h"
 #include "src/state/working_material_storage.h"
+#include "src/input/performance_control.h"
+#include "src/input/performance_intent.h"
+#include "src/input/performance_scene.h"
+
+namespace GroovePuterPerformance {
+struct PerformanceContext;
+}
 
 namespace GroovePuterDevelopment {
 struct DevelopmentRequest;
@@ -156,6 +163,8 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  bool performanceHarmonicContext(
+      GroovePuterPerformance::PerformanceContext& out) const;
   // Where the phrase is sounding, in its own time. currentStep() is bar-local
   // and would place the marker wrongly on any phrase longer than one bar.
   uint16_t currentPhrasePlayTick(int voiceIndex) const;
@@ -441,6 +450,9 @@ public:
 
   float getStepProgress() const;
   float transportPhaseSteps() const;
+  uint32_t transportTick() const {
+    return publishedTransportTick_.load(std::memory_order_acquire);
+  }
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
@@ -557,6 +569,31 @@ public:
   }
   float mainVolume() const;
   void setDeviceMasterVolume(float value);
+  GroovePuterPerformance::PerformanceControlState performanceControlState() const;
+  uint8_t performanceEffectMask() const {
+    return performanceEffectMask_.load(std::memory_order_acquire);
+  }
+  bool setPerformanceEffectMask(uint8_t mask);
+  bool setPerformanceControlState(
+      const GroovePuterPerformance::PerformanceControlState& state);
+  bool queuePerformanceSceneAtTick(
+      const GroovePuterPerformance::PerformanceSceneSnapshot& snapshot,
+      uint32_t targetTick);
+  bool queuePerformanceSceneMorph(
+      const GroovePuterPerformance::PerformanceSceneSnapshot& from,
+      const GroovePuterPerformance::PerformanceSceneSnapshot& to,
+      uint32_t startTick, uint32_t durationTicks);
+  void cancelQueuedPerformanceScene();
+  bool applyPerformanceControlIntent(
+      const GroovePuterPerformance::PerformanceControlIntent& intent);
+  bool dispatchPerformanceIntent(const PerformanceIntent& intent,
+                                 uint32_t nowMs);
+  bool beginPerformanceGesture(GroovePuterPerformance::PerformanceGestureKind gesture,
+                               uint32_t durationMs,
+                               uint32_t nowMs);
+  bool releasePerformanceGesture(GroovePuterPerformance::PerformanceGestureKind gesture,
+                                 uint32_t nowMs);
+  void servicePerformanceGestures(uint32_t nowMs);
   bool loadSceneByName(const std::string& name);
   bool saveSceneAs(const std::string& name);
   bool createNewSceneWithName(const std::string& name);
@@ -848,6 +885,7 @@ private:
   uint64_t tickPhaseAccum_ = 0;
   uint64_t tickPhaseInc_ = 0;
   uint32_t currentTick_ = 0;
+  std::atomic<uint32_t> publishedTransportTick_{0};
   float samplesPerStep_ = 10000.0f;
 
   // P2 compatibility fields remain physically present for this cutover
@@ -946,6 +984,46 @@ private:
   DiscardResult discardToAcceptedMelody_(int voiceIndex);
   GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
   AudioMutationGate* acceptAudioMutationGate_ = nullptr;
+  std::atomic<uint8_t> performanceControlValues_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{96, 0, 100, 0, 0, 32, 100};
+  std::atomic<uint8_t> effectivePerformanceControlValues_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{96, 0, 100, 0, 0, 32, 100};
+  GroovePuterPerformance::PerformanceGestureOverlay performanceGestureOverlay_{};
+  std::atomic<uint8_t> performanceGestureActiveMask_{0};
+  std::atomic<uint16_t> performanceControlDirtyMask_{0};
+  std::atomic<uint8_t> performanceEffectMask_{0};
+  std::atomic<uint8_t> effectivePerformanceEffectMask_{0};
+  std::atomic<bool> performanceEffectMaskDirty_{false};
+  std::atomic<uint32_t> performanceSceneCommandVersion_{0};
+  std::atomic<uint32_t> performanceSceneCommandTick_{0};
+  std::atomic<uint8_t> performanceSceneCommandMode_{0};
+  std::atomic<uint32_t> performanceSceneCommandDurationTicks_{0};
+  std::atomic<uint16_t> performanceSceneCommandMuteMask_{0};
+  std::atomic<uint8_t> performanceSceneCommandEffectMask_{0};
+  std::atomic<bool> performanceSceneCommandCanceled_{false};
+  std::atomic<uint8_t> performanceSceneCommandControls_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+  std::atomic<uint8_t> performanceSceneCommandFromControls_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+  std::atomic<uint16_t> performanceSceneCommandFromMuteMask_{0};
+  std::atomic<uint8_t> performanceSceneCommandFromEffectMask_{0};
+  bool performanceSceneMorphActive_{false};
+  uint32_t performanceSceneMorphStartTick_{0};
+  uint32_t performanceSceneMorphDurationTicks_{0};
+  uint8_t performanceSceneMorphFromControls_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+  uint8_t performanceSceneMorphToControls_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+  uint16_t performanceSceneMorphFromMuteMask_{0};
+  uint16_t performanceSceneMorphToMuteMask_{0};
+  uint8_t performanceSceneMorphFromEffectMask_{0};
+  uint8_t performanceSceneMorphToEffectMask_{0};
+  uint32_t appliedPerformanceSceneCommandVersion_{0};
+  uint8_t appliedPerformanceControlValues_[
+      GroovePuterPerformance::PerformanceControlState::kControlCount]{96, 0, 100, 0, 0, 32, 100};
+  void applyPendingPerformanceControls_();
+  void applyPendingPerformanceScene_(uint32_t tick);
+  void publishEffectivePerformanceControls_(uint32_t nowMs);
   // MAKE PHRASE can start from a legacy Pattern with no MaterialId. Keep only
   // its source proof (never another payload) so DISCARD cannot retarget it.
   struct MakePhraseSourceBasis {

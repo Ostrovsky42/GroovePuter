@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
+#include <cstdio>
 
 #include "src/generation/tonal/scale_catalog.h"
 #include "src/midi/project_transport_timeline.h"
@@ -86,6 +86,41 @@ uint32_t sixteenthMicrosForBpm(double bpm) {
     return static_cast<uint32_t>(15000000.0 / bpm + 0.5);
 }
 
+uint8_t arpPulsesUntilBoundary(std::size_t count,
+                              std::size_t index,
+                              bool ascending,
+                              PerformanceArpDirection direction) {
+    if (count <= 1) return 1;
+    if (direction != PerformanceArpDirection::UpDown &&
+        direction != PerformanceArpDirection::DownUp) {
+        const std::size_t remaining = index < count ? count - index : count;
+        return static_cast<uint8_t>(remaining > 255u ? 255u : remaining);
+    }
+
+    if (index >= count) index = 0;
+    const bool atBoundary = index == 0 && ascending;
+    const std::size_t cycleLength = count * 2u - 2u;
+    if (atBoundary) return static_cast<uint8_t>(cycleLength > 255u ? 255u : cycleLength);
+
+    for (std::size_t pulse = 1; pulse <= cycleLength; ++pulse) {
+        if (ascending) {
+            if (index + 1u >= count) {
+                ascending = false;
+                index = count - 2u;
+            } else {
+                ++index;
+            }
+        } else if (index == 0) {
+            ascending = true;
+            index = 1;
+        } else {
+            --index;
+        }
+        if (index == 0 && ascending) return static_cast<uint8_t>(pulse);
+    }
+    return static_cast<uint8_t>(cycleLength > 255u ? 255u : cycleLength);
+}
+
 bool noteBelongsToScale(uint8_t note,
                         uint8_t rootPitchClass,
                         PerformanceScale scale,
@@ -142,6 +177,211 @@ bool PerformanceKeyboard::scaleDegreeForKey(char physicalKey, uint8_t& degree) {
 bool PerformanceKeyboard::isPerformanceKey(char physicalKey) {
     uint8_t degree = 0;
     return scaleDegreeForKey(physicalKey, degree);
+}
+
+void PerformanceKeyboard::syncPerformanceScaleContext() {
+    const ScaleDefinitionView definition =
+        GroovePuterRhythm::scaleDefinitionFor(catalogScaleFor(scale_));
+    uint16_t mask = 0;
+    if (definition.intervals != nullptr) {
+        for (uint8_t i = 0; i < definition.count; ++i) {
+            const uint8_t pitchClass = static_cast<uint8_t>(
+                (rootPitchClass_ + static_cast<uint8_t>(definition.intervals[i])) % 12u);
+            mask = static_cast<uint16_t>(mask | (1u << pitchClass));
+        }
+    }
+    performanceContext_.scalePitchClasses = mask == 0 ? 0x0fffu : mask;
+    if (!performanceContext_.hasHarmony) {
+        int root = static_cast<int>(kRootC2) + rootPitchClass_ + octaveShift_ * 12;
+        if (root < 0) root = 0;
+        if (root > 127) root = 127;
+        performanceContext_.rootMidi = static_cast<uint8_t>(root);
+    }
+}
+
+void PerformanceKeyboard::setPerformanceContext(
+    const GroovePuterPerformance::PerformanceContext& context) {
+    const bool changed = performanceContext_.hasHarmony != context.hasHarmony ||
+        performanceContext_.rootMidi != context.rootMidi ||
+        performanceContext_.harmony.degree != context.harmony.degree ||
+        performanceContext_.harmony.quality != context.harmony.quality ||
+        performanceContext_.harmony.rootOffsetSemitones != context.harmony.rootOffsetSemitones ||
+        performanceContext_.scalePitchClasses != context.scalePitchClasses ||
+        performanceContext_.allowChromatic != context.allowChromatic ||
+        performanceContext_.sourceOrdinal != context.sourceOrdinal ||
+        performanceContext_.eventOnset != context.eventOnset ||
+        performanceContext_.eventDuration != context.eventDuration;
+    if (changed && performanceContext_.hasHarmony && context.hasHarmony &&
+        pendingClocked_.arpEnabled &&
+        (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Harmony ||
+         arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role)) {
+        if (harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Hold) {
+            heldArpContext_ = performanceContext_;
+            arpHoldActive_ = true;
+            arpHoldPulsesRemaining_ = 0;
+        } else if (harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Restart) {
+            arpRestartPending_ = true;
+        }
+    }
+    performanceContext_ = context;
+}
+
+GroovePuterPerformance::PerformanceContext
+PerformanceKeyboard::noteInterpretationContext() const {
+    GroovePuterPerformance::PerformanceContext context = performanceContext_;
+    if (hasPreviousPerformedNote_) {
+        context.previousNote = previousPerformedNote_;
+        context.hasPreviousNote = true;
+    }
+    return context;
+}
+
+void PerformanceKeyboard::rememberPerformedNote(uint8_t note) {
+    previousPerformedNote_ = note;
+    hasPreviousPerformedNote_ = true;
+}
+
+void PerformanceKeyboard::clearPerformanceHarmonyContext() {
+    const bool hadHarmony = performanceContext_.hasHarmony;
+    performanceContext_.hasHarmony = false;
+    performanceContext_.harmony = GroovePuterRhythm::HarmonicEvent{};
+    performanceContext_.sourceOrdinal = 0;
+    performanceContext_.eventOnset = 0;
+    performanceContext_.eventDuration = 0;
+    arpHoldActive_ = false;
+    arpHoldPulsesRemaining_ = 0;
+    if (hadHarmony && harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Restart &&
+        pendingClocked_.arpEnabled &&
+        (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Harmony ||
+         arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role)) {
+        arpRestartPending_ = true;
+    }
+    syncPerformanceScaleContext();
+}
+
+PerformanceKeyboardConfig PerformanceKeyboard::exportConfiguration() const {
+    return PerformanceKeyboardConfig{
+        static_cast<uint8_t>(performanceRole_), static_cast<uint8_t>(leadMode_),
+        static_cast<uint8_t>(arpPitchSource_), static_cast<uint8_t>(harmonyChangePolicy_),
+        static_cast<uint8_t>(pendingClocked_.arpDirection),
+        static_cast<uint8_t>(pendingClocked_.rate), pendingClocked_.arpOctaves,
+        pendingClocked_.gatePercent, static_cast<uint8_t>(chordMode_), chordInversion_,
+        static_cast<uint8_t>(chordSpread_), static_cast<uint8_t>(voiceLeading_),
+        rootPitchClass_, static_cast<uint8_t>(scale_), keyVelocity_, octaveShift_,
+        static_cast<uint8_t>(pendingClocked_.arpEnabled),
+        static_cast<uint8_t>(pendingClocked_.latchEnabled)};
+}
+
+bool PerformanceKeyboard::applyConfiguration(const PerformanceKeyboardConfig& config) {
+    if (config.role >= static_cast<uint8_t>(GroovePuterPerformance::PerformanceRole::Count) ||
+        config.leadMode >= static_cast<uint8_t>(GroovePuterPerformance::LeadMode::Count) ||
+        config.arpPitchSource >= static_cast<uint8_t>(GroovePuterPerformance::ArpPitchSource::Count) ||
+        config.harmonyChangePolicy >= static_cast<uint8_t>(GroovePuterPerformance::HarmonyChangePolicy::Count) ||
+        config.arpDirection >= static_cast<uint8_t>(PerformanceArpDirection::Count) ||
+        config.arpRate >= static_cast<uint8_t>(PerformanceRate::Count) ||
+        config.arpOctaves < 1u || config.arpOctaves > 4u ||
+        config.gatePercent < 1u || config.gatePercent > 100u ||
+        config.chordMode >= static_cast<uint8_t>(PerformanceChordMode::Count) ||
+        config.chordSpread >= static_cast<uint8_t>(PerformanceSpread::Count) ||
+        config.voiceLeading >= static_cast<uint8_t>(PerformanceVoiceLeading::Count) ||
+        config.rootPitchClass > 11u ||
+        config.scale >= static_cast<uint8_t>(PerformanceScale::Count) ||
+        config.velocity < kMinVelocity || config.velocity > kMaxVelocity ||
+        config.octaveShift < kMinOctaveShift || config.octaveShift > kMaxOctaveShift ||
+        config.arpEnabled > 1u || config.latchEnabled > 1u) return false;
+
+    (void)setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(config.role));
+    (void)setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(config.leadMode));
+    (void)setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(config.arpPitchSource));
+    (void)setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(config.harmonyChangePolicy));
+    setScale(static_cast<PerformanceScale>(config.scale));
+    setRootPitchClass(config.rootPitchClass);
+    octaveShift_ = config.octaveShift;
+    setVelocity(config.velocity);
+    setChordMode(static_cast<PerformanceChordMode>(config.chordMode));
+    setChordInversion(config.chordInversion);
+    setChordSpread(static_cast<PerformanceSpread>(config.chordSpread));
+    setVoiceLeading(static_cast<PerformanceVoiceLeading>(config.voiceLeading));
+    pendingClocked_.arpDirection = static_cast<PerformanceArpDirection>(config.arpDirection);
+    pendingClocked_.rate = static_cast<PerformanceRate>(config.arpRate);
+    pendingClocked_.arpOctaves = config.arpOctaves;
+    pendingClocked_.gatePercent = config.gatePercent;
+    pendingClocked_.arpEnabled = config.arpEnabled != 0;
+    pendingClocked_.latchEnabled = config.latchEnabled != 0;
+    stageClockedConfig();
+    persistedConfig_ = exportConfiguration();
+    return true;
+}
+
+bool PerformanceKeyboard::configChanged() const {
+    const PerformanceKeyboardConfig current = exportConfiguration();
+    return std::memcmp(&current, &persistedConfig_, sizeof(current)) != 0;
+}
+
+void PerformanceKeyboard::markConfigPersisted() {
+    persistedConfig_ = exportConfiguration();
+}
+
+bool PerformanceKeyboard::setArpPitchSource(
+    GroovePuterPerformance::ArpPitchSource source) {
+    if (source >= GroovePuterPerformance::ArpPitchSource::Count) return false;
+    if (source == arpPitchSource_) return true;
+    arpPitchSource_ = source;
+    arpIndex_ = 0;
+    arpAscending_ = true;
+    arpHoldActive_ = false;
+    arpHoldPulsesRemaining_ = 0;
+    return true;
+}
+
+bool PerformanceKeyboard::cycleArpPitchSource(int direction) {
+    if (direction == 0) return false;
+    constexpr int count = static_cast<int>(GroovePuterPerformance::ArpPitchSource::Count);
+    int next = static_cast<int>(arpPitchSource_) + (direction > 0 ? 1 : -1);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    return setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(next));
+}
+
+const char* PerformanceKeyboard::arpPitchSourceName() const {
+    switch (arpPitchSource_) {
+        case GroovePuterPerformance::ArpPitchSource::Held: return "HELD";
+        case GroovePuterPerformance::ArpPitchSource::Memory: return "MEMORY";
+        case GroovePuterPerformance::ArpPitchSource::Harmony: return "HARMONY";
+        case GroovePuterPerformance::ArpPitchSource::Role: return "ROLE";
+        case GroovePuterPerformance::ArpPitchSource::Count: break;
+    }
+    return "HELD";
+}
+
+bool PerformanceKeyboard::setHarmonyChangePolicy(
+    GroovePuterPerformance::HarmonyChangePolicy policy) {
+    if (policy >= GroovePuterPerformance::HarmonyChangePolicy::Count) return false;
+    if (policy == harmonyChangePolicy_) return true;
+    harmonyChangePolicy_ = policy;
+    arpHoldActive_ = false;
+    arpHoldPulsesRemaining_ = 0;
+    arpRestartPending_ = false;
+    return true;
+}
+
+bool PerformanceKeyboard::cycleHarmonyChangePolicy(int direction) {
+    if (direction == 0) return false;
+    constexpr int count = static_cast<int>(GroovePuterPerformance::HarmonyChangePolicy::Count);
+    int next = static_cast<int>(harmonyChangePolicy_) + (direction > 0 ? 1 : -1);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    return setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(next));
+}
+
+const char* PerformanceKeyboard::harmonyChangePolicyName() const {
+    switch (harmonyChangePolicy_) {
+        case GroovePuterPerformance::HarmonyChangePolicy::Follow: return "FOLLOW";
+        case GroovePuterPerformance::HarmonyChangePolicy::Hold: return "HOLD";
+        case GroovePuterPerformance::HarmonyChangePolicy::Restart: return "RESTART";
+        case GroovePuterPerformance::HarmonyChangePolicy::Count: break;
+    }
+    return "FOLLOW";
 }
 
 bool PerformanceKeyboard::drumChannelForKey(char physicalKey,
@@ -218,16 +458,31 @@ bool PerformanceKeyboard::isPitchClassHeld(uint8_t pitchClass) const {
 }
 
 void PerformanceKeyboard::emitNoteOn(const HeldNote& held) {
+    if (held.performanceDirect) {
+        for (const ExternalNoteOwner& owner : externalOwners_) {
+            if (owner.active && owner.raw && owner.semanticNote == static_cast<uint8_t>(held.note) &&
+                owner.semanticChannel == held.channel) return;
+        }
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (&held_[i] != &held && held_[i].performanceDirect &&
+                held_[i].note == held.note && held_[i].channel == held.channel) return;
+        }
+    }
     router_.route(MusicalEvent{MusicalEventType::NoteOn,
-                               MusicalEventSource::PerformanceKeyboard,
+                               directPolyphonyEnabled()
+                                   ? MusicalEventSource::PerformanceKeyboardPoly
+                                   : MusicalEventSource::PerformanceKeyboard,
                                target_, held.channel, held.note, held.velocity});
 }
 void PerformanceKeyboard::emitNoteOff(uint8_t note, uint8_t channel) {
     router_.route(MusicalEvent{MusicalEventType::NoteOff,
-                               MusicalEventSource::PerformanceKeyboard,
+                               directPolyphonyEnabled()
+                                   ? MusicalEventSource::PerformanceKeyboardPoly
+                                   : MusicalEventSource::PerformanceKeyboard,
                                target_, channel, note, 0});
 }
 void PerformanceKeyboard::emitPolyNoteOn(const HeldNote& held) {
+    if (hasExternalRawOwner(static_cast<uint8_t>(held.note), held.channel)) return;
     router_.route(MusicalEvent{MusicalEventType::NoteOn,
                                MusicalEventSource::PerformanceKeyboardPoly,
                                target_, held.channel, held.note, held.velocity});
@@ -634,6 +889,96 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
                                               uint8_t* velocities,
                                               std::size_t capacity) const {
     if (!notes || !velocities || capacity == 0) return 0;
+    const GroovePuterPerformance::ArpPitchSource source = arpPitchSource_;
+    const GroovePuterPerformance::PerformanceContext& context =
+        arpHoldActive_ ? heldArpContext_ : performanceContext_;
+    const bool roleUsesHarmony = source == GroovePuterPerformance::ArpPitchSource::Role &&
+        performanceRole_ != GroovePuterPerformance::PerformanceRole::Raw &&
+        performanceRole_ != GroovePuterPerformance::PerformanceRole::Lead;
+    if ((source == GroovePuterPerformance::ArpPitchSource::Harmony || roleUsesHarmony) &&
+        context.hasHarmony) {
+        uint8_t intervals[5]{};
+        uint8_t intervalCount = 0;
+        if (!GroovePuterRhythm::chordQualityIntervals(
+                context.harmony.quality, intervals, 5, intervalCount)) return 0;
+        std::size_t count = 0;
+        for (uint8_t i = 0; i < intervalCount; ++i) {
+            for (uint8_t octave = 0; octave < activeClocked_.arpOctaves; ++octave) {
+                const int candidate = static_cast<int>(context.rootMidi) + intervals[i] +
+                                      static_cast<int>(octave) * 12;
+                if (candidate < context.minNote || candidate > context.maxNote ||
+                    candidate < kMinNote || candidate > kMaxNote) continue;
+                const uint8_t pitchClass = static_cast<uint8_t>(candidate % 12);
+                if (!context.allowChromatic &&
+                    (context.scalePitchClasses & static_cast<uint16_t>(
+                        1u << pitchClass)) == 0u) continue;
+                bool duplicate = false;
+                for (std::size_t j = 0; j < count; ++j) {
+                    if (notes[j] == static_cast<uint8_t>(candidate)) duplicate = true;
+                }
+                if (!duplicate && count < capacity) {
+                    notes[count] = static_cast<uint8_t>(candidate);
+                    velocities[count++] = keyVelocity_;
+                }
+            }
+        }
+        return count;
+    }
+
+    if (source == GroovePuterPerformance::ArpPitchSource::Role &&
+        performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead) {
+        uint16_t allowed = context.scalePitchClasses;
+        if (context.hasHarmony &&
+            (leadMode_ == GroovePuterPerformance::LeadMode::Chord ||
+             leadMode_ == GroovePuterPerformance::LeadMode::VoiceLead)) {
+            bool chordValid = false;
+            allowed = GroovePuterPerformance::detail::chordPitchClassMask(
+                context, chordValid);
+            if (!chordValid) return 0;
+            if (!context.allowChromatic) {
+                allowed = static_cast<uint16_t>(allowed & context.scalePitchClasses);
+            }
+        }
+        std::size_t count = 0;
+        for (uint16_t candidate = context.minNote; candidate <= context.maxNote &&
+             candidate <= kMaxNote && count < capacity; ++candidate) {
+            const uint8_t pc = static_cast<uint8_t>(candidate % 12u);
+            if ((allowed & static_cast<uint16_t>(1u << pc)) == 0) continue;
+            notes[count] = static_cast<uint8_t>(candidate);
+            velocities[count++] = keyVelocity_;
+        }
+        if (count > 0) return count;
+    }
+
+    if (source == GroovePuterPerformance::ArpPitchSource::Memory && chordMemoryCount_ > 0) {
+        LatchedNote inputs[kMaxLatchedNotes]{};
+        std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
+        if (inputCount == 0) {
+            inputs[0] = LatchedNote{context.rootMidi, keyVelocity_};
+            inputCount = 1;
+        }
+        std::size_t count = 0;
+        for (std::size_t input = 0; input < inputCount; ++input) {
+            for (std::size_t shape = 0; shape < chordMemoryCount_; ++shape) {
+                const int interval = static_cast<int8_t>(chordMemoryIntervals_[shape]);
+                const uint8_t base = fitMidiNote(static_cast<int>(inputs[input].note) + interval);
+                for (uint8_t octave = 0; octave < activeClocked_.arpOctaves; ++octave) {
+                    const int candidate = static_cast<int>(base) + static_cast<int>(octave) * 12;
+                    if (candidate > kMaxNote) break;
+                    bool duplicate = false;
+                    for (std::size_t j = 0; j < count; ++j) {
+                        if (notes[j] == static_cast<uint8_t>(candidate)) duplicate = true;
+                    }
+                    if (!duplicate && count < capacity) {
+                        notes[count] = static_cast<uint8_t>(candidate);
+                        velocities[count++] = inputs[input].velocity;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
     LatchedNote inputs[kMaxLatchedNotes]{};
     const std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
     std::size_t count = 0;
@@ -736,7 +1081,13 @@ void PerformanceKeyboard::emitPerformancePulse(
 
     LatchedNote inputs[kMaxLatchedNotes]{};
     const std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
-    if (inputCount == 0) return;
+    if (inputCount == 0 && !pulseConfig.arpEnabled) return;
+
+    if (arpRestartPending_) {
+        arpIndex_ = 0;
+        arpAscending_ = true;
+        arpRestartPending_ = false;
+    }
 
     uint8_t notes[kMaxGeneratedNotes]{};
     uint8_t velocities[kMaxGeneratedNotes]{};
@@ -746,7 +1097,15 @@ void PerformanceKeyboard::emitPerformancePulse(
         uint8_t poolVelocity[kMaxGeneratedNotes]{};
         const std::size_t poolCount = buildArpPool(pool, poolVelocity, kMaxGeneratedNotes);
         if (poolCount == 0) return;
+        if (arpHoldActive_ && arpHoldPulsesRemaining_ == 0) {
+            arpHoldPulsesRemaining_ = arpPulsesUntilBoundary(
+                poolCount, arpIndex_, arpAscending_, pulseConfig.arpDirection);
+        }
         uint8_t selected = selectArpNote(pool, poolCount, pulseConfig);
+        if (arpHoldActive_ && arpHoldPulsesRemaining_ > 0 &&
+            --arpHoldPulsesRemaining_ == 0) {
+            arpHoldActive_ = false;
+        }
         if (pulseConfig.mutation.octaveJumpPercent > 0 &&
             mutationRng_.chance(pulseConfig.mutation.octaveJumpPercent)) {
             if (selected <= kMaxNote - 12) selected = static_cast<uint8_t>(selected + 12);
@@ -1048,6 +1407,18 @@ void PerformanceKeyboard::revoiceDirectHarmony(uint32_t nowMicros) {
 }
 
 bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
+    physicalKey = normalizeKey(physicalKey);
+    uint8_t note = 0;
+    (void)noteForKey(physicalKey, note);
+    const PerformanceInputIdentity input{
+        0, kPerformanceInputSourceCardputer,
+        kPerformanceInputChannelKeyMatrix,
+        static_cast<uint8_t>(physicalKey)};
+    return dispatchIntent(makeNotePerformanceIntent(
+        PerformanceIntentKind::PlayNote, input, note, velocity));
+}
+
+bool PerformanceKeyboard::keyDownLocal_(char physicalKey, uint8_t velocity) {
     serviceHardwareClock();
     physicalKey = normalizeKey(physicalKey);
     if (!isPerformanceKey(physicalKey)) return false;
@@ -1068,8 +1439,43 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
 
     uint8_t note = 0;
     if (!noteForKey(physicalKey, note)) return true;
+    if (performanceRoleSelected_ &&
+        (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass ||
+        performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead ||
+        (performanceRole_ == GroovePuterPerformance::PerformanceRole::Raw &&
+         chordMode_ == PerformanceChordMode::Off && !activeStepEngineEnabled() &&
+         !requestedStepEngineEnabled()))) {
+        GroovePuterPerformance::BassFunction bassFunction =
+            GroovePuterPerformance::BassFunction::Root;
+        if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass) {
+            uint8_t degree = 0;
+            (void)scaleDegreeForKey(physicalKey, degree);
+            constexpr GroovePuterPerformance::BassFunction kBassGestures[7] = {
+                GroovePuterPerformance::BassFunction::Root,
+                GroovePuterPerformance::BassFunction::Third,
+                GroovePuterPerformance::BassFunction::Fifth,
+                GroovePuterPerformance::BassFunction::Seventh,
+                GroovePuterPerformance::BassFunction::Approach,
+                GroovePuterPerformance::BassFunction::Fifth,
+                GroovePuterPerformance::BassFunction::Third};
+            bassFunction = kBassGestures[degree % 7u];
+        }
+        const GroovePuterPerformance::NotePlan plan = GroovePuterPerformance::interpretNote(
+            performanceRole_, leadMode_, noteInterpretationContext(),
+            GroovePuterPerformance::PerformanceGesture{note, velocity, bassFunction});
+        if (plan.status != GroovePuterPerformance::NotePlanStatus::Ok || plan.count != 1u) return true;
+        HeldNote& direct = held_[heldCount_++];
+        direct = HeldNote{physicalKey, plan.notes[0].note, plan.notes[0].velocity, 0, true};
+        emitNoteOn(direct);
+        rememberPerformedNote(plan.notes[0].note);
+        return true;
+    }
+
     const std::size_t priorHeld = heldCount_;
-    held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0};
+    const bool directKeyboardNote = target_ != MusicalEventTarget::Drums &&
+        chordMode_ == PerformanceChordMode::Off && !activeStepEngineEnabled() &&
+        !requestedStepEngineEnabled() && !directPolyphonyEnabled();
+    held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0, directKeyboardNote};
 
     if (activeClocked_.latchEnabled || pendingClocked_.latchEnabled) {
         if (!pendingLatchCapture_) {
@@ -1106,6 +1512,19 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
 }
 
 bool PerformanceKeyboard::keyUp(char physicalKey) {
+    physicalKey = normalizeKey(physicalKey);
+    uint8_t note = 0;
+    const int found = findHeld(physicalKey);
+    if (found >= 0) note = static_cast<uint8_t>(held_[static_cast<std::size_t>(found)].note);
+    const PerformanceInputIdentity input{
+        0, kPerformanceInputSourceCardputer,
+        kPerformanceInputChannelKeyMatrix,
+        static_cast<uint8_t>(physicalKey)};
+    return dispatchIntent(makeNotePerformanceIntent(
+        PerformanceIntentKind::ReleaseNote, input, note, 0));
+}
+
+bool PerformanceKeyboard::keyUpLocal_(char physicalKey) {
     serviceHardwareClock();
     physicalKey = normalizeKey(physicalKey);
     const int found = findHeld(physicalKey);
@@ -1119,6 +1538,19 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
         latchReplaceArmed_ = true;
     }
 
+    if (released.performanceDirect) {
+        bool anotherOwner = false;
+        for (const ExternalNoteOwner& owner : externalOwners_) {
+            if (owner.active && owner.raw && owner.semanticNote == static_cast<uint8_t>(released.note) &&
+                owner.semanticChannel == released.channel) anotherOwner = true;
+        }
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if (held_[i].performanceDirect && held_[i].note == released.note &&
+                held_[i].channel == released.channel) anotherOwner = true;
+        }
+        if (!anotherOwner) emitNoteOff(static_cast<uint8_t>(released.note), released.channel);
+        return true;
+    }
     if (target_ == MusicalEventTarget::Drums) {
         emitNoteOff(released.note, released.channel);
         return true;
@@ -1138,16 +1570,522 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
         }
         return true;
     }
-    if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
-    else emitNoteOff(released.note);
+    if (!hasExternalRawOwner(static_cast<uint8_t>(released.note), released.channel)) {
+        if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
+        else emitNoteOff(released.note);
+    }
     return true;
 }
 
+int PerformanceKeyboard::findExternalOwner(PerformanceInputIdentity input) const {
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        if (externalOwners_[i].active && samePerformanceInput(externalOwners_[i].input, input)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int PerformanceKeyboard::findExternalOwnerForSemantic(uint8_t note, uint8_t channel) const {
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        const ExternalNoteOwner& owner = externalOwners_[i];
+        if (owner.active && owner.semanticNote == note && owner.semanticChannel == channel) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+bool PerformanceKeyboard::hasExternalRawOwner(uint8_t note, uint8_t channel) const {
+    for (const ExternalNoteOwner& owner : externalOwners_) {
+        if (owner.active && owner.raw && owner.semanticNote == note &&
+            owner.semanticChannel == channel) return true;
+    }
+    return false;
+}
+
+bool PerformanceKeyboard::hasLocalDirectOwner(uint8_t note, uint8_t channel) const {
+    const bool rawDirectPoly = directPolyphonyEnabled() &&
+        chordMode_ == PerformanceChordMode::Off && !activeStepEngineEnabled() &&
+        !requestedStepEngineEnabled();
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        const HeldNote& held = held_[i];
+        if ((held.performanceDirect || rawDirectPoly) &&
+            static_cast<uint8_t>(held.note) == note && held.channel == channel) return true;
+    }
+    return false;
+}
+
+void PerformanceKeyboard::removeExternalOwner(std::size_t index) {
+    if (index < kMaxExternalNoteOwners) externalOwners_[index] = ExternalNoteOwner{};
+}
+
 bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
+    return externalLegacyNoteOn(note, velocity,
+                                PerformanceInputIdentity{0, 0xffu, 0, note});
+}
+
+bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
+    return externalNoteOff(note, PerformanceInputIdentity{0, 0xffu, 0, note});
+}
+
+bool PerformanceKeyboard::externalNoteOn(uint8_t note,
+                                         uint8_t velocity,
+                                         PerformanceInputIdentity input) {
+    return dispatchIntent(makeNotePerformanceIntent(
+        PerformanceIntentKind::PlayNote, input, note, velocity));
+}
+
+bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
+    switch (intent.kind) {
+        case PerformanceIntentKind::PlayNote:
+            if (isCardputerKeyInput(intent.input)) {
+                return keyDownLocal_(static_cast<char>(intent.input.inputNote), intent.velocity);
+            }
+            return externalNoteOnIntent_(intent.note, intent.velocity, intent.input);
+        case PerformanceIntentKind::ReleaseNote:
+            if (isCardputerKeyInput(intent.input)) {
+                return keyUpLocal_(static_cast<char>(intent.input.inputNote));
+            }
+            return externalNoteOffIntent_(intent.note, intent.input);
+        case PerformanceIntentKind::Hold:
+            externalSustain(true, intent.input);
+            return true;
+        case PerformanceIntentKind::ReleaseHold:
+            externalSustain(false, intent.input);
+            return true;
+        case PerformanceIntentKind::ChangeOctave:
+            return intent.delta != 0 && shiftOctave(intent.delta);
+        case PerformanceIntentKind::SelectRole:
+            if (intent.value >= static_cast<uint8_t>(GroovePuterPerformance::PerformanceRole::Count))
+                return false;
+            return setPerformanceRole(
+                static_cast<GroovePuterPerformance::PerformanceRole>(intent.value));
+        case PerformanceIntentKind::SelectLeadMode:
+            if (intent.value >= static_cast<uint8_t>(GroovePuterPerformance::LeadMode::Count))
+                return false;
+            return setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(intent.value));
+        case PerformanceIntentKind::SelectChordMode:
+            if (intent.value >= static_cast<uint8_t>(PerformanceChordMode::Count)) return false;
+            setChordMode(static_cast<PerformanceChordMode>(intent.value));
+            return true;
+        case PerformanceIntentKind::ToggleArp:
+            if (intent.value > 1u) return false;
+            setArpeggiatorEnabled(intent.value != 0u);
+            return true;
+        case PerformanceIntentKind::SelectArpPitchSource:
+            if (intent.value >= static_cast<uint8_t>(GroovePuterPerformance::ArpPitchSource::Count))
+                return false;
+            return setArpPitchSource(
+                static_cast<GroovePuterPerformance::ArpPitchSource>(intent.value));
+        case PerformanceIntentKind::SelectArpContour:
+            if (intent.value >= static_cast<uint8_t>(PerformanceArpDirection::Count)) return false;
+            return setArpDirection(static_cast<PerformanceArpDirection>(intent.value));
+        case PerformanceIntentKind::ChangeArpRate:
+            if (intent.value >= static_cast<uint8_t>(PerformanceRate::Count)) return false;
+            setArpRate(static_cast<PerformanceRate>(intent.value));
+            return true;
+        case PerformanceIntentKind::SelectHarmonyChangePolicy:
+            if (intent.value >= static_cast<uint8_t>(
+                    GroovePuterPerformance::HarmonyChangePolicy::Count)) return false;
+            return setHarmonyChangePolicy(
+                static_cast<GroovePuterPerformance::HarmonyChangePolicy>(intent.value));
+        case PerformanceIntentKind::ToggleLatch:
+            if (intent.value > 1u) return false;
+            if (intent.value != 0u && !arpeggiatorEnabled()) return false;
+            setLatchEnabled(intent.value != 0u);
+            return true;
+        case PerformanceIntentKind::ChangeControl:
+        case PerformanceIntentKind::TriggerPerformanceGesture:
+        case PerformanceIntentKind::SelectScene:
+        case PerformanceIntentKind::CaptureScene:
+        case PerformanceIntentKind::RecallScene:
+            return false;
+    }
+    return false;
+}
+
+bool PerformanceKeyboard::externalNoteOnIntent_(uint8_t note,
+                                                 uint8_t velocity,
+                                                 PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    if (velocity == 0u) return externalNoteOffIntent_(note, input);
+
+    if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Raw ||
+        performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass ||
+        performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead) {
+        const auto context = noteInterpretationContext();
+        GroovePuterPerformance::BassFunction bassFunction =
+            GroovePuterPerformance::BassFunction::Root;
+        if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass &&
+            context.hasHarmony &&
+            !GroovePuterPerformance::bassFunctionForInputNote(
+                context, note, bassFunction)) {
+            return false;
+        }
+        const GroovePuterPerformance::NotePlan plan = GroovePuterPerformance::interpretNote(
+            performanceRole_, leadMode_, context,
+            GroovePuterPerformance::PerformanceGesture{note, velocity, bassFunction});
+        if (plan.status != GroovePuterPerformance::NotePlanStatus::Ok || plan.count != 1u) return false;
+        if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Raw) {
+            return externalRawNoteOn(plan.notes[0].note, plan.notes[0].velocity, input);
+        }
+        const bool accepted = externalDirectNoteOn(plan.notes[0].note, plan.notes[0].velocity, input);
+        if (accepted) rememberPerformedNote(plan.notes[0].note);
+        return accepted;
+    }
+
+    uint8_t semanticNote = note;
+    uint8_t semanticChannel = 0;
+    if (target_ == MusicalEventTarget::Drums) {
+        if (!drumChannelForExternalNote(note, semanticChannel)) return true;
+        semanticNote = kSeqtrakDrumNote;
+    } else {
+        semanticNote = fitMidiNote(note);
+    }
+
+    const int previous = findExternalOwner(input);
+    if (previous >= 0) {
+        const ExternalNoteOwner& owner = externalOwners_[static_cast<std::size_t>(previous)];
+        if (owner.semanticNote == semanticNote && owner.semanticChannel == semanticChannel) return true;
+        (void)externalNoteOff(owner.inputNote, input);
+    }
+
+    std::size_t freeIndex = kMaxExternalNoteOwners;
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        if (!externalOwners_[i].active) { freeIndex = i; break; }
+    }
+    if (freeIndex == kMaxExternalNoteOwners) {
+        // The dispatcher is bounded to 24 active notes. This guard handles a stale or misbehaving
+        // producer without allowing an ownership table overflow.
+        return false;
+    }
+
+    if (findExternalOwnerForSemantic(semanticNote, semanticChannel) < 0) {
+        if (!externalNoteOnUntracked(note, velocity)) return false;
+    }
+    externalOwners_[freeIndex] = ExternalNoteOwner{true, input, note, semanticNote, semanticChannel};
+    return true;
+}
+
+bool PerformanceKeyboard::externalLegacyNoteOn(uint8_t note,
+                                               uint8_t velocity,
+                                               PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    if (velocity == 0u) return externalNoteOff(note, input);
+    if (!noteModeEnabled_) return false;
+
+    uint8_t semanticNote = note;
+    uint8_t semanticChannel = 0;
+    if (target_ == MusicalEventTarget::Drums) {
+        if (!drumChannelForExternalNote(note, semanticChannel)) return true;
+        semanticNote = kSeqtrakDrumNote;
+    } else {
+        semanticNote = fitMidiNote(note);
+    }
+    const int existing = findExternalOwner(input);
+    if (existing >= 0) {
+        const ExternalNoteOwner& owner = externalOwners_[static_cast<std::size_t>(existing)];
+        return !owner.raw && owner.semanticNote == semanticNote &&
+               owner.semanticChannel == semanticChannel;
+    }
+    std::size_t freeIndex = kMaxExternalNoteOwners;
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        if (!externalOwners_[i].active) { freeIndex = i; break; }
+    }
+    if (freeIndex == kMaxExternalNoteOwners) return false;
+    if (findExternalOwnerForSemantic(semanticNote, semanticChannel) < 0 &&
+        !externalNoteOnUntracked(note, velocity)) return false;
+    externalOwners_[freeIndex] = ExternalNoteOwner{true, input, note, semanticNote, semanticChannel, false};
+    return true;
+}
+
+bool PerformanceKeyboard::externalNoteOff(uint8_t note, PerformanceInputIdentity input) {
+    return dispatchIntent(makeNotePerformanceIntent(
+        PerformanceIntentKind::ReleaseNote, input, note, 0));
+}
+
+void PerformanceKeyboard::externalAllSoundOff(PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    if (input.source >= 3u || input.channel >= 16u) return;
+
+    bool sustainChanged = false;
+    for (ExternalSustainOwner& owner : externalSustainOwners_) {
+        if (!owner.active || owner.generation != input.generation ||
+            owner.source != input.source || owner.channel != input.channel ||
+            owner.cable != input.cable) continue;
+        owner = ExternalSustainOwner{};
+        sustainChanged = true;
+    }
+    if (sustainChanged) {
+        bool anyDown = false;
+        for (const ExternalSustainOwner& owner : externalSustainOwners_) {
+            anyDown = anyDown || owner.active;
+        }
+        updateExternalSustainAggregate(anyDown);
+    }
+
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        const ExternalNoteOwner& owner = externalOwners_[i];
+        if (!owner.active || owner.input.generation != input.generation ||
+            owner.input.source != input.source || owner.input.channel != input.channel ||
+            owner.input.cable != input.cable) continue;
+        const uint8_t note = owner.inputNote;
+        const PerformanceInputIdentity noteInput = owner.input;
+        (void)externalNoteOffIntent_(note, noteInput);
+    }
+}
+
+uint16_t PerformanceKeyboard::effectiveExternalPitchBend() const {
+    const ExternalPitchBendOwner* latest = nullptr;
+    for (const ExternalPitchBendOwner& owner : externalPitchBendOwners_) {
+        if (!owner.active) continue;
+        if (latest == nullptr || owner.sequence > latest->sequence) latest = &owner;
+    }
+    return latest == nullptr ? 8192u : latest->value14;
+}
+
+bool PerformanceKeyboard::externalPitchBend(uint16_t value14,
+                                            PerformanceInputIdentity input) {
+    if (input.source >= 3u || input.channel >= 16u) return false;
+    if (value14 > 16383u) value14 = 16383u;
+    const uint16_t before = effectiveExternalPitchBend();
+    std::size_t found = kMaxExternalPitchBendOwners;
+    std::size_t freeIndex = kMaxExternalPitchBendOwners;
+    for (std::size_t i = 0; i < kMaxExternalPitchBendOwners; ++i) {
+        const ExternalPitchBendOwner& owner = externalPitchBendOwners_[i];
+        if (!owner.active) {
+            if (freeIndex == kMaxExternalPitchBendOwners) freeIndex = i;
+            continue;
+        }
+        if (owner.input.source == input.source && owner.input.channel == input.channel &&
+            owner.input.cable == input.cable) {
+            // A new connection generation supersedes every bend from the old session.
+            if (owner.input.generation != input.generation) {
+                const uint32_t generationDelta = input.generation - owner.input.generation;
+                if (generationDelta > 0x7fffffffu) {
+                    return true;  // stale message from an older session
+                }
+                externalPitchBendOwners_[i] = ExternalPitchBendOwner{};
+                if (found == i) found = kMaxExternalPitchBendOwners;
+                if (freeIndex == kMaxExternalPitchBendOwners) freeIndex = i;
+                continue;
+            }
+            found = i;
+        }
+    }
+    if (value14 == 8192u) {
+        if (found < kMaxExternalPitchBendOwners) {
+            externalPitchBendOwners_[found] = ExternalPitchBendOwner{};
+        }
+    } else {
+        if (found == kMaxExternalPitchBendOwners) found = freeIndex;
+        if (found == kMaxExternalPitchBendOwners) return false;
+        ExternalPitchBendOwner& owner = externalPitchBendOwners_[found];
+        owner.active = true;
+        owner.value14 = value14;
+        owner.sequence = ++externalPitchBendSequence_;
+        owner.input = input;
+    }
+    const uint16_t after = effectiveExternalPitchBend();
+    if (after != before) {
+        router_.route(MusicalEvent{MusicalEventType::PitchBend,
+                                  MusicalEventSource::PerformanceKeyboard,
+                                  target_, 0, 0, 0, 0, after});
+    }
+    return true;
+}
+
+void PerformanceKeyboard::releaseAllExternalPitchBends() {
+    const uint16_t before = effectiveExternalPitchBend();
+    for (ExternalPitchBendOwner& owner : externalPitchBendOwners_) {
+        owner = ExternalPitchBendOwner{};
+    }
+    if (before != 8192u) {
+        router_.route(MusicalEvent{MusicalEventType::PitchBend,
+                                  MusicalEventSource::PerformanceKeyboard,
+                                  target_, 0, 0, 0, 0, 8192u});
+    }
+}
+
+bool PerformanceKeyboard::externalNoteOffIntent_(uint8_t note,
+                                                  PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    const int found = findExternalOwner(input);
+    if (found < 0) return false;
+    if (externalOwners_[static_cast<std::size_t>(found)].raw) {
+        if (hasExternalSustain(input)) {
+            externalOwners_[static_cast<std::size_t>(found)].sustainedReleasePending = true;
+            return true;
+        }
+        return externalRawNoteOff(note, input);
+    }
+    const std::size_t index = static_cast<std::size_t>(found);
+    const ExternalNoteOwner released = externalOwners_[index];
+    removeExternalOwner(index);
+    if (findExternalOwnerForSemantic(released.semanticNote, released.semanticChannel) >= 0) return true;
+    (void)note;
+    return externalNoteOffUntracked(released.inputNote);
+}
+
+bool PerformanceKeyboard::externalRawNoteOn(uint8_t note,
+                                            uint8_t velocity,
+                                            PerformanceInputIdentity input) {
+    return externalDirectNoteOn(note, velocity, input);
+}
+
+bool PerformanceKeyboard::externalDirectNoteOn(uint8_t note,
+                                               uint8_t velocity,
+                                               PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    if (note > 127u) return false;
+    if (velocity == 0u) return externalRawNoteOff(note, input);
+    if (!noteModeEnabled_) return false;
+    if (!enabled_) return true;
+
+    const int sameInput = findExternalOwner(input);
+    if (sameInput >= 0) {
+        ExternalNoteOwner& owner = externalOwners_[static_cast<std::size_t>(sameInput)];
+        if (owner.raw && owner.semanticNote == note) {
+            const bool retrigger = owner.sustainedReleasePending;
+            owner.sustainedReleasePending = false;
+            if (retrigger) {
+                uint32_t scaled = (static_cast<uint32_t>(velocity) * keyVelocity_ +
+                                   kDefaultVelocity / 2u) / kDefaultVelocity;
+                if (scaled < 1u) scaled = 1u;
+                if (scaled > 127u) scaled = 127u;
+                router_.route(MusicalEvent{
+                    MusicalEventType::NoteOn,
+                    directPolyphonyEnabled()
+                        ? MusicalEventSource::PerformanceKeyboardPoly
+                        : MusicalEventSource::PerformanceKeyboard,
+                    target_, owner.semanticChannel, owner.semanticNote,
+                    static_cast<uint8_t>(scaled)});
+            }
+            return true;
+        }
+        return false;  // one identity cannot own two simultaneous notes
+    }
+
+    std::size_t freeIndex = kMaxExternalNoteOwners;
+    bool alreadySounding = false;
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        const ExternalNoteOwner& owner = externalOwners_[i];
+        if (!owner.active) {
+            if (freeIndex == kMaxExternalNoteOwners) freeIndex = i;
+            continue;
+        }
+        if (owner.raw && owner.semanticNote == note && owner.semanticChannel == 0) {
+            alreadySounding = true;
+        }
+    }
+    if (hasLocalDirectOwner(note, 0)) alreadySounding = true;
+    if (freeIndex == kMaxExternalNoteOwners) return false;
+
+    uint32_t scaled = (static_cast<uint32_t>(velocity) * keyVelocity_ + kDefaultVelocity / 2) /
+                      kDefaultVelocity;
+    if (scaled < 1u) scaled = 1u;
+    if (scaled > 127u) scaled = 127u;
+    if (!alreadySounding) {
+        router_.route(MusicalEvent{MusicalEventType::NoteOn,
+                                   directPolyphonyEnabled()
+                                       ? MusicalEventSource::PerformanceKeyboardPoly
+                                       : MusicalEventSource::PerformanceKeyboard,
+                                   target_, 0, note, static_cast<uint8_t>(scaled)});
+    }
+    externalOwners_[freeIndex] = ExternalNoteOwner{true, input, note, note, 0, true};
+    return true;
+}
+
+bool PerformanceKeyboard::externalRawNoteOff(uint8_t note, PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    const int found = findExternalOwner(input);
+    if (found < 0) return false;
+    const std::size_t index = static_cast<std::size_t>(found);
+    const ExternalNoteOwner released = externalOwners_[index];
+    if (!released.raw) return false;
+    removeExternalOwner(index);
+    bool anotherOwner = false;
+    anotherOwner = hasExternalRawOwner(released.semanticNote, released.semanticChannel) ||
+        hasLocalDirectOwner(released.semanticNote, released.semanticChannel);
+    if (!anotherOwner) {
+        router_.route(MusicalEvent{MusicalEventType::NoteOff,
+                                   directPolyphonyEnabled()
+                                       ? MusicalEventSource::PerformanceKeyboardPoly
+                                       : MusicalEventSource::PerformanceKeyboard,
+                                   target_, 0, released.semanticNote, 0});
+    }
+    (void)note;
+    return true;
+}
+
+bool PerformanceKeyboard::setPerformanceRole(GroovePuterPerformance::PerformanceRole role) {
+    if (role >= GroovePuterPerformance::PerformanceRole::Count) return false;
+    performanceRoleSelected_ = true;
+    if (performanceRole_ == role) return true;
+    releaseAllExternalNotes();
+    performanceRole_ = role;
+    performanceRoleSelected_ = true;
+    resetVoiceLeading();
+    hasPreviousPerformedNote_ = false;
+    return true;
+}
+
+bool PerformanceKeyboard::cyclePerformanceRole(int direction) {
+    if (direction == 0) return false;
+    const int count = static_cast<int>(GroovePuterPerformance::PerformanceRole::Count);
+    int next = static_cast<int>(performanceRole_) + (direction > 0 ? 1 : -1);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    return setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(next));
+}
+
+const char* PerformanceKeyboard::performanceRoleName() const {
+    switch (performanceRole_) {
+        case GroovePuterPerformance::PerformanceRole::Raw: return "RAW";
+        case GroovePuterPerformance::PerformanceRole::Bass: return "BASS";
+        case GroovePuterPerformance::PerformanceRole::Lead: return "LEAD";
+        case GroovePuterPerformance::PerformanceRole::Chord: return "CHORD";
+        case GroovePuterPerformance::PerformanceRole::Arp: return "ARP";
+        case GroovePuterPerformance::PerformanceRole::Count: break;
+    }
+    return "RAW";
+}
+
+bool PerformanceKeyboard::setLeadMode(GroovePuterPerformance::LeadMode mode) {
+    if (mode >= GroovePuterPerformance::LeadMode::Count) return false;
+    if (leadMode_ == mode) return true;
+    releaseAllExternalNotes();
+    leadMode_ = mode;
+    resetVoiceLeading();
+    return true;
+}
+
+bool PerformanceKeyboard::cycleLeadMode(int direction) {
+    if (direction == 0) return false;
+    constexpr int count = static_cast<int>(GroovePuterPerformance::LeadMode::Count);
+    int next = static_cast<int>(leadMode_) + (direction > 0 ? 1 : -1);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    return setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(next));
+}
+
+const char* PerformanceKeyboard::leadModeName() const {
+    switch (leadMode_) {
+        case GroovePuterPerformance::LeadMode::Raw: return "RAW";
+        case GroovePuterPerformance::LeadMode::Scale: return "SCALE";
+        case GroovePuterPerformance::LeadMode::Chord: return "CHORD";
+        case GroovePuterPerformance::LeadMode::VoiceLead: return "VOICE";
+        case GroovePuterPerformance::LeadMode::Count: break;
+    }
+    return "RAW";
+}
+
+bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity) {
     serviceHardwareClock();
     if (!noteModeEnabled_) return false;
     if (!enabled_) return true;
-    if (velocity == 0) return externalNoteOff(note);
+    if (velocity == 0) return externalNoteOffUntracked(note);
     if (velocity > 127) velocity = 127;
     // The PERFORM velocity setting is a multiplier for an external keyboard (100 = x1.0, the
     // default): the touch dynamics of the keys are kept, only the overall level follows the setting.
@@ -1211,7 +2149,7 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
     return true;
 }
 
-bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
+bool PerformanceKeyboard::externalNoteOffUntracked(uint8_t note) {
     serviceHardwareClock();
     int found = -1;
     if (target_ == MusicalEventTarget::Drums) {
@@ -1274,6 +2212,62 @@ void PerformanceKeyboard::externalSustain(bool down) {
     }
 }
 
+bool PerformanceKeyboard::hasExternalSustain(PerformanceInputIdentity input) const {
+    for (const ExternalSustainOwner& owner : externalSustainOwners_) {
+        if (owner.active && owner.generation == input.generation &&
+            owner.source == input.source && owner.channel == input.channel &&
+            owner.cable == input.cable) return true;
+    }
+    return false;
+}
+
+void PerformanceKeyboard::updateExternalSustainAggregate(bool down) {
+    if (down == externalSustainDown_) return;
+    if (down) {
+        latchBeforeExternalSustain_ = latchEnabled();
+        externalSustainDown_ = true;
+        setLatchEnabled(true);
+    } else {
+        externalSustainDown_ = false;
+        setLatchEnabled(latchBeforeExternalSustain_);
+    }
+}
+
+void PerformanceKeyboard::externalSustain(bool down, PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    std::size_t freeIndex = kMaxExternalSustainOwners;
+    for (std::size_t i = 0; i < kMaxExternalSustainOwners; ++i) {
+        ExternalSustainOwner& owner = externalSustainOwners_[i];
+        if (owner.active && owner.generation == input.generation &&
+            owner.source == input.source && owner.channel == input.channel &&
+            owner.cable == input.cable) {
+            if (down) return;
+            owner = ExternalSustainOwner{};
+            freeIndex = i;
+            break;
+        }
+        if (!owner.active && freeIndex == kMaxExternalSustainOwners) freeIndex = i;
+    }
+    if (down && freeIndex < kMaxExternalSustainOwners) {
+        externalSustainOwners_[freeIndex] = ExternalSustainOwner{
+            true, input.generation, input.source, input.channel, input.cable};
+    }
+    if (!down) {
+        for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+            const ExternalNoteOwner& owner = externalOwners_[i];
+            if (!owner.active || !owner.sustainedReleasePending ||
+                owner.input.generation != input.generation || owner.input.source != input.source ||
+                owner.input.channel != input.channel || owner.input.cable != input.cable) continue;
+            const uint8_t note = owner.inputNote;
+            const PerformanceInputIdentity noteInput = owner.input;
+            (void)externalRawNoteOff(note, noteInput);
+        }
+    }
+    bool anyDown = false;
+    for (const ExternalSustainOwner& owner : externalSustainOwners_) anyDown = anyDown || owner.active;
+    updateExternalSustainAggregate(anyDown);
+}
+
 std::size_t PerformanceKeyboard::externalHeldCount() const {
     std::size_t count = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) count += held_[i].physicalKey == '\0' ? 1 : 0;
@@ -1281,23 +2275,13 @@ std::size_t PerformanceKeyboard::externalHeldCount() const {
 }
 
 void PerformanceKeyboard::releaseAllExternalNotes() {
-    uint8_t notes[kMaxHeldNotes]{};
-    std::size_t count = 0;
-    for (std::size_t i = 0; i < heldCount_; ++i) {
-        if (held_[i].physicalKey != '\0') continue;
-        notes[count++] = target_ == MusicalEventTarget::Drums
-            ? static_cast<uint8_t>(held_[i].channel)
-            : static_cast<uint8_t>(held_[i].note);
-    }
-    for (std::size_t i = 0; i < count; ++i) {
-        if (target_ == MusicalEventTarget::Drums) {
-            // Drum holds are identified by lane; any pitch of that lane releases it.
-            static constexpr uint8_t kLanePitch[kSeqtrakDrumChannelCount] = {0, 2, 4, 5, 7, 9, 11};
-            const uint8_t lane = notes[i] < kSeqtrakDrumChannelCount ? notes[i] : 0;
-            externalNoteOff(kLanePitch[lane]);
-        } else {
-            externalNoteOff(notes[i]);
-        }
+    for (ExternalSustainOwner& owner : externalSustainOwners_) owner = ExternalSustainOwner{};
+    updateExternalSustainAggregate(false);
+    for (std::size_t i = 0; i < kMaxExternalNoteOwners; ++i) {
+        if (!externalOwners_[i].active) continue;
+        const ExternalNoteOwner owner = externalOwners_[i];
+        if (owner.raw) (void)externalRawNoteOff(owner.inputNote, owner.input);
+        else (void)externalNoteOff(owner.inputNote, owner.input);
     }
 }
 
@@ -1332,16 +2316,13 @@ bool PerformanceKeyboard::latchedArpContinues() const {
 
 void PerformanceKeyboard::releaseHeldKeepingLatch() {
     char keys[kMaxHeldNotes]{};
-    uint8_t external[kMaxHeldNotes]{};
     std::size_t keyCount = 0;
-    std::size_t externalCount = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) {
         if (held_[i].physicalKey != '\0') keys[keyCount++] = held_[i].physicalKey;
-        else external[externalCount++] = static_cast<uint8_t>(held_[i].note);
     }
     // The normal release paths keep the latched notes sounding (heldCount_ == 0 with LATCH).
     for (std::size_t i = 0; i < keyCount; ++i) keyUp(keys[i]);
-    for (std::size_t i = 0; i < externalCount; ++i) externalNoteOff(external[i]);
+    releaseAllExternalNotes();
 }
 void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
     serviceHardwareClock();
@@ -1427,18 +2408,24 @@ void PerformanceKeyboard::panic() {
     clearScheduled();
     generatedNoteCount_ = 0;
     for (HeldNote& held : held_) held = HeldNote{};
+    for (ExternalNoteOwner& owner : externalOwners_) owner = ExternalNoteOwner{};
+    for (ExternalSustainOwner& owner : externalSustainOwners_) owner = ExternalSustainOwner{};
+    updateExternalSustainAggregate(false);
     heldCount_ = 0;
     latchedCount_ = pendingLatchCount_ = 0;
     pendingLatchCapture_ = false;
     latchReplaceArmed_ = false;
     resetPulseClock(true);
     resetVoiceLeading();
+    hasPreviousPerformedNote_ = false;
     emitAllNotesOff();
+    releaseAllExternalPitchBends();
 }
 
 void PerformanceKeyboard::setScale(PerformanceScale scale) {
     if (scale >= PerformanceScale::Count) return;
     scale_ = scale;
+    syncPerformanceScaleContext();
 }
 void PerformanceKeyboard::cycleScale(int direction) {
     int next = static_cast<int>(scale_) + direction;
@@ -1454,6 +2441,7 @@ const char* PerformanceKeyboard::scaleName() const {
 }
 void PerformanceKeyboard::setRootPitchClass(uint8_t pitchClass) {
     rootPitchClass_ = static_cast<uint8_t>(pitchClass % 12u);
+    syncPerformanceScaleContext();
 }
 void PerformanceKeyboard::cycleRoot(int direction) {
     int next = static_cast<int>(rootPitchClass_) + (direction >= 0 ? 1 : -1);
@@ -1467,6 +2455,7 @@ bool PerformanceKeyboard::shiftOctave(int direction) {
     next = std::max<int>(kMinOctaveShift, std::min<int>(kMaxOctaveShift, next));
     if (next == octaveShift_) return false;
     octaveShift_ = static_cast<int8_t>(next);
+    syncPerformanceScaleContext();
     return true;
 }
 
@@ -1619,8 +2608,14 @@ void PerformanceKeyboard::cycleArpDirection(int direction) {
     const int count = static_cast<int>(PerformanceArpDirection::Count);
     while (next < 0) next += count;
     while (next >= count) next -= count;
-    pendingClocked_.arpDirection = static_cast<PerformanceArpDirection>(next);
+    (void)setArpDirection(static_cast<PerformanceArpDirection>(next));
+}
+bool PerformanceKeyboard::setArpDirection(PerformanceArpDirection direction) {
+    if (direction >= PerformanceArpDirection::Count) return false;
+    if (pendingClocked_.arpDirection == direction) return true;
+    pendingClocked_.arpDirection = direction;
     stageClockedConfig();
+    return true;
 }
 const char* PerformanceKeyboard::arpDirectionName() const {
     switch (pendingClocked_.arpDirection) {

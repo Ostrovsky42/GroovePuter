@@ -1063,6 +1063,28 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         return;
     }
 
+    if (event.type == MusicalEventType::PitchBend) {
+        if (event.target == MusicalEventTarget::Drums || !enabled_ || !mounted_) return;
+        uint8_t channel = 0;
+        if (isSynthPerformanceSource(event.source)) {
+            channel = generatedChannel(event.target);
+        } else {
+            const MidiVoiceLane* lane = laneFor(event.source, event.target, event.channel);
+            if (!accepts(lane)) return;
+            channel = lane->channel;
+        }
+        const uint16_t value14 = event.pitchBend14 > 16383u
+            ? 16383u : event.pitchBend14;
+        if (transport_.sendPitchBend(channel, value14)) {
+            pendingPitchBendMask_ &= static_cast<uint16_t>(~(1u << channel));
+            transport_.flush();
+        } else {
+            pendingPitchBends_[channel] = value14;
+            pendingPitchBendMask_ |= static_cast<uint16_t>(1u << channel);
+        }
+        return;
+    }
+
     if (event.target != MusicalEventTarget::Drums &&
         isSynthPerformanceSource(event.source)) {
         if (!retryGeneratedPendingReleases(event.target)) return;
@@ -1077,6 +1099,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
                 releaseGeneratedNote(event.target, event.note, event.velocity);
                 break;
             case MusicalEventType::AllNotesOff:
+                break;
+            case MusicalEventType::PitchBend:
                 break;
         }
         releasePendingChannelPanics();
@@ -1106,6 +1130,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
                 break;
             case MusicalEventType::AllNotesOff:
                 break;
+            case MusicalEventType::PitchBend:
+                break;
         }
         releasePendingChannelPanics();
         return;
@@ -1126,6 +1152,19 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             break;
         case MusicalEventType::AllNotesOff:
             break;
+        case MusicalEventType::PitchBend:
+            break;
     }
     releasePendingChannelPanics();
+}
+
+void UsbMidiOutput::servicePitchBendRetries() {
+    if (!begun_ || !enabled_ || !mounted_) return;
+    for (uint8_t channel = 0; channel < 16u; ++channel) {
+        const uint16_t mask = static_cast<uint16_t>(1u << channel);
+        if ((pendingPitchBendMask_ & mask) == 0u) continue;
+        if (!transport_.sendPitchBend(channel, pendingPitchBends_[channel])) continue;
+        transport_.flush();
+        pendingPitchBendMask_ &= static_cast<uint16_t>(~mask);
+    }
 }

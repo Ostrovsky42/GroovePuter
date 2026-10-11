@@ -43,6 +43,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
+#include "src/platform/cardputer_performance_config_owner.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
@@ -440,6 +441,10 @@ void setup() {
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
+  // Load the saved PERFORM keyboard before any input can change it, so a MIDI CC arriving
+  // before the PERFORM page is first opened cannot save defaults over the user's record.
+  GroovePuterPlatform::restoreCardputerPerformanceConfig(g_performanceKeyboard);
+
   g_encoder8 = new (std::nothrow) Encoder8Miniacid(g_miniAcidInstance);
   if (!g_encoder8) {
     Serial.println("[FATAL] Encoder8 allocation failed");
@@ -562,6 +567,15 @@ void loop() {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
+    g_performanceKeyboard.setTempoBpm(g_miniAcid->bpm());
+    GroovePuterPerformance::PerformanceContext performanceContext{};
+    if (g_miniAcid->performanceHarmonicContext(performanceContext)) {
+      g_performanceKeyboard.setPerformanceContext(performanceContext);
+    } else {
+      g_performanceKeyboard.clearPerformanceHarmonyContext();
+    }
+    g_performanceKeyboard.service(micros());
+    GroovePuterPlatform::servicePerformanceConfigSave(g_performanceKeyboard, millis());
     g_internalSynthOutput.syncPatternOwnership();
     // External keyboard (MIDI IN target PERFORM): the dispatch task only enqueues; the PERFORM
     // keyboard is owned here, so chords / arp / latch / rhythms see the notes like built-in keys.
@@ -572,8 +586,45 @@ void loop() {
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
         if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
 #endif
+        if ((note.input.source == static_cast<uint8_t>(GroovePuterMidi::InputSource::Usb) ||
+             note.input.source == static_cast<uint8_t>(GroovePuterMidi::InputSource::Uart)) &&
+            !cardputerMidiInputIdentityCurrent(note.input)) {
+          continue;
+        }
+        if (note.pitchBendControl) {
+          (void)g_performanceKeyboard.externalPitchBend(note.pitchBend14, note.input);
+          continue;
+        }
+        if (note.allSoundOffControl) {
+          g_performanceKeyboard.externalAllSoundOff(note.input);
+          continue;
+        }
+        if (note.controlChange) {
+          GroovePuterPerformance::PerformanceCcBinding binding{};
+          GroovePuterPerformance::PerformanceControlIntent intent{};
+          PerformanceIntentKind toggle{};
+          if (GroovePuterPerformance::genericMidiToggleCc(note.controller, toggle)) {
+            g_performanceKeyboard.dispatchIntent(makeSelectionPerformanceIntent(
+                toggle, note.input, note.velocity >= 64u ? 1u : 0u));
+          } else if (g_miniAcid && GroovePuterPerformance::genericMidiCcBinding(note.controller, binding) &&
+              GroovePuterPerformance::mapCcToControl(
+                  binding, note.controller, note.velocity, intent)) {
+            g_miniAcid->dispatchPerformanceIntent(
+                GroovePuterPerformance::toPerformanceIntent(intent, note.input),
+                millis());
+          }
+          if (g_miniDisplay) {
+            UIEvent offered{};
+            offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+            offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_CC;
+            offered.x = note.controller;
+            offered.y = note.velocity;
+            (void)g_miniDisplay->handleEvent(offered);
+          }
+          continue;
+        }
         if (note.sustain) {
-          g_performanceKeyboard.externalSustain(note.on);
+          g_performanceKeyboard.externalSustain(note.on, note.input);
           continue;
         }
         if (note.mod != 0) {
@@ -617,8 +668,13 @@ void loop() {
           consumed = g_miniDisplay->handleEvent(offered);
         }
         if (consumed) continue;
-        if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
-        else g_performanceKeyboard.externalNoteOff(note.note);
+        if (note.on) {
+          g_performanceKeyboard.dispatchIntent(PerformanceIntent{
+              PerformanceIntentKind::PlayNote, note.input, note.note, note.velocity});
+        } else {
+          g_performanceKeyboard.dispatchIntent(PerformanceIntent{
+              PerformanceIntentKind::ReleaseNote, note.input, note.note, 0});
+        }
       }
       {
         const int repeatDirection = g_nudgeRepeat.poll(millis());
@@ -636,6 +692,7 @@ void loop() {
         g_modHold.reset();
         g_nudgeRepeat.reset();
         g_performanceKeyboard.releaseAllExternalNotes();
+        g_performanceKeyboard.releaseAllExternalPitchBends();
         g_performanceKeyboard.externalSustain(false);
       }
     }

@@ -199,6 +199,8 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
+            if (i == WorkflowPages::kPerform && pages_[i] &&
+                pages_[i]->hasBackgroundWork()) keep = true;
             if (!keep && pages_[i]) {
                 pages_[i]->captureViewContinuity(ui_view_continuity_);
                 pages_[i].reset();
@@ -235,10 +237,19 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
     audio_recorder_ = recorder;
 }
 
+bool MiniAcidDisplay::dispatchPerformanceIntent(const PerformanceIntent& intent) {
+    IPage* page = getPage_(WorkflowPages::kPerform);
+    auto* perform = static_cast<PerformPage*>(page);
+    return perform != nullptr && perform->dispatchPerformanceIntent(intent);
+}
+
 void MiniAcidDisplay::update() {
+    mini_acid_.servicePerformanceGestures(millis());
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
+    if (pages_[WorkflowPages::kPerform])
+        pages_[WorkflowPages::kPerform]->serviceBackground();
     // Song rows that name a Melody slot are prepared here, off the audio thread.
     if (mini_acid_.songMaterialServiceDue()) {
         withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
@@ -647,6 +658,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         const bool smfPlayerFnNumber =
             page_index_ == kSmfPlayerPage && event.meta && !event.alt &&
             !event.ctrl && event.key >= '1' && event.key <= '9';
+        if (page_index_ == WorkflowPages::kPerform && event.alt && !event.ctrl &&
+            !event.meta && event.key >= '1' && event.key <= '8') {
+            IPage* performPage = getPage_(page_index_);
+            if (performPage && performPage->handleEvent(event)) return true;
+        }
         if ((event.alt || event.meta) && !event.ctrl && !smfPlayerFnNumber) {
             int targetPage = -1;
             switch (event.key) {

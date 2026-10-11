@@ -6,6 +6,7 @@
 #include "src/midi/midi_input_dispatcher.h"
 #include "src/midi/midi_input_parser.h"
 #include "src/midi/midi_input_queue.h"
+#include "src/midi/external_note_queue.h"
 #include "src/midi/midi_io_state.h"
 
 using namespace GroovePuterMidi;
@@ -80,6 +81,7 @@ void defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes() {
     MidiInputRoutingConfig config{};
     config.enabled = true;
     config.target = MidiInputTarget::SynthA;
+    config.pitchBendMode = PitchBendMode::LegacyNudge;
     assert(dispatcher.setConfig(config));
     on.id.generation = io.usbInputGeneration();
     assert(queue.tryPush(on));
@@ -151,25 +153,173 @@ void reconfigurationReleasesNotesOwnedByPreviousPolicy() {
     assert(sink.events.back().target == MusicalEventTarget::SynthA);
     assert(sink.events.back().note == 64u);
 }
+void genericModulationControllersStayControlChanges() {
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, 1});
+    const uint8_t modWheel[4] = {0x0B, 0xB0, 1, 127};
+    const uint8_t nanoKeyMod[4] = {0x0B, 0xB0, 94, 127};
+    const ParseResult cc1 = parser.usbPacket(modWheel, 100);
+    const ParseResult cc94 = parser.usbPacket(nanoKeyMod, 200);
+    assert(cc1.hasInput && cc1.input.kind == InputKind::ControlChange);
+    assert(cc1.input.controller == 1u && cc1.input.velocity == 127u);
+    assert(cc94.hasInput && cc94.input.kind == InputKind::ControlChange);
+    assert(cc94.input.controller == 94u && cc94.input.velocity == 127u);
+}
+
 }  // namespace
 
 class CaptureNotes final : public MidiExternalNoteSink {
 public:
-    struct Entry { bool on; uint8_t note; uint8_t velocity; };
-    void externalNoteOn(uint8_t note, uint8_t velocity) override { entries.push_back({true, note, velocity}); }
-    void externalNoteOff(uint8_t note) override { entries.push_back({false, note, 0}); }
+    struct Entry { bool on; uint8_t note; uint8_t velocity; PerformanceInputIdentity input; };
+    void externalNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input) override {
+        entries.push_back({true, note, velocity, input});
+    }
+    void externalNoteOff(uint8_t note, PerformanceInputIdentity input) override {
+        entries.push_back({false, note, 0, input});
+    }
     void externalSustain(bool down) override { sustain.push_back(down); }
+    void externalSustain(bool down, PerformanceInputIdentity input) override {
+        sustain.push_back(down);
+        sustainInputs.push_back(input);
+    }
     void externalNudge(int direction) override { nudges.push_back(direction); }
+    void externalPitchBend(uint16_t value14, PerformanceInputIdentity input) override {
+        bends.push_back({value14, input});
+    }
+    void externalAllSoundOff(PerformanceInputIdentity input) override {
+        allSoundOffs.push_back(input);
+    }
     void externalMod(ModPhase phase) override {
         modPhases.push_back(phase);
         if (phase == ModPhase::Press) ++mods;
     }
+    void externalControlChange(uint8_t cc, uint8_t value,
+                               PerformanceInputIdentity input) override {
+        controls.push_back({cc, value, input});
+    }
+    struct Control { uint8_t cc; uint8_t value; PerformanceInputIdentity input; };
+    struct Bend { uint16_t value14; PerformanceInputIdentity input; };
     std::vector<ModPhase> modPhases;
     int mods = 0;  // presses
     std::vector<int> nudges;
     std::vector<bool> sustain;
+    std::vector<PerformanceInputIdentity> sustainInputs;
     std::vector<Entry> entries;
+    std::vector<Control> controls;
+    std::vector<Bend> bends;
+    std::vector<PerformanceInputIdentity> allSoundOffs;
 };
+
+void allSoundOffUsesForceScopedPerformCleanup() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    const uint32_t generation = io.usbInputGeneration();
+    assert(queue.tryPush(MidiInputEvent{
+        InputKey{InputSource::Usb, generation, 4, 60}, InputKind::NoteOn, 100, 1}));
+    assert(queue.tryPush(MidiInputEvent{
+        InputKey{InputSource::Usb, generation, 4, 0}, InputKind::AllSoundOff, 0, 2}));
+    assert(dispatcher.service(queue) == 2u);
+    assert(bridge.entries.size() == 1u && bridge.entries[0].on);
+    assert(bridge.allSoundOffs.size() == 1u);
+    const PerformanceInputIdentity scoped = bridge.allSoundOffs[0];
+    assert(scoped.generation == generation);
+    assert(scoped.source == static_cast<uint8_t>(InputSource::Usb));
+    assert(scoped.channel == 4u);
+    assert(routed.events.empty());
+
+    // CC123 remains ordinary NoteOff and therefore honors the keyboard's sustain policy.
+    assert(queue.tryPush(MidiInputEvent{
+        InputKey{InputSource::Usb, generation, 4, 62}, InputKind::NoteOn, 100, 3}));
+    assert(queue.tryPush(MidiInputEvent{
+        InputKey{InputSource::Usb, generation, 4, 0}, InputKind::AllNotesOff, 0, 4}));
+    assert(dispatcher.service(queue) == 2u);
+    assert(bridge.entries.size() == 3u && !bridge.entries[2].on);
+    assert(bridge.allSoundOffs.size() == 1u);
+}
+
+void musicalPitchBendPreservesFourteenBitsByDefault() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(config.pitchBendMode == PitchBendMode::Musical);
+    assert(dispatcher.setConfig(config));
+
+    const uint8_t bend[4] = {0x0e, 0xe3, 0x23, 0x65};
+    const ParseResult parsed = parser.usbPacket(bend, 1234);
+    assert(parsed.hasInput && parsed.input.pitchBend14 == 0x32a3u);
+    assert(queue.tryPush(parsed.input));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.bends.size() == 1u);
+    assert(bridge.bends[0].value14 == 0x32a3u);
+    assert(bridge.bends[0].input.generation == io.usbInputGeneration());
+    assert(bridge.bends[0].input.channel == 3u);
+    assert(bridge.nudges.empty() && routed.events.empty());
+
+    config.pitchBendMode = PitchBendMode::LegacyNudge;
+    assert(dispatcher.setConfig(config));
+    assert(bridge.bends.size() == 2u && bridge.bends[1].value14 == 8192u);
+    const uint8_t legacyPress[4] = {0x0e, 0xe3, 0, 0};
+    assert(queue.tryPush(parser.usbPacket(legacyPress, 1250).input));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.nudges.size() == 1u && bridge.nudges[0] == -1);
+    assert(bridge.bends.size() == 2u);
+
+    config.pitchBendMode = PitchBendMode::Musical;
+    assert(dispatcher.setConfig(config));
+    assert(queue.tryPush(parser.usbPacket(bend, 1300).input));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.bends.size() == 3u && bridge.bends.back().value14 == 0x32a3u);
+    io.usbDetached();
+    assert(dispatcher.service(queue) == 0u);
+    assert(bridge.bends.size() == 4u && bridge.bends.back().value14 == 8192u);
+}
+
+void genericControlChangesReachPerformAsSemanticInput() {
+    MusicalEventRouter router;
+    CaptureNotes bridge;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    const uint8_t cc[4] = {0x0b, 0xb3, 74, 91};
+    const ParseResult parsed = parser.usbPacket(cc, 1234);
+    assert(parsed.hasInput && parsed.input.kind == InputKind::ControlChange);
+    assert(parsed.input.controller == 74 && parsed.input.velocity == 91);
+    assert(queue.tryPush(parsed.input));
+    assert(dispatcher.service(queue) == 1);
+    assert(bridge.controls.size() == 1);
+    assert(bridge.controls[0].cc == 74 && bridge.controls[0].value == 91);
+    assert(bridge.controls[0].input.generation == io.usbInputGeneration());
+    assert(bridge.controls[0].input.channel == 3);
+}
 
 void performTargetFeedsTheKeyboardBridgeNotTheRouter() {
     MusicalEventRouter router;
@@ -204,6 +354,9 @@ void performTargetFeedsTheKeyboardBridgeNotTheRouter() {
     assert(routed.events.empty());  // nothing went through the router
     assert(bridge.entries.size() == 4u);
     assert(bridge.entries[0].on && bridge.entries[0].note == 60 && bridge.entries[0].velocity == 90);
+    assert(bridge.entries[0].input.generation == io.usbInputGeneration());
+    assert(bridge.entries[0].input.source == static_cast<uint8_t>(InputSource::Usb));
+    assert(bridge.entries[0].input.channel == 0 && bridge.entries[0].input.inputNote == 60);
     assert(bridge.entries[1].on && bridge.entries[1].note == 100);
     assert(bridge.entries[2].on && bridge.entries[2].note == 10);
     assert(!bridge.entries[3].on && bridge.entries[3].note == 60);
@@ -226,6 +379,60 @@ void performTargetFeedsTheKeyboardBridgeNotTheRouter() {
     config.target = MidiInputTarget::SynthA;
     assert(dispatcher.setConfig(config));
     assert(bridge.entries.size() == 1u && !bridge.entries[0].on && bridge.entries[0].note == 60);
+}
+
+void performBridgeRetainsInputIdentityAcrossSamePitchOwners() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+
+    MidiIoState io;
+    io.setRoutes(MidiRoutes{true, true, false, false});
+    io.requestUsbRole(UsbRole::Device);
+    io.boot();
+    io.usbAttached();
+    io.usbReady(true, true);
+    const uint32_t usbGeneration = io.usbInputGeneration();
+    const uint32_t uartGeneration = io.uartInputGeneration();
+    MidiInputQueue queue;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    MidiInputEvent usbOn{InputKey{InputSource::Usb, usbGeneration, 1, 64}, InputKind::NoteOn, 90, 100};
+    MidiInputEvent uartOn{InputKey{InputSource::Uart, uartGeneration, 1, 64}, InputKind::NoteOn, 80, 110};
+    assert(queue.tryPush(usbOn) && queue.tryPush(uartOn));
+    assert(dispatcher.service(queue) == 2u);
+    assert(bridge.entries.size() == 2u);
+    assert(bridge.entries[0].input.source == static_cast<uint8_t>(InputSource::Usb));
+    assert(bridge.entries[1].input.source == static_cast<uint8_t>(InputSource::Uart));
+    assert(bridge.entries[0].input.generation == usbGeneration);
+    assert(bridge.entries[1].input.generation == uartGeneration);
+    assert(bridge.entries[0].input.channel == 1 && bridge.entries[0].input.inputNote == 64);
+
+    // A source-scoped disconnect releases only its note identity.
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.entries.size() == 3u);
+    assert(!bridge.entries.back().on);
+    assert(bridge.entries.back().input.source == static_cast<uint8_t>(InputSource::Usb));
+    assert(bridge.entries.back().input.generation == usbGeneration);
+}
+
+void externalQueuePreservesPerformanceInputIdentity() {
+    GroovePuterMidi::ExternalNoteQueue queue;
+    const PerformanceInputIdentity identity{99, static_cast<uint8_t>(InputSource::Usb), 4, 67};
+    queue.externalNoteOn(67, 101, identity);
+    GroovePuterMidi::ExternalNoteQueue::Event event{};
+    assert(queue.pop(event) && event.on && event.note == 67 && event.velocity == 101);
+    assert(samePerformanceInput(event.input, identity));
+    queue.externalNoteOff(67, identity);
+    assert(queue.pop(event) && !event.on && event.note == 67);
+    assert(samePerformanceInput(event.input, identity));
 }
 
 void sustainMapsToThePerformBridgeOnly() {
@@ -291,6 +498,83 @@ void sustainMapsToThePerformBridgeOnly() {
     }
 }
 
+void sustainOwnershipSurvivesAnotherSourceDisconnect() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io;
+    io.setRoutes(MidiRoutes{true, true, false, false});
+    io.requestUsbRole(UsbRole::Device);
+    io.boot();
+    io.usbAttached();
+    io.usbReady(true, true);
+    MidiInputQueue queue;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    const uint32_t usbGeneration = io.usbInputGeneration();
+    const uint32_t uartGeneration = io.uartInputGeneration();
+    assert(queue.tryPush(MidiInputEvent{InputKey{InputSource::Usb, usbGeneration, 0, 0},
+                                        InputKind::Sustain, 127, 100}));
+    assert(queue.tryPush(MidiInputEvent{InputKey{InputSource::Uart, uartGeneration, 0, 0},
+                                        InputKind::Sustain, 127, 110}));
+    assert(dispatcher.service(queue) == 2u);
+    assert(bridge.sustain.size() == 2 && bridge.sustain[0] && bridge.sustain[1]);
+    assert(bridge.sustainInputs[0].source == static_cast<uint8_t>(InputSource::Usb));
+    assert(bridge.sustainInputs[1].source == static_cast<uint8_t>(InputSource::Uart));
+
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.sustain.size() == 3 && !bridge.sustain[2]); // Only USB sustain is released.
+    assert(bridge.sustainInputs[2].source == static_cast<uint8_t>(InputSource::Usb));
+
+    assert(queue.tryPush(MidiInputEvent{InputKey{InputSource::Uart, uartGeneration, 0, 0},
+                                        InputKind::Sustain, 0, 120}));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.sustain.size() == 4 && !bridge.sustain[3]);
+    assert(bridge.sustainInputs[3].source == static_cast<uint8_t>(InputSource::Uart));
+}
+
+void disconnectCancelsOnlyGesturesOwnedByThatSource() {
+    MusicalEventRouter router;
+    CaptureSink routed;
+    assert(router.addSink(routed));
+    CaptureNotes bridge;
+    MidiIoState io;
+    io.setRoutes(MidiRoutes{true, true, false, false});
+    io.requestUsbRole(UsbRole::Device);
+    io.boot();
+    io.usbAttached();
+    io.usbReady(true, true);
+    MidiInputQueue queue;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    config.pitchBendMode = PitchBendMode::LegacyNudge;
+    assert(dispatcher.setConfig(config));
+
+    const uint32_t generation = io.usbInputGeneration();
+    assert(queue.tryPush(MidiInputEvent{InputKey{InputSource::Usb, generation, 0, 0},
+                                        InputKind::PitchBend, 0, 100}));
+    assert(queue.tryPush(MidiInputEvent{InputKey{InputSource::Usb, generation, 0, 0},
+                                        InputKind::Mod, 1, 110}));
+    assert(dispatcher.service(queue) == 2u);
+    assert(bridge.nudges.size() == 1 && bridge.nudges[0] == -1);
+    assert(bridge.modPhases.size() == 1 && bridge.modPhases[0] == ModPhase::Press);
+
+    io.usbDetached();
+    (void)dispatcher.service(queue);
+    assert(bridge.nudges.size() == 2 && bridge.nudges[1] == 0);
+    assert(bridge.modPhases.size() == 2 && bridge.modPhases[1] == ModPhase::Cancel);
+}
+
 void pitchButtonsAreOneShotNudgesOnPerformOnly() {
     MusicalEventRouter router;
     CaptureSink routed;
@@ -312,6 +596,7 @@ void pitchButtonsAreOneShotNudgesOnPerformOnly() {
     MidiInputRoutingConfig config{};
     config.enabled = true;
     config.target = MidiInputTarget::SynthA;
+    config.pitchBendMode = PitchBendMode::LegacyNudge;
     assert(dispatcher.setConfig(config));
     {
         const ParseResult parsed = parser.usbPacket(left, 100);
@@ -339,7 +624,7 @@ void pitchButtonsAreOneShotNudgesOnPerformOnly() {
     assert(routed.events.empty());                                 // never reaches the router
 }
 
-void modButtonIsAOneShotPressOnPerformOnly() {
+void modulationCCNeverTriggersLegacyModGesture() {
     MusicalEventRouter router;
     CaptureSink routed;
     assert(router.addSink(routed));
@@ -363,7 +648,7 @@ void modButtonIsAOneShotPressOnPerformOnly() {
         const ParseResult parsed = parser.usbPacket(press, 100);
         assert(parsed.hasInput && queue.tryPush(parsed.input));
         (void)dispatcher.service(queue);
-        assert(bridge.mods == 0 && routed.events.empty());   // direct targets ignore it
+    assert(bridge.mods == 0 && bridge.controls.empty() && routed.events.empty());
     }
     config.target = MidiInputTarget::Perform;
     assert(dispatcher.setConfig(config));
@@ -372,7 +657,7 @@ void modButtonIsAOneShotPressOnPerformOnly() {
         assert(parsed.hasInput && queue.tryPush(parsed.input));
     }
     (void)dispatcher.service(queue);
-    assert(bridge.mods == 2);                                // two presses, the repeat is not an edge
+    assert(bridge.mods == 0 && bridge.controls.size() == 4u);
     assert(routed.events.empty());
 }
 
@@ -390,6 +675,7 @@ void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
     MidiInputRoutingConfig config{};
     config.enabled = true;
     config.target = MidiInputTarget::Perform;
+    config.pitchBendMode = PitchBendMode::LegacyNudge;
     assert(dispatcher.setConfig(config));
 
     auto send = [&](uint8_t status, uint8_t d1, uint8_t d2, uint8_t cin) {
@@ -399,24 +685,21 @@ void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
         (void)dispatcher.service(queue);
     };
 
-    // Mod = CC 0x5E on channel 9: a 0..15 ramp up, then back down to 0 (measured on the device).
-    // Two presses, so exactly two one-shots; the ramp down never fires.
+    // CC94 uses a measured 0..15 button ramp on one controller, but stays generic CC
+    // data so an unknown controller cannot invoke destructive page actions.
     for (int press = 0; press < 2; ++press) {
         for (uint8_t v = 1; v <= 15; ++v) send(0xB8, 0x5E, v, 0x0B);
         for (int v = 14; v >= 0; --v) send(0xB8, 0x5E, static_cast<uint8_t>(v), 0x0B);
     }
-    assert(bridge.mods == 2);
-    // Each press produced exactly one Press and one Release, in order; the second ramp ended at 0.
-    assert(bridge.modPhases.size() == 4u);
-    assert(bridge.modPhases[0] == ModPhase::Press && bridge.modPhases[1] == ModPhase::Release);
-    assert(bridge.modPhases[2] == ModPhase::Press && bridge.modPhases[3] == ModPhase::Release);
-    // A press that starts from a small value after a partial release (value 2) still counts once.
+    assert(bridge.mods == 0 && bridge.modPhases.empty());
+    assert(bridge.controls.size() == 60u);
+    // A partial ramp stays control data too.
     send(0xB8, 0x5E, 3, 0x0B);
-    assert(bridge.mods == 3);
-    // Pulling the keyboard out while the button is held cancels the press (no Release is faked).
+    assert(bridge.mods == 0 && bridge.controls.size() == 61u);
+    // Disconnect does not invent a destructive Mod action.
     io.usbDetached();
     (void)dispatcher.service(queue);
-    assert(bridge.modPhases.back() == ModPhase::Cancel);
+    assert(bridge.modPhases.empty());
     io.usbAttached();
     io.usbReady(true, true);
     parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
@@ -439,11 +722,19 @@ void rampedButtonsOfTheOwnersKeyboardCountOncePerPress() {
 }
 
 int main() {
+    genericModulationControllersStayControlChanges();
+    allSoundOffUsesForceScopedPerformCleanup();
+    musicalPitchBendPreservesFourteenBitsByDefault();
+    genericControlChangesReachPerformAsSemanticInput();
     rampedButtonsOfTheOwnersKeyboardCountOncePerPress();
-    modButtonIsAOneShotPressOnPerformOnly();
+    modulationCCNeverTriggersLegacyModGesture();
     pitchButtonsAreOneShotNudgesOnPerformOnly();
     sustainMapsToThePerformBridgeOnly();
+    sustainOwnershipSurvivesAnotherSourceDisconnect();
+    disconnectCancelsOnlyGesturesOwnedByThatSource();
     performTargetFeedsTheKeyboardBridgeNotTheRouter();
+    performBridgeRetainsInputIdentityAcrossSamePitchOwners();
+    externalQueuePreservesPerformanceInputIdentity();
     usbNoteOnOffReachesConfiguredMusicalTarget();
     defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes();
     reconfigurationReleasesNotesOwnedByPreviousPolicy();

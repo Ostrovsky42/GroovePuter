@@ -101,6 +101,11 @@ void InternalSynthOutput::syncPatternOwnership() {
 }
 
 void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
+    // Pitch bend is forwarded by the MIDI output sinks. The internal synths
+    // have no realtime-safe bend command, so entering the mutation gate here
+    // would only pause audio without changing a voice.
+    if (event.type == MusicalEventType::PitchBend) return;
+
     // PatternPlayer owns and renders internal voices inside AudioTask. Its
     // normalized events are additive external-output data only; Pattern
     // ownership reaches this arbiter through syncPatternOwnership().
@@ -158,6 +163,8 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                     }
                 }
                 liveDrumPadMask_ = 0;
+                break;
+            case MusicalEventType::PitchBend:
                 break;
         }
         return;

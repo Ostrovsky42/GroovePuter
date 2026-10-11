@@ -458,6 +458,83 @@ def main() -> None:
     test_smf_player_is_additive_and_keeps_single_usb_owner()
     test_smf_velocity_boost_range_is_session_sticky()
     test_smf_channel_inspector_is_bounded_and_read_only()
+    test_cardputer_services_performance_clock_each_loop()
+    test_cardputer_and_midi_share_performance_control_intents()
+
+
+def test_cardputer_and_midi_share_performance_control_intents() -> None:
+    page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
+    app = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    keyboard = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
+
+    key_down_start = keyboard.index("bool PerformanceKeyboard::keyDown(char")
+    key_down_end = keyboard.index("bool PerformanceKeyboard::keyDownLocal_", key_down_start)
+    require("makeNotePerformanceIntent" in keyboard[key_down_start:key_down_end] and
+            "dispatchIntent" in keyboard[key_down_start:key_down_end],
+            "Cardputer key presses must enter the same PlayNote intent dispatcher as MIDI")
+    key_up_start = keyboard.index("bool PerformanceKeyboard::keyUp(char")
+    key_up_end = keyboard.index("bool PerformanceKeyboard::keyUpLocal_", key_up_start)
+    require("makeNotePerformanceIntent" in keyboard[key_up_start:key_up_end] and
+            "dispatchIntent" in keyboard[key_up_start:key_up_end],
+            "Cardputer key releases must enter the same ReleaseNote intent dispatcher as MIDI")
+
+    control_start = page.index("void PerformPage::adjustControl")
+    control_end = page.index("bool PerformPage::dispatchKeyboardIntent", control_start)
+    cardputer_control = page[control_start:control_end]
+    require("toPerformanceIntent" in cardputer_control and
+            "dispatchPerformanceIntent" in cardputer_control,
+            "Cardputer controls must cross the semantic intent boundary")
+
+    cc_start = app.index("if (note.controlChange)")
+    cc_end = app.index("if (note.sustain)", cc_start)
+    midi_control = app[cc_start:cc_end]
+    require("genericMidiToggleCc" in midi_control and
+            "g_performanceKeyboard.dispatchIntent" in midi_control,
+            "MIDI CC80/81 must switch ARP and LATCH through the PERFORM keyboard intent")
+    config_owner = (ROOT / "src/platform/cardputer_performance_config_owner.cpp").read_text(
+        encoding="utf-8")
+    require("servicePerformanceConfigSave(g_performanceKeyboard" in app and
+            "markConfigPersisted" in config_owner and "configChanged" in config_owner,
+            "PERFORM keyboard config must be saved by the loop for every input, not by a page")
+    require("persistKeyboardConfigIfDue" not in page and "keyboardConfigDirty_" not in page,
+            "the PERFORM page must not own keyboard config persistence")
+    require("toPerformanceIntent" in midi_control and
+            "dispatchPerformanceIntent" in midi_control,
+            "MIDI CC controls must cross the same semantic intent boundary")
+
+    dispatch_start = engine.index("bool MiniAcid::dispatchPerformanceIntent")
+    dispatch_end = engine.index("bool MiniAcid::beginPerformanceGesture", dispatch_start)
+    dispatcher = engine[dispatch_start:dispatch_end]
+    require("fromPerformanceIntent(intent, control)" in dispatcher and
+            "fromPerformanceIntent(intent, gesture)" in dispatcher and
+            "applyPerformanceControlIntent(control)" in dispatcher,
+            "semantic control and gesture intents must reach their existing owners")
+
+
+def test_cardputer_services_performance_clock_each_loop() -> None:
+    app = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    loop_start = app.index("void loop()")
+    loop = app[loop_start:]
+    require("g_performanceKeyboard.service(micros())" in loop,
+            "Cardputer loop must service generated performance notes and arp clock")
+    context = loop.index("g_miniAcid->performanceHarmonicContext(performanceContext)")
+    publish = loop.index("g_performanceKeyboard.setPerformanceContext(performanceContext)")
+    service = loop.index("g_performanceKeyboard.service(micros())")
+    dispatch = loop.index("while (externalNotes.pop(note))")
+    require(context < publish < service < dispatch,
+            "current harmonic context and arp clock must be serviced before MIDI note dispatch")
+
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    provider_start = engine.index("bool MiniAcid::performanceHarmonicContext(")
+    provider_end = engine.index("int MiniAcid::currentStep()", provider_start)
+    provider = engine[provider_start:provider_end]
+    for token in ("generatedPhraseRecipe()", "generatedSynthAOrigin()",
+                  "songPatternAtSlot", "residentDescriptor",
+                  "performanceContextAtGeneratedPhrase",
+                  "GenreCatalog::behavior(recipe->genre).allowChromatic"):
+        require(token in provider,
+                f"runtime Harmony provider must validate generated Song ownership via {token}")
     print("performance + SMF source regressions: OK")
 
 

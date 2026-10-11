@@ -22,6 +22,10 @@ SONG / MIDI / external gear
 
 GroovePuter works standalone with its internal synths and drums, and can also play or control external MIDI instruments such as Yamaha SEQTRAK.
 
+Its live Performance tools work on the Cardputer alone: adjust controls, trigger
+short performance gestures, and capture or morph eight performance scenes. A MIDI
+keyboard adds physical keys and expressive controls without owning project state.
+
 Originally based on [MiniAcid](https://github.com/urtubia/miniacid); the current project has grown into a substantially larger composition, sequencing, MIDI and musical-material system.
 
 ## Why it is different

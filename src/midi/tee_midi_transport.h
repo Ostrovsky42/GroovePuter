@@ -31,7 +31,12 @@ public:
     TeeMidiTransport(IMidiTransport& primary, IMidiTransport& secondary)
         : primary_(primary), secondary_(secondary) {}
 
-    void setSecondaryEnabled(bool enabled) { secondaryEnabled_ = enabled; }
+    void setSecondaryEnabled(bool enabled) {
+        if (enabled && !secondaryEnabled_) {
+            secondaryPitchBendDebt_ |= desiredPitchBendMask_;
+        }
+        secondaryEnabled_ = enabled;
+    }
     bool secondaryEnabled() const { return secondaryEnabled_; }
     const Diagnostics& diagnostics() const { return diagnostics_; }
 
@@ -71,6 +76,23 @@ public:
             true);
     }
 
+    bool sendPitchBend(uint8_t channel, uint16_t value14) override {
+        const uint8_t normalizedChannel = static_cast<uint8_t>(channel & 0x0fu);
+        if (value14 > 16383u) value14 = 16383u;
+        const uint16_t mask = channelMask(normalizedChannel);
+        desiredPitchBend_[normalizedChannel] = value14;
+        desiredPitchBendMask_ |= mask;
+        primaryPitchBendDebt_ |= mask;
+        if (secondaryEnabled_) secondaryPitchBendDebt_ |= mask;
+        retryPitchBendDebt();
+        return true;  // The tee owns bounded per-wire retry state now.
+    }
+
+    // Called by the sole MIDI dispatch task. Unlike note cleanup, pitch bend
+    // is latest-state data: each endpoint independently retries its current
+    // channel value until that endpoint accepts it.
+    void service() { retryPitchBendDebt(); }
+
     bool sendControlChange(uint8_t channel,
                            uint8_t controller,
                            uint8_t value) override {
@@ -104,6 +126,23 @@ public:
     }
 
 private:
+    void retryPitchBendDebt() {
+        for (uint8_t channel = 0; channel < 16u; ++channel) {
+            const uint16_t mask = channelMask(channel);
+            if ((primaryPitchBendDebt_ & mask) != 0u && primary_.mounted() &&
+                primary_.sendPitchBend(channel, desiredPitchBend_[channel])) {
+                primary_.flush();
+                primaryPitchBendDebt_ &= static_cast<uint16_t>(~mask);
+            }
+            if ((secondaryPitchBendDebt_ & mask) != 0u && secondaryEnabled_ &&
+                secondary_.mounted() &&
+                secondary_.sendPitchBend(channel, desiredPitchBend_[channel])) {
+                secondary_.flush();
+                secondaryPitchBendDebt_ &= static_cast<uint16_t>(~mask);
+            }
+        }
+    }
+
     static uint16_t channelMask(uint8_t channel) {
         return static_cast<uint16_t>(1u << (channel & 0x0fu));
     }
@@ -198,6 +237,10 @@ private:
     IMidiTransport& secondary_;
     Diagnostics diagnostics_{};
     uint16_t primaryCleanupDebtMask_{0};
+    uint16_t desiredPitchBend_[16]{};
+    uint16_t desiredPitchBendMask_{0};
+    uint16_t primaryPitchBendDebt_{0};
+    uint16_t secondaryPitchBendDebt_{0};
     bool secondaryEnabled_{false};
 };
 

@@ -150,7 +150,7 @@ void sectionRange(int section, int& first, int& last) {
       return;
     case 3: // midi
       first = (int)ProjectPage::MainFocus::UsbRole;
-      last = (int)ProjectPage::MainFocus::MidiInputTarget;
+      last = (int)ProjectPage::MainFocus::MidiInputCable;
       return;
     default:
       first = 0;
@@ -673,7 +673,7 @@ void ProjectPage::ensureSelectionVisible(int visibleRows) {
 void ProjectPage::ensureMainFocusVisible(int visibleRows) {
   if (visibleRows < 1) visibleRows = 1;
   const int focus = static_cast<int>(main_focus_);
-  const int maxFocus = static_cast<int>(MainFocus::MidiInputTarget);
+  const int maxFocus = static_cast<int>(MainFocus::MidiInputCable);
   if (main_scroll_ < 0) main_scroll_ = 0;
   if (main_scroll_ > maxFocus) main_scroll_ = maxFocus;
   if (focus < main_scroll_) {
@@ -1022,6 +1022,8 @@ bool ProjectPage::adjustMidiInput(int delta) {
     if (main_focus_ == MainFocus::MidiInputEnabled) next = InputUi::stepEnabled(current);
     else if (main_focus_ == MainFocus::MidiInputChannel) next = InputUi::stepChannel(current, delta);
     else if (main_focus_ == MainFocus::MidiInputTarget) next = InputUi::stepTarget(current, delta);
+    else if (main_focus_ == MainFocus::MidiInputPitchBend) next = InputUi::stepPitchBend(current, delta);
+    else if (main_focus_ == MainFocus::MidiInputCable) next = InputUi::stepUsbCable(current, delta);
     else return false;
     if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
         UI::showToast("MIDI input save failed", 1400);
@@ -1345,7 +1347,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             auto& led = mini_acid_.sceneManager().currentScene().led;
             if (main_focus_ == MainFocus::MidiInputEnabled ||
                 main_focus_ == MainFocus::MidiInputChannel ||
-                main_focus_ == MainFocus::MidiInputTarget) {
+                main_focus_ == MainFocus::MidiInputTarget ||
+                main_focus_ == MainFocus::MidiInputPitchBend ||
+                main_focus_ == MainFocus::MidiInputCable) {
                 return adjustMidiInput(right ? 1 : -1);
             }
             if (main_focus_ == MainFocus::UsbRole) {
@@ -1471,7 +1475,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (key == '\n' || key == '\r') {
         if (main_focus_ == MainFocus::MidiInputEnabled ||
             main_focus_ == MainFocus::MidiInputChannel ||
-            main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+            main_focus_ == MainFocus::MidiInputTarget ||
+            main_focus_ == MainFocus::MidiInputPitchBend ||
+            main_focus_ == MainFocus::MidiInputCable) return adjustMidiInput(1);
         if (main_focus_ == MainFocus::LedTest) {
             LedManager::instance().testPulse(mini_acid_.sceneManager().currentScene().led);
             return true;
@@ -1761,6 +1767,8 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::MidiInputEnabled: label = "MIDI Input"; break;
       case MainFocus::MidiInputChannel: label = "Input Channel"; break;
       case MainFocus::MidiInputTarget: label = "Input Route"; break;
+      case MainFocus::MidiInputPitchBend: label = "Pitch Bend"; break;
+      case MainFocus::MidiInputCable: label = "USB MIDI Cable"; break;
     }
     char line[48];
     switch (focus) {
@@ -1845,6 +1853,17 @@ void ProjectPage::draw(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "<%s>", InputUi::targetName(input.target));
         break;
       }
+      case MainFocus::MidiInputPitchBend: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        std::snprintf(line, sizeof(line), "<%s>", InputUi::pitchBendName(input.pitchBendMode));
+        break;
+      }
+      case MainFocus::MidiInputCable: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        char cable[16]; InputUi::formatUsbCable(input.usbCable, cable, sizeof(cable));
+        std::snprintf(line, sizeof(line), "<%s>", cable);
+        break;
+      }
     }
     const int rowY = LayoutManager::lineY(rowBase + row);
     const bool available = !((focus == MainFocus::LedSource || focus == MainFocus::LedFlash)
@@ -1914,7 +1933,7 @@ int ProjectPage::lastFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedTest;
-  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiInputTarget;
+  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiInputCable;
   return 0;
 }
 
@@ -1923,7 +1942,7 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedTest;
-  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::UsbRole && f <= ProjectPage::MainFocus::MidiInputTarget;
+  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::UsbRole && f <= ProjectPage::MainFocus::MidiInputCable;
   return false;
 }
 
