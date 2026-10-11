@@ -14,6 +14,7 @@ struct Packet {
     uint8_t note;
     uint8_t velocity;
 };
+struct PitchBendPacket { uint8_t channel; uint16_t value14; };
 
 class FakeUsbMidiTransport final : public IUsbMidiTransport {
 public:
@@ -40,6 +41,16 @@ public:
         return true;
     }
 
+    bool sendPitchBend(uint8_t channel, uint16_t value14) override {
+        if (pitchBendFailuresRemaining > 0) {
+            --pitchBendFailuresRemaining;
+            return false;
+        }
+        if (!mountedState || !sendResult) return false;
+        pitchBends.push_back({channel, value14});
+        return true;
+    }
+
     void flush() override { ++flushCalls; }
 
     void clear() {
@@ -51,9 +62,11 @@ public:
     bool mountedState{false};
     bool sendResult{true};
     int noteOffFailuresRemaining{0};
+    int pitchBendFailuresRemaining{0};
     int beginCalls{0};
     int flushCalls{0};
     std::vector<Packet> packets;
+    std::vector<PitchBendPacket> pitchBends;
 };
 
 class CountingSink final : public IMusicalEventSink {
@@ -300,6 +313,50 @@ void testMidiInputReachesWire() {
 }
 
 int main() {
+    {
+        FakeUsbMidiTransport transport;
+        transport.mountedState = true;
+        UsbMidiOutput output(transport);
+        assert(output.begin());
+        output.pollConnection();
+        MusicalEvent bend{MusicalEventType::PitchBend,
+                          MusicalEventSource::PerformanceKeyboard,
+                          MusicalEventTarget::SynthA, 0, 0, 0, 0, 0x2345};
+        output.handleMusicalEvent(bend);
+        assert(transport.pitchBends.size() == 1);
+        assert(transport.pitchBends[0].channel ==
+               output.channelFor(MusicalEventSource::PerformanceKeyboard,
+                                 MusicalEventTarget::SynthA));
+        assert(transport.pitchBends[0].value14 == 0x2345);
+        UsbMidiOutput::setMidiInputThru(true);
+        output.handleMusicalEvent(event(MusicalEventType::PitchBend, 0, 0,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::SynthB, 4));
+        assert(transport.pitchBends.size() == 2);
+        assert(transport.pitchBends[1].channel ==
+               output.channelFor(MusicalEventSource::PerformanceKeyboard,
+                                 MusicalEventTarget::SynthB));
+        assert(transport.pitchBends[1].value14 == 8192);
+        UsbMidiOutput::setMidiInputThru(false);
+    }
+    {
+        FakeUsbMidiTransport transport;
+        transport.mountedState = true;
+        transport.pitchBendFailuresRemaining = 2;
+        UsbMidiOutput output(transport);
+        assert(output.begin());
+        output.pollConnection();
+        output.handleMusicalEvent(MusicalEvent{
+            MusicalEventType::PitchBend, MusicalEventSource::PerformanceKeyboard,
+            MusicalEventTarget::SynthA, 0, 0, 0, 0, 4000});
+        output.handleMusicalEvent(MusicalEvent{
+            MusicalEventType::PitchBend, MusicalEventSource::PerformanceKeyboard,
+            MusicalEventTarget::SynthA, 0, 0, 0, 0, 8192});
+        assert(transport.pitchBends.empty());
+        output.servicePitchBendRetries();
+        assert(transport.pitchBends.size() == 1u);
+        assert(transport.pitchBends[0].value14 == 8192u);
+    }
     testMidiInputReachesWire();
     FakeUsbMidiTransport transport;
     UsbMidiOutput output(transport);

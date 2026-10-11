@@ -110,7 +110,7 @@ public:
     uint32_t uartInputGeneration() const { return uartInputGeneration_; }
 
     bool acceptsInput(const MidiInputEvent& event) const {
-        if (event.id.channel >= 16 || event.id.key >= 128) return false;
+        if (event.id.channel >= 16 || event.id.key >= 128 || event.id.cable >= 16) return false;
         if (event.id.source == InputSource::Qwerty) return true;
         if (event.id.source == InputSource::Uart) {
             return routes_.uartInputEnabled &&

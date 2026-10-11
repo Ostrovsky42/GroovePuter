@@ -72,6 +72,20 @@ void allNotesOffSharesNoteOffPriority() {
     assert(transport.sendControlChange(0, 123, 0));
 }
 
+void pitchBendCenterSurvivesSaturationAndCoalescesLatestState() {
+    auto transport = makeStarted();
+    while (transport.sendNoteOn(0, 60, 100)) {
+    }
+    const uint32_t queuedBefore = transport.diagnostics().messagesQueued;
+    assert(transport.sendPitchBend(3, 15000));
+    assert(transport.sendPitchBend(3, 8192));
+    for (int i = 0; i < 32 && transport.pendingBytes() != 0u; ++i) {
+        transport.service();
+    }
+    assert(transport.pendingBytes() == 0u);
+    assert(transport.diagnostics().messagesQueued == queuedBefore + 1u);
+}
+
 void realtimeUsesItsOwnLane() {
     // Queued behind a full data ring, a clock tick would be delayed by the
     // ring's whole wire time; the separate lane is what keeps clock usable.
@@ -196,6 +210,7 @@ int main() {
     channelAndDataBytesAreMasked();
     noteOffOutranksASaturatedNoteOnFlood();
     allNotesOffSharesNoteOffPriority();
+    pitchBendCenterSurvivesSaturationAndCoalescesLatestState();
     realtimeUsesItsOwnLane();
     songPositionPointerIsFourteenBitLsbFirst();
     flushDoesNotTouchTheWire();

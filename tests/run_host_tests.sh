@@ -78,6 +78,17 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_intent.cpp" \
+  -o "${BUILD_DIR}/test_performance_intent"
+
+"${BUILD_DIR}/test_performance_intent"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_performance_keyboard.cpp" \
   "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
   -o "${BUILD_DIR}/test_performance_keyboard"
@@ -93,6 +104,18 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
   -o "${BUILD_DIR}/test_performance_keyboard_external"
 
 "${BUILD_DIR}/test_performance_keyboard_external"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_config_persistence.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_config_persistence"
+
+"${BUILD_DIR}/test_performance_config_persistence"
 
 "${CXX}" \
   -std=c++17 \
@@ -139,6 +162,70 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 "${BUILD_DIR}/test_external_note_queue"
 
 "${BUILD_DIR}/test_performance_keyboard"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_chord_quality.cpp" \
+  -o "${BUILD_DIR}/test_performance_chord_quality"
+
+"${BUILD_DIR}/test_performance_chord_quality"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_play.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_play"
+
+"${BUILD_DIR}/test_performance_smart_play"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_arp.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_arp"
+
+"${BUILD_DIR}/test_performance_smart_arp"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_harmony_context.cpp" \
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
+  -o "${BUILD_DIR}/test_performance_harmony_context"
+
+"${BUILD_DIR}/test_performance_harmony_context"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_control.cpp" \
+  -o "${BUILD_DIR}/test_performance_control"
+
+"${BUILD_DIR}/test_performance_control"
+
+g++ -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_scene.cpp" \
+  -o "${BUILD_DIR}/test_performance_scene"
+"${BUILD_DIR}/test_performance_scene"
 
 "${CXX}" \
   -std=c++17 \
@@ -395,6 +482,18 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
   -o "${BUILD_DIR}/test_midi_control_event_queue"
 
 "${BUILD_DIR}/test_midi_control_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_0_9_11_c4_midi_ingress.cpp" \
+  -o "${BUILD_DIR}/test_0_9_11_c4_midi_ingress"
+
+"${BUILD_DIR}/test_0_9_11_c4_midi_ingress"
+echo "MIDI ingress queue and lifecycle: OK"
 
 "${CXX}" \
   -std=c++17 \

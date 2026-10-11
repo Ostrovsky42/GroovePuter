@@ -103,6 +103,29 @@ int main() {
         q.externalMod(GroovePuterMidi::ModPhase::Release); // queue full: lost, recovery raised
         assert(q.takeRecovery());
     }
+    // Musical pitch movement is droppable, but returning the wheel to center
+    // uses the release reserve and never schedules note recovery.
+    {
+        ExternalNoteQueue q;
+        ExternalNoteQueue::Event e;
+        const PerformanceInputIdentity bendInput{7, 1, 2, 0};
+        for (unsigned i = 0; i < ExternalNoteQueue::kCapacity -
+                                     ExternalNoteQueue::kNoteOffReserve; ++i) {
+            q.externalNoteOn(static_cast<uint8_t>(i), 100);
+        }
+        const uint32_t before = q.dropped();
+        q.externalPitchBend(15000, bendInput);
+        assert(q.dropped() == before + 1u);
+        assert(!q.takeRecovery());
+        q.externalPitchBend(8192, bendInput);
+        assert(!q.takeRecovery());
+        for (unsigned i = 0; i < ExternalNoteQueue::kCapacity -
+                                     ExternalNoteQueue::kNoteOffReserve; ++i) {
+            assert(q.pop(e));
+        }
+        assert(q.pop(e) && e.pitchBendControl && e.pitchBend14 == 8192u);
+        assert(e.input.generation == bendInput.generation && e.input.source == bendInput.source);
+    }
     std::puts("external note queue: PASS");
     return 0;
 }

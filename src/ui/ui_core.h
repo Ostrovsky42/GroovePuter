@@ -66,6 +66,8 @@ enum ApplicationEventType {
   // Cardputer Aa (Shift) tapped alone: the Melody editor steps its grid
   // (G there generates, as everywhere; Ctrl+G is the same grid step for SDL).
   GROOVEPUTER_APP_EVENT_CYCLE_GRID,
+  // Raw external controller diagnostic: x = CC number, y = 7-bit value.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_CC,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
@@ -358,6 +360,8 @@ class IPage : public Container {
   virtual bool repeatsAltVertical() const { return false; }
   // Prefix of the help line to open Alt+H at; nullptr opens at the top.
   virtual const char* helpAnchor() const { return nullptr; }
+  virtual void serviceBackground() {}
+  virtual bool hasBackgroundWork() const { return false; }
   virtual void setContext(int context) { onEnter(context); }
   virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
     (void)state;

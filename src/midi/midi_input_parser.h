@@ -24,11 +24,20 @@ public:
         inSysEx_ = false;
     }
 
+    bool setUsbCable(uint8_t cable) {
+        if (cable > 15u) return false;
+        selectedUsbCable_ = cable;
+        return true;
+    }
+    uint8_t usbCable() const { return selectedUsbCable_; }
+
     ParseResult usbPacket(const uint8_t (&packet)[4], uint32_t atMicros) const {
-        if ((packet[0] >> 4u) != 0) return {};
+        if ((packet[0] >> 4u) != selectedUsbCable_) return {};
         const uint8_t cin = packet[0] & 0x0fu;
         if (cin != 0x08u && cin != 0x09u && cin != 0x0bu && cin != 0x0eu) return {};
-        return channelMessage(packet[1], packet[2], packet[3], cin, atMicros);
+        ParseResult result = channelMessage(packet[1], packet[2], packet[3], cin, atMicros);
+        if (result.hasInput) result.input.id.cable = selectedUsbCable_;
+        return result;
     }
 
     ParseResult uartByte(uint8_t byte, uint32_t atMicros) {
@@ -85,21 +94,25 @@ private:
             kind = InputKind::AllNotesOff;
         } else if (message == 0xb0u && data1 == 120u) {
             kind = InputKind::AllSoundOff;
-        } else if (message == 0xb0u && (data1 == 1u || data1 == 94u)) {
-            // CC1 (modulation) and CC94, which is what the owner's nanoKEY2 Mod button sends
-            // (measured: a 0..15 ramp up on press and back to 0 on release).
-            kind = InputKind::Mod;
+        } else if (message == 0xb0u) {
+            // Generic CC1/CC94 remain control data. Destructive legacy Mod-button
+            // gestures require an explicit mapping and must not be inferred from a CC number.
+            kind = InputKind::ControlChange;
         } else if (message == 0xe0u) {
             kind = InputKind::PitchBend;  // data1 = LSB (ignored), data2 = MSB
         } else {
             return {};
         }
-        return ParseResult{true,
-                           MidiInputEvent{InputKey{session_.source, session_.generation,
-                                                   channel, static_cast<uint8_t>(
-                                                       (message == 0xb0u || message == 0xe0u) ? 0u : data1)},
-                                          kind, data2, atMicros},
-                           false, 0};
+        MidiInputEvent input{InputKey{session_.source, session_.generation,
+                                      channel, static_cast<uint8_t>(
+                                          (message == 0xb0u || message == 0xe0u) ? 0u : data1)},
+                             kind, data2, atMicros,
+                             static_cast<uint8_t>(message == 0xb0u ? data1 : 0u)};
+        if (message == 0xe0u) {
+            input.pitchBend14 = static_cast<uint16_t>(
+                (static_cast<uint16_t>(data2) << 7u) | data1);
+        }
+        return ParseResult{true, input, false, 0};
     }
 
     InputSession session_{};
@@ -107,6 +120,7 @@ private:
     uint8_t data_[2]{};
     uint8_t dataCount_{0};
     bool inSysEx_{false};
+    uint8_t selectedUsbCable_{0};
 };
 
 }  // namespace GroovePuterMidi

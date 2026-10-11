@@ -336,6 +336,37 @@ The v0.9.16 Foundation Freeze includes the accepted USB Host external-keyboard p
 
 A connected keyboard feeds the existing PERFORM owner rather than bypassing it with a second note/performance engine. Accepted paths include CHORD, ARP, LATCH, rhythm and receiver mono/poly behavior documented in the release evidence.
 
+The PERFORM tools also work with no MIDI keyboard connected. `Tab` opens the tools
+layer and cycles KEY, CHORD, ARP, RHYTHM, CTRL, SCENE and IN; `Backspace` moves back.
+In CTRL, Left/Right edits FILTER, RESONANCE, LEVEL, DRIVE, REVERB and DELAY directly.
+The one-shot gestures `G` (Delay Throw), `R` (Reverb Bloom), `F` (Filter Push) and
+`C` (Filter Close) temporarily overlay their control for 750 ms, then restore the
+current manual value.
+
+In SCENE, choose a slot, select CAPTURE or RECALL, then press Enter. Recall is
+immediate while stopped and queued to the next bar while playing. The transition
+setting applies CUT or a 1/2/4/8-bar morph. Scene snapshots contain performance
+mix/control state and do not replace patterns or song material.
+`Alt+1` through `Alt+8` recalls the corresponding saved scene using the same
+immediate/queued behavior. IN shows USB host connection, received packet count,
+and the last observed Note or CC for controller diagnostics; CC entries are marked
+BOUND or UNBOUND. Generic CC1/CC94 remain diagnostic control input and do not invoke
+the legacy Mod actions that delete a note or clear Melody. In IN row 5, Left/Right
+selects RAW, BASS, LEAD, CHORD or ARP;
+when LEAD is selected, Enter cycles its RAW/SCALE/CHORD/VOICE interpretation.
+RAW keeps the requested pitch. Smart modes use the sounding P1R harmony when
+available; the source Phrase's genre rule can exclude chord tones outside its
+scale. `ARP` pitch source `ROLE` follows the selected performance role, while
+`HELD`, `MEMORY` and `HARMONY` remain independent sources.
+In Project MIDI Input settings, PITCH BEND selects MUSICAL or NUDGE. MUSICAL is
+the default for new settings and carries the full 14-bit wheel value to the routed
+instrument. Existing version-1 settings migrate to NUDGE so nanoKEY-style ramp
+buttons keep their cursor/arp-rate action until changed explicitly.
+On the PERFORM input target, CC80 turns the arpeggiator on (value 64-127) or off
+(0-63), and CC81 does the same for LATCH; LATCH on needs ARP on. These switches
+are absolute, so repeating the same value is safe. The new state is saved with the
+PERFORM keyboard configuration, the same way as edits made on the PERFORM page.
+
 ## 10. MIDI Player and HUB MIDI
 
 Open MIDI Player with `Alt+P`.

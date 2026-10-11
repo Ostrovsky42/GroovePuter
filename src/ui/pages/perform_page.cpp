@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 #include "../components/music_visuals.h"
 #include "../ui_input.h"
@@ -10,15 +11,16 @@
 #include "src/output/output_ownership.h"
 #include "src/state/scene_revision.h"
 #include "src/platform/cardputer_midi_settings_session.h"
-#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/platform/cardputer_usb_host_midi.h"
 #include "../midi_input_ui.h"
+#include "src/platform/cardputer_performance_scene_store.h"
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "IN",
+    "KEY", "CHORD", "ARP", "RHYTHM", "CTRL", "SCENE", "IN",
 };
 constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[IN]",
+    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[CTRL]", "[SCENE]", "[IN]",
 };
 
 bool strumIsAudible(const PerformanceKeyboard& keyboard) {
@@ -61,6 +63,7 @@ PerformPage::PerformPage(IGfx& gfx,
                          PerformanceKeyboard& keyboard)
     : miniAcid_(miniAcid), keyboard_(keyboard) {
     (void)gfx;
+    GroovePuterPlatform::loadCardputerPerformanceScenes(sceneBank_);
 }
 
 const char* PerformPage::noteName(int midiNote) {
@@ -75,8 +78,10 @@ uint8_t PerformPage::rowCountForContext() const {
     switch (selectedContext_) {
         case PerformanceToolContext::Key: return 6;
         case PerformanceToolContext::Chord: return 6;
-        case PerformanceToolContext::Arp: return 4;
+        case PerformanceToolContext::Arp: return 6;
         case PerformanceToolContext::Rhythm: return 6;
+        case PerformanceToolContext::Control: return 6;
+        case PerformanceToolContext::Scene: return 6;
         case PerformanceToolContext::Input: return 6;
         case PerformanceToolContext::Count: break;
     }
@@ -158,10 +163,189 @@ void PerformPage::adjustInput(int direction) {
             if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
                 cycleOutput(direction);
             return;
+        case 5:
+            {
+                int nextRole = static_cast<int>(keyboard_.performanceRole()) +
+                    (direction > 0 ? 1 : -1);
+                const int count = static_cast<int>(GroovePuterPerformance::PerformanceRole::Count);
+                if (nextRole < 0) nextRole = count - 1;
+                if (nextRole >= count) nextRole = 0;
+                dispatchKeyboardIntent(PerformanceIntentKind::SelectRole,
+                                       static_cast<uint8_t>(nextRole));
+            }
+            return;
         default: return;
     }
     if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
         UI::showToast("MIDI input save failed", 1400);
+}
+
+void PerformPage::adjustControl(int direction) {
+    using GroovePuterPerformance::PerformanceControlId;
+    if (direction == 0) return;
+    const uint8_t row = currentRow();
+    if (row >= 6) return;
+    const int amount = direction > 0 ? 2 : -2;
+    const GroovePuterPerformance::PerformanceControlIntent control{
+        static_cast<PerformanceControlId>(row),
+        GroovePuterPerformance::ControlChangeMode::Relative,
+        0,
+        static_cast<int16_t>(amount)};
+    miniAcid_.dispatchPerformanceIntent(
+        GroovePuterPerformance::toPerformanceIntent(
+            control, PerformanceInputIdentity{0, 0, 0, 0}),
+        millis());
+}
+
+bool PerformPage::dispatchKeyboardIntent(PerformanceIntentKind kind,
+                                         uint8_t value,
+                                         int16_t delta) {
+    PerformanceIntent intent{};
+    intent.kind = kind;
+    intent.value = value;
+    intent.delta = delta;
+    return keyboard_.dispatchIntent(intent);
+}
+
+GroovePuterPerformance::PerformanceSceneSnapshot
+PerformPage::capturePerformanceSnapshot() const {
+    GroovePuterPerformance::PerformanceSceneSnapshot snapshot{};
+    snapshot.controls = miniAcid_.performanceControlState();
+    const bool muted[10] = {
+        miniAcid_.is303Muted(0), miniAcid_.is303Muted(1),
+        miniAcid_.isKickMuted(), miniAcid_.isSnareMuted(), miniAcid_.isHatMuted(),
+        miniAcid_.isOpenHatMuted(), miniAcid_.isMidTomMuted(), miniAcid_.isHighTomMuted(),
+        miniAcid_.isRimMuted(), miniAcid_.isClapMuted()};
+    for (uint8_t i = 0; i < 10; ++i) if (muted[i]) snapshot.muteMask |= (1u << i);
+    snapshot.effectMask = miniAcid_.performanceEffectMask();
+    return snapshot;
+}
+
+bool PerformPage::applyPerformanceSnapshot(
+    const GroovePuterPerformance::PerformanceSceneSnapshot& snapshot) {
+    if (!miniAcid_.setPerformanceControlState(snapshot.controls)) return false;
+    if (!miniAcid_.setPerformanceEffectMask(snapshot.effectMask)) return false;
+    miniAcid_.setMute303(0, (snapshot.muteMask & (1u << 0)) != 0);
+    miniAcid_.setMute303(1, (snapshot.muteMask & (1u << 1)) != 0);
+    const bool current[8] = {miniAcid_.isKickMuted(), miniAcid_.isSnareMuted(),
+        miniAcid_.isHatMuted(), miniAcid_.isOpenHatMuted(), miniAcid_.isMidTomMuted(),
+        miniAcid_.isHighTomMuted(), miniAcid_.isRimMuted(), miniAcid_.isClapMuted()};
+    void (MiniAcid::*toggles[8])() = {&MiniAcid::toggleMuteKick, &MiniAcid::toggleMuteSnare,
+        &MiniAcid::toggleMuteHat, &MiniAcid::toggleMuteOpenHat, &MiniAcid::toggleMuteMidTom,
+        &MiniAcid::toggleMuteHighTom, &MiniAcid::toggleMuteRim, &MiniAcid::toggleMuteClap};
+    for (uint8_t i = 0; i < 8; ++i) {
+        const bool desired = (snapshot.muteMask & (1u << (i + 2))) != 0;
+        if (current[i] != desired) (miniAcid_.*toggles[i])();
+    }
+    return true;
+}
+
+void PerformPage::executeSceneAction() {
+    const PerformanceIntentKind kind = sceneAction_ == 0
+        ? PerformanceIntentKind::CaptureScene
+        : PerformanceIntentKind::RecallScene;
+    dispatchPerformanceIntent(makeScenePerformanceIntent(
+        kind, PerformanceInputIdentity{0, 0, 0, 0}, selectedScene_,
+        static_cast<uint8_t>(sceneTransition_)));
+}
+
+bool PerformPage::dispatchPerformanceIntent(const PerformanceIntent& intent) {
+    switch (intent.kind) {
+        case PerformanceIntentKind::ChangeControl:
+        case PerformanceIntentKind::TriggerPerformanceGesture:
+            return miniAcid_.dispatchPerformanceIntent(intent, millis());
+        case PerformanceIntentKind::SelectScene:
+            if (intent.parameter >= GroovePuterPerformance::PerformanceSceneBank::kSceneCount)
+                return false;
+            selectedScene_ = intent.parameter;
+            return true;
+        case PerformanceIntentKind::CaptureScene:
+            if (intent.parameter >= GroovePuterPerformance::PerformanceSceneBank::kSceneCount ||
+                !sceneBank_.capture(intent.parameter, capturePerformanceSnapshot())) return false;
+            miniAcid_.cancelQueuedPerformanceScene();
+            queuedSceneSlot_ = -1;
+            selectedScene_ = intent.parameter;
+            UI::showToast(GroovePuterPlatform::saveCardputerPerformanceScenes(sceneBank_)
+                              ? "SCENE CAPTURED" : "SCENE SAVE FAILED", 900);
+            return true;
+        case PerformanceIntentKind::RecallScene:
+            if (intent.parameter >= GroovePuterPerformance::PerformanceSceneBank::kSceneCount)
+                return false;
+            if (intent.value < static_cast<uint8_t>(GroovePuterPerformance::SceneTransition::Count))
+                sceneTransition_ = static_cast<GroovePuterPerformance::SceneTransition>(intent.value);
+            recallSceneSlot(intent.parameter);
+            return true;
+        default:
+            return false;
+    }
+}
+
+void PerformPage::recallSceneSlot(uint8_t slot) {
+    if (slot >= GroovePuterPerformance::PerformanceSceneBank::kSceneCount) return;
+    selectedScene_ = slot;
+    GroovePuterPerformance::PerformanceSceneSnapshot target{};
+    if (!sceneBank_.scene(slot, target)) {
+        UI::showToast("EMPTY SCENE", 900);
+        return;
+    }
+    if (miniAcid_.isPlaying()) {
+        queuedSceneTick_ = ((miniAcid_.transportTick() / 384u) + 1u) * 384u;
+        if (sceneTransition_ == GroovePuterPerformance::SceneTransition::Cut) {
+            if (sceneBank_.recall(slot, target) &&
+                miniAcid_.queuePerformanceSceneAtTick(target, queuedSceneTick_)) {
+                queuedSceneSlot_ = static_cast<int8_t>(slot);
+            }
+        } else {
+            const auto from = capturePerformanceSnapshot();
+            if (!sceneBank_.beginMorph(from, slot, sceneTransition_, queuedSceneTick_)) {
+                UI::showToast("SCENE MORPH FAILED", 900);
+                return;
+            }
+            GroovePuterPerformance::PerformanceSceneSnapshot endpoint{};
+            if (!sceneBank_.scene(slot, endpoint) ||
+                !miniAcid_.queuePerformanceSceneMorph(
+                    from, endpoint, queuedSceneTick_,
+                    sceneBank_.morphEndTick() - queuedSceneTick_)) {
+                sceneBank_.cancelMorph();
+                UI::showToast("SCENE MORPH FAILED", 900);
+                return;
+            }
+        }
+        UI::showToast("SCENE QUEUED: NEXT BAR", 1000);
+        return;
+    }
+    if (sceneBank_.recall(slot, target) && applyPerformanceSnapshot(target))
+        UI::showToast("SCENE RECALLED", 900);
+}
+
+void PerformPage::serviceQueuedSceneRecall() {
+    GroovePuterPerformance::PerformanceSceneSnapshot snapshot{};
+    const uint32_t tick = miniAcid_.transportTick();
+    if (queuedSceneSlot_ >= 0 && (!miniAcid_.isPlaying() || tick >= queuedSceneTick_)) {
+        const uint8_t slot = static_cast<uint8_t>(queuedSceneSlot_);
+        queuedSceneSlot_ = -1;
+        if (!miniAcid_.isPlaying() && sceneBank_.recall(slot, snapshot))
+            applyPerformanceSnapshot(snapshot);
+        else
+            UI::showToast("SCENE RECALL STARTED", 800);
+    }
+    if (sceneBank_.morphing() && !miniAcid_.isPlaying()) {
+        if (sceneBank_.finishMorph(snapshot)) {
+            miniAcid_.queuePerformanceSceneAtTick(snapshot, tick);
+        }
+        return;
+    }
+    if (sceneBank_.morphing()) (void)sceneBank_.updateMorph(tick, snapshot);
+}
+
+void PerformPage::serviceBackground() {
+    keyboard_.setTempoBpm(miniAcid_.bpm());
+    serviceQueuedSceneRecall();
+    if (queuedSceneSlot_ < 0) sceneBank_.markCurrentState(capturePerformanceSnapshot());
+}
+
+bool PerformPage::hasBackgroundWork() const {
+    return queuedSceneSlot_ >= 0 || sceneBank_.morphing();
 }
 
 void PerformPage::adjustSelectedValue(int direction) {
@@ -175,7 +359,8 @@ void PerformPage::adjustSelectedValue(int direction) {
             switch (row) {
                 case 0: keyboard_.cycleRoot(direction); break;
                 case 1: keyboard_.cycleScale(direction); break;
-                case 2: keyboard_.shiftOctave(direction); break;
+                case 2: dispatchKeyboardIntent(PerformanceIntentKind::ChangeOctave, 0,
+                                                static_cast<int16_t>(direction)); break;
                 case 3: keyboard_.adjustVelocity(direction); break;
                 case 4: keyboard_.cycleTarget(direction); break;
                 case 5: cycleOutput(direction); break;
@@ -186,7 +371,20 @@ void PerformPage::adjustSelectedValue(int direction) {
         case PerformanceToolContext::Chord:
             switch (row) {
                 case 0:
-                    keyboard_.cycleChordMode(direction);
+                    {
+                        int next = static_cast<int>(keyboard_.chordMode()) + direction;
+                        const int count = static_cast<int>(PerformanceChordMode::Count);
+                        do {
+                            while (next < 0) next += count;
+                            while (next >= count) next -= count;
+                            if (static_cast<PerformanceChordMode>(next) !=
+                                    PerformanceChordMode::Memory ||
+                                keyboard_.chordMemorySize() > 0) break;
+                            next += direction >= 0 ? 1 : -1;
+                        } while (true);
+                        dispatchKeyboardIntent(PerformanceIntentKind::SelectChordMode,
+                                               static_cast<uint8_t>(next));
+                    }
                     break;
                 case 1:
                     if (chordActive) keyboard_.cycleChordInversion(direction);
@@ -218,17 +416,60 @@ void PerformPage::adjustSelectedValue(int direction) {
 
         case PerformanceToolContext::Arp:
             switch (row) {
-                case 0: keyboard_.setArpeggiatorEnabled(direction > 0); break;
-                case 1: if (arpEnabled) keyboard_.cycleArpDirection(direction); break;
+                case 0: dispatchKeyboardIntent(PerformanceIntentKind::ToggleArp,
+                                               direction > 0 ? 1u : 0u); break;
+                case 1:
+                    if (arpEnabled) {
+                        int next = static_cast<int>(keyboard_.arpDirection()) +
+                            (direction > 0 ? 1 : -1);
+                        const int count = static_cast<int>(PerformanceArpDirection::Count);
+                        if (next < 0) next = count - 1;
+                        if (next >= count) next = 0;
+                        dispatchKeyboardIntent(PerformanceIntentKind::SelectArpContour,
+                                               static_cast<uint8_t>(next));
+                    }
+                    break;
                 case 2: if (arpEnabled) keyboard_.cycleArpOctaves(direction); break;
-                case 3: if (arpEnabled) keyboard_.setLatchEnabled(direction > 0); break;
+                case 3:
+                    if (arpEnabled) dispatchKeyboardIntent(PerformanceIntentKind::ToggleLatch,
+                                                           direction > 0 ? 1u : 0u);
+                    break;
+                case 4: {
+                    int next = static_cast<int>(keyboard_.arpPitchSource()) +
+                        (direction > 0 ? 1 : -1);
+                    const int count = static_cast<int>(GroovePuterPerformance::ArpPitchSource::Count);
+                    if (next < 0) next = count - 1;
+                    if (next >= count) next = 0;
+                    dispatchKeyboardIntent(PerformanceIntentKind::SelectArpPitchSource,
+                                           static_cast<uint8_t>(next));
+                    break;
+                }
+                case 5: {
+                    int next = static_cast<int>(keyboard_.harmonyChangePolicy()) +
+                        (direction > 0 ? 1 : -1);
+                    const int count = static_cast<int>(GroovePuterPerformance::HarmonyChangePolicy::Count);
+                    if (next < 0) next = count - 1;
+                    if (next >= count) next = 0;
+                    dispatchKeyboardIntent(PerformanceIntentKind::SelectHarmonyChangePolicy,
+                                           static_cast<uint8_t>(next));
+                    break;
+                }
                 default: break;
             }
             return;
 
         case PerformanceToolContext::Rhythm:
             switch (row) {
-                case 0: keyboard_.cycleArpRate(direction); break;
+                case 0: {
+                    int next = static_cast<int>(keyboard_.arpRate()) +
+                        (direction > 0 ? 1 : -1);
+                    const int count = static_cast<int>(PerformanceRate::Count);
+                    if (next < 0) next = count - 1;
+                    if (next >= count) next = 0;
+                    dispatchKeyboardIntent(PerformanceIntentKind::ChangeArpRate,
+                                           static_cast<uint8_t>(next));
+                    break;
+                }
                 case 1: keyboard_.cycleGate(direction); break;
                 case 2: keyboard_.cycleRatchet(direction); break;
                 case 3: keyboard_.cycleEuclideanPulses(direction); break;
@@ -240,6 +481,24 @@ void PerformPage::adjustSelectedValue(int direction) {
                     break;
                 default:
                     break;
+            }
+            return;
+
+        case PerformanceToolContext::Control:
+            adjustControl(direction);
+            return;
+
+        case PerformanceToolContext::Scene:
+            if (row == 0) {
+                selectedScene_ = static_cast<uint8_t>((selectedScene_ + (direction > 0 ? 1 : 7)) % 8);
+            } else if (row == 1) {
+                sceneAction_ ^= 1u;
+            } else if (row == 2) {
+                int next = static_cast<int>(sceneTransition_) + (direction > 0 ? 1 : -1);
+                const int count = static_cast<int>(GroovePuterPerformance::SceneTransition::Count);
+                if (next < 0) next = count - 1;
+                if (next >= count) next = 0;
+                sceneTransition_ = static_cast<GroovePuterPerformance::SceneTransition>(next);
             }
             return;
 
@@ -296,9 +555,21 @@ void PerformPage::toggleSelectedValue() {
 
         case PerformanceToolContext::Arp:
             if (row == 0) {
-                keyboard_.toggleArpeggiator();
+                dispatchKeyboardIntent(PerformanceIntentKind::ToggleArp,
+                    keyboard_.arpeggiatorEnabled() ? 0u : 1u);
             } else if (row == 3 && arpEnabled) {
-                keyboard_.toggleLatch();
+                dispatchKeyboardIntent(PerformanceIntentKind::ToggleLatch,
+                    keyboard_.latchEnabled() ? 0u : 1u);
+            } else if (row == 4) {
+                const uint8_t next = static_cast<uint8_t>(
+                    (static_cast<uint8_t>(keyboard_.arpPitchSource()) + 1u) %
+                    static_cast<uint8_t>(GroovePuterPerformance::ArpPitchSource::Count));
+                dispatchKeyboardIntent(PerformanceIntentKind::SelectArpPitchSource, next);
+            } else if (row == 5) {
+                const uint8_t next = static_cast<uint8_t>(
+                    (static_cast<uint8_t>(keyboard_.harmonyChangePolicy()) + 1u) %
+                    static_cast<uint8_t>(GroovePuterPerformance::HarmonyChangePolicy::Count));
+                dispatchKeyboardIntent(PerformanceIntentKind::SelectHarmonyChangePolicy, next);
             }
             return;
 
@@ -310,8 +581,31 @@ void PerformPage::toggleSelectedValue() {
             }
             return;
 
+        case PerformanceToolContext::Control:
+            adjustControl(1);
+            return;
+
+        case PerformanceToolContext::Scene:
+            if (row == 3) executeSceneAction();
+            else if (row == 0) selectedScene_ = static_cast<uint8_t>((selectedScene_ + 1u) % 8u);
+            else if (row == 1) sceneAction_ ^= 1u;
+            else if (row == 2) {
+                const int next = (static_cast<int>(sceneTransition_) + 1) %
+                    static_cast<int>(GroovePuterPerformance::SceneTransition::Count);
+                sceneTransition_ = static_cast<GroovePuterPerformance::SceneTransition>(next);
+            }
+            return;
+
         case PerformanceToolContext::Input:
-            adjustInput(1);
+            if (row == 5 && keyboard_.performanceRole() ==
+                    GroovePuterPerformance::PerformanceRole::Lead) {
+                const uint8_t next = static_cast<uint8_t>(
+                    (static_cast<uint8_t>(keyboard_.leadMode()) + 1u) %
+                    static_cast<uint8_t>(GroovePuterPerformance::LeadMode::Count));
+                dispatchKeyboardIntent(PerformanceIntentKind::SelectLeadMode, next);
+            } else {
+                adjustInput(1);
+            }
             return;
         case PerformanceToolContext::Count:
             return;
@@ -360,6 +654,8 @@ const char* PerformPage::selectedRowHint() const {
 
         case PerformanceToolContext::Arp:
             if (row == 0) return "</> OR ENTER: ON/OFF (CLEARS STRUM)";
+            if (row == 4) return "</> OR ENTER: HELD / MEMORY / HARMONY / ROLE";
+            if (row == 5) return "</> OR ENTER: HARMONY CHANGE POLICY";
             if (!arpEnabled) return "N/A: ENABLE ARP FIRST";
             switch (row) {
                 case 1: return "</> NOTE ORDER";
@@ -385,6 +681,20 @@ const char* PerformPage::selectedRowHint() const {
                 default: return "";
             }
 
+        case PerformanceToolContext::Control:
+            return "</> ADJUST | G THROW R BLOOM F PUSH C CLOSE";
+
+        case PerformanceToolContext::Scene:
+            switch (row) {
+                case 0: return "</> SELECT SCENE SLOT S1..S8";
+                case 1: return "</> CAPTURE OR RECALL";
+                case 2: return "</> CUT / 1 / 2 / 4 / 8 BAR";
+                case 3: return "ENTER: RUN SCENE ACTION";
+                case 4: return "* MEANS LIVE STATE DIFFERS";
+                case 5: return "PLAY RECALL QUEUES TO NEXT BAR";
+                default: return "";
+            }
+
         case PerformanceToolContext::Input: {
             const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
             const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
@@ -394,7 +704,10 @@ const char* PerformPage::selectedRowHint() const {
                 case 2: return "PERFORM FOLLOWS TARGET + CHORD/ARP";
                 case 3: return follows ? "</> INSTRUMENT (RELEASES HELD NOTES)" : "N/A: SELECT ROUTE PERFORM";
                 case 4: return follows ? "</> INTERNAL / MIDI / LAYER" : "N/A: SELECT ROUTE PERFORM";
-                case 5: return "CHANGE USB ROLE IN PROJECT > MIDI";
+                case 5:
+                    return keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead
+                        ? "</> ROLE | ENTER: RAW / SCALE / CHORD / VOICE"
+                        : "</> ROLE: RAW / BASS / LEAD / CHORD / ARP";
                 default: return "";
             }
         }
@@ -421,6 +734,34 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             return true;
         default:
             break;
+    }
+
+    if (selectedContext_ == PerformanceToolContext::Control) {
+        using GroovePuterPerformance::PerformanceGestureKind;
+        const char key = event.key >= 'A' && event.key <= 'Z'
+            ? static_cast<char>(event.key - 'A' + 'a') : event.key;
+        PerformanceGestureKind gesture{};
+        switch (key) {
+            case 'g': gesture = PerformanceGestureKind::DelayThrow; break;
+            case 'r': gesture = PerformanceGestureKind::ReverbBloom; break;
+            case 'f': gesture = PerformanceGestureKind::FilterPush; break;
+            case 'c': gesture = PerformanceGestureKind::FilterClose; break;
+            default: break;
+        }
+        if (key == 'g' || key == 'r' || key == 'f' || key == 'c') {
+            const GroovePuterPerformance::PerformanceGestureEvent action{
+                gesture, true, 750};
+            if (miniAcid_.dispatchPerformanceIntent(
+                    GroovePuterPerformance::toPerformanceIntent(
+                        action, PerformanceInputIdentity{0, 0, 0, 0}),
+                    millis())) {
+                const char* name = key == 'g' ? "DELAY THROW" :
+                    key == 'r' ? "REVERB BLOOM" :
+                    key == 'f' ? "FILTER PUSH" : "FILTER CLOSE";
+                UI::showToast(name, 700);
+            }
+            return true;
+        }
     }
 
     switch (event.key) {
@@ -496,6 +837,8 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const bool chordActive = keyboard_.chordMode() != PerformanceChordMode::Off;
     const bool arpEnabled = keyboard_.arpeggiatorEnabled();
     char value[48];
+    const auto liveSnapshot = capturePerformanceSnapshot();
+    sceneBank_.markCurrentState(liveSnapshot);
 
     drawToolTabs(gfx, LayoutManager::lineY(0));
 
@@ -578,13 +921,17 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                 drawRow(1, "ORDER", "N/A", false);
                 drawRow(2, "OCTAVES", "N/A", false);
                 drawRow(3, "LATCH", "N/A", false);
-                break;
+            } else {
+                drawRow(1, "ORDER", arpOrderLabel(keyboard_.arpDirection()), true);
+                std::snprintf(value, sizeof(value), "%u",
+                              static_cast<unsigned>(keyboard_.arpOctaves()));
+                drawRow(2, "OCTAVES", value, true);
+                drawRow(3, "LATCH", keyboard_.latchEnabled() ? "ON" : "OFF", true);
             }
-            drawRow(1, "ORDER", arpOrderLabel(keyboard_.arpDirection()), true);
-            std::snprintf(value, sizeof(value), "%u",
-                          static_cast<unsigned>(keyboard_.arpOctaves()));
-            drawRow(2, "OCTAVES", value, true);
-            drawRow(3, "LATCH", keyboard_.latchEnabled() ? "ON" : "OFF", true);
+            drawRow(4, "PITCH", keyboard_.arpPitchSourceName(), true);
+            drawRow(5, "HARMONY", keyboard_.harmonyChangePolicyName(),
+                    keyboard_.arpPitchSource() == GroovePuterPerformance::ArpPitchSource::Harmony ||
+                    keyboard_.arpPitchSource() == GroovePuterPerformance::ArpPitchSource::Role);
             break;
         }
 
@@ -636,6 +983,44 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             }
             break;
 
+        case PerformanceToolContext::Control: {
+            using GroovePuterPerformance::PerformanceControlId;
+            const auto controls = miniAcid_.performanceControlState();
+            const char* labels[6] = {"FILTER", "RESON", "LEVEL", "DRIVE", "REVERB", "DELAY"};
+            for (uint8_t i = 0; i < 6; ++i) {
+                const uint8_t amount = controls.get(static_cast<PerformanceControlId>(i));
+                std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(amount));
+                drawRow(i, labels[i], value, true);
+            }
+            break;
+        }
+
+        case PerformanceToolContext::Scene: {
+            std::snprintf(value, sizeof(value), "S%u", static_cast<unsigned>(selectedScene_ + 1));
+            drawRow(0, "SLOT", value, true);
+            drawRow(1, "ACTION", sceneAction_ == 0 ? "CAPTURE" : "RECALL", true);
+            static const char* transitions[] = {"CUT", "1 BAR", "2 BAR", "4 BAR", "8 BAR"};
+            drawRow(2, "TRANS", transitions[static_cast<uint8_t>(sceneTransition_)], true);
+            drawRow(3, "EXECUTE", "PRESS ENTER", true);
+            const int8_t active = sceneBank_.activeSlot();
+            if (active < 0) {
+                drawRow(4, "ACTIVE", "NONE", false);
+            } else {
+                std::snprintf(value, sizeof(value), "S%d%s",
+                              static_cast<int>(active + 1), sceneBank_.dirty() ? "*" : "");
+                drawRow(4, "ACTIVE", value, true);
+            }
+            const int8_t queued = queuedSceneSlot_ >= 0
+                ? queuedSceneSlot_ : sceneBank_.queuedSlot();
+            if (queued >= 0) {
+                std::snprintf(value, sizeof(value), "S%d", static_cast<int>(queued + 1));
+                drawRow(5, "QUEUED", value, true);
+            } else {
+                drawRow(5, "QUEUED", "--", false);
+            }
+            break;
+        }
+
         case PerformanceToolContext::Input: {
             namespace InputUi = GroovePuterUi::MidiInputUi;
             const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
@@ -650,9 +1035,12 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(4, "OUT", !follows ? "N/A" : (hasTrack
                 ? GroovePuterOutput::modeName(GroovePuterOutput::mode(track)) : "MIDI"),
                 follows && hasTrack);
-            const auto role = CardputerUsbRoleRuntime::activeRole();
-            drawRow(5, "USB", role == UsbBootRole::Host ? "KEYBOARD"
-                : (role == UsbBootRole::Device ? "COMPUTER" : "OFF"), false);
+            if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead) {
+                std::snprintf(value, sizeof(value), "LEAD / %s", keyboard_.leadModeName());
+                drawRow(5, "ROLE", value, true);
+            } else {
+                drawRow(5, "ROLE", keyboard_.performanceRoleName(), true);
+            }
             break;
         }
 
@@ -663,12 +1051,58 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     // The global performance HUD strip is composited over the bottom of the
     // content zone, so the hint sits two pixels above the nominal line 7.
     gfx.setTextColor(COLOR_LABEL);
-    Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(7) - 2,
-                             Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X,
-                             selectedRowHint());
+    if (selectedContext_ == PerformanceToolContext::Input) {
+        const bool connected = GroovePuterMidi::CardputerUsbHostMidi::isConnected();
+        const uint32_t packetCount = GroovePuterMidi::CardputerUsbHostMidi::packetCount();
+        if (hasExternalNote_ && !lastExternalEventWasCc_) {
+            std::snprintf(value, sizeof(value), "USB %s RX:%lu N%u V%u",
+                          connected ? "CONNECTED" : "OFFLINE",
+                          static_cast<unsigned long>(packetCount),
+                          static_cast<unsigned>(lastExternalNote_),
+                          static_cast<unsigned>(lastExternalVelocity_));
+        } else if (hasExternalCc_) {
+            GroovePuterPerformance::PerformanceCcBinding binding{};
+            PerformanceIntentKind toggle{};
+            const bool bound = GroovePuterPerformance::genericMidiCcBinding(
+                lastExternalCc_, binding) ||
+                GroovePuterPerformance::genericMidiToggleCc(lastExternalCc_, toggle);
+            std::snprintf(value, sizeof(value), "USB %s RX:%lu CC%u=%u %s",
+                          connected ? "CONNECTED" : "OFFLINE",
+                          static_cast<unsigned long>(packetCount),
+                          static_cast<unsigned>(lastExternalCc_),
+                          static_cast<unsigned>(lastExternalCcValue_),
+                          bound ? "BOUND" : "UNBOUND");
+        } else {
+            std::snprintf(value, sizeof(value), "USB %s RX:%lu NO EVENT",
+                          connected ? "CONNECTED" : "OFFLINE",
+                          static_cast<unsigned long>(packetCount));
+        }
+        Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(7) - 2,
+                                 Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X, value);
+    } else {
+        Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(7) - 2,
+                                 Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X,
+                                 selectedRowHint());
+    }
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
+    if (event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
+        if (event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_CC) {
+            lastExternalCc_ = static_cast<uint8_t>(event.x);
+            lastExternalCcValue_ = static_cast<uint8_t>(event.y);
+            hasExternalCc_ = true;
+            lastExternalEventWasCc_ = true;
+            return true;
+        }
+        if (event.app_event_type == GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE) {
+            lastExternalNote_ = static_cast<uint8_t>(event.x);
+            lastExternalVelocity_ = static_cast<uint8_t>(event.y);
+            hasExternalNote_ = true;
+            lastExternalEventWasCc_ = false;
+            return false;
+        }
+    }
     if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
     // The Cardputer keycaps label the arrows as Fn alternates, so arrows are
     // accepted with Fn (meta) held while the tools layer is open. Every other
@@ -678,6 +1112,15 @@ bool PerformPage::handleEvent(UIEvent& event) {
     const bool isAltO = event.alt && !event.ctrl && !event.meta &&
                         (event.key == 'o' || event.key == 'O' ||
                          event.scancode == GROOVEPUTER_O);
+    if (event.alt && !event.ctrl && !event.meta &&
+        event.key >= '1' && event.key <= '8') {
+        dispatchPerformanceIntent(makeScenePerformanceIntent(
+            PerformanceIntentKind::RecallScene,
+            PerformanceInputIdentity{0, 0, 0, 0},
+            static_cast<uint8_t>(event.key - '1'),
+            static_cast<uint8_t>(sceneTransition_)));
+        return true;
+    }
     if (isAltO) {
         cycleOutput(1);
         return true;
@@ -792,8 +1235,6 @@ void PerformPage::drawHeader(IGfx& gfx) {
 }
 
 void PerformPage::drawContent(IGfx& gfx) {
-    keyboard_.setTempoBpm(miniAcid_.bpm());
-
     if (toolsLayerVisible_) {
         drawToolsLayer(gfx);
         return;
@@ -962,9 +1403,14 @@ void PerformPage::drawContent(IGfx& gfx) {
 
 void PerformPage::drawFooter(IGfx& gfx) {
     if (toolsLayerVisible_) {
-        UI::drawStandardFooter(gfx,
-                               "[TAB]CTX [U/D]ROW [L/R]VAL",
-                               "[ENT]ACTION [ESC]LIVE");
+        if (selectedContext_ == PerformanceToolContext::Control) {
+            UI::drawStandardFooter(gfx, "G THROW R BLOOM F/C FILTER",
+                                   "[L/R]EDIT [ESC]LIVE");
+        } else {
+            UI::drawStandardFooter(gfx,
+                                   "[TAB]CTX [U/D]ROW [L/R]VAL",
+                                   "[ENT]ACTION [ESC]LIVE");
+        }
         return;
     }
     UI::drawStandardFooter(gfx,

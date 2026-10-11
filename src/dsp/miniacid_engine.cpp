@@ -7,6 +7,7 @@
 #include "src/state/material_version.h"
 #include "src/state/melody_promotion.h"
 #include "src/state/synth_pattern_edit.h"
+#include "src/input/performance_harmony_context.h"
 #include "src/audio/audio_mutation_gate.h"
 #include "song_cycle_boundary.h"
 
@@ -454,6 +455,7 @@ void MiniAcid::reset() {
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
+  publishedTransportTick_.store(currentTick_, std::memory_order_release);
   songBarIndex_ = -1;
   currentTimingOffset_ = 0;
   updateTickIncrement();
@@ -530,6 +532,7 @@ void MiniAcid::start() {
   // Force immediate first step trigger.
   tickPhaseAccum_ = 0x100000000ULL; // Trigger advance on first sample
   currentTick_ = 383; // Set to end of bar so first modulo triggers step 0
+  publishedTransportTick_.store(currentTick_, std::memory_order_release);
   currentTimingOffset_ = 0;
   songBarIndex_ = -1;
   if (songMode_) {
@@ -638,6 +641,7 @@ void MiniAcid::stop() {
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
+  publishedTransportTick_.store(currentTick_, std::memory_order_release);
   songBarIndex_ = -1;
   gateCountdownA_ = 0;
   gateCountdownB_ = 0;
@@ -695,6 +699,7 @@ void MiniAcid::continueTransport() {
   // position zero: step zero must still fire on the first rendered sample.
   if (currentTick_ == 0 && tickPhaseAccum_ == 0) {
     currentTick_ = 383;
+    publishedTransportTick_.store(currentTick_, std::memory_order_release);
     tickPhaseAccum_ = 0x100000000ULL;
   }
   playing = true;
@@ -876,6 +881,46 @@ float MiniAcid::bpm() const { return bpmValue; }
 float MiniAcid::sampleRate() const { return sampleRateValue; }
 
 bool MiniAcid::isPlaying() const { return playing; }
+
+bool MiniAcid::performanceHarmonicContext(
+    GroovePuterPerformance::PerformanceContext& out) const {
+  out = GroovePuterPerformance::PerformanceContext{};
+  if (!songMode_) return false;
+
+  const auto* recipe = generatedPhraseRecipe();
+  const auto* origin = generatedSynthAOrigin();
+  if (recipe == nullptr || origin == nullptr) return false;
+
+  const int activePage = currentPageIndex();
+  const int songRow = songPlayheadPosition_;
+  const int globalPattern = sceneManager_.songPatternAtSlot(
+      songPlaybackSlot_, songRow, SongTrack::SynthA);
+  if (globalPattern < 0 || globalPattern >= kMaxGlobalPatterns ||
+      songPatternPage(globalPattern) != activePage) {
+    return false;
+  }
+
+  const GroovePuterMaterial::MaterialAddress address{
+      0, static_cast<uint8_t>(globalPattern)};
+  if (!GroovePuterMaterial::materialAddressInRange(address) ||
+      !GroovePuterMaterial::materialAddressIsResident(address, activePage)) {
+    return false;
+  }
+  const Scene& scene = sceneManager_.currentScene();
+  const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+  if (!GroovePuterMaterial::residentSlotInRange(0, residentSlot)) return false;
+  const GroovePuterMaterial::MaterialSlotDescriptor descriptor =
+      GroovePuterMaterial::residentDescriptor(scene, 0, residentSlot);
+  if (descriptor.kind != GroovePuterMaterial::MaterialKind::Pattern) return false;
+
+  const uint8_t stepInBar = static_cast<uint8_t>(
+      ((currentTick_ % PhraseRuntime::kTicksPerBar) * 16u) /
+      PhraseRuntime::kTicksPerBar);
+  return GroovePuterPerformance::performanceContextAtGeneratedPhrase(
+      *origin, *recipe, activePage, songPlaybackSlot_, songRow,
+      globalPattern, descriptor.id.value, stepInBar, out,
+      GenreCatalog::behavior(recipe->genre).allowChromatic);
+}
 
 int MiniAcid::currentStep() const { 
     if (!playing) return 0;
@@ -1586,43 +1631,71 @@ void MiniAcid::toggleDelay303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
     delay303Enabled = !delay303Enabled;
+    const uint8_t bit = 1u << 0;
+    if (delay303Enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     delay303.setEnabled(delay303Enabled);
   } else {
     delay3032Enabled = !delay3032Enabled;
+    const uint8_t bit = 1u << 1;
+    if (delay3032Enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     delay3032.setEnabled(delay3032Enabled);
   }
+  publishEffectivePerformanceControls_(millis());
 }
 void MiniAcid::toggleDistortion303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
     distortion303Enabled = !distortion303Enabled;
+    const uint8_t bit = 1u << 2;
+    if (distortion303Enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     distortion303.setEnabled(distortion303Enabled);
   } else {
     distortion3032Enabled = !distortion3032Enabled;
+    const uint8_t bit = 1u << 3;
+    if (distortion3032Enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     distortion3032.setEnabled(distortion3032Enabled);
   }
+  publishEffectivePerformanceControls_(millis());
 }
 
 void MiniAcid::set303DelayEnabled(int voiceIndex, bool enabled) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
     delay303Enabled = enabled;
+    const uint8_t bit = 1u << 0;
+    if (enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     delay303.setEnabled(enabled);
   } else {
     delay3032Enabled = enabled;
+    const uint8_t bit = 1u << 1;
+    if (enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     delay3032.setEnabled(enabled);
   }
+  publishEffectivePerformanceControls_(millis());
 }
 
 void MiniAcid::set303DistortionEnabled(int voiceIndex, bool enabled) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
     distortion303Enabled = enabled;
+    const uint8_t bit = 1u << 2;
+    if (enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     distortion303.setEnabled(enabled);
   } else {
     distortion3032Enabled = enabled;
+    const uint8_t bit = 1u << 3;
+    if (enabled) performanceEffectMask_.fetch_or(bit, std::memory_order_acq_rel);
+    else performanceEffectMask_.fetch_and(static_cast<uint8_t>(~bit), std::memory_order_acq_rel);
     distortion3032.setEnabled(enabled);
   }
+  publishEffectivePerformanceControls_(millis());
 }
 
 void MiniAcid::setDrumPatternIndex(int16_t patternIndex) {
@@ -2400,6 +2473,12 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   if (!buffer || numSamples == 0) return;
 
+  // A queued scene recalls immediately if transport stopped before its target.
+  if (!playing) applyPendingPerformanceScene_(currentTick_);
+  // Performance controls are published by UI/input code and applied here at
+  // the audio-block boundary. No renderer gate or cross-thread DSP mutation.
+  applyPendingPerformanceControls_();
+
   // Test Tone Mode (Hardware diagnostic)
   if (testToneEnabled_) {
     for (size_t i = 0; i < numSamples; ++i) {
@@ -2524,6 +2603,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         
         while (ticksToAdvance--) {
           ++currentTick_;
+          publishedTransportTick_.store(currentTick_, std::memory_order_release);
+          applyPendingPerformanceScene_(currentTick_);
           advanceTick();
         }
       }
@@ -2704,6 +2785,9 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     float preLimiter = dcOut;
     float limited = softLimit(dcOut);
     float vol = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+    vol *= static_cast<float>(appliedPerformanceControlValues_[
+                 static_cast<uint8_t>(GroovePuterPerformance::PerformanceControlId::Level)]) /
+           100.0f;
     if (vol < 0.0f) vol = 0.0f;
     if (vol > 1.8f) vol = 1.8f;
     float finalSample = softLimit(limited * vol);
@@ -3165,6 +3249,374 @@ float MiniAcid::mainVolume() const {
   return params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
 }
 
+GroovePuterPerformance::PerformanceControlState
+MiniAcid::performanceControlState() const {
+  GroovePuterPerformance::PerformanceControlState state{};
+  for (uint8_t i = 0; i < state.kControlCount; ++i) {
+    state.values[i] = performanceControlValues_[i].load(std::memory_order_acquire);
+  }
+  return state;
+}
+
+bool MiniAcid::setPerformanceEffectMask(uint8_t mask) {
+  if ((mask & 0xf0u) != 0u) return false;
+  performanceEffectMask_.store(mask, std::memory_order_release);
+  publishEffectivePerformanceControls_(millis());
+  return true;
+}
+
+bool MiniAcid::setPerformanceControlState(
+    const GroovePuterPerformance::PerformanceControlState& state) {
+  for (uint8_t i = 0; i < state.kControlCount; ++i) {
+    if (state.values[i] > 127u) return false;
+  }
+  uint16_t dirty = 0;
+  for (uint8_t i = 0; i < state.kControlCount; ++i) {
+    if (performanceControlValues_[i].load(std::memory_order_acquire) != state.values[i]) {
+      performanceControlValues_[i].store(state.values[i], std::memory_order_release);
+      dirty |= static_cast<uint16_t>(1u << i);
+    }
+  }
+  if (dirty != 0) {
+    publishEffectivePerformanceControls_(millis());
+  }
+  return true;
+}
+
+bool MiniAcid::queuePerformanceSceneAtTick(
+    const GroovePuterPerformance::PerformanceSceneSnapshot& snapshot,
+    uint32_t targetTick) {
+  if (snapshot.effectMask > 0x0fu || (snapshot.muteMask & 0xfc00u) != 0u) return false;
+  for (uint8_t value : snapshot.controls.values) if (value > 127u) return false;
+
+  uint32_t version = performanceSceneCommandVersion_.load(std::memory_order_relaxed);
+  if (version & 1u) ++version;
+  performanceSceneCommandVersion_.store(version + 1u, std::memory_order_release);
+  for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+    performanceSceneCommandControls_[i].store(snapshot.controls.values[i],
+                                               std::memory_order_relaxed);
+  }
+  performanceSceneCommandMuteMask_.store(snapshot.muteMask, std::memory_order_relaxed);
+  performanceSceneCommandEffectMask_.store(snapshot.effectMask, std::memory_order_relaxed);
+  performanceSceneCommandTick_.store(targetTick, std::memory_order_relaxed);
+  performanceSceneCommandMode_.store(0, std::memory_order_relaxed);
+  performanceSceneCommandDurationTicks_.store(0, std::memory_order_relaxed);
+  performanceSceneCommandCanceled_.store(false, std::memory_order_relaxed);
+  performanceSceneCommandVersion_.store(version + 2u, std::memory_order_release);
+  return true;
+}
+
+bool MiniAcid::queuePerformanceSceneMorph(
+    const GroovePuterPerformance::PerformanceSceneSnapshot& from,
+    const GroovePuterPerformance::PerformanceSceneSnapshot& to,
+    uint32_t startTick, uint32_t durationTicks) {
+  constexpr uint32_t kMaxSceneMorphTicks =
+      8u * GroovePuterPerformance::PerformanceSceneBank::kTicksPerBar;
+  if (durationTicks == 0u || durationTicks > kMaxSceneMorphTicks ||
+      from.effectMask > 0x0fu || to.effectMask > 0x0fu ||
+      (from.muteMask & 0xfc00u) != 0u || (to.muteMask & 0xfc00u) != 0u) return false;
+  for (uint8_t value : from.controls.values) if (value > 127u) return false;
+  for (uint8_t value : to.controls.values) if (value > 127u) return false;
+
+  uint32_t version = performanceSceneCommandVersion_.load(std::memory_order_relaxed);
+  if (version & 1u) ++version;
+  performanceSceneCommandVersion_.store(version + 1u, std::memory_order_release);
+  for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+    performanceSceneCommandFromControls_[i].store(from.controls.values[i],
+                                                    std::memory_order_relaxed);
+    performanceSceneCommandControls_[i].store(to.controls.values[i],
+                                               std::memory_order_relaxed);
+  }
+  performanceSceneCommandFromMuteMask_.store(from.muteMask, std::memory_order_relaxed);
+  performanceSceneCommandFromEffectMask_.store(from.effectMask, std::memory_order_relaxed);
+  performanceSceneCommandMuteMask_.store(to.muteMask, std::memory_order_relaxed);
+  performanceSceneCommandEffectMask_.store(to.effectMask, std::memory_order_relaxed);
+  performanceSceneCommandTick_.store(startTick, std::memory_order_relaxed);
+  performanceSceneCommandDurationTicks_.store(durationTicks, std::memory_order_relaxed);
+  performanceSceneCommandMode_.store(1, std::memory_order_relaxed);
+  performanceSceneCommandCanceled_.store(false, std::memory_order_relaxed);
+  performanceSceneCommandVersion_.store(version + 2u, std::memory_order_release);
+  return true;
+}
+
+void MiniAcid::cancelQueuedPerformanceScene() {
+  uint32_t version = performanceSceneCommandVersion_.load(std::memory_order_relaxed);
+  if (version & 1u) ++version;
+  performanceSceneCommandVersion_.store(version + 1u, std::memory_order_release);
+  performanceSceneCommandCanceled_.store(true, std::memory_order_relaxed);
+  performanceSceneCommandVersion_.store(version + 2u, std::memory_order_release);
+}
+
+void MiniAcid::applyPendingPerformanceScene_(uint32_t tick) {
+  bool applyPerformanceScene = false;
+  const uint32_t version = performanceSceneCommandVersion_.load(std::memory_order_acquire);
+  if (version != 0u && (version & 1u) == 0u &&
+      version != appliedPerformanceSceneCommandVersion_) {
+    if (performanceSceneCommandCanceled_.load(std::memory_order_relaxed)) {
+      if (performanceSceneCommandVersion_.load(std::memory_order_acquire) == version) {
+        performanceSceneMorphActive_ = false;
+        appliedPerformanceSceneCommandVersion_ = version;
+      }
+      return;
+    }
+    const uint8_t mode = performanceSceneCommandMode_.load(std::memory_order_relaxed);
+    const uint32_t targetTick = performanceSceneCommandTick_.load(std::memory_order_relaxed);
+    const uint32_t duration = performanceSceneCommandDurationTicks_.load(std::memory_order_relaxed);
+    uint8_t from[GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+    uint8_t to[GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+    for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+      from[i] = performanceSceneCommandFromControls_[i].load(std::memory_order_relaxed);
+      to[i] = performanceSceneCommandControls_[i].load(std::memory_order_relaxed);
+    }
+    const uint16_t fromMute = performanceSceneCommandFromMuteMask_.load(std::memory_order_relaxed);
+    const uint8_t fromEffects = performanceSceneCommandFromEffectMask_.load(std::memory_order_relaxed);
+    const uint16_t toMute = performanceSceneCommandMuteMask_.load(std::memory_order_relaxed);
+    const uint8_t toEffects = performanceSceneCommandEffectMask_.load(std::memory_order_relaxed);
+    if (performanceSceneCommandVersion_.load(std::memory_order_acquire) != version) return;
+
+    if (mode == 1u) {
+      performanceSceneMorphStartTick_ = targetTick;
+      performanceSceneMorphDurationTicks_ = duration;
+      for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+        performanceSceneMorphFromControls_[i] = from[i];
+        performanceSceneMorphToControls_[i] = to[i];
+      }
+      performanceSceneMorphFromMuteMask_ = fromMute;
+      performanceSceneMorphToMuteMask_ = toMute;
+      performanceSceneMorphFromEffectMask_ = fromEffects;
+      performanceSceneMorphToEffectMask_ = toEffects;
+      performanceSceneMorphActive_ = duration != 0u;
+      appliedPerformanceSceneCommandVersion_ = version;
+      applyPerformanceScene = performanceSceneMorphActive_;
+    } else {
+      if (playing && static_cast<int32_t>(tick - targetTick) < 0) return;
+      performanceSceneMorphActive_ = false;
+      for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+        performanceSceneMorphToControls_[i] = to[i];
+      }
+      performanceSceneMorphToMuteMask_ = toMute;
+      performanceSceneMorphToEffectMask_ = toEffects;
+      appliedPerformanceSceneCommandVersion_ = version;
+      applyPerformanceScene = true;
+    }
+  }
+  if (performanceSceneMorphActive_) applyPerformanceScene = true;
+  if (!applyPerformanceScene || version == 0u || (version & 1u) != 0u) return;
+
+  uint8_t controls[GroovePuterPerformance::PerformanceControlState::kControlCount]{};
+  uint16_t muteMask = performanceSceneMorphToMuteMask_;
+  uint8_t effectMask = performanceSceneMorphToEffectMask_;
+  if (performanceSceneMorphActive_) {
+    if (playing && static_cast<int32_t>(tick - performanceSceneMorphStartTick_) < 0) return;
+    const uint32_t elapsed = !playing ? performanceSceneMorphDurationTicks_
+        : tick - performanceSceneMorphStartTick_;
+    const uint32_t bounded = elapsed < performanceSceneMorphDurationTicks_
+        ? elapsed : performanceSceneMorphDurationTicks_;
+    for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+      const auto id = static_cast<GroovePuterPerformance::PerformanceControlId>(i);
+      const int32_t from = performanceSceneMorphFromControls_[i];
+      const int32_t to = performanceSceneMorphToControls_[i];
+      if (id == GroovePuterPerformance::PerformanceControlId::Density) {
+        controls[i] = bounded == performanceSceneMorphDurationTicks_
+            ? static_cast<uint8_t>(to) : static_cast<uint8_t>(from);
+      } else {
+        const int32_t scaled = from * static_cast<int32_t>(performanceSceneMorphDurationTicks_ - bounded) +
+                               to * static_cast<int32_t>(bounded);
+        controls[i] = static_cast<uint8_t>(
+            (scaled + static_cast<int32_t>(performanceSceneMorphDurationTicks_ / 2u)) /
+            static_cast<int32_t>(performanceSceneMorphDurationTicks_));
+      }
+    }
+    if (bounded == performanceSceneMorphDurationTicks_) {
+      muteMask = performanceSceneMorphToMuteMask_;
+      effectMask = performanceSceneMorphToEffectMask_;
+      performanceSceneMorphActive_ = false;
+    } else {
+      muteMask = performanceSceneMorphFromMuteMask_;
+      effectMask = performanceSceneMorphFromEffectMask_;
+    }
+  } else {
+    for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+      controls[i] = performanceSceneMorphToControls_[i];
+    }
+  }
+  const uint8_t gestureMask = performanceGestureActiveMask_.load(std::memory_order_acquire);
+
+  GroovePuterPerformance::PerformanceControlState sceneControls{};
+  for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+    sceneControls.values[i] = controls[i];
+  }
+  const auto effectiveControls =
+      GroovePuterPerformance::PerformanceGestureOverlay::effectiveStateForMask(
+          sceneControls, gestureMask);
+  uint16_t dirty = 0;
+  for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+    if (performanceControlValues_[i].load(std::memory_order_relaxed) != controls[i]) {
+      dirty |= static_cast<uint16_t>(1u << i);
+    }
+    performanceControlValues_[i].store(controls[i], std::memory_order_relaxed);
+    effectivePerformanceControlValues_[i].store(
+        effectiveControls.values[i], std::memory_order_release);
+  }
+  if (dirty) performanceControlDirtyMask_.fetch_or(dirty, std::memory_order_release);
+
+  performanceEffectMask_.store(effectMask, std::memory_order_release);
+  uint8_t effectiveEffects = effectMask;
+  if ((gestureMask & (1u << static_cast<uint8_t>(
+          GroovePuterPerformance::PerformanceGestureKind::DelayThrow))) != 0u) {
+    effectiveEffects |= (1u << 0) | (1u << 1);
+  }
+  if (effectivePerformanceEffectMask_.exchange(effectiveEffects, std::memory_order_acq_rel) !=
+      effectiveEffects) {
+    performanceEffectMaskDirty_.store(true, std::memory_order_release);
+  }
+
+  const bool nextMuteA = (muteMask & (1u << 0)) != 0u;
+  const bool nextMuteB = (muteMask & (1u << 1)) != 0u;
+  if (nextMuteA && !mute303) hardBarrierPatternPlayback_(0);
+  if (nextMuteB && !mute303_2) hardBarrierPatternPlayback_(1);
+  mute303 = nextMuteA;
+  mute303_2 = nextMuteB;
+  muteKick = (muteMask & (1u << 2)) != 0u;
+  muteSnare = (muteMask & (1u << 3)) != 0u;
+  muteHat = (muteMask & (1u << 4)) != 0u;
+  muteOpenHat = (muteMask & (1u << 5)) != 0u;
+  muteMidTom = (muteMask & (1u << 6)) != 0u;
+  muteHighTom = (muteMask & (1u << 7)) != 0u;
+  muteRim = (muteMask & (1u << 8)) != 0u;
+  muteClap = (muteMask & (1u << 9)) != 0u;
+  appliedPerformanceSceneCommandVersion_ = version;
+}
+
+bool MiniAcid::applyPerformanceControlIntent(
+    const GroovePuterPerformance::PerformanceControlIntent& intent) {
+  auto state = performanceControlState();
+  if (!GroovePuterPerformance::applyControlIntent(state, intent)) return false;
+  const uint8_t index = static_cast<uint8_t>(intent.control);
+  performanceControlValues_[index].store(state.values[index], std::memory_order_release);
+  publishEffectivePerformanceControls_(millis());
+  return true;
+}
+
+bool MiniAcid::dispatchPerformanceIntent(const PerformanceIntent& intent,
+                                        uint32_t nowMs) {
+  GroovePuterPerformance::PerformanceControlIntent control{};
+  if (GroovePuterPerformance::fromPerformanceIntent(intent, control)) {
+    return applyPerformanceControlIntent(control);
+  }
+
+  GroovePuterPerformance::PerformanceGestureEvent gesture{};
+  if (!GroovePuterPerformance::fromPerformanceIntent(intent, gesture)) return false;
+  if (gesture.start) {
+    return beginPerformanceGesture(gesture.gesture, gesture.durationMs, nowMs);
+  }
+  return releasePerformanceGesture(gesture.gesture, nowMs);
+}
+
+bool MiniAcid::beginPerformanceGesture(
+    GroovePuterPerformance::PerformanceGestureKind gesture,
+    uint32_t durationMs,
+    uint32_t nowMs) {
+  if (!performanceGestureOverlay_.begin(gesture, performanceControlState(),
+                                         nowMs, durationMs)) return false;
+  publishEffectivePerformanceControls_(nowMs);
+  return true;
+}
+
+bool MiniAcid::releasePerformanceGesture(
+    GroovePuterPerformance::PerformanceGestureKind gesture,
+    uint32_t nowMs) {
+  if (!performanceGestureOverlay_.release(gesture)) return false;
+  publishEffectivePerformanceControls_(nowMs);
+  return true;
+}
+
+void MiniAcid::servicePerformanceGestures(uint32_t nowMs) {
+  publishEffectivePerformanceControls_(nowMs);
+}
+
+void MiniAcid::publishEffectivePerformanceControls_(uint32_t nowMs) {
+  const auto base = performanceControlState();
+  const uint8_t gestureMask = performanceGestureOverlay_.activeMask(nowMs);
+  performanceGestureActiveMask_.store(gestureMask, std::memory_order_release);
+  const auto effective =
+      GroovePuterPerformance::PerformanceGestureOverlay::effectiveStateForMask(base, gestureMask);
+  uint16_t dirty = 0;
+  for (uint8_t i = 0; i < effective.kControlCount; ++i) {
+    const uint8_t value = effective.values[i];
+    if (effectivePerformanceControlValues_[i].load(std::memory_order_acquire) == value) continue;
+    effectivePerformanceControlValues_[i].store(value, std::memory_order_release);
+    dirty |= static_cast<uint16_t>(1u << i);
+  }
+  if (dirty != 0) performanceControlDirtyMask_.fetch_or(dirty, std::memory_order_release);
+  uint8_t effectiveEffects = performanceEffectMask_.load(std::memory_order_acquire);
+  if ((gestureMask & (1u << static_cast<uint8_t>(
+          GroovePuterPerformance::PerformanceGestureKind::DelayThrow))) != 0u) {
+    effectiveEffects |= (1u << 0) | (1u << 1);
+  }
+  if (effectivePerformanceEffectMask_.exchange(effectiveEffects, std::memory_order_acq_rel) !=
+      effectiveEffects) {
+    performanceEffectMaskDirty_.store(true, std::memory_order_release);
+  }
+}
+
+void MiniAcid::applyPendingPerformanceControls_() {
+  if (performanceEffectMaskDirty_.exchange(false, std::memory_order_acq_rel)) {
+    const uint8_t mask = effectivePerformanceEffectMask_.load(std::memory_order_acquire);
+    delay303Enabled = (mask & (1u << 0)) != 0;
+    delay3032Enabled = (mask & (1u << 1)) != 0;
+    distortion303Enabled = (mask & (1u << 2)) != 0;
+    distortion3032Enabled = (mask & (1u << 3)) != 0;
+    delay303.setEnabled(delay303Enabled);
+    delay3032.setEnabled(delay3032Enabled);
+    distortion303.setEnabled(distortion303Enabled);
+    distortion3032.setEnabled(distortion3032Enabled);
+  }
+  const uint16_t dirty = performanceControlDirtyMask_.exchange(0, std::memory_order_acq_rel);
+  if (dirty == 0) return;
+
+  using GroovePuterPerformance::PerformanceControlId;
+  const auto read = [this](PerformanceControlId id) {
+    return effectivePerformanceControlValues_[static_cast<uint8_t>(id)].load(std::memory_order_acquire);
+  };
+  const auto changed = [this, dirty](PerformanceControlId id) {
+    return (dirty & (1u << static_cast<uint8_t>(id))) != 0;
+  };
+
+  if (changed(PerformanceControlId::Filter) || changed(PerformanceControlId::Resonance)) {
+    const float cutoff = static_cast<float>(read(PerformanceControlId::Filter)) / 127.0f;
+    const float resonance = static_cast<float>(read(PerformanceControlId::Resonance)) / 127.0f;
+    for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+      if (!synthVoices_[voice]) continue;
+      if (changed(PerformanceControlId::Filter)) synthVoices_[voice]->setParameterNormalized(0, cutoff);
+      if (changed(PerformanceControlId::Resonance)) synthVoices_[voice]->setParameterNormalized(1, resonance);
+    }
+  }
+  if (changed(PerformanceControlId::Drive)) {
+    const uint8_t amount = read(PerformanceControlId::Drive);
+    const float drive = amount == 0u ? 0.1f
+        : 1.0f + static_cast<float>(amount) * (9.0f / 127.0f);
+    distortion303.setDrive(drive);
+    distortion3032.setDrive(drive);
+  }
+  if (changed(PerformanceControlId::ReverbSend)) {
+    drumReverb.setMix(static_cast<float>(read(PerformanceControlId::ReverbSend)) / 127.0f);
+  }
+  if (changed(PerformanceControlId::DelaySend)) {
+    const uint8_t amount = read(PerformanceControlId::DelaySend);
+    const float send = static_cast<float>(amount) / 127.0f;
+    delay303.setMix(send);
+    delay3032.setMix(send);
+  }
+
+  for (uint8_t i = 0; i < GroovePuterPerformance::PerformanceControlState::kControlCount; ++i) {
+    if (dirty & (1u << i)) {
+      appliedPerformanceControlValues_[i] =
+          effectivePerformanceControlValues_[i].load(std::memory_order_acquire);
+    }
+  }
+}
+
 void MiniAcid::setDeviceMasterVolume(float value) {
   params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(value);
   deviceMasterVolumeOverride_ = true;
@@ -3357,6 +3809,15 @@ void MiniAcid::applySceneStateFromManager() {
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTexture...");
   applyTextureFromScene_();
+
+  uint8_t effectMask = 0;
+  if (delay303Enabled) effectMask |= 1u << 0;
+  if (delay3032Enabled) effectMask |= 1u << 1;
+  if (distortion303Enabled) effectMask |= 1u << 2;
+  if (distortion3032Enabled) effectMask |= 1u << 3;
+  performanceEffectMask_.store(effectMask, std::memory_order_release);
+  effectivePerformanceEffectMask_.store(effectMask, std::memory_order_release);
+  performanceEffectMaskDirty_.store(false, std::memory_order_release);
   
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Done");
 }
@@ -3722,6 +4183,7 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   currentStepIndex = 0;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
+  publishedTransportTick_.store(currentTick_, std::memory_order_release);
   
   // 4. Write WAV Header placeholder
   WavHeader header;
@@ -3758,6 +4220,7 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   // Hack: Reset internal counters
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
+  publishedTransportTick_.store(currentTick_, std::memory_order_release);
   
   uint32_t bytesWritten = 0;
   int lastStepIndex = 0;

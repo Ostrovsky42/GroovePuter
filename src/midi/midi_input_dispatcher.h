@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "src/input/musical_event_router.h"
+#include "src/input/performance_intent.h"
 #include "midi_input_queue.h"
 #include "midi_io_state.h"
 
@@ -16,6 +17,12 @@ enum class MidiInputTarget : uint8_t {
     SynthB = 1,
     Drums = 2,
     Perform = 3,  // external keyboard played through the PERFORM keyboard (chords / arp / latch)
+};
+
+enum class PitchBendMode : uint8_t {
+    Musical = 0,
+    LegacyNudge = 1,
+    Count,
 };
 
 // Phases of the external Mod button (a short press = tap, a long hold = a different action).
@@ -30,15 +37,25 @@ enum class ModPhase : uint8_t {
 class MidiExternalNoteSink {
 public:
     virtual ~MidiExternalNoteSink() = default;
-    virtual void externalNoteOn(uint8_t note, uint8_t velocity) = 0;
-    virtual void externalNoteOff(uint8_t note) = 0;
+    virtual void externalNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input) = 0;
+    virtual void externalNoteOff(uint8_t note, PerformanceInputIdentity input) = 0;
     // Sustain button / pedal (CC64) of the external keyboard: true while held down.
     virtual void externalSustain(bool down) = 0;
+    virtual void externalSustain(bool down, PerformanceInputIdentity input) {
+        (void)input;
+        externalSustain(down);
+    }
     // Pitch buttons of the external keyboard: -1 = left/down pressed, +1 = right/up pressed, 0 = the
     // button was released (or the session ended while it was held).
     virtual void externalNudge(int direction) = 0;
+    virtual void externalPitchBend(uint16_t value14, PerformanceInputIdentity input) {
+        (void)value14;
+        (void)input;
+    }
+    virtual void externalAllSoundOff(PerformanceInputIdentity) {}
     // Mod button of the external keyboard: press, release (tap or hold is decided by the consumer).
     virtual void externalMod(ModPhase phase) = 0;
+    virtual void externalControlChange(uint8_t, uint8_t, PerformanceInputIdentity) {}
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -51,6 +68,8 @@ struct MidiInputRoutingConfig {
     MidiInputChannelMode channelMode{MidiInputChannelMode::Omni};
     uint8_t channel{0};
     MidiInputTarget target{MidiInputTarget::SynthA};
+    PitchBendMode pitchBendMode{PitchBendMode::Musical};
+    uint8_t usbCable{0};
 };
 
 class MidiInputDispatcher {
@@ -71,7 +90,8 @@ public:
     }
 
     static bool isValidConfig(const MidiInputRoutingConfig& config) {
-        if (config.channel >= 16u) return false;
+        if (config.channel >= 16u || config.pitchBendMode >= PitchBendMode::Count ||
+            config.usbCable >= 16u) return false;
         switch (config.target) {
             case MidiInputTarget::SynthA:
             case MidiInputTarget::SynthB:
@@ -121,11 +141,19 @@ private:
         InputSource source{InputSource::Usb};
         uint32_t generation{0};
         uint8_t inputChannel{0};
+        uint8_t inputCable{0};
         uint8_t sourceNote{0};
         MusicalEventTarget target{MusicalEventTarget::SynthA};
         uint8_t routedChannel{0};
         uint8_t routedNote{0};
         bool perform{false};  // owned by the PERFORM keyboard bridge, not the router
+        PerformanceInputIdentity performanceInput{};
+    };
+    struct PitchBendOwner {
+        bool active{false};
+        uint32_t generation{0};
+        uint8_t cable{0};
+        uint16_t value14{8192};
     };
 
     static bool sameConfig(const MidiInputRoutingConfig& lhs,
@@ -133,7 +161,9 @@ private:
         return lhs.enabled == rhs.enabled &&
                lhs.channelMode == rhs.channelMode &&
                lhs.channel == rhs.channel &&
-               lhs.target == rhs.target;
+               lhs.target == rhs.target &&
+               lhs.pitchBendMode == rhs.pitchBendMode &&
+               lhs.usbCable == rhs.usbCable;
     }
 
     static MusicalEventTarget musicalTarget(MidiInputTarget target) {
@@ -166,8 +196,19 @@ private:
         return note;
     }
 
+    static MusicalEventTarget toMusicalTarget(MidiInputTarget target) {
+        switch (target) {
+            case MidiInputTarget::SynthA: return MusicalEventTarget::SynthA;
+            case MidiInputTarget::SynthB: return MusicalEventTarget::SynthB;
+            case MidiInputTarget::Drums: return MusicalEventTarget::Drums;
+            case MidiInputTarget::Perform: break;
+        }
+        return MusicalEventTarget::SynthA;
+    }
+
     bool acceptsConfig(const MidiInputEvent& event) const {
         if (!config_.enabled) return false;
+        if (event.id.source == InputSource::Usb && event.id.cable != config_.usbCable) return false;
         return config_.channelMode == MidiInputChannelMode::Omni ||
                event.id.channel == config_.channel;
     }
@@ -179,6 +220,7 @@ private:
             if (owner.source == event.id.source &&
                 owner.generation == event.id.generation &&
                 owner.inputChannel == event.id.channel &&
+                owner.inputCable == event.id.cable &&
                 owner.sourceNote == event.id.key) {
                 return static_cast<int>(i);
             }
@@ -208,8 +250,11 @@ private:
     void publish(MusicalEventType type, const ActiveOwner& owner, uint8_t velocity) {
         if (owner.perform) {
             if (performSink_ == nullptr) return;
-            if (type == MusicalEventType::NoteOn) performSink_->externalNoteOn(owner.routedNote, velocity);
-            else performSink_->externalNoteOff(owner.routedNote);
+            if (type == MusicalEventType::NoteOn) {
+                performSink_->externalNoteOn(owner.routedNote, velocity, owner.performanceInput);
+            } else {
+                performSink_->externalNoteOff(owner.routedNote, owner.performanceInput);
+            }
             return;
         }
         if (router_ == nullptr) return;
@@ -236,9 +281,43 @@ private:
         }
         modState_ = ModState::Idle;
         modLast_ = 0;
-        if (!sustainDown_) return;
-        sustainDown_ = false;
-        if (performSink_ != nullptr) performSink_->externalSustain(false);
+        for (std::size_t source = 0; source < 3; ++source) {
+            for (std::size_t channel = 0; channel < 16; ++channel) {
+                if (sustainBySource_[source][channel]) {
+                    sustainBySource_[source][channel] = false;
+                    if (performSink_ != nullptr) {
+                        performSink_->externalSustain(false, PerformanceInputIdentity{
+                            sustainGenerationBySource_[source][channel],
+                            static_cast<uint8_t>(source), static_cast<uint8_t>(channel),
+                            0xffu, sustainCableBySource_[source][channel]});
+                    }
+                }
+                releasePitchBend(static_cast<InputSource>(source),
+                                 static_cast<uint8_t>(channel));
+            }
+        }
+    }
+
+    void releasePitchBend(InputSource source, uint8_t channel,
+                          uint8_t cable = 0xffu) {
+        const std::size_t sourceSlot = static_cast<std::size_t>(source);
+        if (sourceSlot >= 3u || channel >= 16u) return;
+        PitchBendOwner& owner = pitchBends_[sourceSlot][channel];
+        if (!owner.active) return;
+        if (cable != 0xffu && owner.cable != cable) return;
+        const uint32_t generation = owner.generation;
+        const uint8_t ownerCable = owner.cable;
+        owner = PitchBendOwner{};
+        if (config_.target == MidiInputTarget::Perform) {
+            if (performSink_ != nullptr) {
+                performSink_->externalPitchBend(8192u, PerformanceInputIdentity{
+                    generation, static_cast<uint8_t>(sourceSlot), channel, 0, ownerCable});
+            }
+        } else if (router_ != nullptr) {
+            router_->route(MusicalEvent{MusicalEventType::PitchBend,
+                MusicalEventSource::MidiInput, toMusicalTarget(config_.target),
+                channel, 0, 0, 0, 8192u});
+        }
     }
 
     void releaseAllOwnedNotes() {
@@ -251,19 +330,54 @@ private:
     }
 
     void releaseSource(InputSource source) {
-        if (source == InputSource::Usb) releaseSustain();
+        const std::size_t sourceSlot = static_cast<std::size_t>(source);
+        if (sourceSlot < 3u) {
+            for (std::size_t channel = 0; channel < 16; ++channel) {
+                if (sustainBySource_[sourceSlot][channel]) {
+                    sustainBySource_[sourceSlot][channel] = false;
+                    if (performSink_ != nullptr) {
+                        performSink_->externalSustain(false, PerformanceInputIdentity{
+                            sustainGenerationBySource_[sourceSlot][channel],
+                            static_cast<uint8_t>(sourceSlot), static_cast<uint8_t>(channel),
+                            0xffu, sustainCableBySource_[sourceSlot][channel]});
+                    }
+                }
+                releasePitchBend(source, static_cast<uint8_t>(channel));
+            }
+        }
+        if (bendZone_ != 0 && bendSource_ == source) {
+            if (bendZone_ != 0 && performSink_ != nullptr) performSink_->externalNudge(0);
+            bendZone_ = 0;
+        }
+        if (modState_ != ModState::Idle && modSource_ == source) {
+            if (modState_ == ModState::Held && performSink_ != nullptr) {
+                performSink_->externalMod(ModPhase::Cancel);
+            }
+            modState_ = ModState::Idle;
+            modLast_ = 0;
+        }
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             if (owners_[i].active && owners_[i].source == source) releaseOwner(i);
         }
     }
 
-    void releaseChannel(const MidiInputEvent& event) {
+    void releaseChannel(const MidiInputEvent& event, bool forceSoundOff) {
+        releasePitchBend(event.id.source, event.id.channel, event.id.cable);
+        const PerformanceInputIdentity input{
+            event.id.generation, static_cast<uint8_t>(event.id.source),
+            event.id.channel, 0xffu, event.id.cable};
+        if (forceSoundOff && config_.target == MidiInputTarget::Perform &&
+            acceptsConfig(event) && performSink_ != nullptr) {
+            performSink_->externalAllSoundOff(input);
+        }
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             const ActiveOwner& owner = owners_[i];
             if (owner.active && owner.source == event.id.source &&
                 owner.generation == event.id.generation &&
-                owner.inputChannel == event.id.channel) {
-                releaseOwner(i);
+                owner.inputChannel == event.id.channel &&
+                owner.inputCable == event.id.cable) {
+                if (forceSoundOff && owner.perform) owners_[i] = ActiveOwner{};
+                else releaseOwner(i);
             }
         }
     }
@@ -289,9 +403,16 @@ private:
         candidate.source = event.id.source;
         candidate.generation = event.id.generation;
         candidate.inputChannel = event.id.channel;
+        candidate.inputCable = event.id.cable;
         candidate.sourceNote = event.id.key;
         candidate.target = musicalTarget(config_.target);
         candidate.perform = config_.target == MidiInputTarget::Perform;
+        candidate.performanceInput = PerformanceInputIdentity{
+            event.id.generation,
+            static_cast<uint8_t>(event.id.source),
+            event.id.channel,
+            event.id.key,
+            event.id.cable};
         if (candidate.perform && performSink_ == nullptr) return;
         candidate.routedNote = candidate.perform ? event.id.key : clampSynthNote(event.id.key);
         candidate.routedChannel = 0;
@@ -330,8 +451,10 @@ private:
                 break;
             }
             case InputKind::AllNotesOff:
+                releaseChannel(event, false);
+                break;
             case InputKind::AllSoundOff:
-                releaseChannel(event);
+                releaseChannel(event, true);
                 break;
             case InputKind::Mod: {
                 // The button sends a short ramp (the owner's nanoKEY2: 0..15 up on press, back to 0 on
@@ -342,12 +465,15 @@ private:
                     break;
                 }
                 const uint8_t value = event.velocity;
+                if (modState_ != ModState::Idle && modSource_ != event.id.source) break;
                 if (value == 0u) {
                     // The end of the ramp down. A press that never showed a decrease still ends here.
                     if (modState_ == ModState::Held) performSink_->externalMod(ModPhase::Release);
                     modState_ = ModState::Idle;
+                    modLast_ = 0;
                 } else if (modState_ == ModState::Idle) {
                     modState_ = ModState::Held;
+                    modSource_ = event.id.source;
                     performSink_->externalMod(ModPhase::Press);
                 } else if (modState_ == ModState::Held && value < modLast_) {
                     modState_ = ModState::Released;   // the ramp turned downwards: the button is up
@@ -357,35 +483,71 @@ private:
                 break;
             }
             case InputKind::PitchBend: {
-                // The pitch buttons jump to an extreme and spring back to the centre: only the
-                // press edge is a nudge. Direct targets ignore the message (no bend in the engine).
-                if (config_.target != MidiInputTarget::Perform || !acceptsConfig(event) ||
-                    performSink_ == nullptr) {
+                if (!acceptsConfig(event)) break;
+                if (config_.pitchBendMode == PitchBendMode::Musical) {
+                    const PerformanceInputIdentity input{
+                        event.id.generation, static_cast<uint8_t>(event.id.source),
+                        event.id.channel, 0, event.id.cable};
+                    if (config_.target == MidiInputTarget::Perform) {
+                        if (performSink_ != nullptr) {
+                            performSink_->externalPitchBend(event.pitchBend14, input);
+                        }
+                    } else if (router_ != nullptr) {
+                        router_->route(MusicalEvent{
+                            MusicalEventType::PitchBend, MusicalEventSource::MidiInput,
+                            toMusicalTarget(config_.target), event.id.channel, 0, 0, 0,
+                            event.pitchBend14});
+                    }
+                    const std::size_t sourceSlot = static_cast<std::size_t>(event.id.source);
+                    if (sourceSlot < 3u && event.id.channel < 16u) {
+                        PitchBendOwner& owner = pitchBends_[sourceSlot][event.id.channel];
+                        if (event.pitchBend14 == 8192u) owner = PitchBendOwner{};
+                        else owner = PitchBendOwner{true, event.id.generation,
+                                                     event.id.cable, event.pitchBend14};
+                    }
                     break;
                 }
-                // The pitch buttons send a slow ramp away from the centre (64) and back (the owner's
-                // nanoKEY2: a short touch only reaches 54, a hold goes on to 0). Arm at a small
-                // deviation so a touch counts, re-arm only near the centre (hysteresis).
+                if (config_.target != MidiInputTarget::Perform || performSink_ == nullptr) break;
+                // Explicit compatibility mode for ramping pitch buttons such as the nanoKEY2.
                 const int deviation = static_cast<int>(event.velocity) - 64;
+                if (bendZone_ != 0 && bendSource_ != event.id.source) break;
                 int zone = bendZone_;
                 if (deviation <= -kBendPress) zone = -1;
                 else if (deviation >= kBendPress) zone = 1;
                 else if (deviation >= -kBendRelease && deviation <= kBendRelease) zone = 0;
                 if (zone != bendZone_) {
                     bendZone_ = zone;
-                    performSink_->externalNudge(zone);   // 0 = back at the centre = released
+                    if (zone != 0) bendSource_ = event.id.source;
+                    performSink_->externalNudge(zone);
                 }
                 break;
             }
+            case InputKind::ControlChange:
+                if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
+                    performSink_ != nullptr) {
+                    performSink_->externalControlChange(
+                        event.controller, event.velocity,
+                        PerformanceInputIdentity{event.id.generation,
+                            static_cast<uint8_t>(event.id.source), event.id.channel,
+                            event.controller, event.id.cable});
+                }
+                break;
             case InputKind::Sustain:
                 // Direct synth/drum targets keep the historical R6 policy (parsed and bounded, not
                 // applied). The PERFORM target maps it to LATCH while the button is held.
                 if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
                     performSink_ != nullptr) {
+                    const std::size_t sourceSlot = static_cast<std::size_t>(event.id.source);
+                    const std::size_t channelSlot = event.id.channel;
                     const bool down = event.velocity >= 64u;
-                    if (down != sustainDown_) {
-                        sustainDown_ = down;
-                        performSink_->externalSustain(down);
+                    if (sourceSlot < 3u && channelSlot < 16u &&
+                        down != sustainBySource_[sourceSlot][channelSlot]) {
+                        sustainBySource_[sourceSlot][channelSlot] = down;
+                        sustainGenerationBySource_[sourceSlot][channelSlot] = event.id.generation;
+                        sustainCableBySource_[sourceSlot][channelSlot] = event.id.cable;
+                        performSink_->externalSustain(down, PerformanceInputIdentity{
+                            event.id.generation, static_cast<uint8_t>(sourceSlot),
+                            static_cast<uint8_t>(channelSlot), 0xffu, event.id.cable});
                     }
                 }
                 break;
@@ -397,10 +559,15 @@ private:
     MidiIoState* io_{nullptr};
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
-    bool sustainDown_{false};
+    PitchBendOwner pitchBends_[3][16]{};
+    bool sustainBySource_[3][16]{};
+    uint32_t sustainGenerationBySource_[3][16]{};
+    uint8_t sustainCableBySource_[3][16]{};
     int bendZone_{0};
+    InputSource bendSource_{InputSource::Usb};
     enum class ModState : uint8_t { Idle, Held, Released };
     ModState modState_{ModState::Idle};
+    InputSource modSource_{InputSource::Usb};
     uint8_t modLast_{0};
     static constexpr int kBendPress = 6;    // deviation from the centre that counts as a press
     static constexpr int kBendRelease = 3;  // deviation under which the button is released again

@@ -114,8 +114,10 @@ inline const char* statusText(Status status) {
   }
 }
 
-// Inserts totalBars(curve) rows at insertAt. All checks happen before the
-// first change, so a refusal leaves the Song exactly as it was.
+// Inserts totalBars(curve) rows at insertAt. A rise uses the source lead for
+// a one-bar pickup when it is available; a drop removes the bass for the last
+// bar before the lower-energy section. All checks happen before the first
+// change, so a refusal leaves the Song exactly as it was.
 inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceCount,
                     int insertAt) {
   using GroovePuterUndo::SongEdit::insertRow;
@@ -144,7 +146,20 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
     for (uint16_t bar = 0; bar < section.bars; ++bar, ++row) {
       insertRow(song, row);
       const SongPosition& from = source[bar % sourceCount];
-      const Voices v = voicesFor(section.energy, bar);
+      Voices v = voicesFor(section.energy, bar);
+      const bool lastBar = bar + 1 == section.bars;
+      if (lastBar && s + 1 < curve.count) {
+        const uint8_t nextEnergy = curve.sections[s + 1].energy;
+        if (nextEnergy > section.energy && nextEnergy >= 3 &&
+            !v.lead &&
+            from.patterns[GroovePuterUndo::SongEdit::trackIndex(
+                SongTrack::SynthB)] >= 0) {
+          v.lead = true;
+        }
+        if (nextEnergy < section.energy && section.energy >= 2) {
+          v.bass = false;
+        }
+      }
       const auto put = [&](SongTrack track, bool on) {
         const int ti = GroovePuterUndo::SongEdit::trackIndex(track);
         setPattern(song, row, track, on ? from.patterns[ti] : -1);
