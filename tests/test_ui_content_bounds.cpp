@@ -347,7 +347,7 @@ int main() {
 
     bool drewList = false;
     for (const auto& entry : gfx.texts) {
-      if (entry.text == "SOUNDS") drewList = true;
+      if (entry.text == "NOTES") drewList = true;
     }
     if (!drewList) {
       std::fprintf(stderr,

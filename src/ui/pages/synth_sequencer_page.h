@@ -15,12 +15,43 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
   SynthSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
 
+  // G into a Melody (Alt+G here; plain G on STEPS and GENRE when the GEN
+  // panel says MELODY): a LENGTH-bar phrase for `voice`, switching it to its
+  // Melody first if it is on steps. Shows the result as a toast.
+  // GRAB and other whole-Melody sources: the voice switches to MELODY if
+  // needed (as G does) and the Melody is replaced in one Undo step.
+  static bool replaceMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                               int voice,
+                               const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  // GRAB into a new slot: the first slot free by the generator's rule
+  // (SlotReuse: empty, no Song/Phrase/current/Working/NEXT/Undo/Melody holder)
+  // becomes a saved Melody slot, by the same steps a user takes by hand:
+  // STEPS, move to the slot (as Q..I), new Melody (Alt+N), notes, Alt+Enter.
+  enum class GrabSlotResult : uint8_t {
+    Saved = 0,
+    Unsaved,       // the voice has unsaved edits: never moved away from
+    NoFreeSlot,
+    MoveFailed,
+    MelodyFailed,
+    AcceptFailed,  // the notes are the Working Melody; Alt+Enter can retry
+  };
+  static GrabSlotResult grabIntoFreeSlot(
+      MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+      int& bankOut, int& patternOut);
+  static bool voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice);
+  static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
+                                int voice);
+
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
   void setContext(int context) override;
   void setVisualStyle(VisualStyle style) override;
   void tick() override;
+  // Alt+Up/Down scrolls the Melody piano roll's pitch window: held, it repeats.
+  bool repeatsAltVertical() const override;
+  const char* helpAnchor() const override;
 
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
@@ -73,7 +104,41 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool handleExternalMod();
   bool clearMelody();
   int16_t external_audition_note_ = -1;
+  // Melody event the editor works on inside a chord (C cycles it); -1 when the
+  // cursor cell holds no chord. Valid only while it starts in the cursor cell.
+  int16_t chord_focus_event_ = -1;
+  // Last note recorded from an external keyboard: a key within
+  // PhraseChordFocus::kChordWindowMs joins its chord instead of moving on.
+  uint32_t last_recorded_ms_ = 0;
+  int16_t last_recorded_note_ = -1;
+  uint16_t last_recorded_start_ = 0;
+  bool joinRecordedChord(uint8_t note, uint8_t velocity);
+  void rememberRecordedNote(uint8_t note);
+  // A recorded key held past kHoldThresholdMs grows its note one grid cell per
+  // cell of time at the current tempo until released (extendHeldNote in tick).
+  static constexpr uint32_t kHoldThresholdMs = 300;
+  bool hold_active_ = false;
+  uint32_t hold_press_ms_ = 0;
+  uint16_t hold_grown_cells_ = 0;
+  void extendHeldNote();
+  int chordFocusInCell() const;
+  bool cycleChordFocus();
+  bool addChordTone();
+  bool arpeggiateChord();
+  enum class PitchStep : uint8_t { Key, Semitone, Octave };
+  bool shiftPitch(int direction, PitchStep stepKind);
+  int editTargetNote() const;
+  bool toggleAccent();
+  bool generateMelodyPhrase();
+  bool cycleMelodyGrid();
+  // Successive Alt+G presses give different phrases (deterministic per count).
+  bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
+  bool newEmptyMelody();
+  bool newMelodyInSlot(int bank, int pattern);
+  bool toggleSource();
+  bool switchToMelodySlot(int bank, int pattern);
+  bool jumpPhraseBar(int direction);
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
@@ -91,14 +156,18 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // share operations but not presentation.
   uint16_t phrase_list_top_ = 0;
   // Browsing offset for the pitch window only. It is view state, never
-  // musical state: it is clamped so the selected sound stays visible and
-  // it is not persisted, so looking around can never be mistaken for an
-  // edit or survive as one.
+  // musical state, and it is not persisted, so looking around can never be
+  // mistaken for an edit or survive as one. Alt+Up/Down scroll it freely
+  // (0.9.17: it used to snap back within 10 rows of the selected sound); it
+  // returns to the selected sound when that sound changes (another pick, a
+  // pitch edit).
   // Lowest visible semitone. The window holds still while the selected
   // sound is inside it and moves only far enough to bring it back when it
   // leaves an edge: recentring on every pick rearranged the whole picture
   // and made the melody hard to follow. 0 means "not established yet".
   int phrase_pitch_lowest_ = 0;
+  // Selected sound (index * 128 + pitch) the window last followed; -1 none.
+  int phrase_pitch_followed_ = -1;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
   std::string fallback_title_;

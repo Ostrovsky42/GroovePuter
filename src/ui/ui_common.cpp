@@ -339,7 +339,7 @@ namespace UI {
                     gfx.drawText(Layout::FOOTER.x + 4, y, "* MODIFIED");
                 }
                 gfx.setTextColor(p.dim);
-                const char* hPrompt = "[H] HELP";
+                const char* hPrompt = "ALT+H HELP";  // plain H is page-local (Melody chord)
                 int tw = gfx.textWidth(hPrompt);
                 gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, hPrompt);
             }
@@ -592,9 +592,11 @@ namespace UI {
         if (tb > 2) tb = 2;
 
         const char* gridStr = (grid == 8) ? "1/8" : (grid == 32) ? "1/32" : "1/16";
-        const char* tbStr = (tb == 0) ? "H" : (tb == 2) ? "D" : "N";
-        char buf[20];
-        snprintf(buf, sizeof(buf), "G%s T%s L%dB", gridStr, tbStr, bars);
+        // Readable without a legend: "1/16 1BAR", plus x.5 / x2 when the
+        // timebase is half or double (it read "G1/16 TN L1B").
+        const char* tbStr = (tb == 0) ? " x.5" : (tb == 2) ? " x2" : "";
+        char buf[24];
+        snprintf(buf, sizeof(buf), "%s %dBAR%s", gridStr, bars, tbStr);
 
         const int x = Layout::CONTENT_PAD_X;
         const int y = Layout::PERFORMANCE_HUD.y;

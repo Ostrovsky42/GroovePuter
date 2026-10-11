@@ -62,6 +62,12 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
   // Raw external controller diagnostic: x = CC number, y = 7-bit value.
   GROOVEPUTER_APP_EVENT_EXTERNAL_CC,
+  // Cardputer Opt key (one key for Alt+R): a synth page switches its source
+  // STEPS <-> MELODY, from any tab.
+  GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE,
+  // Cardputer Aa (Shift) tapped alone: the Melody editor steps its grid
+  // (G there generates, as everywhere; Ctrl+G is the same grid step for SDL).
+  GROOVEPUTER_APP_EVENT_CYCLE_GRID,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
@@ -351,6 +357,11 @@ class IPage : public Container {
   virtual void tick() {}
   virtual void serviceBackground() {}
   virtual bool hasBackgroundWork() const { return false; }
+  // Modified keys never auto-repeat (a held Alt+Enter or Ctrl+Z must not fire
+  // twice). A page whose Alt+Up/Down only scrolls its view opts in here.
+  virtual bool repeatsAltVertical() const { return false; }
+  // Prefix of the help line to open Alt+H at; nullptr opens at the top.
+  virtual const char* helpAnchor() const { return nullptr; }
   virtual void setContext(int context) { onEnter(context); }
   virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
     (void)state;

@@ -180,6 +180,48 @@ def main() -> None:
             "Preferences" not in smf_service,
             "NVS access must stay out of AudioTask, MidiDispatchTask and SmfPlayerTask")
 
+    # Space while following MIDI IN silences GroovePuter in place (2026-10-07).
+    hub_midi = (ROOT / "src/ui/pages/sequencer_hub_page_midi.cpp").read_text(
+        encoding="utf-8"
+    )
+    display_cpp = (ROOT / "src/ui/miniacid_display.cpp").read_text(
+        encoding="utf-8"
+    )
+    hub = (ROOT / "src/ui/pages/sequencer_hub_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    require("followOutputMuted_" in runtime and
+            "inline bool followOutputSilenced()" in runtime and
+            "externalClockOwnsTransport() &&" in runtime,
+            "the follow mute must only act while GroovePuter follows MIDI IN")
+    require("notifyControlChanged" not in
+            runtime.split("void setFollowOutputMuted")[1].split("}")[0],
+            "the follow mute is runtime only and must not reach NVS persistence")
+    require(sketch.count("toggleFollowOutputMute()") == 2 and
+            "toggleFollowOutputMute()" in display_cpp and
+            "toggleFollowOutputMute()" in hub,
+            "every global Space path must mute instead of refusing while following")
+    require("wasActive && externalClockOwnsTransport()" in player and
+            "wasActive && externalClockOwnsTransport()" in hub_midi,
+            "a playing MIDI Player file is muted in place, never paused, while following")
+    render = sketch.index("g_miniAcid->generateAudioBuffer(g_audioBuffer")
+    require(sketch.index("applyFollowMuteRamp(") > render and
+            "followOutputSilenced() ? 0.0f : 1.0f" in sketch,
+            "AudioTask must keep rendering and fade the rendered block while muted")
+    require("ExternalTransportCommand::Start) {\n        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);"
+            in sketch,
+            "a new Start from the master clears the follow mute")
+    loop_body = transport[transport.index("serviceFollowMute();"):]
+    require(loop_body.index("serviceFollowMute();") <
+            loop_body.index("dispatchPatternPanics();") and
+            "beginSmfCleanup();" in
+            transport.split("void serviceFollowMute()")[1].split("void dispatchControlPanics")[0],
+            "entering the mute releases Pattern and MIDI Player notes before dispatch")
+    require("MusicalEventType::NoteOn &&\n                    GroovePuterMidi::followOutputSilenced()" in transport and
+            "ScheduledSmfMidiEventType::NoteOn &&\n                       GroovePuterMidi::followOutputSilenced()" in transport,
+            "while muted, Pattern and MIDI Player NoteOns are dropped before the write")
+    compile_and_run("test_follow_mute_ramp.cpp")
+
     compile_and_run("test_project_transport_continue.cpp")
     compile_and_run("test_external_midi_clock_startup.cpp")
     compile_and_run("test_external_follow_gate.cpp")

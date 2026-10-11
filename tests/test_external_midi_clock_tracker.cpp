@@ -49,9 +49,16 @@ int main() {
     tracker.onStart(now);
     assert(tracker.transportRunning());
     assert(tracker.transportEpoch() == 1);
-    feedFixed(tracker, now, ordinal, 20833, 6);
+    // The first F8 after Start is position 0, so six clocks are positions
+    // 0..5: five sixths of a step. Counting the downbeat clock as +1/6 made
+    // GroovePuter play one pulse ahead of the master.
+    const auto atStart = tracker.estimate(now);
+    assert(closeEnough(atStart.absoluteProjectSteps, 0.0, 1.0e-9));
+    feedFixed(tracker, now, ordinal, 20833, 1);
+    assert(closeEnough(tracker.estimate(now).absoluteProjectSteps, 0.0, 0.001));
+    feedFixed(tracker, now, ordinal, 20833, 5);
     const auto running = tracker.estimate(now);
-    assert(closeEnough(running.absoluteProjectSteps, 1.0, 0.001));
+    assert(closeEnough(running.absoluteProjectSteps, 5.0 / 6.0, 0.001));
 
     tracker.onStop(now);
     const double stoppedAt = tracker.estimate(now).absoluteProjectSteps;

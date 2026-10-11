@@ -8,10 +8,10 @@ using GroovePuterRhythm::RealizationLevel;
 int main() {
   using namespace GroovePuterState;
 
-  // Host builds have no NVS backend. The compatibility/default behavior must
-  // therefore exactly match the pre-selector production level.
-  assert(currentGenerationLevel() == RealizationLevel::P2Variation);
-  assert(sanitizeGenerationLevel(255) == RealizationLevel::P2Variation);
+  // Host builds have no NVS backend. The default is P3 so a fresh TAKE can be
+  // developed with D; an invalid raw value falls back to the same default.
+  assert(currentGenerationLevel() == RealizationLevel::P3Transformation);
+  assert(sanitizeGenerationLevel(255) == RealizationLevel::P3Transformation);
 
   assert(nextGenerationLevel(RealizationLevel::P1Canonical) ==
          RealizationLevel::P2Variation);
@@ -119,9 +119,9 @@ int main() {
       RealizationLevel::P2Variation, 42);
   assert(attempt.ok() && attempt.ordinal == 0);
 
-  // Restore the compatibility default so this test is order-independent if it
-  // is ever embedded in a larger host runner.
-  setGenerationLevel(RealizationLevel::P2Variation);
+  // Restore the default so this test is order-independent if it is ever
+  // embedded in a larger host runner.
+  setGenerationLevel(kDefaultGenerationLevel);
   resetGenerationAttemptState();
   return 0;
 }

@@ -103,6 +103,9 @@ private:
 #endif
 
   std::vector<float> buffer;
+  // 0.9.19 P1: consecutive samples that wrote 0 with 0 in and 0 out. Once it
+  // covers the whole buffer, the buffer is all zeros and process(0) is 0.
+  int silentRun_ = 0;
   int writeIndex;
   int delaySamples;
   float sampleRate;
@@ -135,6 +138,11 @@ public:
   void preallocateConstrainedDelayBuffers();
   void reset();
   void start();
+  // Right after start(): begin `steps` into the bar instead of at its start.
+  // The skipped ticks all run on the first rendered sample, so the downbeat
+  // still sounds; everything after it lands on an external master's grid.
+  // Returns the phase actually applied (0 when not called right after start).
+  double advanceStartPhase(double steps);
   void stop();
   void pauseTransport();
   void continueTransport();
@@ -160,6 +168,7 @@ public:
   // followed tempo until the next explicit setBpm() call or a reboot.
   void restoreProjectBpm();
   float bpm() const;
+  float projectBpm() const { return projectBpmValue; }
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
@@ -246,6 +255,16 @@ public:
   // Cheap unguarded hint for the UI loop: whether serviceSongMaterial() has
   // anything to do, so the audio guard is not taken on every frame.
   bool songMaterialServiceDue() const;
+  // 0.9.19 S1: a synth engine switch is committed (the old engine freed) on
+  // the UI thread, never in the AudioTask. Due = the crossfade ended, or the
+  // synth is muted (it is not rendered, so its crossfade cannot advance).
+  // The commit must run under the audio guard.
+  bool synthEngineSwitchDue() const;
+  void commitSettledSynthEngineSwitches();
+  // The drum EngineSwitch automation lane only requests a switch from the
+  // AudioTask; the UI applies it under the audio guard.
+  bool drumEngineSwitchDue() const;
+  void applyPendingDrumEngineSwitch();
   // Song reached a row but kept this voice where it was, because its Working
   // Melody is unsaved.
   bool songVoiceHeld(int voiceIndex) const;
@@ -756,7 +775,12 @@ private:
   void processSequencerEvents(uint32_t absoluteTick);
   void triggerSynthStep_(int synthIdx,
                          const PhraseRuntime::RuntimeSynthEvent& event,
-                         uint32_t absoluteStartSubtick);
+                         uint32_t absoluteStartSubtick,
+                         bool chordVoice = false);
+  // Melody onsets of one tick. A Melody with overlapping notes starts every
+  // note of the tick as a chord voice; any other keeps the one-note path.
+  void triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
+                            uint32_t absoluteStartSubtick);
   // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
   // one place leaves room for a per-voice cycle origin later without touching
   // the sequencer scan.
@@ -780,6 +804,13 @@ private:
                              bool accent,
                              bool slide);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
+  void publishChordNoteOn_(int synthIdx, uint8_t note, uint8_t velocity,
+                           bool accent);
+  void publishChordNoteOff_(int synthIdx, uint8_t note);
+  // The monophonic synth follows the top note of the sounding chord.
+  void followChordWithInternalVoice_(int synthIdx, bool topRestarted);
+  bool translateChordVoiceAction_(
+      int synthIdx, const PhraseRuntime::RuntimeSynthPlaybackAction& action);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
@@ -845,6 +876,7 @@ private:
   PatternPublishingDrumVoice drums;
   float sampleRateValue;
   std::string drumEngineName_;
+  std::atomic<int8_t> pendingDrumEngineLane_{-1};  // AudioTask -> UI
 
   SceneManager sceneManager_;
   SceneStorage* sceneStorage_;
@@ -898,6 +930,8 @@ private:
   PhraseRuntime::RuntimeSynthEvent patternRetrigEvent_[NUM_303_VOICES]{};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
+  // Note the internal synth plays while a chord sounds, or -1.
+  int16_t chordInternalNote_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
 

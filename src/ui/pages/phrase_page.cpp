@@ -688,7 +688,8 @@ void PhrasePage::drawProductView(IGfx& gfx) {
     if (pos.patterns[static_cast<int>(SongTrack::SynthB)] >= 0) occB = true;
     if (pos.patterns[static_cast<int>(SongTrack::Drums)] >= 0) occD = true;
   }
-  std::snprintf(line, sizeof(line), "OCC %c%c%c",
+  // Which tracks already hold something in the target Song rows.
+  std::snprintf(line, sizeof(line), "USED %c%c%c",
                 occA ? 'A' : '.', occB ? 'B' : '.', occD ? 'D' : '.');
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(2), line);
@@ -796,11 +797,20 @@ bool PhrasePage::growKeptPhrase() {
 
   using S = GeneratedPhraseSong::CycleStatus;
   const char* message = "GROW FAILED: PRESS G";
+  char genreMessage[48];
   switch (result.status) {
     case S::NoRecipe: message = "PRESS G FIRST"; break;
     case S::CycleAlreadyPublished: message = "ALREADY GROWN"; break;
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
-    case S::NotAdmitted: message = "TRY ANOTHER TAKE: G"; break;
+    case S::NotAdmitted:
+      // Another TAKE in the same genre is refused the same way; say what helps.
+      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: FN+M GENRE",
+                    GenreManager::generativeModeName(
+                        mini_acid_.genreManager().generativeMode()));
+      for (char* c = genreMessage; *c; ++c) *c = static_cast<char>(std::toupper(*c));
+      message = genreMessage;
+      break;
+    case S::NoTrajectory: message = "TRY ANOTHER TAKE: G"; break;
     case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
     case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
     case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
@@ -1736,7 +1746,8 @@ void PhrasePage::draw(IGfx& gfx) {
           (preview_.resolvedMask & PhraseCore::kTrackDrums) != 0,
       refD, palette.drums, palette);
 
-  const int actionY = LayoutManager::lineY(7);
+  // Two pixels up: at lineY(7) the last pixel row ran under the shell bar.
+  const int actionY = LayoutManager::lineY(7) - 2;
   std::snprintf(line, sizeof(line), "CAP %uB %s  NEW %uB  P:%s",
                 static_cast<unsigned>(capture_length_),
                 roleShort(capture_role_),
@@ -1768,7 +1779,8 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
       requestPageTransition(WorkflowPages::kArrange);
       return true;
     }
-    if (ui_event.key == '[' || ui_event.key == ']') return true;
+    // [ / ] are left to the workflow page navigation (0.9.17): swallowing
+    // them here left MATERIAL BANK without a key to reach it.
   }
 
   if (!core_mode_ && room_view_) return handleRoomEvent(ui_event);

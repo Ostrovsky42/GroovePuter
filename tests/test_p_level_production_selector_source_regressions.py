@@ -36,10 +36,11 @@ def without_line_comments(text: str) -> str:
     return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
 
 
-# P-level has one runtime/session owner. P2 is the compatibility default so
-# upgrading the firmware cannot silently alter existing generation behavior.
+# P-level has one runtime/session owner. P3 is the default so a fresh TAKE is
+# developable with D (P0_MUSICAL_PLAY_SPEC section 2.4).
 for needle in (
-    "RealizationLevel::P2Variation",
+    "kDefaultGenerationLevel =\n    GroovePuterRhythm::RealizationLevel::P3Transformation;",
+    "static GroovePuterRhythm::RealizationLevel level = kDefaultGenerationLevel;",
     "currentGenerationLevel()",
     "cycleGenerationLevel(int direction = 1)",
     "generationLevelCode(",

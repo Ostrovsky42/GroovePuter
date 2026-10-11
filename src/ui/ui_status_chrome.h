@@ -248,8 +248,8 @@ inline const char* uiStatusContextToken(UiStatusContext context) {
         case UiStatusContext::Song: return "SONG";
         case UiStatusContext::Project: return "PROJ";
         case UiStatusContext::Generator: return "ADV";
-        case UiStatusContext::Phrase: return "PHR";
-        case UiStatusContext::PhraseCore: return "PCOR";
+        case UiStatusContext::Phrase: return "MAT";
+        case UiStatusContext::PhraseCore: return "MBNK";
         case UiStatusContext::Unknown: return "PAGE";
     }
     return "PAGE";
@@ -259,7 +259,7 @@ inline const char* uiSequencedSourceToken(UiSequencedSource source) {
     switch (source) {
         case UiSequencedSource::NotApplicable: return "";
         case UiSequencedSource::Pattern: return "PAT";
-        case UiSequencedSource::Phrase: return "PHR";
+        case UiSequencedSource::Phrase: return "MEL";  // the user-facing name
     }
     return "";
 }
@@ -299,10 +299,12 @@ inline const char* uiStatusOutputToken(UiStatusOutput output) {
         case UiStatusOutput::InternalAndMidi: return "BOTH";
         case UiStatusOutput::Midi: return "MIDI";
         case UiStatusOutput::Unknown: return "OUT?";
-        case UiStatusOutput::Internal: return "[I]";
-        case UiStatusOutput::Layer: return "[L]";
-        case UiStatusOutput::Legacy: return "[-]";
-        case UiStatusOutput::TrackMidi: return "[M]";
+        // Plain words (0.9.17); the bracket codes needed a legend. An unset
+        // (legacy) track plays like LAYER, so it says BOTH as well.
+        case UiStatusOutput::Internal: return "SND";
+        case UiStatusOutput::Layer: return "BOTH";
+        case UiStatusOutput::Legacy: return "BOTH";
+        case UiStatusOutput::TrackMidi: return "MIDI";
     }
     return "OUT?";
 }

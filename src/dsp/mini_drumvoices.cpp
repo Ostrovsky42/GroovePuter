@@ -1308,7 +1308,9 @@ void TR606DrumSynthVoice::setSampleRate(float sampleRateHz) {
 
 void TR606DrumSynthVoice::beginSample() {
   accentEnv *= accentDecay;
-  updateMetalBank();
+  // The six-oscillator metal bank only feeds the hats and the cymbal: running
+  // it on every sample while they are silent made the 606 the costliest kit.
+  if (hatActive || openHatActive || cymbalActive) updateMetalBank();
 }
 
 void TR606DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {

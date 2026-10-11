@@ -153,6 +153,30 @@ void expressionOverflowPreservesCriticalReleaseReserve() {
     assert(drained.pitchBend14 == 8192u);
 }
 
+void latestBendKeepsExternalSourceAndSessionIdentity() {
+    MidiLatestPitchBendStore latest;
+    LatestPitchBend out{};
+    latest.publish(InputSource::Qwerty, 1, 0, 4000);
+    assert(!latest.takeNext(out));
+
+    latest.publish(InputSource::Usb, 5, 2, 14000, 3);
+    latest.publish(InputSource::Uart, 9, 15, 2000, 0);
+    assert(latest.takeNext(out));
+    assert(out.source == InputSource::Usb && out.generation == 5u &&
+           out.channel == 2u && out.cable == 3u && out.value14 == 14000u);
+    assert(latest.takeNext(out));
+    assert(out.source == InputSource::Uart && out.generation == 9u &&
+           out.channel == 15u && out.value14 == 2000u);
+    assert(!latest.takeNext(out));
+
+    latest.publish(InputSource::Usb, 6, 2, 12000, 3);
+    latest.publish(InputSource::Usb, 6, 2, 8192, 3);
+    assert(latest.takeNext(out));
+    assert(out.source == InputSource::Usb && out.generation == 6u &&
+           out.value14 == 8192u);
+    assert(!latest.takeNext(out));
+}
+
 }  // namespace
 
 int main() {
@@ -163,5 +187,6 @@ int main() {
     staleEnumerationCannotReadyNewAttachment();
     overflowPreservesReleaseReserveAndRequestsRecovery();
     expressionOverflowPreservesCriticalReleaseReserve();
+    latestBendKeepsExternalSourceAndSessionIdentity();
     return 0;
 }

@@ -17,7 +17,7 @@ def forbid(text: str, needle: str, where: str) -> None:
         raise AssertionError(f"forbidden {needle!r} in {where}")
 
 
-require(HEADER, "enum class ProjectSection { Scenes = 0, Groove, Led, Midi };", "project_page.h")
+require(HEADER, "enum class ProjectSection { Scenes = 0, Device, Led, Midi };", "project_page.h")
 require(HEADER, "LedFlash, LedTest, UsbRole, MidiDevice", "project_page.h")
 require(HEADER, "uint8_t midi_profile_preview_ = 0xFF;", "project_page.h")
 require(HEADER, "static_assert(sizeof(ProjectPage) <= 256", "project_page.h")

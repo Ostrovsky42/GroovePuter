@@ -12,6 +12,7 @@ python3 "${ROOT_DIR}/tests/test_preflash_build_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_generation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_axis_hardware_feedback_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_player_registry_forwarding_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_global_help_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_synth_a_bass_profile_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
@@ -57,6 +58,8 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_global_help_content"
 
 "${BUILD_DIR}/test_global_help_content"
+
+python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 
 "${CXX}" \
   -std=c++17 \
@@ -275,6 +278,17 @@ g++ -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_musical_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_musical_event_queue"
+
+"${BUILD_DIR}/test_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_midi_transport_sync.cpp" \
   -o "${BUILD_DIR}/test_midi_transport_sync"
 
@@ -418,6 +432,26 @@ g++ -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
   -o "${BUILD_DIR}/test_smf_routing"
 
 "${BUILD_DIR}/test_smf_routing"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_effective_route.cpp" \
+  -o "${BUILD_DIR}/test_smf_effective_route"
+"${BUILD_DIR}/test_smf_effective_route"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_loop.cpp" \
+  -o "${BUILD_DIR}/test_smf_loop"
+"${BUILD_DIR}/test_smf_loop"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_import_projection.cpp" \
+  -o "${BUILD_DIR}/test_midi_import_projection"
+"${BUILD_DIR}/test_midi_import_projection"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_energy_curve.cpp" \
+  -o "${BUILD_DIR}/test_energy_curve"
+"${BUILD_DIR}/test_energy_curve"
 
 "${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
 
@@ -605,6 +639,17 @@ echo "Tee MIDI transport: OK"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follow_loop.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
   -o "${BUILD_DIR}/test_usb_endpoint_health"
 
@@ -736,6 +781,9 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_chord_stage10_tests.sh"
 
+bash "${ROOT_DIR}/tests/run_0918_lead_tests.sh"
+bash "${ROOT_DIR}/tests/run_0918_generated_melody_tests.sh"
+
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_melodic_stage11_tests.sh"
 
@@ -748,3 +796,14 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 # Unified Song slots: ownership, exact Pattern/Melody playback and display source contract.
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_unified_song_slots_tests.sh"
+
+# Melody slot navigation (Q..I / B) and the UI navigation tests: TEMPO + MIDI
+# IN Space mute, Alt+N new empty Melody. Both were written but never run.
+bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
+bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"
+
+# 0.9.19 S1: synth engine switches never free or swap an engine in the AudioTask.
+bash "${ROOT_DIR}/tests/run_s1_synth_engine_switch_tests.sh"
+
+# 0.9.19 S1: Synth page restores the MORE tab before its components exist.
+bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"

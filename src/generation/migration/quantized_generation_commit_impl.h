@@ -272,7 +272,8 @@ inline bool preparePlayingCandidate(
     RealizationLevel requestLevel,
     uint32_t generationAttemptOrdinal,
     bool usePreviousPending,
-    PendingGeneration& candidate) {
+    PendingGeneration& candidate,
+    bool keepDrums = false) {
   SceneManager& scenes = engine.sceneManager();
   const Scene& scene = scenes.currentScene();
   if (!targetValid(target)) return false;
@@ -343,12 +344,16 @@ inline bool preparePlayingCandidate(
   StrongRhythmMigrationContext context = migrationContextFor(scene, target);
   context.level = requestLevel;
   context.generationAttemptOrdinal = generationAttemptOrdinal;
-  const StrongRhythmMigrationResult migration = migrateStrongRhythmMaterial(
-      requestedGenre,
-      context,
-      candidate.drums,
-      candidate.synth[0],
-      candidate.synth[1]);
+  // GEN DRUMS KEEP (0.9.18): both synths are rebuilt against the drums the
+  // slot already has, the way a synth-only G is; the drums stay as they are.
+  if (keepDrums) {
+    candidate.drums = scene.drumBanks[target.drumBank].patterns[target.drumSlot];
+  }
+  const StrongRhythmMigrationResult migration = keepDrums
+      ? migrateStrongRhythmSynths(requestedGenre, context, candidate.drums,
+                                  candidate.synth[0], candidate.synth[1])
+      : migrateStrongRhythmMaterial(requestedGenre, context, candidate.drums,
+                                    candidate.synth[0], candidate.synth[1]);
 
   // The audio transport may advance Song/page ownership while generation runs.
   // Never publish a candidate for a target that is no longer the exact active

@@ -28,6 +28,20 @@ class GenrePage : public IPage {
     Apply,
   };
 
+  // GENRE 1/3 and GEN 2/3 share this page; Tab steps GENRE -> GEN -> FEEL.
+  enum class Panel : uint8_t {
+    Genre = 0,
+    Gen,
+  };
+
+  enum class GenRow : uint8_t {
+    Target = 0,
+    Drums,
+    Length,
+    Lively,
+    Notes,
+  };
+
   enum class ApplyMode : uint8_t {
     ProfileOnly = 0,
     Regenerate,
@@ -52,6 +66,10 @@ class GenrePage : public IPage {
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
   void applyCurrent(bool forceRegenerate = false);
+  void applyPendingProfile();
+  bool generateFromG();
+  void drawGenPanel(IGfx& gfx);
+  bool handleGenPanelNav(int nav);
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
@@ -67,6 +85,8 @@ class GenrePage : public IPage {
   AudioGuard audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
   FocusRow focus_ = FocusRow::Genre;
+  Panel panel_ = Panel::Genre;
+  GenRow gen_focus_ = GenRow::Target;
   int genre_index_ = 0;
   int recipeIndex_ = 0;
   GroovePuterRhythm::RhythmSelectionMode rhythmMode_ =

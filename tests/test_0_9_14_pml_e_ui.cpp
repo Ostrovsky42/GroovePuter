@@ -339,7 +339,9 @@ void testDistinctGrowMessages() {
     PhrasePage page(gfx, f.engine, AudioGuard{}, false);
     CHECK(f.take(4, 0));
     CHECK(press(page, key('d')));
-    CHECK(toastText(page, gfx) == "TRY ANOTHER TAKE: G");            // NotAdmitted
+    // NotAdmitted: another TAKE in House is refused the same way, so the
+    // message names the genre and points to where it can be changed.
+    CHECK(toastText(page, gfx) == "HOUSE CAN'T GROW: FN+M GENRE");
   }
   {
     Fixture f("pmle-msg-edit", GenerativeMode::Techno, 404);

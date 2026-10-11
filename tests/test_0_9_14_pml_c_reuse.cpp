@@ -235,7 +235,11 @@ void testPreferenceAndReplacement() {
   buildOrphans(f);                           // 12-15 hold the latest TAKE (rows deleted), 0-11 orphans
   // nothing is free now: a TAKE fails and changes nothing
   uint64_t old[16];
-  for (int s = 0; s < 16; ++s) old[s] = f.token(s);
+  uint32_t oldId[16];
+  for (int s = 0; s < 16; ++s) {
+    old[s] = f.token(s);
+    oldId[s] = static_cast<uint32_t>(f.scene().materialSlots[0][s].id.value);
+  }
   CHECK(!f.take(4, 0));
   for (int s = 0; s < 16; ++s) CHECK(f.token(s) == old[s]);
   CHECK(!SlotReuse::preview(f.engine).take4Now);
@@ -252,7 +256,9 @@ void testPreferenceAndReplacement() {
   const auto* recipe = f.engine.generatedPhraseRecipe();
   CHECK(recipe != nullptr && recipe->firstLocalSlot == 0);
   for (int s = 0; s < 4; ++s) {
-    CHECK(f.token(s) != old[s]);                 // replaced
+    // Replaced: the slot holds the new TAKE's material. Its notes may equal the
+    // old ones (0.9.18 idioms: two TAKEs that draw the same idea share bars A, A').
+    CHECK(static_cast<uint32_t>(f.scene().materialSlots[0][s].id.value) != oldId[s]);
     CHECK(!f.engine.reuseMarks().marked(s));     // mark consumed
     CHECK(f.scene().materialSlots[0][s].id.valid());   // new canonical id
     CHECK(!f.scene().materialSlots[1][s].id.valid());  // no stale Synth B id

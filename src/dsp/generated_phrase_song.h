@@ -181,9 +181,13 @@ inline void applyCurrentMigration(
     const GenreSettings& genre,
     int variationCoordinate,
     uint8_t phraseBarOrdinal,
-    PhraseGenerator::PhraseBar& bar) {
-  const auto context = migrationContextFor(
+    PhraseGenerator::PhraseBar& bar,
+    uint32_t ideaPress = 0,
+    uint8_t ideaPhraseBars = 0) {
+  auto context = migrationContextFor(
       scene, variationCoordinate, phraseBarOrdinal);
+  context.ideaPress = ideaPress;
+  context.ideaPhraseBars = ideaPhraseBars;
   (void)GroovePuterRhythm::migrateStrongRhythmMaterial(
       genre, context, bar.drums, bar.synthA, bar.synthB);
 }
@@ -202,7 +206,12 @@ inline bool materializeLegacyBar(
     const Scene& scene,
     const PreparedPhraseArrangement& prepared,
     int barIndex,
-    PhraseGenerator::PhraseBar& bar) {
+    PhraseGenerator::PhraseBar& bar,
+    int legacyMigrationCoordinate = 0,
+    uint32_t ideaPress = 0) {
+  // The phrase idea of a genre idiom follows the TAKE seed unless the caller
+  // (Melody G) counts presses itself.
+  if (ideaPress == 0) ideaPress = prepared.request.seed | 1u;
   bar = PhraseGenerator::PhraseBar{};
   const GenreSettings& genre = prepared.genre;
   const auto role = PhraseGenerator::roleForBar(prepared.request.bars, barIndex);
@@ -215,7 +224,8 @@ inline bool materializeLegacyBar(
             bar.synthA, bar.synthB, bar.drums, nullptr)) {
       return false;
     }
-    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar);
+    applyCurrentMigration(scene, genre, variation, phraseBarOrdinal, bar, ideaPress,
+                          prepared.request.bars);
     return true;
   }
 
@@ -230,7 +240,8 @@ inline bool materializeLegacyBar(
   scratchMode.generateDrumPattern(
       bar.drums, prepared.legacyParams, prepared.legacyBehavior);
 
-  applyCurrentMigration(scene, genre, 0, phraseBarOrdinal, bar);
+  applyCurrentMigration(scene, genre, legacyMigrationCoordinate,
+                        phraseBarOrdinal, bar, ideaPress, prepared.request.bars);
   PhraseGenerator::deriveBar(bar, role, prepared.request.seed, barIndex, bar);
   return true;
 }
@@ -871,7 +882,8 @@ enum class CycleStatus : uint8_t {
   NoRecipe,             // no generated phrase known (never generated, Undone, Legacy, scene load)
   CycleAlreadyPublished,
   NothingToAdd,         // both requested sections would repeat the kept phrase
-  NotAdmitted,          // archetype/scenario admits no evolution (Acid, House, no trajectory)
+  NotAdmitted,          // the genre/rhythm archetype admits no evolution (Acid, House):
+                        // another TAKE cannot help, another genre or rhythm can
   DepthNotP3,           // developing a P2 phrase would change law and depth at once
   ContextChanged,       // R1: genre, tonal or pitch-source context differs from the kept phrase
   EditedSinceGeneration,  // R0: the kept phrase no longer equals its rebuild
@@ -881,6 +893,7 @@ enum class CycleStatus : uint8_t {
   TargetChanged,
   Busy,
   Failed,
+  NoTrajectory,         // admitted, but this TAKE's evolution found no plan: another TAKE may work
 };
 
 constexpr uint8_t kCycleSectionBars = 4;
@@ -963,8 +976,8 @@ inline CycleStatus statusForLaw(GroovePuterRhythm::PhraseLawApplyStatus status) 
   using S = GroovePuterRhythm::PhraseLawApplyStatus;
   switch (status) {
     case S::Applied: return CycleStatus::CommittedNow;
-    case S::NotAdmitted:
-    case S::NoEligibleTrajectory: return CycleStatus::NotAdmitted;
+    case S::NotAdmitted: return CycleStatus::NotAdmitted;
+    case S::NoEligibleTrajectory: return CycleStatus::NoTrajectory;
     case S::InvalidContext: return CycleStatus::Failed;
   }
   return CycleStatus::Failed;

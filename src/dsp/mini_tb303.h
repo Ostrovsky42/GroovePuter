@@ -121,6 +121,10 @@ private:
   float noiseAmount_ = 0.0f;
 
   int lastFilterType_ = -1;
+  // Filter-envelope decay coefficient for (cachedDecayMs_, cachedDecayRate_).
+  float cachedDecayMs_ = -1.0f;
+  float cachedDecayRate_ = -1.0f;
+  float cachedDecayCoeff_ = 1.0f;
   float postLPF_ = 0.0f;
   struct LowShelfEQ {
     float cutoff = 0.01f;

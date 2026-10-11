@@ -1054,10 +1054,14 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     gfx.setTextColor(COLOR_LABEL);
     if (selectedContext_ == PerformanceToolContext::Input) {
         const bool connected = GroovePuterMidi::CardputerUsbHostMidi::isConnected();
+        const char* hostStatus = GroovePuterMidi::CardputerUsbHostMidi::status();
+        const char* usbState = connected ? hostStatus :
+            (std::strcmp(hostStatus, "INIT") == 0 ||
+             std::strcmp(hostStatus, "DEV_GONE") == 0 ? "OFFLINE" : hostStatus);
         const uint32_t packetCount = GroovePuterMidi::CardputerUsbHostMidi::packetCount();
         if (hasExternalNote_ && !lastExternalEventWasCc_) {
             std::snprintf(value, sizeof(value), "USB %s RX:%lu N%u V%u",
-                          connected ? "CONNECTED" : "OFFLINE",
+                          usbState,
                           static_cast<unsigned long>(packetCount),
                           static_cast<unsigned>(lastExternalNote_),
                           static_cast<unsigned>(lastExternalVelocity_));
@@ -1068,14 +1072,14 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                 lastExternalCc_, binding) ||
                 GroovePuterPerformance::genericMidiToggleCc(lastExternalCc_, toggle);
             std::snprintf(value, sizeof(value), "USB %s RX:%lu CC%u=%u %s",
-                          connected ? "CONNECTED" : "OFFLINE",
+                          usbState,
                           static_cast<unsigned long>(packetCount),
                           static_cast<unsigned>(lastExternalCc_),
                           static_cast<unsigned>(lastExternalCcValue_),
                           bound ? "BOUND" : "UNBOUND");
         } else {
             std::snprintf(value, sizeof(value), "USB %s RX:%lu NO EVENT",
-                          connected ? "CONNECTED" : "OFFLINE",
+                          usbState,
                           static_cast<unsigned long>(packetCount));
         }
         Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(7) - 2,

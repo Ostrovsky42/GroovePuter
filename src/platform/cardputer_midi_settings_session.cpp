@@ -244,7 +244,7 @@ private:
                      const GroovePuterMidi::MidiInputRoutingConfig& b) {
         return a.enabled == b.enabled && a.channelMode == b.channelMode &&
                a.channel == b.channel && a.target == b.target &&
-               a.pitchBendMode == b.pitchBendMode;
+               a.pitchBendMode == b.pitchBendMode && a.usbCable == b.usbCable;
     }
     static constexpr const char* kNamespace = "grooveputer";
     static constexpr const char* kKey = "midi_in";

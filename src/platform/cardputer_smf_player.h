@@ -6,6 +6,9 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#include <atomic>
+#include <memory>
+
 #include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_player_service.h"
@@ -13,6 +16,7 @@
 #include "src/midi/smf_scheduler.h"
 #include "src/midi/smf_stream.h"
 #include "src/midi/smf_timing.h"
+#include "src/phrase/runtime_synth_events.h"
 #include "src/midi/smf_track_output_route.h"
 #include "src/midi/smf_track_route_profile.h"
 #include "src/midi/smf_track_route_profile_runtime.h"
@@ -36,6 +40,13 @@ public:
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
+    bool cycleLoopMode() override;
+    bool markLoopStart() override;
+    bool markLoopEnd() override;
+    bool requestGrab(const GroovePuterMidi::SmfGrabRequest& request) override;
+    GroovePuterMidi::SmfGrabResult grabResult() const override;
+    bool takeGrabbedMelody(PhraseRuntime::RuntimeSynthEventBuffer& out) override;
+    void acknowledgeGrab() override;
     bool persistTrackOutputRoutes(uint32_t generation) override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
     GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
@@ -71,6 +82,10 @@ private:
         AdjustTempoBpm,
         ResetTempo,
         CycleVelocityBoost,
+        CycleLoopMode,
+        MarkLoopStart,
+        MarkLoopEnd,
+        Grab,
     };
 
     enum class ProjectTransportReadResult : uint8_t {
@@ -82,6 +97,7 @@ private:
     struct Command {
         CommandType type{CommandType::TogglePlayPause};
         int32_t value{0};
+        GroovePuterMidi::SmfGrabRequest grab{};
         char path[kPathBytes]{};
     };
 
@@ -179,6 +195,25 @@ private:
     GroovePuterMidi::SmfStreamEvent pendingEvent_{};
     bool hasPendingEvent_{false};
     bool streamEnded_{true};
+    // Loop (player task only). A held boundary keeps the first event past it
+    // pending until the audio clock reaches the boundary, then restarts.
+    GroovePuterMidi::SmfLoopRegion loopRegion_{};
+    bool loopBoundaryHeld_{false};
+    uint32_t loopCount_{0};
+    void applyLoopCommand(CommandType type);
+    void publishLoopSnapshot();
+    bool loopBoundaryReached(uint32_t boundaryTick,
+                             uint32_t anchorBlock,
+                             const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    void restartLoop();
+    // GRAB mailbox. The UI moves Idle/Failed -> Working (request) and
+    // Ready/Failed -> Idle (take/acknowledge); the player task moves
+    // Working -> Ready/Failed and touches the buffer only while Working.
+    std::atomic<uint8_t> grabState_{0};
+    GroovePuterMidi::SmfGrabResult grabInfo_{};
+    std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> grabBuffer_;
+    void runGrab(const GroovePuterMidi::SmfGrabRequest& request);
+    void finishGrab(GroovePuterMidi::SmfGrabState state, const char* message);
     // Memo of the tick prepareStreamAt() last positioned the stream at, so a
     // repeat request skips the scan entirely.
     uint32_t streamPreparedTick_{0};

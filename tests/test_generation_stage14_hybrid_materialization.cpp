@@ -76,8 +76,11 @@ void testLoFiUsesOneChordFirstHybridSynthB() {
     SynthPattern synthA = pitchSource(36);
     SynthPattern synthB = pitchSource(60);
 
+    // 0.9.18: the default LoFi recipe leads with a melody; Classic Chill keeps
+    // the chord-first hybrid.
     const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-        lofiSettings(), contextFor(address), drums, synthA, synthB);
+        lofiSettings(kClassicChillRecipeId), contextFor(address), drums,
+        synthA, synthB);
     assert(result.status == StrongRhythmMigrationStatus::Applied);
     assert(result.route == StrongRhythmRoute::Stage7Composition);
     assert(result.archetype == ReferenceVocabulary::Archetype::HalftimeSwitch);

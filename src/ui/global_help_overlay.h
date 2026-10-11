@@ -14,9 +14,9 @@ public:
     
     bool isVisible() const { return visible_; }
     
-    void toggle() { 
-        visible_ = !visible_; 
-        if (visible_) scroll_line_ = 0;  // Reset scroll on open
+    void toggle(int startLine = 0) {
+        visible_ = !visible_;
+        if (visible_) scroll_line_ = startLine;  // Top, or the page's own section
     }
     
     void close() { visible_ = false; }

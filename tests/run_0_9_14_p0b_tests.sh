@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P0-B1 gate: bass/chord follow the bar function; frozen bar functions stay bit-identical.
+# P0-B gate: bass/chord follow the bar function (properties); every bar matches the 0.9.18 golden.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,13 +17,14 @@ echo "== P0-B1 role transforms (pure, exhaustive properties) =="
 echo "== P0-B1 source regressions =="
 python3 tests/test_0_9_14_p0b_source_regressions.py
 
-echo "== P0-B1 golden compatibility (every lane of 1384 bars vs the pre-B1 golden) =="
+echo "== P0-B golden (every lane of every bar vs the 0.9.18 golden) =="
 M0_P0_BUILD_ONLY=1 bash tools/m0/build_m0a_p0.sh "$BUILD/tool" >/dev/null
 M0_P0_GOLDEN=1 M0_P0_OUT="$BUILD/tool" "$BUILD/tool/m0a_p0" > "$BUILD/golden_run.txt"
-python3 tests/test_0_9_14_p0b_golden_compare.py tests/golden/p0b_bar_function_golden_pre_b1.tsv "$BUILD/tool/p0b_golden.tsv"
-echo "== P0-B2 admission compatibility (baseline: golden after B1, before any admission) =="
-python3 tests/test_0_9_14_p0b2_golden_compare.py tests/golden/p0b_bar_function_golden_b1.tsv "$BUILD/tool/p0b_golden.tsv"
-echo "== P0-B2 step 2 compatibility (baseline: golden after steppers) =="
-python3 tests/test_0_9_14_p0b2_golden_compare.py tests/golden/p0b_bar_function_golden_b2_steppers.tsv "$BUILD/tool/p0b_golden.tsv"
+if [[ "${M0_P0B_REBASELINE:-0}" == "1" ]]; then
+  cp "$BUILD/tool/p0b_golden.tsv" tests/golden/p0b_bar_function_golden_0918.tsv
+  echo "re-baselined tests/golden/p0b_bar_function_golden_0918.tsv"
+fi
+# The pre-B1, B1 and B2-steppers goldens are kept as history; 0.9.18 changed generation on purpose.
+python3 tests/test_0918_p0b_golden_compare.py tests/golden/p0b_bar_function_golden_0918.tsv "$BUILD/tool/p0b_golden.tsv"
 
-echo "0.9.14 P0-B (B1 + B2 steps): GREEN"
+echo "0.9.14 P0-B (properties + 0.9.18 golden): GREEN"

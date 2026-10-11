@@ -194,7 +194,7 @@ int main() {
   step(ui, "Enter (save)", key('\n'));
   CHECK(rev() == revisionBeforeSave);
   CHECK(GroovePuterUndo::undoOwner().hasUndo());
-  step(ui, "Alt+6 (SONG)", key('6', true));
+  step(ui, "Alt+7 (SONG)", key('7', true));  // 0.9.17 digit map: 7 = SONG
   step(ui, "Alt+j (MATERIAL)", key('j', true));
   const bool before = GroovePuterUndo::undoOwner().hasUndo();
   step(ui, "Ctrl+Z", key('z', false, true));

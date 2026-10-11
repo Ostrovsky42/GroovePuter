@@ -19,8 +19,8 @@ def main() -> None:
             "the hotkey must go through the shared owner")
     require('source_control_->setLabel("SRC")' in PARAMS,
             "MORE must expose a dedicated SRC row")
-    require('make_phrase_control_->setLabel("MAKE PHRASE")' in PARAMS,
-            "MORE must expose a dedicated MAKE PHRASE row")
+    require('make_phrase_control_->setLabel("MAKE MELODY")' in PARAMS,
+            "MORE must expose a dedicated MAKE MELODY row")
     require("PhraseSourceToggle::makePhrase" in PARAMS,
             "the MAKE PHRASE row must call the shared materialization owner")
 

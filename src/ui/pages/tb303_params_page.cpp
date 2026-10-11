@@ -381,7 +381,7 @@ void TB303ParamsPage::initComponents() {
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   source_control_ = std::make_shared<LabelValueComponent>("SRC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
-  make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE PHRASE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE MELODY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -516,9 +516,9 @@ void TB303ParamsPage::layoutComponents() {
   const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
   source_control_->setLabel("SRC");
-  source_control_->setValue(onPhrase ? "PHRASE" : "PATTERN");
+  source_control_->setValue(onPhrase ? "MELODY" : "STEPS");
   source_control_->setEnabled(true);
-  make_phrase_control_->setLabel("MAKE PHRASE");
+  make_phrase_control_->setLabel("MAKE MELODY");
   make_phrase_control_->setValue(">");
   make_phrase_control_->setEnabled(!onPhrase);
 
@@ -655,6 +655,9 @@ void TB303ParamsPage::restoreFocusedSlot() {
 }
 
 void TB303ParamsPage::updateTabFocusability() {
+  // Components exist only after setBoundaries() -> initComponents();
+  // layoutComponents() applies the tab on every draw after that.
+  if (!initialized_) return;
   const bool main = !more_tab_;
   cutoff_knob_->setFocusable(main);
   resonance_knob_->setFocusable(main);
@@ -673,6 +676,13 @@ void TB303ParamsPage::updateTabFocusability() {
 
 void TB303ParamsPage::setActiveTab(bool more) {
   if (more_tab_ == more) return;
+  // 0.9.19 S1 (coredump 2026-10-10, StoreProhibited at 0x18): a recreated
+  // Synth page restores its remembered MORE tab in restoreViewContinuity(),
+  // before setBoundaries() has created any component. Only remember the tab.
+  if (!initialized_) {
+    more_tab_ = more;
+    return;
+  }
   rememberFocusedSlot();
   more_tab_ = more;
   updateTabFocusability();
@@ -773,7 +783,7 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
         mini_acid_,
         [&](const std::function<void()>& body) { withAudioGuard(body); },
         voice_index_);
-    UI::showToast(made ? "MAKE PHRASE" : "MAKE PHRASE FAILED", 1000);
+    UI::showToast(made ? "MELODY MADE" : "MAKE MELODY FAILED", 1000);
     return;
   }
   if (engine_type_control_ && engine_type_control_->isFocused()) {

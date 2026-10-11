@@ -111,7 +111,19 @@ void SwappableSynthVoice::setEngineType(SynthEngineType type) {
     xfadeTotal_ = static_cast<uint32_t>(std::max(
         16.0f, (sampleRate_ * kCrossfadeMs) / 1000.0f));
     xfadePos_ = 0;
+    fadeDone_.store(false, std::memory_order_release);
     switching_ = true;
+}
+
+void SwappableSynthVoice::commitSwitch() {
+    if (!switching_ || !next_) return;
+    current_ = std::move(next_);
+    next_.reset();
+    type_ = pendingType_;
+    switching_ = false;
+    xfadeTotal_ = 0;
+    xfadePos_ = 0;
+    fadeDone_.store(false, std::memory_order_release);
 }
 
 void SwappableSynthVoice::setEngineName(const std::string& name) {
@@ -137,6 +149,7 @@ void SwappableSynthVoice::setState(const SynthVoiceState& state) {
     switching_ = false;
     xfadeTotal_ = 0;
     xfadePos_ = 0;
+    fadeDone_.store(false, std::memory_order_release);
 
     type_ = normalizeEngineType(state.engineType);
     pendingType_ = type_;
@@ -162,6 +175,7 @@ void SwappableSynthVoice::reset() {
     switching_ = false;
     xfadeTotal_ = 0;
     xfadePos_ = 0;
+    fadeDone_.store(false, std::memory_order_release);
     next_.reset();
     if (current_) current_->reset();
 }
@@ -194,9 +208,12 @@ void SwappableSynthVoice::release() {
 }
 
 float SwappableSynthVoice::process() {
-    const float current = current_ ? current_->process() : 0.0f;
-    if (!switching_ || !next_) return current;
+    if (!switching_ || !next_) return current_ ? current_->process() : 0.0f;
+    // Crossfade over: only the new engine sounds until the control thread
+    // commits the switch.
+    if (fadeDone_.load(std::memory_order_relaxed)) return next_->process();
 
+    const float current = current_ ? current_->process() : 0.0f;
     const float next = next_->process();
     const float t = xfadeTotal_ > 0
         ? static_cast<float>(xfadePos_) / static_cast<float>(xfadeTotal_)
@@ -208,12 +225,7 @@ float SwappableSynthVoice::process() {
 
     if (xfadePos_ < xfadeTotal_) ++xfadePos_;
     if (xfadePos_ >= xfadeTotal_) {
-        current_ = std::move(next_);
-        next_.reset();
-        type_ = pendingType_;
-        switching_ = false;
-        xfadeTotal_ = 0;
-        xfadePos_ = 0;
+        fadeDone_.store(true, std::memory_order_release);
     }
     return output;
 }

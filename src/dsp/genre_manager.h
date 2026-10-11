@@ -39,6 +39,12 @@ static constexpr GenreRecipeId kLoFiHouseRecipeId = 14;
 static constexpr GenreRecipeId kMinimalSleepRecipeId = 15;
 static constexpr GenreRecipeId kGoldenEraRecipeId = 16;
 static constexpr GenreRecipeId kDustyJazzRecipeId = 17;
+// 0.9.18 Drum & Bass poles (docs/superpowers/plans/2026-10-09-0918-dnb-genre-spec.md):
+// one two-step core, four ways to play it. Append-only like the IDs above.
+static constexpr GenreRecipeId kDnbAtmosRecipeId = 18;   // Goldie / LTJ Bukem
+static constexpr GenreRecipeId kDnbFunkRecipeId = 19;    // Roni Size / Reprazent
+static constexpr GenreRecipeId kDnbDanceRecipeId = 20;   // Pendulum / Sub Focus
+static constexpr GenreRecipeId kDnbNeuroRecipeId = 21;   // Noisia
 
 struct GenerativeParams {
     int minNotes = 4;

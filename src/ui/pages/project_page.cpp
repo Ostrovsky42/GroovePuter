@@ -26,6 +26,7 @@
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_host_midi.h"
+#include "src/platform/battery_status.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/ui/save_probe.h"
 
@@ -95,39 +96,10 @@ VisualStyle prevStyle(VisualStyle style) {
   }
 }
 
-const char* grooveModeName(GrooveboxMode mode) {
-  switch (mode) {
-    case GrooveboxMode::Acid: return "ACID";
-    case GrooveboxMode::Minimal: return "MINIMAL";
-    case GrooveboxMode::Breaks: return "BREAKS";
-    case GrooveboxMode::Dub: return "DUB";
-    case GrooveboxMode::Electro: return "ELECTRO";
-    default: return "MINIMAL";
-  }
-}
-
-const char* grooveFlavorName(GrooveboxMode mode, int flavor) {
-  if (flavor < 0) flavor = 0;
-  if (flavor > 4) flavor = 4;
-  static const char* acid[5] = {"CLASSIC", "SHARP", "DEEP", "RUBBER", "RAVE"};
-  static const char* minimal[5] = {"TIGHT", "WARM", "AIRY", "DRY", "HYPNO"};
-  static const char* breaks[5] = {"NUSKOOL", "SKITTER", "ROLLER", "CRUNCH", "LIQUID"};
-  static const char* dub[5] = {"HEAVY", "SPACE", "STEPPERS", "TAPE", "FOG"};
-  static const char* electro[5] = {"ROBOT", "ZAP", "BOING", "MIAMI", "INDUS"};
-  switch (mode) {
-    case GrooveboxMode::Acid: return acid[flavor];
-    case GrooveboxMode::Minimal: return minimal[flavor];
-    case GrooveboxMode::Breaks: return breaks[flavor];
-    case GrooveboxMode::Dub: return dub[flavor];
-    case GrooveboxMode::Electro: return electro[flavor];
-    default: return minimal[flavor];
-  }
-}
-
 const char* sectionName(int section) {
   switch (section) {
     case 0: return "SCENES";
-    case 1: return "GROOVE";
+    case 1: return "DEVICE";
     case 2: return "LED";
     case 3: return "MIDI";
     default: return "SCENES";
@@ -140,7 +112,7 @@ void sectionRange(int section, int& first, int& last) {
       first = (int)ProjectPage::MainFocus::Load;
       last = (int)ProjectPage::MainFocus::ClearProject;
       return;
-    case 1: // groove
+    case 1: // device
       first = (int)ProjectPage::MainFocus::VisualStyle;
       last = (int)ProjectPage::MainFocus::Volume;
       return;
@@ -1377,18 +1349,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 UI::currentStyle = right ? nextStyle(UI::currentStyle) : prevStyle(UI::currentStyle);
                 return true;
             }
-            if (main_focus_ == MainFocus::GrooveMode) {
-                withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-                char toast[64];
-                std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                              grooveModeName(mini_acid_.grooveboxMode()));
-                UI::showToast(toast);
-                return true;
-            }
-            if (main_focus_ == MainFocus::GrooveFlavor) {
-                withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
-                return true;
-            }
             if (main_focus_ == MainFocus::LedMode) {
                 int m = static_cast<int>(led.mode);
                 m += right ? 1 : -1;
@@ -1511,18 +1471,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
 
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
-        if (main_focus_ == MainFocus::GrooveMode) {
-            withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-            char toast[64];
-            std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                          grooveModeName(mini_acid_.grooveboxMode()));
-            UI::showToast(toast);
-            return true;
-        }
-        if (main_focus_ == MainFocus::GrooveFlavor) {
-            withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(1); });
-            return true;
-        }
         
         auto& led = mini_acid_.sceneManager().currentScene().led;
         if (main_focus_ == MainFocus::LedMode) {
@@ -1753,8 +1701,6 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::ImportMidi: label = "Import MIDI"; break;
       case MainFocus::ClearProject: label = "Clear Project"; break;
       case MainFocus::VisualStyle: label = "Theme"; break;
-      case MainFocus::GrooveMode: label = "Groove"; break;
-      case MainFocus::GrooveFlavor: label = "Flavor"; break;
       case MainFocus::Volume: label = "Main Volume"; break;
       case MainFocus::LedMode: label = "Mode"; break;
       case MainFocus::LedSource: label = "Source"; break;
@@ -1780,14 +1726,6 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
         break;
-      case MainFocus::GrooveMode:
-        std::snprintf(line, sizeof(line), "%s", grooveModeName(mini_acid_.grooveboxMode()));
-        break;
-      case MainFocus::GrooveFlavor: {
-        int f = mini_acid_.grooveFlavor();
-        std::snprintf(line, sizeof(line), "%s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
-        break;
-      }
       case MainFocus::Volume: {
         int volPct = (int)(mini_acid_.miniParameter(MiniAcidParamId::MainVolume).normalized() * 100.0f + 0.5f);
         std::snprintf(line, sizeof(line), "%d%%", volPct);
@@ -1874,6 +1812,28 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawText(Layout::COL_1 + 6, rowY, label);
     const int valueX = Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(line);
     gfx.drawText(valueX, rowY, line);
+  }
+  // DEVICE: battery as an information row below the settings (not focusable).
+  // The percent is an estimate from the voltage, so the voltage is shown too;
+  // this board has no charging signal, so no charging icon is claimed.
+  if (sectionIdx == 1) {
+    const int infoRow = rowBase + (lastFocus - firstFocus + 1);
+    if (infoRow < rowBase + visibleRows) {
+      const auto battery = GroovePuterPlatform::batteryStatus();
+      char value[24];
+      if (battery.available) {
+        std::snprintf(value, sizeof(value), "%d%%  %u.%02uV",
+                      static_cast<int>(battery.percent),
+                      static_cast<unsigned>(battery.millivolts / 1000u),
+                      static_cast<unsigned>((battery.millivolts % 1000u) / 10u));
+      } else {
+        std::snprintf(value, sizeof(value), "N/A");
+      }
+      const int rowY = LayoutManager::lineY(infoRow);
+      gfx.setTextColor(battery.available && battery.percent <= 15 ? COLOR_DANGER : palette.dim);
+      gfx.drawText(Layout::COL_1 + 6, rowY, "Battery");
+      gfx.drawText(Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(value), rowY, value);
+    }
   }
   char hint[64] = "[ENTER] SELECT";
   if (section_ == ProjectSection::Midi) {

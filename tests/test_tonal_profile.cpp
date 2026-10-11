@@ -60,8 +60,9 @@ void testAllModes() {
 }
 
 void testAcceptedStaticModesStayConservative() {
+  // 0.9.18: House left this list on purpose (owner-accepted livelier lead):
+  // see testHouseMovesWithDriveLead below. Techno and Rave stay static.
   for (GenerativeMode mode : {
-           GenerativeMode::House,
            GenerativeMode::Techno,
            GenerativeMode::Rave,
        }) {
@@ -75,6 +76,19 @@ void testAcceptedStaticModesStayConservative() {
     assert(profile.melodicPolicy.preferredContours == 0);
     assert(profile.bassRegister.maxAdjacentLeapSemitones == 12);
   }
+}
+
+void testHouseMovesWithDriveLead() {
+  const TonalGenerationProfile profile =
+      tonalGenerationProfileFor(settingsFor(GenerativeMode::House));
+  assert(profile.bassPolicy.allowedContours !=
+         bassPitchContourBit(BassPitchContourId::RootAnchor));
+  assert((profile.bassPolicy.allowedArticulations &
+          bassArticulationStyleBit(BassArticulationStyleId::AccentPulse)) != 0);
+  assert((profile.melodicPolicy.allowedContours &
+          melodicContourBit(MelodicContourId::StepUp)) != 0);
+  assert((profile.melodicPolicy.preferredContours &
+          melodicContourBit(MelodicContourId::MotifAnswer)) != 0);
 }
 
 void testMovingProfilesUseFullBassCorridorLeapBudget() {
@@ -151,6 +165,7 @@ void testVariantsInheritModePolicy() {
 int main() {
   testAllModes();
   testAcceptedStaticModesStayConservative();
+  testHouseMovesWithDriveLead();
   testMovingProfilesUseFullBassCorridorLeapBudget();
   testSynthProfilesAvoidUnmaterializableRootOctaveAuto();
   testVariantsInheritModePolicy();

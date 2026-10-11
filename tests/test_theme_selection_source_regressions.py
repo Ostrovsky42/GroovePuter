@@ -68,8 +68,10 @@ def test_perform_piano_key_shapes() -> None:
     require("isBlackPianoPitch(note)" in row and
             "const int blackH" in row and "const int blackW" in row,
             "melodic rows must retain long white keys with shorter black keys")
-    require("drawTinyNoteLabel" in row and "keyboard.noteForKey" in row,
-            "piano keys must show compact resolved note names")
+    require("drawKeyNoteLabel" in row and "keyboard.noteForKey" in row,
+            "piano keys must show their resolved note names")
+    require("drawTinyNoteLabel" in visuals.split("inline void drawKeyNoteLabel")[1].split("inline void drawPianoKeyRow")[0],
+            "a key too narrow for the regular font keeps the tiny label")
     require("keyboard.isPhysicalKeyHeld(physical)" in row,
             "two piano rows must preserve independent physical-key held state")
     require("char keyLabel" not in row and "gfx.drawText" not in row,

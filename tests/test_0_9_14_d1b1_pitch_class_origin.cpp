@@ -181,6 +181,9 @@ struct Route1 { uint8_t bars; GenerativeMode mode; GenreRecipeId recipe; };
 //   Outrun/0 4 bars : two harmonic events per bar, up to 4 distinct pitch classes
 constexpr Route1 kAcid4{4, GenerativeMode::Acid, 0};
 constexpr Route1 kOutrun4{4, GenerativeMode::Outrun, 0};
+// 0.9.18: Outrun's genre idiom holds one chord per bar, so in-bar harmonic
+// motion (P6) is checked on TripHop, whose generator the idioms leave alone.
+constexpr Route1 kInBarHarmony4{4, GenerativeMode::TripHop, 0};
 
 uint8_t pcOfNote(int note) { return static_cast<uint8_t>(note % 12); }
 
@@ -316,15 +319,20 @@ void test_p2_p3_p7_p11_owner_result_and_mutants() {
       const StepMask onsets = migration.bassRhythmPlan.onsets;
       const BassPitchClassWitness& witness = migration.bassPitchClassWitness;
 
-      // P2: exact owner plan -> witness (attack set and every pitch class).
+      // P2: exact owner result -> witness (attack set and every pitch class).
+      // 0.9.18: the genre idiom owns the committed Synth A of Acid and Outrun,
+      // so the owner result is that pattern, read attack by attack (a held
+      // step -- same pitch, slid into -- is a continuation, not an attack).
       assert(probe.plan.onsetCount > 0);
-      StepMask planAttacks = 0;
-      for (uint8_t i = 0; i < probe.plan.onsetCount; ++i) {
-        const uint8_t step = probe.plan.onsetSteps[i];
-        planAttacks = static_cast<StepMask>(planAttacks | stepBit(step));
-        assert(witness.pitchClassAt(step) == probe.plan.midiNotes[i] % 12);
+      StepMask patternAttacks = 0;
+      for (uint8_t step = 0; step < GroovePuterRhythm::kStepsPerBar; ++step) {
+        const SynthStep& event = direct.synthA.steps[step];
+        if (event.note < 0) continue;
+        if (step > 0 && event.slide && direct.synthA.steps[step - 1].note == event.note) continue;
+        patternAttacks = static_cast<StepMask>(patternAttacks | stepBit(step));
+        assert(witness.pitchClassAt(step) == static_cast<uint8_t>(event.note % 12));
       }
-      assert(planAttacks == onsets);
+      assert(patternAttacks == onsets);
 
       // P3: the one-bar seam forwards the very same witness.
       PhraseGenerator::PhraseBar viaSeam{};
@@ -444,14 +452,14 @@ void test_p6_p7_multi_harmonic_and_nontrivial() {
   assert(differ);
 
   // P6: bars with multiple harmonic events.
-  configureScene(engine, kOutrun4.mode, kOutrun4.recipe);
-  auto outrun = GeneratedPhraseSong::generate(engine, kOutrun4.bars, 0, kGuard);
+  configureScene(engine, kInBarHarmony4.mode, kInBarHarmony4.recipe);
+  auto outrun = GeneratedPhraseSong::generate(engine, kInBarHarmony4.bars, 0, kGuard);
   assert(outrun.status == GeneratedPhraseSong::LifecycleStatus::CommittedNow);
   origin = engine.generatedSynthAOrigin();
   assert(origin != nullptr);
   bool segmentsDiffer = false;
   int multiEventBars = 0;
-  for (int bar = 0; bar < kOutrun4.bars; ++bar) {
+  for (int bar = 0; bar < kInBarHarmony4.bars; ++bar) {
     const auto& e = origin->bars[bar];
     const StepMask events = e.harmonicRhythm.onsets;
     int eventCount = 0;

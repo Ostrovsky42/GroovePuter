@@ -31,7 +31,8 @@ constexpr ReleasedRecipes kFinal099Catalog[] = {
     {GenerativeMode::HipHop, {0, 16, 17, 0, 0, 0}, 3},
     {GenerativeMode::FunkSoul, {0, 0, 0, 0, 0, 0}, 1},
     {GenerativeMode::UkGarage, {0, 0, 0, 0, 0, 0}, 1},
-    {GenerativeMode::DrumAndBass, {0, 0, 0, 0, 0, 0}, 1},
+    // 0.9.18: the DnB poles Atmos, Funk, Dance, Neuro (append-only IDs 18-21).
+    {GenerativeMode::DrumAndBass, {0, 18, 19, 20, 21, 0}, 5},
     {GenerativeMode::LoFi, {0, 12, 13, 14, 15, 0}, 5},
 };
 
@@ -74,8 +75,8 @@ int main() {
     assert(isRecipeAvailable(expected.genre, kBaseRecipeId));
   }
 
-  assert(profileCount == 33);
-  assert(nonBaseCount == 17);
+  assert(profileCount == 37);
+  assert(nonBaseCount == 21);
 
   assert(!isRecipeAvailable(GenerativeMode::Techno, 6));
   assert(!isRecipeAvailable(GenerativeMode::Acid, kDustyJazzRecipeId));
@@ -91,5 +92,5 @@ int main() {
   assert(invalidOutput == 253);
   assert(!isRecipeAvailable(invalidGenre, kBaseRecipeId));
 
-  std::puts("GF2-0R final v0.9.9 Recipe catalog: PASS profiles=33 non_base=17");
+  std::puts("GF2-0R final v0.9.18 Recipe catalog: PASS profiles=37 non_base=21");
 }

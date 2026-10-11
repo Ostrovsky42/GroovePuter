@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -38,13 +39,29 @@ public:
     ~SwappableSynthVoice() override = default;
 
     void setEngineType(SynthEngineType type);
-    SynthEngineType engineType() const { return type_; }
+    // The engine the voice is becoming during a switch (the pending one), so
+    // the type and the object below always describe the same engine.
+    SynthEngineType engineType() const {
+        return switching_ && next_ ? pendingType_ : type_;
+    }
 
     void setEngineName(const std::string& name);
-    IMonoSynthVoice* activeVoice() { return current_ ? current_.get() : nullptr; }
-    const IMonoSynthVoice* activeVoice() const {
-        return current_ ? current_.get() : nullptr;
+    IMonoSynthVoice* activeVoice() {
+        return switching_ && next_ ? next_.get() : current_.get();
     }
+    const IMonoSynthVoice* activeVoice() const {
+        return switching_ && next_ ? next_.get() : current_.get();
+    }
+
+    // 0.9.19 S1: the audio thread never replaces or frees an engine. When the
+    // crossfade ends it only marks the switch settled and keeps rendering the
+    // new engine; the control thread commits it (frees the old engine) under
+    // the audio mutation gate. All three are control-thread calls.
+    bool switchPending() const { return switching_; }
+    bool switchSettled() const {
+        return switching_ && fadeDone_.load(std::memory_order_acquire);
+    }
+    void commitSwitch();
 
     SynthVoiceState getState() const;
     void setState(const SynthVoiceState& state);
@@ -80,6 +97,7 @@ private:
     std::unique_ptr<IMonoSynthVoice> next_{};
 
     bool switching_{false};
+    std::atomic<bool> fadeDone_{false};  // set by the audio thread
     uint32_t xfadeTotal_{0};
     uint32_t xfadePos_{0};
 

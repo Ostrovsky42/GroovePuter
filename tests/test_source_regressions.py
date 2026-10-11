@@ -438,12 +438,21 @@ def test_enter_applies_selected_recipe() -> None:
             "Enter apply block must remain explicitly bound to Enter")
     require("applyCurrent();" in command_block,
             "Enter must apply the selected recipe through the current ApplyMode")
-    require("applyCurrent(true);" in command_block,
-            "plain G must force full Stage 15 generation")
+    # 0.9.18: plain G goes through the GEN panel TARGET; STEPS is still the
+    # full Stage 15 generation.
+    require("return generateFromG();" in command_block,
+            "plain G must route through the GEN TARGET")
+    g_start = page.index("bool GenrePage::generateFromG()")
+    g_block = page[g_start:page.index("\n}\n", g_start)]
+    require("applyCurrent(true);" in g_block,
+            "plain G with TARGET STEPS must force full Stage 15 generation")
+    require("SynthSequencerPage::generateMelodyFor(" in g_block,
+            "plain G with TARGET MELODY must write the Melody")
     require("cycleApplyMode" not in command_block,
             "Enter/G generation commands must not cycle the apply mode")
 
-    footer_start = page.index("UI::drawStandardFooter(gfx")
+    footer_start = page.index("UI::drawStandardFooter(gfx",
+                              page.index("void GenrePage::draw(IGfx& gfx)"))
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
     require('"G:NEW TAKE P:STYLE M:APPLY"' in footer_block,

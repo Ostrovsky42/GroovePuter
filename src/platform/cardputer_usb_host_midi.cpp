@@ -19,6 +19,8 @@ std::atomic<uint16_t> g_inputMps{64};
 std::atomic<uint8_t> g_interfaceNumber{0};
 std::atomic<usb_transfer_t*> g_inputTransfer{nullptr};
 std::atomic<bool> g_inFlight{false}, g_closing{false}, g_claimed{false};
+std::atomic<bool> g_retryInput{false};
+uint32_t g_nextInputRetryMs = 0;  // USB service task only
 std::atomic<uint32_t> g_packetCount{0}, g_noteOnCount{0}, g_noteOffCount{0};
 std::atomic<uint8_t> g_lastNote{0}, g_lastVelocity{0};
 std::atomic<const char*> g_status{"INIT"};
@@ -52,7 +54,15 @@ void onInputTransfer(usb_transfer_t* transfer) {
     g_inFlight.store(false, std::memory_order_relaxed);
     if (g_closing.load(std::memory_order_relaxed)) return;
     if (transfer->status != USB_TRANSFER_STATUS_COMPLETED) {
-        g_status.store("XFER_ERR", std::memory_order_relaxed);
+        if (transfer->status == USB_TRANSFER_STATUS_NO_DEVICE) {
+            g_closing.store(true, std::memory_order_relaxed);
+            g_status.store("DEV_GONE", std::memory_order_relaxed);
+        } else {
+            // A failed transfer leaves the endpoint halted. Restart it from
+            // service(), outside the USB callback, before accepting more MIDI.
+            g_retryInput.store(true, std::memory_order_relaxed);
+            g_status.store("XFER_ERR", std::memory_order_relaxed);
+        }
         return;
     }
 
@@ -91,6 +101,7 @@ void onInputTransfer(usb_transfer_t* transfer) {
         esp_err_t err = usb_host_transfer_submit(transfer);
         g_inFlight.store(err == ESP_OK, std::memory_order_relaxed);
         if (err != ESP_OK) {
+            g_retryInput.store(true, std::memory_order_relaxed);
             g_status.store("RESUBMIT_ERR", std::memory_order_relaxed);
         }
     }
@@ -100,6 +111,7 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
     if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
         if (g_device.load(std::memory_order_relaxed) == event->dev_gone.dev_hdl) {
             g_closing.store(true, std::memory_order_relaxed);
+            g_retryInput.store(false, std::memory_order_relaxed);
             g_detachCount.fetch_add(1, std::memory_order_relaxed);
             g_status.store("DEV_GONE", std::memory_order_relaxed);
             if (g_claimed.load(std::memory_order_relaxed) && g_inFlight.load(std::memory_order_relaxed)) {
@@ -120,6 +132,7 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
     }
 
     g_device.store(devHandle, std::memory_order_relaxed);
+    g_retryInput.store(false, std::memory_order_relaxed);
 
     const usb_device_desc_t* desc = nullptr;
     if (usb_host_get_device_descriptor(devHandle, &desc) == ESP_OK) {
@@ -169,6 +182,7 @@ void onClientEvent(const usb_host_client_event_msg_t* event, void*) {
                 g_inputTransfer.store(transfer, std::memory_order_relaxed);
                 err = usb_host_transfer_submit(transfer);
                 g_inFlight.store(err == ESP_OK, std::memory_order_relaxed);
+                g_retryInput.store(err != ESP_OK, std::memory_order_relaxed);
                 g_status.store(err == ESP_OK ? "READY" : "SUBMIT_FAIL", std::memory_order_relaxed);
                 if (err == ESP_OK) g_attachCount.fetch_add(1, std::memory_order_relaxed);
             } else {
@@ -198,15 +212,20 @@ bool CardputerUsbHostMidi::begin(UsbHostMidiCallback callback) {
         g_status.store("INSTALL_FAIL", std::memory_order_relaxed);
         return false;
     }
-    g_hostInstalled.store(true, std::memory_order_relaxed);
 
     usb_host_client_config_t clientConfig{};
     clientConfig.max_num_event_msg = 5;
     clientConfig.async.client_event_callback = onClientEvent;
     usb_host_client_handle_t clientHandle = nullptr;
     result = usb_host_client_register(&clientConfig, &clientHandle);
-    if (result != ESP_OK) return false;
+    if (result != ESP_OK) {
+        g_status.store("CLIENT_FAIL", std::memory_order_relaxed);
+        (void)usb_host_uninstall();
+        return false;
+    }
     g_client.store(clientHandle, std::memory_order_relaxed);
+    g_status.store("WAIT_DEV", std::memory_order_relaxed);
+    g_hostInstalled.store(true, std::memory_order_release);
     return true;
 }
 
@@ -233,6 +252,35 @@ void CardputerUsbHostMidi::service() {
         g_device.store(nullptr);
         g_closing.store(false);
         g_inputEndpoint.store(-1);
+    }
+
+    if (g_retryInput.load(std::memory_order_relaxed) &&
+        !g_closing.load(std::memory_order_relaxed) &&
+        !g_inFlight.load(std::memory_order_relaxed)) {
+        const uint32_t now = millis();
+        if (static_cast<int32_t>(now - g_nextInputRetryMs) >= 0) {
+            g_nextInputRetryMs = now + 100u;
+            const usb_device_handle_t device = g_device.load(std::memory_order_relaxed);
+            usb_transfer_t* transfer = g_inputTransfer.load(std::memory_order_relaxed);
+            const int endpoint = g_inputEndpoint.load(std::memory_order_relaxed);
+            if (device != nullptr && transfer != nullptr && endpoint >= 0 &&
+                g_claimed.load(std::memory_order_relaxed)) {
+                const esp_err_t clear = usb_host_endpoint_clear(
+                    device, static_cast<uint8_t>(endpoint));
+                if (clear == ESP_OK || clear == ESP_ERR_INVALID_STATE) {
+                    const esp_err_t submitted = usb_host_transfer_submit(transfer);
+                    if (submitted == ESP_OK) {
+                        g_inFlight.store(true, std::memory_order_relaxed);
+                        g_retryInput.store(false, std::memory_order_relaxed);
+                        g_status.store("READY", std::memory_order_relaxed);
+                    } else {
+                        g_status.store("RETRY_ERR", std::memory_order_relaxed);
+                    }
+                } else {
+                    g_status.store("CLEAR_ERR", std::memory_order_relaxed);
+                }
+            }
+        }
     }
 }
 

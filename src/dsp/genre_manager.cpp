@@ -158,6 +158,10 @@ const GenreRecipeDef kGenreRecipes[] = {
     {kMinimalSleepRecipeId, "Minimal Sleep", {}, false, {}},
     {kGoldenEraRecipeId, "Golden Era", {}, false, {}},
     {kDustyJazzRecipeId, "Dusty Jazz", {}, false, {}},
+    {kDnbAtmosRecipeId, "Atmos", {}, false, {}},
+    {kDnbFunkRecipeId, "Funk", {}, false, {}},
+    {kDnbDanceRecipeId, "Dance", {}, false, {}},
+    {kDnbNeuroRecipeId, "Neuro", {}, false, {}},
 };
 
 const GenreRecipeDef* findRecipe(GenreRecipeId id) {

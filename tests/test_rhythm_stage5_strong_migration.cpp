@@ -2,7 +2,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "src/generation/idiom/genre_idiom.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
+#include "src/state/generation_shape_state.h"
 
 using namespace GroovePuterRhythm;
 
@@ -356,6 +358,79 @@ void testAllPLevelsRemainLegal() {
   }
 }
 
+bool synthIsEmpty(const SynthPattern& pattern) {
+  for (const SynthStep& step : pattern.steps) {
+    if (step.note >= 0) return false;
+  }
+  return true;
+}
+
+void testProtectedInteractionSpaceSurvivesMaterialMigration() {
+  const auto previousLiveliness = GroovePuterState::generationLiveliness();
+  GroovePuterState::setGenerationLiveliness(
+      GroovePuterState::GenerationLiveliness::Normal);
+  GenreSettings settings = baseSettings(GenerativeMode::UkGarage);
+  settings.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Auto);
+  settings.rhythmArchetypeId = kNoArchetypeId;
+  const struct {
+    GenreIdiom::Idea idea;
+    uint8_t bar;
+  } cases[] = {
+      {GenreIdiom::Idea::CallResponse, 2},
+      {GenreIdiom::Idea::ReducedMotif, 1},
+      {GenreIdiom::Idea::DelayedAnswer, 2},
+  };
+  for (const auto& item : cases) {
+    uint32_t press = 0;
+    for (uint32_t candidate = 1; candidate <= 64; ++candidate) {
+      if (GenreIdiom::ideaFromDeck(13, 1, 0, candidate) == item.idea) {
+        press = candidate;
+        break;
+      }
+    }
+    require(press != 0, "interaction shape was unreachable in the UKG deck");
+
+    StrongRhythmMigrationContext context{};
+    context.patternAddress = 7;
+    context.level = RealizationLevel::P2Variation;
+    context.feelProfile = FeelProfileId::Straight;
+    context.tonalMaterializationEnabled = true;
+    context.scaleTypeValue = kScaleDorian;
+    context.ideaPress = press;
+    context.ideaPhraseBars = 4;
+    context.phraseBarOrdinal = item.bar;
+    DrumPatternSet drums{};
+    SynthPattern bass{};
+    SynthPattern lead{};
+    const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
+        settings, context, drums, bass, lead);
+    if (result.status != StrongRhythmMigrationStatus::Applied) {
+      std::fprintf(stderr, "interaction migration failed: idea=%u press=%u status=%u bar=%u\n",
+                   static_cast<unsigned>(item.idea), press,
+                   static_cast<unsigned>(result.status), item.bar);
+    }
+    require(result.status == StrongRhythmMigrationStatus::Applied,
+            "UKG phrase materialization rejected an interaction shape");
+    if (item.idea == GenreIdiom::Idea::DelayedAnswer) {
+      bool pickup = false;
+      for (uint8_t step = 0; step < 8; ++step) {
+        require(lead.steps[step].note < 0,
+                "downstream migration filled the delayed response space");
+      }
+      for (uint8_t step = 8; step < SynthPattern::kSteps; ++step) {
+        pickup = pickup || lead.steps[step].note >= 0;
+      }
+      require(!synthIsEmpty(bass), "the bass must keep the groove under the space");
+      require(pickup, "delayed response has no template pickup after protected space");
+    } else {
+      require(synthIsEmpty(lead),
+              "downstream migration filled a protected interaction bar");
+      require(!synthIsEmpty(bass), "the bass must keep the groove under the space");
+    }
+  }
+  GroovePuterState::setGenerationLiveliness(previousLiveliness);
+}
+
 }  // namespace
 
 int main() {
@@ -365,6 +440,7 @@ int main() {
   testAppliedRoutesAndCompatibilityState();
   testHardwareIdentityCorrections();
   testAllPLevelsRemainLegal();
+  testProtectedInteractionSpaceSurvivesMaterialMigration();
   std::puts("Groove Vocabulary Stage 5 strong migration: OK");
   return 0;
 }

@@ -47,7 +47,7 @@ int main() {
     synth.patternBank = 1;
     synth.patternSlot = 6;
     formatUiStatusLine(synth, line, sizeof(line));
-    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [-]") == 0);
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT BOTH") == 0);
     assert(synth.hasPatternAddress());
 
     assert(GroovePuterOutput::setMode(
@@ -70,7 +70,7 @@ int main() {
     UiStatusSnapshot invalidAddress = synth;
     invalidAddress.patternBank = 0xFF;
     formatUiStatusLine(invalidAddress, line, sizeof(line));
-    assert(std::strcmp(line, "S-B PAT STOP 120 BPM B1/1 INT [-]") == 0);
+    assert(std::strcmp(line, "S-B PAT STOP 120 BPM B1/1 INT BOTH") == 0);
     assert(!invalidAddress.hasPatternAddress());
 
     UiStatusSnapshot smf{};

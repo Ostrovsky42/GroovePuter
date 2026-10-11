@@ -35,3 +35,5 @@ platform_sdl/grooveputer
 .agent/skills/*
 !.agent/skills/embedded-runtime-debugging/
 !.agent/skills/embedded-runtime-debugging/**
+
+/platform_sdl/tempo_sync_ui_test

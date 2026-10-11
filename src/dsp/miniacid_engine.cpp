@@ -107,6 +107,7 @@ TempoDelay::TempoDelay(float sampleRate)
 }
 
 void TempoDelay::init(float maxSeconds) {
+  silentRun_ = 0;
   if (maxSeconds <= 0.0f) maxSeconds = 1.0f;
   
   // Calculate required
@@ -146,6 +147,7 @@ void TempoDelay::reset() {
     return;
   std::fill(buffer.begin(), buffer.end(), 0.0f);
   writeIndex = 0;
+  silentRun_ = 0;
   if (delaySamples < 1)
     delaySamples = 1;
   if (delaySamples >= maxDelaySamples)
@@ -164,6 +166,7 @@ void TempoDelay::setSampleRate(float sr) {
   if (!buffer.empty()) {
     buffer.assign(static_cast<size_t>(maxDelaySamples), 0.0f);
   }
+  silentRun_ = 0;
   if (delaySamples >= maxDelaySamples)
     delaySamples = maxDelaySamples - 1;
   if (delaySamples < 1)
@@ -213,6 +216,12 @@ float TempoDelay::process(float input) {
   if (!enabled || buffer.empty()) {
     return input;
   }
+  // Silent and already rung out: every slot holds 0, so the full path below
+  // would read 0, write 0 and return input + 0. Same bits, no work.
+  if (input == 0.0f && silentRun_ >= maxDelaySamples) {
+    if (++writeIndex >= maxDelaySamples) writeIndex = 0;
+    return input + 0.0f;
+  }
 
   int readIndex = writeIndex - delaySamples;
   if (readIndex < 0)
@@ -223,6 +232,11 @@ float TempoDelay::process(float input) {
   float fbSum = input + delayed * feedback;
   fbSum = fbSum / (1.0f + fabsf(fbSum) * 0.8f);  // gentle limiting
   buffer[writeIndex] = fbSum;
+  if (input == 0.0f && delayed == 0.0f && fbSum == 0.0f) {
+    if (silentRun_ < maxDelaySamples) ++silentRun_;
+  } else {
+    silentRun_ = 0;
+  }
 
   writeIndex++;
   if (writeIndex >= maxDelaySamples)
@@ -499,6 +513,8 @@ void MiniAcid::reset() {
   retrigB_ = {};
   patternPlaybackState_[0] = {};
   patternPlaybackState_[1] = {};
+  chordInternalNote_[0] = -1;
+  chordInternalNote_[1] = -1;
   patternRetrigEvent_[0] = {};
   patternRetrigEvent_[1] = {};
   for(int i=0; i<NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
@@ -581,6 +597,14 @@ void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
   const int idx = clamp303Voice(voiceIndex);
   if (synthVoices_[idx]) synthVoices_[idx]->release();
   publishPatternNoteOff_(idx);
+  // Chord voices are not "the" Pattern note: release each one on the wire.
+  const auto& held = patternPlaybackState_[idx];
+  for (uint8_t v = 0; v < held.voiceCount(); ++v) {
+    if ((held.voiceEvent(v).flags & PhraseRuntime::kEventChordVoice) != 0) {
+      publishChordNoteOff_(idx, held.voiceEvent(v).note);
+    }
+  }
+  chordInternalNote_[idx] = -1;
   patternPlaybackState_[idx] = {};
   patternRetrigEvent_[idx] = {};
   if (idx == 0) {
@@ -651,6 +675,19 @@ void MiniAcid::pauseTransport() {
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
   }
+}
+
+double MiniAcid::advanceStartPhase(double steps) {
+  // Only the state start() just left: tick 383 armed to roll over to the
+  // downbeat on the first sample. Anything else would skip real events.
+  if (!playing || currentTick_ != 383 || tickPhaseAccum_ != 0x100000000ULL) {
+    return 0.0;
+  }
+  if (!(steps > 0.0)) return 0.0;
+  if (steps > 4.0) steps = 4.0;
+  const double ticks = steps * 24.0;
+  tickPhaseAccum_ += static_cast<uint64_t>(ticks * 4294967296.0);
+  return steps;
 }
 
 void MiniAcid::continueTransport() {
@@ -2304,7 +2341,10 @@ void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet
         int engineIdx = static_cast<int>(value * static_cast<float>(kEngineCount));
         if (engineIdx < 0) engineIdx = 0;
         if (engineIdx >= kEngineCount) engineIdx = kEngineCount - 1;
-        setDrumEngine(kEngineByLaneValue[engineIdx]);
+        // AudioTask: never allocate a drum engine here. The UI applies the
+        // request on its next frame, under the audio guard (0.9.19).
+        pendingDrumEngineLane_.store(static_cast<int8_t>(engineIdx),
+                                     std::memory_order_release);
         break;
       }
       default:
@@ -2392,10 +2432,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     } else if (activeMaterial_[0].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        if (const PhraseRuntime::RuntimeSynthEvent* phraseA =
-                phraseEventAt_(0, absoluteTick)) {
-          triggerSynthStep_(0, *phraseA, absoluteStartSubtick);
-        }
+        triggerPhraseOnsets_(0, absoluteTick, absoluteStartSubtick);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventA =
                    synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
@@ -2407,10 +2444,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     } else if (activeMaterial_[1].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        if (const PhraseRuntime::RuntimeSynthEvent* phraseB =
-                phraseEventAt_(1, absoluteTick)) {
-          triggerSynthStep_(1, *phraseB, absoluteStartSubtick);
-        }
+        triggerPhraseOnsets_(1, absoluteTick, absoluteStartSubtick);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventB =
                    synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
@@ -2522,7 +2556,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   const bool tapeFxEnabled = tapeState.fxEnabled;
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
-  // Fine-grained profiling is expensive, so we do it periodically.
+  // Fine-grained profiling makes ten micros() calls per sample: the profiled
+  // block costs about four plain ones (47 ms against a 23 ms budget on the
+  // Cardputer), so it stutters audio and MIDI. It stays behind AudioDiagnostics
+  // and runs on one block in 128.
   const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x7Fu) == 0);
 
   // FX safety guard: if previous callback was near/over budget, reduce FX wet path
@@ -2604,8 +2641,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         if (retrigB_.countRemaining <= 0) retrigB_.active = false;
       }
     }
+    if (playing && currentStepIndex >= 0)
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-        if (!playing || currentStepIndex < 0) continue;
         if (retrigDrums_[v].active) {
              if (--retrigDrums_[v].counter <= 0 && retrigDrums_[v].countRemaining > 0) {
                  const DrumPattern& pattern = activeDrumPattern(v);
@@ -4414,11 +4451,30 @@ void MiniAcid::consumePatternPlaybackActions_(
     int synthIdx,
     const PhraseRuntime::RuntimeSynthPlaybackActions& actions) {
   const int idx = clamp303Voice(synthIdx);
+  // The state has already applied this batch: topAfter is what sounds now.
+  const int topAfter = patternPlaybackState_[idx].topNote();
+  bool chordActions = false;
+  bool monoStart = false;
+  bool topRestarted = false;
   for (uint8_t i = 0; i < actions.count; ++i) {
     const PhraseRuntime::RuntimeSynthPlaybackAction& action = actions.values[i];
     const PhraseRuntime::RuntimeSynthEvent& event = action.event;
     const bool accent = (event.flags & PhraseRuntime::kEventAccent) != 0;
     const bool slide = (event.flags & PhraseRuntime::kEventSlide) != 0;
+
+    // Chord voices: each note goes to MIDI on its own; the monophonic internal
+    // synth is moved to the top note once the whole batch is translated.
+    if ((event.flags & PhraseRuntime::kEventChordVoice) != 0) {
+      chordActions = true;
+      if (translateChordVoiceAction_(idx, action) &&
+          static_cast<int>(event.note) == topAfter) {
+        topRestarted = true;
+      }
+      continue;
+    }
+    if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Start) {
+      monoStart = true;
+    }
 
     // RuntimeSynthPlaybackState owns the logical replacement as Release ->
     // Start. TB303's accepted legacy slide, however, is legato only while the
@@ -4468,6 +4524,98 @@ void MiniAcid::consumePatternPlaybackActions_(
         break;
     }
   }
+
+  if (!chordActions) return;
+  if (monoStart) {
+    // A one-note onset ended the chord and already took the internal synth.
+    chordInternalNote_[idx] = -1;
+    return;
+  }
+  followChordWithInternalVoice_(idx, topRestarted);
+}
+
+// One chord-voice action on the MIDI wire. Returns true when it (re)started
+// the note, so the internal synth can re-attack if that note is the top one.
+bool MiniAcid::translateChordVoiceAction_(
+    int synthIdx, const PhraseRuntime::RuntimeSynthPlaybackAction& action) {
+  const int idx = clamp303Voice(synthIdx);
+  const PhraseRuntime::RuntimeSynthEvent& event = action.event;
+  const bool accent = (event.flags & PhraseRuntime::kEventAccent) != 0;
+  if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Release) {
+    publishChordNoteOff_(idx, event.note);
+    return false;
+  }
+  if (action.type == PhraseRuntime::RuntimeSynthPlaybackActionType::Retrigger) {
+    publishChordNoteOff_(idx, event.note);
+  }
+  publishChordNoteOn_(idx, event.note, event.velocity, accent);
+  LedManager::instance().onVoiceTriggered(
+      idx == 0 ? VoiceId::SynthA : VoiceId::SynthB,
+      sceneManager_.currentScene().led);
+  return true;
+}
+
+void MiniAcid::followChordWithInternalVoice_(int synthIdx, bool topRestarted) {
+  const int idx = clamp303Voice(synthIdx);
+  const auto& state = patternPlaybackState_[idx];
+  const int top = state.topNote();
+  if (top < 0) {
+    if (chordInternalNote_[idx] >= 0 && synthVoices_[idx]) {
+      synthVoices_[idx]->release();
+    }
+    chordInternalNote_[idx] = -1;
+    const uint8_t clearMask =
+        static_cast<uint8_t>(~static_cast<uint8_t>(1u << idx));
+    patternOwnedMask_.fetch_and(clearMask, std::memory_order_release);
+    return;
+  }
+  if (top == chordInternalNote_[idx] && !topRestarted) return;
+  for (uint8_t v = 0; v < state.voiceCount(); ++v) {
+    const auto& voice = state.voiceEvent(v);
+    if (static_cast<int>(voice.note) != top) continue;
+    if (synthVoices_[idx]) {
+      synthVoices_[idx]->startNote(
+          noteToFreq(voice.note),
+          (voice.flags & PhraseRuntime::kEventAccent) != 0, false,
+          voice.velocity);
+    }
+    break;
+  }
+  chordInternalNote_[idx] = static_cast<int16_t>(top);
+}
+
+void MiniAcid::publishChordNoteOn_(int synthIdx, uint8_t note,
+                                   uint8_t velocity, bool accent) {
+  const int idx = clamp303Voice(synthIdx);
+  patternOwnedMask_.fetch_or(
+      static_cast<uint8_t>(1u << idx), std::memory_order_release);
+  if (!patternEventQueue_) return;
+  const int wireVelocity = static_cast<int>(velocity) +
+      (accent ? kPatternMidiAccentVelocityBoost : 0);
+  patternEventQueue_->tryPush(MusicalEvent{
+      MusicalEventType::NoteOn,
+      MusicalEventSource::PatternPlayer,
+      idx == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+      0,
+      note,
+      static_cast<uint8_t>(std::clamp(wireVelocity, 1, 127)),
+      kMusicalEventChord,
+  });
+}
+
+void MiniAcid::publishChordNoteOff_(int synthIdx, uint8_t note) {
+  const int idx = clamp303Voice(synthIdx);
+  if (!patternEventQueue_) return;
+  // A failed critical enqueue records a target-scoped panic in the queue.
+  patternEventQueue_->tryPush(MusicalEvent{
+      MusicalEventType::NoteOff,
+      MusicalEventSource::PatternPlayer,
+      idx == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+      0,
+      note,
+      0,
+      kMusicalEventChord,
+  });
 }
 
 uint32_t MiniAcid::currentAbsoluteSubtick_() const {
@@ -4523,10 +4671,33 @@ const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
   return nullptr;
 }
 
+void MiniAcid::triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
+                                    uint32_t absoluteStartSubtick) {
+  const auto* phrase = readableWorkingMelody_(voiceIndex);
+  if (phrase == nullptr || phrase->lengthTicks == 0) return;
+  if (!RuntimePhraseEdit::hasOverlappingNotes(*phrase)) {
+    if (const PhraseRuntime::RuntimeSynthEvent* event =
+            phraseEventAt_(voiceIndex, absoluteTick)) {
+      triggerSynthStep_(voiceIndex, *event, absoluteStartSubtick);
+    }
+    return;
+  }
+  // A chord Melody: every note starting on this tick, in event order, so the
+  // ghost/probability draws stay deterministic.
+  const uint16_t phraseTick = phraseRelativeTick_(voiceIndex, absoluteTick);
+  for (uint16_t i = 0; i < phrase->count; ++i) {
+    if (phrase->events[i].startTick == phraseTick) {
+      triggerSynthStep_(voiceIndex, phrase->events[i], absoluteStartSubtick,
+                        true);
+    }
+  }
+}
+
 void MiniAcid::triggerSynthStep_(
     int synthIdx,
     const PhraseRuntime::RuntimeSynthEvent& event,
-    uint32_t absoluteStartSubtick) {
+    uint32_t absoluteStartSubtick,
+    bool chordVoice) {
   const int songPattern = songPatternIndexForTrack(
       synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
   if (songPattern < 0) return;
@@ -4542,7 +4713,11 @@ void MiniAcid::triggerSynthStep_(
 
   consumePatternPlaybackActions_(
       synthIdx,
-      patternPlaybackState_[synthIdx].acceptOnset(event, absoluteStartSubtick));
+      chordVoice
+          ? patternPlaybackState_[synthIdx].acceptChordOnset(
+                event, absoluteStartSubtick)
+          : patternPlaybackState_[synthIdx].acceptOnset(event,
+                                                         absoluteStartSubtick));
 
   RetrigState& retrig = synthIdx == 0 ? retrigA_ : retrigB_;
   retrig.active = false;
@@ -6462,6 +6637,41 @@ bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSl
   pending.songRow = static_cast<int8_t>(row);
   pending.queued = true;
   return true;
+}
+
+bool MiniAcid::drumEngineSwitchDue() const {
+  return pendingDrumEngineLane_.load(std::memory_order_acquire) >= 0;
+}
+
+void MiniAcid::applyPendingDrumEngineSwitch() {
+  static const char* kEngineByLaneValue[] = {"808", "909", "606", "CR78", "KPR77", "SP12"};
+  const int8_t idx = pendingDrumEngineLane_.exchange(-1, std::memory_order_acq_rel);
+  if (idx < 0 || idx >= static_cast<int8_t>(sizeof(kEngineByLaneValue) /
+                                            sizeof(kEngineByLaneValue[0]))) {
+    return;
+  }
+  setDrumEngine(kEngineByLaneValue[idx]);
+}
+
+bool MiniAcid::synthEngineSwitchDue() const {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MiniAcid::commitSettledSynthEngineSwitches() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    const bool muted = idx == 0 ? mute303 : mute303_2;
+    if (synthVoices_[idx].switchPending() &&
+        (muted || synthVoices_[idx].switchSettled())) {
+      synthVoices_[idx].commitSwitch();
+    }
+  }
 }
 
 void MiniAcid::serviceSongMaterial() {

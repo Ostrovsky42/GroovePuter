@@ -184,9 +184,11 @@ def test_status_chrome_exposes_compact_track_output() -> None:
 
     require('"src/output/output_ownership.h"' in chrome,
             "status chrome must read the canonical OutputOwnership owner")
-    for token in ('"[I]"', '"[M]"', '"[L]"', '"[-]"'):
+    for token in ('"SND"', '"MIDI"', '"BOTH"'):
         require(token in chrome,
                 f"status chrome must expose compact output token {token}")
+    require('"[-]"' not in chrome and '"[I]"' not in chrome,
+            "status chrome speaks words, not bracket codes")
     require("UiStatusContext::SynthA" in chrome and
             "Track::SynthA" in chrome and
             "UiStatusContext::SynthB" in chrome and
@@ -195,7 +197,7 @@ def test_status_chrome_exposes_compact_track_output() -> None:
             "Track::Drums" in chrome,
             "status chrome must map Synth A/B and Drums to their canonical owners")
     require("hasExplicitMode(track)" in chrome and "UiStatusOutput::Legacy" in chrome,
-            "legacy Scenes must show a compact unset marker without a fourth mode")
+            "legacy Scenes keep their own state without a fourth mode")
     require("sceneRevisionSnapshot" in chrome and "UiStatusDirtyStamp" in chrome,
             "cached status chrome must refresh on every output Scene mutation")
     require("uiStatusCanonicalTrackOutput(status)" in chrome,

@@ -4,6 +4,7 @@ SamplerPool::SamplerPool() {
 }
 
 void SamplerPool::trigger(const SamplerVoice::Params& params, ISampleStore& store, int tag) {
+  maybeActive_ = true;
   // Find first inactive voice
   for (auto& voice : voices_) {
     if (!voice.isActive()) {
