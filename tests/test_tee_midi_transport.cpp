@@ -32,6 +32,10 @@ public:
     bool sendNoteOff(uint8_t c, uint8_t n, uint8_t v) override {
         return record(0x80, c, n, v);
     }
+    bool sendPitchBend(uint8_t c, uint16_t value14) override {
+        return record(0xE0, c, static_cast<uint8_t>(value14 & 0x7f),
+                      static_cast<uint8_t>((value14 >> 7) & 0x7f));
+    }
     bool sendControlChange(uint8_t c, uint8_t cc, uint8_t v) override {
         return record(0xB0, c, cc, v);
     }
@@ -114,6 +118,25 @@ void usbBackpressureStillReportsFailure() {
     // this assertion pinned that bug as contract.
     assert(din.sent.empty());
     assert(tee.diagnostics().secondarySkipped == 1);
+}
+
+void pitchBendDebtIsRetriedPerWireAndKeepsLatestCenter() {
+    FakeTransport usb;
+    FakeTransport din(MidiTransportLink::Unverifiable);
+    TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+    usb.accept = false;
+    assert(tee.sendPitchBend(2, 14000));
+    assert(usb.sent.empty() && din.sent.size() == 1u);
+    assert(tee.sendPitchBend(2, 8192));
+    assert(din.sent.size() == 2u);
+
+    usb.accept = true;
+    tee.service();
+    assert(usb.sent.size() == 1u);
+    assert(usb.sent[0].status == 0xE2u);
+    assert(usb.sent[0].d1 == 0u && usb.sent[0].d2 == 64u);
+    assert(din.sent.size() == 2u);
 }
 
 void aSingleUsbRejectLeavesNothingSoundingOnTheSecondary() {
@@ -328,6 +351,7 @@ int main() {
     bothWiresReceiveIdenticalTraffic();
     secondaryRejectionIsCountedNotEscalated();
     usbBackpressureStillReportsFailure();
+    pitchBendDebtIsRetriedPerWireAndKeepsLatestCenter();
     aSingleUsbRejectLeavesNothingSoundingOnTheSecondary();
     smfStyleRetriesDoNotStackDuplicatesOnTheSecondary();
     dinRunsStandaloneWithNoUsbHost();

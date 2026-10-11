@@ -8,6 +8,7 @@ enum class MusicalEventType : uint8_t {
     NoteOn,
     NoteOff,
     AllNotesOff,
+    PitchBend,
 };
 
 enum class MusicalEventSource : uint8_t {
@@ -47,6 +48,7 @@ struct MusicalEvent {
     uint8_t note{0};
     uint8_t velocity{0};
     uint8_t flags{0};
+    uint16_t pitchBend14{8192};
 };
 
 #endif  // GROOVEPUTER_MUSICAL_EVENT_H

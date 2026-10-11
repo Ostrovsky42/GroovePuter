@@ -44,6 +44,12 @@ public:
                              uint8_t note,
                              uint8_t velocity) = 0;
 
+    virtual bool sendPitchBend(uint8_t zeroBasedChannel, uint16_t value14) {
+        (void)zeroBasedChannel;
+        (void)value14;
+        return false;
+    }
+
     // Optional channel-mode surface used only for terminal recovery. CC123
     // lets the SMF player clear a remote synth after backpressure made the
     // exact NoteOff ownership state unrecoverable.

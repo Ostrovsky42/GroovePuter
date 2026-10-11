@@ -108,6 +108,18 @@ def main() -> None:
             "Left/Right must edit the selected value; context switching is Tab/Shift+Tab")
     require("UIInput::navCode(event)" in tool_handler,
             "arrow handling must use the shared nav decoder (scancode or key form)")
+    require("dispatchPerformanceIntent" in tool_handler and
+            "PerformanceGestureEvent" in tool_handler and
+            "PerformanceGestureKind::DelayThrow" in tool_handler and
+            "PerformanceGestureKind::FilterPush" in tool_handler,
+            "standalone CTRL tools must issue semantic transient gesture intents")
+    require('"src/platform/cardputer_usb_host_midi.h"' in page and
+            "CardputerUsbHostMidi::isConnected()" in page and
+            "CardputerUsbHostMidi::packetCount()" in page and
+            "GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE" in page,
+            "IN diagnostics must expose live connection, packet activity, and note traffic")
+    require('"UNBOUND"' in page and "genericMidiCcBinding" in page,
+            "IN diagnostics must distinguish mapped and unknown CC activity")
     for keycap in ("case ';'", "case ','", "case '.'", "case '/'"):
         require(keycap in tool_handler,
                 f"Cardputer arrow keycap character must be swallowed in tools: {keycap}")
@@ -119,21 +131,67 @@ def main() -> None:
             "local tool edits must not directly introduce global panic")
 
     handler = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    require("event.alt" in handler and "dispatchPerformanceIntent" in handler and
+            "PerformanceIntentKind::RecallScene" in handler,
+            "Alt+1..8 must issue the same semantic Scene recall intent")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    shortcut = block(display, "const bool smfPlayerFnNumber", "if ((event.alt || event.meta)")
+    require("page_index_ == WorkflowPages::kPerform" in shortcut and
+            "performPage->handleEvent(event)" in shortcut,
+            "central Alt+1..8 dispatch must give Perform Scene recall precedence")
+    require("serviceBackground()" in display and "hasBackgroundWork()" in display,
+            "queued scenes and morphs must progress while Perform is not the visible page")
+    display_update = block(display, "void MiniAcidDisplay::update()", "void MiniAcidDisplay::draw")
+    require("servicePerformanceGestures(millis())" in display_update,
+            "bounded performance gestures must expire in the shared Cardputer and SDL update path")
+    require("performanceEffectMask()" in page and "setPerformanceEffectMask(snapshot.effectMask)" in page,
+            "Scene snapshots must preserve effect enable bits independently from send amounts")
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    require("queuePerformanceSceneAtTick(target, queuedSceneTick_)" in page and
+            "queuePerformanceSceneMorph(\n                    from, endpoint, queuedSceneTick_" in page and
+            "sceneBank_.cancelMorph();" in page and
+            "sceneBank_.queuedSlot()" in page and
+            "applyPendingPerformanceScene_(currentTick_)" in engine,
+            "PLAY Scene recall/morph must publish bounded commands, expose the morph target, and roll back failed publication")
+    morph_service = block(page, "void PerformPage::serviceQueuedSceneRecall", "void PerformPage::serviceBackground")
+    require("sceneBank_.updateMorph(tick, snapshot)" in morph_service and
+            "setPerformanceControlState(snapshot.controls)" not in morph_service,
+            "UI may track Scene morph progress but must not drive audio parameter interpolation")
+    scene_apply = block(engine, "void MiniAcid::applyPendingPerformanceScene_", "bool MiniAcid::applyPerformanceControlIntent")
+    require("performanceSceneMorphDurationTicks_ - bounded" in scene_apply and
+            "bounded == performanceSceneMorphDurationTicks_" in scene_apply and
+            "performanceSceneMorphToMuteMask_" in scene_apply and
+            "performanceSceneMorphToEffectMask_" in scene_apply,
+            "audio-owned morph must interpolate continuous controls and apply discrete state at completion")
+    morph_queue = block(engine, "bool MiniAcid::queuePerformanceSceneMorph", "void MiniAcid::cancelQueuedPerformanceScene")
+    require("kMaxSceneMorphTicks" in morph_queue and "durationTicks > kMaxSceneMorphTicks" in morph_queue,
+            "public Scene morph commands must be bounded to the supported eight-bar range")
+    require("markCurrentState(capturePerformanceSnapshot())" in page,
+            "manual live changes must update the active Scene dirty marker")
+    require("ROLE | ENTER:" in page,
+            "LEAD mode selection must not trap the user in the LEAD role")
     require("toolsLayerVisible_ && handleToolKey(event)" in handler and
             "GROOVEPUTER_ESCAPE" in handler and "return true;" in handler,
             "local navigation must be consumed before unrelated PERFORM commands")
 
     for command in (
-        "cycleRoot", "cycleScale", "shiftOctave", "adjustVelocity",
-        "cycleChordMode", "cycleChordInversion", "toggleChordSpread",
+        "cycleRoot", "cycleScale", "adjustVelocity",
+        "cycleChordInversion", "toggleChordSpread",
         "toggleVoiceLeading", "captureChordMemory", "clearChordMemory",
-        "toggleArpeggiator", "cycleArpDirection", "cycleArpRate",
-        "cycleArpOctaves", "cycleGate", "toggleLatch",
+        "cycleArpOctaves", "cycleGate",
         "cycleRatchet", "cycleEuclideanLength", "cycleEuclideanPulses",
         "rotateEuclidean", "cycleStrumDirection", "cycleStrum",
     ):
         require(command in page,
                 f"UI edits must call existing PerformanceKeyboard command path: {command}")
+
+    for intent in (
+        "ChangeOctave", "SelectRole", "SelectLeadMode", "SelectChordMode", "ToggleArp",
+        "SelectArpContour", "ChangeArpRate", "ToggleLatch",
+        "SelectArpPitchSource", "SelectHarmonyChangePolicy",
+    ):
+        require(f"PerformanceIntentKind::{intent}" in page,
+                f"Cardputer Smart Play controls must emit semantic {intent} intent")
 
     require("emitAllNotesOff" not in page and "AllNotesOff" not in page,
             "PERFORM UI must not own MIDI cleanup")

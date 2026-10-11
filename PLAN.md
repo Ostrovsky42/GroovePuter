@@ -20,6 +20,8 @@ The central promise is:
 
 > Capture or generate a musical phrase, reshape how it feels in time, derive related material, and develop it into an arrangement.
 
+GroovePuter owns its musical material, performance semantics, and transport. The Cardputer alone must support the complete core workflow; an external MIDI controller may add physical keys, velocity, and gestures, but must never be required for a primary musical function.
+
 The intended path is:
 
 ```text
@@ -584,6 +586,137 @@ Once Phrase capture, extraction, playback, persistence, and safe output are reli
 - [ ] Preserve reliable replay after save/load with the same position, ownership, FEEL, and routing state.
 
 Wave 1 cadence operators are the first thin slice of this direction, not a disposable prototype.
+
+## WAVE 4 — Standalone Performance Layer
+
+The Performance Layer makes GroovePuter playable and controllable in real time while keeping musical state inside GroovePuter. Cardputer keys, external MIDI, and future surfaces are adapters that issue the same semantic intents. This is one product workstream, not a MIDI-keyboard branch or a second roadmap.
+
+The dependency order is:
+
+```text
+PERFORMANCE CORE (CARDPUTER + RAW MIDI)
+        ↓
+  ┌─────┴─────────────┐
+  │                   │
+SMART PLAY     PERFORMANCE CONTROL
+  │                   │
+  │             PERFORMANCE SCENES
+  └──────────┬────────┘
+             ↓
+STANDALONE CARDPUTER ACCEPTANCE
+             ↓
+EXTERNAL MIDI ENHANCEMENT
+             ↓
+PERFORMANCE ↔ DEVELOPMENT
+```
+
+Performance Core discovery and host-only contracts may begin as non-blocking preparation alongside current Harmony and Development work because they do not change the DSP, harmonic owner, or audio path. Runtime integration still follows the canonical delivery order above; this wave must not displace unfinished higher-priority work without an explicit roadmap review.
+
+### 4A — Performance Core
+
+- [x] Add bounded `PerformanceIntent` values for note/hold/release, Smart Play configuration, semantic controls, gestures, and Scene actions. Cardputer key presses/releases and USB/UART MIDI notes use the same note-intent dispatcher; adapters do not expose USB, TinyUSB, MIDI endpoint, or key-matrix details to musical owners.
+- [x] Keep one authoritative `PerformanceKeyboard`; reuse its existing chord, arp, rhythm, and note ownership behavior instead of adding parallel engines.
+- [x] Track input source and session generation through note ownership. Disconnect and recovery release only notes and sustain owned by that source/session; transport, patterns, scenes, and other note owners survive.
+- [x] Preserve `RAW` as the exact-note compatibility and escape mode. Smart interpretation is opt-in.
+- [x] Define fixed-capacity `NotePlan` and read-only harmonic context snapshot types. No heap or sample-loop interpretation.
+- [x] Add host contracts for source identity, raw MIDI dispatch, and bounded note interpretation.
+- [x] Adapt the existing class-compliant MIDI ingress to the Core for RAW NoteOn/Off, velocity, sustain, generic CC and scoped cleanup. This slice did not wait for Performance Scenes.
+
+### 4B — Smart Play
+
+Smart Play depends on the accepted Harmony timeline and chord-tone witness contracts (H0-R1/R2). It consumes the current HarmonicEvent read-only and must not invent a second chord-quality table or modify the harmonic timeline.
+
+- [x] Add bounded `RAW`, `BASS`, `LEAD`, `CHORD`, and `ARP` roles. RAW preserves exact external pitches.
+- [x] Interpret BASS gestures as bounded harmonic functions and LEAD notes through explicit RAW / SCALE / CHORD / VOICE-LEAD modes.
+- [x] Map external BASS input pitch classes to ROOT / THIRD / FIFTH / SEVENTH / APPROACH against the active HarmonicEvent; reject unsupported functions instead of silently turning them into ROOT. Host coverage includes Major7 SEVENTH mapped to the nearest bass-range note. With no harmonic context, keep the absolute-note fallback.
+- [x] Keep the existing chord performer authoritative; no second chord engine was added.
+- [x] Separate Smart Arp pitch sources, contour, pulse timing, and harmony-change behavior (`FOLLOW`, `HOLD`, `RESTART`). Existing transport/local fallback clocks remain authoritative.
+- [x] Use one semantic `ChordQuality → chord-tone intervals` owner for generation materialization and Smart Play.
+- [x] Add bounded nearest-note voice leading. Host tests cover deterministic plans and arp traces.
+- [x] Apply the source P1R phrase's `GenreBehavior::allowChromatic` rule to LEAD chord/voice pools, BASS chord functions, and HARMONY/ROLE arp pools; disallowed pitch classes are filtered or fail closed.
+- [ ] Extend Smart Play's read-only harmonic/genre context to material owners beyond active generated P1R Song rows. The current GenreBehavior does not express a general prohibition on harmonic motion; Smart Play still cannot mutate the HarmonicTimeline.
+
+### 4C — Performance Control
+
+Direct controls remain useful without scenes. Their realtime path is the admission gate for this stream.
+
+- [x] Define semantic control IDs for filter, resonance, level, drive, reverb send, and delay send.
+- [x] Apply parameter changes at the audio-block boundary without `AudioMutationGate` or per-sample semantic work.
+- [x] Add bounded transient CTRL gestures with automatic cleanup: Delay Throw (`G`), Reverb Bloom (`R`), Filter Push (`F`) and Filter Close (`C`). They overlay live controls for 750 ms and never alter captured Scene state or create a Take.
+- [x] Route generic MIDI CC through explicit semantic bindings. Unknown CC, including generic CC1/CC94, remains diagnostic-only; it cannot invoke destructive legacy Mod actions. Pitch-button and pitch-bend compatibility behavior is preserved. Explicit Mod-button binding is deferred.
+- [ ] Keep macro mapping transparent if macros are admitted later; each displayed macro must expose its affected controls and amounts.
+
+### 4D — Performance Scenes
+
+Performance Scenes build on direct controls and remain separate from musical material and the existing persisted `Scene` type. Use an unambiguous type and storage name such as `PerformanceScene`.
+
+- [x] Store eight bounded, CRC-checked performance snapshots (`S1`–`S8`) containing mutes, levels, filter, resonance, FX sends and effect enable states.
+- [x] Exclude Pattern, Take, Working material, harmonic progression, and Song section contents.
+- [x] Support manual control before explicit capture; capture never happens automatically.
+- [x] Add immediate recall in STOP and queued recall at the next bar in PLAY. Track active slot and dirty state without overwriting a stored slot.
+- [x] Add CUT and bounded 1/2/4/8-bar transitions. Continuous values interpolate; mute/effect enable changes apply at transition completion.
+- [x] Keep Scene Morph as performance-state interpolation, separate from musical Development.
+
+### 4E — Standalone Cardputer gate
+
+This is a continuous standalone acceptance gate, not a prerequisite for beginning RAW MIDI keyboard work. The Performance Layer cannot close or claim standalone readiness until one Cardputer completes the full core workflow with no MIDI device connected:
+
+```text
+create and play groove → adjust filter/FX → mute → capture S1/S2
+→ play/stop → recall → morph
+```
+
+Arp input where applicable, Scene capture/recall/morph, STOP behavior, and PLAY bar-boundary behavior must all work without waiting for a controller. Absence of a controller is a normal state and produces no error or empty workflow.
+
+### 4F — Extended MIDI controls and hardware acceptance
+
+The RAW keyboard path is established in Performance Core. After the standalone workflow and Core contracts are green, extend the same ingress and ownership model with optional controls and complete controller hardware acceptance:
+
+- [x] Reuse the current MIDI dispatcher, bounded queues, `InputSource`, session generations, and `PerformanceKeyboard` bridge.
+- [x] Add generic CC input without VID/PID requirements; known generic controls have semantic bindings and unknown CC is visible in diagnostics.
+- [x] On disconnect, clear only that source's held-note and sustain ownership; reconnect starts a fresh generation and cannot accept stale releases.
+- [x] Provide bounded diagnostics for USB host connection state, received packet count, last Note and last known/unknown CC.
+- [x] Preserve the complete unsigned 14-bit value at MIDI Pitch Bend ingress.
+- [x] Resolve pitch-bend behavior explicitly: new configurations use musical 14-bit Pitch Bend; legacy version-1 settings migrate to `NUDGE`, and users can switch between `MUSICAL` and `NUDGE` in MIDI input settings.
+- [x] Route musical Pitch Bend through bounded control queues and existing MIDI output transports; aggregate PERFORM bend by input source/channel and return to center when the owner releases or disconnects. Pitch Bend queue overflow is droppable and never schedules a note panic.
+- [ ] Validate hot disconnect during held notes, arp, sustain, scene transition, and transport playback. No global panic, stuck notes, reboot, or transport reset.
+- [ ] Measure input-to-output latency and MIDI queue/audio deadline behavior under note and CC load.
+
+External MIDI expands physical control and expression; it does not own harmony, arp, scenes, material, or transport.
+
+### 4G — Development bridge
+
+After the Development Grammar has an accepted semantic contract and stable runtime handoff, allow explicit performance commands such as `BUILD`, `STRIP`, `BREAK`, and `RETURN` to request a legal operation at a permitted musical boundary. These are requests to Development, not immediate mute/filter shortcuts. Development context may inform Smart Play read-only; Smart Play does not mutate Development state.
+
+### Performance Layer deferred extensions
+
+Keep these outside the critical path until the core and standalone acceptance pass:
+
+- MIDI Learn and broad controller profiles;
+- SPACE / TENSION / ENERGY macros;
+- aftertouch and MPE;
+- BLE MIDI;
+- automatic scene generation;
+- recording Smart Performance back into Take / Working material;
+- AI inference, phrase transcription, and automatic accompaniment.
+
+### Wave 4 implementation status
+
+The implementation resides on branch `feature/performance-layer` in the isolated worktree `/home/gg/.codex/worktrees/7c5b/miniacid`; the main checkout is unchanged. The external BASS mapper now derives ROOT / THIRD / FIFTH / SEVENTH / APPROACH from the current chord-quality owner, rejects unsupported pitch classes, and retains absolute-note behavior when no harmonic snapshot exists. Full `tests/run_host_tests.sh` passed with exit 0 on the current tree (after the CC80/81 and config-persistence changes below). Cardputer ADV firmware build (`scripts/build.sh --warnings all`) passed on the same tree and reports 1,492,642 bytes flash and 191,004 bytes static RAM. The SDL rebuild was last run before the CC80/81 and persistence changes and has not been repeated since. These builds still print existing warnings from unrelated project/Arduino sources.
+
+CC80 turns ARP on (value 64-127) or off (0-63) and CC81 does the same for LATCH on the PERFORM MIDI input; both are absolute intents through `PerformanceKeyboard::dispatchIntent`. Saving no longer belongs to a page: `PerformanceKeyboard::configChanged()` compares the exported record with the last saved or applied one, and `GroovePuterPlatform::servicePerformanceConfigSave` (`src/platform/cardputer_performance_config_owner.cpp`) saves it from the loop after a 700 ms quiet window, so page edits and MIDI switches persist the same way. The saved record is restored at boot, before any input, so an early CC cannot save defaults over it. CC80/81 stay droppable with the other control events; the hardware flood test decides whether their latest values need separate coalescing.
+
+Still open for Wave 4 (not done, and not verifiable without the device or a settled contract): standalone Cardputer acceptance (4E), MIDI hardware acceptance including flood, NoteOn latency and audio deadline load (4F), widening Smart Play harmonic context to other material types (4B), and the Development Bridge, which waits for an accepted Development Grammar contract (4G). Scene recall is queued through a bounded atomic command and applied by the transport owner at its tick boundary; morph endpoints use the same path. Cardputer, USB MIDI, and UART MIDI use the shared semantic input boundary for notes/controls; Smart role, lead mode, and arp configuration intents are dispatched by the single authoritative `PerformanceKeyboard`.
+
+The performance contracts have compile-time size limits: input identity 8 bytes, intent at most 24, keyboard configuration 18, harmonic context at most 24, NotePlan at most 16, control state 7, gesture overlay at most 32, scene snapshot at most 16, and scene bank at most 144. Host ABI measurements are 4,736 bytes for `PerformanceKeyboard`, 16 for `PerformanceContext`, 10 for `NotePlan`, 12 for one `PerformanceSceneSnapshot`, and 136 for the eight-slot `PerformanceSceneBank`. One scene bank is owned by `PerformPage`, and one gesture overlay by `MiniAcid`; scene persistence is a fixed 84-byte CRC-checked record. Performance intents are stack/value events, not a persistent unbounded queue.
+
+The normal `DISPLAY=:1` session initially produced MiniAcid windows in `Iconic` / `UnMapped` state; X11 activation failed with `BadMatch`. A separate `Xephyr :2` session provided a visible, interactive SDL window. Performance-specific standalone SDL smoke passed without a MIDI device: Cardputer-key note-on/off state was visible; the IN page reported MIDI OFF / USB OFFLINE / RX:0 and showed RAW→BASS→LEAD plus LEAD RAW/SCALE modes; CTRL Filter changed 96→98; Delay Throw displayed and cleared after its bounded duration; S1 and S2 captured distinct values (98 and 102), dirty state displayed as `S1*`, STOP recall restored each value immediately, and PLAY recall showed `QUEUED: NEXT BAR` before the active scene changed at the next bar. The transition endpoint was observed; an intermediate morph value was not captured. Test role and Lead mode were restored to RAW. SDL used dummy audio, so acoustic output was not evaluated. The broader project SDL smoke for Pattern/Phrase causality and generation was not run. Evidence screenshots and environment details are in `/tmp/gp-performance-sdl-evidence/`; the current candidate SHA and both display attempts are recorded in `capture.log`. The 2026-10-11 hardware probe found no Cardputer serial endpoint, no ALSA MIDI port, and no class-compliant USB MIDI Streaming interface on the attached keyboard (Audio/HID only). Physical standalone acceptance, hot disconnect/reconnect, controller flood, and measured input-to-output latency remain open.
+
+Role, lead mode, chord mode, and Smart Arp configuration persist separately from the eight Performance Scenes. Smart Play receives a read-only runtime harmonic snapshot for generated P1R phrases in active Song rows; general HarmonicTimeline coverage for other material and genre admissibility remain open. BASS APPROACH resolves to the closest lower pitch in the active scale. MIDI Pitch Bend routes the full 14-bit value as musical control by default; version-1 input settings migrate to explicit legacy `NUDGE` mode. Reconfiguration, channel panic, disconnect, stale generations, and bounded-queue pressure have host coverage; NoteOn and continuous expression/control traffic cannot consume the NoteOff reserve, and expression overflow does not trigger note recovery.
+
+The Development bridge remains open. Repository evidence confirms that the normative D0-B semantic contract is still OPEN/RED (`docs/0.9.14/D0_B_NORMATIVE_SEMANTIC_CONTRACT.md`, `docs/0.9.14/D0_C_SEMANTIC_ADAPTER_MAPPING.md`) and no general Development command/coordinator owner exists. D0-C passes its adapter runtime/source tests. The D0-B test-local factorization passes, while the current legacy classifier still returns RED for B8 (EXTEND capability unavailable is collapsed into genre failure) and B9 (broken contour promise is collapsed into genre failure); the D0-B runner also enforces a source firewall against its frozen base, so it exits before those tests on this feature worktree's intentional source changes. A specialized P0 generated-P1R engine action exists: the MATERIAL page `D` gesture requests a DEVELOP+BREAK cycle, or BREAK-only when DEVELOP would repeat the source, from an eligible, unedited P3 phrase. It is not a general BUILD/STRIP/BREAK/RETURN command owner, so Performance commands must not be mapped to it as if it were the full grammar. The generic `growMaterial(..., GrowthMode::Develop, ...)` path still returns a deferred result; P0's device acceptance is separately open in `docs/0.9.14/P0_MUSICAL_PLAY_SPEC.md` §13. The bridge requires an accepted command-to-grammar owner and a stable transport-boundary handoff.
+
+The Performance Layer is complete for its first product release when the standalone Cardputer gate passes, Smart Play and direct controls use their authoritative existing owners, scene recall/morph is deterministic, and optional external MIDI can be connected and removed without losing GroovePuter-owned state.
 
 ## Existing capabilities that must not be reclassified as deferred
 

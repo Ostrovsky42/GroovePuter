@@ -19,7 +19,8 @@ enum class InputKind : uint8_t {
     AllNotesOff,
     AllSoundOff,
     Mod,        // CC1 (mod button / wheel); value = the controller value
-    PitchBend,  // value = the coarse (MSB) byte; only used for the PERFORM nudge buttons
+    PitchBend,  // 14-bit value is preserved in MidiInputEvent::pitchBend14
+    ControlChange, // raw CC for explicitly configured semantic performance bindings
 };
 
 enum class ResetReason : uint8_t {
@@ -41,6 +42,7 @@ struct InputKey {
     uint32_t generation{0};
     uint8_t channel{0};
     uint8_t key{0};
+    uint8_t cable{0};
 };
 
 struct MidiInputEvent {
@@ -48,6 +50,8 @@ struct MidiInputEvent {
     InputKind kind{InputKind::NoteOff};
     uint8_t velocity{0};
     uint32_t atMicros{0};
+    uint8_t controller{0};
+    uint16_t pitchBend14{8192}; // MIDI 1.0 unsigned 14-bit value; 8192 is centre
 };
 
 }  // namespace GroovePuterMidi

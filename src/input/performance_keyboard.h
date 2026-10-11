@@ -2,11 +2,38 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "musical_event_router.h"
 #include "performance_chord_detector.h"
+#include "performance_intent.h"
 #include "performance_instrument_types.h"
 #include "performance_pulse.h"
+#include "performance_smart_play.h"
+
+struct PerformanceKeyboardConfig {
+    uint8_t role{0};
+    uint8_t leadMode{0};
+    uint8_t arpPitchSource{0};
+    uint8_t harmonyChangePolicy{0};
+    uint8_t arpDirection{0};
+    uint8_t arpRate{0};
+    uint8_t arpOctaves{1};
+    uint8_t gatePercent{70};
+    uint8_t chordMode{0};
+    uint8_t chordInversion{0};
+    uint8_t chordSpread{0};
+    uint8_t voiceLeading{0};
+    uint8_t rootPitchClass{0};
+    uint8_t scale{0};
+    uint8_t velocity{100};
+    int8_t octaveShift{0};
+    uint8_t arpEnabled{0};
+    uint8_t latchEnabled{0};
+};
+static_assert(std::is_trivially_copyable<PerformanceKeyboardConfig>::value &&
+              sizeof(PerformanceKeyboardConfig) == 18,
+              "keyboard config is a bounded 18-byte preference record");
 
 class PerformanceKeyboard {
 public:
@@ -31,6 +58,8 @@ public:
         : router_(router) {
         pendingClocked_ = activeClocked_;
         mutationRng_.reset(activeClocked_.mutation.seed);
+        syncPerformanceScaleContext();
+        persistedConfig_ = exportConfiguration();
     }
 
     bool keyDown(char physicalKey, uint8_t velocity = 0);
@@ -41,9 +70,48 @@ public:
     // Velocity: the key dynamics scaled by the PERFORM velocity setting (setting / 100), clamped 1..127.
     bool externalNoteOn(uint8_t note, uint8_t velocity);
     bool externalNoteOff(uint8_t note);
+    bool externalNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    bool externalNoteOff(uint8_t note, PerformanceInputIdentity input);
+    bool externalPitchBend(uint16_t value14, PerformanceInputIdentity input);
+    // Adapter-neutral semantic entrypoint shared by external MIDI and future inputs.
+    bool dispatchIntent(const PerformanceIntent& intent);
+    // Strict MIDI passthrough entry point. It preserves all 7-bit pitches and bypasses scale,
+    // chord, arp and voice-leading transforms while still using bounded source ownership.
+    bool externalRawNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    bool externalRawNoteOff(uint8_t note, PerformanceInputIdentity input);
+    void externalAllSoundOff(PerformanceInputIdentity input);
+    bool setPerformanceRole(GroovePuterPerformance::PerformanceRole role);
+    bool cyclePerformanceRole(int direction);
+    GroovePuterPerformance::PerformanceRole performanceRole() const { return performanceRole_; }
+    const char* performanceRoleName() const;
+    bool setLeadMode(GroovePuterPerformance::LeadMode mode);
+    bool cycleLeadMode(int direction);
+    GroovePuterPerformance::LeadMode leadMode() const { return leadMode_; }
+    const char* leadModeName() const;
+    void setPerformanceContext(const GroovePuterPerformance::PerformanceContext& context);
+    void clearPerformanceHarmonyContext();
+    PerformanceKeyboardConfig exportConfiguration() const;
+    bool applyConfiguration(const PerformanceKeyboardConfig& config);
+    // Persistence contract: the saved record is the last exported or applied one. Any change to it,
+    // from the PERFORM page, MIDI CC or a future input, reads as changed until markConfigPersisted().
+    bool configChanged() const;
+    void markConfigPersisted();
+    bool setArpPitchSource(GroovePuterPerformance::ArpPitchSource source);
+    GroovePuterPerformance::ArpPitchSource arpPitchSource() const { return arpPitchSource_; }
+    const char* arpPitchSourceName() const;
+    bool cycleArpPitchSource(int direction);
+    bool setHarmonyChangePolicy(GroovePuterPerformance::HarmonyChangePolicy policy);
+    GroovePuterPerformance::HarmonyChangePolicy harmonyChangePolicy() const { return harmonyChangePolicy_; }
+    const char* harmonyChangePolicyName() const;
+    bool cycleHarmonyChangePolicy(int direction);
+    std::size_t collectArpeggioPool(uint8_t* notes, uint8_t* velocities, std::size_t capacity) const {
+        return buildArpPool(notes, velocities, capacity);
+    }
     void releaseAllExternalNotes();
+    void releaseAllExternalPitchBends();
     // External sustain button: LATCH while held, the previous LATCH state is restored on release.
     void externalSustain(bool down);
+    void externalSustain(bool down, PerformanceInputIdentity input);
     bool externalSustainDown() const { return externalSustainDown_; }
     std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
@@ -114,6 +182,7 @@ public:
     void toggleArpeggiator() { setArpeggiatorEnabled(!arpeggiatorEnabled()); }
     bool arpeggiatorEnabled() const { return pendingClocked_.arpEnabled; }
     void cycleArpDirection(int direction = 1);
+    bool setArpDirection(PerformanceArpDirection direction);
     PerformanceArpDirection arpDirection() const { return pendingClocked_.arpDirection; }
     const char* arpDirectionName() const;
     void setArpRate(PerformanceRate rate);
@@ -179,6 +248,49 @@ public:
     PerformanceRate activeRate() const { return activeClocked_.rate; }
 
 private:
+    bool keyDownLocal_(char physicalKey, uint8_t velocity);
+    bool keyUpLocal_(char physicalKey);
+    struct ExternalNoteOwner {
+        bool active{false};
+        PerformanceInputIdentity input{};
+        uint8_t inputNote{0};
+        uint8_t semanticNote{0};
+        uint8_t semanticChannel{0};
+        bool raw{false};
+        bool sustainedReleasePending{false};
+    };
+    struct ExternalSustainOwner {
+        bool active{false};
+        uint32_t generation{0};
+        uint8_t source{0};
+        uint8_t channel{0};
+        uint8_t cable{0};
+    };
+    struct ExternalPitchBendOwner {
+        bool active{false};
+        uint16_t value14{8192};
+        uint32_t sequence{0};
+        PerformanceInputIdentity input{};
+    };
+
+    static constexpr std::size_t kMaxExternalNoteOwners = 32;
+    bool externalNoteOnUntracked(uint8_t note, uint8_t velocity);
+    bool externalNoteOffUntracked(uint8_t note);
+    bool externalLegacyNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    bool externalNoteOnIntent_(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    bool externalNoteOffIntent_(uint8_t note, PerformanceInputIdentity input);
+    int findExternalOwner(PerformanceInputIdentity input) const;
+    int findExternalOwnerForSemantic(uint8_t note, uint8_t channel) const;
+    bool hasExternalRawOwner(uint8_t note, uint8_t channel) const;
+    bool hasLocalDirectOwner(uint8_t note, uint8_t channel) const;
+    bool hasExternalSustain(PerformanceInputIdentity input) const;
+    uint16_t effectiveExternalPitchBend() const;
+    void updateExternalSustainAggregate(bool down);
+    GroovePuterPerformance::PerformanceContext noteInterpretationContext() const;
+    void rememberPerformedNote(uint8_t note);
+    void removeExternalOwner(std::size_t index);
+    bool externalDirectNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    void syncPerformanceScaleContext();
     static constexpr std::size_t kMaxGeneratedNotes = kMaxPolyChordNotes;
     static constexpr std::size_t kMaxChordMemoryNotes = 8;
     static constexpr std::size_t kMaxLatchedNotes = kMaxHeldNotes;
@@ -201,6 +313,7 @@ private:
         HeldPitch note{};
         uint8_t velocity{0};
         uint8_t channel{0};
+        bool performanceDirect{false};
     };
     struct LatchedNote { uint8_t note{0}; uint8_t velocity{0}; };
     struct ScheduledEvent {
@@ -314,6 +427,25 @@ private:
     MusicalEventRouter& router_;
     HeldNote held_[kMaxHeldNotes]{};
     std::size_t heldCount_{0};
+    ExternalNoteOwner externalOwners_[kMaxExternalNoteOwners]{};
+    PerformanceKeyboardConfig persistedConfig_{};
+    static constexpr std::size_t kMaxExternalSustainOwners = 48;
+    ExternalSustainOwner externalSustainOwners_[kMaxExternalSustainOwners]{};
+    static constexpr std::size_t kMaxExternalPitchBendOwners = 48;
+    ExternalPitchBendOwner externalPitchBendOwners_[kMaxExternalPitchBendOwners]{};
+    uint32_t externalPitchBendSequence_{0};
+    GroovePuterPerformance::PerformanceRole performanceRole_{GroovePuterPerformance::PerformanceRole::Raw};
+    bool performanceRoleSelected_{false};
+    GroovePuterPerformance::LeadMode leadMode_{GroovePuterPerformance::LeadMode::Raw};
+    GroovePuterPerformance::PerformanceContext performanceContext_{};
+    uint8_t previousPerformedNote_{60};
+    bool hasPreviousPerformedNote_{false};
+    GroovePuterPerformance::PerformanceContext heldArpContext_{};
+    GroovePuterPerformance::ArpPitchSource arpPitchSource_{GroovePuterPerformance::ArpPitchSource::Held};
+    GroovePuterPerformance::HarmonyChangePolicy harmonyChangePolicy_{GroovePuterPerformance::HarmonyChangePolicy::Follow};
+    bool arpHoldActive_{false};
+    bool arpRestartPending_{false};
+    uint8_t arpHoldPulsesRemaining_{0};
     bool externalSustainDown_{false};
     bool latchBeforeExternalSustain_{false};
     PerformanceScale scale_{PerformanceScale::NaturalMinor};

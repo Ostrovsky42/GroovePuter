@@ -118,6 +118,35 @@ void testApproximateSize() {
 }  // namespace
 
 int main() {
+    {
+        MidiControlEventQueue queue;
+        fillQueue(queue, MusicalEventTarget::SynthA);
+        const MusicalEvent bend{MusicalEventType::PitchBend,
+            MusicalEventSource::MidiInput, MusicalEventTarget::SynthA, 0, 0, 0, 0, 14000};
+        assert(!queue.tryPush(bend));
+        assert(queue.droppedCriticalCount() == 0);
+        assert(queue.droppedPitchBendCount() == 1);
+        assert(queue.takePendingAllNotesOffMask() == 0);
+
+        MidiControlEventQueue coalesced;
+        fillQueue(coalesced, MusicalEventTarget::SynthA);
+        MusicalEvent drained{};
+        MusicalEvent latest = bend;
+        latest.pitchBend14 = 15000;
+        assert(!coalesced.tryPush(latest));
+        latest.pitchBend14 = 8192;
+        assert(!coalesced.tryPush(latest));
+        for (std::size_t i = 0; i < MidiControlEventQueue::kCapacity; ++i) {
+            assert(coalesced.tryPop(drained));
+            assert(drained.type == MusicalEventType::NoteOn);
+        }
+        assert(coalesced.tryPop(drained));
+        assert(drained.type == MusicalEventType::PitchBend);
+        assert(drained.source == MusicalEventSource::MidiInput);
+        assert(drained.target == MusicalEventTarget::SynthA && drained.channel == 0);
+        assert(drained.pitchBend14 == 8192u);
+        assert(!coalesced.tryPop(drained));
+    }
     testFifo();
     testNoteOnOverflowDoesNotPanic();
     testCriticalOverflowRequestsSynthBPanic();

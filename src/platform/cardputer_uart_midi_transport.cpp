@@ -92,6 +92,19 @@ bool CardputerUartMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
     return deferNoteOff(clampChannel(zeroBasedChannel), clampDataByte(note));
 }
 
+bool CardputerUartMidiTransport::sendPitchBend(uint8_t zeroBasedChannel,
+                                               uint16_t value14) {
+    if (value14 > 16383u) value14 = 16383u;
+    const uint8_t channel = clampChannel(zeroBasedChannel);
+    if (queueChannelMessage(0xE0u, channel,
+                            static_cast<uint8_t>(value14 & 0x7fu),
+                            static_cast<uint8_t>((value14 >> 7u) & 0x7fu),
+                            UartMidiPriority::Musical)) return true;
+    pendingPitchBends_[channel] = value14;
+    pendingPitchBendMask_ |= static_cast<uint16_t>(1u << channel);
+    return true;  // Transport accepts ownership and retries the latest state.
+}
+
 bool CardputerUartMidiTransport::deferNoteOff(uint8_t channel, uint8_t note) {
     if (!begun_) return false;
     // Taking responsibility for delivery is success from the caller's point of
@@ -150,6 +163,19 @@ void CardputerUartMidiTransport::retryChannelPanics() {
     }
 }
 
+void CardputerUartMidiTransport::retryPendingPitchBends() {
+    for (uint8_t channel = 0; channel < 16; ++channel) {
+        const uint16_t mask = static_cast<uint16_t>(1u << channel);
+        if ((pendingPitchBendMask_ & mask) == 0u) continue;
+        const uint16_t value = pendingPitchBends_[channel];
+        if (!queueChannelMessage(0xE0u, channel,
+                                 static_cast<uint8_t>(value & 0x7fu),
+                                 static_cast<uint8_t>((value >> 7u) & 0x7fu),
+                                 UartMidiPriority::Musical)) continue;
+        pendingPitchBendMask_ &= static_cast<uint16_t>(~mask);
+    }
+}
+
 bool CardputerUartMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
                                                    uint8_t controller,
                                                    uint8_t value) {
@@ -194,6 +220,7 @@ void CardputerUartMidiTransport::service() {
     // deferring it indefinitely.
     retryDeferredNoteOffs();
     retryChannelPanics();
+    retryPendingPitchBends();
     if (core_.empty()) return;
 #if defined(ARDUINO_M5STACK_CARDPUTER)
     core_.drain(

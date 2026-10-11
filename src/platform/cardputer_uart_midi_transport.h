@@ -48,6 +48,7 @@ public:
     bool sendNoteOff(uint8_t zeroBasedChannel,
                      uint8_t note,
                      uint8_t velocity) override;
+    bool sendPitchBend(uint8_t zeroBasedChannel, uint16_t value14) override;
     bool sendControlChange(uint8_t zeroBasedChannel,
                            uint8_t controller,
                            uint8_t value) override;
@@ -87,6 +88,7 @@ private:
     bool deferNoteOff(uint8_t channel, uint8_t note);
     void retryDeferredNoteOffs();
     void retryChannelPanics();
+    void retryPendingPitchBends();
 
     // A DIN wire carries about 1040 three-byte messages per second, well below
     // what dense pattern and SMF material emits, so the queue does saturate.
@@ -111,6 +113,8 @@ private:
     // longer recoverable, so the channel gets the same terminal all-notes-off
     // treatment the SMF cleanup path already uses.
     uint16_t panicChannels_{0};
+    uint16_t pendingPitchBendMask_{0};
+    uint16_t pendingPitchBends_[16]{};
     bool begun_{false};
 };
 
