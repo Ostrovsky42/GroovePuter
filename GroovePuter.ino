@@ -35,6 +35,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/ui/led_manager.h"
 #include "src/audio/audio_diagnostics.h"
 #include "src/audio/audio_mutation_gate.h"
+#include "src/audio/audio_block_load.h"
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_midi_settings_session.h"
@@ -70,6 +71,9 @@ static uint32_t g_audioMidiBlockSequence = 0;
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 static AudioMutationGate g_audioMutationGate;
+static AudioBlockLoad g_audioBlockLoad;
+static constexpr uint32_t kAudioBlockBudgetUs =
+    static_cast<uint32_t>((1000000ULL * kBlockFrames) / kSampleRate);
 static uint32_t g_lastUiDrawUs = 0;
 static uint32_t g_peakUiDrawUs = 0;
 
@@ -210,6 +214,9 @@ void audioTask(void *param) {
     }
     
     uint32_t dsp_time = micros() - start;
+    if (warmupBlocks == 0 && g_miniAcid) {
+      g_audioBlockLoad.record(dsp_time, kAudioBlockBudgetUs);
+    }
     
     // Publish one coherent cross-core telemetry snapshot.
     if (g_miniAcid) {
@@ -1172,6 +1179,26 @@ void loop() {
            (unsigned)g_lastUiDrawUs, (unsigned)g_peakUiDrawUs,
            (unsigned)freeInt, (unsigned)largestInt,
            (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       const auto block = g_audioBlockLoad.take();
+       Serial.printf("[AUDIO-BLOCK] drums=%s synthA=%s synthB=%s playing=%d n=%u avg=%u max=%u budget=%u over=%u run=%u us\n",
+           g_miniAcid->currentDrumEngineName().c_str(),
+           g_miniAcid->currentSynthEngineName(0).c_str(),
+           g_miniAcid->currentSynthEngineName(1).c_str(),
+           g_miniAcid->isPlaying() ? 1 : 0,
+           (unsigned)block.blocks, (unsigned)block.avgUs(),
+           (unsigned)block.maxUs, (unsigned)kAudioBlockBudgetUs,
+           (unsigned)block.overBudget, (unsigned)block.longestRun);
+       const auto sections = g_miniAcid->takeRenderProfile();
+       char sectionLine[320];
+       int used = snprintf(sectionLine, sizeof(sectionLine),
+                           "[AUDIO-SECT] n=%u avg/max us", (unsigned)sections.blocks);
+       for (uint8_t i = 0; i < RenderProfile::Count && used > 0 &&
+                           used < static_cast<int>(sizeof(sectionLine)); ++i) {
+         used += snprintf(sectionLine + used, sizeof(sectionLine) - used,
+                          " %s=%u/%u", RenderProfile::sectionName(i),
+                          (unsigned)sections.avgUs[i], (unsigned)sections.maxUs[i]);
+       }
+       Serial.println(sectionLine);
        g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }

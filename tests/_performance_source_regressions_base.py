@@ -153,8 +153,8 @@ def test_note_mode_is_explicit_and_runtime_only() -> None:
 
 def test_live_synth_render_is_not_transport_gated() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
-    start = engine.index("uint32_t tV0 = 0;")
-    end = engine.index("uint32_t tD0 = 0;", start)
+    start = engine.index("const uint32_t tV0 = RenderProfile::cycles();")
+    end = engine.index("const uint32_t tD0 = RenderProfile::cycles();", start)
     voice_block = engine[start:end]
 
     require("if (playing)" not in voice_block,
@@ -162,7 +162,7 @@ def test_live_synth_render_is_not_transport_gated() -> None:
     require("synthVoices_[0]->process()" in voice_block,
             "Synth A must be rendered in the live-audio path")
 
-    drum_end = engine.index("if (detailedProfile) tDrumsTotal", end)
+    drum_end = engine.index("tDrumsTotal += RenderProfile::cycles() - tD0;", end)
     drum_block = engine[end:drum_end]
     require("if (playing)" in drum_block,
             "drums must remain transport-gated")

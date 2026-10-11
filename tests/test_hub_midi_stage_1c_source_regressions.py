@@ -173,7 +173,9 @@ def main() -> None:
     require(
         "kActivityRamp[8]" in page
         and "kMutedActivityRamp[8]" in page
-        and page.count("kAccent") == 3,
+        and "return isMuted ? kMutedActivityRamp[index] : kActivityRamp[index];" in page
+        and "gfx.setTextColor(isSelected ? kAccent : (isMuted ? kMutedText : kBodyText));" in page
+        and "gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);" in page,
         "the grid must use one density hue ramp and reserve the accent for selection/playhead",
     )
     require(

@@ -19,6 +19,7 @@
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
+#include "smf_grab_panel_state.h"
 
 #ifdef USE_RETRO_THEME
 using namespace RetroTheme;
@@ -101,15 +102,12 @@ public:
 
 private:
     bool midiOverview_{false};
-    // GRAB (Y twice within kGrabConfirmMs): the armed request, then the
-    // pending one the player task is reading; tick() takes the result.
-    static constexpr uint32_t kGrabConfirmMs = 4000;
-    bool midiGrabArmed_{false};
-    uint32_t midiGrabArmedMs_{0};
+    // GRAB panel selection; the player task owns the file read after Enter.
+    bool midiGrabPanel_{false};
+    GroovePuterMidi::SmfGrabPanelState midiGrabSelection_{};
+    uint32_t midiGrabGeneration_{0};
     uint16_t midiGrabTrack_{0};
     uint16_t midiGrabChannels_{0};
-    uint32_t midiGrabStartBar_{0};
-    uint32_t midiGrabEndBar_{0};
     int8_t midiGrabVoice_{0};
     bool midiGrabPending_{false};
     bool midiReturnToPlayer_{false};
@@ -122,7 +120,9 @@ private:
     uint32_t midiGeneration_{0};
 
     void drawMidiOverview(IGfx& gfx);
+    void drawMidiGrabPanel(IGfx& gfx);
     bool handleMidiOverviewEvent(UIEvent& event);
+    bool handleMidiGrabPanelEvent(UIEvent& event);
     bool toggleMidiLayer(uint8_t layerIndex);
     void syncMidiScroll(uint8_t layerCount);
     void syncMidiSessionSelection();
