@@ -23,6 +23,9 @@ def main() -> None:
             "Cardputer input must not depend on key-count-only isChange()")
     require("Keyboard.isPressed()" not in sketch,
             "input edges must be derived from complete snapshots")
+    require(sketch.index("g_display.setRotation(1);") <
+            sketch.index("g_audioOut.begin(kSampleRate, kBlockFrames)"),
+            "Cardputer must reserve the large display frame before I2S/DMA fragments internal RAM")
     require("processKeys(lastKeysState)" not in sketch,
             "repeat must never replay a complete stale KeysState")
     require("processKeyEdges" in sketch and "previousKeysState" in sketch,

@@ -327,6 +327,14 @@ void setup() {
   
   Serial.println("[Audio] ES8311 custom I2C Config complete (MCLK derived from BCLK)");
 
+  // Reserve the Cardputer RGB565 frame while internal RAM still has its
+  // largest contiguous block. The I2S buffer and DMA descriptors are smaller
+  // allocations and can be placed after this 240x135 (64.8 KB) frame.
+  logHeapCaps("before-display-frame");
+  markBootStage(29, "before display frame allocation");
+  g_display.setRotation(1);
+  markBootStage(30, "after display frame allocation");
+
   // Reserve the I2S channel and DMA while internal RAM is still contiguous.
   // Starting the audio task later keeps setup and driver initialization
   // serialized on one task.
@@ -348,10 +356,9 @@ void setup() {
 
   Serial.println("Creating Display...");
   logHeapCaps("before-display");
-  markBootStage(30, "before display.begin");
-  g_display.setRotation(1);
+  markBootStage(31, "before display.begin");
   g_display.begin();
-  markBootStage(31, "after display.begin");
+  markBootStage(32, "after display.begin");
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
