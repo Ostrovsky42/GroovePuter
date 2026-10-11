@@ -33,6 +33,7 @@ enum class GrowthMode : uint8_t;
 #include "mono_synth_voice.h"
 #include "clamped_live_note_identity.h"
 #include "mini_tb303.h"
+#include "drum_bus_lofi.h"
 #include "swappable_synth_voice.h"
 #include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
@@ -1120,6 +1121,9 @@ private:
   uint16_t fxSafetyHold_ = 0;
   uint32_t lastUnderrunCount_ = 0;
   uint32_t perfDetailCounter_ = 0;
+  DrumBusLoFi drumBusLoFi_;
+
+  void refreshDrumBusLoFi_();
 
   bool waitingForRehearsal_ = false;
   bool rehearsalAcknowledged_ = false;

@@ -2643,6 +2643,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       dcBlockPrev_ = drumsMix;
       drumsMix = dcBlockOut_;
 
+      drumsMix = drumBusLoFi_.process(drumsMix);
+
       // Drum Bus Processing
       drumsMix = drumTransientShaper.process(drumsMix);
       drumsMix = drumCompressor.process(drumsMix);
@@ -2937,10 +2939,19 @@ void MiniAcid::syncModeToVoices() {
     }
   }
   
-  if (drums) {
-    drums->setLoFiMode(cfg.dsp.lofiDrums);
-    drums->setLoFiAmount(0.4f);
-  }
+  refreshDrumBusLoFi_();
+}
+
+void MiniAcid::refreshDrumBusLoFi_() {
+  const FeelSettings& feel = sceneManager_.currentScene().feel;
+  const bool genreLoFi = modeManager_.config().dsp.lofiDrums;
+  const bool enabled = genreLoFi || feel.lofiEnabled;
+  const float amount = feel.lofiEnabled
+      ? static_cast<float>(feel.lofiAmount) / 100.0f : 0.4f;
+  drumBusLoFi_.configure(enabled, amount);
+  // Individual drum voice LoFi paths are incomplete and have a separate,
+  // disabled internal gate. The bus is the single owner of this effect.
+  if (drums) drums->setLoFiMode(false);
 }
 
 GrooveboxMode MiniAcid::grooveboxMode() const {
@@ -3369,10 +3380,7 @@ void MiniAcid::applyTextureFromScene_() {
   const float lofiAmt = f.lofiEnabled ? (static_cast<float>(f.lofiAmount) / 100.0f) : 0.0f;
   if (synthVoices_[0]) synthVoices_[0]->setLoFiAmount(lofiAmt);
   if (synthVoices_[1]) synthVoices_[1]->setLoFiAmount(lofiAmt);
-  if (drums) {
-    drums->setLoFiMode(f.lofiEnabled);
-    drums->setLoFiAmount(lofiAmt);
-  }
+  refreshDrumBusLoFi_();
 
   // --- Drive ---
   const float driveAmtNorm = f.driveEnabled ? (static_cast<float>(f.driveAmount) / 100.0f) : 0.0f;

@@ -47,6 +47,12 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_genre_defaults"
 
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_drum_bus_lofi.cpp" \
+  -o "${BUILD_DIR}/test_drum_bus_lofi"
+"${BUILD_DIR}/test_drum_bus_lofi"
+
 
 "${CXX}" \
   -std=c++17 \
