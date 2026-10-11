@@ -121,7 +121,13 @@ int main(int argc, char** argv) {
     for (const EnergyCurve::Preset preset : presets) {
       scene.songs[slot] = sourceSong;
       EnergyCurve::Curve curve = EnergyCurve::presetCurve(preset);
-      for (uint8_t i = 0; i < curve.count; ++i) curve.sections[i].bars = 8;
+      static constexpr uint8_t kRaveBars[] = {8, 8, 8, 8, 8};
+      static constexpr uint8_t kSynthwaveBars[] = {8, 4, 4, 4, 8};
+      static constexpr uint8_t kLoFiBars[] = {4, 4, 4, 4, 4};
+      const uint8_t* sectionBars = genre.mode == 4 ? kRaveBars
+                                  : genre.mode == 1 ? kSynthwaveBars
+                                                    : kLoFiBars;
+      for (uint8_t i = 0; i < curve.count; ++i) curve.sections[i].bars = sectionBars[i];
       const EnergyCurve::Status status = EnergyCurve::apply(
           scene.songs[slot], curve, sourceFirst, sourceCount, sourceEnd);
       if (status != EnergyCurve::Status::Ok) {
