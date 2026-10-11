@@ -142,7 +142,7 @@ struct ModeConfig {
     
     // DSP parameters
     struct {
-        bool lofiDrums;       // bitcrush + vinyl
+        bool lofiDrums;       // drum bus bit reduction + sample hold
         bool subOscillator;   // add sub
         float noiseAmount;    // 0-1 (built-in noise)
     } dsp;
