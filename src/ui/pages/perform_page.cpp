@@ -682,7 +682,7 @@ const char* PerformPage::selectedRowHint() const {
             }
 
         case PerformanceToolContext::Control:
-            return "</> ADJUST | G THROW R BLOOM F PUSH C CLOSE";
+            return "</> ADJUST | ALT+G THROW ALT+R BLOOM ALT+F PUSH ALT+C CLOSE";
 
         case PerformanceToolContext::Scene:
             switch (row) {
@@ -736,7 +736,8 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             break;
     }
 
-    if (selectedContext_ == PerformanceToolContext::Control) {
+    if (selectedContext_ == PerformanceToolContext::Control &&
+        event.alt && !event.ctrl && !event.meta) {
         using GroovePuterPerformance::PerformanceGestureKind;
         const char key = event.key >= 'A' && event.key <= 'Z'
             ? static_cast<char>(event.key - 'A' + 'a') : event.key;
@@ -1404,7 +1405,7 @@ void PerformPage::drawContent(IGfx& gfx) {
 void PerformPage::drawFooter(IGfx& gfx) {
     if (toolsLayerVisible_) {
         if (selectedContext_ == PerformanceToolContext::Control) {
-            UI::drawStandardFooter(gfx, "G THROW R BLOOM F/C FILTER",
+            UI::drawStandardFooter(gfx, "CTRL: ALT+G/R/F/C GESTURES",
                                    "[L/R]EDIT [ESC]LIVE");
         } else {
             UI::drawStandardFooter(gfx,

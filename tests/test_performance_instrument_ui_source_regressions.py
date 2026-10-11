@@ -46,6 +46,12 @@ def main() -> None:
     require("keyboard_.keyDown(" not in page,
             "PERFORM UI must never synthesize physical keyDown ownership")
 
+    gesture_keys = block(page, "bool PerformPage::handleToolKey", "bool PerformPage::handleEvent")
+    require("event.alt" in gesture_keys and "case 'g':" in gesture_keys and
+            "case 'r':" in gesture_keys and "case 'f':" in gesture_keys and
+            "case 'c':" in gesture_keys,
+            "CTRL gestures must require Alt so unmodified live keyboard notes remain playable")
+
     tools = block(page, "void PerformPage::drawToolsLayer", "bool PerformPage::handleEvent")
     require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM"' in page,
             "Tab layer must declare the four musician-facing context labels")

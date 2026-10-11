@@ -325,9 +325,10 @@ MIDI control path.
 The PERFORM tools also work with no MIDI keyboard connected. `Tab` opens the tools
 layer and cycles KEY, CHORD, ARP, RHYTHM, CTRL, SCENE and IN; `Backspace` moves back.
 In CTRL, Left/Right edits FILTER, RESONANCE, LEVEL, DRIVE, REVERB and DELAY directly.
-The one-shot gestures `G` (Delay Throw), `R` (Reverb Bloom), `F` (Filter Push) and
-`C` (Filter Close) temporarily overlay their control for 750 ms, then restore the
-current manual value.
+The one-shot gestures `Alt+G` (Delay Throw), `Alt+R` (Reverb Bloom), `Alt+F`
+(Filter Push) and `Alt+C` (Filter Close) temporarily overlay their control for
+750 ms, then restore the current manual value. The Alt modifier keeps the plain
+letters available for live notes.
 
 In SCENE, choose a slot, select CAPTURE or RECALL, then press Enter. Recall is
 immediate while stopped and queued to the next bar while playing. The transition
