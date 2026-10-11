@@ -1188,6 +1188,17 @@ void loop() {
            (unsigned)block.blocks, (unsigned)block.avgUs(),
            (unsigned)block.maxUs, (unsigned)kAudioBlockBudgetUs,
            (unsigned)block.overBudget, (unsigned)block.longestRun);
+       const auto sections = g_miniAcid->takeRenderProfile();
+       char sectionLine[320];
+       int used = snprintf(sectionLine, sizeof(sectionLine),
+                           "[AUDIO-SECT] n=%u avg/max us", (unsigned)sections.blocks);
+       for (uint8_t i = 0; i < RenderProfile::Count && used > 0 &&
+                           used < static_cast<int>(sizeof(sectionLine)); ++i) {
+         used += snprintf(sectionLine + used, sizeof(sectionLine) - used,
+                          " %s=%u/%u", RenderProfile::sectionName(i),
+                          (unsigned)sections.avgUs[i], (unsigned)sections.maxUs[i]);
+       }
+       Serial.println(sectionLine);
        g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }

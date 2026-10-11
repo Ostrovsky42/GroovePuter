@@ -34,6 +34,7 @@ enum class GrowthMode : uint8_t;
 #include "clamped_live_note_identity.h"
 #include "mini_tb303.h"
 #include "swappable_synth_voice.h"
+#include "render_section_profile.h"
 #include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
@@ -1094,6 +1095,9 @@ private:
 
 public:
   PerfStats perfStats;
+  RenderProfile::SectionProfile::Window takeRenderProfile() {
+    return renderProfile_.take(RenderProfile::cyclesPerUs());
+  }
   ISampleStore* sampleStore = nullptr;
   SampleIndex sampleIndex;
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
@@ -1119,7 +1123,7 @@ private:
   float fxSafetyMix_ = 1.0f;
   uint16_t fxSafetyHold_ = 0;
   uint32_t lastUnderrunCount_ = 0;
-  uint32_t perfDetailCounter_ = 0;
+  RenderProfile::SectionProfile renderProfile_;
 
   bool waitingForRehearsal_ = false;
   bool rehearsalAcknowledged_ = false;

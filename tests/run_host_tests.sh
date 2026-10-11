@@ -81,6 +81,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_audio_block_load"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_render_section_profile.cpp" \
+  -o "${BUILD_DIR}/test_render_section_profile"
+
+"${BUILD_DIR}/test_render_section_profile"
+
 python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 
 "${CXX}" \
