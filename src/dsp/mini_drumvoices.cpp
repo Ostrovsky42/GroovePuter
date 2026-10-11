@@ -1,4 +1,5 @@
 #include <math.h>
+#include <new>
 #include "mini_drumvoices.h"
 #include "audio_wavetables.h"
 
@@ -1875,13 +1876,20 @@ void KPR77DrumSynthVoice::triggerCymbal(bool a, uint8_t v) {}
 
 bool SP12DrumSynthVoice::romBuilt = false;
 
-static int8_t sp12_kick[2000];
-static int8_t sp12_snare[2000];
-static int8_t sp12_hat[1000];
-static int8_t sp12_clap[3000];
+// Heap, not .bss: 8 KB of static tables would shrink the largest free block that the
+// 64.8 KB display frame needs at boot. A null table renders as silence (processPCM guards it).
+static int8_t* sp12_kick = nullptr;
+static int8_t* sp12_snare = nullptr;
+static int8_t* sp12_hat = nullptr;
+static int8_t* sp12_clap = nullptr;
 
 void SP12DrumSynthVoice::buildROM() {
   if(romBuilt) return;
+  if (!sp12_kick) sp12_kick = new (std::nothrow) int8_t[2000];
+  if (!sp12_snare) sp12_snare = new (std::nothrow) int8_t[2000];
+  if (!sp12_hat) sp12_hat = new (std::nothrow) int8_t[1000];
+  if (!sp12_clap) sp12_clap = new (std::nothrow) int8_t[3000];
+  if (!sp12_kick || !sp12_snare || !sp12_hat || !sp12_clap) return;
   
   uint32_t s = 12345;
   auto nextNoise = [&s]() {

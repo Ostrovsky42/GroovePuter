@@ -32,7 +32,8 @@ public:
         const std::size_t sourceIndex = static_cast<std::size_t>(source);
         if (sourceIndex >= kSourceCount || channel >= kChannelCount) return;
         const std::size_t slot = sourceIndex * kChannelCount + channel;
-        uint32_t next = writeRevision_[slot] + 2u;
+        // Producer is the only writer of revisions_, so its own last store is the base.
+        uint32_t next = revisions_[slot].loadRelaxed() + 2u;
         if (next == 0u) next = 2u;
         revisions_[slot].storeRelease(next - 1u);  // odd while publishing
         generations_[slot].storeRelaxed(generation);
@@ -40,7 +41,6 @@ public:
             (value14 > 16383u ? 16383u : value14) |
             (static_cast<uint32_t>(cable & 0x0fu) << 14u));
         revisions_[slot].storeRelease(next);
-        writeRevision_[slot] = next;
     }
 
     bool takeNext(LatestPitchBend& out) {
@@ -69,7 +69,6 @@ private:
     MidiRealtimeWord revisions_[kSlotCount]{};
     MidiRealtimeWord generations_[kSlotCount]{};
     MidiRealtimeWord values_[kSlotCount]{};
-    uint32_t writeRevision_[kSlotCount]{};     // producer-owned
     uint32_t consumedRevision_[kSlotCount]{};  // consumer-owned
     std::size_t readCursor_{0};
 };

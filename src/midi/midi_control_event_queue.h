@@ -128,7 +128,8 @@ private:
         const std::size_t target = static_cast<std::size_t>(event.target);
         if (target >= kTargetCount || event.channel >= kChannelCount) return;
         const std::size_t slot = target * kChannelCount + event.channel;
-        uint32_t next = bendWriteRevision_[slot] + 2u;
+        // Producer is the only writer of bendRevision_, so its own last store is the base.
+        uint32_t next = bendRevision_[slot].loadRelaxed() + 2u;
         if (next == 0u) next = 2u;
         bendRevision_[slot].storeRelease(next - 1u);
         bendPayload_[slot].storeRelaxed(
@@ -136,7 +137,6 @@ private:
             (static_cast<uint32_t>(event.pitchBend14 > 16383u
                 ? 16383u : event.pitchBend14) << 3u));
         bendRevision_[slot].storeRelease(next);
-        bendWriteRevision_[slot] = next;
     }
 
     bool takeCoalescedPitchBend(MusicalEvent& event) {
@@ -199,7 +199,6 @@ private:
     MidiRealtimeWord droppedPitchBend_;
     MidiRealtimeWord bendRevision_[kBendSlotCount]{};
     MidiRealtimeWord bendPayload_[kBendSlotCount]{};
-    uint32_t bendWriteRevision_[kBendSlotCount]{};     // producer-owned
     uint32_t bendConsumedRevision_[kBendSlotCount]{};  // consumer-owned
     std::size_t bendReadCursor_{0};
     uint32_t consumedSynthAEpoch_{0};
