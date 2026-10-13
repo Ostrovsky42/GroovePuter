@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "ldrolez_rows": 195,
+  "accepted_routes": 189,
+  "quarantined_routes": 6,
+  "unique_routes": 188,
+  "duplicate_routes": 1,
+  "content_sha256": "993d1045ca03180c8d30f69b2e397aff50fb8ba802c28b95564b8b6b3f3a638b"
+}

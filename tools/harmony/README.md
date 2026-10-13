@@ -96,3 +96,26 @@ are retained in the explicit quarantine with their source locator and unsupporte
 suffix. No fallback triad is substituted. The Mingus files are behavioral
 references only and are not copied or executed; the full upstream GPL-3.0 license
 is included alongside the source notices.
+
+## Validate the combined source manifest
+
+After exporting/importing Fannon vocabulary and importing ldrolez progressions, combine them:
+
+```sh
+python3 tools/harmony/import_ldrolez_progressions.py \
+  --source build/hgs-cache/free-midi-chords \
+  --out build/hgs-cache/ldrolez-import
+python3 tools/harmony/validate_harmony_model.py \
+  --vocab build/hgs-cache/harmony-model/fannon_vocab.json \
+  --vocab-manifest build/hgs-cache/harmony-model/manifest.json \
+  --progressions build/hgs-cache/ldrolez-import/progressions.json \
+  --progressions-manifest build/hgs-cache/ldrolez-import/manifest.json \
+  --out-dir build/hgs-cache/validated-model
+```
+
+The resulting `harmony_manifest.json` separates immutable registries and vocabulary from
+the progression corpus. Corpus weight is one per unique normalized route; duplicate source
+locators and mood labels aggregate, while repeated events inside a route remain ordered.
+Fannon contributes vocabulary only and never contributes transition counts. Source locators
+and copied license notices remain in provenance; the content checksum excludes filesystem
+paths and timestamps.

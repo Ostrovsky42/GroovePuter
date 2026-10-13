@@ -182,6 +182,7 @@ def main():
     manifest = {
         "schema_version": 1,
         "ldrolez_commit": lock["sources"]["ldrolez"]["commit"],
+        "ldrolez_files": lock["sources"]["ldrolez"]["files"],
         "ldrolez_chords_sha256": lock["sources"]["ldrolez"]["files"]["chords.py"],
         "mingus_resolver_commit": lock["sources"]["mingus_resolver"]["commit"],
         "mingus_resolver_files": lock["sources"]["mingus_resolver"]["files"],

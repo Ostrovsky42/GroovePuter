@@ -98,3 +98,30 @@
   header byte parity — PASS; unknown HGS runner target returns exit 2; `git diff --check` — PASS.
 - HGS-only offline importer. Hardware/listening acceptance remain `NOT_RUN`.
 - NEXT_TASK=HGS2-1c: normalized corpus provenance/schema and reproducible manifest.
+
+## HGS2-1c — normalized source manifest — implementation complete
+
+- Start SHA: `5c17c3c07855da56fcf2eba1a01a28c8ef40e366`.
+- Added `validate_harmony_model.py` to combine the pinned vocabulary and progression
+  importer outputs into schema v1 `harmony_manifest.json`. It validates source commits,
+  exact source file hashes, normalized input checksums, schema versions, stable registry IDs,
+  formulas/masks/cardinality, route references, source locators, and distributed license
+  notice hashes before writing output.
+- The final manifest carries quality/scale registries, aliases and canonical route tokens,
+  sorted mood tags, source row locators and source/license provenance. Fannon is explicitly
+  `vocabulary_only`; it cannot add rows to progression corpus totals. Every unique normalized
+  route receives weight 1; exact duplicate routes merge locators/tags; ordered repeated
+  tokens remain in place. Input order does not affect compiled output.
+- Full pinned source result: 195 rows; 189 accepted, 6 quarantined, 188 unique routes,
+  1 duplicate. `content_sha256=993d1045ca03180c8d30f69b2e397aff50fb8ba802c28b95564b8b6b3f3a638b`.
+  Full result is pinned as small cardinality/checksum fixture, not a generated firmware table.
+- Actual validator CLI run twice against pinned source outputs; `cmp` confirmed identical
+  `harmony_manifest.json` bytes (file SHA-256
+  `139c3349d855fc3cd8de714581159735881d55f28a7125726b47e1dc4fbf549b`).
+- `python3 tests/test_harmony_source_manifest.py` — PASS (5 tests, including full pinned
+  fixtures, deterministic permutation, one-weight dedup, ordered repeats, vocabulary/corpus
+  separation, malformed ID/schema/reference/checksum/provenance rejection).
+  `bash tests/run_hgs_tests.sh` — PASS (`legacy`, `vocab`, `roman`, `manifest`); registry
+  generated header parity — PASS; Python `py_compile` — PASS; `git diff --check` — PASS.
+- HGS2-1c does not change runtime or firmware. Hardware/listening acceptance remain `NOT_RUN`.
+- NEXT_TASK=HGS2-2: pitch-set algebra and exact bounded pitch-class voice-leading.
