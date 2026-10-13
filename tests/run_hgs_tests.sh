@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates]" >&2
 }
 
 run_legacy() {
@@ -103,9 +103,24 @@ run_genome() {
   "${BUILD_DIR}/test_genome"
 }
 
+run_candidates() {
+  # scenes.h has defaulted bit-fields; the genre policy dependency uses C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_candidates.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    -o "${BUILD_DIR}/test_candidates"
+  "${BUILD_DIR}/test_candidates"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates)
 fi
 
 for target in "${targets[@]}"; do
@@ -120,6 +135,7 @@ for target in "${targets[@]}"; do
     corpus) run_corpus ;;
     genre) run_genre ;;
     genome) run_genome ;;
+    candidates) run_candidates ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

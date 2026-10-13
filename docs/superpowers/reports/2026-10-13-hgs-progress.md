@@ -270,3 +270,30 @@
   to production generation, so this build has no new audible HGS behavior. Hardware and
   listening acceptance remain `NOT_RUN` and premature.
 - NEXT_TASK=HGS2-6a: bounded candidate and tonal-context generation.
+
+## HGS2-6a — bounded candidate and tonal-context generation — implementation complete
+
+- Start SHA: `ec662daaebe6715e3a93ab9aa5417bb71dc19caaf`.
+- Added fixed-cap candidate collection: up to32 chord candidates and8 tonal contexts. Root
+  candidates are deduplicated and ordered from current/home roots, current/home scale tones,
+  then bounded fifth/third/parallel/relative/neighbor/tritone/portal relations. Quality choices
+  use a three-item per-root shortlist over the ten currently supported runtime qualities; every
+  emitted state is explicitly analyzed against its target tonal context.
+- Current HOLD is reserved first; exact home state/context is reserved for RETURN before the
+  round-robin optional fill. Candidate uniqueness includes root, quality, bass and context.
+  Genre hard gates and runtime quality/scale capability masks are applied before publication.
+  Empty capabilities produce a valid empty result; unsupported style or malformed input fails
+  without replacing candidate output. Corpus zero is retained as “no evidence” and does not
+  remove otherwise legal candidates.
+- Tests cover empty, one-item and saturated candidate lists; the 32-slot RETURN home reserve;
+  zero-prior legal candidates; quality capability clipping; STATIC HOLD; high-risk genome not
+  bypassing hard caps; malformed style/state and unchanged output on failure. ASan/UBSan
+  `candidates` — PASS. Full `bash tests/run_hgs_tests.sh` — PASS.
+- Fixed-memory costs: candidate payload is at most768 bytes (32×24), tonal contexts at most
+  96 bytes, and caller-owned PCVL scratch is4096 bytes. GCC 13.3 `-O2 -fstack-usage` reports
+  `collectCandidates` frame1104 bytes; PCVL scratch is supplied by the caller. This host stack
+  measurement is not an ESP32 timing claim. ADV firmware build passed at 1,546,590 bytes flash
+  and 187,172 bytes global RAM; existing Arduino/legacy warnings remain.
+- Candidate planning is still host-only and is not wired into current progression playback.
+  Hardware/listening acceptance remains `NOT_RUN`; there is no audible HGS change to evaluate.
+- NEXT_TASK=HGS2-6b: route fingerprints and bounded recent-harmony memory.
