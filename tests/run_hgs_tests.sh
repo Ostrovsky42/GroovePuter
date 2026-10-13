@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint]" >&2
 }
 
 run_legacy() {
@@ -118,9 +118,19 @@ run_candidates() {
   "${BUILD_DIR}/test_candidates"
 }
 
+run_fingerprint() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    -o "${BUILD_DIR}/test_fingerprint"
+  "${BUILD_DIR}/test_fingerprint"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint)
 fi
 
 for target in "${targets[@]}"; do
@@ -136,6 +146,7 @@ for target in "${targets[@]}"; do
     genre) run_genre ;;
     genome) run_genome ;;
     candidates) run_candidates ;;
+    fingerprint) run_fingerprint ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

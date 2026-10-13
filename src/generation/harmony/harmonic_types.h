@@ -66,6 +66,32 @@ struct TonalContext {
   uint8_t homeTonicPc = 0;
 };
 
+enum class CadenceClass : uint8_t {
+  None = 0,
+  HoldHome = 1,
+  DirectHome = 2,
+  DominantHome = 3,
+  PreparedDominantHome = 4,
+  PivotHome = 5,
+  PortalHome = 6,
+  Count = 7,
+};
+
+struct ResolvedHarmonicEvent {
+  HarmonicState state{};
+  TonalContext tonal{};
+  RelationTags relationTags = 0;
+  CadenceClass cadenceClass = CadenceClass::None;
+  uint8_t timingSlotOrdinal = 0;
+};
+
+struct ResolvedRouteView {
+  const ResolvedHarmonicEvent* events = nullptr;
+  uint8_t count = 0;
+  HarmonicState home{};
+  TonalContext homeTonal{};
+};
+
 struct RolePitchPolicy {
   PitchSet12 allowed = 0;
   PitchSet12 preferred = 0;

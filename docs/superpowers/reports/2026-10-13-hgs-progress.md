@@ -297,3 +297,26 @@
 - Candidate planning is still host-only and is not wired into current progression playback.
   Hardware/listening acceptance remains `NOT_RUN`; there is no audible HGS change to evaluate.
 - NEXT_TASK=HGS2-6b: route fingerprints and bounded recent-harmony memory.
+
+## HGS2-6b — normalized route fingerprints and session memory — implementation complete
+
+- Start SHA: `95ca6f6fcf00fcd4cf68c481ff63833a87b93303`.
+- Added shared `ResolvedHarmonicEvent` / `ResolvedRouteView` types and five versioned
+  64-bit FNV-1a signatures: root motion and bass relative to immutable home, quality sequence,
+  semantic relation/context, cadence, and scale context relative to home. Every serialized value
+  is written byte by byte; no struct padding, `std::hash`, or absolute tonic enters normalized
+  signatures. Route count, event pointer, state/scale masks, cadence IDs, home identity and
+  strictly increasing timing slots are checked before hashing. Invalid routes leave output
+  untouched.
+- Added fixed eight-entry `RecentHarmonyMemory`. Preview penalty is a pure read, explicit
+  `commitFingerprint` is the only append operation, and reset clears the session ring. Exact
+  signature matches receive the versioned weights4/3/2/2/1 scaled by repetition tolerance;
+  no approximate hash-distance comparison is used. Set is40 bytes; memory is322 bytes.
+- Tests prove C–Am–F–G and transposed D–Bm–G–A normalize identically, while changed quality,
+  mode interpretation and cadence affect their intended signatures. Ring wrap after nine
+  accepted inserts, immutable preview, deterministic snapshot scoring, error output preservation
+  and high repetition tolerance are covered. ASan/UBSan `fingerprint candidates relation` —
+  PASS; full HGS host suite — PASS; `git diff --check` — PASS.
+- This remains offline session logic; no generator owner calls it yet and no playback behavior
+  changed. Hardware/listening acceptance remains `NOT_RUN`.
+- NEXT_TASK=HGS2-6c: integer route scorer, bounded route chunks and home-context RETURN search.
