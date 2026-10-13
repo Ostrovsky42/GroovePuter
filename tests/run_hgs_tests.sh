@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl]" >&2
 }
 
 run_legacy() {
@@ -36,9 +36,29 @@ run_manifest() {
   (cd "${ROOT_DIR}" && python3 tests/test_harmony_source_manifest.py)
 }
 
+run_algebra() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    -o "${BUILD_DIR}/test_pitch_set"
+  "${BUILD_DIR}/test_pitch_set"
+}
+
+run_pcvl() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_pc_voice_leading.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    -o "${BUILD_DIR}/test_pcvl"
+  "${BUILD_DIR}/test_pcvl"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest)
+  targets=(legacy vocab roman manifest algebra pcvl)
 fi
 
 for target in "${targets[@]}"; do
@@ -47,6 +67,8 @@ for target in "${targets[@]}"; do
     vocab) run_vocab ;;
     roman) run_roman ;;
     manifest) run_manifest ;;
+    algebra) run_algebra ;;
+    pcvl) run_pcvl ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

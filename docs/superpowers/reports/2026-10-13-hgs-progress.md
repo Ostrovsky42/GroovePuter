@@ -125,3 +125,29 @@
   generated header parity — PASS; Python `py_compile` — PASS; `git diff --check` — PASS.
 - HGS2-1c does not change runtime or firmware. Hardware/listening acceptance remain `NOT_RUN`.
 - NEXT_TASK=HGS2-2: pitch-set algebra and exact bounded pitch-class voice-leading.
+
+## HGS2-2 — pitch-set algebra and exact bounded PC voice-leading — implementation complete
+
+- Start SHA: `80322bc24474c7df29d4d9293e2743079078bdf4`.
+- Added checked 12-bit transposition/inversion, common-tone count, symmetric set-difference
+  count, six-bin interval-class vector, semitone/fifths root distances, and exact injective
+  pitch-class voice-leading cost. Invalid high bits or roots return `Invalid` and leave
+  output values unchanged.
+- PCVL uses a 4096-byte fixed subset cost table, no allocation or recursion. It assigns every
+  tone on the smaller side to a distinct tone on the larger side, then applies lambda=3 per
+  unmatched tone. Optional caller-owned counters report state/transition work. Six-tone
+  candidate case uses exactly 64 subset states; pure helper accepts all cardinalities0..12.
+- Tests exhaust all4096 masks for T12/T composition and I_n involution, validate ICV pair
+  totals, all144 root-distance pairs, transposition invariance, invalid input behavior, and
+  exact PCVL against a brute-force injective oracle for all mask pairs whose cardinality is
+  at most4. Also checked C→Cm=1, C→Em=1, C→Am=2, empty→triad=9, unequal cardinality, and
+  the repeated-target counterexample (nearest-per-source gives1; injective cost is3).
+- `bash tests/run_hgs_tests.sh` — PASS (`legacy`, `vocab`, `roman`, `manifest`, `algebra`,
+  `pcvl`). `HGS_CXXFLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' CXX=g++
+  bash tests/run_hgs_tests.sh algebra pcvl` — PASS. `clang++` unavailable in this host.
+- GCC 13.3 `-O2 -fstack-usage`: `pcVoiceLeadingCost` frame160 bytes,
+  `intervalClassVector`48 bytes; scratch object exactly4096 bytes. Object `.text`=2002 bytes
+  on host x86-64 (not an ESP32 flash estimate).
+- HGS2-2 is pure host-tested math; no DSP, output or project ownership changed. Hardware and
+  listening acceptance remain `NOT_RUN`.
+- NEXT_TASK=HGS2-3: harmonic relation scalar features and overlapping semantic tags.
