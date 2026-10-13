@@ -486,7 +486,7 @@ detached
 - Physical acceptance checklist: [Smart Play hardware checklist](2026-10-13-smart-play-hardware-checklist.md).
   All rows remain `NOT_RUN`; no board was flashed from this worktree.
 - SOFTWARE_GATE=PASS; HARDWARE_ACCEPTANCE=NOT_RUN; LISTENING_ACCEPTANCE=NOT_RUN.
-- NEXT_TASK=HGS2-0 immutable legacy witnesses and dedicated HGS runner. The genre-aware
+- NEXT_TASK=HGS2-1b source-specific Roman progression parser. The genre-aware
   progression graph and all genre profiles are not implemented by SP-0…SP-7.
 - SP-6 implementation, software report and physical checklist committed as `5fbccbe6`
   (`feat: expose standalone smart play controls`). No push, tag, release, main merge, or flash

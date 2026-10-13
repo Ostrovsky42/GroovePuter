@@ -1,0 +1,885 @@
+{
+  "schema_version": 1,
+  "source_repository": "Fannon/midi-chords-and-scales-pack",
+  "source_commit": "352f28004a3dc0f1a130682b925c4673f8a3d13b",
+  "source_file_sha256": {
+    "src/generateChords.ts": "61abf9e841d4eb58cb2cc2f164ecf7c749bf087b900218917fba57eccf36aa51",
+    "src/generateScales.ts": "fa9edf91055be662d8cdc812abf4c173944ee89777928447db99031f30c70bce",
+    "package-lock.json": "7fbbe80b6dd61adebd7d5c39423b52770967a2118c72853305ef4488de4bbf11",
+    "LICENSE": "8410e0da497dcc9b729f2a8382eb5f161cef719e27f4eeaa02c46cf549e848dc",
+    "node_modules/@tonaljs/tonal/LICENSE": "0ff1a12a0f689d1a300dc75e1efce2f4154b3fc068ef2987adbb505ad2c52123"
+  },
+  "tonal_packages": {
+    "@tonaljs/tonal": {
+      "version": "4.10.0",
+      "license": "MIT"
+    },
+    "@tonaljs/chord-type": {
+      "version": "4.8.0",
+      "license": "MIT"
+    },
+    "@tonaljs/scale-type": {
+      "version": "4.8.1",
+      "license": "MIT"
+    }
+  },
+  "qualities": [
+    {
+      "symbol": "",
+      "export_name": "maj",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7
+      ],
+      "tonal_aliases": [
+        "M",
+        "^",
+        "",
+        "maj"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 27,
+        "index": 0
+      }
+    },
+    {
+      "symbol": "m",
+      "export_name": "min",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        7
+      ],
+      "tonal_aliases": [
+        "m",
+        "min",
+        "-"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 28,
+        "index": 1
+      }
+    },
+    {
+      "symbol": "sus2",
+      "export_name": "sus2",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        7
+      ],
+      "tonal_aliases": [
+        "sus2"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 29,
+        "index": 2
+      }
+    },
+    {
+      "symbol": "sus4",
+      "export_name": "sus4",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        5,
+        7
+      ],
+      "tonal_aliases": [
+        "sus4",
+        "sus"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 30,
+        "index": 3
+      }
+    },
+    {
+      "symbol": "5",
+      "export_name": "5",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        7
+      ],
+      "tonal_aliases": [
+        "5"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 31,
+        "index": 4
+      }
+    },
+    {
+      "symbol": "7",
+      "export_name": "7",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "tonal_aliases": [
+        "7",
+        "dom"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 32,
+        "index": 5
+      }
+    },
+    {
+      "symbol": "maj7",
+      "export_name": "maj7",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "tonal_aliases": [
+        "maj7",
+        "Δ",
+        "ma7",
+        "M7",
+        "Maj7",
+        "^7"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 33,
+        "index": 6
+      }
+    },
+    {
+      "symbol": "m7",
+      "export_name": "min7",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "tonal_aliases": [
+        "m7",
+        "min7",
+        "mi7",
+        "-7"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 34,
+        "index": 7
+      }
+    },
+    {
+      "symbol": "2",
+      "export_name": "2",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        2
+      ],
+      "tonal_aliases": [
+        "Madd9",
+        "2",
+        "add9",
+        "add2"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 35,
+        "index": 8
+      }
+    },
+    {
+      "symbol": "6",
+      "export_name": "6",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        9
+      ],
+      "tonal_aliases": [
+        "6",
+        "add6",
+        "add13",
+        "M6"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 36,
+        "index": 9
+      }
+    },
+    {
+      "symbol": "m6",
+      "export_name": "min6",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "tonal_aliases": [
+        "m6",
+        "-6"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 37,
+        "index": 10
+      }
+    },
+    {
+      "symbol": "69",
+      "export_name": "69",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        9,
+        2
+      ],
+      "tonal_aliases": [
+        "6/9",
+        "69",
+        "M69"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 38,
+        "index": 11
+      }
+    },
+    {
+      "symbol": "9",
+      "export_name": "9",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        10,
+        2
+      ],
+      "tonal_aliases": [
+        "9"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 39,
+        "index": 12
+      }
+    },
+    {
+      "symbol": "maj9",
+      "export_name": "maj9",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        11,
+        2
+      ],
+      "tonal_aliases": [
+        "maj9",
+        "Δ9",
+        "^9"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 40,
+        "index": 13
+      }
+    },
+    {
+      "symbol": "m9",
+      "export_name": "min9",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        7,
+        10,
+        2
+      ],
+      "tonal_aliases": [
+        "m9",
+        "-9"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 41,
+        "index": 14
+      }
+    },
+    {
+      "symbol": "add9",
+      "export_name": "add9",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        2
+      ],
+      "tonal_aliases": [
+        "Madd9",
+        "2",
+        "add9",
+        "add2"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 42,
+        "index": 15
+      }
+    },
+    {
+      "symbol": "13",
+      "export_name": "13",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        10,
+        2,
+        9
+      ],
+      "tonal_aliases": [
+        "13"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 43,
+        "index": 16
+      }
+    },
+    {
+      "symbol": "m13",
+      "export_name": "min13",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        7,
+        10,
+        2,
+        9
+      ],
+      "tonal_aliases": [
+        "m13",
+        "-13"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 44,
+        "index": 17
+      }
+    },
+    {
+      "symbol": "maj13",
+      "export_name": "maj13",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        7,
+        11,
+        2,
+        9
+      ],
+      "tonal_aliases": [
+        "maj13",
+        "Maj13",
+        "^13"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 45,
+        "index": 18
+      }
+    },
+    {
+      "symbol": "dim",
+      "export_name": "dim",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        6
+      ],
+      "tonal_aliases": [
+        "dim",
+        "°",
+        "o"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 46,
+        "index": 19
+      }
+    },
+    {
+      "symbol": "dim7",
+      "export_name": "dim7",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        6,
+        9
+      ],
+      "tonal_aliases": [
+        "dim7",
+        "°7",
+        "o7"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 47,
+        "index": 20
+      }
+    },
+    {
+      "symbol": "7b5",
+      "export_name": "7b5",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        6,
+        10
+      ],
+      "tonal_aliases": [
+        "7b5"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 48,
+        "index": 21
+      }
+    },
+    {
+      "symbol": "aug",
+      "export_name": "aug",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        8
+      ],
+      "tonal_aliases": [
+        "aug",
+        "+",
+        "+5",
+        "^#5"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 49,
+        "index": 22
+      }
+    },
+    {
+      "symbol": "aug7",
+      "export_name": "aug7",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        4,
+        8,
+        10
+      ],
+      "tonal_aliases": [
+        "7#5",
+        "+7",
+        "7+",
+        "7aug",
+        "aug7"
+      ],
+      "source": {
+        "path": "src/generateChords.ts",
+        "line": 50,
+        "index": 23
+      }
+    }
+  ],
+  "scales": [
+    {
+      "symbol": "major pentatonic",
+      "export_name": "major pentatonic",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        7,
+        9
+      ],
+      "tonal_aliases": [
+        "pentatonic"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 28,
+        "index": 0
+      }
+    },
+    {
+      "symbol": "minor pentatonic",
+      "export_name": "minor pentatonic",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        5,
+        7,
+        10
+      ],
+      "tonal_aliases": [
+        "vietnamese 2"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 29,
+        "index": 1
+      }
+    },
+    {
+      "symbol": "major blues",
+      "export_name": "major blues",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        4,
+        7,
+        9
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 32,
+        "index": 2
+      }
+    },
+    {
+      "symbol": "minor blues",
+      "export_name": "minor blues",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        3,
+        5,
+        6,
+        7,
+        10
+      ],
+      "tonal_aliases": [
+        "blues"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 33,
+        "index": 3
+      }
+    },
+    {
+      "symbol": "major",
+      "export_name": "major",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        5,
+        7,
+        9,
+        11
+      ],
+      "tonal_aliases": [
+        "ionian"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 36,
+        "index": 4
+      }
+    },
+    {
+      "symbol": "minor",
+      "export_name": "minor",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        8,
+        10
+      ],
+      "tonal_aliases": [
+        "aeolian"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 37,
+        "index": 5
+      }
+    },
+    {
+      "symbol": "dorian",
+      "export_name": "dorian",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        9,
+        10
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 38,
+        "index": 6
+      }
+    },
+    {
+      "symbol": "phrygian",
+      "export_name": "phrygian",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        1,
+        3,
+        5,
+        7,
+        8,
+        10
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 39,
+        "index": 7
+      }
+    },
+    {
+      "symbol": "lydian",
+      "export_name": "lydian",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        6,
+        7,
+        9,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 40,
+        "index": 8
+      }
+    },
+    {
+      "symbol": "mixolydian",
+      "export_name": "mixolydian",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        5,
+        7,
+        9,
+        10
+      ],
+      "tonal_aliases": [
+        "dominant"
+      ],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 41,
+        "index": 9
+      }
+    },
+    {
+      "symbol": "locrian",
+      "export_name": "locrian",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        1,
+        3,
+        5,
+        6,
+        8,
+        10
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 42,
+        "index": 10
+      }
+    },
+    {
+      "symbol": "harmonic minor",
+      "export_name": "harmonic minor",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        8,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 43,
+        "index": 11
+      }
+    },
+    {
+      "symbol": "harmonic major",
+      "export_name": "harmonic major",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        5,
+        7,
+        8,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 44,
+        "index": 12
+      }
+    },
+    {
+      "symbol": "melodic minor",
+      "export_name": "melodic minor",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        5,
+        7,
+        9,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 45,
+        "index": 13
+      }
+    },
+    {
+      "symbol": "bebop major",
+      "export_name": "bebop major",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        4,
+        5,
+        7,
+        8,
+        9,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 48,
+        "index": 14
+      }
+    },
+    {
+      "symbol": "bebop minor",
+      "export_name": "bebop minor",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        7,
+        9,
+        10
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 49,
+        "index": 15
+      }
+    },
+    {
+      "symbol": "chromatic",
+      "export_name": "chromatic",
+      "root_pc": 0,
+      "pitch_classes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "tonal_aliases": [],
+      "source": {
+        "path": "src/generateScales.ts",
+        "line": 52,
+        "index": 16
+      }
+    }
+  ]
+}

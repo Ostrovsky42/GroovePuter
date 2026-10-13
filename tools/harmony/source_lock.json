@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "fannon": {
+      "repository": "Fannon/midi-chords-and-scales-pack",
+      "commit": "352f28004a3dc0f1a130682b925c4673f8a3d13b",
+      "license": {
+        "source_path": "LICENSE",
+        "repository_sha256": "8410e0da497dcc9b729f2a8382eb5f161cef719e27f4eeaa02c46cf549e848dc",
+        "included_path": "tools/harmony/licenses/Fannon-midi-chords-and-scales-pack-MIT.txt"
+      },
+      "tonal_license": {
+        "source_path": "node_modules/@tonaljs/tonal/LICENSE",
+        "repository_sha256": "0ff1a12a0f689d1a300dc75e1efce2f4154b3fc068ef2987adbb505ad2c52123",
+        "included_sha256": "880e275e3846c12948fef0d33336d9e9ebe0c71a17aaaa82d3dac8430118cdbc",
+        "included_path": "tools/harmony/licenses/Tonal.js-MIT.txt"
+      },
+      "files": {
+        "src/generateChords.ts": "61abf9e841d4eb58cb2cc2f164ecf7c749bf087b900218917fba57eccf36aa51",
+        "src/generateScales.ts": "fa9edf91055be662d8cdc812abf4c173944ee89777928447db99031f30c70bce",
+        "package-lock.json": "7fbbe80b6dd61adebd7d5c39423b52770967a2118c72853305ef4488de4bbf11",
+        "LICENSE": "8410e0da497dcc9b729f2a8382eb5f161cef719e27f4eeaa02c46cf549e848dc",
+        "node_modules/@tonaljs/tonal/LICENSE": "0ff1a12a0f689d1a300dc75e1efce2f4154b3fc068ef2987adbb505ad2c52123"
+      },
+      "tonal_packages": {
+        "@tonaljs/tonal": {"version": "4.10.0", "license": "MIT"},
+        "@tonaljs/chord-type": {"version": "4.8.0", "license": "MIT"},
+        "@tonaljs/scale-type": {"version": "4.8.1", "license": "MIT"}
+      },
+      "expected_input_counts": {"qualities": 24, "scales": 17}
+    },
+    "ldrolez": {
+      "repository": "ldrolez/free-midi-chords",
+      "commit": "79d8dfcd7072bd9027231575b1d6c5f1ed809335",
+      "license": {
+        "source_path": "LICENSE",
+        "repository_sha256": "37e2439ffc9407c44e17b37310214fd68b674d89d786f3ba391f2c0e4a466d98",
+        "included_path": "tools/harmony/licenses/ldrolez-free-midi-chords-MIT.txt"
+      },
+      "files": {
+        "chords.py": "b8be51e62ed4b41bd43ed77d7f896c6eac03442674dcc4f471abbd74a18d414f"
+      }
+    }
+  }
+}

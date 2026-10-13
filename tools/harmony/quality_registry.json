@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "runtime_bootstrap_count": 10,
   "qualities": [
     {"id":0,"name":"maj","intervals":[0,4,7],"family":"MajorMinor","skeleton":[0,4,7],"complexity":1},
     {"id":1,"name":"min","intervals":[0,3,7],"family":"MajorMinor","skeleton":[0,3,7],"complexity":1},
@@ -10,6 +11,19 @@
     {"id":6,"name":"min7","intervals":[0,3,7,10],"family":"MajorMinor","skeleton":[0,3,7],"complexity":2},
     {"id":7,"name":"maj7","intervals":[0,4,7,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":2},
     {"id":8,"name":"min9","intervals":[0,2,3,7,10],"family":"MajorMinor","skeleton":[0,3,7],"complexity":3},
-    {"id":9,"name":"maj9","intervals":[0,2,4,7,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":3}
+    {"id":9,"name":"maj9","intervals":[0,2,4,7,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":3},
+    {"id":10,"name":"power5","intervals":[0,7],"family":"Suspended","skeleton":[0,7],"complexity":0},
+    {"id":11,"name":"sus2","intervals":[0,2,7],"family":"Suspended","skeleton":[0,2,7],"complexity":1},
+    {"id":12,"name":"add2","intervals":[0,2,4,7],"family":"MajorMinor","skeleton":[0,4,7],"complexity":2},
+    {"id":13,"name":"sixth","intervals":[0,4,7,9],"family":"MajorMinor","skeleton":[0,4,7],"complexity":2},
+    {"id":14,"name":"minor_sixth","intervals":[0,3,7,9],"family":"MajorMinor","skeleton":[0,3,7],"complexity":2},
+    {"id":15,"name":"sixth_ninth","intervals":[0,2,4,7,9],"family":"MajorMinor","skeleton":[0,4,7],"complexity":3},
+    {"id":16,"name":"dominant_ninth","intervals":[0,2,4,7,10],"family":"Dominant","skeleton":[0,4,7],"complexity":3},
+    {"id":17,"name":"dominant_thirteenth","intervals":[0,2,4,7,9,10],"family":"Dominant","skeleton":[0,4,7],"complexity":4},
+    {"id":18,"name":"minor_thirteenth","intervals":[0,2,3,7,9,10],"family":"MajorMinor","skeleton":[0,3,7],"complexity":4},
+    {"id":19,"name":"major_thirteenth","intervals":[0,2,4,7,9,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":4},
+    {"id":20,"name":"diminished_seventh","intervals":[0,3,6,9],"family":"Diminished","skeleton":[0,3,6],"complexity":3},
+    {"id":21,"name":"dominant_seventh_flat_five","intervals":[0,4,6,10],"family":"Dominant","skeleton":[0,4,6],"complexity":3},
+    {"id":22,"name":"augmented_seventh","intervals":[0,4,8,10],"family":"Augmented","skeleton":[0,4,8],"complexity":4}
   ]
 }

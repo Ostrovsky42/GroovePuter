@@ -34,4 +34,36 @@
   remain pending listening evidence. Production mapping is still pending; the base contract
   explicitly excludes treating every device genre as a full HGS profile.
 - Hardware and listening acceptance remain `NOT_RUN`.
-- NEXT_TASK=HGS2-1a: pin corpus sources and import vocabulary without MIDI generation.
+- HGS2-0 commit: `a32a83b3` (`test: freeze legacy harmonic replay`).
+
+## HGS2-1a — pinned offline chord/scale vocabulary — complete
+
+- Added `source_lock.json` for Fannon commit
+  `352f28004a3dc0f1a130682b925c4673f8a3d13b` and ldrolez commit
+  `79d8dfcd7072bd9027231575b1d6c5f1ed809335`. Locks include exact source/package-lock/license
+  hashes. Full Fannon, ldrolez and Tonal.js MIT notices are in `tools/harmony/licenses/`.
+- Fannon source hashes: `src/generateChords.ts` 61abf9e8…f36aa51,
+  `src/generateScales.ts` fa9edf91…f30c70bce, `package-lock.json`
+  7fbbe80b…de4bbf11. Resolved @tonaljs/tonal 4.10.0, chord-type 4.8.0,
+  scale-type 4.8.1; all MIT. `npm ci --ignore-scripts --no-audit --no-fund` ran in
+  ignored `build/hgs-cache/`, not the project root. Python uses system 3.12.3 stdlib; no venv
+  or third-party Python dependency is needed.
+- Added a safe TypeScript exporter that parses only the pinned source alias arrays and calls
+  Tonal.js at C. It does not import/execute either upstream generator and writes no MIDI.
+  Source commit, files, package versions/licenses and 24/17 input cardinalities are checked.
+- Added root-independent normalizers, explicit registry IDs, deterministic merge/provenance,
+  digest validation and quarantine output. Existing IDs 0..9 are unchanged; IDs 10..22 add 13
+  chord formulas and IDs 10..16 add 7 scale formulas. Source aliases/root/export variants merge
+  by exact pitch-class formula. The fixture compiles to 23 unique quality formulas and 17
+  scales, with 0 quarantined rows.
+- `runtime_bootstrap_count=10` keeps the generated firmware vocabulary on the existing
+  bootstrap prefix. `python3 tests/test_harmonic_registry_generation.py` confirms byte-for-byte
+  parity with the checked-in generated header; the broad offline IDs do not expand runtime
+  selection in this checkpoint.
+- `bash tests/run_hgs_tests.sh` — PASS (`legacy`, `vocab`); six Python vocabulary tests pass.
+- Exported twice and imported twice from the pinned checkout; `cmp` confirms both export JSON
+  and normalized vocabulary/manifest bytes match. Normalized content SHA-256:
+  `955909d61666537c8ae756a2f895267e793f149c0da8e1474c657ad869b2f16e`.
+- `git diff --check` — PASS. No HGS runtime graph or genre behavior changed.
+- NEXT_TASK=HGS2-1b: source-specific Roman progression parser from ldrolez `chords.py`.
+- HGS2-1a commit: pending local commit.

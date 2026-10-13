@@ -17,19 +17,27 @@ def mask(intervals):
     return sum(1 << value for value in set(intervals))
 
 
-def validate(rows, key):
+def validate(rows, key, runtime_count):
     ids = [row["id"] for row in rows]
     if ids != list(range(len(rows))):
         raise ValueError(f"{key} IDs must be contiguous and append-only from zero")
+    if not isinstance(runtime_count, int) or not 0 < runtime_count <= len(rows):
+        raise ValueError(f"{key} runtime_bootstrap_count must select a nonempty prefix")
     for row in rows:
         mask(row["intervals"])
 
 
 def render():
-    qualities = json.loads(QUALITY_PATH.read_text())["qualities"]
-    scales = json.loads(SCALE_PATH.read_text())["scales"]
-    validate(qualities, "quality")
-    validate(scales, "scale")
+    quality_data = json.loads(QUALITY_PATH.read_text())
+    scale_data = json.loads(SCALE_PATH.read_text())
+    qualities = quality_data["qualities"]
+    scales = scale_data["scales"]
+    quality_runtime_count = quality_data.get("runtime_bootstrap_count", len(qualities))
+    scale_runtime_count = scale_data.get("runtime_bootstrap_count", len(scales))
+    validate(qualities, "quality", quality_runtime_count)
+    validate(scales, "scale", scale_runtime_count)
+    qualities = qualities[:quality_runtime_count]
+    scales = scales[:scale_runtime_count]
     lines = [
         "#ifndef GROOVEPUTER_GENERATION_HARMONY_GENERATED_HARMONIC_VOCABULARY_H",
         "#define GROOVEPUTER_GENERATION_HARMONY_GENERATED_HARMONIC_VOCABULARY_H",

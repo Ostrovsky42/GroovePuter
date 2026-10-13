@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy]" >&2
+  echo "usage: $0 [legacy] [vocab]" >&2
 }
 
 run_legacy() {
@@ -23,14 +23,20 @@ run_legacy() {
   (cd "${ROOT_DIR}" && "${BUILD_DIR}/test_legacy")
 }
 
+run_vocab() {
+  (cd "${ROOT_DIR}" && python3 tests/test_harmony_vocab_import.py)
+  (cd "${ROOT_DIR}" && python3 tests/test_harmonic_registry_generation.py)
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy)
+  targets=(legacy vocab)
 fi
 
 for target in "${targets[@]}"; do
   case "${target}" in
     legacy) run_legacy ;;
+    vocab) run_vocab ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done
