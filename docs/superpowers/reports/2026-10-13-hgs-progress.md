@@ -216,3 +216,34 @@
 - No production ChordProgression routing, genre policy, DSP, or hardware integration changed.
   Hardware/listening acceptance remains `NOT_RUN`.
 - NEXT_TASK=HGS2-5a: build concrete genre corridors and explicit catalog binding.
+
+## HGS2-5a — genre corridors and catalog binding — implementation complete
+
+- Start SHA: `6b9ef9b900c30acc8dc582b83dc88d320dbc1fe4`.
+- Added source-owned 17-style matrix and hard budgets, generated compact policy table, and
+  inspection report. `HarmonicStyleId` IDs are explicit 0..16, independent of persisted
+  `GenerativeMode`. Quality/scale admission IDs are clipped to the current bootstrap prefix
+  (quality/scale IDs0..9); Q3 can add the supported augmented triad but offline 13/altered/
+  sus2 formulas and non-bootstrap named scales remain unavailable to runtime.
+- Implemented integer feature coefficient formula and a hard candidate gate for quality,
+  scale, contextual outside tones, section change/modulation limits, portals, color budget,
+  functional-preparation capability, and project structural STATIC/HOLD restrictions.
+  Weights do not make a candidate illegal. Test confirms Salsa C→Am passes despite PRL weight0;
+  Acid explicitly disallows functional-preparation requests.
+- Added exact catalog mapping for Base modes and contract-listed recipe IDs; nontrivial genre
+  morph and unmapped valid recipe/mode return `Unsupported`, malformed persisted mode/recipe/
+  morph target returns `Invalid`, and failure leaves output untouched. All 17 policies remain
+  directly accessible to host profile tests; eight designated styles are marked host-only and
+  are not added to device UI.
+- Mapping test exhausts 16 modes × 22 recipes × morph amounts 0/128/255, plus same-target morph
+  and invalid values. Python tests compare all weight/budget rows to the contract, validate
+  capability clipping and coefficient formulas, reject invalid ranges, and check deterministic
+  generated header/report output.
+- `bash tests/run_hgs_tests.sh` — PASS (all targets through genre).
+  ASan/UBSan `genre` — PASS. `python3 -m py_compile` and `git diff --check` — PASS.
+  Cardputer ADV `scripts/build.sh --warnings all` — PASS; image 1,546,414 bytes, global RAM
+  187,172 bytes. Existing Arduino core and legacy warnings remain in the build log.
+- This is policy/configuration infrastructure only; no progression producer consumes it yet.
+  It produces no new audible behavior. Hardware/listening acceptance remains `NOT_RUN` and is
+  premature until the bounded route planner and playback adapter are connected.
+- NEXT_TASK=HGS2-5b: stable 14-field song genome and reserved independent RNG domains.

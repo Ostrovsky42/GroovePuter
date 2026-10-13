@@ -153,3 +153,28 @@ over N=4. The generated table uses 4,544 bytes by explicit record encoding: 512 
 checksum excludes paths and timestamps and includes the validated source-manifest checksum.
 The runtime has deterministic trigram → bigram → coarse quality/root-motion backoff. A prior
 of zero means “no corpus evidence”; it never means “forbidden”.
+
+## Compile genre harmonic policies
+
+The 17 style rows and hard section budgets are maintained in
+`genre_policy_source.json`; the compiler derives only fixed-size masks and documented integer
+feature coefficients. Its runtime quality and scale lists are clipped to the prefixes in the
+current generated vocabulary. For this checkpoint, bootstrap qualities include IDs 0..9 and
+scales 0..9, so offline add9/sixth/minor-sixth and new named scales do not silently become
+runtime candidates. `HarmonicStyleId` is a separate append-only 0..16 registry and does not
+change persisted `GenerativeMode` values.
+
+```sh
+python3 tools/harmony/build_genre_harmonic_policy.py \
+  --header src/generation/harmony/generated/genre_harmonic_policy_data.h \
+  --report tools/harmony/generated/genre_harmonic_policy_report.json
+bash tests/run_hgs_tests.sh genre
+```
+
+The raw 0..4 axes are scoring priors. Explicit quality/scale masks, section limits, portal,
+modulation and color capabilities are hard gates. In particular, Salsa's PRL weight is zero
+but a legal C→Am transition remains admissible; zero means no positive PRL bonus. Acid alone
+has an explicit `functional_preparation=false` capability in this initial table. Catalog
+binding uses the pinned recipe/mode map and returns `Unsupported` for unmapped/host-only
+whole-device selections or nontrivial genre morphs; host tools can still request any of the
+17 policy rows directly. This checkpoint does not add selectable genres to the device UI.

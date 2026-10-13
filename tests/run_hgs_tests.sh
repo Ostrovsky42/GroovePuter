@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre]" >&2
 }
 
 run_legacy() {
@@ -78,9 +78,21 @@ run_corpus() {
   "${BUILD_DIR}/test_corpus_prior"
 }
 
+run_genre() {
+  (cd "${ROOT_DIR}" && python3 tests/test_hgs_genre_matrix.py)
+  # scenes.h has defaulted bit-fields; this host-only mapping test uses C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_genre_policy.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    -o "${BUILD_DIR}/test_genre_policy"
+  "${BUILD_DIR}/test_genre_policy"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre)
 fi
 
 for target in "${targets[@]}"; do
@@ -93,6 +105,7 @@ for target in "${targets[@]}"; do
     pcvl) run_pcvl ;;
     relation) run_relation ;;
     corpus) run_corpus ;;
+    genre) run_genre ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done
