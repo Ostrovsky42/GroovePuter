@@ -43,6 +43,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
+#include "src/input/performance_harmony_bridge.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
@@ -80,6 +81,7 @@ static MusicalEventQueue g_patternMusicalEventQueue;
 static ExternalMidiTransportEventQueue g_externalMidiTransportQueue;
 static GroovePuterMidi::ExternalMidiClockFollower g_externalClockFollower;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
+static GroovePuterPerformance::PerformanceHarmonyBridge g_performanceHarmonyBridge;
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
 MiniAcid* volatile g_miniAcid = nullptr;
@@ -570,6 +572,20 @@ static bool applyExternalNudge(int direction) {
   return pageTookIt;
 }
 
+static void updatePerformanceHarmonyContext() {
+  GroovePuterHarmony::HarmonySnapshot snapshot{};
+  snapshot.status = GroovePuterHarmony::HarmonyStatus::NoHarmony;
+  GroovePuterPerformance::HarmonyPlaybackPosition position{};
+  const auto* origin = g_miniAcid ? g_miniAcid->generatedSynthAOrigin() : nullptr;
+  const auto* recipe = g_miniAcid ? g_miniAcid->generatedPhraseRecipe() : nullptr;
+  if (g_miniAcid && origin && recipe &&
+      g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+    (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+        *origin, *recipe, position, snapshot);
+  }
+  g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
+}
+
 void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
@@ -585,6 +601,8 @@ void loop() {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
+    updatePerformanceHarmonyContext();
+    g_performanceKeyboard.service(micros());
     g_internalSynthOutput.syncPatternOwnership();
     // External keyboard (MIDI IN target PERFORM): the dispatch task only enqueues; the PERFORM
     // keyboard is owned here, so chords / arp / latch / rhythms see the notes like built-in keys.

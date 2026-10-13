@@ -17,6 +17,7 @@
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
 #include "../src/input/performance_keyboard.h"
+#include "../src/input/performance_harmony_bridge.h"
 #include "../src/input/internal_synth_output.h"
 #include "../src/audio/audio_mutation_gate.h"
 #include "arduino_compat.h"
@@ -58,6 +59,7 @@ struct AppState {
   AudioContext audio;
   MusicalEventRouter router;
   PerformanceKeyboard keyboard;
+  GroovePuterPerformance::PerformanceHarmonyBridge harmonyBridge;
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
@@ -349,6 +351,19 @@ static void mainLoopTick(void* userdata) {
   AppState* s = static_cast<AppState*>(userdata);
   handleEvents(*s);
   s->audio.internalSynthOutput.syncPatternOwnership();
+  s->keyboard.setTransportPlaying(s->audio.synth.isPlaying());
+  GroovePuterHarmony::HarmonySnapshot snapshot{};
+  snapshot.status = GroovePuterHarmony::HarmonyStatus::NoHarmony;
+  GroovePuterPerformance::HarmonyPlaybackPosition position{};
+  const auto* origin = s->audio.synth.generatedSynthAOrigin();
+  const auto* recipe = s->audio.synth.generatedPhraseRecipe();
+  if (origin && recipe &&
+      s->audio.synth.tryCaptureHarmonyPlaybackPosition(position)) {
+    (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+        *origin, *recipe, position, snapshot);
+  }
+  s->harmonyBridge.update(s->keyboard, snapshot);
+  s->keyboard.service(SDL_GetTicks() * 1000u);
   updateUI(*s);
   if (!s->running) {
 #ifdef __EMSCRIPTEN__

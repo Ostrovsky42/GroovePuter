@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external]" >&2
 }
 
 compile_run() {
@@ -40,6 +40,13 @@ run_registry() {
 run_legacy_context() {
   compile_run performance_harmony_context \
     "${ROOT_DIR}/tests/test_performance_harmony_context.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp"
+}
+
+run_bridge() {
+  compile_run smart_play_harmony_bridge \
+    "${ROOT_DIR}/tests/test_smart_play_harmony_bridge.cpp" \
     "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
     "${ROOT_DIR}/src/generation/generation_context.cpp"
 }
@@ -99,7 +106,7 @@ run_external() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context ownership dispatch midi_input midi_queue external_queue arp trace keyboard external)
+  targets=(model quality snapshot registry legacy_context bridge ownership dispatch midi_input midi_queue external_queue arp trace keyboard external)
 fi
 
 for target in "${targets[@]}"; do
@@ -109,6 +116,7 @@ for target in "${targets[@]}"; do
     snapshot) run_snapshot ;;
     registry) run_registry ;;
     legacy_context) run_legacy_context ;;
+    bridge) run_bridge ;;
     ownership) run_ownership ;;
     dispatch) run_dispatch ;;
     trace) run_trace ;;

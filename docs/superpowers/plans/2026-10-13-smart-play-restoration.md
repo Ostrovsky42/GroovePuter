@@ -206,7 +206,7 @@ implement contract §6; generated output remains on the existing scheduled-event
   Old generated scheduled NoteOns become stale when source/epoch changes; scheduled NoteOff
   cleanup still executes for notes actually emitted.
 - [x] Run `bash tests/run_smart_play_tests.sh arp trace keyboard external` and closure tests.
-- [ ] Commit: `fix: make smart arp sources and harmony transitions deterministic`.
+- [x] Commit: `fix: make smart arp sources and harmony transitions deterministic` (`9a8907c1`).
 
 ### SP-5 — Publish truthful legacy harmony to Cardputer and SDL
 
@@ -242,22 +242,22 @@ and origin; exact material version must match. All position fields come from coh
 publication. An origin records GENERIC/IDIOM/GRAPH authority, never a guess from current editor.
 `absoluteStep%16` resolves in-bar position; store full epoch/ordinal event identity.
 
-- [ ] Extend existing adapter tests: wrong project/page/slot/material ID/version → Stale;
+- [x] Extend existing adapter tests: wrong project/page/slot/material ID/version → Stale;
   song loop event key changes; snapshot for next queued material cannot appear early;
   repeated root/quality across bar boundary retains a full valid event duration.
-- [ ] Add fixture where `GenreIdiom::apply()` replaces generic pitch content: generic
+- [x] Add fixture where `GenreIdiom::apply()` replaces generic pitch content: generic
   provenance must not produce Ready. Record all current generation paths in a coverage table.
-- [ ] Add an explicit harmonic-authority/provenance field to the existing origin candidate
-  publication if needed. Default Unknown; set only by the producer that actually determines
-  final pitch content. No guessing harmony from Synth A notes or current GENRE editor selection.
-- [ ] Resolve snapshots on control-side playback updates before keyboard service/next pulse,
+- [x] Add an explicit harmonic-authority/provenance field to the existing origin candidate
+  publication. Default Unknown; set only by the producer that actually determines final pitch
+  content. No guessing harmony from Synth A notes or current GENRE editor selection.
+- [x] Resolve snapshots on control-side playback updates before keyboard service/next pulse,
   using the existing coherent playback publication. Never read unsynchronized renderer fields.
   Feed both Cardputer and SDL through the same bridge.
-- [ ] Verify STOP makes HARMONY source unavailable when no stable committed context exists;
+- [x] Verify STOP makes HARMONY source unavailable when no stable committed context exists;
   HELD/MEMORY and manual roles remain playable. Replaced material/seek/project load cannot
   resurrect the previous snapshot. No graph calculations in this bridge.
-- [ ] Run `bash tests/run_smart_play_tests.sh legacy_context bridge trace` and SDL build.
-- [ ] Commit: `feat: publish validated material harmony to smart play`.
+- [x] Run `CXX=g++ bash tests/run_smart_play_tests.sh bridge legacy_context arp trace keyboard external` and SDL build.
+- [x] Commit: `feat: publish validated material harmony to smart play`.
 
 ### SP-6 — Standalone UI, common configuration persistence and CC80/81
 

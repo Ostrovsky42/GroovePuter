@@ -8,6 +8,8 @@
 #include "src/state/melody_promotion.h"
 #include "src/state/synth_pattern_edit.h"
 #include "src/audio/audio_mutation_gate.h"
+#include "../input/performance_harmony_bridge.h"
+#include "../midi/project_transport_timeline.h"
 #include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
@@ -1088,6 +1090,23 @@ void MiniAcid::setSongMode(bool enabled) {
   }
   songMode_ = enabled;
   sceneManager_.setSongMode(songMode_);
+  publishedHarmonyGeneration_.fetch_add(1, std::memory_order_acq_rel);
+  publishedHarmonySongMode_.store(enabled, std::memory_order_release);
+  if (enabled) {
+    const int row = clampSongPosition(sceneManager_.getSongPosition());
+    const int pattern = sceneManager_.songPatternAtSlot(
+        songPlaybackSlot_, row, SongTrack::SynthA);
+    publishedHarmonySongRow_.store(static_cast<int16_t>(row), std::memory_order_relaxed);
+    publishedHarmonySongSlot_.store(static_cast<int16_t>(songPlaybackSlot_),
+                                    std::memory_order_relaxed);
+    publishedHarmonyPatternGlobal_.store(static_cast<int16_t>(pattern),
+                                        std::memory_order_relaxed);
+  } else {
+    publishedHarmonySongRow_.store(-1, std::memory_order_relaxed);
+    publishedHarmonySongSlot_.store(-1, std::memory_order_relaxed);
+    publishedHarmonyPatternGlobal_.store(-1, std::memory_order_relaxed);
+  }
+  publishedHarmonyGeneration_.fetch_add(1, std::memory_order_release);
 }
 
 // Song may have left a voice on a different slot's Melody. Back in Pattern mode
@@ -1995,6 +2014,75 @@ void MiniAcid::applySongPositionSelection() {
     sceneManager_.setCurrentBankIndex(0, bank);
     sceneManager_.setCurrentDrumPatternIndex(pat);
   }
+  publishedHarmonyGeneration_.fetch_add(1, std::memory_order_acq_rel);
+  publishedHarmonySongRow_.store(static_cast<int16_t>(pos), std::memory_order_relaxed);
+  publishedHarmonySongSlot_.store(static_cast<int16_t>(songPlaybackSlot_),
+                                  std::memory_order_relaxed);
+  publishedHarmonyPatternGlobal_.store(static_cast<int16_t>(patA),
+                                      std::memory_order_relaxed);
+  publishedHarmonySongMode_.store(true, std::memory_order_relaxed);
+  publishedHarmonyGeneration_.fetch_add(1, std::memory_order_release);
+}
+
+bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
+    GroovePuterPerformance::HarmonyPlaybackPosition& out) const {
+  out = GroovePuterPerformance::HarmonyPlaybackPosition{};
+  if (!publishedHarmonySongMode_.load(std::memory_order_acquire) ||
+      isPageLoading()) return false;
+
+  for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+    const uint32_t before = publishedHarmonyGeneration_.load(std::memory_order_acquire);
+    if (before == 0u || (before & 1u) != 0u) return false;
+    const int16_t row = publishedHarmonySongRow_.load(std::memory_order_relaxed);
+    const int16_t slot = publishedHarmonySongSlot_.load(std::memory_order_relaxed);
+    const int16_t globalPattern =
+        publishedHarmonyPatternGlobal_.load(std::memory_order_relaxed);
+    const int16_t page = static_cast<int16_t>(currentPageIndex());
+    if (row < 0 || slot < 0 || slot > 1 || globalPattern < 0 ||
+        globalPattern >= kMaxGlobalPatterns ||
+        songPatternPage(globalPattern) != page) return false;
+
+    const GroovePuterMaterial::MaterialAddress address{
+        0, static_cast<uint8_t>(globalPattern)};
+    if (!GroovePuterMaterial::materialAddressIsResident(address, page)) return false;
+    const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+    const Scene& scene = sceneManager_.currentScene();
+    const GroovePuterMaterial::MaterialId id =
+        GroovePuterMaterial::residentId(scene, 0, residentSlot);
+    if (!id.valid()) return false;
+    const int bank = songPatternBank(globalPattern);
+    const int index = songPatternIndexInBank(globalPattern);
+    if (bank < 0 || bank >= kBankCount || index < 0 ||
+        index >= Bank<SynthPattern>::kPatterns) return false;
+    const auto version = GroovePuterMaterial::versionForPattern(
+        scene.synthABanks[bank].patterns[index]);
+
+    GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+    if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport))
+      return false;
+    const bool haveTransport = transport.valid && transport.playing;
+    const double transportSteps = haveTransport ? transport.absoluteSteps() : 0.0;
+    if (!std::isfinite(transportSteps) || transportSteps < 0.0) return false;
+    const uint64_t absoluteStep = haveTransport
+        ? static_cast<uint64_t>(transportSteps)
+        : static_cast<uint64_t>(row) * 16u;
+
+    const uint32_t after = publishedHarmonyGeneration_.load(std::memory_order_acquire);
+    if (before != after ||
+        !publishedHarmonySongMode_.load(std::memory_order_acquire)) continue;
+
+    out.activePage = page;
+    out.playbackSongSlot = slot;
+    out.songRow = row;
+    out.activeSynthAPatternGlobal = globalPattern;
+    out.activeMaterial = {address, id};
+    out.activeMaterialVersion = version;
+    out.publicationGeneration = before;
+    out.transportEpoch = haveTransport ? transport.transportEpoch : before;
+    out.absoluteStep = absoluteStep;
+    return true;
+  }
+  return false;
 }
 
 // REWRITTEN LOGIC
@@ -3293,6 +3381,13 @@ void MiniAcid::applySceneStateFromManager() {
   songBarIndex_ = -1;
   if (songMode_) {
     applySongPositionSelection();
+  } else {
+    publishedHarmonyGeneration_.fetch_add(1, std::memory_order_acq_rel);
+    publishedHarmonySongMode_.store(false, std::memory_order_relaxed);
+    publishedHarmonySongRow_.store(-1, std::memory_order_relaxed);
+    publishedHarmonySongSlot_.store(-1, std::memory_order_relaxed);
+    publishedHarmonyPatternGlobal_.store(-1, std::memory_order_relaxed);
+    publishedHarmonyGeneration_.fetch_add(1, std::memory_order_release);
   }
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");

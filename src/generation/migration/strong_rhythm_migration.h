@@ -9,6 +9,7 @@
 #include "../composition/rhythm_selection.h"
 #include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
+#include "../harmony/harmonic_types.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_pitch_behavior.h"
@@ -262,6 +263,8 @@ struct StrongRhythmMigrationResult {
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
   bool tonalMaterializationApplied = false;
+  GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
+      GroovePuterHarmony::HarmonicAuthority::Unknown;
 };
 
 #ifdef GROOVEPUTER_M1_TEST_PROBE

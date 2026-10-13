@@ -25,6 +25,9 @@ enum class HarmonyStatus : uint8_t {
   CapacityExceeded,
   ReturnUnreachable,
 };
+// Provenance of the owner that determined the final harmonic meaning of a
+// generated material event. Unknown is intentionally the zero/default value.
+enum class HarmonicAuthority : uint8_t { Unknown = 0, Generic, Idiom, Graph };
 enum class HarmonicRole : uint8_t { Bass, Chord, Lead, Count };
 enum class QualityFamily : uint8_t { MajorMinor, Dominant, Diminished, Augmented, Suspended };
 enum class ScaleFamily : uint8_t { Major, Minor, Modes, Pentatonic, Chromatic };

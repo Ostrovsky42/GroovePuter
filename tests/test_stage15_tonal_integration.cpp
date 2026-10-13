@@ -241,6 +241,16 @@ void testAllModesDeterministicAndInRegister() {
           settings, contextFor(ordinal, false), legacyDrums, legacyA, legacyB);
       assert(legacy.status == StrongRhythmMigrationStatus::Applied);
       assert(!legacy.tonalMaterializationApplied);
+      const bool idiomExpected = mode == GenerativeMode::Acid ||
+          mode == GenerativeMode::Outrun || mode == GenerativeMode::Darksynth ||
+          mode == GenerativeMode::Electro || mode == GenerativeMode::Broken ||
+          mode == GenerativeMode::Chip || mode == GenerativeMode::House ||
+          mode == GenerativeMode::Techno || mode == GenerativeMode::HipHop ||
+          mode == GenerativeMode::UkGarage || mode == GenerativeMode::FunkSoul ||
+          mode == GenerativeMode::DrumAndBass || mode == GenerativeMode::LoFi;
+      assert(legacy.harmonicAuthority == (idiomExpected
+          ? GroovePuterHarmony::HarmonicAuthority::Idiom
+          : GroovePuterHarmony::HarmonicAuthority::Unknown));
 
       DrumPatternSet tonalDrums{};
       SynthPattern tonalA = pitchSource(36, 5);
@@ -249,6 +259,9 @@ void testAllModesDeterministicAndInRegister() {
           settings, contextFor(ordinal, true), tonalDrums, tonalA, tonalB);
       assert(tonal.status == StrongRhythmMigrationStatus::Applied);
       assert(tonal.tonalMaterializationApplied);
+      assert(tonal.harmonicAuthority == (idiomExpected
+          ? GroovePuterHarmony::HarmonicAuthority::Idiom
+          : GroovePuterHarmony::HarmonicAuthority::Generic));
 
       assertDrumsEqual(legacyDrums, tonalDrums);
       assert(activeMask(legacyA) == activeMask(tonalA));

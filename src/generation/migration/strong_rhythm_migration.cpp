@@ -1277,6 +1277,11 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   // evidence (bass rhythm plan + pitch-class witness, read by DEVELOP's P0
   // preservation) must describe the bass that was actually committed.
   if (idiomApplied) rebuildBassEvidenceFromPattern(nextSynthA, result);
+  result.harmonicAuthority = idiomApplied
+      ? GroovePuterHarmony::HarmonicAuthority::Idiom
+      : result.tonalMaterializationApplied
+          ? GroovePuterHarmony::HarmonicAuthority::Generic
+          : GroovePuterHarmony::HarmonicAuthority::Unknown;
   synthA = nextSynthA;
   synthB = nextSynthB;
   return result;

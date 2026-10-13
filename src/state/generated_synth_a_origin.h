@@ -7,6 +7,7 @@
 #include "../generation/roles/bass_rhythm.h"
 #include "../generation/roles/chord_progression.h"
 #include "../generation/roles/harmonic_rhythm.h"
+#include "../generation/harmony/harmonic_types.h"
 #include "../generation/tonal/bass_pitch_class_witness.h"
 #include "../generation/tonal/tonal_projector.h"
 #include "material_identity.h"
@@ -50,6 +51,8 @@ struct GeneratedSynthAOriginCommon {
   GroovePuterRhythm::ScaleTypeValue scaleTypeValue =
       GroovePuterRhythm::kDefaultScaleTypeValue;
   GroovePuterRhythm::ChordProgressionSource progressionSource{};
+  GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
+      GroovePuterHarmony::HarmonicAuthority::Unknown;
 };
 
 struct GeneratedSynthAOrigin {

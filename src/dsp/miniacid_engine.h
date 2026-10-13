@@ -18,6 +18,10 @@ struct DevelopmentResult;
 enum class GrowthMode : uint8_t;
 }  // namespace GroovePuterDevelopment
 
+namespace GroovePuterPerformance {
+struct HarmonyPlaybackPosition;
+}
+
 #include <stddef.h>
 #include <stdint.h>
 #include <atomic>
@@ -528,6 +532,10 @@ public:
   void setSongLength(int length);
   int currentSongPosition() const;
   int songPlayheadPosition() const;
+  // Control-side snapshot of the currently published Song Synth A material.
+  // Returns false while Song/page/material publication is incomplete.
+  bool tryCaptureHarmonyPlaybackPosition(
+      GroovePuterPerformance::HarmonyPlaybackPosition& out) const;
   void setSongPosition(int position);
   void setSongPattern(int position, SongTrack track, int16_t patternIndex);
   void clearSongPattern(int position, SongTrack track);
@@ -1006,6 +1014,11 @@ private:
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
+  std::atomic<int16_t> publishedHarmonySongRow_{-1};
+  std::atomic<int16_t> publishedHarmonySongSlot_{-1};
+  std::atomic<int16_t> publishedHarmonyPatternGlobal_{-1};
+  std::atomic<uint32_t> publishedHarmonyGeneration_{0};
+  std::atomic<bool> publishedHarmonySongMode_{false};
   int songPlaybackSlot_ = 0;
   bool liveMixMode_ = false;
   int songBarIndex_ = -1;

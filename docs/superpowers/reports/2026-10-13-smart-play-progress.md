@@ -146,7 +146,7 @@ Restored code at baseline provides pure Smart Play interpretation, legacy P1R ha
   static/global RAM 186,660 bytes. Build emits existing Arduino/M5GFX and project warnings.
 - Full host suite is deferred to SP-7: its earlier run was intentionally stopped after about
   15 minutes while traversing unrelated broad Song/UI tests. That was not a pass or failure.
-- SP-4 implementation is ready to commit; hardware acceptance remains NOT RUN.
+- SP-4 committed as `9a8907c1` (`fix: make smart arp sources and harmony transitions deterministic`).
 - Hardware acceptance remains NOT RUN.
 
 ## Worktree list at baseline
@@ -407,3 +407,35 @@ worktree /home/gg/pro/arduino.ESP32-S3-Touch-AMOLED-1.75/Cardputer/miniacid-wt-v
 HEAD 0a2a6211ef00dcf2214dfd4704b6c34b424b1c9d
 detached
 
+
+
+## SP-5 legacy harmony publication — complete
+
+- Start HEAD: `9a8907c1`; implementation commit: pending final staged review.
+- Added harmonic authority provenance to migration results and generated origin candidates.
+  `GenreIdiom::apply()` owns final pitch content when it changes the result, so the origin is
+  `Idiom`; tonal materialization without an overriding idiom is `Generic`; legacy paths with
+  no tonal decision remain `Unknown`. Mixed-authority multi-bar candidates fail closed.
+- Current producer coverage: `StrongRhythmMigration` is the sole P1R per-bar producer; its
+  tonal materializer reports Generic and its post-materialization `GenreIdiom::apply()` reports
+  Idiom when it replaces content. Legacy/non-P1R routes leave authority Unknown. The origin
+  candidate copies authority only from this producer. Graph authority is reserved for HGS and
+  is not emitted by current code.
+- Added `HarmonyPlaybackPosition` and `PerformanceHarmonyBridge`. It rejects mismatched recipe,
+  page, Song slot, row, pattern, material identity/version, unsupported Idiom origin and stale
+  publication. Event identity includes publication/transport epochs and absolute onset; repeated
+  same harmony on a loop pass gets a distinct event. Duration continues across bar boundaries.
+- MiniAcid publishes Song row/slot/pattern under a bounded generation snapshot. The shared
+  control-side bridge runs before keyboard pulse service in Cardputer and SDL. STOP uses a stable
+  committed Song row when available; missing/invalid context clears harmony-owned output. Scene
+  loads clear session-local generated origin/recipe, preventing stale project evidence reuse.
+- Focused command `CXX=g++ bash tests/run_smart_play_tests.sh bridge legacy_context arp trace keyboard external` — PASS.
+- `make -C platform_sdl -j2` — PASS (existing C++20-extension warnings in `scenes.h`).
+- `scripts/build.sh --warnings all` — PASS. FQBN is the SP-0 Cardputer ADV target; flash
+  1,540,290 bytes, static/global RAM 186,692 bytes. Relative to SP-0: flash +14,928 bytes,
+  RAM +3,024 bytes. Warnings are existing board/dependency warnings.
+- The broader `tests/run_stage15_tonal_integration_tests.sh` and its isolated migration matrix
+  both stop on pre-existing `assertRegister()` failure. Re-running the fixture from clean SP-4
+  HEAD reproduces the same failure. The authority assertions run before that failure and did not
+  fail, but the full Stage 15 gate is recorded FAIL/BASELINE, not PASS.
+- `git diff --check` — PASS. Hardware acceptance remains NOT RUN.

@@ -237,6 +237,8 @@ struct MaterializedSynthABarEvidence {
   GroovePuterRhythm::BassRhythmPlan bassRhythm{};
   // D1-B1: pitch class at each bass attack, from the owner's tonal plan.
   GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
+  GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
+      GroovePuterHarmony::HarmonicAuthority::Unknown;
 };
 
 static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
@@ -275,6 +277,7 @@ inline bool materializeOneBar(
     evidence.phraseBarOrdinal = phraseBarOrdinal;
     evidence.bassRhythm = result.bassRhythmPlan;
     evidence.bassPitchClasses = result.bassPitchClassWitness;
+    evidence.harmonicAuthority = result.harmonicAuthority;
   }
   return applied;
 }

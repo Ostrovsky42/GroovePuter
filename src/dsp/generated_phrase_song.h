@@ -383,6 +383,14 @@ inline void applyPreparedPersistent(
           !id.valid()) {
         candidate->failed = true;
       } else {
+        if (candidate->filledBars == 0) {
+          candidate->origin.common.harmonicAuthority = barEvidence.harmonicAuthority;
+        } else if (candidate->origin.common.harmonicAuthority !=
+                   barEvidence.harmonicAuthority) {
+          // A phrase whose bars were resolved by different owners has no
+          // single truthful phrase-level harmonic authority.
+          candidate->failed = true;
+        }
         auto& entry = candidate->origin.bars[bar];
         entry.material = GroovePuterMaterial::MaterialReference{
             GroovePuterMaterial::MaterialAddress{
