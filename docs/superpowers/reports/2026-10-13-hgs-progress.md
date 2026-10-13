@@ -247,3 +247,26 @@
   It produces no new audible behavior. Hardware/listening acceptance remains `NOT_RUN` and is
   premature until the bounded route planner and playback adapter are connected.
 - NEXT_TASK=HGS2-5b: stable 14-field song genome and reserved independent RNG domains.
+
+## HGS2-5b — stable song genome and independent RNG domains — implementation complete
+
+- Start SHA: `f5bd52e4e35ffd9e86d0182151c4ad986cb06416`.
+- Added a fixed 14-byte `SongVariantGenome`, derived from project seed, full 32-bit stable
+  song identity, harmonic style and model version. It has no section input, so section changes
+  cannot silently re-roll the song's profile. Each field uses its own stable salt in reserved
+  `HarmonicGenome` domain 19; route, modulation, tie-break, vertical-color and arp domains
+  remain independent at IDs 20..24. Existing domain IDs 0..18 remain unchanged.
+- Genome biases are sampled inside style policy caps. Invalid styles produce a zero genome;
+  invalid/non-harmonic RNG domains return seed zero. Tests sweep 256 project seeds × all 17
+  styles, verify policy caps, repeatability, identity/style/version sensitivity, and that route
+  seed does not change when other domains are evaluated.
+- Added golden vectors for project seeds 0, 1, 42 and `0xffffffff`, with model version 7,
+  UK Garage style, stable song identity `0x1234abcd`, and the pinned corpus model checksum.
+- `bash tests/run_hgs_tests.sh` — PASS, including the legacy replay suite and all HGS targets.
+  `git diff --check` — PASS. GCC 13.3 host test — PASS. Clang was unavailable in this
+  environment, so the second-compiler check could not run.
+- Cardputer ADV `scripts/build.sh --warnings all` — PASS; image 1,546,502 bytes, global RAM
+  187,172 bytes. Build emitted existing Arduino core/legacy warnings. No HGS route is connected
+  to production generation, so this build has no new audible HGS behavior. Hardware and
+  listening acceptance remain `NOT_RUN` and premature.
+- NEXT_TASK=HGS2-6a: bounded candidate and tonal-context generation.
