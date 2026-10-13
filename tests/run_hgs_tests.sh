@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation]" >&2
 }
 
 run_legacy() {
@@ -56,9 +56,20 @@ run_pcvl() {
   "${BUILD_DIR}/test_pcvl"
 }
 
+run_relation() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    -o "${BUILD_DIR}/test_relation"
+  "${BUILD_DIR}/test_relation"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl)
+  targets=(legacy vocab roman manifest algebra pcvl relation)
 fi
 
 for target in "${targets[@]}"; do
@@ -69,6 +80,7 @@ for target in "${targets[@]}"; do
     manifest) run_manifest ;;
     algebra) run_algebra ;;
     pcvl) run_pcvl ;;
+    relation) run_relation ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

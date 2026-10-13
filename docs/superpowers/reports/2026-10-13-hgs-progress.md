@@ -151,3 +151,36 @@
 - HGS2-2 is pure host-tested math; no DSP, output or project ownership changed. Hardware and
   listening acceptance remain `NOT_RUN`.
 - NEXT_TASK=HGS2-3: harmonic relation scalar features and overlapping semantic tags.
+
+## HGS2-3 — relation features and semantic tags — implementation complete
+
+- Start SHA: `9550dd272a304365fbfe1a7b5127ac06bd6f854d`.
+- Added bounded `HarmonicRelationFeatures` (16 bytes) and `analyzeRelation()`. It validates
+  both chord quality/mask pairs and both tonal scale/mask pairs before calculating features;
+  invalid input leaves caller output unchanged. Metrics include common tones, set difference,
+  exact PC voice-leading, interval-vector distance, root/bass motion, out-of-scale tone counts,
+  complexity delta, context identity, scale overlap/difference, and pivot coverage.
+- Added stable relation tag bits 0..14. Predicates are annotations and do not impose legality:
+  PRL requires major/minor skeleton match and compatible added tones; diatonic-functional
+  requires a same-scale root change with both chords in scale; dominant-to-target uses the
+  root/family rule, while secondary-dominant additionally requires source tones outside the
+  source scale. Borrowed-parallel is limited to parallel major/minor contexts; modal-mixture
+  requires same tonic, changed scale, and newly foreign target tones. Chromatic-mediant uses
+  third-related roots and at least one contextual outside tone; augmented/passing annotations
+  require the bounded root/common-tone predicates pinned in their tests. Pivot compatibility
+  records coverage in the shared scale; `PIVOT_CHORD` requires a chord fully inside that
+  intersection.
+- Tests cover all 15 tags under all 12 chromatic transpositions, Cmaj7→Em7, G7→Cm,
+  E7→Am, overlapping C→Am PRL_R + diatonic-functional, borrowed/modal cases, pivot coverage,
+  augmented and diminished relations, shared-root and incompatible extension false positives,
+  invalid masks, and unchanged output on invalid input.
+- `bash tests/run_hgs_tests.sh` — PASS (legacy, vocab, roman, manifest, algebra, pcvl, relation).
+  `bash tests/run_hgs_tests.sh relation algebra pcvl legacy` — PASS.
+  ASan/UBSan `relation algebra pcvl` — PASS. `git diff --check` — PASS.
+- GCC 13.3 `-O2 -fstack-usage`: `analyzeRelation` frame 160 bytes; called PCVL frame 160 bytes;
+  fixed PCVL scratch remains 4096 bytes. Host-only 32-candidate microbenchmark: 10,000 rounds
+  × 32 candidates, 320,000 successful analyses in 148,106 μs (~14.8 μs per 32-candidate
+  batch on this host). This is not an ESP32 timing claim.
+- HGS2-3 adds no DSP, MIDI, material routing, genre policy, or hardware-facing integration.
+  Hardware/listening acceptance remains `NOT_RUN`.
+- NEXT_TASK=HGS2-4: compile compact corpus transition priors and runtime lookup.
