@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection]" >&2
 }
 
 run_legacy() {
@@ -147,9 +147,24 @@ run_route() {
   "${BUILD_DIR}/test_route"
 }
 
+run_projection() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_projection.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_source.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp" \
+    -o "${BUILD_DIR}/test_projection"
+  "${BUILD_DIR}/test_projection"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection)
 fi
 
 for target in "${targets[@]}"; do
@@ -167,6 +182,7 @@ for target in "${targets[@]}"; do
     candidates) run_candidates ;;
     fingerprint) run_fingerprint ;;
     route) run_route ;;
+    projection) run_projection ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

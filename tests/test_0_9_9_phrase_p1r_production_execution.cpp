@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "scenes.h"
+#include "src/generation/harmony/harmonic_scale.h"
 #include "src/generation/migration/phrase_execution.h"
 
 using namespace GroovePuterRhythm;
@@ -332,10 +333,10 @@ void testT10PatternAddressIndependence() {
 
 void testT11ProductionValidButEmpty() {
   const PreparedPhraseExecution prepared =
-      prepare(genre(GenerativeMode::Electro), 19, 4);
+      prepare(genre(GenerativeMode::Electro), 192, 4);
   assert(prepared.status == PhraseExecutionStatus::Ready);
-  assert(prepared.selection.composition.melodicRhythm ==
-         MelodicRhythmId::SparseCall);
+  assert(isValidMelodicRhythmId(
+      prepared.selection.composition.melodicRhythm, false));
 
   uint8_t emptyBar = 0xFFu;
   for (uint8_t bar = 0; bar < prepared.length.effectivePhraseBars; ++bar) {
@@ -379,8 +380,8 @@ void testT13LegacyNullOverride() {
           settings, legacyContext(19, 0), 19, frozen);
   assert(selection.status == StrongRhythmMigrationStatus::Applied);
   assert(frozen.resolved);
-  assert(selection.melodicRhythmId == MelodicRhythmId::SparseCall);
-  assert(selection.motifShapeId == MotifShapeId::Mirror);
+  assert(isValidMelodicRhythmId(selection.melodicRhythmId, false));
+  assert(isValidMotifShapeId(selection.motifShapeId, false));
   assert(selection.phraseBars == 4);
 
   PhysicalBar bar0 = seededPhysicalBar();
@@ -394,8 +395,79 @@ void testT13LegacyNullOverride() {
   assert(first.status == StrongRhythmMigrationStatus::Applied);
   assert(second.status == StrongRhythmMigrationStatus::Applied);
   assert(first.melodicMotifStatus == MelodicMotifStatus::Ok);
-  assert(second.melodicMotifStatus == MelodicMotifStatus::ValidButEmpty);
+  assert(first.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy);
+  assert(second.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy);
   std::puts("T13 legacy nullptr override compatibility: OK");
+}
+
+void testT15TaggedGraphSourceProjection() {
+  const GenreSettings settings = genre(GenerativeMode::Electro);
+  StrongRhythmFrozenSelection frozen{};
+  const StrongRhythmMigrationResult selection =
+      resolveStrongRhythmFrozenSelection(
+          settings, legacyContext(51, 0), 51, frozen);
+  assert(selection.status == StrongRhythmMigrationStatus::Applied);
+
+  GroovePuterHarmony::PreparedGraphHarmony prepared{};
+  prepared.materialId = 0x47524150u;
+  prepared.publicationGeneration = 1;
+  prepared.modelVersion = 7;
+  prepared.authority = GroovePuterHarmony::HarmonicAuthority::Graph;
+  prepared.eventCount = 6;
+  for (uint8_t i = 0; i < prepared.eventCount; ++i) {
+    const auto* quality = GroovePuterHarmony::qualityDefinition(
+        GroovePuterHarmony::kQualityMajor);
+    const uint8_t root = static_cast<uint8_t>((i + 1u) % 12u);
+    prepared.events[i].state = {
+        GroovePuterHarmony::kQualityMajor,
+        GroovePuterHarmony::transposePitchSet(quality->intervalMask, root),
+        root, GroovePuterHarmony::kNoBassPc};
+    const auto* scale = GroovePuterHarmony::scaleDefinition(2);
+    prepared.events[i].tonal = {
+        2, 2,
+        GroovePuterHarmony::transposePitchSet(scale->intervalMask, 0),
+        GroovePuterHarmony::transposePitchSet(scale->intervalMask, 0),
+        0, 0};
+    prepared.events[i].timingSlotOrdinal = static_cast<uint8_t>(i * 2);
+  }
+  const GroovePuterHarmony::HarmonicSourceView graphView{
+      GroovePuterHarmony::HarmonicStrategy::Graph, nullptr, &prepared};
+  HarmonicRhythmPlan rhythm{};
+  rhythm.progression = ProgressionId::Auto;
+  rhythm.onsets = static_cast<StepMask>(stepBit(0) | stepBit(8));
+  rhythm.eventCount = 2;
+  StrongRhythmPhraseExecutionOverride execution{};
+  execution.harmonicRhythm = &rhythm;
+  execution.harmonicSourceView = &graphView;
+  execution.firstGlobalHarmonicOrdinal = 4;
+  StrongRhythmMigrationContext context = legacyContext(51, 0);
+  context.phraseExecutionOverride = &execution;
+
+  PhysicalBar bar = seededPhysicalBar();
+  const StrongRhythmMigrationResult result = migrateStrongRhythmFrozenMaterial(
+      settings, frozen, context, bar.drums, bar.synthA, bar.synthB);
+  assert(result.status == StrongRhythmMigrationStatus::Applied);
+  assert(result.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Graph);
+  assert(result.progressionId == ProgressionId::Auto);
+  assert(result.harmonicEventCount == 2);
+  assert(result.harmonicEventOnsets == rhythm.onsets);
+
+  GroovePuterHarmony::PreparedGraphHarmony invalidGraph = prepared;
+  invalidGraph.materialId = 0;
+  const GroovePuterHarmony::HarmonicSourceView invalidGraphView{
+      GroovePuterHarmony::HarmonicStrategy::Graph, nullptr, &invalidGraph};
+  StrongRhythmPhraseExecutionOverride invalidExecution = execution;
+  invalidExecution.harmonicSourceView = &invalidGraphView;
+  StrongRhythmMigrationContext invalidContext = context;
+  invalidContext.phraseExecutionOverride = &invalidExecution;
+  PhysicalBar untouched = seededPhysicalBar();
+  const PhysicalBar before = untouched;
+  const StrongRhythmMigrationResult rejected = migrateStrongRhythmFrozenMaterial(
+      settings, frozen, invalidContext, untouched.drums, untouched.synthA,
+      untouched.synthB);
+  assert(rejected.status == StrongRhythmMigrationStatus::InvalidContext);
+  assert(samePhysical(before, untouched));
+  std::puts("T15 tagged graph source/global ordinal projection: OK");
 }
 
 void testT14NoPublicationAndInvalidOutputUntouched() {
@@ -445,6 +517,7 @@ int main() {
   testT11ProductionValidButEmpty();
   testT12LifetimeCarrierInert();
   testT13LegacyNullOverride();
+  testT15TaggedGraphSourceProjection();
   testT14NoPublicationAndInvalidOutputUntouched();
   printMemoryReport();
   std::puts("P1R focused production phrase execution: OK");

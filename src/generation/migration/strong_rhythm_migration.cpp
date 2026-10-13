@@ -634,6 +634,7 @@ TonalMaterializationResult materializeRole(
     const StrongRhythmMigrationContext& context,
     const TonalRegisterCorridor& corridor,
     const ChordProgressionPlan& progression,
+    GroovePuterHarmony::HarmonicStrategy harmonicStrategy,
     StepMask harmonicEventOnsets,
     StepMask onsets,
     StepMask continuations,
@@ -644,6 +645,7 @@ TonalMaterializationResult materializeRole(
   request.continuations = continuations;
   request.harmonicEventOnsets = harmonicEventOnsets;
   request.progression = progression;
+  request.harmonicStrategy = harmonicStrategy;
   request.semitoneOffsetOrdinals = semitoneOffsetOrdinals;
   for (uint8_t ordinal = 0; ordinal < kStepsPerBar; ++ordinal)
     request.tonalOffsets[ordinal] = tonalOffsets == nullptr ? 0 : tonalOffsets[ordinal];
@@ -818,6 +820,8 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
   HarmonicRhythmResult harmonic{};
   ChordProgressionResult progression{};
+  GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
+      GroovePuterHarmony::HarmonicStrategy::Legacy;
   if (context.phraseExecutionOverride == nullptr) {
     HarmonicRhythmRequest harmonicRequest{};
     harmonicRequest.progression = result.progressionId;
@@ -844,28 +848,60 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   } else {
     const StrongRhythmPhraseExecutionOverride& execution =
         *context.phraseExecutionOverride;
+    const bool hasLegacySource = execution.progressionSource != nullptr;
+    const bool hasTaggedSource = execution.harmonicSourceView != nullptr;
     if (execution.harmonicRhythm == nullptr ||
-        execution.progressionSource == nullptr ||
-        execution.progressionSource->period == 0 ||
+        hasLegacySource == hasTaggedSource ||
+        (hasLegacySource && execution.progressionSource->period == 0) ||
         execution.harmonicRhythm->eventCount == 0 ||
         execution.harmonicRhythm->eventCount > kMaxHarmonicEvents) {
       result.status = StrongRhythmMigrationStatus::InvalidContext;
       return result;
     }
-    harmonic.status = HarmonicRhythmStatus::Ok;
-    harmonic.plan = *execution.harmonicRhythm;
-    progression.plan.id = execution.progressionSource->id;
-    progression.plan.eventCount = harmonic.plan.eventCount;
-    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
-      if (!chordProgressionSourceEventAt(
-              *execution.progressionSource,
-              static_cast<uint16_t>(execution.firstGlobalHarmonicOrdinal + ordinal),
-              progression.plan.events[ordinal])) {
+    if (hasTaggedSource) {
+      const auto& view = *execution.harmonicSourceView;
+      harmonicStrategy = view.strategy;
+      if ((view.strategy == GroovePuterHarmony::HarmonicStrategy::Legacy &&
+           (view.legacySource == nullptr || view.graphSource != nullptr ||
+            view.legacySource->period == 0)) ||
+          (view.strategy == GroovePuterHarmony::HarmonicStrategy::Graph &&
+           (view.graphSource == nullptr || view.legacySource != nullptr)) ||
+          static_cast<uint8_t>(view.strategy) >
+              static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph)) {
         result.status = StrongRhythmMigrationStatus::InvalidContext;
         return result;
       }
     }
-    progression.status = execution.progressionSource->period == 1
+    harmonic.status = HarmonicRhythmStatus::Ok;
+    harmonic.plan = *execution.harmonicRhythm;
+    progression.plan.id = hasLegacySource
+        ? execution.progressionSource->id
+        : harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+              ? execution.harmonicSourceView->legacySource->id
+              : ProgressionId::Auto;
+    progression.plan.eventCount = harmonic.plan.eventCount;
+    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
+      const uint32_t globalOrdinal =
+          static_cast<uint32_t>(execution.firstGlobalHarmonicOrdinal + ordinal);
+      const bool eventReady = hasTaggedSource
+          ? GroovePuterHarmony::harmonicEventAt(
+                *execution.harmonicSourceView, globalOrdinal,
+                progression.plan.events[ordinal]) ==
+                GroovePuterHarmony::HarmonyStatus::Ready
+          : chordProgressionSourceEventAt(
+                *execution.progressionSource, globalOrdinal,
+                progression.plan.events[ordinal]);
+      if (!eventReady) {
+        result.status = StrongRhythmMigrationStatus::InvalidContext;
+        return result;
+      }
+    }
+    const uint8_t legacyPeriod = hasLegacySource
+        ? execution.progressionSource->period
+        : harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+              ? execution.harmonicSourceView->legacySource->period
+              : 0;
+    progression.status = legacyPeriod == 1
         ? ChordProgressionStatus::ValidButStatic
         : ChordProgressionStatus::Ok;
   }
@@ -875,6 +911,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   result.harmonicEventCount = harmonic.plan.eventCount;
   result.chordProgressionStatus = progression.status;
   result.progressionId = progression.plan.id;
+  result.harmonicStrategy = harmonicStrategy;
   if (progression.status != ChordProgressionStatus::Ok &&
       progression.status != ChordProgressionStatus::ValidButStatic) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
@@ -1041,7 +1078,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     }
   } else {
     const TonalMaterializationResult bassTonal = materializeRole(
-        context, tonalProfile.bassRegister, progression.plan,
+        context, tonalProfile.bassRegister, progression.plan, harmonicStrategy,
         harmonic.plan.onsets, bassPitch.plan.onsets,
         bassPitch.plan.continuations, bassPitch.plan.tonalOffsets,
         bassPitch.plan.semitoneOffsetOrdinals);
@@ -1078,6 +1115,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     if (result.synthBRole == SemanticSynthBRole::Chord) {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
@@ -1103,6 +1141,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, melodicPitch.plan.onsets,
           melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
@@ -1130,6 +1169,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
@@ -1171,6 +1211,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, admittedOnsets, admittedContinuations,
           admittedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;

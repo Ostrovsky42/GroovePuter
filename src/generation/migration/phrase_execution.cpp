@@ -227,7 +227,10 @@ PhraseExecutionStatus preparePhraseExecution(
     StrongRhythmPhraseExecutionOverride execution{};
     execution.harmonicRhythm =
         &destination.harmonicClock.bars[bar].harmonicRhythm;
-    execution.progressionSource = &destination.progressionSource;
+    const GroovePuterHarmony::HarmonicSourceView harmonicSource{
+        GroovePuterHarmony::HarmonicStrategy::Legacy,
+        &destination.progressionSource, nullptr};
+    execution.harmonicSourceView = &harmonicSource;
     execution.firstGlobalHarmonicOrdinal =
         destination.harmonicClock.bars[bar].eventRange.firstOrdinal;
     if (destination.phraseTrajectory != kNoTrajectoryId) {
@@ -324,7 +327,10 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
   StrongRhythmPhraseExecutionOverride execution{};
   execution.harmonicRhythm =
       &prepared.harmonicClock.bars[phraseBarOrdinal].harmonicRhythm;
-  execution.progressionSource = &prepared.progressionSource;
+  const GroovePuterHarmony::HarmonicSourceView harmonicSource{
+      GroovePuterHarmony::HarmonicStrategy::Legacy,
+      &prepared.progressionSource, nullptr};
+  execution.harmonicSourceView = &harmonicSource;
   execution.firstGlobalHarmonicOrdinal =
       prepared.harmonicClock.bars[phraseBarOrdinal].eventRange.firstOrdinal;
   if (prepared.phraseTrajectory != kNoTrajectoryId) {

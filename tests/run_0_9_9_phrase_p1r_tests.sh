@@ -14,6 +14,7 @@ mapfile -t SOURCES < <(
     sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
 )
 SOURCES+=("/src/generation/migration/phrase_execution.cpp")
+SOURCES+=("/src/generation/harmony/harmonic_source.cpp")
 
 CXXFLAGS=(
   -std=c++17

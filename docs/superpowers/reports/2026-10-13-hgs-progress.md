@@ -352,3 +352,38 @@
   acceptance remains `NOT_RUN`; first audible device test follows HGS2-7 production integration
   and its host acceptance.
 - NEXT_TASK=HGS2-7a: Phase A capability projection at the existing materializer boundary.
+
+## HGS2-7a — Phase A projection and tagged existing WHAT integration — implementation complete
+
+- Start SHA: `f76a1106926face5f54c449a2ad8c30498f88649`.
+- Added a fixed `PreparedGraphHarmony` (maximum32 resolved events) and tagged `HarmonicSourceView`
+  with explicit `Legacy` and `Graph` strategies. Legacy lookup delegates to the existing
+  four-event source unchanged. Graph lookup uses the requested global ordinal directly and fails
+  closed on missing identity/generation/model version, wrong authority, out-of-range event or
+  malformed/unsupported harmonic state.
+- Added lossless projection into the existing `HarmonicEvent` carrier. Projectable qualities are
+  explicitly enumerated; local/home context masks are verified, chord roots use a bounded
+  degree0..6 plus chromatic offset -2..+2, and ties choose the lowest degree after minimum
+  absolute offset. Unrepresentable minor triad, augmented quality and slash bass return
+  `Unsupported`; there is no quality-table fork or widened legacy carrier. Capability tests cover
+  all existing qualities, roots, bootstrap scales and tonic transpositions.
+- Added a tagged source seam to phrase execution and tonal materialization. Graph source reports
+  `ProgressionId::Auto` and cannot masquerade as PopCycle/StaticModal. Existing production phrase
+  preparation constructs an explicit Legacy view, preserving legacy as the only production
+  default; there is still no production graph strategy selector or audible graph generation.
+- Tests: full HGS host suite — PASS; full HGS ASan+UBSan suite — PASS. Focused P1R phrase suite
+  including Graph ordinal4/5, unchanged harmonic onset mask, failure output preservation,
+  deterministic double-run, ASan and UBSan — PASS. `git diff --check` — PASS. Stage15 source
+  regression — PASS. Cardputer ADV build — PASS, flash1,547,774 bytes, static RAM187,172 bytes.
+- Existing repository gates remain red at the starting SHA: P1R's chained M1 test expects an
+  outdated seed-selected `SparseCall`; Stage15 tonal-profile test expects a static contour for an
+  accepted mode although current policy differs; W1R source guard diffs the already-updated
+  `chord_progression.h` from its historical checkpoint. These were reproduced in a clean detached
+  worktree at the starting SHA. The P1R fixture was refreshed only where needed to exercise the
+  current valid-empty contract and new tagged source path. No HGS2-7a failure remains in its
+  focused host gates.
+- Device/listening acceptance remains `NOT_RUN`. HGS2-7a only proves source projection and
+  materializer integration; graph harmony is not yet selected by production generation. Begin
+  hardware listening after HGS2-7b persistence/transaction work, HGS2-7c production consumers and
+  the HGS2-8 host/listening package are complete. No firmware was flashed.
+- NEXT_TASK=HGS2-7b: committed song continuity, transaction, undo and durable replay.

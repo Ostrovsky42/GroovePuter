@@ -55,13 +55,22 @@ bool validEvent(const HarmonicEvent& event) {
 
 bool validRequest(const TonalMaterializationRequest& request,
                   uint8_t onsetCount) {
+  const uint8_t strategy = static_cast<uint8_t>(request.harmonicStrategy);
+  const bool validProgressionIdentity =
+      request.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+          ? isValidProgressionId(request.progression.id, false)
+          : request.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Graph
+                ? request.progression.id == ProgressionId::Auto
+                : false;
   if (!validContinuationTopology(request.onsets, request.continuations) ||
       request.rootPitchClass > 11 ||
       !isValidScaleTypeValue(request.scaleTypeValue) ||
       request.minMidi > request.maxMidi || request.maxMidi > 127 ||
       request.maxAdjacentLeapSemitones > 127 ||
       request.progression.eventCount > kMaxHarmonicEvents ||
-      !isValidProgressionId(request.progression.id, false)) {
+      strategy > static_cast<uint8_t>(
+                     GroovePuterHarmony::HarmonicStrategy::Graph) ||
+      !validProgressionIdentity) {
     return false;
   }
 

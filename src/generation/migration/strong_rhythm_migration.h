@@ -10,6 +10,7 @@
 #include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
 #include "../harmony/harmonic_types.h"
+#include "../harmony/harmonic_source.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_pitch_behavior.h"
@@ -105,6 +106,7 @@ inline bool chordProgressionSourceEventAt(
 struct StrongRhythmPhraseExecutionOverride {
   const HarmonicRhythmPlan* harmonicRhythm = nullptr;
   const ChordProgressionSource* progressionSource = nullptr;
+  const GroovePuterHarmony::HarmonicSourceView* harmonicSourceView = nullptr;
   uint16_t firstGlobalHarmonicOrdinal = 0;
   // GF2-I3: the already-evolved rhythm plan for this bar of the phrase. The
   // phrase owner realizes the whole bar-function programme; the shared
@@ -265,6 +267,8 @@ struct StrongRhythmMigrationResult {
   bool tonalMaterializationApplied = false;
   GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
       GroovePuterHarmony::HarmonicAuthority::Unknown;
+  GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
+      GroovePuterHarmony::HarmonicStrategy::Legacy;
 };
 
 #ifdef GROOVEPUTER_M1_TEST_PROBE
