@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${ROOT_DIR}/build/hgs-tests"
+CXX="${CXX:-g++}"
+EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
+mkdir -p "${BUILD_DIR}"
+
+usage() {
+  echo "usage: $0 [legacy]" >&2
+}
+
+run_legacy() {
+  # Intentional word splitting permits caller-provided sanitizer/compiler flags.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_legacy_replay.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    -o "${BUILD_DIR}/test_legacy"
+  (cd "${ROOT_DIR}" && "${BUILD_DIR}/test_legacy")
+}
+
+targets=("$@")
+if ((${#targets[@]} == 0)); then
+  targets=(legacy)
+fi
+
+for target in "${targets[@]}"; do
+  case "${target}" in
+    legacy) run_legacy ;;
+    *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
+  esac
+done
+
+echo "HGS tests passed: ${targets[*]}"

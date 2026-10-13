@@ -464,7 +464,7 @@ detached
 - `bash tests/run_midi_perform_ui_polish_tests.sh` — PASS.
 - `make -C platform_sdl clean all CXX=g++` — PASS (existing C++20 bit-field and format warnings).
 - `git diff --check` — PASS.
-- Implementation commit: pending final commit in SP-7.
+- Implementation commit: `5fbccbe6` (`feat: expose standalone smart play controls`).
 
 ## SP-7 software gate and hardware handoff — software GREEN, physical tests NOT RUN
 
@@ -488,5 +488,6 @@ detached
 - SOFTWARE_GATE=PASS; HARDWARE_ACCEPTANCE=NOT_RUN; LISTENING_ACCEPTANCE=NOT_RUN.
 - NEXT_TASK=HGS2-0 immutable legacy witnesses and dedicated HGS runner. The genre-aware
   progression graph and all genre profiles are not implemented by SP-0…SP-7.
-- Implementation/report commit: pending final local commit. No push, tag, release, main merge,
-  or flash performed.
+- SP-6 implementation, software report and physical checklist committed as `5fbccbe6`
+  (`feat: expose standalone smart play controls`). No push, tag, release, main merge, or flash
+  performed.
