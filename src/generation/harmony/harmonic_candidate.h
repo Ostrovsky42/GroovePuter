@@ -60,6 +60,9 @@ HarmonyStatus collectCandidates(const CandidateRequest& request,
                                 CandidateScratch& scratch,
                                 CandidateList& candidates,
                                 TonalCandidateList& contexts);
+HarmonyStatus canonicalFunctionTokenFor(const HarmonicState& state,
+                                        const TonalContext& context,
+                                        CanonicalFunctionToken& out);
 
 }  // namespace GroovePuterHarmony
 

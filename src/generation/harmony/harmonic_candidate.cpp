@@ -8,7 +8,9 @@ namespace {
 
 bool sameContext(const TonalContext& a, const TonalContext& b) {
   return a.scaleId == b.scaleId && a.tonicPc == b.tonicPc &&
-         a.scaleMask == b.scaleMask;
+         a.scaleMask == b.scaleMask && a.homeScaleId == b.homeScaleId &&
+         a.homeTonicPc == b.homeTonicPc &&
+         a.homeScaleMask == b.homeScaleMask;
 }
 
 bool validState(const HarmonicState& state) {
@@ -304,6 +306,15 @@ HarmonyStatus collectCandidates(const CandidateRequest& request,
 
   candidates = nextCandidates;
   contexts = nextContexts;
+  return HarmonyStatus::Ready;
+}
+
+HarmonyStatus canonicalFunctionTokenFor(const HarmonicState& state,
+                                        const TonalContext& context,
+                                        CanonicalFunctionToken& out) {
+  if (!validState(state) || !validContext(context)) return HarmonyStatus::Invalid;
+  const CanonicalFunctionToken result = makeToken(state, context);
+  out = result;
   return HarmonyStatus::Ready;
 }
 

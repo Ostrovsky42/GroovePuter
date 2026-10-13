@@ -308,10 +308,12 @@
   signatures. Route count, event pointer, state/scale masks, cadence IDs, home identity and
   strictly increasing timing slots are checked before hashing. Invalid routes leave output
   untouched.
-- Added fixed eight-entry `RecentHarmonyMemory`. Preview penalty is a pure read, explicit
-  `commitFingerprint` is the only append operation, and reset clears the session ring. Exact
-  signature matches receive the versioned weights4/3/2/2/1 scaled by repetition tolerance;
-  no approximate hash-distance comparison is used. Set is40 bytes; memory is322 bytes.
+- Added fixed eight-entry `RecentHarmonyMemory` plus eight compact local edge tokens. Preview
+  penalty is a pure read, explicit accepted-route/edge commit functions are the only append
+  operations, and reset clears the session ring. Exact route signature matches receive the
+  versioned weights4/3/2/2/1; repeated edges add a bounded weight2 term. Both scale by
+  repetition tolerance. No approximate hash-distance comparison is used. Set is40 bytes;
+  memory is336 bytes.
 - Tests prove C–Am–F–G and transposed D–Bm–G–A normalize identically, while changed quality,
   mode interpretation and cadence affect their intended signatures. Ring wrap after nine
   accepted inserts, immutable preview, deterministic snapshot scoring, error output preservation
@@ -320,3 +322,33 @@
 - This remains offline session logic; no generator owner calls it yet and no playback behavior
   changed. Hardware/listening acceptance remains `NOT_RUN`.
 - NEXT_TASK=HGS2-6c: integer route scorer, bounded route chunks and home-context RETURN search.
+
+## HGS2-6c — integer route planner and exact-home RETURN — implementation complete
+
+- Start SHA: `65426fecab55d011d68e920d6634ccee9c56dab6`.
+- Added deterministic integer candidate scoring using genre coefficients, SongVariantGenome,
+  corpus prior, home distance/gravity, section intent, repeat fingerprints and normalized
+  recent-edge penalties. Candidate tie selection and route selection use independent reserved
+  RNG domains20 and21. Positive candidate weights clamp to1..255. Bounded diagnostics retain
+  selected relation features, score and corpus prior outside the audio render path.
+- Added route chunks of at most4 resolved events with timing-slot ordinals and ending
+  change/modulation counters for continuity across chunks. TAKE keeps home context; KEEP keeps
+  current context; DEVELOP/BREAK apply existing policy hard limits and carry actual changes,
+  rather than treating every slot as a change. No transport or DSP owner was added.
+- RETURN uses deterministic bounded Dijkstra over admitted relation neighbors: depth≤4,
+  expanded nodes≤128, positive relation costs, stable tie seed, and exact home chord plus full
+  tonal-context identity as its goal. A distant F-sharp major test returns through a legal
+  intermediate chord; same root with the wrong home context does not count as success. Too few
+  slots, unreachable home, invalid input and capacity failures leave published output intact.
+- Added fixed `RouteScratch` (3,410 bytes) and caller-owned candidate workspace (4,962 bytes);
+  GCC13.3 `-O2 -fstack-usage` reports `planRouteChunk` at688 bytes. PCVL storage remains in
+  caller workspace. These are host compiler measurements; device execution time is not measured.
+- Route tests cover deterministic replay, zero/1/2/3/4/32 timing budgets, saturation limits,
+  section context rules, chunk continuity/budget carry, exact-home/capability failure, output
+  preservation and diagnostics. Full HGS host suite — PASS. ASan/UBSan `route fingerprint
+  candidates` — PASS. Cardputer ADV firmware build — PASS at1,546,630 bytes flash and187,172
+  bytes global RAM; existing Arduino/legacy warnings remain.
+- The route API is still offline and has no production generation caller. Hardware/listening
+  acceptance remains `NOT_RUN`; first audible device test follows HGS2-7 production integration
+  and its host acceptance.
+- NEXT_TASK=HGS2-7a: Phase A capability projection at the existing materializer boundary.

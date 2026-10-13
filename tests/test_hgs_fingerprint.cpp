@@ -61,6 +61,20 @@ int main() {
   assert(c.cadence == d.cadence);
   assert(c.scaleContext == d.scaleContext);
 
+  ResolvedHarmonicEvent shifted[4];
+  for (uint8_t i = 0; i < 4; ++i) {
+    shifted[i] = cEvents[i];
+    shifted[i].timingSlotOrdinal = static_cast<uint8_t>(i * 4 + 8);
+  }
+  ResolvedRouteView shiftedRoute{shifted, 4, cRoute.home, cRoute.homeTonal};
+  HarmonicFingerprintSet shiftedFp{};
+  assert(fingerprintRoute(shiftedRoute, shiftedFp) == HarmonyStatus::Ready);
+  assert(shiftedFp.rootMotion == c.rootMotion);
+  assert(shiftedFp.qualitySequence == c.qualitySequence);
+  assert(shiftedFp.semanticRelation == c.semanticRelation);
+  assert(shiftedFp.cadence == c.cadence);
+  assert(shiftedFp.scaleContext == c.scaleContext);
+
   ResolvedHarmonicEvent altered[4];
   for (uint8_t i = 0; i < 4; ++i) altered[i] = cEvents[i];
   altered[1].state = state(9, kQualityMajor);
@@ -112,6 +126,14 @@ int main() {
   assert(memory.count == 1);
   assert(harmonicRepeatPenalty(memory, c, 0) == 12);
   assert(harmonicRepeatPenalty(memory, d, 0) == 12);
+  const uint8_t cEdge = harmonicEdgeToken(
+      cEvents[0].state, cEvents[0].tonal, cEvents[1].state, cEvents[1].tonal);
+  const uint8_t dEdge = harmonicEdgeToken(
+      dEvents[0].state, dEvents[0].tonal, dEvents[1].state, dEvents[1].tonal);
+  assert(cEdge == dEdge);
+  commitRecentEdge(memory, cEdge);
+  assert(memory.edgeCount == 1);
+  assert(harmonicRecentEdgePenalty(memory, dEdge, 0) == 2);
   for (uint8_t i = 0; i < 8; ++i) {
     HarmonicFingerprintSet distinct = c;
     distinct.rootMotion += i + 1;
@@ -124,7 +146,20 @@ int main() {
   assert(memory.count == 8 && memory.next == 1);
   assert(harmonicRepeatPenalty(memory, c, 0) == 0);
   resetRecentHarmonyMemory(memory);
-  assert(memory.count == 0 && memory.next == 0);
+  assert(memory.count == 0 && memory.next == 0 && memory.edgeCount == 0 &&
+         memory.edgeNext == 0);
+
+  RecentHarmonyMemory acceptedMemory{};
+  assert(commitAcceptedRoute(acceptedMemory, cRoute) == HarmonyStatus::Ready);
+  assert(acceptedMemory.count == 1 && acceptedMemory.edgeCount == 3);
+  const RecentHarmonyMemory acceptedSnapshot = acceptedMemory;
+  invalid = cRoute;
+  invalid.count = 33;
+  assert(commitAcceptedRoute(acceptedMemory, invalid) == HarmonyStatus::Invalid);
+  assert(acceptedMemory.count == acceptedSnapshot.count &&
+         acceptedMemory.next == acceptedSnapshot.next &&
+         acceptedMemory.edgeCount == acceptedSnapshot.edgeCount &&
+         acceptedMemory.edgeNext == acceptedSnapshot.edgeNext);
 
   RecentHarmonyMemory repeatMemory{};
   commitFingerprint(repeatMemory, c);

@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route]" >&2
 }
 
 run_legacy() {
@@ -128,9 +128,28 @@ run_fingerprint() {
   "${BUILD_DIR}/test_fingerprint"
 }
 
+run_route() {
+  # scenes.h has defaulted bit-fields; genre policy dependency uses C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_route.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_route.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    -o "${BUILD_DIR}/test_route"
+  "${BUILD_DIR}/test_route"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route)
 fi
 
 for target in "${targets[@]}"; do
@@ -147,6 +166,7 @@ for target in "${targets[@]}"; do
     genome) run_genome ;;
     candidates) run_candidates ;;
     fingerprint) run_fingerprint ;;
+    route) run_route ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

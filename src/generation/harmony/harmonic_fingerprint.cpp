@@ -31,10 +31,6 @@ struct HashWriter {
     byte(static_cast<uint8_t>(word >> 8u));
   }
 
-  void word64(uint64_t word) {
-    for (uint8_t i = 0; i < 8; ++i)
-      byte(static_cast<uint8_t>(word >> (8u * i)));
-  }
 };
 
 bool validState(const HarmonicState& state) {
@@ -70,6 +66,11 @@ void begin(HashWriter& hash, FingerprintKind kind, uint8_t count) {
   hash.byte(count);
 }
 
+uint8_t relativeSlot(const ResolvedRouteView& route, uint8_t index) {
+  return static_cast<uint8_t>(route.events[index].timingSlotOrdinal -
+                              route.events[0].timingSlotOrdinal);
+}
+
 uint64_t fingerprintRootMotion(const ResolvedRouteView& route) {
   HashWriter hash{};
   begin(hash, FingerprintKind::RootMotion, route.count);
@@ -82,7 +83,7 @@ uint64_t fingerprintRootMotion(const ResolvedRouteView& route) {
                              : static_cast<uint8_t>(signedPcOffset(
                                    event.state.bassPc, route.home.rootPc));
     hash.byte(bass);
-    hash.byte(event.timingSlotOrdinal);
+    hash.byte(relativeSlot(route, i));
   }
   return hash.value;
 }
@@ -92,7 +93,7 @@ uint64_t fingerprintQuality(const ResolvedRouteView& route) {
   begin(hash, FingerprintKind::QualitySequence, route.count);
   for (uint8_t i = 0; i < route.count; ++i) {
     hash.word16(route.events[i].state.qualityId);
-    hash.byte(route.events[i].timingSlotOrdinal);
+    hash.byte(relativeSlot(route, i));
   }
   return hash.value;
 }
@@ -108,7 +109,7 @@ uint64_t fingerprintSemantic(const ResolvedRouteView& route) {
     hash.byte(event.tonal.scaleId);
     hash.byte(static_cast<uint8_t>(signedPcOffset(
         event.tonal.tonicPc, route.homeTonal.tonicPc)));
-    hash.byte(event.timingSlotOrdinal);
+    hash.byte(relativeSlot(route, i));
   }
   return hash.value;
 }
@@ -118,7 +119,7 @@ uint64_t fingerprintCadence(const ResolvedRouteView& route) {
   begin(hash, FingerprintKind::Cadence, route.count);
   for (uint8_t i = 0; i < route.count; ++i) {
     hash.byte(static_cast<uint8_t>(route.events[i].cadenceClass));
-    hash.byte(route.events[i].timingSlotOrdinal);
+    hash.byte(relativeSlot(route, i));
   }
   return hash.value;
 }
@@ -135,13 +136,14 @@ uint64_t fingerprintScaleContext(const ResolvedRouteView& route) {
     hash.byte(tonal.homeScaleId);
     hash.byte(static_cast<uint8_t>(signedPcOffset(
         tonal.homeTonicPc, route.homeTonal.tonicPc)));
-    hash.byte(route.events[i].timingSlotOrdinal);
+    hash.byte(relativeSlot(route, i));
   }
   return hash.value;
 }
 
 bool validMemory(const RecentHarmonyMemory& memory) {
-  return memory.count <= 8 && memory.next < 8;
+  return memory.count <= 8 && memory.next < 8 && memory.edgeCount <= 8 &&
+         memory.edgeNext < 8;
 }
 
 uint8_t scaledWeight(uint8_t weight, uint8_t tolerance) {
@@ -207,12 +209,65 @@ uint8_t harmonicRepeatPenalty(const RecentHarmonyMemory& memory,
   return penalty > 255 ? 255 : static_cast<uint8_t>(penalty);
 }
 
+uint8_t harmonicEdgeToken(const HarmonicState& from,
+                          const TonalContext& fromTonal,
+                          const HarmonicState& to,
+                          const TonalContext& toTonal) {
+  if (!validState(from) || !validState(to) || !validContext(fromTonal) ||
+      !validContext(toTonal)) return 0;
+  HashWriter hash{};
+  hash.byte(kFingerprintVersion);
+  hash.byte(static_cast<uint8_t>(signedPcOffset(to.rootPc, from.rootPc)));
+  hash.word16(from.qualityId);
+  hash.word16(to.qualityId);
+  hash.byte(fromTonal.scaleId);
+  hash.byte(toTonal.scaleId);
+  hash.byte(static_cast<uint8_t>(signedPcOffset(toTonal.tonicPc,
+                                                fromTonal.tonicPc)));
+  return static_cast<uint8_t>(hash.value);
+}
+
+uint8_t harmonicRecentEdgePenalty(const RecentHarmonyMemory& memory,
+                                  uint8_t edgeToken,
+                                  uint8_t repetitionTolerance) {
+  if (!validMemory(memory)) return 0;
+  const uint8_t weight = scaledWeight(2, repetitionTolerance);
+  uint16_t penalty = 0;
+  for (uint8_t age = 0; age < memory.edgeCount; ++age) {
+    const uint8_t index = static_cast<uint8_t>(
+        (memory.edgeNext + 8u - 1u - age) % 8u);
+    if (memory.recentEdges[index] == edgeToken) penalty += weight;
+  }
+  return penalty > 255 ? 255 : static_cast<uint8_t>(penalty);
+}
+
 void commitFingerprint(RecentHarmonyMemory& memory,
                        const HarmonicFingerprintSet& accepted) {
   if (!validMemory(memory)) resetRecentHarmonyMemory(memory);
   memory.entries[memory.next] = accepted;
   memory.next = static_cast<uint8_t>((memory.next + 1u) % 8u);
   if (memory.count < 8) ++memory.count;
+}
+
+HarmonyStatus commitAcceptedRoute(RecentHarmonyMemory& memory,
+                                 const ResolvedRouteView& accepted) {
+  HarmonicFingerprintSet fingerprint{};
+  const HarmonyStatus status = fingerprintRoute(accepted, fingerprint);
+  if (status != HarmonyStatus::Ready) return status;
+  commitFingerprint(memory, fingerprint);
+  for (uint8_t i = 1; i < accepted.count; ++i) {
+    commitRecentEdge(memory, harmonicEdgeToken(
+        accepted.events[i - 1].state, accepted.events[i - 1].tonal,
+        accepted.events[i].state, accepted.events[i].tonal));
+  }
+  return HarmonyStatus::Ready;
+}
+
+void commitRecentEdge(RecentHarmonyMemory& memory, uint8_t edgeToken) {
+  if (!validMemory(memory)) resetRecentHarmonyMemory(memory);
+  memory.recentEdges[memory.edgeNext] = edgeToken;
+  memory.edgeNext = static_cast<uint8_t>((memory.edgeNext + 1u) % 8u);
+  if (memory.edgeCount < 8) ++memory.edgeCount;
 }
 
 void resetRecentHarmonyMemory(RecentHarmonyMemory& memory) {
