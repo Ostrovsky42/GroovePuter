@@ -41,6 +41,7 @@ struct InputKey {
     uint32_t generation{0};
     uint8_t channel{0};
     uint8_t key{0};
+    uint8_t cable{0};
 };
 
 struct MidiInputEvent {

@@ -133,20 +133,20 @@ identity overloads of `externalNoteOn/Off`; scoped release entrypoints.
 Use experimental identity definitions after checking enum compatibility; do not import
 ChangeControl/Scene handling. Unknown intent is rejected without mutation.
 
-- [ ] Record the exact v0.9.19 source→dispatcher→queue→keyboard→output route, then identify
+- [x] Record the exact v0.9.19 source→dispatcher→queue→keyboard→output route, then identify
   which source/session fields are lost. Add tests at each such boundary, not just keyboard mocks.
-- [ ] Add assertions: USB 60 + Cardputer same pitch; one source disconnects and other stays;
+- [x] Add assertions: USB 60 + Cardputer same pitch; one source disconnects and other stays;
   old generation NoteOff cannot release new NoteOn; cable 1 cannot release cable 0;
   sustain per source/channel; NoteOn velocity 0 acts as release; repeated NoteOn has bounded ownership.
-- [ ] Add flood tests: continuous CC/bend does not increment recovery epoch; dropped release
+- [x] Add flood tests: continuous Mod/PitchBend/Sustain-on does not increment recovery epoch; dropped release
   produces scoped recovery; pending neutral bend reaches output after capacity returns;
   stale generation pending bend cannot affect the reconnected device.
-- [ ] Distinguish CC123 release and CC120 sound cleanup while respecting shared channel
+- [x] Distinguish CC123 release and CC120 sound cleanup while respecting shared channel
   ownership. Test actual emitted messages: no shared-channel wire all-sound-off for scoped cleanup.
-- [ ] Port only the behavior proved above. Output-note records retain original identity and
+- [x] Port only the behavior proved above. Output-note records retain original identity and
   emitted pitch/channel/target; NoteOff never recomputes the current interpretation.
   No all-owner panic on disconnect or harmless controller flood.
-- [ ] Run focused input/queue tests plus `bash tests/run_performance_closure_tests.sh` and
+- [x] Run focused input/queue tests plus `bash tests/run_performance_closure_tests.sh` and
   `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh`.
 - [ ] Commit coherent ingress and output fixes separately if necessary; each commit needs its
   own regression. Update progress with restored experimental hunks and rejected FX dependencies.

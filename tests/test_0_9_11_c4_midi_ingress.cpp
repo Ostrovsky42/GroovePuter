@@ -79,6 +79,27 @@ void overflowPreservesReleaseReserveAndRequestsRecovery() {
     assert(!queue.recoveryPending());
 }
 
+void controllerFloodUsesDroppablePathAndPreservesReleaseEdges() {
+    MidiInputQueue queue;
+    for (std::size_t i = 0; i < MidiInputQueue::kNoteOnCapacity; ++i)
+        assert(queue.tryPush(usbNote(2, static_cast<uint8_t>(i))));
+
+    const InputKey controller{InputSource::Usb, 2, 3, 0, 1};
+    for (int i = 0; i < 100; ++i) {
+        assert(!queue.tryPush(MidiInputEvent{controller, InputKind::PitchBend,
+                                             100, 10}));
+        assert(!queue.tryPush(MidiInputEvent{controller, InputKind::Mod, 64, 11}));
+        assert(!queue.tryPush(MidiInputEvent{controller, InputKind::Sustain, 127, 12}));
+    }
+    assert(!queue.recoveryPending());
+    assert(queue.droppedOptionalCount() == 300u);
+
+    assert(queue.tryPush(MidiInputEvent{controller, InputKind::PitchBend, 64, 13}));
+    assert(queue.tryPush(MidiInputEvent{controller, InputKind::Mod, 0, 14}));
+    assert(queue.tryPush(MidiInputEvent{controller, InputKind::Sustain, 0, 15}));
+    assert(!queue.recoveryPending());
+}
+
 }  // namespace
 
 int main() {
@@ -86,5 +107,6 @@ int main() {
     lifecycleRejectsStaleUsbSession();
     staleEnumerationCannotReadyNewAttachment();
     overflowPreservesReleaseReserveAndRequestsRecovery();
+    controllerFloodUsesDroppablePathAndPreservesReleaseEdges();
     return 0;
 }

@@ -54,6 +54,52 @@ Restored code at baseline provides pure Smart Play interpretation, legacy P1R ha
 - Registry generation byte parity — PASS.
 - Clang host run: NOT RUN; `clang++` is not installed. GCC, host, closure, sanitizer, and ADV gates pass.
 
+## SP-2 neutral intents and source-owned note lifecycle
+
+- Exact v0.9.19 ingress route: USB-MIDI packet from TinyUSB host/device transport →
+  `MidiInputParser::usbPacket()` → `MidiInputQueue` →
+  `MidiInputDispatcher::service()` (checks `MidiIoState` generation, route, channel and
+  cable) → `ExternalNoteQueue` for PERFORM → `GroovePuter.ino` loop drains the queue →
+  `PerformanceKeyboard::externalNoteOn/Off()` → `MusicalEventRouter` →
+  `InternalSynthOutput` and/or `UsbMidiOutput` → target voice/DSP or MIDI transport.
+- USB packet identity is `{source, generation, cable, channel, original key}`. Queue and
+  dispatcher retain all five. `ExternalNoteQueue` and `PerformanceKeyboard` now retain the
+  identity until that owner's release. The final musical output event intentionally projects
+  to `{source owner, target, output channel, emitted pitch}`; output ownership is separately
+  reference-counted, so disconnect cleanup never needs a wire-wide panic. UART input in
+  v0.9.19 only consumes MIDI realtime transport bytes; DIN note ingress is not implemented.
+- `PerformanceKeyboard` now reference-counts an identical semantic pitch across Cardputer
+  physical keys and external MIDI owners in either press/release order. Disconnecting USB
+  releases only its owner; the Cardputer note remains. Existing external source/session/cable
+  identity and scoped recovery are preserved.
+- USB cable is retained from the packet header. Old generation NoteOff, wrong cable, and
+  repeated same-identity NoteOn are covered. Sustain release is covered independently by
+  source, generation, channel and cable. MIDI NoteOn velocity zero parses as NoteOff.
+- Continuous button-style Mod/PitchBend and Sustain-on floods stay droppable; release edges
+  retain queue reserve. Critical overflow recovery carries source/session, with global recovery
+  only if the bounded recovery mailbox itself overflows.
+- CC123 remains note release. CC120 triggers source/channel/cable scoped PERFORM cleanup.
+  A wire-level regression drives `PerformanceKeyboard` through `UsbMidiOutput` while Pattern
+  owns the same pitch and confirms no CC120/CC123 is emitted and the Pattern owner remains.
+- MIDI pitch-bend output support was absent from v0.9.19. Restored as a fixed per-channel
+  latest-value retry in `UsbMidiOutput`; USB and UART transports encode 14-bit values. A
+  rejected neutral value (8192) supersedes older pending bends, and disconnect clears stale
+  pending values. Input generation gating separately rejects a bend from a prior session.
+  This output path does not change v0.9.19's nanoKEY-style input mapping, where incoming bend
+  is still a nudge gesture.
+- Red→green evidence: Cardputer/USB same-pitch test initially failed with duplicate NoteOn;
+  after shared semantic ownership, both release orders pass. Focused pitch-bend retry test
+  verifies latest-value and disconnect behavior.
+- `CXX=g++ bash tests/run_smart_play_tests.sh` — PASS, all targets.
+- `bash tests/run_performance_closure_tests.sh` — PASS.
+- `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh` — PASS.
+- `bash tests/run_0_9_11_c4_midi_convergence_tests.sh` — PASS, including actual MIDI
+  output ownership and pitch-bend retry tests.
+- `bash tests/run_host_tests.sh` — PASS, full suite completed after production changes.
+- `scripts/build.sh --warnings all` — PASS. Flash 1,532,926 bytes; static/global RAM
+  186,628 bytes. Warnings are existing board/dependency warnings.
+- `git diff --check` — PASS. Hardware acceptance — NOT RUN.
+
 ## Worktree list at baseline
 
 worktree /home/gg/pro/arduino.ESP32-S3-Touch-AMOLED-1.75/Cardputer/miniacid

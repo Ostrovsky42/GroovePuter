@@ -48,6 +48,7 @@ public:
     bool sendNoteOff(uint8_t zeroBasedChannel,
                      uint8_t note,
                      uint8_t velocity) override;
+    bool sendPitchBend(uint8_t zeroBasedChannel, uint16_t value14) override;
     bool sendControlChange(uint8_t zeroBasedChannel,
                            uint8_t controller,
                            uint8_t value) override;

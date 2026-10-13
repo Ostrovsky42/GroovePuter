@@ -80,6 +80,7 @@ public:
     }
 
     void handleMusicalEvent(const MusicalEvent& event) override;
+    void servicePitchBendRetries();
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -217,6 +218,8 @@ private:
     // not reach the wire yet (retried before the next event on that lane).
     uint8_t patternChordActive_[2][kGeneratedBitsetBytes]{};
     uint8_t patternChordPending_[2][kGeneratedBitsetBytes]{};
+    uint16_t pendingPitchBendMask_{0};
+    uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;

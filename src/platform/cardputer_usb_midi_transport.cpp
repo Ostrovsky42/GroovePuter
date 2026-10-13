@@ -48,10 +48,12 @@
 namespace {
 constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
+constexpr uint8_t kCinPitchBend = 0x0E;
 constexpr uint8_t kCinControlChange = 0x0B;
 constexpr uint8_t kCinSingleByte = 0x0F;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
+constexpr uint8_t kStatusPitchBend = 0xE0;
 constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
@@ -666,6 +668,7 @@ void drainIncomingMidiPackets() {
         ++g_diagnostics.externalRxIgnored;
     }
     (void)g_inputDispatcher.service(g_inputQueue, kMidiRxDrainBudget);
+    g_output.servicePitchBendRetries();
 }
 
 bool deadlineFor(uint32_t blockSequence,
@@ -1618,6 +1621,15 @@ bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
                               zeroBasedChannel,
                               note,
                               velocity);
+}
+
+bool CardputerUsbMidiTransport::sendPitchBend(uint8_t zeroBasedChannel,
+                                              uint16_t value14) {
+    if (value14 > 16383u) value14 = 16383u;
+    return writeChannelPacket(kCinPitchBend, kStatusPitchBend,
+                              zeroBasedChannel,
+                              static_cast<uint8_t>(value14 & 0x7fu),
+                              static_cast<uint8_t>((value14 >> 7u) & 0x7fu));
 }
 
 bool CardputerUsbMidiTransport::sendControlChange(uint8_t zeroBasedChannel,

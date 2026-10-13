@@ -37,6 +37,26 @@ int main() {
         queue.externalNoteOn(static_cast<uint8_t>(round), 80);
         assert(queue.pop(e) && e.note == static_cast<uint8_t>(round));
     }
+    // Identity-bearing overflow is recovered at source-session scope.
+    {
+        ExternalNoteQueue q;
+        ExternalNoteQueue::Event e;
+        const PerformanceInputIdentity owner{17, 1, 3, 64, 2};
+        for (unsigned i = 0; i < ExternalNoteQueue::kCapacity - ExternalNoteQueue::kNoteOffReserve; ++i)
+            q.externalNoteOn(static_cast<uint8_t>(i), 100);
+        for (unsigned i = 0; i < ExternalNoteQueue::kNoteOffReserve; ++i)
+            q.externalNoteOff(static_cast<uint8_t>(i));
+        q.externalNoteOff(64, owner);
+        assert(!q.takeGlobalRecovery());
+        PerformanceInputIdentity recovery{};
+        assert(q.popRecovery(recovery));
+        assert(recovery.source == owner.source && recovery.generation == owner.generation);
+        assert(!q.popRecovery(recovery));
+        while (q.pop(e)) {}
+        q.externalAllSoundOff(owner);
+        assert(q.pop(e) && e.allSoundOff && e.hasInputIdentity);
+        assert(samePerformanceInput(e.input, owner));
+    }
     // Sustain: press is droppable (reserve line), release is critical and raises recovery when lost.
     {
         ExternalNoteQueue q;

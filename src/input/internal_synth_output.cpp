@@ -159,6 +159,9 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                 }
                 liveDrumPadMask_ = 0;
                 break;
+            case MusicalEventType::PitchBend:
+                // Internal engines have no channel pitch-bend surface.
+                break;
         }
         return;
     }

@@ -13,6 +13,7 @@ mkdir -p "${BUILD_DIR}"
 "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_0_9_11_c4_midi_panic_cc123.cpp" \
   "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
   -o "${BUILD_DIR}/test_c4_midi_panic_cc123"
 "${BUILD_DIR}/test_c4_midi_panic_cc123"
 

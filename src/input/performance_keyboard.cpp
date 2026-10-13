@@ -1215,7 +1215,8 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
         uint8_t drumChannel = 0;
         if (!drumChannelForKey(physicalKey, drumChannel)) return true;
         held_[heldCount_++] = HeldNote{physicalKey, kSeqtrakDrumNote, velocity, drumChannel};
-        emitNoteOn(held_[heldCount_ - 1]);
+        if (!hasExternalSemanticOwner(kSeqtrakDrumNote, drumChannel))
+            emitNoteOn(held_[heldCount_ - 1]);
         return true;
     }
 
@@ -1249,9 +1250,9 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     } else if (chordMode_ != PerformanceChordMode::Off) {
         triggerDirectTransformed(lastServiceMicros_);
     } else if (directPolyphonyEnabled()) {
-        emitPolyNoteOn(held_[heldCount_ - 1]);
+        if (!hasExternalSemanticOwner(note, 0)) emitPolyNoteOn(held_[heldCount_ - 1]);
     } else {
-        emitNoteOn(held_[heldCount_ - 1]);
+        if (!hasExternalSemanticOwner(note, 0)) emitNoteOn(held_[heldCount_ - 1]);
     }
 
     if (requestedStepEngineEnabled()) service(lastServiceMicros_);
@@ -1273,7 +1274,8 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     }
 
     if (target_ == MusicalEventTarget::Drums) {
-        emitNoteOff(released.note, released.channel);
+        if (!hasExternalSemanticOwner(released.note, released.channel))
+            emitNoteOff(released.note, released.channel);
         return true;
     }
     if (activeStepEngineEnabled()) {
@@ -1291,12 +1293,61 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
         }
         return true;
     }
+    if (hasExternalSemanticOwner(released.note, released.channel)) return true;
     if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
     else emitNoteOff(released.note);
     return true;
 }
 
+int PerformanceKeyboard::findExternalInputOwner(PerformanceInputIdentity input) const {
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        if (externalInputOwners_[i].active &&
+            samePerformanceInput(externalInputOwners_[i].input, input)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+bool PerformanceKeyboard::hasExternalSemanticOwner(uint8_t note, uint8_t channel) const {
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        const ExternalInputOwner& owner = externalInputOwners_[i];
+        if (owner.active && owner.semanticNote == note && owner.semanticChannel == channel)
+            return true;
+    }
+    return false;
+}
+
+bool PerformanceKeyboard::hasPhysicalSemanticOwner(uint8_t note, uint8_t channel) const {
+    for (std::size_t i = 0; i < heldCount_; ++i) {
+        const HeldNote& held = held_[i];
+        if (held.physicalKey != '\0' && held.note == note && held.channel == channel)
+            return true;
+    }
+    return false;
+}
+
+void PerformanceKeyboard::updateExternalSustainAggregate() {
+    bool down = legacyExternalSustainDown_;
+    for (const ExternalSustainOwner& owner : externalSustainOwners_) {
+        down = down || owner.active;
+    }
+    if (down == externalSustainDown_) return;
+    if (down) {
+        latchBeforeExternalSustain_ = latchEnabled();
+        externalSustainDown_ = true;
+        setLatchEnabled(true);
+    } else {
+        externalSustainDown_ = false;
+        setLatchEnabled(latchBeforeExternalSustain_);
+    }
+}
+
 bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
+    return externalNoteOnUntracked(note, velocity);
+}
+
+bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity) {
     serviceHardwareClock();
     if (!noteModeEnabled_) return false;
     if (!enabled_) return true;
@@ -1320,7 +1371,8 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
         }
         if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
         held_[heldCount_++] = HeldNote{'\0', kSeqtrakDrumNote, velocity, drumChannel};
-        emitNoteOn(held_[heldCount_ - 1]);
+        if (!hasPhysicalSemanticOwner(kSeqtrakDrumNote, drumChannel))
+            emitNoteOn(held_[heldCount_ - 1]);
         return true;
     }
 
@@ -1355,9 +1407,9 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
     } else if (chordMode_ != PerformanceChordMode::Off) {
         triggerDirectTransformed(lastServiceMicros_);
     } else if (directPolyphonyEnabled()) {
-        emitPolyNoteOn(held_[heldCount_ - 1]);
+        if (!hasPhysicalSemanticOwner(note, 0)) emitPolyNoteOn(held_[heldCount_ - 1]);
     } else {
-        emitNoteOn(held_[heldCount_ - 1]);
+        if (!hasPhysicalSemanticOwner(note, 0)) emitNoteOn(held_[heldCount_ - 1]);
     }
 
     if (requestedStepEngineEnabled()) service(lastServiceMicros_);
@@ -1365,6 +1417,10 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
 }
 
 bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
+    return externalNoteOffUntracked(note);
+}
+
+bool PerformanceKeyboard::externalNoteOffUntracked(uint8_t note) {
     serviceHardwareClock();
     int found = -1;
     if (target_ == MusicalEventTarget::Drums) {
@@ -1391,7 +1447,8 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
     }
 
     if (target_ == MusicalEventTarget::Drums) {
-        emitNoteOff(released.note, released.channel);
+        if (!hasPhysicalSemanticOwner(released.note, released.channel))
+            emitNoteOff(released.note, released.channel);
         return true;
     }
     if (activeStepEngineEnabled()) {
@@ -1409,22 +1466,149 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
         }
         return true;
     }
+    if (hasPhysicalSemanticOwner(released.note, released.channel)) return true;
     if (directPolyphonyEnabled()) emitPolyNoteOff(released.note);
     else emitNoteOff(released.note);
     return true;
 }
 
+bool PerformanceKeyboard::externalNoteOn(uint8_t note,
+                                          uint8_t velocity,
+                                          PerformanceInputIdentity input) {
+    if (input.source >= 3u || input.channel >= 16u || input.inputNote >= 128u ||
+        input.cable >= 16u || note >= 128u) return false;
+    if (velocity == 0) return externalNoteOff(note, input);
+    const int existing = findExternalInputOwner(input);
+    if (existing >= 0) return true;  // repeated attack is bounded to one held owner
+
+    std::size_t free = kMaxExternalInputOwners;
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        if (!externalInputOwners_[i].active) { free = i; break; }
+    }
+    if (free == kMaxExternalInputOwners) return false;
+
+    uint8_t semanticNote = note;
+    uint8_t semanticChannel = 0;
+    if (target_ == MusicalEventTarget::Drums) {
+        if (!drumChannelForExternalNote(note, semanticChannel)) return false;
+        semanticNote = kSeqtrakDrumNote;
+    } else {
+        semanticNote = fitMidiNote(note);
+    }
+    const bool alreadyOwned = hasExternalSemanticOwner(semanticNote, semanticChannel);
+    if (!alreadyOwned && !externalNoteOnUntracked(note, velocity)) return false;
+    externalInputOwners_[free] = ExternalInputOwner{true, input, note,
+                                                     semanticNote, semanticChannel};
+    return true;
+}
+
+bool PerformanceKeyboard::externalNoteOff(uint8_t note,
+                                           PerformanceInputIdentity input) {
+    if (input.source >= 3u || input.channel >= 16u || input.inputNote >= 128u ||
+        input.cable >= 16u || note != input.inputNote) return false;
+    const int found = findExternalInputOwner(input);
+    if (found < 0) return false;
+    const ExternalInputOwner owner = externalInputOwners_[static_cast<std::size_t>(found)];
+    externalInputOwners_[static_cast<std::size_t>(found)] = ExternalInputOwner{};
+    if (hasExternalSemanticOwner(owner.semanticNote, owner.semanticChannel)) return true;
+    return externalNoteOffUntracked(owner.inputNote);
+}
+
+std::size_t PerformanceKeyboard::releaseExternalInput(uint8_t source,
+                                                       uint32_t generation) {
+    std::size_t released = 0;
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        if (!externalInputOwners_[i].active ||
+            externalInputOwners_[i].input.source != source ||
+            externalInputOwners_[i].input.generation != generation) continue;
+        const uint8_t note = externalInputOwners_[i].inputNote;
+        const PerformanceInputIdentity input = externalInputOwners_[i].input;
+        if (externalNoteOff(note, input)) ++released;
+    }
+    for (ExternalSustainOwner& owner : externalSustainOwners_) {
+        if (owner.active && owner.source == source && owner.generation == generation)
+            owner = ExternalSustainOwner{};
+    }
+    updateExternalSustainAggregate();
+    return released;
+}
+
+std::size_t PerformanceKeyboard::releaseExternalChannel(uint8_t source,
+                                                         uint32_t generation,
+                                                         uint8_t channel,
+                                                         uint8_t cable) {
+    std::size_t released = 0;
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        if (!externalInputOwners_[i].active) continue;
+        const PerformanceInputIdentity input = externalInputOwners_[i].input;
+        if (input.source != source || input.generation != generation ||
+            input.channel != channel || input.cable != cable) continue;
+        const uint8_t note = externalInputOwners_[i].inputNote;
+        if (externalNoteOff(note, input)) ++released;
+    }
+    for (ExternalSustainOwner& owner : externalSustainOwners_) {
+        if (owner.active && owner.source == source && owner.generation == generation &&
+            owner.channel == channel && owner.cable == cable) {
+            owner = ExternalSustainOwner{};
+        }
+    }
+    updateExternalSustainAggregate();
+    return released;
+}
+
+bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
+    switch (intent.kind) {
+        case PerformanceIntentKind::PlayNote:
+            return externalNoteOn(intent.note, intent.velocity, intent.input);
+        case PerformanceIntentKind::ReleaseNote:
+            return externalNoteOff(intent.note, intent.input);
+        case PerformanceIntentKind::Hold:
+        case PerformanceIntentKind::ReleaseHold:
+        case PerformanceIntentKind::ChangeOctave:
+        case PerformanceIntentKind::SelectRole:
+        case PerformanceIntentKind::SelectLeadMode:
+        case PerformanceIntentKind::SelectChordMode:
+        case PerformanceIntentKind::ToggleArp:
+        case PerformanceIntentKind::SelectArpPitchSource:
+        case PerformanceIntentKind::SelectHarmonyChangePolicy:
+        case PerformanceIntentKind::ToggleLatch:
+            return false;
+    }
+    return false;
+}
+
 void PerformanceKeyboard::externalSustain(bool down) {
     serviceHardwareClock();
-    if (down == externalSustainDown_) return;
-    if (down) {
-        latchBeforeExternalSustain_ = latchEnabled();
-        externalSustainDown_ = true;
-        setLatchEnabled(true);
-    } else {
-        externalSustainDown_ = false;
-        setLatchEnabled(latchBeforeExternalSustain_);
+    legacyExternalSustainDown_ = down;
+    updateExternalSustainAggregate();
+}
+
+void PerformanceKeyboard::externalSustain(bool down, PerformanceInputIdentity input) {
+    serviceHardwareClock();
+    if (input.source >= 3u || input.channel >= 16u || input.cable >= 16u) return;
+    std::size_t found = kMaxExternalInputOwners;
+    std::size_t free = kMaxExternalInputOwners;
+    for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
+        const ExternalSustainOwner& owner = externalSustainOwners_[i];
+        if (!owner.active) {
+            if (free == kMaxExternalInputOwners) free = i;
+            continue;
+        }
+        if (owner.source == input.source && owner.generation == input.generation &&
+            owner.channel == input.channel && owner.cable == input.cable) {
+            found = i;
+            break;
+        }
     }
+    if (down) {
+        if (found == kMaxExternalInputOwners && free < kMaxExternalInputOwners) {
+            externalSustainOwners_[free] = ExternalSustainOwner{
+                true, input.generation, input.source, input.channel, input.cable};
+        }
+    } else if (found < kMaxExternalInputOwners) {
+        externalSustainOwners_[found] = ExternalSustainOwner{};
+    }
+    updateExternalSustainAggregate();
 }
 
 std::size_t PerformanceKeyboard::externalHeldCount() const {
@@ -1452,6 +1636,10 @@ void PerformanceKeyboard::releaseAllExternalNotes() {
             externalNoteOff(notes[i]);
         }
     }
+    for (ExternalInputOwner& owner : externalInputOwners_) owner = ExternalInputOwner{};
+    for (ExternalSustainOwner& owner : externalSustainOwners_) owner = ExternalSustainOwner{};
+    legacyExternalSustainDown_ = false;
+    updateExternalSustainAggregate();
 }
 
 void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
@@ -1580,6 +1768,10 @@ void PerformanceKeyboard::panic() {
     clearScheduled();
     generatedNoteCount_ = 0;
     for (HeldNote& held : held_) held = HeldNote{};
+    for (ExternalInputOwner& owner : externalInputOwners_) owner = ExternalInputOwner{};
+    for (ExternalSustainOwner& owner : externalSustainOwners_) owner = ExternalSustainOwner{};
+    legacyExternalSustainDown_ = false;
+    updateExternalSustainAggregate();
     heldCount_ = 0;
     latchedCount_ = pendingLatchCount_ = 0;
     pendingLatchCapture_ = false;

@@ -596,7 +596,18 @@ void loop() {
         if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
 #endif
         if (note.sustain) {
-          g_performanceKeyboard.externalSustain(note.on);
+          if (note.hasInputIdentity)
+            g_performanceKeyboard.externalSustain(note.on, note.input);
+          else
+            g_performanceKeyboard.externalSustain(note.on);
+          continue;
+        }
+        if (note.allSoundOff) {
+          if (note.hasInputIdentity) {
+            g_performanceKeyboard.releaseExternalChannel(
+                note.input.source, note.input.generation, note.input.channel,
+                note.input.cable);
+          }
           continue;
         }
         if (note.mod != 0) {
@@ -640,8 +651,16 @@ void loop() {
           consumed = g_miniDisplay->handleEvent(offered);
         }
         if (consumed) continue;
-        if (note.on) g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
-        else g_performanceKeyboard.externalNoteOff(note.note);
+        if (note.on) {
+          if (note.hasInputIdentity)
+            g_performanceKeyboard.externalNoteOn(note.note, note.velocity, note.input);
+          else
+            g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
+        } else if (note.hasInputIdentity) {
+          g_performanceKeyboard.externalNoteOff(note.note, note.input);
+        } else {
+          g_performanceKeyboard.externalNoteOff(note.note);
+        }
       }
       {
         const int repeatDirection = g_nudgeRepeat.poll(millis());
@@ -655,11 +674,19 @@ void loop() {
           (void)g_miniDisplay->handleEvent(offered);
         }
       }
-      if (externalNotes.takeRecovery()) {
+      if (externalNotes.takeGlobalRecovery()) {
         g_modHold.reset();
         g_nudgeRepeat.reset();
         g_performanceKeyboard.releaseAllExternalNotes();
         g_performanceKeyboard.externalSustain(false);
+      } else {
+        PerformanceInputIdentity recovery{};
+        while (externalNotes.popRecovery(recovery)) {
+          g_modHold.reset();
+          g_nudgeRepeat.reset();
+          g_performanceKeyboard.releaseExternalInput(recovery.source,
+                                                    recovery.generation);
+        }
       }
     }
     const uint32_t epoch = g_miniAcid->liveInputEpoch();

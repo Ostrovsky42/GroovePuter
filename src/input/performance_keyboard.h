@@ -6,6 +6,7 @@
 #include "musical_event_router.h"
 #include "performance_chord_detector.h"
 #include "performance_instrument_types.h"
+#include "performance_intent.h"
 #include "performance_pulse.h"
 #include "performance_smart_play.h"
 
@@ -42,9 +43,16 @@ public:
     // Velocity: the key dynamics scaled by the PERFORM velocity setting (setting / 100), clamped 1..127.
     bool externalNoteOn(uint8_t note, uint8_t velocity);
     bool externalNoteOff(uint8_t note);
+    bool externalNoteOn(uint8_t note, uint8_t velocity, PerformanceInputIdentity input);
+    bool externalNoteOff(uint8_t note, PerformanceInputIdentity input);
+    std::size_t releaseExternalInput(uint8_t source, uint32_t generation);
+    std::size_t releaseExternalChannel(uint8_t source, uint32_t generation,
+                                      uint8_t channel, uint8_t cable);
+    bool dispatchIntent(const PerformanceIntent& intent);
     void releaseAllExternalNotes();
     // External sustain button: LATCH while held, the previous LATCH state is restored on release.
     void externalSustain(bool down);
+    void externalSustain(bool down, PerformanceInputIdentity input);
     bool externalSustainDown() const { return externalSustainDown_; }
     std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
@@ -218,6 +226,20 @@ private:
         uint8_t channel{0};
     };
     struct LatchedNote { uint8_t note{0}; uint8_t velocity{0}; };
+    struct ExternalInputOwner {
+        bool active{false};
+        PerformanceInputIdentity input{};
+        uint8_t inputNote{0};
+        uint8_t semanticNote{0};
+        uint8_t semanticChannel{0};
+    };
+    struct ExternalSustainOwner {
+        bool active{false};
+        uint32_t generation{0};
+        uint8_t source{0};
+        uint8_t channel{0};
+        uint8_t cable{0};
+    };
     struct ScheduledEvent {
         bool active{false};
         uint32_t dueMicros{0};
@@ -233,6 +255,12 @@ private:
 
     int findHeld(char physicalKey) const;
     int findHeldExternal(uint8_t note) const;
+    int findExternalInputOwner(PerformanceInputIdentity input) const;
+    bool hasExternalSemanticOwner(uint8_t note, uint8_t channel) const;
+    bool hasPhysicalSemanticOwner(uint8_t note, uint8_t channel) const;
+    void updateExternalSustainAggregate();
+    bool externalNoteOnUntracked(uint8_t note, uint8_t velocity);
+    bool externalNoteOffUntracked(uint8_t note);
     bool latchedArpContinues() const;
     void releaseHeldKeepingLatch();
     static bool drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel);
@@ -327,9 +355,13 @@ private:
     std::size_t collectInputPool(LatchedNote* out, std::size_t capacity) const;
 
     MusicalEventRouter& router_;
+    static constexpr std::size_t kMaxExternalInputOwners = 32;
+    ExternalInputOwner externalInputOwners_[kMaxExternalInputOwners]{};
+    ExternalSustainOwner externalSustainOwners_[kMaxExternalInputOwners]{};
     HeldNote held_[kMaxHeldNotes]{};
     std::size_t heldCount_{0};
     bool externalSustainDown_{false};
+    bool legacyExternalSustainDown_{false};
     bool latchBeforeExternalSustain_{false};
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     PerformanceChordMode chordMode_{PerformanceChordMode::Off};

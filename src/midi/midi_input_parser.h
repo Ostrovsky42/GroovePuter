@@ -25,10 +25,10 @@ public:
     }
 
     ParseResult usbPacket(const uint8_t (&packet)[4], uint32_t atMicros) const {
-        if ((packet[0] >> 4u) != 0) return {};
         const uint8_t cin = packet[0] & 0x0fu;
         if (cin != 0x08u && cin != 0x09u && cin != 0x0bu && cin != 0x0eu) return {};
-        return channelMessage(packet[1], packet[2], packet[3], cin, atMicros);
+        return channelMessage(packet[1], packet[2], packet[3], cin, atMicros,
+                              static_cast<uint8_t>(packet[0] >> 4u));
     }
 
     ParseResult uartByte(uint8_t byte, uint32_t atMicros) {
@@ -63,7 +63,8 @@ private:
                                uint8_t data1,
                                uint8_t data2,
                                uint8_t cin,
-                               uint32_t atMicros) const {
+                               uint32_t atMicros,
+                               uint8_t cable = 0) const {
         if ((status & 0x80u) == 0 || data1 >= 128 || data2 >= 128) return {};
         const uint8_t message = status & 0xf0u;
         const uint8_t channel = status & 0x0fu;
@@ -97,7 +98,8 @@ private:
         return ParseResult{true,
                            MidiInputEvent{InputKey{session_.source, session_.generation,
                                                    channel, static_cast<uint8_t>(
-                                                       (message == 0xb0u || message == 0xe0u) ? 0u : data1)},
+                                                       (message == 0xb0u || message == 0xe0u) ? 0u : data1),
+                                                   cable},
                                           kind, data2, atMicros},
                            false, 0};
     }

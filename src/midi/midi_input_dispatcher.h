@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "src/input/musical_event_router.h"
+#include "src/input/performance_intent.h"
 #include "midi_input_queue.h"
 #include "midi_io_state.h"
 
@@ -32,13 +33,37 @@ public:
     virtual ~MidiExternalNoteSink() = default;
     virtual void externalNoteOn(uint8_t note, uint8_t velocity) = 0;
     virtual void externalNoteOff(uint8_t note) = 0;
+    virtual void externalNoteOn(uint8_t note, uint8_t velocity,
+                                PerformanceInputIdentity input) {
+        (void)input;
+        externalNoteOn(note, velocity);
+    }
+    virtual void externalNoteOff(uint8_t note, PerformanceInputIdentity input) {
+        (void)input;
+        externalNoteOff(note);
+    }
     // Sustain button / pedal (CC64) of the external keyboard: true while held down.
     virtual void externalSustain(bool down) = 0;
+    virtual void externalSustain(bool down, PerformanceInputIdentity input) {
+        (void)input;
+        externalSustain(down);
+    }
+    virtual void externalAllSoundOff(PerformanceInputIdentity input) {
+        (void)input;
+    }
     // Pitch buttons of the external keyboard: -1 = left/down pressed, +1 = right/up pressed, 0 = the
     // button was released (or the session ended while it was held).
     virtual void externalNudge(int direction) = 0;
+    virtual void externalNudge(int direction, PerformanceInputIdentity input) {
+        (void)input;
+        externalNudge(direction);
+    }
     // Mod button of the external keyboard: press, release (tap or hold is decided by the consumer).
     virtual void externalMod(ModPhase phase) = 0;
+    virtual void externalMod(ModPhase phase, PerformanceInputIdentity input) {
+        (void)input;
+        externalMod(phase);
+    }
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -101,7 +126,15 @@ public:
         if (queue.takeRecoveryPending()) {
             MidiInputEvent discarded{};
             while (queue.tryPop(discarded)) {}
-            releaseAllOwnedNotes();
+            if (queue.takeGlobalRecovery()) {
+                releaseAllOwnedNotes();
+                InputSession ignored{};
+                while (queue.popRecoverySession(ignored)) {}
+            } else {
+                InputSession session{};
+                while (queue.popRecoverySession(session))
+                    releaseSession(session.source, session.generation);
+            }
             return 0;
         }
 
@@ -121,11 +154,18 @@ private:
         InputSource source{InputSource::Usb};
         uint32_t generation{0};
         uint8_t inputChannel{0};
+        uint8_t inputCable{0};
         uint8_t sourceNote{0};
         MusicalEventTarget target{MusicalEventTarget::SynthA};
         uint8_t routedChannel{0};
         uint8_t routedNote{0};
         bool perform{false};  // owned by the PERFORM keyboard bridge, not the router
+    };
+
+    static constexpr std::size_t kMaxSustainOwners = 32;
+    struct SustainOwner {
+        bool active{false};
+        PerformanceInputIdentity input{};
     };
 
     static bool sameConfig(const MidiInputRoutingConfig& lhs,
@@ -179,6 +219,7 @@ private:
             if (owner.source == event.id.source &&
                 owner.generation == event.id.generation &&
                 owner.inputChannel == event.id.channel &&
+                owner.inputCable == event.id.cable &&
                 owner.sourceNote == event.id.key) {
                 return static_cast<int>(i);
             }
@@ -208,8 +249,13 @@ private:
     void publish(MusicalEventType type, const ActiveOwner& owner, uint8_t velocity) {
         if (owner.perform) {
             if (performSink_ == nullptr) return;
-            if (type == MusicalEventType::NoteOn) performSink_->externalNoteOn(owner.routedNote, velocity);
-            else performSink_->externalNoteOff(owner.routedNote);
+            const PerformanceInputIdentity input{
+                owner.generation, static_cast<uint8_t>(owner.source), owner.inputChannel,
+                owner.sourceNote, owner.inputCable};
+            if (type == MusicalEventType::NoteOn)
+                performSink_->externalNoteOn(owner.routedNote, velocity, input);
+            else
+                performSink_->externalNoteOff(owner.routedNote, input);
             return;
         }
         if (router_ == nullptr) return;
@@ -228,17 +274,109 @@ private:
         publish(MusicalEventType::NoteOff, owner, velocity);
     }
 
+    static bool sameSustainSource(const PerformanceInputIdentity& input,
+                                  InputSource source) {
+        return input.source == static_cast<uint8_t>(source);
+    }
+
+    static bool samePhysicalSource(const PerformanceInputIdentity& lhs,
+                                   const PerformanceInputIdentity& rhs) {
+        return lhs.source == rhs.source && lhs.generation == rhs.generation &&
+               lhs.channel == rhs.channel && lhs.cable == rhs.cable;
+    }
+
+    void releaseTransientForSource(InputSource source) {
+        if (bendZone_ != 0 && sameSustainSource(bendInput_, source)) {
+            if (performSink_ != nullptr) performSink_->externalNudge(0, bendInput_);
+            bendZone_ = 0;
+            bendInput_ = PerformanceInputIdentity{};
+        }
+        if (modState_ == ModState::Held && sameSustainSource(modInput_, source)) {
+            if (performSink_ != nullptr) performSink_->externalMod(ModPhase::Cancel, modInput_);
+            modState_ = ModState::Idle;
+            modLast_ = 0;
+            modInput_ = PerformanceInputIdentity{};
+        }
+    }
+
+    void releaseTransientForSession(InputSource source, uint32_t generation) {
+        if (bendZone_ != 0 && sameSustainSource(bendInput_, source) &&
+            bendInput_.generation == generation) {
+            if (performSink_ != nullptr) performSink_->externalNudge(0, bendInput_);
+            bendZone_ = 0;
+            bendInput_ = PerformanceInputIdentity{};
+        }
+        if (modState_ == ModState::Held && sameSustainSource(modInput_, source) &&
+            modInput_.generation == generation) {
+            if (performSink_ != nullptr) performSink_->externalMod(ModPhase::Cancel, modInput_);
+            modState_ = ModState::Idle;
+            modLast_ = 0;
+            modInput_ = PerformanceInputIdentity{};
+        }
+    }
+
+    void setSustain(bool down, PerformanceInputIdentity input) {
+        std::size_t found = kMaxSustainOwners;
+        std::size_t free = kMaxSustainOwners;
+        for (std::size_t i = 0; i < kMaxSustainOwners; ++i) {
+            const SustainOwner& owner = sustainOwners_[i];
+            if (!owner.active) {
+                if (free == kMaxSustainOwners) free = i;
+            } else if (owner.input.source == input.source &&
+                       owner.input.generation == input.generation &&
+                       owner.input.channel == input.channel &&
+                       owner.input.cable == input.cable) {
+                found = i;
+                break;
+            }
+        }
+        if (down) {
+            if (found != kMaxSustainOwners) return;
+            if (free == kMaxSustainOwners) return;
+            sustainOwners_[free] = SustainOwner{true, input};
+        } else {
+            if (found == kMaxSustainOwners) return;
+            sustainOwners_[found] = SustainOwner{};
+        }
+        if (performSink_ != nullptr) performSink_->externalSustain(down, input);
+    }
+
+    void releaseSustainForSource(InputSource source) {
+        for (SustainOwner& owner : sustainOwners_) {
+            if (!owner.active || !sameSustainSource(owner.input, source)) continue;
+            const PerformanceInputIdentity input = owner.input;
+            owner = SustainOwner{};
+            if (performSink_ != nullptr) performSink_->externalSustain(false, input);
+        }
+    }
+
+    void releaseSustainForSession(InputSource source, uint32_t generation) {
+        for (SustainOwner& owner : sustainOwners_) {
+            if (!owner.active || !sameSustainSource(owner.input, source) ||
+                owner.input.generation != generation) continue;
+            const PerformanceInputIdentity input = owner.input;
+            owner = SustainOwner{};
+            if (performSink_ != nullptr) performSink_->externalSustain(false, input);
+        }
+    }
+
     void releaseSustain() {
-        if (bendZone_ != 0 && performSink_ != nullptr) performSink_->externalNudge(0);
+        if (bendZone_ != 0 && performSink_ != nullptr)
+            performSink_->externalNudge(0, bendInput_);
         bendZone_ = 0;
+        bendInput_ = PerformanceInputIdentity{};
         if (modState_ == ModState::Held && performSink_ != nullptr) {
-            performSink_->externalMod(ModPhase::Cancel);
+            performSink_->externalMod(ModPhase::Cancel, modInput_);
         }
         modState_ = ModState::Idle;
         modLast_ = 0;
-        if (!sustainDown_) return;
-        sustainDown_ = false;
-        if (performSink_ != nullptr) performSink_->externalSustain(false);
+        modInput_ = PerformanceInputIdentity{};
+        for (SustainOwner& owner : sustainOwners_) {
+            if (!owner.active) continue;
+            const PerformanceInputIdentity input = owner.input;
+            owner = SustainOwner{};
+            if (performSink_ != nullptr) performSink_->externalSustain(false, input);
+        }
     }
 
     void releaseAllOwnedNotes() {
@@ -251,9 +389,19 @@ private:
     }
 
     void releaseSource(InputSource source) {
-        if (source == InputSource::Usb) releaseSustain();
+        releaseSustainForSource(source);
+        releaseTransientForSource(source);
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             if (owners_[i].active && owners_[i].source == source) releaseOwner(i);
+        }
+    }
+
+    void releaseSession(InputSource source, uint32_t generation) {
+        releaseSustainForSession(source, generation);
+        releaseTransientForSession(source, generation);
+        for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
+            if (owners_[i].active && owners_[i].source == source &&
+                owners_[i].generation == generation) releaseOwner(i);
         }
     }
 
@@ -262,7 +410,8 @@ private:
             const ActiveOwner& owner = owners_[i];
             if (owner.active && owner.source == event.id.source &&
                 owner.generation == event.id.generation &&
-                owner.inputChannel == event.id.channel) {
+                owner.inputChannel == event.id.channel &&
+                owner.inputCable == event.id.cable) {
                 releaseOwner(i);
             }
         }
@@ -289,6 +438,7 @@ private:
         candidate.source = event.id.source;
         candidate.generation = event.id.generation;
         candidate.inputChannel = event.id.channel;
+        candidate.inputCable = event.id.cable;
         candidate.sourceNote = event.id.key;
         candidate.target = musicalTarget(config_.target);
         candidate.perform = config_.target == MidiInputTarget::Perform;
@@ -330,9 +480,30 @@ private:
                 break;
             }
             case InputKind::AllNotesOff:
-            case InputKind::AllSoundOff:
                 releaseChannel(event);
                 break;
+            case InputKind::AllSoundOff: {
+                const PerformanceInputIdentity input{
+                    event.id.generation, static_cast<uint8_t>(event.id.source),
+                    event.id.channel, event.id.key, event.id.cable};
+                if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
+                    performSink_ != nullptr) {
+                    performSink_->externalAllSoundOff(input);
+                    for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
+                        const ActiveOwner& owner = owners_[i];
+                        if (owner.active && owner.perform && owner.source == event.id.source &&
+                            owner.generation == event.id.generation &&
+                            owner.inputChannel == event.id.channel &&
+                            owner.inputCable == event.id.cable) {
+                            owners_[i] = ActiveOwner{};
+                        }
+                    }
+                    setSustain(false, input);
+                } else {
+                    releaseChannel(event);
+                }
+                break;
+            }
             case InputKind::Mod: {
                 // The button sends a short ramp (the owner's nanoKEY2: 0..15 up on press, back to 0 on
                 // release), not a level. The first non-zero value fires once and disarms; only a zero
@@ -342,16 +513,24 @@ private:
                     break;
                 }
                 const uint8_t value = event.velocity;
+                const PerformanceInputIdentity input{event.id.generation,
+                    static_cast<uint8_t>(event.id.source), event.id.channel,
+                    event.id.key, event.id.cable};
+                if (modState_ != ModState::Idle &&
+                    !samePhysicalSource(modInput_, input)) break;
                 if (value == 0u) {
                     // The end of the ramp down. A press that never showed a decrease still ends here.
-                    if (modState_ == ModState::Held) performSink_->externalMod(ModPhase::Release);
+                    if (modState_ == ModState::Held)
+                        performSink_->externalMod(ModPhase::Release, modInput_);
                     modState_ = ModState::Idle;
+                    modInput_ = PerformanceInputIdentity{};
                 } else if (modState_ == ModState::Idle) {
                     modState_ = ModState::Held;
-                    performSink_->externalMod(ModPhase::Press);
+                    modInput_ = input;
+                    performSink_->externalMod(ModPhase::Press, input);
                 } else if (modState_ == ModState::Held && value < modLast_) {
                     modState_ = ModState::Released;   // the ramp turned downwards: the button is up
-                    performSink_->externalMod(ModPhase::Release);
+                    performSink_->externalMod(ModPhase::Release, modInput_);
                 }
                 modLast_ = value;
                 break;
@@ -367,13 +546,19 @@ private:
                 // nanoKEY2: a short touch only reaches 54, a hold goes on to 0). Arm at a small
                 // deviation so a touch counts, re-arm only near the centre (hysteresis).
                 const int deviation = static_cast<int>(event.velocity) - 64;
+                const PerformanceInputIdentity input{event.id.generation,
+                    static_cast<uint8_t>(event.id.source), event.id.channel,
+                    event.id.key, event.id.cable};
+                if (bendZone_ != 0 && !samePhysicalSource(bendInput_, input)) break;
                 int zone = bendZone_;
                 if (deviation <= -kBendPress) zone = -1;
                 else if (deviation >= kBendPress) zone = 1;
                 else if (deviation >= -kBendRelease && deviation <= kBendRelease) zone = 0;
                 if (zone != bendZone_) {
+                    const PerformanceInputIdentity owner = zone == 0 ? bendInput_ : input;
                     bendZone_ = zone;
-                    performSink_->externalNudge(zone);   // 0 = back at the centre = released
+                    bendInput_ = zone == 0 ? PerformanceInputIdentity{} : input;
+                    performSink_->externalNudge(zone, owner);   // 0 = centre = released
                 }
                 break;
             }
@@ -383,10 +568,9 @@ private:
                 if (config_.target == MidiInputTarget::Perform && acceptsConfig(event) &&
                     performSink_ != nullptr) {
                     const bool down = event.velocity >= 64u;
-                    if (down != sustainDown_) {
-                        sustainDown_ = down;
-                        performSink_->externalSustain(down);
-                    }
+                    setSustain(down, PerformanceInputIdentity{event.id.generation,
+                        static_cast<uint8_t>(event.id.source), event.id.channel,
+                        event.id.key, event.id.cable});
                 }
                 break;
         }
@@ -397,11 +581,13 @@ private:
     MidiIoState* io_{nullptr};
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
-    bool sustainDown_{false};
+    SustainOwner sustainOwners_[kMaxSustainOwners]{};
     int bendZone_{0};
     enum class ModState : uint8_t { Idle, Held, Released };
     ModState modState_{ModState::Idle};
     uint8_t modLast_{0};
+    PerformanceInputIdentity bendInput_{};
+    PerformanceInputIdentity modInput_{};
     static constexpr int kBendPress = 6;    // deviation from the centre that counts as a press
     static constexpr int kBendRelease = 3;  // deviation under which the button is released again
     uint32_t observedUsbGeneration_{0};
