@@ -15,11 +15,55 @@
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "IN",
+    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT",
 };
 constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[IN]",
+    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]",
 };
+
+const char* roleName(GroovePuterPerformance::PerformanceRole role) {
+    switch (role) {
+        case GroovePuterPerformance::PerformanceRole::Raw: return "RAW";
+        case GroovePuterPerformance::PerformanceRole::Bass: return "BASS";
+        case GroovePuterPerformance::PerformanceRole::Lead: return "LEAD";
+        case GroovePuterPerformance::PerformanceRole::Chord: return "CHORD";
+        case GroovePuterPerformance::PerformanceRole::Arp: return "ARP";
+        case GroovePuterPerformance::PerformanceRole::Count: break;
+    }
+    return "RAW";
+}
+
+const char* leadModeName(GroovePuterPerformance::LeadMode mode) {
+    switch (mode) {
+        case GroovePuterPerformance::LeadMode::Raw: return "RAW";
+        case GroovePuterPerformance::LeadMode::Scale: return "SCALE";
+        case GroovePuterPerformance::LeadMode::Chord: return "CHORD";
+        case GroovePuterPerformance::LeadMode::VoiceLead: return "VOICE";
+        case GroovePuterPerformance::LeadMode::Count: break;
+    }
+    return "RAW";
+}
+
+const char* arpSourceName(GroovePuterPerformance::ArpPitchSource source) {
+    switch (source) {
+        case GroovePuterPerformance::ArpPitchSource::Held: return "HELD";
+        case GroovePuterPerformance::ArpPitchSource::Memory: return "MEMORY";
+        case GroovePuterPerformance::ArpPitchSource::Harmony: return "HARMONY";
+        case GroovePuterPerformance::ArpPitchSource::Role: return "ROLE";
+        case GroovePuterPerformance::ArpPitchSource::Count: break;
+    }
+    return "HELD";
+}
+
+const char* harmonyPolicyName(GroovePuterPerformance::HarmonyChangePolicy policy) {
+    switch (policy) {
+        case GroovePuterPerformance::HarmonyChangePolicy::Follow: return "FOLLOW";
+        case GroovePuterPerformance::HarmonyChangePolicy::Hold: return "HOLD";
+        case GroovePuterPerformance::HarmonyChangePolicy::Restart: return "RESTART";
+        case GroovePuterPerformance::HarmonyChangePolicy::Count: break;
+    }
+    return "FOLLOW";
+}
 
 bool strumIsAudible(const PerformanceKeyboard& keyboard) {
     return !keyboard.arpeggiatorEnabled() &&
@@ -75,9 +119,9 @@ uint8_t PerformPage::rowCountForContext() const {
     switch (selectedContext_) {
         case PerformanceToolContext::Key: return 6;
         case PerformanceToolContext::Chord: return 6;
-        case PerformanceToolContext::Arp: return 4;
+        case PerformanceToolContext::Arp: return 6;
         case PerformanceToolContext::Rhythm: return 6;
-        case PerformanceToolContext::Input: return 6;
+        case PerformanceToolContext::Input: return 8;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -150,11 +194,11 @@ void PerformPage::adjustInput(int direction) {
         case 0: next = InputUi::stepEnabled(current); break;
         case 1: next = InputUi::stepChannel(current, direction); break;
         case 2: next = InputUi::stepTarget(current, direction); break;
-        case 3:
+        case 5:
             if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
                 keyboard_.cycleTarget(direction);
             return;
-        case 4:
+        case 6:
             if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
                 cycleOutput(direction);
             return;
@@ -219,9 +263,15 @@ void PerformPage::adjustSelectedValue(int direction) {
         case PerformanceToolContext::Arp:
             switch (row) {
                 case 0: keyboard_.setArpeggiatorEnabled(direction > 0); break;
-                case 1: if (arpEnabled) keyboard_.cycleArpDirection(direction); break;
-                case 2: if (arpEnabled) keyboard_.cycleArpOctaves(direction); break;
-                case 3: if (arpEnabled) keyboard_.setLatchEnabled(direction > 0); break;
+                case 1: keyboard_.setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(
+                    (static_cast<uint8_t>(keyboard_.arpPitchSource()) +
+                     (direction > 0 ? 1u : 3u)) % 4u)); break;
+                case 2: if (arpEnabled) keyboard_.cycleArpDirection(direction); break;
+                case 3: if (arpEnabled) keyboard_.cycleArpOctaves(direction); break;
+                case 4: if (arpEnabled) keyboard_.setLatchEnabled(direction > 0); break;
+                case 5: keyboard_.setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(
+                    (static_cast<uint8_t>(keyboard_.harmonyChangePolicy()) +
+                     (direction > 0 ? 1u : 2u)) % 3u)); break;
                 default: break;
             }
             return;
@@ -244,7 +294,23 @@ void PerformPage::adjustSelectedValue(int direction) {
             return;
 
         case PerformanceToolContext::Input:
-            adjustInput(direction);
+            switch (row) {
+                case 0: case 1: case 2: case 5: case 6:
+                    adjustInput(direction);
+                    break;
+                case 3:
+                    keyboard_.setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(
+                        (static_cast<uint8_t>(keyboard_.performanceRole()) +
+                         (direction > 0 ? 1u : 4u)) % 5u));
+                    break;
+                case 4:
+                    if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead)
+                        keyboard_.setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(
+                            (static_cast<uint8_t>(keyboard_.leadMode()) +
+                             (direction > 0 ? 1u : 3u)) % 4u));
+                    break;
+                default: break;
+            }
             return;
         case PerformanceToolContext::Count:
             return;
@@ -297,8 +363,14 @@ void PerformPage::toggleSelectedValue() {
         case PerformanceToolContext::Arp:
             if (row == 0) {
                 keyboard_.toggleArpeggiator();
-            } else if (row == 3 && arpEnabled) {
+            } else if (row == 1) {
+                keyboard_.setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(
+                    (static_cast<uint8_t>(keyboard_.arpPitchSource()) + 1u) % 4u));
+            } else if (row == 4 && arpEnabled) {
                 keyboard_.toggleLatch();
+            } else if (row == 5) {
+                keyboard_.setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(
+                    (static_cast<uint8_t>(keyboard_.harmonyChangePolicy()) + 1u) % 3u));
             }
             return;
 
@@ -311,7 +383,16 @@ void PerformPage::toggleSelectedValue() {
             return;
 
         case PerformanceToolContext::Input:
-            adjustInput(1);
+            if (row == 3) {
+                keyboard_.setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(
+                    (static_cast<uint8_t>(keyboard_.performanceRole()) + 1u) % 5u));
+            } else if (row == 4) {
+                if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead)
+                    keyboard_.setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(
+                        (static_cast<uint8_t>(keyboard_.leadMode()) + 1u) % 4u));
+            } else {
+                adjustInput(1);
+            }
             return;
         case PerformanceToolContext::Count:
             return;
@@ -360,11 +441,18 @@ const char* PerformPage::selectedRowHint() const {
 
         case PerformanceToolContext::Arp:
             if (row == 0) return "</> OR ENTER: ON/OFF (CLEARS STRUM)";
-            if (!arpEnabled) return "N/A: ENABLE ARP FIRST";
             switch (row) {
-                case 1: return "</> NOTE ORDER";
-                case 2: return "</> OCTAVE RANGE 1..4";
-                case 3: return "</> OR ENTER: HOLD AFTER RELEASE";
+                case 1:
+                    if (keyboard_.arpPitchSource() == GroovePuterPerformance::ArpPitchSource::Memory &&
+                        keyboard_.chordMemorySize() == 0) return "MEMORY EMPTY: CAPTURE IN CHORD";
+                    if ((keyboard_.arpPitchSource() == GroovePuterPerformance::ArpPitchSource::Harmony ||
+                         keyboard_.arpPitchSource() == GroovePuterPerformance::ArpPitchSource::Role) &&
+                        !keyboard_.performanceHarmonyAvailable()) return "NO HARMONY: HELD STILL WORKS";
+                    return "</> ARP PITCH SOURCE";
+                case 2: return arpEnabled ? "</> NOTE ORDER" : "N/A: ENABLE ARP FIRST";
+                case 3: return arpEnabled ? "</> OCTAVE RANGE 1..4" : "N/A: ENABLE ARP FIRST";
+                case 4: return arpEnabled ? "</> OR ENTER: HOLD AFTER RELEASE" : "N/A: ENABLE ARP FIRST";
+                case 5: return "</> HARMONY CHANGE: FOLLOW/HOLD/RESTART";
                 default: return "";
             }
 
@@ -386,15 +474,21 @@ const char* PerformPage::selectedRowHint() const {
             }
 
         case PerformanceToolContext::Input: {
-            const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-            const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
             switch (row) {
                 case 0: return "ENTER: EXTERNAL MIDI INPUT ON/OFF";
                 case 1: return "</> INPUT FILTER: OMNI OR CH1..16";
-                case 2: return "PERFORM FOLLOWS TARGET + CHORD/ARP";
-                case 3: return follows ? "</> INSTRUMENT (RELEASES HELD NOTES)" : "N/A: SELECT ROUTE PERFORM";
-                case 4: return follows ? "</> INTERNAL / MIDI / LAYER" : "N/A: SELECT ROUTE PERFORM";
-                case 5: return "CHANGE USB ROLE IN PROJECT > MIDI";
+                case 2: return "</> ROUTE EXTERNAL MIDI";
+                case 3: return "ROLE AFFECTS NEW LIVE NOTES ONLY";
+                case 4:
+                    if (keyboard_.performanceRole() != GroovePuterPerformance::PerformanceRole::Lead)
+                        return "N/A: SELECT LEAD ROLE";
+                    if (keyboard_.leadMode() != GroovePuterPerformance::LeadMode::Raw &&
+                        !keyboard_.performanceHarmonyAvailable())
+                        return "NO HARMONY: SCALE FALLBACK";
+                    return "</> LEAD INTERPRETATION";
+                case 5: return "LIVE NOTES PLAY TO TARGET BELOW";
+                case 6: return "</> INTERNAL / MIDI / LAYER";
+                case 7: return "USB ROLE: CHANGE IN PROJECT > MIDI";
                 default: return "";
             }
         }
@@ -492,6 +586,9 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int rowH = Layout::LINE_HEIGHT - 2;
     const int valueW = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X - valueX;
     const uint8_t selected = currentRow();
+    constexpr uint8_t kVisibleRows = 6;
+    const uint8_t firstVisibleRow = selected >= kVisibleRows
+        ? static_cast<uint8_t>(selected - kVisibleRows + 1u) : 0u;
     const bool drums = keyboard_.target() == MusicalEventTarget::Drums;
     const bool chordActive = keyboard_.chordMode() != PerformanceChordMode::Off;
     const bool arpEnabled = keyboard_.arpeggiatorEnabled();
@@ -501,7 +598,9 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
 
     auto drawRow = [&](uint8_t row, const char* label, const char* rowValue,
                        bool available) {
-        const int y = LayoutManager::lineY(1 + row);
+        if (row < firstVisibleRow || row >= firstVisibleRow + kVisibleRows) return;
+        const int visibleRow = static_cast<int>(row - firstVisibleRow);
+        const int y = LayoutManager::lineY(1 + visibleRow);
         const bool isSelected = row == selected;
         if (isSelected) {
             gfx.fillRect(rowX, y - 1, rowW, rowH, palette.focus);
@@ -574,17 +673,26 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         case PerformanceToolContext::Arp: {
             const bool latched = arpEnabled && keyboard_.latchEnabled();
             drawRow(0, "ARP", !arpEnabled ? "OFF" : (latched ? "LATCHED" : "ON"), true);
-            if (!arpEnabled) {
-                drawRow(1, "ORDER", "N/A", false);
-                drawRow(2, "OCTAVES", "N/A", false);
-                drawRow(3, "LATCH", "N/A", false);
-                break;
-            }
-            drawRow(1, "ORDER", arpOrderLabel(keyboard_.arpDirection()), true);
+            const auto pitchSource = keyboard_.arpPitchSource();
+            const bool memoryReady = keyboard_.chordMemorySize() > 0;
+            const bool harmonySource = pitchSource == GroovePuterPerformance::ArpPitchSource::Harmony ||
+                                       pitchSource == GroovePuterPerformance::ArpPitchSource::Role;
+            const bool harmonyReady = keyboard_.performanceHarmonyAvailable();
+            const char* sourceValue = arpSourceName(pitchSource);
+            if (pitchSource == GroovePuterPerformance::ArpPitchSource::Memory && !memoryReady)
+                sourceValue = "EMPTY";
+            else if (harmonySource && !harmonyReady)
+                sourceValue = "NO HARM";
+            drawRow(1, "SOURCE", sourceValue,
+                    pitchSource == GroovePuterPerformance::ArpPitchSource::Held ||
+                    (pitchSource == GroovePuterPerformance::ArpPitchSource::Memory && memoryReady) ||
+                    (harmonySource && harmonyReady));
+            drawRow(2, "ORDER", arpEnabled ? arpOrderLabel(keyboard_.arpDirection()) : "N/A", arpEnabled);
             std::snprintf(value, sizeof(value), "%u",
                           static_cast<unsigned>(keyboard_.arpOctaves()));
-            drawRow(2, "OCTAVES", value, true);
-            drawRow(3, "LATCH", keyboard_.latchEnabled() ? "ON" : "OFF", true);
+            drawRow(3, "OCTAVES", arpEnabled ? value : "N/A", arpEnabled);
+            drawRow(4, "LATCH", !arpEnabled ? "N/A" : (latched ? "ON" : "OFF"), arpEnabled);
+            drawRow(5, "HARMONY", harmonyPolicyName(keyboard_.harmonyChangePolicy()), true);
             break;
         }
 
@@ -640,18 +748,21 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             namespace InputUi = GroovePuterUi::MidiInputUi;
             const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
             const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
-            drawRow(0, "INPUT", InputUi::enabledName(input.enabled), true);
+            drawRow(0, "LIVE MIDI", InputUi::enabledName(input.enabled), true);
             InputUi::formatChannel(input, value, sizeof(value));
             drawRow(1, "CHANNEL", value, true);
             drawRow(2, "ROUTE", InputUi::targetName(input.target), true);
-            drawRow(3, "TARGET", follows ? keyboard_.targetName() : "N/A", follows);
+            drawRow(3, "ROLE", roleName(keyboard_.performanceRole()), true);
+            const bool lead = keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
+            drawRow(4, "LEAD MODE", lead ? leadModeName(keyboard_.leadMode()) : "N/A", lead);
+            drawRow(5, "TARGET", follows ? keyboard_.targetName() : "N/A", follows);
             GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
             const bool hasTrack = GroovePuterOutput::trackForTarget(keyboard_.target(), track);
-            drawRow(4, "OUT", !follows ? "N/A" : (hasTrack
+            drawRow(6, "OUT", !follows ? "N/A" : (hasTrack
                 ? GroovePuterOutput::modeName(GroovePuterOutput::mode(track)) : "MIDI"),
                 follows && hasTrack);
             const auto role = CardputerUsbRoleRuntime::activeRole();
-            drawRow(5, "USB", role == UsbBootRole::Host ? "KEYBOARD"
+            drawRow(7, "USB", role == UsbBootRole::Host ? "HOST INPUT"
                 : (role == UsbBootRole::Device ? "COMPUTER" : "OFF"), false);
             break;
         }

@@ -274,26 +274,26 @@ Update `tests/test_performance_instrument_ui_source_regressions.py`.
 `configChanged()`, `markConfigPersisted()`; semantic absolute `SetArpEnabled` and
 `SetLatchEnabled` intents. One config owner for Cardputer, MIDI and load.
 
-- [ ] Add behavioral tests for default/missing/invalid/legacy-18-byte/current config records;
+- [x] Add behavioral tests for default/missing/invalid/legacy-18-byte/current config records;
   roundtrip every musical field including rhythm/seed; invalid enum cannot partially apply.
   Saving twice without a change produces no write. Failed save leaves dirty state for retry.
-- [ ] UI tests cover each row's label, active condition and action: KEY/manual settings;
+- [x] UI tests cover each row's label, active condition and action: KEY/manual settings;
   CHORD voicing; ARP source/order/octaves/latch/follow; RHYTHM existing rates/gate/ratchet/
   Euclid; INPUT LIVE INPUT/ROLE/MODE/actual target/source/status.
   LEAD mode is visible only for LEAD; missing harmony/memory is visible. Use a bounded
   scrolling list with existing font/row height; never cram eight unreadable lines into 135 px.
-- [ ] Preserve existing Fn+N, Tab/tools, Shift+Tab, Alt+O, G and numeric routing with
+- [x] Preserve existing Fn+N, Tab/tools, Shift+Tab, Alt+O, G and numeric routing with
   normalized UIEvent tests. Unmodified musical keys remain notes where v0.9.19 made them notes.
-- [ ] Extract config codec/store from the experimental Scene store without Scene arrays or
+- [x] Extract config codec/store from the experimental Scene store without Scene arrays or
   dependencies. Preserve compatible old preference bytes; new version has explicit encoding
   and range checks. Persist on control loop after successful write only; never from renderer.
-- [ ] Add CC80/81 ONLY for PERFORM: 0..63 OFF, 64..127 ON, repeated ON idempotent,
+- [x] Add CC80/81 ONLY for PERFORM: 0..63 OFF, 64..127 ON, repeated ON idempotent,
   latch ON with arp OFF rejected visibly. A bounded latest-value coalescer preserves last
   state per selected source/channel; old session values discarded. CC74 etc remain unbound.
-- [ ] Run config/UI/ownership tests; run the existing UI source regression script and build SDL.
+- [x] Run config/UI/ownership tests; run the existing UI source regression script and build SDL.
   Document: roles transform new live notes, material stays unchanged, output target determines
   where sound is heard. Document standalone steps for every source and role.
-- [ ] Commit: `feat: expose and persist standalone smart play controls`.
+- [x] Commit: `feat: expose and persist standalone smart play controls`.
 
 ### SP-7 — Restoration software gate and hardware handoff
 
@@ -302,21 +302,21 @@ Update `tests/test_performance_instrument_ui_source_regressions.py`.
 
 **Consumes:** SP-0..SP-6 evidence. **Produces:** Software verdict and explicit unrun hardware rows.
 
-- [ ] Run focused GCC/Clang/sanitizer suite, then `bash scripts/ci/run_core.sh` to completion.
+- [x] Run focused GCC/Clang/sanitizer suite, then `bash scripts/ci/run_core.sh` to completion.
   Core invokes the host suite; do not redundantly rerun the whole host suite without a reason.
   An interrupted/timed-out suite is INCOMPLETE, not PASS. Record failing baseline separately.
-- [ ] Run `make -C platform_sdl clean all CXX=g++` and `scripts/build.sh --warnings all`.
+- [x] Run `make -C platform_sdl clean all CXX=g++` and `scripts/build.sh --warnings all`.
   Record exact SHA + dirty diff hash, toolchain, FQBN, flash, static RAM and delta from SP-0.
-- [ ] Review `git diff a5f74f73 --stat` and all DSP/midi/UI entrypoint edits for scope leaks.
+- [x] Review `git diff a5f74f73 --stat` and all DSP/midi/UI entrypoint edits for scope leaks.
   Verify no Performance FX/Scene dispatch, no additional chord/arp clock, no new internal
   live routing. Preserve upstream changes unrelated to this feature.
-- [ ] Prepare physical tests with clear expected results: boot no controller; Fn+N; manual
+- [x] Prepare physical tests with clear expected results: boot no controller; Fn+N; manual
   notes and four arp sources; HARMONY available/unavailable; musical rates; role changes
   with held notes; USB role boot; dual-source sustain; unplug/replug while arp; CC/bend flood;
   latency timestamps and audio-block diagnostics. Name receiver/output for each sound test.
-- [ ] Mark every physical row NOT_RUN until human evidence arrives. Record that idiom-origin
+- [x] Mark every physical row NOT_RUN until human evidence arrives. Record that idiom-origin
   harmony remains unavailable until HGS2-7c when applicable; this is a capability boundary.
-- [ ] Commit software report/checklist. Advance to the next HGS2 task in the handoff dependency order; this task alone does not mean
+- [x] Commit software report/checklist. Advance to the next HGS2 task in the handoff dependency order; this task alone does not mean
   the entire HGS/genre project is complete.
 
 ## Completion evidence format

@@ -103,6 +103,7 @@ private:
     static bool isDroppable(const MidiInputEvent& event) {
         switch (event.kind) {
             case InputKind::NoteOn:
+            case InputKind::ControlChange:
                 return true;
             case InputKind::Mod:
                 // A zero value is a release edge for button-style controller gestures.

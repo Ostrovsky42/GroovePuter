@@ -64,6 +64,12 @@ public:
         (void)input;
         externalMod(phase);
     }
+    virtual void externalControlChange(uint8_t controller, uint8_t value,
+                                       PerformanceInputIdentity input) {
+        (void)controller;
+        (void)value;
+        (void)input;
+    }
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -571,6 +577,16 @@ private:
                     setSustain(down, PerformanceInputIdentity{event.id.generation,
                         static_cast<uint8_t>(event.id.source), event.id.channel,
                         event.id.key, event.id.cable});
+                }
+                break;
+            case InputKind::ControlChange:
+                if (config_.target == MidiInputTarget::Perform &&
+                    acceptsConfig(event) && performSink_ != nullptr) {
+                    performSink_->externalControlChange(
+                        event.id.key, event.velocity,
+                        PerformanceInputIdentity{event.id.generation,
+                            static_cast<uint8_t>(event.id.source),
+                            event.id.channel, event.id.key, event.id.cable});
                 }
                 break;
         }

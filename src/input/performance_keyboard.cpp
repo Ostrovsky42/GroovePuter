@@ -1852,6 +1852,8 @@ bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
             setChordMode(static_cast<PerformanceChordMode>(intent.value));
             return true;
         case PerformanceIntentKind::ToggleArp:
+        case PerformanceIntentKind::SetArpEnabled:
+            if (intent.value > 1u) return false;
             setArpeggiatorEnabled(intent.value != 0);
             if (intent.value != 0 && performanceRole_ ==
                     GroovePuterPerformance::PerformanceRole::Raw) {
@@ -1860,7 +1862,7 @@ bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
                            GroovePuterPerformance::PerformanceRole::Arp) {
                 setPerformanceRole(GroovePuterPerformance::PerformanceRole::Raw);
             }
-            return true;
+            return pendingClocked_.arpEnabled == (intent.value != 0);
         case PerformanceIntentKind::SelectArpPitchSource:
             return setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(
                 intent.value));
@@ -1868,14 +1870,114 @@ bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
             return setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(
                 intent.value));
         case PerformanceIntentKind::ToggleLatch:
+        case PerformanceIntentKind::SetLatchEnabled:
+            if (intent.value > 1u || (intent.value != 0 &&
+                    !pendingClocked_.arpEnabled)) return false;
             setLatchEnabled(intent.value != 0);
-            return true;
+            return pendingClocked_.latchEnabled == (intent.value != 0);
         case PerformanceIntentKind::Hold:
         case PerformanceIntentKind::ReleaseHold:
         case PerformanceIntentKind::ChangeOctave:
             return false;
     }
     return false;
+}
+
+PerformanceKeyboardConfig PerformanceKeyboard::exportConfiguration() const {
+    PerformanceKeyboardConfig config{};
+    config.role = performanceRole_;
+    config.leadMode = leadMode_;
+    config.arpPitchSource = arpPitchSource_;
+    config.harmonyChangePolicy = harmonyChangePolicy_;
+    config.arpDirection = pendingClocked_.arpDirection;
+    config.arpRate = pendingClocked_.rate;
+    config.arpOctaves = pendingClocked_.arpOctaves;
+    config.gatePercent = pendingClocked_.gatePercent;
+    config.chordMode = chordMode_;
+    config.chordInversion = chordInversion_;
+    config.chordSpread = chordSpread_;
+    config.voiceLeading = voiceLeading_;
+    config.rootPitchClass = rootPitchClass_;
+    config.scale = scale_;
+    config.velocity = keyVelocity_;
+    config.octaveShift = octaveShift_;
+    config.arpEnabled = pendingClocked_.arpEnabled;
+    config.latchEnabled = pendingClocked_.latchEnabled;
+    config.ratchetCount = pendingClocked_.ratchetCount;
+    config.euclideanLength = pendingClocked_.euclideanLength;
+    config.euclideanPulses = pendingClocked_.euclideanPulses;
+    config.euclideanRotation = pendingClocked_.euclideanRotation;
+    config.strumMs = strumMs_;
+    config.strumDirection = strumDirection_;
+    config.voiceMode = voiceMode_;
+    config.target = target_;
+    config.mutationSeed = pendingClocked_.mutation.seed;
+    config.mutationSkipPercent = pendingClocked_.mutation.skipPercent;
+    config.mutationOctaveJumpPercent = pendingClocked_.mutation.octaveJumpPercent;
+    config.mutationDeviatePercent = pendingClocked_.mutation.deviatePercent;
+    return config;
+}
+
+bool PerformanceKeyboard::applyConfiguration(
+    const PerformanceKeyboardConfig& config) {
+    if (!validPerformanceKeyboardConfig(config)) return false;
+
+    // A complete config replacement invalidates current note ownership and
+    // scheduled output before changing routes or performance semantics.
+    panic();
+    target_ = config.target;
+    voiceMode_ = config.voiceMode;
+    scale_ = config.scale;
+    rootPitchClass_ = config.rootPitchClass;
+    octaveShift_ = config.octaveShift;
+    keyVelocity_ = config.velocity;
+    chordMode_ = config.chordMode;
+    chordInversion_ = config.chordInversion;
+    chordSpread_ = config.chordSpread;
+    voiceLeading_ = config.voiceLeading;
+    strumMs_ = config.strumMs;
+    strumDirection_ = config.strumDirection;
+    performanceRole_ = config.role;
+    leadMode_ = config.leadMode;
+    arpPitchSource_ = config.arpPitchSource;
+    harmonyChangePolicy_ = config.harmonyChangePolicy;
+    chordMemoryCount_ = 0;
+    previousVoicingCount_ = 0;
+
+    PerformanceClockedConfig restored{};
+    restored.arpEnabled = config.arpEnabled;
+    restored.arpDirection = config.arpDirection;
+    restored.rate = config.arpRate;
+    restored.gatePercent = config.gatePercent;
+    restored.ratchetCount = config.ratchetCount;
+    restored.euclideanLength = config.euclideanLength;
+    restored.euclideanPulses = config.euclideanPulses;
+    restored.euclideanRotation = config.euclideanRotation;
+    restored.arpOctaves = config.arpOctaves;
+    restored.latchEnabled = config.latchEnabled;
+    restored.mutation.seed = config.mutationSeed;
+    restored.mutation.skipPercent = config.mutationSkipPercent;
+    restored.mutation.octaveJumpPercent = config.mutationOctaveJumpPercent;
+    restored.mutation.deviatePercent = config.mutationDeviatePercent;
+    activeClocked_ = restored;
+    pendingClocked_ = restored;
+    clockedConfigPending_ = false;
+    mutationRng_.reset(restored.mutation.seed);
+    mutationSeedApplied_ = restored.mutation.seed;
+    arpHoldActive_ = false;
+    arpHoldPulsesRemaining_ = 0;
+    arpCycleStarted_ = false;
+    resetPulseClock(true);
+    persistedConfig_ = exportConfiguration();
+    return true;
+}
+
+bool PerformanceKeyboard::configChanged() const {
+    return !performanceKeyboardConfigEqual(exportConfiguration(), persistedConfig_);
+}
+
+void PerformanceKeyboard::markConfigPersisted() {
+    persistedConfig_ = exportConfiguration();
 }
 
 void PerformanceKeyboard::externalSustain(bool down) {

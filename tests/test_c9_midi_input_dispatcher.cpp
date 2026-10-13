@@ -9,6 +9,8 @@
 #include "src/midi/midi_input_parser.h"
 #include "src/midi/midi_input_queue.h"
 #include "src/midi/midi_io_state.h"
+#include "src/midi/external_note_queue.h"
+#include "src/input/performance_control.h"
 
 using namespace GroovePuterMidi;
 
@@ -177,6 +179,73 @@ void usbCableIdentitySurvivesPacketParsing() {
     const ParseResult parsed = parser.usbPacket(cableOneNoteOn, 1234);
     assert(parsed.hasInput && "USB cable 1 note should be accepted");
     checkParsedCable(parsed.input.id);
+}
+
+void genericPerformanceCcIsParsedCoalescedAndMappedAbsolutely() {
+    MusicalEventRouter router;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue inputQueue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    ExternalNoteQueue performQueue;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&performQueue);
+
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.channelMode = MidiInputChannelMode::Single;
+    config.channel = 0;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    const uint8_t arpOn[4] = {0x0b, 0xb0, 80, 127};
+    const uint8_t arpOff[4] = {0x0b, 0xb0, 80, 0};
+    const uint8_t latchOn[4] = {0x0b, 0xb0, 81, 64};
+    const ParseResult parsedOn = parser.usbPacket(arpOn, 10);
+    const ParseResult parsedOff = parser.usbPacket(arpOff, 20);
+    const ParseResult parsedLatch = parser.usbPacket(latchOn, 30);
+    assert(parsedOn.hasInput && parsedOn.input.kind == InputKind::ControlChange);
+    assert(parsedOn.input.id.key == 80 && parsedOn.input.velocity == 127);
+    assert(parsedOff.hasInput && parsedLatch.hasInput);
+    assert(inputQueue.tryPush(parsedOn.input));
+    assert(inputQueue.tryPush(parsedOff.input));
+    assert(inputQueue.tryPush(parsedLatch.input));
+    assert(dispatcher.service(inputQueue) == 3u);
+
+    ExternalNoteQueue::Event event{};
+    assert(performQueue.pop(event) && event.controlChange);
+    assert(event.controller == 80 && event.velocity == 0);
+    PerformanceIntent intent{};
+    assert(GroovePuterPerformance::makeGenericMidiToggleIntent(
+        event.controller, event.velocity, event.input, intent));
+    assert(intent.kind == PerformanceIntentKind::SetArpEnabled && intent.value == 0);
+
+    assert(performQueue.pop(event) && event.controlChange);
+    assert(event.controller == 81 && event.velocity == 64);
+    assert(GroovePuterPerformance::makeGenericMidiToggleIntent(
+        event.controller, event.velocity, event.input, intent));
+    assert(intent.kind == PerformanceIntentKind::SetLatchEnabled && intent.value == 1);
+    assert(!performQueue.pop(event));
+
+    assert(dispatcher.setConfig(MidiInputRoutingConfig{
+        true, MidiInputChannelMode::Single, 1, MidiInputTarget::Perform}));
+    const uint8_t wrongChannel[4] = {0x0b, 0xb0, 80, 127};
+    const ParseResult wrong = parser.usbPacket(wrongChannel, 40);
+    assert(wrong.hasInput && inputQueue.tryPush(wrong.input));
+    assert(dispatcher.service(inputQueue) == 1u);
+    assert(!performQueue.pop(event));
+}
+
+void finalConsumerRejectsStaleInputIdentity() {
+    MidiIoState io = readyUsbInput();
+    const uint32_t oldGeneration = io.usbInputGeneration();
+    assert(io.acceptsInputIdentity(InputSource::Usb, oldGeneration));
+    io.usbDetached();
+    assert(!io.acceptsInputIdentity(InputSource::Usb, oldGeneration));
+    io.usbAttached();
+    io.usbReady(true, true);
+    assert(!io.acceptsInputIdentity(InputSource::Usb, oldGeneration));
+    assert(io.acceptsInputIdentity(InputSource::Usb, io.usbInputGeneration()));
 }
 }  // namespace
 
@@ -638,6 +707,8 @@ int main() {
     defaultConfigIsOffAndGenerationChangeReleasesOwnedNotes();
     reconfigurationReleasesNotesOwnedByPreviousPolicy();
     usbCableIdentitySurvivesPacketParsing();
+    genericPerformanceCcIsParsedCoalescedAndMappedAbsolutely();
+    finalConsumerRejectsStaleInputIdentity();
     performNotesKeepFullInputIdentityThroughDispatch();
     sustainOwnershipIsPerSourceChannelAndCable();
     allSoundOffIsDistinctFromAllNotesOffForPerform();

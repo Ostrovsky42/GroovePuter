@@ -109,6 +109,20 @@ public:
     uint32_t usbInputGeneration() const { return usbInputGeneration_; }
     uint32_t uartInputGeneration() const { return uartInputGeneration_; }
 
+    // The application handoff can outlive the dispatch task's input session.
+    // Recheck identity at the final consumer so queued events from a detached
+    // or replaced controller cannot recreate notes or controls after reconnect.
+    bool acceptsInputIdentity(InputSource source, uint32_t generation) const {
+        if (source == InputSource::Usb) {
+            return routes_.usbInputEnabled && usbPhase_ == UsbPhase::Ready &&
+                   usbCanReceive_ && generation == usbInputGeneration_;
+        }
+        if (source == InputSource::Uart) {
+            return routes_.uartInputEnabled && generation == uartInputGeneration_;
+        }
+        return source == InputSource::Qwerty;
+    }
+
     bool acceptsInput(const MidiInputEvent& event) const {
         if (event.id.channel >= 16 || event.id.key >= 128 || event.id.cable >= 16) return false;
         if (event.id.source == InputSource::Qwerty) return true;

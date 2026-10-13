@@ -90,6 +90,8 @@ private:
             // CC1 (modulation) and CC94, which is what the owner's nanoKEY2 Mod button sends
             // (measured: a 0..15 ramp up on press and back to 0 on release).
             kind = InputKind::Mod;
+        } else if (message == 0xb0u) {
+            kind = InputKind::ControlChange;
         } else if (message == 0xe0u) {
             kind = InputKind::PitchBend;  // data1 = LSB (ignored), data2 = MSB
         } else {
@@ -98,7 +100,9 @@ private:
         return ParseResult{true,
                            MidiInputEvent{InputKey{session_.source, session_.generation,
                                                    channel, static_cast<uint8_t>(
-                                                       (message == 0xb0u || message == 0xe0u) ? 0u : data1),
+                                                       message == 0xe0u ? 0u :
+                                                       (message == 0xb0u && kind != InputKind::ControlChange)
+                                                           ? 0u : data1),
                                                    cable},
                                           kind, data2, atMicros},
                            false, 0};

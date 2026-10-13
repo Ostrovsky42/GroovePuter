@@ -213,6 +213,10 @@ SEND ONCE      - transmit one bounded pass and stop output
 PERFORM        - continuous live ownership
 ```
 
+### Smart Play restoration
+
+Restore the controller-independent Smart Play layer as bounded live-note interpretation owned by the existing `PerformanceKeyboard`. The dependency order is shared harmonic semantics and snapshots → source-owned note lifecycle → RAW/BASS/LEAD/CHORD/ARP live roles → deterministic Smart Arp → published legacy harmony → standalone UI/configuration → software acceptance and hardware handoff. Genre-aware HGS supplies future harmony snapshots through the same boundary; it does not add a second chord-quality table or let performance input mutate composition state. Hardware testing starts after the SP-7 host/core, SDL and firmware gates pass; until a person tests the Cardputer, hardware acceptance remains NOT RUN.
+
 ### Musical boundaries by default
 
 - Region selection snaps to bars by default.

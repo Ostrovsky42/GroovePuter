@@ -20,6 +20,7 @@ public:
     static constexpr std::size_t kCapacity = 32;  // power of two
     static constexpr std::size_t kNoteOffReserve = 8;
     static constexpr std::size_t kRecoveryCapacity = 8;
+    static constexpr std::size_t kControlCoalesceSlots = 16;
     static constexpr int8_t kNudgeEnd = 2;  // Event::nudge value for "the pitch button was released"
 
     struct Event {
@@ -33,6 +34,8 @@ public:
         PerformanceInputIdentity input{};
         bool hasInputIdentity{false};
         bool allSoundOff{false};
+        bool controlChange{false};
+        uint8_t controller{0};
     };
 
     // Optional microsecond clock (diagnostics only): events carry the push time.
@@ -199,12 +202,52 @@ public:
                          clock_ ? clock_() : 0u, input, true});
     }
 
+    void externalControlChange(uint8_t controller, uint8_t value,
+                               PerformanceInputIdentity input) override {
+        std::size_t selected = kControlCoalesceSlots;
+        std::size_t free = kControlCoalesceSlots;
+        for (std::size_t i = 0; i < kControlCoalesceSlots; ++i) {
+            const LatestControlSlot& slot = controls_[i];
+            if (!slot.initialized.load(std::memory_order_acquire)) {
+                if (free == kControlCoalesceSlots) free = i;
+                continue;
+            }
+            if (slot.source.load(std::memory_order_relaxed) == input.source &&
+                slot.generation.load(std::memory_order_relaxed) == input.generation &&
+                slot.channel.load(std::memory_order_relaxed) == input.channel &&
+                slot.cable.load(std::memory_order_relaxed) == input.cable &&
+                slot.controller.load(std::memory_order_relaxed) == controller) {
+                selected = i;
+                break;
+            }
+        }
+        if (selected == kControlCoalesceSlots) {
+            selected = free < kControlCoalesceSlots ? free
+                : nextControlSlot_++ % kControlCoalesceSlots;
+        }
+        LatestControlSlot& slot = controls_[selected];
+        uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
+        if (sequence & 1u) ++sequence;
+        slot.sequence.store(sequence + 1u, std::memory_order_release);
+        slot.source.store(input.source, std::memory_order_relaxed);
+        slot.generation.store(input.generation, std::memory_order_relaxed);
+        slot.channel.store(input.channel, std::memory_order_relaxed);
+        slot.cable.store(input.cable, std::memory_order_relaxed);
+        slot.controller.store(controller, std::memory_order_relaxed);
+        slot.value.store(value, std::memory_order_relaxed);
+        slot.stampUs.store(clock_ ? clock_() : 0u, std::memory_order_relaxed);
+        slot.initialized.store(true, std::memory_order_relaxed);
+        slot.sequence.store(sequence + 2u, std::memory_order_release);
+    }
+
     bool pop(Event& out) {
         const uint32_t tail = tail_.load(std::memory_order_relaxed);
-        if (tail == head_.load(std::memory_order_acquire)) return false;
-        out = ring_[tail & (kCapacity - 1)];
-        tail_.store(tail + 1, std::memory_order_release);
-        return true;
+        if (tail != head_.load(std::memory_order_acquire)) {
+            out = ring_[tail & (kCapacity - 1)];
+            tail_.store(tail + 1, std::memory_order_release);
+            return true;
+        }
+        return popLatestControl(out);
     }
 
     bool popRecovery(PerformanceInputIdentity& input) {
@@ -227,6 +270,50 @@ public:
     uint32_t dropped() const { return dropped_.load(std::memory_order_relaxed); }
 
 private:
+    struct LatestControlSlot {
+        std::atomic<uint32_t> sequence{0};
+        std::atomic<uint32_t> generation{0};
+        std::atomic<uint32_t> stampUs{0};
+        std::atomic<uint8_t> source{0};
+        std::atomic<uint8_t> channel{0};
+        std::atomic<uint8_t> cable{0};
+        std::atomic<uint8_t> controller{0};
+        std::atomic<uint8_t> value{0};
+        std::atomic<bool> initialized{false};
+        uint32_t consumedSequence{0};  // consumer-owned
+    };
+
+    bool popLatestControl(Event& out) {
+        for (std::size_t offset = 0; offset < kControlCoalesceSlots; ++offset) {
+            const std::size_t index = (nextControlRead_ + offset) % kControlCoalesceSlots;
+            LatestControlSlot& slot = controls_[index];
+            const uint32_t before = slot.sequence.load(std::memory_order_acquire);
+            if (before == 0u || (before & 1u) != 0u ||
+                before == slot.consumedSequence ||
+                !slot.initialized.load(std::memory_order_relaxed)) continue;
+            const uint8_t source = slot.source.load(std::memory_order_relaxed);
+            const uint32_t generation = slot.generation.load(std::memory_order_relaxed);
+            const uint8_t channel = slot.channel.load(std::memory_order_relaxed);
+            const uint8_t cable = slot.cable.load(std::memory_order_relaxed);
+            const uint8_t controller = slot.controller.load(std::memory_order_relaxed);
+            const uint8_t value = slot.value.load(std::memory_order_relaxed);
+            const uint32_t stamp = slot.stampUs.load(std::memory_order_relaxed);
+            if (before != slot.sequence.load(std::memory_order_acquire)) continue;
+            slot.consumedSequence = before;
+            nextControlRead_ = (index + 1u) % kControlCoalesceSlots;
+            out = Event{};
+            out.controlChange = true;
+            out.controller = controller;
+            out.velocity = value;
+            out.input = PerformanceInputIdentity{generation, source, channel,
+                                                  controller, cable};
+            out.hasInputIdentity = true;
+            out.stampUs = stamp;
+            return true;
+        }
+        return false;
+    }
+
     static bool sameRecoveryScope(const PerformanceInputIdentity& lhs,
                                   const PerformanceInputIdentity& rhs) {
         return lhs.source == rhs.source && lhs.generation == rhs.generation;
@@ -256,11 +343,14 @@ private:
     }
 
     Event ring_[kCapacity]{};
+    LatestControlSlot controls_[kControlCoalesceSlots]{};
     PerformanceInputIdentity recovery_[kRecoveryCapacity]{};
     std::atomic<uint32_t> head_{0}, tail_{0}, dropped_{0};
     std::atomic<uint32_t> recoveryHead_{0}, recoveryTail_{0};
     std::atomic<bool> globalRecovery_{false};
     uint32_t (*clock_)(){nullptr};
+    std::size_t nextControlSlot_{0};  // producer-owned
+    std::size_t nextControlRead_{0};  // consumer-owned
 };
 
 }  // namespace GroovePuterMidi

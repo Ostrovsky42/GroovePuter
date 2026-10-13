@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_PERFORMANCE_KEYBOARD_H
+#define GROOVEPUTER_PERFORMANCE_KEYBOARD_H
 
 #include <cstddef>
 #include <cstdint>
@@ -7,6 +9,7 @@
 #include "performance_chord_detector.h"
 #include "performance_instrument_types.h"
 #include "performance_intent.h"
+#include "performance_keyboard_config.h"
 #include "performance_pulse.h"
 #include "performance_smart_play.h"
 #include "../generation/harmony/harmonic_snapshot.h"
@@ -34,6 +37,7 @@ public:
         : router_(router) {
         pendingClocked_ = activeClocked_;
         mutationRng_.reset(activeClocked_.mutation.seed);
+        persistedConfig_ = exportConfiguration();
     }
 
     bool keyDown(char physicalKey, uint8_t velocity = 0);
@@ -50,6 +54,10 @@ public:
     std::size_t releaseExternalChannel(uint8_t source, uint32_t generation,
                                       uint8_t channel, uint8_t cable);
     bool dispatchIntent(const PerformanceIntent& intent);
+    PerformanceKeyboardConfig exportConfiguration() const;
+    bool applyConfiguration(const PerformanceKeyboardConfig& config);
+    bool configChanged() const;
+    void markConfigPersisted();
     void releaseAllExternalNotes();
     // External sustain button: LATCH while held, the previous LATCH state is restored on release.
     void externalSustain(bool down);
@@ -123,6 +131,7 @@ public:
     void setPerformanceContext(const GroovePuterPerformance::PerformanceContext& context);
     bool setHarmonySnapshot(const GroovePuterHarmony::HarmonySnapshot& snapshot);
     void clearPerformanceHarmonyContext();
+    bool performanceHarmonyAvailable() const { return performanceContext_.hasHarmony; }
     bool setPerformanceRole(GroovePuterPerformance::PerformanceRole role);
     GroovePuterPerformance::PerformanceRole performanceRole() const { return performanceRole_; }
     bool setLeadMode(GroovePuterPerformance::LeadMode mode);
@@ -461,4 +470,7 @@ private:
 
     std::size_t arpIndex_{0};
     bool arpAscending_{true};
+    PerformanceKeyboardConfig persistedConfig_{};
 };
+
+#endif  // GROOVEPUTER_PERFORMANCE_KEYBOARD_H

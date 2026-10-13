@@ -36,6 +36,8 @@ enum class PerformanceIntentKind : uint8_t {
     SelectArpPitchSource,
     SelectHarmonyChangePolicy,
     ToggleLatch,
+    SetArpEnabled,
+    SetLatchEnabled,
 };
 
 struct PerformanceIntent {

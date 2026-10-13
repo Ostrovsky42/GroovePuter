@@ -308,11 +308,15 @@ Fresh multi-row Phrase generation is STOP-only. Here `D` means derive, not the M
 
 ## 9. PERFORM and external keyboard
 
-MIDI KEYBOARD is the live performance surface. `Tab` opens PERFORMANCE TOOLS with KEY / CHORD / ARP / RHYTHM contexts.
+PERFORM is a standalone live instrument: Cardputer keys work without a connected MIDI keyboard. `Tab` opens its tools; `Tab` and `Backspace` move between KEY / CHORD / ARP / RHYTHM / INPUT. The selected row is edited with arrows and activated with `Enter` where the row offers an action.
 
-The v0.9.16 Foundation Freeze includes the accepted USB Host external-keyboard path through PERFORM. The PROJECT MIDI setup chooses the boot USB role (`COMPUTER`, `KEYBOARD`, or `OFF`), applied across the explicit reboot boundary.
+KEY sets the live note range, scale, velocity and target. CHORD configures voicing and chord memory. ARP configures its pitch source (held notes, chord memory, current harmony or role), order, octave range, latch and behavior when harmony changes. RHYTHM configures the shared clock, gate, ratchet, Euclidean rhythm and chord strum. A row marked `N/A` is not active in the current configuration; the hint line explains the requirement.
 
-A connected keyboard feeds the existing PERFORM owner rather than bypassing it with a second note/performance engine. Accepted paths include CHORD, ARP, LATCH, rhythm and receiver mono/poly behavior documented in the release evidence.
+INPUT controls external MIDI routing and the live interpretation role. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. LEAD mode selects RAW, SCALE, CHORD or VOICE interpretation. These choices transform newly played live notes; they do not rewrite or reinterpret a Pattern or an already-playing Song. The target and output rows show where those live notes are sent.
+
+With MIDI input enabled and routed to PERFORM, CC80 controls ARP and CC81 controls LATCH: values 64–127 mean ON and 0–63 mean OFF. These are absolute commands, so a repeated ON value stays ON. LATCH ON is ignored while ARP is OFF. Other CCs remain unbound unless another explicit mapping is configured.
+
+The PROJECT MIDI setup chooses the USB boot role (`COMPUTER`, `KEYBOARD`, or `OFF`), applied across the explicit reboot boundary. A connected keyboard adds physical keys and its supported velocity/controls; it is not required for the Cardputer performance workflow. Performance configuration is saved after a short quiet period and restored at startup.
 
 ## 10. MIDI Player and HUB MIDI
 

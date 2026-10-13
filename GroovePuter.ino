@@ -38,11 +38,13 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_performance_config_store.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
+#include "src/input/performance_control.h"
 #include "src/input/performance_harmony_bridge.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
@@ -462,6 +464,8 @@ void setup() {
     markBootStage(53, "after USB MIDI sink");
     GroovePuterPlatform::initializeCardputerMidiInputSettings();
   }
+  GroovePuterPlatform::initializeCardputerPerformanceConfig(
+      g_performanceKeyboard);
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
@@ -590,6 +594,8 @@ void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
+  GroovePuterPlatform::serviceCardputerPerformanceConfig(
+      g_performanceKeyboard, millis());
   LedManager::instance().update();
 #ifdef GP_USB_ROLE_RUNTIME
   if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
@@ -610,9 +616,24 @@ void loop() {
       auto& externalNotes = cardputerExternalNoteQueue();
       GroovePuterMidi::ExternalNoteQueue::Event note;
       while (externalNotes.pop(note)) {
+        if (note.hasInputIdentity &&
+            !cardputerMidiInputIdentityCurrent(note.input)) {
+          continue;
+        }
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
         if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
 #endif
+        if (note.controlChange) {
+          PerformanceIntent intent{};
+          if (GroovePuterPerformance::makeGenericMidiToggleIntent(
+                  note.controller, note.velocity, note.input, intent) &&
+              !g_performanceKeyboard.dispatchIntent(intent) &&
+              intent.kind == PerformanceIntentKind::SetLatchEnabled &&
+              intent.value != 0u) {
+            UI::showToast("LATCH NEEDS ARP", 900);
+          }
+          continue;
+        }
         if (note.sustain) {
           if (note.hasInputIdentity)
             g_performanceKeyboard.externalSustain(note.on, note.input);

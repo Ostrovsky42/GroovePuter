@@ -21,10 +21,11 @@ def main() -> None:
     keyboard_header = (ROOT / "src/input/performance_keyboard.h").read_text(encoding="utf-8")
     keyboard_source = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
     pulse = (ROOT / "src/input/performance_pulse.h").read_text(encoding="utf-8")
+    app = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
     require("enum class PerformanceToolContext" in header,
-            "PERFORM tools must define a local KEY/CHORD/ARP/RHYTHM navigation context")
-    for context in ("Key", "Chord", "Arp", "Rhythm"):
+            "PERFORM tools must define bounded local navigation contexts")
+    for context in ("Key", "Chord", "Arp", "Rhythm", "Input"):
         require(context in header,
                 f"PERFORM tools must expose the {context} navigation context")
     require("selectedContext_" in header and "selectedRow_" in header,
@@ -47,9 +48,9 @@ def main() -> None:
             "PERFORM UI must never synthesize physical keyDown ownership")
 
     tools = block(page, "void PerformPage::drawToolsLayer", "bool PerformPage::handleEvent")
-    require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM"' in page,
-            "Tab layer must declare the four musician-facing context labels")
-    for marker in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]"):
+    require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT"' in page,
+            "Tab layer must declare the five musician-facing context labels")
+    for marker in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]"):
         require(marker in page,
                 f"active context must have a structural non-color marker: {marker}")
 
@@ -93,6 +94,25 @@ def main() -> None:
             "dependency-disabled controls must render deterministic N/A states")
     require("rotationIsAudible" in page and "strumIsAudible" in page,
             "N/A dependency predicates must remain explicit and deterministic")
+    require("performanceRole()" in tools and "leadMode()" in tools and
+            'drawRow(3, "ROLE"' in tools and 'drawRow(4, "LEAD MODE"' in tools,
+            "INPUT must expose live-note role and current LEAD interpretation")
+    require("ROLE AFFECTS NEW LIVE NOTES ONLY" in page,
+            "INPUT must explain that role changes do not rewrite playing Song material")
+    require('drawRow(1, "SOURCE"' in tools and
+            'drawRow(5, "HARMONY"' in tools and
+            "performanceHarmonyAvailable()" in tools,
+            "ARP must expose pitch source, harmony-change policy and unavailable harmony")
+    require("firstVisibleRow" in tools and "kVisibleRows" in tools,
+            "contexts longer than the screen must use a bounded scrolling window")
+    require("serviceCardputerPerformanceConfig" in app,
+            "performance changes must be persisted by the control loop, not the renderer")
+    require("cardputerMidiInputIdentityCurrent(note.input)" in app,
+            "queued MIDI handoff must reject old input sessions after reconnect")
+    require("makeGenericMidiToggleIntent" in app and 'UI::showToast("LATCH NEEDS ARP"' in app,
+            "CC80/81 must dispatch semantic absolute toggles and explain rejected latch-on")
+    require(app.count("serviceCardputerPerformanceConfig(") == 1,
+            "performance configuration debounce must be serviced once per control loop")
 
     tool_handler = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     for scancode in (

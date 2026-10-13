@@ -439,3 +439,54 @@ detached
   HEAD reproduces the same failure. The authority assertions run before that failure and did not
   fail, but the full Stage 15 gate is recorded FAIL/BASELINE, not PASS.
 - `git diff --check` — PASS. Hardware acceptance remains NOT RUN.
+
+## SP-6 standalone Smart Play UI and persistence — complete
+
+- Start HEAD: `8576edf72419d7aaded4720db5da296bf3b3da41`.
+- Added versioned `PerformanceKeyboardConfig` export/apply and a bounded preference codec.
+  It reads the compatible 18-byte legacy record and CRC-protected v1 record, validates before
+  applying, and writes the current version only from the control loop after a quiet interval.
+- Added persisted standalone role, lead mode, arp source/direction/rate/octaves/latch/harmony
+  policy, chord, rhythm, and mutation settings. No Scene or material data was introduced.
+- Added absolute CC80 ARP and CC81 LATCH intents. They are accepted only on the PERFORM route;
+  repeated values are idempotent, stale MIDI generations are rejected at consumption, and
+  latch-on without ARP is rejected with a visible `LATCH NEEDS ARP` message. CC74 and other
+  continuous controls remain outside this Smart Play mapping.
+- INPUT now exposes ROLE and LEAD MODE; ARP exposes source and harmony-change policy plus
+  unavailable HARMONY/MEMORY state. Existing shortcut routing is covered by source regressions.
+- A final ADV compile caught two integration defects: the sketch used a non-existent namespace
+  for `PerformanceIntent`, and Arduino sketch compilation re-entered the keyboard header without
+  a traditional guard. Both were fixed. Final review also removed duplicate config-service work
+  in one control loop and added a source regression requiring exactly one service call.
+- `CXX=g++ bash tests/run_smart_play_tests.sh` — PASS.
+- `SMART_PLAY_CXXFLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' CXX=g++ bash tests/run_smart_play_tests.sh` — PASS.
+- `python3 tests/test_performance_instrument_ui_source_regressions.py` — PASS.
+- `bash tests/run_midi_perform_ui_polish_tests.sh` — PASS.
+- `make -C platform_sdl clean all CXX=g++` — PASS (existing C++20 bit-field and format warnings).
+- `git diff --check` — PASS.
+- Implementation commit: pending final commit in SP-7.
+
+## SP-7 software gate and hardware handoff — software GREEN, physical tests NOT RUN
+
+- Final ADV build: `scripts/build.sh --warnings all` — PASS, exit 0.
+- FQBN: `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
+- Final image: 1,546,326 bytes flash (49% of 3,145,728); global/static RAM 187,172 bytes
+  (57% of 327,680), 140,508 bytes left. Compared with SP-0: flash +20,964 bytes,
+  static RAM +3,504 bytes.
+- `bash scripts/ci/run_core.sh` — PASS, exit 0, completed in the active worktree after all
+  source changes except the final one-call source-test hardening; that hardening was then
+  checked by its source regression and final firmware build. The runner includes the full host
+  regression suite and reached completion without a failed gate.
+- Focused GCC ASan/UBSan Smart Play suite — PASS. `clang++` is unavailable, so Clang coverage
+  is NOT RUN. SDL and ADV builds pass with existing repository/toolchain warnings.
+- Scope review against v0.9.19 confirms no Performance FX/Scene code, additional arp clock,
+  or new internal live-synth route was restored. `git diff a5f74f73 --stat` is recorded in the
+  terminal evidence; changed code stays within Smart Play vocabulary, input lifecycle, config,
+  legacy harmony publication and PERFORM UI.
+- Physical acceptance checklist: [Smart Play hardware checklist](2026-10-13-smart-play-hardware-checklist.md).
+  All rows remain `NOT_RUN`; no board was flashed from this worktree.
+- SOFTWARE_GATE=PASS; HARDWARE_ACCEPTANCE=NOT_RUN; LISTENING_ACCEPTANCE=NOT_RUN.
+- NEXT_TASK=HGS2-0 immutable legacy witnesses and dedicated HGS runner. The genre-aware
+  progression graph and all genre profiles are not implemented by SP-0…SP-7.
+- Implementation/report commit: pending final local commit. No push, tag, release, main merge,
+  or flash performed.

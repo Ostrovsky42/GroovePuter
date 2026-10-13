@@ -1817,6 +1817,13 @@ GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
     return g_externalNotes;
 }
 
+bool cardputerMidiInputIdentityCurrent(const PerformanceInputIdentity& input) {
+    if (input.source > static_cast<uint8_t>(GroovePuterMidi::InputSource::Uart))
+        return false;
+    return g_midiIoState.acceptsInputIdentity(
+        static_cast<GroovePuterMidi::InputSource>(input.source), input.generation);
+}
+
 const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency() { return g_ringLatency; }
 
 uint32_t cardputerUsbDispatchStackFreeBytes() {

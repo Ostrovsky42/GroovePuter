@@ -102,7 +102,7 @@ int main() {
   auto send = [&](UIEvent e) { perform.handleEvent(e); };
   for (int i = 0; i < 5; ++i) send(key('\t'));
   gfx.texts.clear(); perform.drawContent(gfx);
-  assert(gfx.has("[IN]"));
+  assert(gfx.has("[INPUT]"));
   gfx.bodyFits();
   // PERFORM edits the same persistent input configuration as PROJECT.
   send(scan(GROOVEPUTER_RIGHT));
@@ -115,7 +115,10 @@ int main() {
   assert(gfx.has("PERFORM"));
   gfx.bodyFits();
 
-  send(scan(GROOVEPUTER_DOWN));  // IN: ROUTE -> TARGET
+  send(scan(GROOVEPUTER_DOWN));  // INPUT: ROUTE -> ROLE
+  send(scan(GROOVEPUTER_RIGHT));
+  assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
+  send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN));  // ROLE -> TARGET
   assert(keyboard.externalNoteOn(60, 100));
   events.notes.clear();
   send(scan(GROOVEPUTER_RIGHT));  // TARGET A -> B, clears old held notes
@@ -142,11 +145,11 @@ int main() {
     if (e.target == MusicalEventTarget::Dx && e.type == MusicalEventType::NoteOn) startedDx = true;
   assert(startedDx);
   // Direct routes stay independent: TARGET cannot silently retarget their notes.
-  send(scan(GROOVEPUTER_UP)); // TARGET -> ROUTE
+  send(scan(GROOVEPUTER_UP)); send(scan(GROOVEPUTER_UP)); send(scan(GROOVEPUTER_UP)); // TARGET -> ROUTE
   send(scan(GROOVEPUTER_RIGHT)); // PERFORM -> direct SYN A
   assert(GroovePuterPlatform::cardputerMidiInputRoutingConfig().target ==
          GroovePuterMidi::MidiInputTarget::SynthA);
-  send(scan(GROOVEPUTER_DOWN));
+  send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN));
   send(scan(GROOVEPUTER_RIGHT));
   assert(keyboard.target() == MusicalEventTarget::Dx);
   gfx.texts.clear(); perform.drawContent(gfx);
