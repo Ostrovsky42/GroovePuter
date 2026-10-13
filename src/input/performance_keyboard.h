@@ -9,6 +9,7 @@
 #include "performance_intent.h"
 #include "performance_pulse.h"
 #include "performance_smart_play.h"
+#include "../generation/harmony/harmonic_snapshot.h"
 
 class PerformanceKeyboard {
 public:
@@ -120,8 +121,15 @@ public:
     bool formatDetectedChord(char* out, std::size_t capacity) const;
 
     void setPerformanceContext(const GroovePuterPerformance::PerformanceContext& context);
+    bool setHarmonySnapshot(const GroovePuterHarmony::HarmonySnapshot& snapshot);
     void clearPerformanceHarmonyContext();
     bool setPerformanceRole(GroovePuterPerformance::PerformanceRole role);
+    GroovePuterPerformance::PerformanceRole performanceRole() const { return performanceRole_; }
+    bool setLeadMode(GroovePuterPerformance::LeadMode mode);
+    GroovePuterPerformance::LeadMode leadMode() const { return leadMode_; }
+    GroovePuterPerformance::NotePlanStatus lastNotePlanStatus() const {
+        return lastNotePlanStatus_;
+    }
     bool setArpPitchSource(GroovePuterPerformance::ArpPitchSource source);
     GroovePuterPerformance::ArpPitchSource arpPitchSource() const { return arpPitchSource_; }
     bool setHarmonyChangePolicy(GroovePuterPerformance::HarmonyChangePolicy policy);
@@ -256,6 +264,9 @@ private:
     int findHeld(char physicalKey) const;
     int findHeldExternal(uint8_t note) const;
     int findExternalInputOwner(PerformanceInputIdentity input) const;
+    bool interpretLiveInput(uint8_t inputNote, uint8_t velocity,
+                            uint8_t& outputNote, uint8_t& outputVelocity);
+    std::size_t constrainChordNotes(uint8_t* notes, std::size_t count) const;
     bool hasExternalSemanticOwner(uint8_t note, uint8_t channel) const;
     bool hasPhysicalSemanticOwner(uint8_t note, uint8_t channel) const;
     void updateExternalSustainAggregate();
@@ -403,6 +414,14 @@ private:
     GroovePuterPerformance::PerformanceContext heldArpContext_{};
     GroovePuterPerformance::PerformanceRole performanceRole_{
         GroovePuterPerformance::PerformanceRole::Raw};
+    GroovePuterPerformance::LeadMode leadMode_{
+        GroovePuterPerformance::LeadMode::Raw};
+    mutable GroovePuterPerformance::NotePlanStatus lastNotePlanStatus_{
+        GroovePuterPerformance::NotePlanStatus::Ok};
+    uint16_t harmonyRolePitchMasks_[3]{};
+    bool hasHarmonyRolePitchMasks_{false};
+    uint8_t previousLiveLeadNote_{60};
+    bool hasPreviousLiveLeadNote_{false};
     GroovePuterPerformance::ArpPitchSource arpPitchSource_{
         GroovePuterPerformance::ArpPitchSource::Held};
     GroovePuterPerformance::HarmonyChangePolicy harmonyChangePolicy_{

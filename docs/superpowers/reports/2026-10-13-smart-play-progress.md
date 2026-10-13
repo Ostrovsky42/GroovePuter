@@ -98,6 +98,24 @@ Restored code at baseline provides pure Smart Play interpretation, legacy P1R ha
 - `bash tests/run_host_tests.sh` — PASS, full suite completed after production changes.
 - `scripts/build.sh --warnings all` — PASS. Flash 1,532,926 bytes; static/global RAM
   186,628 bytes. Warnings are existing board/dependency warnings.
+- SP-2 source and tests committed as `1b452658` (`fix: scope external MIDI performance ownership`).
+- Hardware lifecycle acceptance — NOT RUN; no board was flashed during this checkpoint.
+
+## SP-3 live-role dispatch — in progress
+
+- Added router-level tests for exact RAW pitch pass-through, BASS root following,
+  LEAD voice movement, role changes while a note is held, Cardputer/MIDI parity,
+  existing CHORD performer use, scale-mask constraints, and role selection of ARP.
+- Cardputer and both external input APIs now share `interpretLiveInput()`. External owners
+  remember the interpreted output pitch so NoteOff remains stable across harmony/role changes.
+- Added validated `HarmonySnapshot` adapter and bounded nearest/up/down voice-leading helper.
+- Snapshot-backed Harmony/ROLE arp pools use the shared exact chord pitch mask, including qualities
+  outside the legacy enum; CHORD voicings use the existing builder and snapshot role mask.
+- BASS scale fallback reports `FallbackNoHarmony`; forbidden role masks reject notes and produce
+  an empty ROLE/HARMONY arp pool instead of falling back silently.
+- Focused Smart Play matrix and sanitizer build — PASS. Final ADV build — PASS;
+  flash 1,535,338 bytes, static/global RAM 186,644 bytes.
+- Full host suite is still running; hardware acceptance remains NOT RUN.
 - `git diff --check` — PASS. Hardware acceptance — NOT RUN.
 
 ## Worktree list at baseline

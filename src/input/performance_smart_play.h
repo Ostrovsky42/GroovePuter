@@ -13,7 +13,10 @@ enum class LeadMode : uint8_t { Raw = 0, Scale, Chord, VoiceLead, Count };
 enum class BassFunction : uint8_t { Root = 0, Third, Fifth, Seventh, Approach, Count };
 enum class ArpPitchSource : uint8_t { Held = 0, Memory, Harmony, Role, Count };
 enum class HarmonyChangePolicy : uint8_t { Follow = 0, Hold, Restart, Count };
-enum class NotePlanStatus : uint8_t { Ok = 0, InvalidContext, InvalidGesture, Count };
+enum class NotePlanStatus : uint8_t {
+    Ok = 0, InvalidContext, InvalidGesture, FallbackNoHarmony, Count
+};
+enum class VoiceLeadingDirection : uint8_t { Nearest = 0, NearestUp, NearestDown, Count };
 
 struct PerformanceGesture {
     uint8_t note{60};
@@ -24,6 +27,8 @@ struct PerformanceGesture {
 struct PerformanceContext {
     GroovePuterRhythm::HarmonicEvent harmony{};
     uint16_t scalePitchClasses{0x0fffu};
+    uint16_t harmonyPitchClasses{0};
+    uint16_t harmonyTriadPitchClasses{0};
     uint8_t rootMidi{60};
     uint8_t previousNote{60};
     uint8_t minNote{12};
@@ -76,6 +81,10 @@ inline bool nearestNoteForPitchClass(uint8_t reference,
 }
 
 inline uint16_t chordPitchClassMask(const PerformanceContext& context, bool& valid) {
+    if (context.hasHarmony && context.harmonyPitchClasses != 0) {
+        valid = (context.harmonyPitchClasses & 0xf000u) == 0;
+        return valid ? context.harmonyPitchClasses : 0;
+    }
     uint8_t intervals[5]{};
     uint8_t count = 0;
     valid = context.hasHarmony && GroovePuterRhythm::chordQualityIntervals(
@@ -89,20 +98,28 @@ inline uint16_t chordPitchClassMask(const PerformanceContext& context, bool& val
     return mask;
 }
 
-inline bool nearestNoteInMask(uint8_t reference,
-                              uint16_t pitchClasses,
-                              uint8_t minimum,
-                              uint8_t maximum,
-                              uint8_t& result) {
-    uint8_t best = minimum;
+inline bool voiceLeadNote(uint8_t reference,
+                          uint16_t pitchClasses,
+                          uint8_t minimum,
+                          uint8_t maximum,
+                          VoiceLeadingDirection direction,
+                          uint8_t& result) {
+    if (minimum > maximum || maximum > 127u || (pitchClasses & 0xf000u) != 0 ||
+        direction >= VoiceLeadingDirection::Count) return false;
+    uint8_t best = 0;
     uint16_t bestDistance = 256;
     for (uint16_t candidate = minimum; candidate <= maximum; ++candidate) {
-        const uint8_t pc = pitchClass(static_cast<uint8_t>(candidate));
-        if ((pitchClasses & static_cast<uint16_t>(1u << pc)) == 0) continue;
-        const uint16_t distance = candidate > reference
-            ? candidate - reference : reference - candidate;
-        if (distance < bestDistance || (distance == bestDistance && candidate < best)) {
-            best = static_cast<uint8_t>(candidate);
+        const uint8_t note = static_cast<uint8_t>(candidate);
+        if ((pitchClasses & static_cast<uint16_t>(1u << pitchClass(note))) == 0) continue;
+        if (direction == VoiceLeadingDirection::NearestUp && note < reference) continue;
+        if (direction == VoiceLeadingDirection::NearestDown && note > reference) continue;
+        const uint16_t distance = note > reference ? note - reference : reference - note;
+        if (distance < bestDistance ||
+            (distance == bestDistance &&
+             (direction == VoiceLeadingDirection::NearestDown
+                  ? note > best : direction == VoiceLeadingDirection::NearestUp
+                      ? note < best : note < best))) {
+            best = note;
             bestDistance = distance;
         }
     }
@@ -131,6 +148,16 @@ inline bool nearestAllowedBelow(uint8_t reference,
 
 }  // namespace detail
 
+inline bool voiceLeadNote(uint8_t reference,
+                          uint16_t pitchClasses,
+                          uint8_t minimum,
+                          uint8_t maximum,
+                          VoiceLeadingDirection direction,
+                          uint8_t& result) {
+    return detail::voiceLeadNote(reference, pitchClasses, minimum, maximum,
+                                 direction, result);
+}
+
 // External MIDI pitches express BASS functions by matching pitch classes in
 // the current chord: root, third, fifth, seventh, then the semitone below the
 // root as APPROACH. A pitch outside that vocabulary is rejected instead of
@@ -139,13 +166,42 @@ inline bool bassFunctionForInputNote(const PerformanceContext& context,
                                      uint8_t note,
                                      BassFunction& function) {
     if (!context.hasHarmony || note > 127u || context.rootMidi > 127u) return false;
+    const uint8_t relativePitchClass = static_cast<uint8_t>(
+        (detail::pitchClass(note) + 12u - detail::pitchClass(context.rootMidi)) % 12u);
+    if (context.harmonyPitchClasses != 0) {
+        if (relativePitchClass == 0u) {
+            function = BassFunction::Root;
+            return true;
+        }
+        const uint16_t triad = context.harmonyTriadPitchClasses;
+        if ((relativePitchClass == 3u || relativePitchClass == 4u) &&
+            (triad & static_cast<uint16_t>(1u << detail::pitchClass(note))) != 0u) {
+            function = BassFunction::Third;
+            return true;
+        }
+        if ((relativePitchClass == 6u || relativePitchClass == 7u ||
+             relativePitchClass == 8u) &&
+            (triad & static_cast<uint16_t>(1u << detail::pitchClass(note))) != 0u) {
+            function = BassFunction::Fifth;
+            return true;
+        }
+        const bool chordTone = (context.harmonyPitchClasses & static_cast<uint16_t>(
+            1u << detail::pitchClass(note))) != 0u;
+        if (relativePitchClass == 10u && chordTone) {
+            function = BassFunction::Seventh;
+            return true;
+        }
+        if (relativePitchClass == 11u) {
+            function = chordTone ? BassFunction::Seventh : BassFunction::Approach;
+            return true;
+        }
+        return false;
+    }
+
     uint8_t intervals[5]{};
     uint8_t intervalCount = 0;
     if (!GroovePuterRhythm::chordQualityIntervals(
             context.harmony.quality, intervals, 5, intervalCount)) return false;
-
-    const uint8_t relativePitchClass = static_cast<uint8_t>(
-        (detail::pitchClass(note) + 12u - detail::pitchClass(context.rootMidi)) % 12u);
     for (uint8_t i = 0; i < intervalCount; ++i) {
         if (relativePitchClass != intervals[i] % 12u) continue;
         if (i == 0u) function = BassFunction::Root;
@@ -193,11 +249,19 @@ inline NotePlan interpretNote(PerformanceRole role,
     }
 
     uint8_t interpreted = gesture.note;
+    bool noHarmonyFallback = false;
     if (role == PerformanceRole::Bass) {
         if (!context.hasHarmony) {
-            // Harmony is an optional read-only context. In standalone mode the
-            // bass role remains playable and passes its scale-mapped gesture.
-            interpreted = gesture.note;
+            // Harmony is optional; keep standalone BASS playable and report
+            // that the scale-only fallback is active.
+            if (context.scalePitchClasses == 0 ||
+                !voiceLeadNote(gesture.note, context.scalePitchClasses,
+                               context.minNote, context.maxNote,
+                               VoiceLeadingDirection::Nearest, interpreted)) {
+                plan.status = NotePlanStatus::InvalidContext;
+                return plan;
+            }
+            noHarmonyFallback = true;
         } else if (gesture.bassFunction == BassFunction::Approach) {
             if (context.scalePitchClasses == 0 ||
                 !detail::nearestAllowedBelow(context.rootMidi,
@@ -208,6 +272,40 @@ inline NotePlan interpretNote(PerformanceRole role,
                 return plan;
             }
         } else {
+            if (context.harmonyPitchClasses != 0) {
+                const uint8_t rootPc = detail::pitchClass(context.rootMidi);
+                uint8_t relative = 0;
+                bool found = gesture.bassFunction == BassFunction::Root;
+                const uint16_t triad = context.harmonyTriadPitchClasses;
+                const uint8_t first = gesture.bassFunction == BassFunction::Third ? 3u
+                    : gesture.bassFunction == BassFunction::Fifth ? 6u
+                    : gesture.bassFunction == BassFunction::Seventh ? 10u : 0u;
+                const uint8_t last = gesture.bassFunction == BassFunction::Third ? 4u
+                    : gesture.bassFunction == BassFunction::Fifth ? 8u
+                    : gesture.bassFunction == BassFunction::Seventh ? 11u : 0u;
+                const uint16_t sourceMask = gesture.bassFunction == BassFunction::Seventh
+                    ? context.harmonyPitchClasses : triad;
+                for (uint8_t interval = first; !found && interval <= last; ++interval) {
+                    const uint8_t pc = static_cast<uint8_t>((rootPc + interval) % 12u);
+                    if ((sourceMask & static_cast<uint16_t>(1u << pc)) != 0u) {
+                        relative = interval;
+                        found = true;
+                    }
+                }
+                if (gesture.bassFunction == BassFunction::Root) relative = 0;
+                const uint8_t targetPc = static_cast<uint8_t>((rootPc + relative) % 12u);
+                if (!found || (!context.allowChromatic &&
+                    (context.scalePitchClasses & static_cast<uint16_t>(1u << targetPc)) == 0u) ||
+                    !detail::nearestNoteForPitchClass(context.rootMidi, targetPc,
+                        context.minNote, context.maxNote, interpreted)) {
+                    plan.status = NotePlanStatus::InvalidContext;
+                    return plan;
+                }
+                plan.status = NotePlanStatus::Ok;
+                plan.count = 1;
+                plan.notes[0] = PlannedNote{interpreted, gesture.velocity};
+                return plan;
+            }
             uint8_t intervals[5]{};
             uint8_t intervalCount = 0;
             if (!context.hasHarmony || !GroovePuterRhythm::chordQualityIntervals(
@@ -283,15 +381,15 @@ inline NotePlan interpretNote(PerformanceRole role,
             plan.status = NotePlanStatus::InvalidContext;
             return plan;
         }
-        if (!detail::nearestNoteInMask(reference, allowed,
-                                       context.minNote, context.maxNote,
-                                       interpreted)) {
+        if (!voiceLeadNote(reference, allowed, context.minNote, context.maxNote,
+                           VoiceLeadingDirection::Nearest, interpreted)) {
             plan.status = NotePlanStatus::InvalidContext;
             return plan;
         }
     }
 
-    plan.status = NotePlanStatus::Ok;
+    plan.status = noHarmonyFallback ? NotePlanStatus::FallbackNoHarmony
+                                    : NotePlanStatus::Ok;
     plan.count = 1;
     plan.notes[0] = PlannedNote{interpreted, gesture.velocity};
     return plan;

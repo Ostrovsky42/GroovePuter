@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [ownership] [midi_input] [midi_queue] [external_queue] [arp] [keyboard] [external]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [keyboard] [external]" >&2
 }
 
 compile_run() {
@@ -50,6 +50,14 @@ run_ownership() {
     "${ROOT_DIR}/src/input/performance_keyboard.cpp"
 }
 
+run_dispatch() {
+  compile_run smart_play_dispatch \
+    "${ROOT_DIR}/tests/test_smart_play_dispatch.cpp" \
+    "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp"
+}
+
 run_midi_input() {
   compile_run c9_midi_input_dispatcher \
     "${ROOT_DIR}/tests/test_c9_midi_input_dispatcher.cpp"
@@ -83,7 +91,7 @@ run_external() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context ownership midi_input midi_queue external_queue arp keyboard external)
+  targets=(model quality snapshot registry legacy_context ownership dispatch midi_input midi_queue external_queue arp keyboard external)
 fi
 
 for target in "${targets[@]}"; do
@@ -94,6 +102,7 @@ for target in "${targets[@]}"; do
     registry) run_registry ;;
     legacy_context) run_legacy_context ;;
     ownership) run_ownership ;;
+    dispatch) run_dispatch ;;
     midi_input) run_midi_input ;;
     midi_queue) run_midi_queue ;;
     external_queue) run_external_queue ;;

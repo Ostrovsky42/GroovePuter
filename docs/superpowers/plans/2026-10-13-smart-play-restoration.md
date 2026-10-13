@@ -148,7 +148,7 @@ ChangeControl/Scene handling. Unknown intent is rejected without mutation.
   No all-owner panic on disconnect or harmless controller flood.
 - [x] Run focused input/queue tests plus `bash tests/run_performance_closure_tests.sh` and
   `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh`.
-- [ ] Commit coherent ingress and output fixes separately if necessary; each commit needs its
+- [x] Commit coherent ingress and output fixes separately if necessary; each commit needs its
   own regression. Update progress with restored experimental hunks and rejected FX dependencies.
 
 ### SP-3 — Wire RAW/BASS/LEAD/CHORD into the one live performer
@@ -162,23 +162,23 @@ ChangeControl/Scene handling. Unknown intent is rejected without mutation.
 `clearPerformanceHarmonyContext()`; bounded voice-leading helper with nearest/up/down direction.
 Use the existing `NotePlan`; extend status only append-only if persisted/exposed.
 
-- [ ] Add dispatch tests that capture actual router events, not just `interpretNote()` results:
+- [x] Add dispatch tests that capture actual router events, not just `interpretNote()` results:
   RAW pitches 0/11/12/64/95/96/127 exact; BASS root over C→Am→F→G; LEAD E→Fmaj7 keeps E;
   manual CHORD still calls the existing chord engine; forbidden pitch classes never appear.
-- [ ] Test nearest tie resolves down; up/down at range end returns no plan; zero allowed mask;
+- [x] Test nearest tie resolves down; up/down at range end returns no plan; zero allowed mask;
   SUS THIRD and triad SEVENTH refuse; m9 ninth is not THIRD; no-harmony scale fallback is bounded and visibly reported.
-- [ ] Pin state transitions from contract §6: selecting RAW stops performer transforms,
+- [x] Pin state transitions from contract §6: selecting RAW stops performer transforms,
   enabling arp from RAW selects ARP; existing keys held across changes clean up once.
-- [ ] Wire both Cardputer note intents and external MIDI through the same interpreter/owner.
+- [x] Wire both Cardputer note intents and external MIDI through the same interpreter/owner.
   Cardputer adapter first maps physical key to its existing root/scale/octave gesture;
   semantic core receives musical values and never a key matrix or USB endpoint.
-- [ ] Apply generated masks at the musical decision boundary, before scheduling. A role may
+- [x] Apply generated masks at the musical decision boundary, before scheduling. A role may
   choose a subset or nearest allowed note, never widen the owner's mask. CHORD uses existing
   bounded voicing then constrains its notes; if no valid voicing remains, return a visible refusal.
-- [ ] Run `bash tests/run_smart_play_tests.sh model dispatch ownership keyboard external`,
+- [x] Run `bash tests/run_smart_play_tests.sh model dispatch ownership keyboard external`,
   including sanitizer build. Assert Pattern/Song data snapshots are byte/field-identical before
   and after role changes and live input; do not compare padded structs by memcmp.
-- [ ] Commit: `feat: route live smart roles through source-owned performer`.
+- [x] Commit: `feat: route live smart roles through source-owned performer`.
 
 ### SP-4 — Complete Smart Arp musical and timing contracts
 

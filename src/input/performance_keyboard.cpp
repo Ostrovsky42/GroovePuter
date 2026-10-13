@@ -670,6 +670,20 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
         if (!context.hasHarmony) return 0;
         const bool roleScale = arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role &&
             performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead;
+        uint8_t roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord);
+        if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role &&
+            performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass)
+            roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass);
+        else if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role &&
+                 performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead)
+            roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
+        const uint16_t roleMask = harmonyRolePitchMasks_[roleMaskIndex];
+        auto pitchAllowed = [&](uint8_t pitchClass) {
+            const uint16_t bit = static_cast<uint16_t>(1u << pitchClass);
+            return (!hasHarmonyRolePitchMasks_ || (roleMask & bit) != 0u) &&
+                   ((roleScale || !context.allowChromatic)
+                        ? (context.scalePitchClasses & bit) != 0u : true);
+        };
         uint8_t count = 0;
         auto append = [&](uint8_t note) {
             if (count >= capacity || note < context.minNote || note > context.maxNote) return;
@@ -681,25 +695,37 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
         if (roleScale) {
             for (uint16_t note = context.minNote; note <= context.maxNote && count < capacity; ++note) {
                 const uint8_t pitchClass = static_cast<uint8_t>(note % 12u);
-                if ((context.scalePitchClasses & static_cast<uint16_t>(1u << pitchClass)) != 0u)
+                if (pitchAllowed(pitchClass))
                     append(static_cast<uint8_t>(note));
             }
         } else {
-            uint8_t intervals[5]{};
-            uint8_t intervalCount = 0;
-            if (!GroovePuterRhythm::chordQualityIntervals(
-                    context.harmony.quality, intervals, 5, intervalCount)) return 0;
             const uint8_t octaves = activeClocked_.arpOctaves == 0 ? 1 : activeClocked_.arpOctaves;
-            for (uint8_t octave = 0; octave < octaves && count < capacity; ++octave) {
-                for (uint8_t i = 0; i < intervalCount && count < capacity; ++i) {
-                    const uint16_t note = static_cast<uint16_t>(context.rootMidi) +
-                        intervals[i] + octave * 12u;
-                    if (note > 127u) continue;
-                    const uint8_t pitchClass = static_cast<uint8_t>(note % 12u);
-                    if (!context.allowChromatic &&
-                        (context.scalePitchClasses & static_cast<uint16_t>(1u << pitchClass)) == 0u)
-                        continue;
-                    append(static_cast<uint8_t>(note));
+            if (context.harmonyPitchClasses != 0) {
+                for (uint8_t octave = 0; octave < octaves && count < capacity; ++octave) {
+                    for (uint8_t interval = 0; interval < 12u && count < capacity; ++interval) {
+                        const uint8_t pitchClass = static_cast<uint8_t>(
+                            (context.rootMidi + interval) % 12u);
+                        if ((context.harmonyPitchClasses & static_cast<uint16_t>(
+                                1u << pitchClass)) == 0u || !pitchAllowed(pitchClass)) continue;
+                        const uint16_t note = static_cast<uint16_t>(context.rootMidi) +
+                            interval + octave * 12u;
+                        if (note <= 127u) append(static_cast<uint8_t>(note));
+                    }
+                }
+            } else {
+                uint8_t intervals[5]{};
+                uint8_t intervalCount = 0;
+                if (!GroovePuterRhythm::chordQualityIntervals(
+                        context.harmony.quality, intervals, 5, intervalCount)) return 0;
+                for (uint8_t octave = 0; octave < octaves && count < capacity; ++octave) {
+                    for (uint8_t i = 0; i < intervalCount && count < capacity; ++i) {
+                        const uint16_t note = static_cast<uint16_t>(context.rootMidi) +
+                            intervals[i] + octave * 12u;
+                        if (note > 127u) continue;
+                        const uint8_t pitchClass = static_cast<uint8_t>(note % 12u);
+                        if (!pitchAllowed(pitchClass)) continue;
+                        append(static_cast<uint8_t>(note));
+                    }
                 }
             }
         }
@@ -723,6 +749,7 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
         } else {
             chordCount = buildChord(inputs[input].note, chord, kMaxChordMemoryNotes, false);
         }
+        chordCount = constrainChordNotes(chord, chordCount);
         for (std::size_t j = 0; j < chordCount; ++j) {
             for (uint8_t octave = 0; octave < activeClocked_.arpOctaves; ++octave) {
                 const int candidate = static_cast<int>(chord[j]) + octave * 12;
@@ -752,6 +779,8 @@ void PerformanceKeyboard::setPerformanceContext(
         performanceContext_.harmony.degree != context.harmony.degree ||
         performanceContext_.harmony.quality != context.harmony.quality ||
         performanceContext_.harmony.rootOffsetSemitones != context.harmony.rootOffsetSemitones ||
+        performanceContext_.harmonyPitchClasses != context.harmonyPitchClasses ||
+        performanceContext_.harmonyTriadPitchClasses != context.harmonyTriadPitchClasses ||
         performanceContext_.scalePitchClasses != context.scalePitchClasses ||
         performanceContext_.sourceOrdinal != context.sourceOrdinal;
     if (changed && performanceContext_.hasHarmony && context.hasHarmony &&
@@ -768,11 +797,56 @@ void PerformanceKeyboard::setPerformanceContext(
         }
     }
     performanceContext_ = context;
+    hasHarmonyRolePitchMasks_ = false;
+    for (uint16_t& mask : harmonyRolePitchMasks_) mask = 0;
+}
+
+bool PerformanceKeyboard::setHarmonySnapshot(
+    const GroovePuterHarmony::HarmonySnapshot& snapshot) {
+    if (!GroovePuterHarmony::validateHarmonySnapshot(snapshot)) return false;
+
+    GroovePuterRhythm::ChordQuality legacyQuality = GroovePuterRhythm::ChordQuality::Triad;
+    for (uint8_t i = 0; i < static_cast<uint8_t>(GroovePuterRhythm::ChordQuality::Count); ++i) {
+        GroovePuterHarmony::QualityId id = 0;
+        const auto candidate = static_cast<GroovePuterRhythm::ChordQuality>(i);
+        if (GroovePuterHarmony::legacyQualityToId(candidate, id) &&
+            id == snapshot.base.qualityId) {
+            legacyQuality = candidate;
+            break;
+        }
+    }
+    GroovePuterPerformance::PerformanceContext context{};
+    context.harmony = GroovePuterRhythm::HarmonicEvent{0, legacyQuality, 0};
+    context.scalePitchClasses = snapshot.tonal.scaleMask;
+    context.harmonyPitchClasses = snapshot.base.pitchMask;
+    const GroovePuterHarmony::ChordQualityDefinition* definition =
+        GroovePuterHarmony::qualityDefinition(snapshot.base.qualityId);
+    context.harmonyTriadPitchClasses = GroovePuterHarmony::transposePitchSet(
+        definition->triadicSkeleton, snapshot.base.rootPc);
+    context.rootMidi = static_cast<uint8_t>(60u + snapshot.base.rootPc);
+    context.minNote = kMinNote;
+    context.maxNote = kMaxNote;
+    context.sourceOrdinal = static_cast<uint8_t>(
+        snapshot.key.eventOrdinal > 255u ? 255u : snapshot.key.eventOrdinal);
+    context.eventOnset = static_cast<uint8_t>(snapshot.onsetStep > 255u ? 255u : snapshot.onsetStep);
+    context.eventDuration = static_cast<uint8_t>(
+        snapshot.durationSteps > 255u ? 255u : snapshot.durationSteps);
+    context.allowChromatic = false;
+    context.hasHarmony = true;
+    setPerformanceContext(context);
+    for (uint8_t i = 0; i < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count); ++i)
+        harmonyRolePitchMasks_[i] = snapshot.roles[i].allowed;
+    hasHarmonyRolePitchMasks_ = true;
+    return true;
 }
 
 void PerformanceKeyboard::clearPerformanceHarmonyContext() {
     performanceContext_.hasHarmony = false;
     performanceContext_.harmony = GroovePuterRhythm::HarmonicEvent{};
+    performanceContext_.harmonyPitchClasses = 0;
+    performanceContext_.harmonyTriadPitchClasses = 0;
+    hasHarmonyRolePitchMasks_ = false;
+    for (uint16_t& mask : harmonyRolePitchMasks_) mask = 0;
     arpHoldActive_ = false;
     arpHoldPulsesRemaining_ = 0;
 }
@@ -780,7 +854,88 @@ void PerformanceKeyboard::clearPerformanceHarmonyContext() {
 bool PerformanceKeyboard::setPerformanceRole(GroovePuterPerformance::PerformanceRole role) {
     if (role >= GroovePuterPerformance::PerformanceRole::Count) return false;
     performanceRole_ = role;
+    if (role == GroovePuterPerformance::PerformanceRole::Raw &&
+        requestedStepEngineEnabled()) {
+        setArpeggiatorEnabled(false);
+    } else if (role == GroovePuterPerformance::PerformanceRole::Arp &&
+               !requestedStepEngineEnabled()) {
+        setArpeggiatorEnabled(true);
+    }
     return true;
+}
+
+bool PerformanceKeyboard::setLeadMode(GroovePuterPerformance::LeadMode mode) {
+    if (mode >= GroovePuterPerformance::LeadMode::Count) return false;
+    leadMode_ = mode;
+    return true;
+}
+
+bool PerformanceKeyboard::interpretLiveInput(uint8_t inputNote,
+                                              uint8_t velocity,
+                                              uint8_t& outputNote,
+                                              uint8_t& outputVelocity) {
+    GroovePuterPerformance::PerformanceGesture gesture{};
+    gesture.note = inputNote;
+    gesture.velocity = velocity;
+    GroovePuterPerformance::PerformanceContext context = performanceContext_;
+    uint8_t roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
+    if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass)
+        roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass);
+    else if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Chord)
+        roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord);
+    const uint16_t roleMask = harmonyRolePitchMasks_[roleMaskIndex];
+    if (hasHarmonyRolePitchMasks_)
+        context.scalePitchClasses = static_cast<uint16_t>(context.scalePitchClasses & roleMask);
+    if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead &&
+        leadMode_ == GroovePuterPerformance::LeadMode::VoiceLead &&
+        hasPreviousLiveLeadNote_) {
+        context.previousNote = previousLiveLeadNote_;
+        context.hasPreviousNote = true;
+    }
+    if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass &&
+        context.hasHarmony &&
+        !GroovePuterPerformance::bassFunctionForInputNote(
+            context, inputNote, gesture.bassFunction)) {
+        lastNotePlanStatus_ = GroovePuterPerformance::NotePlanStatus::InvalidGesture;
+        return false;
+    }
+    const GroovePuterPerformance::NotePlan plan = GroovePuterPerformance::interpretNote(
+        performanceRole_, leadMode_, context, gesture);
+    lastNotePlanStatus_ = plan.status;
+    if ((plan.status != GroovePuterPerformance::NotePlanStatus::Ok &&
+         plan.status != GroovePuterPerformance::NotePlanStatus::FallbackNoHarmony) ||
+        plan.count != 1u)
+        return false;
+    outputNote = plan.notes[0].note;
+    outputVelocity = plan.notes[0].velocity;
+    if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead) {
+        previousLiveLeadNote_ = outputNote;
+        hasPreviousLiveLeadNote_ = true;
+    }
+    return true;
+}
+
+std::size_t PerformanceKeyboard::constrainChordNotes(uint8_t* notes,
+                                                      std::size_t count) const {
+    if (!notes || count == 0 || !performanceContext_.hasHarmony ||
+        performanceRole_ != GroovePuterPerformance::PerformanceRole::Chord) return count;
+    const uint16_t roleMask = harmonyRolePitchMasks_[
+        static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord)];
+    const uint16_t allowed = !hasHarmonyRolePitchMasks_
+        ? performanceContext_.scalePitchClasses
+        : static_cast<uint16_t>(performanceContext_.scalePitchClasses & roleMask);
+    std::size_t output = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const uint8_t pitchClass = static_cast<uint8_t>(notes[i] % 12u);
+        if ((allowed & static_cast<uint16_t>(1u << pitchClass)) == 0) continue;
+        bool duplicate = false;
+        for (std::size_t j = 0; j < output; ++j)
+            duplicate = duplicate || notes[j] == notes[i];
+        if (!duplicate) notes[output++] = notes[i];
+    }
+    if (output == 0) lastNotePlanStatus_ = GroovePuterPerformance::NotePlanStatus::InvalidContext;
+    else lastNotePlanStatus_ = GroovePuterPerformance::NotePlanStatus::Ok;
+    return output;
 }
 
 bool PerformanceKeyboard::setArpPitchSource(GroovePuterPerformance::ArpPitchSource source) {
@@ -910,6 +1065,7 @@ void PerformanceKeyboard::emitPerformancePulse(
     } else {
         noteCount = buildChord(inputs[inputCount - 1].note,
                                notes, kMaxGeneratedNotes, true);
+        noteCount = constrainChordNotes(notes, noteCount);
         for (std::size_t i = 0; i < noteCount; ++i) velocities[i] = inputs[inputCount - 1].velocity;
         rememberVoicing(notes, noteCount);
     }
@@ -1127,7 +1283,8 @@ void PerformanceKeyboard::reconcileDirectPolyChord(uint32_t nowMicros) {
         uint8_t chord[kMaxChordMemoryNotes]{};
         const std::size_t chordCount = buildChord(
             held_[heldIndex].note, chord, kMaxChordMemoryNotes, false);
-        for (std::size_t j = 0; j < chordCount && desiredCount < kMaxPolyChordNotes; ++j) {
+        const std::size_t allowedChordCount = constrainChordNotes(chord, chordCount);
+        for (std::size_t j = 0; j < allowedChordCount && desiredCount < kMaxPolyChordNotes; ++j) {
             bool duplicate = false;
             for (std::size_t i = 0; i < desiredCount; ++i) {
                 if (desired[i] == chord[j]) { duplicate = true; break; }
@@ -1173,6 +1330,7 @@ void PerformanceKeyboard::triggerDirectTransformed(uint32_t nowMicros) {
     uint8_t notes[kMaxGeneratedNotes]{};
     std::size_t count = buildChord(held_[heldCount_ - 1].note,
                                    notes, kMaxGeneratedNotes, true);
+    count = constrainChordNotes(notes, count);
     if (count == 0) return;
     rememberVoicing(notes, count);
     if (strumDirection_ == PerformanceStrumDirection::HighToLow) {
@@ -1222,6 +1380,9 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
 
     uint8_t note = 0;
     if (!noteForKey(physicalKey, note)) return true;
+    uint8_t interpretedVelocity = velocity;
+    if (!interpretLiveInput(note, velocity, note, interpretedVelocity)) return true;
+    velocity = interpretedVelocity;
     const std::size_t priorHeld = heldCount_;
     held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0};
 
@@ -1344,7 +1505,8 @@ void PerformanceKeyboard::updateExternalSustainAggregate() {
 }
 
 bool PerformanceKeyboard::externalNoteOn(uint8_t note, uint8_t velocity) {
-    return externalNoteOnUntracked(note, velocity);
+    const PerformanceInputIdentity localInput{0, 0, 0, note, 0};
+    return externalNoteOn(note, velocity, localInput);
 }
 
 bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity) {
@@ -1376,7 +1538,6 @@ bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity
         return true;
     }
 
-    note = fitMidiNote(note);
     if (findHeldExternal(note) >= 0) return true;
     if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
 
@@ -1417,6 +1578,9 @@ bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity
 }
 
 bool PerformanceKeyboard::externalNoteOff(uint8_t note) {
+    const PerformanceInputIdentity localInput{0, 0, 0, note, 0};
+    if (findExternalInputOwner(localInput) >= 0)
+        return externalNoteOff(note, localInput);
     return externalNoteOffUntracked(note);
 }
 
@@ -1433,7 +1597,6 @@ bool PerformanceKeyboard::externalNoteOffUntracked(uint8_t note) {
             }
         }
     } else {
-        note = fitMidiNote(note);
         found = findHeldExternal(note);
     }
     if (found < 0) return false;
@@ -1493,10 +1656,13 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note,
         if (!drumChannelForExternalNote(note, semanticChannel)) return false;
         semanticNote = kSeqtrakDrumNote;
     } else {
-        semanticNote = fitMidiNote(note);
+        uint8_t interpretedVelocity = velocity;
+        if (!interpretLiveInput(note, velocity, semanticNote, interpretedVelocity)) return false;
+        velocity = interpretedVelocity;
     }
     const bool alreadyOwned = hasExternalSemanticOwner(semanticNote, semanticChannel);
-    if (!alreadyOwned && !externalNoteOnUntracked(note, velocity)) return false;
+    const uint8_t attackNote = target_ == MusicalEventTarget::Drums ? note : semanticNote;
+    if (!alreadyOwned && !externalNoteOnUntracked(attackNote, velocity)) return false;
     externalInputOwners_[free] = ExternalInputOwner{true, input, note,
                                                      semanticNote, semanticChannel};
     return true;
@@ -1511,7 +1677,8 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note,
     const ExternalInputOwner owner = externalInputOwners_[static_cast<std::size_t>(found)];
     externalInputOwners_[static_cast<std::size_t>(found)] = ExternalInputOwner{};
     if (hasExternalSemanticOwner(owner.semanticNote, owner.semanticChannel)) return true;
-    return externalNoteOffUntracked(owner.inputNote);
+    return externalNoteOffUntracked(
+        target_ == MusicalEventTarget::Drums ? owner.inputNote : owner.semanticNote);
 }
 
 std::size_t PerformanceKeyboard::releaseExternalInput(uint8_t source,
@@ -1562,16 +1729,37 @@ bool PerformanceKeyboard::dispatchIntent(const PerformanceIntent& intent) {
             return externalNoteOn(intent.note, intent.velocity, intent.input);
         case PerformanceIntentKind::ReleaseNote:
             return externalNoteOff(intent.note, intent.input);
+        case PerformanceIntentKind::SelectRole:
+            return setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(
+                intent.value));
+        case PerformanceIntentKind::SelectLeadMode:
+            return setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(intent.value));
+        case PerformanceIntentKind::SelectChordMode:
+            if (intent.value >= static_cast<uint8_t>(PerformanceChordMode::Count)) return false;
+            setChordMode(static_cast<PerformanceChordMode>(intent.value));
+            return true;
+        case PerformanceIntentKind::ToggleArp:
+            setArpeggiatorEnabled(intent.value != 0);
+            if (intent.value != 0 && performanceRole_ ==
+                    GroovePuterPerformance::PerformanceRole::Raw) {
+                setPerformanceRole(GroovePuterPerformance::PerformanceRole::Arp);
+            } else if (intent.value == 0 && performanceRole_ ==
+                           GroovePuterPerformance::PerformanceRole::Arp) {
+                setPerformanceRole(GroovePuterPerformance::PerformanceRole::Raw);
+            }
+            return true;
+        case PerformanceIntentKind::SelectArpPitchSource:
+            return setArpPitchSource(static_cast<GroovePuterPerformance::ArpPitchSource>(
+                intent.value));
+        case PerformanceIntentKind::SelectHarmonyChangePolicy:
+            return setHarmonyChangePolicy(static_cast<GroovePuterPerformance::HarmonyChangePolicy>(
+                intent.value));
+        case PerformanceIntentKind::ToggleLatch:
+            setLatchEnabled(intent.value != 0);
+            return true;
         case PerformanceIntentKind::Hold:
         case PerformanceIntentKind::ReleaseHold:
         case PerformanceIntentKind::ChangeOctave:
-        case PerformanceIntentKind::SelectRole:
-        case PerformanceIntentKind::SelectLeadMode:
-        case PerformanceIntentKind::SelectChordMode:
-        case PerformanceIntentKind::ToggleArp:
-        case PerformanceIntentKind::SelectArpPitchSource:
-        case PerformanceIntentKind::SelectHarmonyChangePolicy:
-        case PerformanceIntentKind::ToggleLatch:
             return false;
     }
     return false;

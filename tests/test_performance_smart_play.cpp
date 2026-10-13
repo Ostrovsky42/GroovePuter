@@ -78,5 +78,18 @@ int main() {
     plan = interpretNote(PerformanceRole::Lead, LeadMode::VoiceLead, context,
                          PerformanceGesture{72, 100, BassFunction::Root});
     assert(plan.status == NotePlanStatus::Ok && plan.notes[0].note == 64); // E remains M7 over Fmaj7 below.
+
+    uint8_t voice = 0;
+    const uint16_t cMajor = static_cast<uint16_t>(0x0ab5u);
+    assert(voiceLeadNote(61, cMajor, 60, 72,
+                         VoiceLeadingDirection::Nearest, voice) && voice == 60);
+    assert(voiceLeadNote(61, cMajor, 60, 72,
+                         VoiceLeadingDirection::NearestUp, voice) && voice == 62);
+    assert(voiceLeadNote(61, cMajor, 60, 72,
+                         VoiceLeadingDirection::NearestDown, voice) && voice == 60);
+    assert(!voiceLeadNote(72, cMajor, 60, 71,
+                          VoiceLeadingDirection::NearestUp, voice));
+    assert(!voiceLeadNote(65, 0, 60, 72,
+                          VoiceLeadingDirection::Nearest, voice));
     return 0;
 }

@@ -53,18 +53,18 @@ int main() {
         assert(kb.externalNoteOn(64, 0));
         assert(sink.count(MusicalEventType::NoteOff) == 1 && sink.has(MusicalEventType::NoteOff, 64));
     }
-    // 3. out of range folds by octaves, and the NoteOff finds the same hold
+    // 3. RAW preserves the external pitch exactly, including pitches outside the
+    // Cardputer's playable register, and NoteOff finds the original hold.
     {
         PerformanceKeyboard kb(router);
         sink.clear();
         assert(kb.externalNoteOn(110, 80));
         assert(sink.events.size() == 1);
-        const uint8_t folded = sink.events[0].note;
-        assert(folded >= PerformanceKeyboard::kMinNote && folded <= PerformanceKeyboard::kMaxNote);
-        assert(folded % 12 == 110 % 12);
+        const uint8_t emitted = sink.events[0].note;
+        assert(emitted == 110);
         sink.clear();
         assert(kb.externalNoteOff(110));
-        assert(sink.has(MusicalEventType::NoteOff, folded));
+        assert(sink.has(MusicalEventType::NoteOff, emitted));
     }
     // 4. built-in keys and external notes coexist; the built-in key sweep never releases external notes
     {
