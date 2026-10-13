@@ -45,9 +45,10 @@ uint16_t ordinalMask(uint8_t count) {
 }
 
 bool validEvent(const HarmonicEvent& event) {
+  uint8_t chordTones[5]{};
+  uint8_t chordToneCount = 0;
   return event.degree <= 6 &&
-         static_cast<uint8_t>(event.quality) <
-             static_cast<uint8_t>(ChordQuality::Count) &&
+         chordQualityIntervals(event.quality, chordTones, 5, chordToneCount) &&
          event.rootOffsetSemitones >= -kMaxRootOffsetSemitones &&
          event.rootOffsetSemitones <= kMaxRootOffsetSemitones;
 }

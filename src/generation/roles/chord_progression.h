@@ -34,6 +34,40 @@ enum class ChordQuality : uint8_t {
   Count,
 };
 
+// One authoritative realization of semantic chord quality. Smart Play, chord
+// witnesses and tonal consumers share these intervals instead of maintaining
+// parallel quality tables.
+inline bool chordQualityIntervals(ChordQuality quality,
+                                 uint8_t* out,
+                                 uint8_t capacity,
+                                 uint8_t& count) {
+  static constexpr uint8_t triad[] = {0, 4, 7};
+  static constexpr uint8_t minor7[] = {0, 3, 7, 10};
+  static constexpr uint8_t major7[] = {0, 4, 7, 11};
+  static constexpr uint8_t dominant7[] = {0, 4, 7, 10};
+  static constexpr uint8_t sus4[] = {0, 5, 7};
+  static constexpr uint8_t minor9[] = {0, 3, 7, 10, 14};
+  static constexpr uint8_t major9[] = {0, 4, 7, 11, 14};
+  static constexpr uint8_t diminished[] = {0, 3, 6};
+  const uint8_t* source = nullptr;
+  uint8_t size = 0;
+  switch (quality) {
+    case ChordQuality::Triad: source = triad; size = 3; break;
+    case ChordQuality::Minor7: source = minor7; size = 4; break;
+    case ChordQuality::Major7: source = major7; size = 4; break;
+    case ChordQuality::Dominant7: source = dominant7; size = 4; break;
+    case ChordQuality::Sus4: source = sus4; size = 3; break;
+    case ChordQuality::Minor9: source = minor9; size = 5; break;
+    case ChordQuality::Major9: source = major9; size = 5; break;
+    case ChordQuality::Diminished: source = diminished; size = 3; break;
+    case ChordQuality::Count: return false;
+  }
+  if (out == nullptr || capacity < size) return false;
+  for (uint8_t i = 0; i < size; ++i) out[i] = source[i];
+  count = size;
+  return true;
+}
+
 enum class ChordProgressionStatus : uint8_t {
   Ok = 0,
   ValidButStatic,
