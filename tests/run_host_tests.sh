@@ -141,6 +141,33 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 "${BUILD_DIR}/test_performance_keyboard"
 
 "${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_play.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_play"
+"${BUILD_DIR}/test_performance_smart_play"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_arp.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_arp"
+"${BUILD_DIR}/test_performance_smart_arp"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_chord_quality.cpp" \
+  -o "${BUILD_DIR}/test_performance_chord_quality"
+"${BUILD_DIR}/test_performance_chord_quality"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_harmony_context.cpp" \
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
+  -o "${BUILD_DIR}/test_performance_harmony_context"
+"${BUILD_DIR}/test_performance_harmony_context"
+
+"${CXX}" \
   -std=c++17 \
   -Wall \
   -Wextra \

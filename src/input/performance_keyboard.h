@@ -7,6 +7,7 @@
 #include "performance_chord_detector.h"
 #include "performance_instrument_types.h"
 #include "performance_pulse.h"
+#include "performance_smart_play.h"
 
 class PerformanceKeyboard {
 public:
@@ -109,6 +110,20 @@ public:
     void clearChordMemory();
     std::size_t chordMemorySize() const { return chordMemoryCount_; }
     bool formatDetectedChord(char* out, std::size_t capacity) const;
+
+    void setPerformanceContext(const GroovePuterPerformance::PerformanceContext& context);
+    void clearPerformanceHarmonyContext();
+    bool setPerformanceRole(GroovePuterPerformance::PerformanceRole role);
+    bool setArpPitchSource(GroovePuterPerformance::ArpPitchSource source);
+    GroovePuterPerformance::ArpPitchSource arpPitchSource() const { return arpPitchSource_; }
+    bool setHarmonyChangePolicy(GroovePuterPerformance::HarmonyChangePolicy policy);
+    GroovePuterPerformance::HarmonyChangePolicy harmonyChangePolicy() const {
+        return harmonyChangePolicy_;
+    }
+    std::size_t collectArpeggioPool(uint8_t* notes, uint8_t* velocities,
+                                    std::size_t capacity) const {
+        return buildArpPool(notes, velocities, capacity);
+    }
 
     void setArpeggiatorEnabled(bool enabled);
     void toggleArpeggiator() { setArpeggiatorEnabled(!arpeggiatorEnabled()); }
@@ -351,6 +366,17 @@ private:
     std::size_t pendingLatchCount_{0};
     bool pendingLatchCapture_{false};
     bool latchReplaceArmed_{false};
+
+    GroovePuterPerformance::PerformanceContext performanceContext_{};
+    GroovePuterPerformance::PerformanceContext heldArpContext_{};
+    GroovePuterPerformance::PerformanceRole performanceRole_{
+        GroovePuterPerformance::PerformanceRole::Raw};
+    GroovePuterPerformance::ArpPitchSource arpPitchSource_{
+        GroovePuterPerformance::ArpPitchSource::Held};
+    GroovePuterPerformance::HarmonyChangePolicy harmonyChangePolicy_{
+        GroovePuterPerformance::HarmonyChangePolicy::Follow};
+    bool arpHoldActive_{false};
+    uint8_t arpHoldPulsesRemaining_{0};
 
     ScheduledEvent scheduled_[kMaxScheduledEvents]{};
     uint8_t generatedNotes_[kMaxGeneratedNotes]{};
