@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "scales": [
+    {"id":0,"name":"minor","intervals":[0,2,3,5,7,8,10],"family":"Minor","mode":0,"parent":255},
+    {"id":1,"name":"major","intervals":[0,2,4,5,7,9,11],"family":"Major","mode":0,"parent":255},
+    {"id":2,"name":"dorian","intervals":[0,2,3,5,7,9,10],"family":"Modes","mode":1,"parent":1},
+    {"id":3,"name":"phrygian","intervals":[0,1,3,5,7,8,10],"family":"Modes","mode":2,"parent":1},
+    {"id":4,"name":"lydian","intervals":[0,2,4,6,7,9,11],"family":"Modes","mode":3,"parent":1},
+    {"id":5,"name":"mixolydian","intervals":[0,2,4,5,7,9,10],"family":"Modes","mode":4,"parent":1},
+    {"id":6,"name":"locrian","intervals":[0,1,3,5,6,8,10],"family":"Modes","mode":5,"parent":1},
+    {"id":7,"name":"pentatonic_major","intervals":[0,2,4,7,9],"family":"Pentatonic","mode":0,"parent":1},
+    {"id":8,"name":"pentatonic_minor","intervals":[0,3,5,7,10],"family":"Pentatonic","mode":1,"parent":0},
+    {"id":9,"name":"chromatic","intervals":[0,1,2,3,4,5,6,7,8,9,10,11],"family":"Chromatic","mode":0,"parent":255}
+  ]
+}

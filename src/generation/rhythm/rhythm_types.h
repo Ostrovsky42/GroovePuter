@@ -162,6 +162,12 @@ enum class GenerationDomain : uint8_t {
   MotifSelection,
   FeelProfileSelection,
   PhraseLawSelection,
+  HarmonicGenome,
+  HarmonicCandidateTieBreak,
+  HarmonicRoute,
+  HarmonicModulation,
+  HarmonicVerticalColor,
+  PerformanceArp,
   Count,
 };
 

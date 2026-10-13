@@ -38,7 +38,21 @@ Restored code at baseline provides pure Smart Play interpretation, legacy P1R ha
 
 ### Focused runner
 
-`tests/run_smart_play_tests.sh` supports exact targets `model`, `quality`, `legacy_context`, `arp`, `keyboard`, `external`; no arguments runs all six. It honors `CXX` and `SMART_PLAY_CXXFLAGS` and writes binaries under `build/smart-play-tests/`.
+`tests/run_smart_play_tests.sh` supports exact targets `model`, `quality`, `snapshot`, `registry`, `legacy_context`, `arp`, `keyboard`, `external`; no arguments runs all eight. It honors `CXX` and `SMART_PLAY_CXXFLAGS` and writes binaries under `build/smart-play-tests/`.
+
+## SP-1 shared harmonic vocabulary and snapshot
+
+- Added provider-neutral, fixed-capacity harmonic state/snapshot/key/role types and validation. `HarmonyEventKey` is 16 bytes; `HarmonySnapshot` is statically bounded to 64 bytes and trivially copyable.
+- Added append-only bootstrap quality IDs0..9, exact formula masks, scale IDs0..9, explicit legacy adapters, and a JSON-to-C++ deterministic generator. The existing `ChordQuality` ordered/compound interval API now reads the shared vocabulary; ninths retain compound interval14. Legacy enum values remain unchanged.
+- Reserved `GenerationDomain` values19..24; compile-time assertions pin every prior domain0..18 and the new values.
+- Red→green: the snapshot target first failed with the explicit missing-contract assertion, then passed after the provider-neutral API was implemented.
+- `CXX=g++ bash tests/run_smart_play_tests.sh` — PASS (all eight focused targets).
+- `SMART_PLAY_CXXFLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' CXX=g++ bash tests/run_smart_play_tests.sh` — PASS.
+- `bash tests/run_performance_closure_tests.sh` — PASS.
+- `bash tests/run_host_tests.sh` — PASS (full suite completed; pre-existing compiler warnings remain).
+- `scripts/build.sh --warnings all` — PASS. Flash1,525,506 bytes; static RAM183,668 bytes. Relative to SP-0 baseline, flash +144 bytes and static RAM unchanged.
+- Registry generation byte parity — PASS.
+- Clang host run: NOT RUN; `clang++` is not installed. GCC, host, closure, sanitizer, and ADV gates pass.
 
 ## Worktree list at baseline
 

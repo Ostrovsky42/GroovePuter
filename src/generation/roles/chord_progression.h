@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "../harmony/harmonic_quality.h"
 #include "../generation_context.h"
 
 namespace GroovePuterRhythm {
@@ -34,36 +35,40 @@ enum class ChordQuality : uint8_t {
   Count,
 };
 
-// One authoritative realization of semantic chord quality. Smart Play, chord
-// witnesses and tonal consumers share these intervals instead of maintaining
-// parallel quality tables.
+// Legacy ordered/compound voicing view over the shared root-independent
+// harmonic vocabulary. Pitch-set consumers use the same definition directly.
 inline bool chordQualityIntervals(ChordQuality quality,
                                  uint8_t* out,
                                  uint8_t capacity,
                                  uint8_t& count) {
-  static constexpr uint8_t triad[] = {0, 4, 7};
-  static constexpr uint8_t minor7[] = {0, 3, 7, 10};
-  static constexpr uint8_t major7[] = {0, 4, 7, 11};
-  static constexpr uint8_t dominant7[] = {0, 4, 7, 10};
-  static constexpr uint8_t sus4[] = {0, 5, 7};
-  static constexpr uint8_t minor9[] = {0, 3, 7, 10, 14};
-  static constexpr uint8_t major9[] = {0, 4, 7, 11, 14};
-  static constexpr uint8_t diminished[] = {0, 3, 6};
-  const uint8_t* source = nullptr;
+  GroovePuterHarmony::QualityId id = 0;
+  if (!GroovePuterHarmony::legacyQualityToId(quality, id)) return false;
+  const auto* definition = GroovePuterHarmony::qualityDefinition(id);
+  if (definition == nullptr) return false;
+  uint8_t values[12]{};
   uint8_t size = 0;
-  switch (quality) {
-    case ChordQuality::Triad: source = triad; size = 3; break;
-    case ChordQuality::Minor7: source = minor7; size = 4; break;
-    case ChordQuality::Major7: source = major7; size = 4; break;
-    case ChordQuality::Dominant7: source = dominant7; size = 4; break;
-    case ChordQuality::Sus4: source = sus4; size = 3; break;
-    case ChordQuality::Minor9: source = minor9; size = 5; break;
-    case ChordQuality::Major9: source = major9; size = 5; break;
-    case ChordQuality::Diminished: source = diminished; size = 3; break;
-    case ChordQuality::Count: return false;
+  for (uint8_t interval = 0; interval < 12; ++interval) {
+    if ((definition->intervalMask & static_cast<uint16_t>(1u << interval)) == 0) continue;
+    values[size++] = interval;
+  }
+  // Legacy 9th voicings spell pitch class 2 as the compound ninth (14).
+  if (id == GroovePuterHarmony::kQualityMinor9 ||
+      id == GroovePuterHarmony::kQualityMajor9) {
+    for (uint8_t i = 1; i < size; ++i) {
+      if (values[i] == 2) values[i] = 14;
+    }
+  }
+  for (uint8_t i = 1; i < size; ++i) {
+    const uint8_t value = values[i];
+    uint8_t j = i;
+    while (j > 0 && values[j - 1] > value) {
+      values[j] = values[j - 1];
+      --j;
+    }
+    values[j] = value;
   }
   if (out == nullptr || capacity < size) return false;
-  for (uint8_t i = 0; i < size; ++i) out[i] = source[i];
+  for (uint8_t i = 0; i < size; ++i) out[i] = values[i];
   count = size;
   return true;
 }
@@ -171,5 +176,32 @@ static_assert(std::is_trivially_copyable<ChordProgressionRequest>::value,
               "ChordProgressionRequest must remain fixed-capacity");
 
 }  // namespace GroovePuterRhythm
+
+inline bool GroovePuterHarmony::legacyQualityToId(
+    GroovePuterRhythm::ChordQuality quality,
+    GroovePuterHarmony::QualityId& out) {
+  using GroovePuterHarmony::kQualityDiminished;
+  using GroovePuterHarmony::kQualityDominant7;
+  using GroovePuterHarmony::kQualityMajor7;
+  using GroovePuterHarmony::kQualityMajor9;
+  using GroovePuterHarmony::kQualityMinor7;
+  using GroovePuterHarmony::kQualityMinor9;
+  using GroovePuterHarmony::kQualitySus4;
+  using GroovePuterHarmony::kQualityMajor;
+  switch (quality) {
+    case GroovePuterRhythm::ChordQuality::Triad: out = kQualityMajor; return true;
+    case GroovePuterRhythm::ChordQuality::Minor7: out = kQualityMinor7; return true;
+    case GroovePuterRhythm::ChordQuality::Major7: out = kQualityMajor7; return true;
+    case GroovePuterRhythm::ChordQuality::Dominant7: out = kQualityDominant7; return true;
+    case GroovePuterRhythm::ChordQuality::Sus4: out = kQualitySus4; return true;
+    case GroovePuterRhythm::ChordQuality::Minor9: out = kQualityMinor9; return true;
+    case GroovePuterRhythm::ChordQuality::Major9: out = kQualityMajor9; return true;
+    case GroovePuterRhythm::ChordQuality::Diminished:
+      out = kQualityDiminished;
+      return true;
+    case GroovePuterRhythm::ChordQuality::Count: return false;
+  }
+  return false;
+}
 
 #endif  // GROOVEPUTER_GENERATION_ROLES_CHORD_PROGRESSION_H

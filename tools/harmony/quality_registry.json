@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "qualities": [
+    {"id":0,"name":"maj","intervals":[0,4,7],"family":"MajorMinor","skeleton":[0,4,7],"complexity":1},
+    {"id":1,"name":"min","intervals":[0,3,7],"family":"MajorMinor","skeleton":[0,3,7],"complexity":1},
+    {"id":2,"name":"dom7","intervals":[0,4,7,10],"family":"Dominant","skeleton":[0,4,7],"complexity":2},
+    {"id":3,"name":"dim","intervals":[0,3,6],"family":"Diminished","skeleton":[0,3,6],"complexity":2},
+    {"id":4,"name":"aug","intervals":[0,4,8],"family":"Augmented","skeleton":[0,4,8],"complexity":3},
+    {"id":5,"name":"sus4","intervals":[0,5,7],"family":"Suspended","skeleton":[0,5,7],"complexity":1},
+    {"id":6,"name":"min7","intervals":[0,3,7,10],"family":"MajorMinor","skeleton":[0,3,7],"complexity":2},
+    {"id":7,"name":"maj7","intervals":[0,4,7,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":2},
+    {"id":8,"name":"min9","intervals":[0,2,3,7,10],"family":"MajorMinor","skeleton":[0,3,7],"complexity":3},
+    {"id":9,"name":"maj9","intervals":[0,2,4,7,11],"family":"MajorMinor","skeleton":[0,4,7],"complexity":3}
+  ]
+}

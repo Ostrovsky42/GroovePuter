@@ -93,11 +93,11 @@ Modify `src/generation/roles/chord_progression.h`, `src/generation/tonal/scale_c
 valid quality/scale IDs, masks below bit12 and preferred⊆allowed. A valid empty role mask remains valid.
 Status-only invalid/no-harmony snapshots cannot emit notes. Initialize every field explicitly.
 
-- [ ] Write tests `all_quality_intervals`, `legacy_quality_parity`, `snapshot_validation`,
+- [x] Write tests `all_quality_intervals`, `legacy_quality_parity`, `snapshot_validation`,
   `same_pitch_new_event`, `event_ordinal_exceeds_255`, `mask_empty_is_not_chromatic`.
   Check C major `{0,4,7}` versus C minor `{0,3,7}` and exact unchanged legacy enum numbers.
-- [ ] Run `bash tests/run_smart_play_tests.sh quality snapshot`; observe the intended red tests.
-- [ ] Implement bootstrap quality/scale registries and legacy adapters; record first10 quality
+- [x] Run `bash tests/run_smart_play_tests.sh quality snapshot`; observe the intended red tests.
+- [x] Implement bootstrap quality/scale registries and legacy adapters; record first10 quality
   IDs from contract and explicit mappings for all current scale IDs0..9. Add
   `tools/harmony/quality_registry.json` and `scale_registry.json` bootstrap sources, with
   `build_bootstrap_tables.py --out src/generation/harmony/generated/harmonic_vocabulary.h`.
@@ -106,14 +106,15 @@ Status-only invalid/no-harmony snapshots cannot emit notes. Initialize every fie
   One formula owner supplies shared masks; legacy adapter reconstructs original ordered/compound
   intervals so ninth remains14 and bass THIRD/FIFTH/SEVENTH never become a sorted-mask index.
   Preserve legacy seed traces/intervals and ScaleType ABI; add sizeof/copyability assertions.
-- [ ] Reserve append-only domains here for SP-4's deterministic arp and later HGS2 use:
+- [x] Reserve append-only domains here for SP-4's deterministic arp and later HGS2 use:
   HarmonicGenome=19, HarmonicCandidateTieBreak=20, HarmonicRoute=21,
   HarmonicModulation=22, HarmonicVerticalColor=23, PerformanceArp=24 (Count=25).
   First assert baseline old domains0..18 unchanged. No existing generator starts using
   these new domains in this task. Keep the legacy context adapter intact
   until SP-5; do not pretend the neutral snapshot is already published by the application.
-- [ ] Run `CXX=g++ bash tests/run_smart_play_tests.sh quality snapshot model legacy_context`,
-  then the same command with `CXX=clang++`.
+- [x] Run `CXX=g++ bash tests/run_smart_play_tests.sh quality snapshot model legacy_context`,
+  and the full focused suite with GCC. The `clang++` run is unavailable because that compiler
+  is not installed in this environment; this is recorded in the progress report/ledger.
 - [ ] Commit: `feat: define bounded harmonic snapshot and shared chord quality`.
 
 ### SP-2 — Neutral intents and source-owned note lifecycle

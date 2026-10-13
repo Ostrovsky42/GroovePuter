@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [legacy_context] [arp] [keyboard] [external]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [arp] [keyboard] [external]" >&2
 }
 
 compile_run() {
@@ -27,6 +27,14 @@ run_model() {
 
 run_quality() {
   compile_run performance_chord_quality "${ROOT_DIR}/tests/test_performance_chord_quality.cpp"
+}
+
+run_snapshot() {
+  compile_run harmonic_snapshot "${ROOT_DIR}/tests/test_harmonic_snapshot.cpp"
+}
+
+run_registry() {
+  python3 "${ROOT_DIR}/tests/test_harmonic_registry_generation.py"
 }
 
 run_legacy_context() {
@@ -56,13 +64,15 @@ run_external() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality legacy_context arp keyboard external)
+  targets=(model quality snapshot registry legacy_context arp keyboard external)
 fi
 
 for target in "${targets[@]}"; do
   case "${target}" in
     model) run_model ;;
     quality) run_quality ;;
+    snapshot) run_snapshot ;;
+    registry) run_registry ;;
     legacy_context) run_legacy_context ;;
     arp) run_arp ;;
     keyboard) run_keyboard ;;
