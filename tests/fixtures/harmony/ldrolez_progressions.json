@@ -1,0 +1,1974 @@
+{
+  "documented_unsupported_tokens": [
+    "IM-5",
+    "Iadd9",
+    "VIadd9",
+    "Vadd9",
+    "ivmadd9",
+    "viadd9"
+  ],
+  "expected_accepted_count": 189,
+  "expected_quarantined_count": 6,
+  "groups": [
+    {
+      "dialect": "major",
+      "key_context": "major",
+      "name": "prog_maj",
+      "rows": [
+        {
+          "line": 25,
+          "mood_tags": [
+            "Joyful",
+            "Triumphant"
+          ],
+          "raw": "I I IM-5 IM-5 IV IV V Vsus2 =Joyful Triumphant",
+          "route_text": "I I IM-5 IM-5 IV IV V Vsus2",
+          "token_count": 8
+        },
+        {
+          "line": 26,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "I I IV iii =Hopeful Nostalgic",
+          "route_text": "I I IV iii",
+          "token_count": 4
+        },
+        {
+          "line": 27,
+          "mood_tags": [
+            "Relaxed",
+            "Playful"
+          ],
+          "raw": "I I7 Idom7 I7 =Relaxed Playful",
+          "route_text": "I I7 Idom7 I7",
+          "token_count": 4
+        },
+        {
+          "line": 28,
+          "mood_tags": [
+            "Relaxed",
+            "Nostalgic"
+          ],
+          "raw": "I I7 Idom7 IV =Relaxed Nostalgic",
+          "route_text": "I I7 Idom7 IV",
+          "token_count": 4
+        },
+        {
+          "line": 29,
+          "mood_tags": [
+            "Romantic",
+            "Nostalgic"
+          ],
+          "raw": "I iii IV vi =Romantic Nostalgic",
+          "route_text": "I iii IV vi",
+          "token_count": 4
+        },
+        {
+          "line": 30,
+          "mood_tags": [
+            "Tender",
+            "Spiritual"
+          ],
+          "raw": "I iii vi Isus4 =Tender Spiritual",
+          "route_text": "I iii vi Isus4",
+          "token_count": 4
+        },
+        {
+          "line": 31,
+          "mood_tags": [
+            "Romantic",
+            "Hopeful"
+          ],
+          "raw": "I iii vi IV =Romantic Hopeful",
+          "route_text": "I iii vi IV",
+          "token_count": 4
+        },
+        {
+          "line": 32,
+          "mood_tags": [
+            "Joyful",
+            "Triumphant"
+          ],
+          "raw": "I IV ii V =Joyful Triumphant",
+          "route_text": "I IV ii V",
+          "token_count": 4
+        },
+        {
+          "line": 33,
+          "mood_tags": [
+            "Peaceful",
+            "Hopeful"
+          ],
+          "raw": "I IV Isus2 IV =Peaceful Hopeful",
+          "route_text": "I IV Isus2 IV",
+          "token_count": 4
+        },
+        {
+          "line": 34,
+          "mood_tags": [
+            "Joyful",
+            "Triumphant"
+          ],
+          "raw": "I IV V IV =Joyful Triumphant",
+          "route_text": "I IV V IV",
+          "token_count": 4
+        },
+        {
+          "line": 35,
+          "mood_tags": [
+            "Joyful",
+            "Excited"
+          ],
+          "raw": "I IV V =Joyful Excited",
+          "route_text": "I IV V",
+          "token_count": 3
+        },
+        {
+          "line": 36,
+          "mood_tags": [
+            "Joyful",
+            "Hopeful"
+          ],
+          "raw": "I IV vi V =Joyful Hopeful",
+          "route_text": "I IV vi V",
+          "token_count": 4
+        },
+        {
+          "line": 37,
+          "mood_tags": [
+            "Romantic",
+            "Triumphant"
+          ],
+          "raw": "I IV vii iii vi ii V I =Romantic Triumphant",
+          "route_text": "I IV vii iii vi ii V I",
+          "token_count": 8
+        },
+        {
+          "line": 38,
+          "mood_tags": [
+            "Joyful",
+            "Playful"
+          ],
+          "raw": "I V I IV =Joyful Playful",
+          "route_text": "I V I IV",
+          "token_count": 4
+        },
+        {
+          "line": 39,
+          "mood_tags": [
+            "Romantic",
+            "Hopeful"
+          ],
+          "raw": "I V IV vi =Romantic Hopeful",
+          "route_text": "I V IV vi",
+          "token_count": 4
+        },
+        {
+          "line": 40,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "I V vi ii =Hopeful Romantic",
+          "route_text": "I V vi ii",
+          "token_count": 4
+        },
+        {
+          "line": 41,
+          "mood_tags": [
+            "Hopeful",
+            "Joyful"
+          ],
+          "raw": "I V vi iii IV I IV V =Hopeful Joyful",
+          "route_text": "I V vi iii IV I IV V",
+          "token_count": 8
+        },
+        {
+          "line": 42,
+          "mood_tags": [
+            "Hopeful",
+            "Joyful"
+          ],
+          "raw": "I V vi iii IV =Hopeful Joyful",
+          "route_text": "I V vi iii IV",
+          "token_count": 5
+        },
+        {
+          "line": 43,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "I V vi IV =Hopeful Romantic",
+          "route_text": "I V vi IV",
+          "token_count": 4
+        },
+        {
+          "line": 44,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "I V vi V =Hopeful Romantic",
+          "route_text": "I V vi V",
+          "token_count": 4
+        },
+        {
+          "line": 45,
+          "mood_tags": [
+            "Tender",
+            "Nostalgic"
+          ],
+          "raw": "I vi I IV =Tender Nostalgic",
+          "route_text": "I vi I IV",
+          "token_count": 4
+        },
+        {
+          "line": 46,
+          "mood_tags": [
+            "Tender",
+            "Nostalgic"
+          ],
+          "raw": "I vi ii IV =Tender Nostalgic",
+          "route_text": "I vi ii IV",
+          "token_count": 4
+        },
+        {
+          "line": 47,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "I vi ii V =Nostalgic Romantic",
+          "route_text": "I vi ii V",
+          "token_count": 4
+        },
+        {
+          "line": 48,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "I vi IV iii =Nostalgic Romantic",
+          "route_text": "I vi IV iii",
+          "token_count": 4
+        },
+        {
+          "line": 49,
+          "mood_tags": [
+            "Romantic",
+            "Hopeful"
+          ],
+          "raw": "I vi IV V =Romantic Hopeful",
+          "route_text": "I vi IV V",
+          "token_count": 4
+        },
+        {
+          "line": 50,
+          "mood_tags": [
+            "Playful",
+            "Joyful"
+          ],
+          "raw": "I7 V7 viadd9 IV7 =Playful Joyful",
+          "route_text": "I7 V7 viadd9 IV7",
+          "token_count": 4
+        },
+        {
+          "line": 51,
+          "mood_tags": [
+            "Hopeful"
+          ],
+          "raw": "ii IV V =Hopeful",
+          "route_text": "ii IV V",
+          "token_count": 3
+        },
+        {
+          "line": 52,
+          "mood_tags": [
+            "Romantic"
+          ],
+          "raw": "ii IV vi V =Romantic",
+          "route_text": "ii IV vi V",
+          "token_count": 4
+        },
+        {
+          "line": 53,
+          "mood_tags": [
+            "Triumphant"
+          ],
+          "raw": "ii V I =Triumphant",
+          "route_text": "ii V I",
+          "token_count": 3
+        },
+        {
+          "line": 54,
+          "mood_tags": [
+            "Hopeful",
+            "Triumphant"
+          ],
+          "raw": "ii V I IV =Hopeful Triumphant",
+          "route_text": "ii V I IV",
+          "token_count": 4
+        },
+        {
+          "line": 55,
+          "mood_tags": [
+            "Triumphant"
+          ],
+          "raw": "ii7 Vadd9 I7 =Triumphant",
+          "route_text": "ii7 Vadd9 I7",
+          "token_count": 3
+        },
+        {
+          "line": 56,
+          "mood_tags": [
+            "Romantic",
+            "Nostalgic"
+          ],
+          "raw": "iii vi IV I =Romantic Nostalgic",
+          "route_text": "iii vi IV I",
+          "token_count": 4
+        },
+        {
+          "line": 57,
+          "mood_tags": [
+            "Romantic",
+            "Nostalgic"
+          ],
+          "raw": "iim7 V7 iiim7 vi7 iim7 V7 =Romantic Nostalgic",
+          "route_text": "iim7 V7 iiim7 vi7 iim7 V7",
+          "token_count": 6
+        },
+        {
+          "line": 58,
+          "mood_tags": [
+            "Playful",
+            "Romantic"
+          ],
+          "raw": "Isus2 I vi7 visus4 =Playful Romantic",
+          "route_text": "Isus2 I vi7 visus4",
+          "token_count": 4
+        },
+        {
+          "line": 59,
+          "mood_tags": [
+            "Nostalgic",
+            "Peaceful"
+          ],
+          "raw": "IV I ii vi =Nostalgic Peaceful",
+          "route_text": "IV I ii vi",
+          "token_count": 4
+        },
+        {
+          "line": 60,
+          "mood_tags": [
+            "Playful",
+            "Joyful"
+          ],
+          "raw": "IV I iii IV =Playful Joyful",
+          "route_text": "IV I iii IV",
+          "token_count": 4
+        },
+        {
+          "line": 61,
+          "mood_tags": [
+            "Relaxed",
+            "Joyful"
+          ],
+          "raw": "IV I IV6 Iadd9 =Relaxed Joyful",
+          "route_text": "IV I IV6 Iadd9",
+          "token_count": 4
+        },
+        {
+          "line": 62,
+          "mood_tags": [
+            "Joyful",
+            "Romantic"
+          ],
+          "raw": "IV I V vi =Joyful Romantic",
+          "route_text": "IV I V vi",
+          "token_count": 4
+        },
+        {
+          "line": 63,
+          "mood_tags": [
+            "Joyful",
+            "Hopeful"
+          ],
+          "raw": "IV IV I V =Joyful Hopeful",
+          "route_text": "IV IV I V",
+          "token_count": 4
+        },
+        {
+          "line": 64,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "IV vi I V =Hopeful Romantic",
+          "route_text": "IV vi I V",
+          "token_count": 4
+        },
+        {
+          "line": 65,
+          "mood_tags": [
+            "Nostalgic",
+            "Playful"
+          ],
+          "raw": "IV vi iii I =Nostalgic Playful",
+          "route_text": "IV vi iii I",
+          "token_count": 4
+        },
+        {
+          "line": 66,
+          "mood_tags": [
+            "Nostalgic"
+          ],
+          "raw": "IV vi IV vi =Nostalgic",
+          "route_text": "IV vi IV vi",
+          "token_count": 4
+        },
+        {
+          "line": 67,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "V I vi V =Hopeful Romantic",
+          "route_text": "V I vi V",
+          "token_count": 4
+        },
+        {
+          "line": 68,
+          "mood_tags": [
+            "Hopeful",
+            "Triumphant"
+          ],
+          "raw": "V IV vi I =Hopeful Triumphant",
+          "route_text": "V IV vi I",
+          "token_count": 4
+        },
+        {
+          "line": 69,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "V vi IV I =Hopeful Romantic",
+          "route_text": "V vi IV I",
+          "token_count": 4
+        },
+        {
+          "line": 70,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "vi ii V I =Hopeful Romantic",
+          "route_text": "vi ii V I",
+          "token_count": 4
+        },
+        {
+          "line": 71,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "vi IV I V =Hopeful Romantic",
+          "route_text": "vi IV I V",
+          "token_count": 4
+        },
+        {
+          "line": 72,
+          "mood_tags": [
+            "Hopeful",
+            "Romantic"
+          ],
+          "raw": "vi IV iii V =Hopeful Romantic",
+          "route_text": "vi IV iii V",
+          "token_count": 4
+        },
+        {
+          "line": 73,
+          "mood_tags": [
+            "Triumphant",
+            "Hopeful"
+          ],
+          "raw": "vi V IV V ii V I I =Triumphant Hopeful",
+          "route_text": "vi V IV V ii V I I",
+          "token_count": 8
+        },
+        {
+          "line": 74,
+          "mood_tags": [
+            "Romantic",
+            "Hopeful"
+          ],
+          "raw": "vi V IV V =Romantic Hopeful",
+          "route_text": "vi V IV V",
+          "token_count": 4
+        }
+      ]
+    },
+    {
+      "dialect": "minor",
+      "key_context": "minor",
+      "name": "prog_min",
+      "rows": [
+        {
+          "line": 79,
+          "mood_tags": [
+            "Dark",
+            "Mysterious"
+          ],
+          "raw": "i i iv iv v7 ii5 v v7 =Dark Mysterious",
+          "route_text": "i i iv iv v7 ii5 v v7",
+          "token_count": 8
+        },
+        {
+          "line": 80,
+          "mood_tags": [
+            "Mysterious",
+            "Triumphant"
+          ],
+          "raw": "i ii v i =Mysterious Triumphant",
+          "route_text": "i ii v i",
+          "token_count": 4
+        },
+        {
+          "line": 81,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "i III iv VI =Nostalgic Romantic",
+          "route_text": "i III iv VI",
+          "token_count": 4
+        },
+        {
+          "line": 82,
+          "mood_tags": [
+            "Empowered",
+            "Nostalgic"
+          ],
+          "raw": "i III VII iv =Empowered Nostalgic",
+          "route_text": "i III VII iv",
+          "token_count": 4
+        },
+        {
+          "line": 83,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "i III VII VI =Nostalgic Romantic",
+          "route_text": "i III VII VI",
+          "token_count": 4
+        },
+        {
+          "line": 84,
+          "mood_tags": [
+            "New",
+            "Dark",
+            "Romantic"
+          ],
+          "raw": "i III7 VI7 iv =New Dark Romantic",
+          "route_text": "i III7 VI7 iv",
+          "token_count": 4
+        },
+        {
+          "line": 85,
+          "mood_tags": [
+            "Mysterious",
+            "Dramatic"
+          ],
+          "raw": "i ii v III i ii v VII =Mysterious Dramatic",
+          "route_text": "i ii v III i ii v VII",
+          "token_count": 8
+        },
+        {
+          "line": 86,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "i iv III VI =Nostalgic Romantic",
+          "route_text": "i iv III VI",
+          "token_count": 4
+        },
+        {
+          "line": 87,
+          "mood_tags": [
+            "Mysterious",
+            "Sad"
+          ],
+          "raw": "i iv v iv =Mysterious Sad",
+          "route_text": "i iv v iv",
+          "token_count": 4
+        },
+        {
+          "line": 88,
+          "mood_tags": [
+            "Sad",
+            "Lonely"
+          ],
+          "raw": "i iv v =Sad Lonely",
+          "route_text": "i iv v",
+          "token_count": 3
+        },
+        {
+          "line": 89,
+          "mood_tags": [
+            "Sad",
+            "Hopeful"
+          ],
+          "raw": "i iv VI v =Sad Hopeful",
+          "route_text": "i iv VI v",
+          "token_count": 4
+        },
+        {
+          "line": 90,
+          "mood_tags": [
+            "Sad",
+            "Nostalgic"
+          ],
+          "raw": "i iv VII i =Sad Nostalgic",
+          "route_text": "i iv VII i",
+          "token_count": 4
+        },
+        {
+          "line": 91,
+          "mood_tags": [
+            "Mysterious",
+            "Surprised"
+          ],
+          "raw": "i iv VII v i i ii V =Mysterious Surprised",
+          "route_text": "i iv VII v i i ii V",
+          "token_count": 8
+        },
+        {
+          "line": 92,
+          "mood_tags": [
+            "Sad",
+            "Rebellious"
+          ],
+          "raw": "i v iv VII =Sad Rebellious",
+          "route_text": "i v iv VII",
+          "token_count": 4
+        },
+        {
+          "line": 93,
+          "mood_tags": [
+            "Dark",
+            "Nostalgic"
+          ],
+          "raw": "i vdim iv VI =Dark Nostalgic",
+          "route_text": "i vdim iv VI",
+          "token_count": 4
+        },
+        {
+          "line": 94,
+          "mood_tags": [
+            "Mysterious",
+            "Spiritual"
+          ],
+          "raw": "i VI III VII i VI69 III7 VII =Mysterious Spiritual",
+          "route_text": "i VI III VII i VI69 III7 VII",
+          "token_count": 8
+        },
+        {
+          "line": 95,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "i VI III VII =Nostalgic Hopeful",
+          "route_text": "i VI III VII",
+          "token_count": 4
+        },
+        {
+          "line": 96,
+          "mood_tags": [
+            "Sad",
+            "Tender"
+          ],
+          "raw": "i VI iv ii =Sad Tender",
+          "route_text": "i VI iv ii",
+          "token_count": 4
+        },
+        {
+          "line": 97,
+          "mood_tags": [
+            "Sad",
+            "Nostalgic"
+          ],
+          "raw": "i VI iv III =Sad Nostalgic",
+          "route_text": "i VI iv III",
+          "token_count": 4
+        },
+        {
+          "line": 98,
+          "mood_tags": [
+            "Sad",
+            "Hopeful"
+          ],
+          "raw": "i VI iv v =Sad Hopeful",
+          "route_text": "i VI iv v",
+          "token_count": 4
+        },
+        {
+          "line": 99,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "i VI VII iv =Mysterious Nostalgic",
+          "route_text": "i VI VII iv",
+          "token_count": 4
+        },
+        {
+          "line": 100,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "i VI VII v =Mysterious Rebellious",
+          "route_text": "i VI VII v",
+          "token_count": 4
+        },
+        {
+          "line": 101,
+          "mood_tags": [
+            "Triumphant",
+            "Rebellious"
+          ],
+          "raw": "i VI VII =Triumphant Rebellious",
+          "route_text": "i VI VII",
+          "token_count": 3
+        },
+        {
+          "line": 102,
+          "mood_tags": [
+            "Mysterious",
+            "Surprised"
+          ],
+          "raw": "i VII i v III VII i v i =Mysterious Surprised",
+          "route_text": "i VII i v III VII i v i",
+          "token_count": 9
+        },
+        {
+          "line": 103,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "i VII i v =Mysterious Nostalgic",
+          "route_text": "i VII i v",
+          "token_count": 4
+        },
+        {
+          "line": 104,
+          "mood_tags": [
+            "Rebellious",
+            "Triumphant"
+          ],
+          "raw": "i VII III VI =Rebellious Triumphant",
+          "route_text": "i VII III VI",
+          "token_count": 4
+        },
+        {
+          "line": 105,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "i VII v VI =Mysterious Hopeful",
+          "route_text": "i VII v VI",
+          "token_count": 4
+        },
+        {
+          "line": 106,
+          "mood_tags": [
+            "Mysterious",
+            "Surprised"
+          ],
+          "raw": "i VII VI III iv VI VII i =Mysterious Surprised",
+          "route_text": "i VII VI III iv VI VII i",
+          "token_count": 8
+        },
+        {
+          "line": 107,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "i VII VI III =Nostalgic Hopeful",
+          "route_text": "i VII VI III",
+          "token_count": 4
+        },
+        {
+          "line": 108,
+          "mood_tags": [
+            "Sad",
+            "Romantic"
+          ],
+          "raw": "i VII VI iv =Sad Romantic",
+          "route_text": "i VII VI iv",
+          "token_count": 4
+        },
+        {
+          "line": 109,
+          "mood_tags": [
+            "Rebellious",
+            "Triumphant"
+          ],
+          "raw": "i VII VI VII =Rebellious Triumphant",
+          "route_text": "i VII VI VII",
+          "token_count": 4
+        },
+        {
+          "line": 110,
+          "mood_tags": [
+            "Nostalgic",
+            "Sad"
+          ],
+          "raw": "i VII VIadd9 VII i v VI VIIsus4 =Nostalgic Sad",
+          "route_text": "i VII VIadd9 VII i v VI VIIsus4",
+          "token_count": 8
+        },
+        {
+          "line": 111,
+          "mood_tags": [
+            "Dark",
+            "Nostalgic"
+          ],
+          "raw": "i7 VI III7 VII6 i i7 III7 iv7 =Dark Nostalgic",
+          "route_text": "i7 VI III7 VII6 i i7 III7 iv7",
+          "token_count": 8
+        },
+        {
+          "line": 112,
+          "mood_tags": [
+            "Nostalgic",
+            "Romantic"
+          ],
+          "raw": "i7 VII VI7 iv7 =Nostalgic Romantic",
+          "route_text": "i7 VII VI7 iv7",
+          "token_count": 4
+        },
+        {
+          "line": 113,
+          "mood_tags": [
+            "Peaceful",
+            "Hopeful"
+          ],
+          "raw": "ii v i =Peaceful Hopeful",
+          "route_text": "ii v i",
+          "token_count": 3
+        },
+        {
+          "line": 114,
+          "mood_tags": [
+            "Peaceful",
+            "Nostalgic"
+          ],
+          "raw": "ii v i iv =Peaceful Nostalgic",
+          "route_text": "ii v i iv",
+          "token_count": 4
+        },
+        {
+          "line": 115,
+          "mood_tags": [
+            "Sad",
+            "Hopeful"
+          ],
+          "raw": "ii VI i iv =Sad Hopeful",
+          "route_text": "ii VI i iv",
+          "token_count": 4
+        },
+        {
+          "line": 116,
+          "mood_tags": [
+            "Mysterious",
+            "Tender"
+          ],
+          "raw": "im7 ivsus4 v7 isus4 =Mysterious Tender",
+          "route_text": "im7 ivsus4 v7 isus4",
+          "token_count": 4
+        },
+        {
+          "line": 117,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "iv i v VI =Nostalgic Hopeful",
+          "route_text": "iv i v VI",
+          "token_count": 4
+        },
+        {
+          "line": 118,
+          "mood_tags": [
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "iv III VII i =Nostalgic Mysterious",
+          "route_text": "iv III VII i",
+          "token_count": 4
+        },
+        {
+          "line": 119,
+          "mood_tags": [
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "iv III vsus4 VI iv i III VI =Nostalgic Mysterious",
+          "route_text": "iv III vsus4 VI iv i III VI",
+          "token_count": 8
+        },
+        {
+          "line": 120,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "iv v VI VII =Mysterious Rebellious",
+          "route_text": "iv v VI VII",
+          "token_count": 4
+        },
+        {
+          "line": 121,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "iv VI v VII =Mysterious Hopeful",
+          "route_text": "iv VI v VII",
+          "token_count": 4
+        },
+        {
+          "line": 122,
+          "mood_tags": [
+            "Triumphant"
+          ],
+          "raw": "iv VI VII i =Triumphant",
+          "route_text": "iv VI VII i",
+          "token_count": 4
+        },
+        {
+          "line": 123,
+          "mood_tags": [
+            "Dark",
+            "Rebellious"
+          ],
+          "raw": "v i iv VII =Dark Rebellious",
+          "route_text": "v i iv VII",
+          "token_count": 4
+        },
+        {
+          "line": 124,
+          "mood_tags": [
+            "Lonely"
+          ],
+          "raw": "v iv i =Lonely",
+          "route_text": "v iv i",
+          "token_count": 3
+        },
+        {
+          "line": 125,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "v VI III i =Hopeful Nostalgic",
+          "route_text": "v VI III i",
+          "token_count": 4
+        },
+        {
+          "line": 126,
+          "mood_tags": [
+            "Sad"
+          ],
+          "raw": "v VI v i =Sad",
+          "route_text": "v VI v i",
+          "token_count": 4
+        },
+        {
+          "line": 127,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "VI i v III =Hopeful Nostalgic",
+          "route_text": "VI i v III",
+          "token_count": 4
+        },
+        {
+          "line": 128,
+          "mood_tags": [
+            "Sad"
+          ],
+          "raw": "VI i v =Sad",
+          "route_text": "VI i v",
+          "token_count": 3
+        },
+        {
+          "line": 129,
+          "mood_tags": [
+            "Nostalgic",
+            "Dark"
+          ],
+          "raw": "VI III i v =Nostalgic Dark",
+          "route_text": "VI III i v",
+          "token_count": 4
+        },
+        {
+          "line": 130,
+          "mood_tags": [
+            "Hopeful",
+            "Tender"
+          ],
+          "raw": "VI iv i v =Hopeful Tender",
+          "route_text": "VI iv i v",
+          "token_count": 4
+        },
+        {
+          "line": 131,
+          "mood_tags": [
+            "Empowered"
+          ],
+          "raw": "VI VI i VII =Empowered",
+          "route_text": "VI VI i VII",
+          "token_count": 4
+        },
+        {
+          "line": 132,
+          "mood_tags": [
+            "Triumphant",
+            "Nostalgic"
+          ],
+          "raw": "VI VII i III =Triumphant Nostalgic",
+          "route_text": "VI VII i III",
+          "token_count": 4
+        },
+        {
+          "line": 133,
+          "mood_tags": [
+            "New",
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "VI VII i III VII VI iv i =New Nostalgic Mysterious",
+          "route_text": "VI VII i III VII VI iv i",
+          "token_count": 8
+        },
+        {
+          "line": 134,
+          "mood_tags": [
+            "Rebellious",
+            "Nostalgic"
+          ],
+          "raw": "VI VII v III =Rebellious Nostalgic",
+          "route_text": "VI VII v III",
+          "token_count": 4
+        },
+        {
+          "line": 135,
+          "mood_tags": [
+            "Empowered",
+            "Nostalgic"
+          ],
+          "raw": "VI7 VII i v VI7 VII i iv7 =Empowered Nostalgic",
+          "route_text": "VI7 VII i v VI7 VII i iv7",
+          "token_count": 8
+        },
+        {
+          "line": 136,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "VI7 VII6 i VII6 =Nostalgic Hopeful",
+          "route_text": "VI7 VII6 i VII6",
+          "token_count": 4
+        },
+        {
+          "line": 137,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "VII iv v i =Mysterious Dark",
+          "route_text": "VII iv v i",
+          "token_count": 4
+        },
+        {
+          "line": 138,
+          "mood_tags": [
+            "Spiritual"
+          ],
+          "raw": "VII iv VII i =Spiritual",
+          "route_text": "VII iv VII i",
+          "token_count": 4
+        }
+      ]
+    },
+    {
+      "dialect": "modal",
+      "key_context": "major",
+      "name": "prog_modal",
+      "rows": [
+        {
+          "line": 153,
+          "mood_tags": [
+            "Mysterious",
+            "Surprised"
+          ],
+          "raw": "bIIIM ii bIIM I =Mysterious Surprised",
+          "route_text": "bIIIM ii bIIM I",
+          "token_count": 4
+        },
+        {
+          "line": 154,
+          "mood_tags": [
+            "Mysterious",
+            "Surprised"
+          ],
+          "raw": "bIIM bVIM biii bviim =Mysterious Surprised",
+          "route_text": "bIIM bVIM biii bviim",
+          "token_count": 4
+        },
+        {
+          "line": 155,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "bIIM ivm biii im =Mysterious Dark",
+          "route_text": "bIIM ivm biii im",
+          "token_count": 4
+        },
+        {
+          "line": 156,
+          "mood_tags": [
+            "New",
+            "Dark",
+            "Lonely"
+          ],
+          "raw": "bviim I/bVII bviim I/bVII =New Dark Lonely",
+          "route_text": "bviim I/bVII bviim I/bVII",
+          "token_count": 4
+        },
+        {
+          "line": 157,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "bVIIM bIIM bIIIM im =Mysterious Rebellious",
+          "route_text": "bVIIM bIIM bIIIM im",
+          "token_count": 4
+        },
+        {
+          "line": 158,
+          "mood_tags": [
+            "Triumphant",
+            "Mysterious"
+          ],
+          "raw": "bVIM bIIIM bVIIM IV I =Triumphant Mysterious",
+          "route_text": "bVIM bIIIM bVIIM IV I",
+          "token_count": 5
+        },
+        {
+          "line": 159,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "bVIM bVIIm im bIIM =Mysterious Dark",
+          "route_text": "bVIM bVIIm im bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 160,
+          "mood_tags": [
+            "Hopeful",
+            "Mysterious"
+          ],
+          "raw": "bVIM vi im bVIIM =Hopeful Mysterious",
+          "route_text": "bVIM vi im bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 161,
+          "mood_tags": [
+            "Spiritual",
+            "Nostalgic"
+          ],
+          "raw": "bVIM7 ivmadd9 I =Spiritual Nostalgic",
+          "route_text": "bVIM7 ivmadd9 I",
+          "token_count": 3
+        },
+        {
+          "line": 162,
+          "mood_tags": [
+            "Playful",
+            "Surprised"
+          ],
+          "raw": "I7 bIdom7 III7 ii7 V7 =Playful Surprised",
+          "route_text": "I7 bIdom7 III7 ii7 V7",
+          "token_count": 5
+        },
+        {
+          "line": 163,
+          "mood_tags": [
+            "Triumphant",
+            "Rebellious"
+          ],
+          "raw": "I bIIIM bVIIM I =Triumphant Rebellious",
+          "route_text": "I bIIIM bVIIM I",
+          "token_count": 4
+        },
+        {
+          "line": 164,
+          "mood_tags": [
+            "Triumphant",
+            "Mysterious"
+          ],
+          "raw": "I bIIIM bVIIM IV =Triumphant Mysterious",
+          "route_text": "I bIIIM bVIIM IV",
+          "token_count": 4
+        },
+        {
+          "line": 165,
+          "mood_tags": [
+            "Triumphant",
+            "Hopeful"
+          ],
+          "raw": "I bIIIM bVIM bVIIM =Triumphant Hopeful",
+          "route_text": "I bIIIM bVIM bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 166,
+          "mood_tags": [
+            "Romantic"
+          ],
+          "raw": "I bIIIM IV I =Romantic",
+          "route_text": "I bIIIM IV I",
+          "token_count": 4
+        },
+        {
+          "line": 167,
+          "mood_tags": [
+            "Surprised",
+            "Mysterious"
+          ],
+          "raw": "I bIIM I iii =Surprised Mysterious",
+          "route_text": "I bIIM I iii",
+          "token_count": 4
+        },
+        {
+          "line": 168,
+          "mood_tags": [
+            "Surprised",
+            "Mysterious"
+          ],
+          "raw": "I bIIM7 bIIIM6 bIIM7 I im bVIIM bIIM =Surprised Mysterious",
+          "route_text": "I bIIM7 bIIIM6 bIIM7 I im bVIIM bIIM",
+          "token_count": 8
+        },
+        {
+          "line": 169,
+          "mood_tags": [
+            "Triumphant",
+            "Rebellious"
+          ],
+          "raw": "I bVIIM bVIM bIIM =Triumphant Rebellious",
+          "route_text": "I bVIIM bVIM bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 170,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "I bVIIM bVIM IV IVsus4 IV =Hopeful Nostalgic",
+          "route_text": "I bVIIM bVIM IV IVsus4 IV",
+          "token_count": 6
+        },
+        {
+          "line": 171,
+          "mood_tags": [
+            "Triumphant",
+            "Hopeful"
+          ],
+          "raw": "I bVIIM I I bVIM V =Triumphant Hopeful",
+          "route_text": "I bVIIM I I bVIM V",
+          "token_count": 6
+        },
+        {
+          "line": 172,
+          "mood_tags": [
+            "Joyful",
+            "Triumphant"
+          ],
+          "raw": "I bVIIM IV V =Joyful Triumphant",
+          "route_text": "I bVIIM IV V",
+          "token_count": 4
+        },
+        {
+          "line": 173,
+          "mood_tags": [
+            "Empowered",
+            "Nostalgic"
+          ],
+          "raw": "I bVIM bVIIM ivm =Empowered Nostalgic",
+          "route_text": "I bVIM bVIIM ivm",
+          "token_count": 4
+        },
+        {
+          "line": 174,
+          "mood_tags": [
+            "Surprised",
+            "Mysterious"
+          ],
+          "raw": "I bVIM I bIIM =Surprised Mysterious",
+          "route_text": "I bVIM I bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 175,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "I bVIM IV bIIIM bVIIM =Mysterious Nostalgic",
+          "route_text": "I bVIM IV bIIIM bVIIM",
+          "token_count": 5
+        },
+        {
+          "line": 176,
+          "mood_tags": [
+            "Romantic",
+            "Nostalgic"
+          ],
+          "raw": "I I7 I9 IV ivm =Romantic Nostalgic",
+          "route_text": "I I7 I9 IV ivm",
+          "token_count": 5
+        },
+        {
+          "line": 177,
+          "mood_tags": [
+            "Relaxed",
+            "Nostalgic"
+          ],
+          "raw": "I I7 Idom7 IV ivm I =Relaxed Nostalgic",
+          "route_text": "I I7 Idom7 IV ivm I",
+          "token_count": 6
+        },
+        {
+          "line": 178,
+          "mood_tags": [
+            "Relaxed",
+            "Romantic"
+          ],
+          "raw": "I I7 Idom7 IV ivm I ivm6 Vdom7 =Relaxed Romantic",
+          "route_text": "I I7 Idom7 IV ivm I ivm6 Vdom7",
+          "token_count": 8
+        },
+        {
+          "line": 179,
+          "mood_tags": [
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "I im bVII6 bVIM =Nostalgic Mysterious",
+          "route_text": "I im bVII6 bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 180,
+          "mood_tags": [
+            "Joyful",
+            "Hopeful"
+          ],
+          "raw": "I IIIM vi V =Joyful Hopeful",
+          "route_text": "I IIIM vi V",
+          "token_count": 4
+        },
+        {
+          "line": 181,
+          "mood_tags": [
+            "Surprised",
+            "Triumphant"
+          ],
+          "raw": "I IIM iii V6 =Surprised Triumphant",
+          "route_text": "I IIM iii V6",
+          "token_count": 4
+        },
+        {
+          "line": 182,
+          "mood_tags": [
+            "Joyful",
+            "Triumphant"
+          ],
+          "raw": "I IIM IV I =Joyful Triumphant",
+          "route_text": "I IIM IV I",
+          "token_count": 4
+        },
+        {
+          "line": 183,
+          "mood_tags": [
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "I IV bIIIM bVIM =Nostalgic Mysterious",
+          "route_text": "I IV bIIIM bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 184,
+          "mood_tags": [
+            "Joyful",
+            "Rebellious"
+          ],
+          "raw": "I IV bVIIM IV =Joyful Rebellious",
+          "route_text": "I IV bVIIM IV",
+          "token_count": 4
+        },
+        {
+          "line": 185,
+          "mood_tags": [
+            "Triumphant",
+            "Rebellious"
+          ],
+          "raw": "I IV V bVIIM =Triumphant Rebellious",
+          "route_text": "I IV V bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 186,
+          "mood_tags": [
+            "New",
+            "Nostalgic",
+            "Tender"
+          ],
+          "raw": "I ivm6 I I7 =New Nostalgic Tender",
+          "route_text": "I ivm6 I I7",
+          "token_count": 4
+        },
+        {
+          "line": 187,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "I ivm bIIIM bVIIM =Mysterious Nostalgic",
+          "route_text": "I ivm bIIIM bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 188,
+          "mood_tags": [
+            "Triumphant",
+            "Rebellious"
+          ],
+          "raw": "I V bVIIM IV =Triumphant Rebellious",
+          "route_text": "I V bVIIM IV",
+          "token_count": 4
+        },
+        {
+          "line": 189,
+          "mood_tags": [
+            "Surprised",
+            "Mysterious"
+          ],
+          "raw": "I V ivm bVIM =Surprised Mysterious",
+          "route_text": "I V ivm bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 190,
+          "mood_tags": [
+            "Surprised",
+            "Mysterious"
+          ],
+          "raw": "I vi bVIM V =Surprised Mysterious",
+          "route_text": "I vi bVIM V",
+          "token_count": 4
+        },
+        {
+          "line": 191,
+          "mood_tags": [
+            "Excited",
+            "Triumphant"
+          ],
+          "raw": "I5 iii II5 #IVm IV5 vi V5 viim =Excited Triumphant",
+          "route_text": "I5 iii II5 #IVm IV5 vi V5 viim",
+          "token_count": 8
+        },
+        {
+          "line": 192,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "ii bIIM I bVIIM =Mysterious Rebellious",
+          "route_text": "ii bIIM I bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 193,
+          "mood_tags": [
+            "Hopeful",
+            "Triumphant"
+          ],
+          "raw": "ii bVIIM7 I =Hopeful Triumphant",
+          "route_text": "ii bVIIM7 I",
+          "token_count": 3
+        },
+        {
+          "line": 194,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "ii IVM vm bVIIM =Mysterious Nostalgic",
+          "route_text": "ii IVM vm bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 195,
+          "mood_tags": [
+            "Triumphant",
+            "Surprised"
+          ],
+          "raw": "IIIM V VIsus4 VIM I IIM =Triumphant Surprised",
+          "route_text": "IIIM V VIsus4 VIM I IIM",
+          "token_count": 6
+        },
+        {
+          "line": 196,
+          "mood_tags": [
+            "Romantic",
+            "Nostalgic"
+          ],
+          "raw": "im bIIIM bVIIM IV =Romantic Nostalgic",
+          "route_text": "im bIIIM bVIIM IV",
+          "token_count": 4
+        },
+        {
+          "line": 197,
+          "mood_tags": [
+            "Mysterious",
+            "Triumphant"
+          ],
+          "raw": "im bIIIM bVIM V =Mysterious Triumphant",
+          "route_text": "im bIIIM bVIM V",
+          "token_count": 4
+        },
+        {
+          "line": 198,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "im bIIIM IV bVIM =Mysterious Hopeful",
+          "route_text": "im bIIIM IV bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 199,
+          "mood_tags": [
+            "Mysterious",
+            "Triumphant"
+          ],
+          "raw": "im bIIIM IV V =Mysterious Triumphant",
+          "route_text": "im bIIIM IV V",
+          "token_count": 4
+        },
+        {
+          "line": 200,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "im bIIIsus2 IV =Mysterious Hopeful",
+          "route_text": "im bIIIsus2 IV",
+          "token_count": 3
+        },
+        {
+          "line": 201,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "im bIIM bIIIM bIIM =Mysterious Dark",
+          "route_text": "im bIIM bIIIM bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 202,
+          "mood_tags": [
+            "Mysterious",
+            "Tender"
+          ],
+          "raw": "im bIIM biim6 ivm =Mysterious Tender",
+          "route_text": "im bIIM biim6 ivm",
+          "token_count": 4
+        },
+        {
+          "line": 203,
+          "mood_tags": [
+            "Mysterious",
+            "Spiritual"
+          ],
+          "raw": "im bIIM im7 bviim =Mysterious Spiritual",
+          "route_text": "im bIIM im7 bviim",
+          "token_count": 4
+        },
+        {
+          "line": 204,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "im bIIM ivm IIIM bIIM ivm IIIM IIIM =Mysterious Nostalgic",
+          "route_text": "im bIIM ivm IIIM bIIM ivm IIIM IIIM",
+          "token_count": 8
+        },
+        {
+          "line": 205,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "im bIIM vm im7 =Mysterious Dark",
+          "route_text": "im bIIM vm im7",
+          "token_count": 4
+        },
+        {
+          "line": 206,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "im bVIIM bIIM vm =Mysterious Rebellious",
+          "route_text": "im bVIIM bIIM vm",
+          "token_count": 4
+        },
+        {
+          "line": 207,
+          "mood_tags": [
+            "Nostalgic",
+            "Mysterious"
+          ],
+          "raw": "im bVIIM IV im =Nostalgic Mysterious",
+          "route_text": "im bVIIM IV im",
+          "token_count": 4
+        },
+        {
+          "line": 208,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "im bviim bVIM bIIM =Mysterious Hopeful",
+          "route_text": "im bviim bVIM bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 209,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "im bVIM im IV =Nostalgic Hopeful",
+          "route_text": "im bVIM im IV",
+          "token_count": 4
+        },
+        {
+          "line": 210,
+          "mood_tags": [
+            "Triumphant"
+          ],
+          "raw": "im bVIM ivm V =Triumphant",
+          "route_text": "im bVIM ivm V",
+          "token_count": 4
+        },
+        {
+          "line": 211,
+          "mood_tags": [
+            "Nostalgic",
+            "Hopeful"
+          ],
+          "raw": "im ii vm IV =Nostalgic Hopeful",
+          "route_text": "im ii vm IV",
+          "token_count": 4
+        },
+        {
+          "line": 212,
+          "mood_tags": [
+            "Mysterious",
+            "Tender"
+          ],
+          "raw": "im ivm9 bIIM im vm ivm7 bIIM im7 =Mysterious Tender",
+          "route_text": "im ivm9 bIIM im vm ivm7 bIIM im7",
+          "token_count": 8
+        },
+        {
+          "line": 213,
+          "mood_tags": [
+            "Mysterious",
+            "Nostalgic"
+          ],
+          "raw": "im ivm9 bIIM im =Mysterious Nostalgic",
+          "route_text": "im ivm9 bIIM im",
+          "token_count": 4
+        },
+        {
+          "line": 214,
+          "mood_tags": [
+            "Mysterious",
+            "Rebellious"
+          ],
+          "raw": "im V bVIIM IV bVIM bIIIM ivm V =Mysterious Rebellious",
+          "route_text": "im V bVIIM IV bVIM bIIIM ivm V",
+          "token_count": 8
+        },
+        {
+          "line": 215,
+          "mood_tags": [
+            "Mysterious",
+            "Triumphant"
+          ],
+          "raw": "im VIM bi V =Mysterious Triumphant",
+          "route_text": "im VIM bi V",
+          "token_count": 4
+        },
+        {
+          "line": 216,
+          "mood_tags": [
+            "Nostalgic",
+            "Surprised"
+          ],
+          "raw": "im VIM IIIM bIIM =Nostalgic Surprised",
+          "route_text": "im VIM IIIM bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 217,
+          "mood_tags": [
+            "Hopeful",
+            "Spiritual"
+          ],
+          "raw": "im vm isus4 I =Hopeful Spiritual",
+          "route_text": "im vm isus4 I",
+          "token_count": 4
+        },
+        {
+          "line": 218,
+          "mood_tags": [
+            "Mysterious",
+            "Hopeful"
+          ],
+          "raw": "im vm bVIM bIIM =Mysterious Hopeful",
+          "route_text": "im vm bVIM bIIM",
+          "token_count": 4
+        },
+        {
+          "line": 219,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "im vm bVIIM IV =Hopeful Nostalgic",
+          "route_text": "im vm bVIIM IV",
+          "token_count": 4
+        },
+        {
+          "line": 220,
+          "mood_tags": [
+            "Mysterious",
+            "Dark"
+          ],
+          "raw": "im vm ivm bIIM7 =Mysterious Dark",
+          "route_text": "im vm ivm bIIM7",
+          "token_count": 4
+        },
+        {
+          "line": 221,
+          "mood_tags": [
+            "New",
+            "Mysterious",
+            "Fearful"
+          ],
+          "raw": "im viim/i im bii/i =New Mysterious Fearful",
+          "route_text": "im viim/i im bii/i",
+          "token_count": 4
+        },
+        {
+          "line": 222,
+          "mood_tags": [
+            "Anguished",
+            "Mysterious"
+          ],
+          "raw": "iii im iii im7 =Anguished Mysterious",
+          "route_text": "iii im iii im7",
+          "token_count": 4
+        },
+        {
+          "line": 223,
+          "mood_tags": [
+            "Hopeful",
+            "Nostalgic"
+          ],
+          "raw": "IV V ii im bIIIM IV =Hopeful Nostalgic",
+          "route_text": "IV V ii im bIIIM IV",
+          "token_count": 6
+        },
+        {
+          "line": 224,
+          "mood_tags": [
+            "Mysterious",
+            "Tender"
+          ],
+          "raw": "ivm bIIIM iim7 V =Mysterious Tender",
+          "route_text": "ivm bIIIM iim7 V",
+          "token_count": 4
+        },
+        {
+          "line": 225,
+          "mood_tags": [
+            "Dark"
+          ],
+          "raw": "ivm im bviim bVIM =Dark",
+          "route_text": "ivm im bviim bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 226,
+          "mood_tags": [
+            "Fearful",
+            "Mysterious"
+          ],
+          "raw": "vdim vdim ivm bIIIM =Fearful Mysterious",
+          "route_text": "vdim vdim ivm bIIIM",
+          "token_count": 4
+        },
+        {
+          "line": 227,
+          "mood_tags": [
+            "New",
+            "Hopeful",
+            "Peaceful"
+          ],
+          "raw": "vi bVIIM im bVIM =New Hopeful Peaceful",
+          "route_text": "vi bVIIM im bVIM",
+          "token_count": 4
+        },
+        {
+          "line": 228,
+          "mood_tags": [
+            "Hopeful",
+            "Triumphant"
+          ],
+          "raw": "vi bVIM bVIIM I =Hopeful Triumphant",
+          "route_text": "vi bVIM bVIIM I",
+          "token_count": 4
+        },
+        {
+          "line": 229,
+          "mood_tags": [
+            "Hopeful",
+            "Peaceful"
+          ],
+          "raw": "vi IV I IIM =Hopeful Peaceful",
+          "route_text": "vi IV I IIM",
+          "token_count": 4
+        },
+        {
+          "line": 230,
+          "mood_tags": [
+            "Nostalgic",
+            "Dark"
+          ],
+          "raw": "vi viim V vi #IVdim V =Nostalgic Dark",
+          "route_text": "vi viim V vi #IVdim V",
+          "token_count": 6
+        },
+        {
+          "line": 231,
+          "mood_tags": [
+            "Surprised",
+            "Rebellious"
+          ],
+          "raw": "VIM bVIM im bVIIM =Surprised Rebellious",
+          "route_text": "VIM bVIM im bVIIM",
+          "token_count": 4
+        },
+        {
+          "line": 234,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "bIIIM V7 I =Cadence",
+          "route_text": "bIIIM V7 I",
+          "token_count": 3
+        },
+        {
+          "line": 235,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "bVIIM V7 I =Cadence",
+          "route_text": "bVIIM V7 I",
+          "token_count": 3
+        },
+        {
+          "line": 236,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "im bVIIM IV im =Cadence",
+          "route_text": "im bVIIM IV im",
+          "token_count": 4
+        },
+        {
+          "line": 237,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "ivm bIIIM bIIM I =Cadence",
+          "route_text": "ivm bIIIM bIIM I",
+          "token_count": 4
+        },
+        {
+          "line": 238,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "ivm IIIM bIIM I =Cadence",
+          "route_text": "ivm IIIM bIIM I",
+          "token_count": 4
+        },
+        {
+          "line": 239,
+          "mood_tags": [
+            "Cadence"
+          ],
+          "raw": "ivm bIIIM bVIM I =Cadence",
+          "route_text": "ivm bIIIM bVIM I",
+          "token_count": 4
+        }
+      ]
+    }
+  ],
+  "row_count": 195,
+  "schema_version": 1,
+  "source_commit": "79d8dfcd7072bd9027231575b1d6c5f1ed809335"
+}

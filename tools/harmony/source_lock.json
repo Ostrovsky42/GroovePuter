@@ -38,8 +38,25 @@
         "included_path": "tools/harmony/licenses/ldrolez-free-midi-chords-MIT.txt"
       },
       "files": {
-        "chords.py": "b8be51e62ed4b41bd43ed77d7f896c6eac03442674dcc4f471abbd74a18d414f"
+        "chords.py": "b8be51e62ed4b41bd43ed77d7f896c6eac03442674dcc4f471abbd74a18d414f",
+        "src/chords2midi/c2m.py": "24fe70f05e902ccf125bd4569d68793cd84f2af784236f56efdc2fb2b8a04f55"
       }
+    },
+    "mingus_resolver": {
+      "repository": "bspaans/python-mingus",
+      "tag": "0.6.1",
+      "commit": "f131620eb7353bcfbf1303b24b951a95cad2ac20",
+      "license": {
+        "source_path": "LICENSE",
+        "repository_sha256": "8c75a9231db8906865e29706ed63aad18fd918c92c15dbefbb13c25fe42850b4",
+        "included_sha256": "c61f12da7cdad526bdcbed47a4c0a603e60dbbfdaf8b66933cd088e9132c303f",
+        "included_path": "tools/harmony/licenses/python-mingus-GPL-3.0.txt"
+      },
+      "files": {
+        "mingus/core/progressions.py": "35d9a1bcd7a656e8b6588671d2e3912b29588e2dc285dd1a2d77590d95d498f5",
+        "mingus/core/chords.py": "f22b65bd826bfa69e1d1318acd95a040c5122c101514d956933d356a7ab2f2f8"
+      },
+      "usage": "Behavioral reference only; no Mingus source code is copied or executed."
     }
   }
 }

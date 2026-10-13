@@ -62,3 +62,37 @@ python3 tests/test_harmonic_registry_generation.py
 
 The pinned ldrolez `chords.py` is intentionally not imported or executed here. Its literals,
 Roman suffixes, and source dialect are handled in HGS2-1b using AST/data-only extraction.
+# HGS offline source import
+
+The vocabulary importer reads the pinned Fannon/Tonal source. The progression
+importer reads the pinned ldrolez `chords.py` as Python syntax data and resolves
+the Roman route using the documented behavior of Mingus 0.6.1. It never imports
+or executes the upstream generator or resolver.
+
+For progression import, place the pinned repositories as siblings:
+
+```text
+source-cache/
+  free-midi-chords/   # ldrolez/free-midi-chords at locked commit
+  python-mingus/      # bspaans/python-mingus with tag 0.6.1
+```
+
+Then run:
+
+```sh
+python3 tools/harmony/import_ldrolez_progressions.py \
+  --source source-cache/free-midi-chords --out build/hgs-cache/ldrolez-import
+```
+
+`progressions.json` accounts for every row from `prog_maj`, `prog_min`, and
+`prog_modal`, preserving source list, line, original spelling, and mood labels.
+Mood labels remain corpus annotations; they do not infer genre legality.
+The importer rejects source hash, resolver hash, or row-count drift.
+
+Mingus 0.6.1 resolves `I7` as a key-derived seventh and `Idom7` as a dominant
+seventh; `ii5` is a power fifth. Its `chord_shorthand` does not define `M-5`,
+`add9`, or `madd9`, although these occur in the corpus. Six affected full routes
+are retained in the explicit quarantine with their source locator and unsupported
+suffix. No fallback triad is substituted. The Mingus files are behavioral
+references only and are not copied or executed; the full upstream GPL-3.0 license
+is included alongside the source notices.

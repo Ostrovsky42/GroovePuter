@@ -152,7 +152,8 @@ class HarmonyVocabImportTests(unittest.TestCase):
             notice = source["license"]
             path = ROOT / notice["included_path"]
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            self.assertEqual(digest, notice["repository_sha256"])
+            self.assertEqual(digest, notice.get("included_sha256",
+                                                notice["repository_sha256"]))
         fannon = lock["sources"]["fannon"]
         notice = fannon["tonal_license"]
         self.assertEqual(

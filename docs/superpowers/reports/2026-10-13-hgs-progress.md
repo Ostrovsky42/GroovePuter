@@ -67,3 +67,34 @@
 - `git diff --check` — PASS. No HGS runtime graph or genre behavior changed.
 - NEXT_TASK=HGS2-1b: source-specific Roman progression parser from ldrolez `chords.py`.
 - HGS2-1a commit: pending local commit.
+
+## HGS2-1b — source-specific progression parser — complete
+
+- Start SHA: `0c3ded40c4b366a56e7a2e1940650e1dc11fb388`.
+- Locked ldrolez source commit `79d8dfcd7072bd9027231575b1d6c5f1ed809335`, including
+  `chords.py` and the `c2m.py` slash-bass caller. Locked the actual Mingus 0.6.1 tag
+  commit `f131620eb7353bcfbf1303b24b951a95cad2ac20`; pinned hashes cover
+  `progressions.py`, `chords.py`, and the full GPL-3.0 license notice. No upstream
+  Python module is imported or executed; parser input extraction uses Python AST literals.
+- `normalize_roman.py` preserves source token spelling, degree, accidental, registry
+  quality ID, source dialect, key-derived context, slash-bass root and interval.
+  Major/modal source lists resolve against major keys; minor lists resolve against a
+  natural-minor key. Thus source case is preserved as metadata, while Mingus key context
+  determines the implicit chord quality.
+- Fixture tests pin `I7`=major seventh, `Idom7`=dominant seventh, and `ii5`=power fifth.
+  Transposed C/D absolute-chord fixtures normalize to the same route as Roman `I V vi IV`.
+  Repeated route tokens remain repeated; mood labels remain source annotations.
+- Import covers 195 source rows: 189 accepted, 6 quarantined. The quarantines are exactly
+  the routes containing `M-5`, `add9`, or `madd9`, which are absent from Mingus 0.6.1's
+  resolver dictionary. Full rows, raw strings, labels and source line locators are retained;
+  there is no triad fallback. Corpus fixture and importer agree on counts.
+- **Ruling:** quarantine the resolver-unknown suffixes instead of assigning guessed formulas.
+  This follows the pinned resolver and no-silent-fallback contract; cost if wrong: six
+  routes are omitted from transition priors until a deliberate alias/resolver decision.
+- Importer outputs twice compared byte-for-byte. Latest normalized content SHA-256:
+  `3d15aea7f38da67c7daeb369f0190314e27ebee01bb6d8f452a4c8977d67880d`.
+- `python3 tests/test_harmony_roman_import.py` — PASS (4 tests; all 195 rows accounted).
+  `bash tests/run_hgs_tests.sh` — PASS (`legacy`, `vocab`, `roman`); registry generated
+  header byte parity — PASS; unknown HGS runner target returns exit 2; `git diff --check` — PASS.
+- HGS-only offline importer. Hardware/listening acceptance remain `NOT_RUN`.
+- NEXT_TASK=HGS2-1c: normalized corpus provenance/schema and reproducible manifest.
