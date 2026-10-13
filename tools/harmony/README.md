@@ -119,3 +119,37 @@ locators and mood labels aggregate, while repeated events inside a route remain 
 Fannon contributes vocabulary only and never contributes transition counts. Source locators
 and copied license notices remain in provenance; the content checksum excludes filesystem
 paths and timestamps.
+
+## Compile compact corpus priors
+
+Run the prior compiler only on the validated manifest above:
+
+```sh
+python3 tools/harmony/build_transition_stats.py \
+  --model build/hgs-cache/validated-model/harmony_manifest.json \
+  --out build/hgs-cache/transition_stats.json
+python3 tools/harmony/build_harmony_model.py \
+  --stats build/hgs-cache/transition_stats.json --top-n 8 \
+  --header src/generation/harmony/generated/corpus_prior_data.h \
+  --manifest tools/harmony/generated/corpus_prior_manifest.json
+bash tests/run_hgs_tests.sh corpus
+```
+
+The compiler assigns canonical token IDs from sorted explicit fields, never absolute key
+names or filesystem order. A token records scale-relative degree, signed pitch-class root
+offset, quality group, extension pitch classes, root/quality alteration bits, slash-bass
+interval class, and a reserved spelling byte. The first three low alteration bits encode
+root accidental as `-2..+2` biased by two; the remaining bits mark flat/sharp fifth, sus2,
+sus4, and power/no-third forms. Mood words and the Fannon vocabulary do not affect counts.
+Unique routes each contribute one vote, while repeated events inside a route remain repeated
+observations. Cadence and modal/borrowed annotations are offline counts; they do not grant
+genre legality.
+
+The locked source snapshot produced 188 unique routes and 64 canonical tokens. Top-N evidence
+for 2/4/8 successors retained respectively 389/460, 445/460, and 459/460 weighted trigram
+observations. N=8 was selected: it loses one observation (one successor) and adds 98 bytes
+over N=4. The generated table uses 4,544 bytes by explicit record encoding: 512 token bytes,
+2,499 trigram bytes, 1,285 bigram bytes, and 248 coarse quality/root-motion bytes. The model
+checksum excludes paths and timestamps and includes the validated source-manifest checksum.
+The runtime has deterministic trigram → bigram → coarse quality/root-motion backoff. A prior
+of zero means “no corpus evidence”; it never means “forbidden”.

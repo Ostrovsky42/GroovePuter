@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus]" >&2
 }
 
 run_legacy() {
@@ -67,9 +67,20 @@ run_relation() {
   "${BUILD_DIR}/test_relation"
 }
 
+run_corpus() {
+  (cd "${ROOT_DIR}" && python3 tests/test_harmony_stats.py)
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    -o "${BUILD_DIR}/test_corpus_prior"
+  "${BUILD_DIR}/test_corpus_prior"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus)
 fi
 
 for target in "${targets[@]}"; do
@@ -81,6 +92,7 @@ for target in "${targets[@]}"; do
     algebra) run_algebra ;;
     pcvl) run_pcvl ;;
     relation) run_relation ;;
+    corpus) run_corpus ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

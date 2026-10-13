@@ -184,3 +184,35 @@
 - HGS2-3 adds no DSP, MIDI, material routing, genre policy, or hardware-facing integration.
   Hardware/listening acceptance remains `NOT_RUN`.
 - NEXT_TASK=HGS2-4: compile compact corpus transition priors and runtime lookup.
+
+## HGS2-4 — compact corpus prior compiler and runtime lookup — implementation complete
+
+- Start SHA: `4dcc0a187e2f79abc53818fcfca82f2fe6f5a234`.
+- Added deterministic offline transition counting from the validated normalized manifest:
+  unigram, bigram, trigram, quality-family transition, root-motion/quality transition,
+  cadence-ending, and modal/borrowed-edge counts. Each unique normalized route contributes
+  exactly one vote; repeated events inside it retain order and multiplicity. Fannon vocabulary
+  and mood words contribute no observations. Canonical token IDs sort explicit fields and are
+  invariant to source ordering/key transposition. Content hashes exclude paths/timestamps and
+  retain the validated source-manifest digest and source commit provenance.
+- Added fixed byte-encoded runtime tables and bounded `corpusPrior()` lookup. Backoff is exact
+  trigram → bigram → coarse quality/root-motion class → 0. A zero prior is documented and
+  tested as missing evidence, not a legality decision. Token table uses 8 bytes/entry; trigram,
+  bigram and coarse entries use 7, 5 and 4 bytes, avoiding ABI padding assumptions.
+- Pinned-corpus result: 188 unique routes, 64 canonical tokens, 358 unique trigram successors
+  across 209 contexts and 460 weighted observations. Top-N=2 retains 288 successors / 389
+  observations; N=4 retains 343 / 445; N=8 retains 357 / 459. N=8 selected: it preserves all
+  but one observed successor and costs 98 bytes more than N=4. Generated table totals 4,544
+  explicit data bytes (512 token, 2,499 trigram, 1,285 bigram, 248 coarse). This data-byte count
+  is not a whole-firmware flash measurement.
+- Runtime test verifies exact trigram priority and bigram/coarse/zero fallbacks; Python tests
+  hand-count repeated route transitions/cadences, prove source order reproducibility, reject
+  invalid weights/tokens/top-N settings, and regenerate the checked-in table from pinned
+  fixtures byte-for-byte.
+- `bash tests/run_hgs_tests.sh` — PASS (all registered targets including corpus).
+  ASan/UBSan `corpus relation algebra pcvl` — PASS. Two independent model generations compared
+  byte-for-byte. GCC 13.3 `-O2 -fstack-usage`: `corpusPrior` frame 80 bytes. `git diff --check`
+  — PASS.
+- No production ChordProgression routing, genre policy, DSP, or hardware integration changed.
+  Hardware/listening acceptance remains `NOT_RUN`.
+- NEXT_TASK=HGS2-5a: build concrete genre corridors and explicit catalog binding.

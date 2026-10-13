@@ -1,0 +1,78 @@
+{
+  "content_sha256": "9a0b50e81abf7e21dd9c2b33213721ff557a54db16b623f72b22193dbe0604bf",
+  "counts": {
+    "bigram": 257,
+    "coarse": 62,
+    "token": 64,
+    "trigram": 357,
+    "trigram_before_top_n": 358
+  },
+  "encoding": {
+    "bigram_record_bytes": 5,
+    "coarse_record_bytes": 4,
+    "integer_byte_order": "little",
+    "token_bytes": 8,
+    "trigram_record_bytes": 7
+  },
+  "flash_bytes": 4544,
+  "schema_version": 1,
+  "selected_top_n": 8,
+  "source_commits": {
+    "fannon": "352f28004a3dc0f1a130682b925c4673f8a3d13b",
+    "ldrolez": "79d8dfcd7072bd9027231575b1d6c5f1ed809335",
+    "mingus_resolver": "f131620eb7353bcfbf1303b24b951a95cad2ac20"
+  },
+  "source_lock_sha256": "7f1cb1260b4023986711670ded5dd72c58839e58ff1382f417dc773aa40a3a57",
+  "source_model_content_sha256": "993d1045ca03180c8d30f69b2e397aff50fb8ba802c28b95564b8b6b3f3a638b",
+  "source_roles": {
+    "fannon": "vocabulary_only",
+    "ldrolez": "progression_corpus",
+    "mingus_resolver": "notation_semantics_only"
+  },
+  "source_stats_sha256": "d2b75138e5201484e5fb7286ab07dd48194db522543a5d79e5c4e592f4677ad2",
+  "token_schema": "canonical-function-v1",
+  "top_n_evidence": {
+    "2": {
+      "context_count": 209,
+      "estimated_token_and_trigram_bytes": 2528,
+      "estimated_token_bytes": 512,
+      "estimated_trigram_entry_bytes": 2016,
+      "retained_unique_successors": 288,
+      "top_n": 2,
+      "truncated_context_count": 39,
+      "truncated_unique_successors": 70,
+      "unique_successor_coverage_den": 358,
+      "unique_successor_coverage_num": 288,
+      "weighted_coverage_den": 460,
+      "weighted_coverage_num": 389
+    },
+    "4": {
+      "context_count": 209,
+      "estimated_token_and_trigram_bytes": 2913,
+      "estimated_token_bytes": 512,
+      "estimated_trigram_entry_bytes": 2401,
+      "retained_unique_successors": 343,
+      "top_n": 4,
+      "truncated_context_count": 8,
+      "truncated_unique_successors": 15,
+      "unique_successor_coverage_den": 358,
+      "unique_successor_coverage_num": 343,
+      "weighted_coverage_den": 460,
+      "weighted_coverage_num": 445
+    },
+    "8": {
+      "context_count": 209,
+      "estimated_token_and_trigram_bytes": 3011,
+      "estimated_token_bytes": 512,
+      "estimated_trigram_entry_bytes": 2499,
+      "retained_unique_successors": 357,
+      "top_n": 8,
+      "truncated_context_count": 1,
+      "truncated_unique_successors": 1,
+      "unique_successor_coverage_den": 358,
+      "unique_successor_coverage_num": 357,
+      "weighted_coverage_den": 460,
+      "weighted_coverage_num": 459
+    }
+  }
+}
