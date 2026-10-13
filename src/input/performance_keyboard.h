@@ -314,6 +314,7 @@ private:
                            uint32_t dueMicros,
                            uint8_t channel = 0);
     void clearScheduled();
+    void discardScheduledGeneratedNoteOns();
     void stopGeneratedOutput();
     void rememberGeneratedOn(uint8_t note);
     void forgetGenerated(uint8_t note);
@@ -412,6 +413,8 @@ private:
 
     GroovePuterPerformance::PerformanceContext performanceContext_{};
     GroovePuterPerformance::PerformanceContext heldArpContext_{};
+    uint16_t heldHarmonyRolePitchMasks_[3]{};
+    bool heldHasHarmonyRolePitchMasks_{false};
     GroovePuterPerformance::PerformanceRole performanceRole_{
         GroovePuterPerformance::PerformanceRole::Raw};
     GroovePuterPerformance::LeadMode leadMode_{
@@ -428,6 +431,10 @@ private:
         GroovePuterPerformance::HarmonyChangePolicy::Follow};
     bool arpHoldActive_{false};
     uint8_t arpHoldPulsesRemaining_{0};
+    uint8_t arpCycleLength_{0};
+    uint8_t arpCycleProgress_{0};
+    bool arpCycleStarted_{false};
+    uint32_t arpEpoch_{0};
 
     ScheduledEvent scheduled_[kMaxScheduledEvents]{};
     uint8_t generatedNotes_[kMaxGeneratedNotes]{};

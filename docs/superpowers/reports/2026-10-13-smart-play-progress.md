@@ -115,8 +115,39 @@ Restored code at baseline provides pure Smart Play interpretation, legacy P1R ha
   an empty ROLE/HARMONY arp pool instead of falling back silently.
 - Focused Smart Play matrix and sanitizer build — PASS. Final ADV build — PASS;
   flash 1,535,338 bytes, static/global RAM 186,644 bytes.
-- Full host suite is still running; hardware acceptance remains NOT RUN.
+- SP-3 committed as `61982e1b` (`feat: route live smart roles through source-owned performer`).
+- The first full host suite was invalidated by running concurrently with SP-4 source edits; it
+  failed compiling an intermediate `performance_keyboard.cpp`, so it is not a current verdict.
+- Hardware acceptance remains NOT RUN.
 - `git diff --check` — PASS. Hardware acceptance — NOT RUN.
+
+## SP-4 Smart Arp trace and timing — in progress
+
+- Added actual event traces for HELD, MEMORY, HARMONY, and ROLE; all six rates; all six contours;
+  one through four octaves; pitch/velocity association; owner and pulse ordinal; and NoteOn/NoteOff
+  cleanup. Trace polling checks both standalone fallback and ProjectTransportTimeline.
+- Tests pin FOLLOW modulo phase, RESTART at the next pulse, identical snapshot redelivery, and a
+  new same-chord event identity. HOLD is tested at all four positions in a four-note cycle with
+  three intermediate updates and with snapshot role masks; latest update adopts at the original
+  boundary. Context loss releases only generated arp output.
+- MEMORY now uses one held root with the captured interval shape; releasing every root produces
+  an empty pool, and missing memory never falls back to HELD.
+- Replaced shared-stream RANDOM contour selection with a fixed hash of seed, arp epoch, and pulse
+  ordinal. Equivalent transport traces match under different service polling frequencies.
+- Late service calls keep the bounded catch-up behavior and drop stale attacks; emitted notes
+  still receive NoteOff cleanup. Source changes invalidate queued generated attacks.
+- `git diff --check` — PASS. `CXX=g++ bash tests/run_smart_play_tests.sh` — PASS on the final
+  SP-4 source, including `trace`. Focused ASan/UBSan (`arp trace keyboard external ownership`)
+  — PASS on the final source.
+- `bash tests/run_performance_closure_tests.sh` — PASS;
+  `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh` — PASS;
+  `bash tests/run_0_9_11_c4_midi_convergence_tests.sh` — PASS.
+- Final ADV build (`scripts/build.sh --warnings all`) — PASS; flash 1,535,654 bytes,
+  static/global RAM 186,660 bytes. Build emits existing Arduino/M5GFX and project warnings.
+- Full host suite is deferred to SP-7: its earlier run was intentionally stopped after about
+  15 minutes while traversing unrelated broad Song/UI tests. That was not a pass or failure.
+- SP-4 implementation is ready to commit; hardware acceptance remains NOT RUN.
+- Hardware acceptance remains NOT RUN.
 
 ## Worktree list at baseline
 

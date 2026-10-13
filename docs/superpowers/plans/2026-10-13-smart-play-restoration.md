@@ -189,23 +189,23 @@ expand `tests/test_performance_smart_arp.cpp`; create `tests/test_smart_arp_even
 **Produces:** Existing `setArpPitchSource`, `setHarmonyChangePolicy` and pool method now
 implement contract §6; generated output remains on the existing scheduled-event path.
 
-- [ ] Write trace fixtures with pitches/velocities, pulse ordinal, note-on/off and owner.
+- [x] Write trace fixtures with pitches/velocities, pulse ordinal, note-on/off and owner.
   Cover all four sources, all six rates, six contours including DOWNUP, 1..existing max octaves.
-- [ ] Assert FOLLOW phase survives pool 4→3; RESTART starts next pulse only; identical snapshot
+- [x] Assert FOLLOW phase survives pool 4→3; RESTART starts next pulse only; identical snapshot
   delivery does not restart; new same-chord event does. HOLD at every point of a cycle adopts
   latest of three updates exactly once at original cycle end. Context loss during HOLD clears it.
-- [ ] MEMORY test captures interval shape then releases all roots: empty output + HOLD ROOT;
+- [x] MEMORY test captures interval shape then releases all roots: empty output + HOLD ROOT;
   absent memory: empty + EMPTY MEMORY. No silent HELD fallback.
-- [ ] Assert pitch/velocity pairs stay paired when sorted; AS PLAYED held insertion order is
+- [x] Assert pitch/velocity pairs stay paired when sorted; AS PLAYED held insertion order is
   preserved; HARMONY order is canonical. Empty pool, single note, clipped range and full pool
   never cause divide-by-zero, repeated NoteOff or infinite cycle.
-- [ ] Assert equal seed/transport/input traces produce identical RANDOM trace under different
+- [x] Assert equal seed/transport/input traces produce identical RANDOM trace under different
   service polling frequencies; unrelated RNG calls do not affect it. Late pulses must follow
   existing bounded late-event policy rather than emit an unlimited catch-up burst.
-- [ ] Fix only failing pool/phase/identity code. Keep transport clock and STOP fallback intact.
+- [x] Fix only failing pool/phase/identity code. Keep transport clock and STOP fallback intact.
   Old generated scheduled NoteOns become stale when source/epoch changes; scheduled NoteOff
   cleanup still executes for notes actually emitted.
-- [ ] Run `bash tests/run_smart_play_tests.sh arp trace keyboard external` and closure tests.
+- [x] Run `bash tests/run_smart_play_tests.sh arp trace keyboard external` and closure tests.
 - [ ] Commit: `fix: make smart arp sources and harmony transitions deterministic`.
 
 ### SP-5 — Publish truthful legacy harmony to Cardputer and SDL

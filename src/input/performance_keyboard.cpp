@@ -86,33 +86,24 @@ uint32_t sixteenthMicrosForBpm(double bpm) {
     return static_cast<uint32_t>(15000000.0 / bpm + 0.5);
 }
 
-uint8_t arpPulsesUntilBoundary(std::size_t count,
-                              std::size_t index,
-                              bool ascending,
-                              PerformanceArpDirection direction) {
+uint8_t arpCycleLength(std::size_t count, PerformanceArpDirection direction) {
     if (count <= 1) return 1;
-    if (direction != PerformanceArpDirection::UpDown &&
-        direction != PerformanceArpDirection::DownUp) {
-        const std::size_t remaining = index < count ? count - index : count;
-        return static_cast<uint8_t>(remaining > 255u ? 255u : remaining);
-    }
-    if (index >= count) index = 0;
-    const std::size_t cycleLength = count * 2u - 2u;
-    if (index == 0 && ascending)
-        return static_cast<uint8_t>(cycleLength > 255u ? 255u : cycleLength);
-    for (std::size_t pulse = 1; pulse <= cycleLength; ++pulse) {
-        if (ascending) {
-            if (index + 1u >= count) { ascending = false; index = count - 2u; }
-            else ++index;
-        } else if (index == 0) {
-            ascending = true;
-            index = 1;
-        } else {
-            --index;
-        }
-        if (index == 0 && ascending) return static_cast<uint8_t>(pulse);
-    }
-    return static_cast<uint8_t>(cycleLength > 255u ? 255u : cycleLength);
+    if (direction == PerformanceArpDirection::UpDown ||
+        direction == PerformanceArpDirection::DownUp)
+        return static_cast<uint8_t>(count * 2u - 2u);
+    return static_cast<uint8_t>(count);
+}
+
+uint32_t deterministicArpWord(uint32_t seed, uint32_t epoch, uint64_t pulseOrdinal) {
+    uint32_t value = seed ^ (epoch * 0x9e3779b9u) ^
+        static_cast<uint32_t>(pulseOrdinal) ^
+        (static_cast<uint32_t>(pulseOrdinal >> 32u) * 0x85ebca6bu);
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
 }
 
 bool noteBelongsToScale(uint8_t note,
@@ -343,6 +334,14 @@ void PerformanceKeyboard::clearScheduled() {
     for (ScheduledEvent& slot : scheduled_) slot = ScheduledEvent{};
 }
 
+void PerformanceKeyboard::discardScheduledGeneratedNoteOns() {
+    for (ScheduledEvent& slot : scheduled_) {
+        if (slot.active && slot.event.type == MusicalEventType::NoteOn &&
+            slot.event.source == MusicalEventSource::Arpeggiator)
+            slot = ScheduledEvent{};
+    }
+}
+
 void PerformanceKeyboard::rememberGeneratedOn(uint8_t note) {
     for (std::size_t i = 0; i < generatedNoteCount_; ++i) {
         if (generatedNotes_[i] == note) return;
@@ -428,6 +427,10 @@ void PerformanceKeyboard::resetPulseClock(bool resetMusicalPhase) {
         musicalPulseOrdinal_ = 0;
         arpIndex_ = 0;
         arpAscending_ = true;
+        arpCycleLength_ = 0;
+        arpCycleProgress_ = 0;
+        arpCycleStarted_ = false;
+        ++arpEpoch_;
     }
 }
 
@@ -677,10 +680,14 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
         else if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role &&
                  performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead)
             roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
-        const uint16_t roleMask = harmonyRolePitchMasks_[roleMaskIndex];
+        const bool useHeldRoleMasks = arpHoldActive_ && heldHasHarmonyRolePitchMasks_;
+        const bool hasRoleMasks = useHeldRoleMasks || hasHarmonyRolePitchMasks_;
+        const uint16_t roleMask = useHeldRoleMasks
+            ? heldHarmonyRolePitchMasks_[roleMaskIndex]
+            : harmonyRolePitchMasks_[roleMaskIndex];
         auto pitchAllowed = [&](uint8_t pitchClass) {
             const uint16_t bit = static_cast<uint16_t>(1u << pitchClass);
-            return (!hasHarmonyRolePitchMasks_ || (roleMask & bit) != 0u) &&
+            return (!hasRoleMasks || (roleMask & bit) != 0u) &&
                    ((roleScale || !context.allowChromatic)
                         ? (context.scalePitchClasses & bit) != 0u : true);
         };
@@ -734,13 +741,20 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
     }
 
     LatchedNote inputs[kMaxLatchedNotes]{};
-    const std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
+    std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
+    if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Memory) {
+        if (chordMemoryCount_ == 0) return 0;
+        // MEMORY is one captured interval shape anchored by one live root.
+        // Expanding every held note through the shape creates unintended
+        // overlapping chords and silently turns one memory gesture into a
+        // second chord engine.
+        if (inputCount > 1) inputCount = 1;
+    }
     std::size_t count = 0;
     for (std::size_t input = 0; input < inputCount; ++input) {
         uint8_t chord[kMaxChordMemoryNotes]{};
         std::size_t chordCount = 0;
-        if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Memory &&
-            chordMemoryCount_ > 0) {
+        if (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Memory) {
             for (std::size_t i = 0; i < chordMemoryCount_ && chordCount < kMaxChordMemoryNotes; ++i) {
                 const int interval = static_cast<int8_t>(chordMemoryIntervals_[i]);
                 const int note = static_cast<int>(inputs[input].note) + interval;
@@ -783,17 +797,72 @@ void PerformanceKeyboard::setPerformanceContext(
         performanceContext_.harmonyTriadPitchClasses != context.harmonyTriadPitchClasses ||
         performanceContext_.scalePitchClasses != context.scalePitchClasses ||
         performanceContext_.sourceOrdinal != context.sourceOrdinal;
-    if (changed && performanceContext_.hasHarmony && context.hasHarmony &&
-        pendingClocked_.arpEnabled &&
+    const bool harmonyArp = pendingClocked_.arpEnabled &&
         (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Harmony ||
-         arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role)) {
+         arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role);
+    if (changed && harmonyArp && !context.hasHarmony) {
+        // A missing owner invalidates even a held pool. Cancel only this
+        // performer's generated output; other note owners remain untouched.
+        stopGeneratedOutput();
+        arpHoldActive_ = false;
+        arpHoldPulsesRemaining_ = 0;
+        arpCycleLength_ = 0;
+        arpCycleProgress_ = 0;
+        arpCycleStarted_ = false;
+        ++arpEpoch_;
+    } else if (changed && performanceContext_.hasHarmony && context.hasHarmony &&
+               harmonyArp) {
         if (harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Hold) {
-            heldArpContext_ = performanceContext_;
-            arpHoldActive_ = true;
-            arpHoldPulsesRemaining_ = 0;
-        } else if (harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Restart) {
-            arpIndex_ = 0;
-            arpAscending_ = true;
+            if (!arpHoldActive_) {
+                heldArpContext_ = performanceContext_;
+                for (std::size_t i = 0; i < 3; ++i)
+                    heldHarmonyRolePitchMasks_[i] = harmonyRolePitchMasks_[i];
+                heldHasHarmonyRolePitchMasks_ = hasHarmonyRolePitchMasks_;
+                if (!arpCycleStarted_ || arpCycleLength_ == 0 ||
+                    arpCycleProgress_ == 0) {
+                    arpHoldActive_ = false;
+                    arpHoldPulsesRemaining_ = 0;
+                } else {
+                    arpHoldActive_ = true;
+                    arpHoldPulsesRemaining_ = static_cast<uint8_t>(
+                        arpCycleLength_ - arpCycleProgress_);
+                }
+            }
+        } else {
+            // Future scheduled attacks from the previous pool are stale;
+            // already emitted notes retain their scheduled NoteOff cleanup.
+            discardScheduledGeneratedNoteOns();
+            if (harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Restart) {
+                arpIndex_ = 0;
+                arpAscending_ = true;
+                arpCycleLength_ = 0;
+                arpCycleProgress_ = 0;
+                arpCycleStarted_ = false;
+                ++arpEpoch_;
+            } else {
+                uint8_t pool[kMaxGeneratedNotes]{};
+                uint8_t velocities[kMaxGeneratedNotes]{};
+                const std::size_t poolCount = buildArpPool(
+                    pool, velocities, kMaxGeneratedNotes);
+                if (poolCount == 0) {
+                    arpIndex_ = 0;
+                    arpAscending_ = true;
+                    arpCycleLength_ = 0;
+                    arpCycleProgress_ = 0;
+                    arpCycleStarted_ = false;
+                } else {
+                    if (arpIndex_ >= poolCount) arpIndex_ %= poolCount;
+                    if (poolCount == 1) arpAscending_ = true;
+                    const uint8_t nextLength = arpCycleLength(
+                        poolCount, activeClocked_.arpDirection);
+                    if (nextLength != arpCycleLength_) {
+                        arpCycleProgress_ = static_cast<uint8_t>(
+                            arpCycleProgress_ % nextLength);
+                        arpCycleLength_ = nextLength;
+                        if (arpCycleProgress_ == 0) arpCycleStarted_ = false;
+                    }
+                }
+            }
         }
     }
     performanceContext_ = context;
@@ -841,12 +910,25 @@ bool PerformanceKeyboard::setHarmonySnapshot(
 }
 
 void PerformanceKeyboard::clearPerformanceHarmonyContext() {
+    const bool hadHarmony = performanceContext_.hasHarmony || arpHoldActive_;
+    const bool harmonyArp = pendingClocked_.arpEnabled &&
+        (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Harmony ||
+         arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Role);
+    if (harmonyArp && hadHarmony) stopGeneratedOutput();
     performanceContext_.hasHarmony = false;
     performanceContext_.harmony = GroovePuterRhythm::HarmonicEvent{};
     performanceContext_.harmonyPitchClasses = 0;
     performanceContext_.harmonyTriadPitchClasses = 0;
     hasHarmonyRolePitchMasks_ = false;
     for (uint16_t& mask : harmonyRolePitchMasks_) mask = 0;
+    heldHasHarmonyRolePitchMasks_ = false;
+    for (uint16_t& mask : heldHarmonyRolePitchMasks_) mask = 0;
+    if (hadHarmony) {
+        arpCycleLength_ = 0;
+        arpCycleProgress_ = 0;
+        arpCycleStarted_ = false;
+        ++arpEpoch_;
+    }
     arpHoldActive_ = false;
     arpHoldPulsesRemaining_ = 0;
 }
@@ -941,11 +1023,16 @@ std::size_t PerformanceKeyboard::constrainChordNotes(uint8_t* notes,
 bool PerformanceKeyboard::setArpPitchSource(GroovePuterPerformance::ArpPitchSource source) {
     if (source >= GroovePuterPerformance::ArpPitchSource::Count) return false;
     if (source != arpPitchSource_) {
+        stopGeneratedOutput();
         arpPitchSource_ = source;
         arpIndex_ = 0;
         arpAscending_ = true;
         arpHoldActive_ = false;
         arpHoldPulsesRemaining_ = 0;
+        arpCycleLength_ = 0;
+        arpCycleProgress_ = 0;
+        arpCycleStarted_ = false;
+        ++arpEpoch_;
     }
     return true;
 }
@@ -956,6 +1043,11 @@ bool PerformanceKeyboard::setHarmonyChangePolicy(
     harmonyChangePolicy_ = policy;
     arpHoldActive_ = false;
     arpHoldPulsesRemaining_ = 0;
+    arpCycleLength_ = 0;
+    arpCycleProgress_ = 0;
+    arpCycleStarted_ = false;
+    heldHasHarmonyRolePitchMasks_ = false;
+    ++arpEpoch_;
     return true;
 }
 
@@ -976,7 +1068,9 @@ uint8_t PerformanceKeyboard::selectArpNote(
         return ordered[mutationRng_.next() % count];
     }
     if (pulseConfig.arpDirection == PerformanceArpDirection::Random) {
-        return ordered[mutationRng_.next() % count];
+        const uint32_t randomWord = deterministicArpWord(
+            pulseConfig.mutation.seed, arpEpoch_, musicalPulseOrdinal_);
+        return ordered[randomWord % count];
     }
     if (arpIndex_ >= count) arpIndex_ = 0;
     std::size_t index = arpIndex_;
@@ -1044,13 +1138,28 @@ void PerformanceKeyboard::emitPerformancePulse(
         uint8_t poolVelocity[kMaxGeneratedNotes]{};
         const std::size_t poolCount = buildArpPool(pool, poolVelocity, kMaxGeneratedNotes);
         if (poolCount == 0) return;
-        if (arpHoldActive_ && arpHoldPulsesRemaining_ == 0) {
-            arpHoldPulsesRemaining_ = arpPulsesUntilBoundary(
-                poolCount, arpIndex_, arpAscending_, pulseConfig.arpDirection);
+        const uint8_t cycleLength = arpCycleLength(
+            poolCount, pulseConfig.arpDirection);
+        if (cycleLength != arpCycleLength_) {
+            if (arpCycleStarted_ && cycleLength > 0)
+                arpCycleProgress_ = static_cast<uint8_t>(arpCycleProgress_ % cycleLength);
+            else
+                arpCycleProgress_ = 0;
+            arpCycleLength_ = cycleLength;
+            if (arpCycleProgress_ == 0) arpCycleStarted_ = false;
         }
         uint8_t selected = selectArpNote(pool, poolCount, pulseConfig);
         if (arpHoldActive_ && arpHoldPulsesRemaining_ > 0 &&
-            --arpHoldPulsesRemaining_ == 0) arpHoldActive_ = false;
+            --arpHoldPulsesRemaining_ == 0) {
+            arpHoldActive_ = false;
+            heldHasHarmonyRolePitchMasks_ = false;
+        }
+        if (++arpCycleProgress_ >= arpCycleLength_) {
+            arpCycleProgress_ = 0;
+            arpCycleStarted_ = false;
+        } else {
+            arpCycleStarted_ = true;
+        }
         if (pulseConfig.mutation.octaveJumpPercent > 0 &&
             mutationRng_.chance(pulseConfig.mutation.octaveJumpPercent)) {
             if (selected <= kMaxNote - 12) selected = static_cast<uint8_t>(selected + 12);
@@ -1136,6 +1245,10 @@ bool PerformanceKeyboard::serviceTransportPulseClock(uint32_t nowMicros) {
         musicalPulseOrdinal_ = 0;
         arpIndex_ = 0;
         arpAscending_ = true;
+        arpCycleLength_ = 0;
+        arpCycleProgress_ = 0;
+        arpCycleStarted_ = false;
+        ++arpEpoch_;
         const double pulseSteps = performancePulseSteps(activeClocked_.rate);
         const double ordinal = std::floor((absoluteSteps + kTransportStepEpsilon) / pulseSteps);
         nextTransportPulseProjectStep_ = (ordinal + 1.0) * pulseSteps;

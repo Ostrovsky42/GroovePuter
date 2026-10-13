@@ -46,6 +46,7 @@ int main() {
 
     assert(keyboard.setHarmonyChangePolicy(HarmonyChangePolicy::Hold));
     keyboard.setArpeggiatorEnabled(true);
+    keyboard.service(1000); // establish a live arp cycle before HOLD is requested
     context.rootMidi = 62;
     context.sourceOrdinal = 1;
     keyboard.setPerformanceContext(context);
@@ -65,7 +66,7 @@ int main() {
     assert(keyboard.captureChordMemory());
     assert(keyboard.setArpPitchSource(ArpPitchSource::Memory));
     count = keyboard.collectArpeggioPool(notes, velocities, 16);
-    assert(count == 3 && notes[0] == 60 && notes[1] == 64 && notes[2] == 68);
+    assert(count == 2 && notes[0] == 60 && notes[1] == 64);
 
     keyboard.releaseAllExternalNotes();
     keyboard.setPerformanceRole(PerformanceRole::Lead);
@@ -148,6 +149,7 @@ int main() {
     assert(harmonyOnly.setHarmonyChangePolicy(HarmonyChangePolicy::Hold));
     harmonyOnly.setPerformanceContext(oldHarmony);
     harmonyOnly.setArpeggiatorEnabled(true);
+    harmonyOnly.service(1000);
     harmonyOnly.setPerformanceContext(nextHarmony);
     for (uint32_t now = 1000; now <= 2500000; now += 1000) harmonyOnly.service(now);
     bool heardOldChord = false;
