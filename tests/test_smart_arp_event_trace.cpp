@@ -202,7 +202,9 @@ int main() {
     snapshotArp.setPerformanceRole(PerformanceRole::Chord);
     assert(snapshotArp.setArpPitchSource(ArpPitchSource::Role));
     assert(snapshotArp.setHarmonyChangePolicy(HarmonyChangePolicy::Restart));
-    const auto firstSnapshot = snapshot(0, 60, 0x0891u);
+    // The source event identity stays distinct after the old uint8_t
+    // saturation point: 256 and 272 are separate same-quality events.
+    const auto firstSnapshot = snapshot(0, 256, 0x0891u);
     assert(snapshotArp.setHarmonySnapshot(firstSnapshot));
     snapshotArp.setArpeggiatorEnabled(true);
     serviceAt(snapshotArp, snapshotSink, 1000);
@@ -210,10 +212,37 @@ int main() {
     serviceThrough(snapshotArp, 2000, 130000);
     auto snapshotNotes = noteOns(snapshotSink);
     assert(snapshotNotes.size() >= 2 && snapshotNotes[0] == 60 && snapshotNotes[1] == 64);
-    assert(snapshotArp.setHarmonySnapshot(snapshot(0, 61, 0x0891u)));
+    assert(snapshotArp.setHarmonySnapshot(snapshot(0, 272, 0x0891u)));
     serviceThrough(snapshotArp, 131000, 260000);
     snapshotNotes = noteOns(snapshotSink);
     assert(snapshotNotes.size() >= 3 && snapshotNotes[2] == 60);
+
+    // Equal pitches/ordinal still belong to a new event when any source-key
+    // field changes. Republishing the identical full key must continue phase.
+    for (unsigned field = 0; field < 3; ++field) {
+        MusicalEventRouter keyRouter;
+        TraceSink keySink;
+        assert(keyRouter.addSink(keySink));
+        PerformanceKeyboard keyed(keyRouter);
+        keyed.setPerformanceRole(PerformanceRole::Chord);
+        assert(keyed.setArpPitchSource(ArpPitchSource::Role));
+        assert(keyed.setHarmonyChangePolicy(HarmonyChangePolicy::Restart));
+        auto source = snapshot(0, 300, 0x0891u);
+        assert(keyed.setHarmonySnapshot(source));
+        keyed.setArpeggiatorEnabled(true);
+        serviceAt(keyed, keySink, 1000);
+        assert(keyed.setHarmonySnapshot(source));
+        serviceThrough(keyed, 2000, 130000);
+        auto notes = noteOns(keySink);
+        assert(notes.size() >= 2 && notes[0] == 60 && notes[1] == 64);
+        if (field == 0) ++source.key.materialId;
+        if (field == 1) ++source.key.publicationGeneration;
+        if (field == 2) ++source.key.transportEpoch;
+        assert(keyed.setHarmonySnapshot(source));
+        serviceThrough(keyed, 131000, 260000);
+        notes = noteOns(keySink);
+        assert(notes.size() >= 3 && notes[2] == 60);
+    }
 
     // Context loss clears HOLD immediately and releases only generated notes.
     MusicalEventRouter lossRouter;

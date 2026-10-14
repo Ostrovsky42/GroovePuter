@@ -629,6 +629,54 @@ void sustainOwnershipIsPerSourceChannelAndCable() {
     assert(bridge.sustainIdentities[0].source != bridge.sustainIdentities[1].source);
 }
 
+void sustainOwnerOverflowIsObservableAndSourceScoped() {
+    MusicalEventRouter router;
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    CaptureNotes bridge;
+    MidiInputDispatcher dispatcher(router, io);
+    dispatcher.setPerformSink(&bridge);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.target = MidiInputTarget::Perform;
+    assert(dispatcher.setConfig(config));
+
+    const uint32_t generation = io.usbInputGeneration();
+    for (std::size_t i = 0; i < MidiInputDispatcher::kMaxSustainOwners; ++i) {
+        const uint8_t channel = static_cast<uint8_t>(i % 16u);
+        const uint8_t cable = static_cast<uint8_t>(i / 16u);
+        assert(queue.tryPush(MidiInputEvent{
+            InputKey{InputSource::Usb, generation, channel, 64, cable},
+            InputKind::Sustain, 127, static_cast<uint32_t>(i + 1u)}));
+    }
+    // A new cable/channel identity is refused at capacity. It is not forwarded
+    // to PERFORM and cannot release a different source's sustain owner.
+    const InputKey overflow{InputSource::Usb, generation, 0, 64, 2};
+    assert(queue.tryPush(MidiInputEvent{overflow, InputKind::Sustain, 127, 100}));
+    assert(dispatcher.service(queue) == MidiInputDispatcher::kMaxSustainOwners + 1u);
+    assert(bridge.sustain.size() == MidiInputDispatcher::kMaxSustainOwners);
+    assert(dispatcher.sustainOwnerOverflowCount(InputSource::Usb) == 1u);
+    assert(dispatcher.sustainOwnerOverflowCount(InputSource::Uart) == 0u);
+
+    assert(queue.tryPush(MidiInputEvent{overflow, InputKind::Sustain, 0, 101}));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.sustain.size() == MidiInputDispatcher::kMaxSustainOwners);
+    assert(dispatcher.sustainOwnerOverflowCount(InputSource::Usb) == 1u);
+
+    const InputKey first{InputSource::Usb, generation, 0, 64, 0};
+    assert(queue.tryPush(MidiInputEvent{first, InputKind::Sustain, 0, 102}));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.sustain.size() == MidiInputDispatcher::kMaxSustainOwners + 1u);
+    assert(!bridge.sustain.back());
+
+    // A freed slot admits the previously rejected identity on retry.
+    assert(queue.tryPush(MidiInputEvent{overflow, InputKind::Sustain, 127, 103}));
+    assert(dispatcher.service(queue) == 1u);
+    assert(bridge.sustain.size() == MidiInputDispatcher::kMaxSustainOwners + 2u);
+    assert(bridge.sustain.back());
+    assert(dispatcher.sustainOwnerOverflowCount(InputSource::Usb) == 1u);
+}
+
 void allSoundOffIsDistinctFromAllNotesOffForPerform() {
     MusicalEventRouter router;
     MidiIoState io = readyUsbInput();
@@ -711,6 +759,7 @@ int main() {
     finalConsumerRejectsStaleInputIdentity();
     performNotesKeepFullInputIdentityThroughDispatch();
     sustainOwnershipIsPerSourceChannelAndCable();
+    sustainOwnerOverflowIsObservableAndSourceScoped();
     allSoundOffIsDistinctFromAllNotesOffForPerform();
     inputQueueOverflowRecoveryIsScopedToTheSourceSession();
     return 0;

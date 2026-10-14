@@ -26,6 +26,9 @@ struct PerformanceGesture {
 
 struct PerformanceContext {
     GroovePuterRhythm::HarmonicEvent harmony{};
+    // Snapshot event identity is an absolute event ordinal. Keep the full
+    // domain so repeated equal chords remain distinct past one byte.
+    uint32_t sourceOrdinal{0};
     uint16_t scalePitchClasses{0x0fffu};
     uint16_t harmonyPitchClasses{0};
     uint16_t harmonyTriadPitchClasses{0};
@@ -33,7 +36,6 @@ struct PerformanceContext {
     uint8_t previousNote{60};
     uint8_t minNote{12};
     uint8_t maxNote{95};
-    uint8_t sourceOrdinal{0};
     uint8_t eventOnset{0};
     uint8_t eventDuration{0};
     bool allowChromatic{true};

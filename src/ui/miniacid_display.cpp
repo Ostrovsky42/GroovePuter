@@ -267,7 +267,7 @@ void MiniAcidDisplay::syncProjectKey_() {
     synced_key_scale_ = performance_keyboard_.scale();
 }
 
-void MiniAcidDisplay::update() {
+void MiniAcidDisplay::update(void (*frameOverlay)()) {
     syncProjectKey_();
     servicePersistence_();
     syncVisualStyle_();
@@ -289,6 +289,7 @@ void MiniAcidDisplay::update() {
         drawSplashScreen();
         if (millis() - splash_start_ms_ > 2000) dismissSplash();
         if (splash_active_) {
+            if (frameOverlay) frameOverlay();
             gfx_.flush();
             gfx_.endWrite();
             return;
@@ -362,6 +363,7 @@ void MiniAcidDisplay::update() {
     }
     
     drawToast();
+    if (frameOverlay) frameOverlay();
     gfx_.flush();
     gfx_.endWrite();
     if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.end");

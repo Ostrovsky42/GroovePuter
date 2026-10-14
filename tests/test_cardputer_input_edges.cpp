@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "src/input/cardputer_input_edges.h"
+#include "src/input/cardputer_diagnostic_shortcut.h"
 
 namespace {
 struct FakeKeysState {
@@ -19,6 +20,26 @@ int main() {
   using namespace GroovePuterInput;
 
   FakeKeysState empty{};
+  FakeKeysState fnD{};
+  fnD.fn = true;
+  fnD.hid_keys = {0x07};
+  fnD.word = {'d'};
+  char diagnosticKey = 0;
+  uint32_t diagnosticMask = 0;
+  unsigned diagnosticDispatches = 0;
+  if (shouldDispatchHid(fnD, empty, true, 0x07) &&
+      claimDiagnosticFnD(fnD, 0x07, diagnosticKey, diagnosticMask))
+    ++diagnosticDispatches;
+  char diagnosticWord = 'd';
+  if (shouldDispatchWord(fnD, empty, true, diagnosticWord) &&
+      !wordLetterAlreadyDispatched(diagnosticWord, diagnosticMask))
+    ++diagnosticDispatches;
+  assert(diagnosticDispatches == 1 && diagnosticKey == 'd');
+  assert(!shouldDispatchHid(fnD, fnD, true, 0x07));
+  FakeKeysState releasedFn = fnD;
+  releasedFn.fn = false;
+  assert(!shouldDispatchHid(releasedFn, fnD, true, 0x07));
+  assert(!claimDiagnosticFnD(releasedFn, 0x07, diagnosticKey, diagnosticMask));
   FakeKeysState tab{};
   tab.hid_keys = {kCardputerTabHid};
   assert(shouldDispatchHid(tab, empty, true, kCardputerTabHid));

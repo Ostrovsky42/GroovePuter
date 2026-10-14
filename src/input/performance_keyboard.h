@@ -60,9 +60,10 @@ public:
     void markConfigPersisted();
     void releaseAllExternalNotes();
     // External sustain button: LATCH while held, the previous LATCH state is restored on release.
-    void externalSustain(bool down);
-    void externalSustain(bool down, PerformanceInputIdentity input);
+    bool externalSustain(bool down);
+    bool externalSustain(bool down, PerformanceInputIdentity input);
     bool externalSustainDown() const { return externalSustainDown_; }
+    uint32_t externalSustainOverflowCount() const { return externalSustainOverflowCount_; }
     std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
@@ -129,6 +130,9 @@ public:
     bool formatDetectedChord(char* out, std::size_t capacity) const;
 
     void setPerformanceContext(const GroovePuterPerformance::PerformanceContext& context);
+    GroovePuterPerformance::PerformanceContext performanceContextSnapshot() const {
+        return performanceContext_;
+    }
     bool setHarmonySnapshot(const GroovePuterHarmony::HarmonySnapshot& snapshot);
     void clearPerformanceHarmonyContext();
     bool performanceHarmonyAvailable() const { return performanceContext_.hasHarmony; }
@@ -384,6 +388,7 @@ private:
     bool externalSustainDown_{false};
     bool legacyExternalSustainDown_{false};
     bool latchBeforeExternalSustain_{false};
+    uint32_t externalSustainOverflowCount_{0};
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     PerformanceChordMode chordMode_{PerformanceChordMode::Off};
     PerformanceVoiceMode voiceMode_{PerformanceVoiceMode::Mono};
@@ -421,6 +426,11 @@ private:
     bool latchReplaceArmed_{false};
 
     GroovePuterPerformance::PerformanceContext performanceContext_{};
+    GroovePuterHarmony::HarmonyEventKey harmonyEventKey_{};
+    bool hasHarmonyEventKey_{false};
+    void applyPerformanceContext(
+        const GroovePuterPerformance::PerformanceContext& context,
+        bool eventIdentityChanged);
     GroovePuterPerformance::PerformanceContext heldArpContext_{};
     uint16_t heldHarmonyRolePitchMasks_[3]{};
     bool heldHasHarmonyRolePitchMasks_{false};

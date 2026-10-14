@@ -2,7 +2,7 @@
 #include "display.h"
 #include "gfx_font.h"
 #include "src/ui/dirty_tile_tracker.h"
-#include <vector>
+#include "src/ui/display_framebuffer.h"
 
 class CardputerDisplay : public IGfx {
 public:
@@ -10,6 +10,10 @@ public:
   ~CardputerDisplay() override;
 
   void begin() override;
+  bool bufferReady() const {
+    return w_ > 0 && h_ > 0 && frame_.size() ==
+        static_cast<std::size_t>(w_) * static_cast<std::size_t>(h_);
+  }
   void clear(IGfxColor color) override;
   void drawPixel(int x, int y, IGfxColor color) override;
   void drawText(int x, int y, const char* text) override;
@@ -45,7 +49,7 @@ private:
   int h_;
   IGfxColor text_color_ = IGfxColor::White();
   uint16_t text_color565_ = text_color_.color16();
-  std::vector<uint16_t> frame_; // RGB565 back buffer
+  DisplayFrameBuffer frame_; // RGB565 back buffer
   DirtyTileTracker dirty_tiles_;
   GfxFont font_ = GfxFont::kFont5x7;
   const GFXfont* gfx_font_ = nullptr;

@@ -492,6 +492,17 @@ public:
     size_t count;
   };
   const WaveformBuffer& getWaveformBuffer() const;
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  // Read only on the control thread under AudioMutationScope.
+  bool diagnostic303Active(int voiceIndex) const {
+    const TB303Voice* voice = tb303Voice(voiceIndex);
+    return voice && voice->isVoiceActive();
+  }
+  float diagnostic303Envelope(int voiceIndex) const {
+    const TB303Voice* voice = tb303Voice(voiceIndex);
+    return voice ? voice->amplitudeEnvelope() : -1.0f;
+  }
+#endif
 
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;

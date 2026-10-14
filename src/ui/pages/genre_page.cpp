@@ -6,6 +6,7 @@
 
 #include "../axis_page_palette.h"
 #include "../genre_palette.h"
+#include "../project_key.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -244,8 +245,14 @@ bool GenrePage::cycleHarmonyStrategy() {
   const auto status = graphCapabilityFor(graphSettings, static_cast<uint8_t>(
       mini_acid_.sceneManager().currentScene().generatorParams.scale));
   if (status != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    char message[32];
-    std::snprintf(message, sizeof(message), "%s", graphCapabilityName(status));
+    char message[64];
+    char projectKey[24];
+    const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+    ProjectKey::format(project.scaleRoot,
+        static_cast<ProjectKey::ScaleTypeValue>(project.scale), projectKey,
+        sizeof(projectKey));
+    std::snprintf(message, sizeof(message), "%s %s",
+                  graphCapabilityName(status), projectKey);
     UI::showToast(message, 1300);
     return false;
   }
@@ -531,18 +538,22 @@ void GenrePage::draw(IGfx& gfx) {
   }();
   const auto graphCapability = graphCapabilityFor(graphSettings,
       static_cast<uint8_t>(mini_acid_.sceneManager().currentScene().generatorParams.scale));
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  char harmonyValue[64];
+  char projectKey[24];
+  ProjectKey::format(project.scaleRoot,
+      static_cast<ProjectKey::ScaleTypeValue>(project.scale), projectKey,
+      sizeof(projectKey));
   if (graphCapability == GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
+    std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / %s", projectKey,
         pendingHarmonyStrategy_ == static_cast<uint8_t>(
-            GroovePuterHarmony::HarmonicStrategy::Graph) ? "GRAPH" : "LEGACY",
-        focus_ == FocusRow::Harmony, axisColor, palette);
+            GroovePuterHarmony::HarmonicStrategy::Graph) ? "GRAPH" : "LEGACY");
   } else {
-    char harmonyValue[40];
-    std::snprintf(harmonyValue, sizeof(harmonyValue), "LEGACY / N/A:%s",
+    std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / N/A:%s", projectKey,
         graphCapabilityName(graphCapability) + 10);
-    AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
-        harmonyValue, focus_ == FocusRow::Harmony, axisColor, palette);
   }
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
+      harmonyValue, focus_ == FocusRow::Harmony, axisColor, palette);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
@@ -561,7 +572,9 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
-  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE", "ENTER:APPLY G:TAKE");
+  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",
+      focus_ == FocusRow::Harmony ? "M:SCALE ENTER:APPLY G:TAKE"
+                                  : "ENTER:APPLY G:TAKE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -635,6 +648,23 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
   const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
   const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
+  if (panel_ == Panel::Genre && focus_ == FocusRow::Harmony &&
+      !event.ctrl && !event.alt &&
+      !event.meta && key == 'm') {
+    withAudioGuard([&]() {
+      auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+      project.scale = static_cast<ScaleType>(ProjectKey::nextScale(
+          static_cast<ProjectKey::ScaleTypeValue>(project.scale)));
+    });
+    GroovePuterState::markSceneMutated();
+    const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+    char changedKey[24];
+    ProjectKey::format(project.scaleRoot,
+        static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+        sizeof(changedKey));
+    UI::showToast(changedKey, 1000);
+    return true;
+  }
 
   // ENTER follows the APPLY selector. Plain G is always the explicit full
   // Stage 15 materialization command. Repeated accepted G requests advance the

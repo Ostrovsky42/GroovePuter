@@ -87,6 +87,7 @@ struct MidiInputRoutingConfig {
 class MidiInputDispatcher {
 public:
     static constexpr std::size_t kMaxActiveNotes = 24;
+    static constexpr std::size_t kMaxSustainOwners = 32;
 
     MidiInputDispatcher() = default;
     MidiInputDispatcher(MusicalEventRouter& router, MidiIoState& io) {
@@ -116,6 +117,10 @@ public:
     void setPerformSink(MidiExternalNoteSink* sink) { performSink_ = sink; }
 
     const MidiInputRoutingConfig& config() const { return config_; }
+    uint32_t sustainOwnerOverflowCount(InputSource source) const {
+        const uint8_t index = static_cast<uint8_t>(source);
+        return index < 3u ? sustainOwnerOverflowCounts_[index] : 0u;
+    }
 
     bool setConfig(const MidiInputRoutingConfig& config) {
         if (!isValidConfig(config)) return false;
@@ -168,7 +173,6 @@ private:
         bool perform{false};  // owned by the PERFORM keyboard bridge, not the router
     };
 
-    static constexpr std::size_t kMaxSustainOwners = 32;
     struct SustainOwner {
         bool active{false};
         PerformanceInputIdentity input{};
@@ -338,7 +342,12 @@ private:
         }
         if (down) {
             if (found != kMaxSustainOwners) return;
-            if (free == kMaxSustainOwners) return;
+            if (free == kMaxSustainOwners) {
+                const uint8_t source = input.source;
+                if (source < 3u && sustainOwnerOverflowCounts_[source] != UINT32_MAX)
+                    ++sustainOwnerOverflowCounts_[source];
+                return;
+            }
             sustainOwners_[free] = SustainOwner{true, input};
         } else {
             if (found == kMaxSustainOwners) return;
@@ -598,6 +607,7 @@ private:
     MidiInputRoutingConfig config_{};
     ActiveOwner owners_[kMaxActiveNotes]{};
     SustainOwner sustainOwners_[kMaxSustainOwners]{};
+    uint32_t sustainOwnerOverflowCounts_[3]{};
     int bendZone_{0};
     enum class ModState : uint8_t { Idle, Held, Released };
     ModState modState_{ModState::Idle};

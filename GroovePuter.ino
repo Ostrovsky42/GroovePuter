@@ -5,6 +5,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
+#include "esp_rom_sys.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
@@ -19,6 +20,7 @@
 #endif
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
 #include "src/midi/latency_histogram.h"
+#include "src/input/cardputer_diagnostic_shortcut.h"
 static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> loop apply
 #endif
 // External Mod button: tap = delete the note under the cursor, hold = clear the melody.
@@ -56,6 +58,7 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/midi/transport_clock_runtime.h"
 #include "src/audio/follow_mute_ramp.h"
 #include "src/ui/workflow_mode.h"
+#include "src/output/output_ownership.h"
 #include <new>
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
@@ -275,9 +278,19 @@ void audioTask(void *param) {
   }
 }
 
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+static bool g_acceptanceOverlayEnabled = false;
+static void drawAcceptanceOverlay();
+#endif
+
 void drawUI() {
   const uint32_t startedAt = micros();
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  if (g_miniDisplay) g_miniDisplay->update(
+      g_acceptanceOverlayEnabled ? drawAcceptanceOverlay : nullptr);
+#else
   if (g_miniDisplay) g_miniDisplay->update();
+#endif
   g_lastUiDrawUs = micros() - startedAt;
   if (g_lastUiDrawUs > g_peakUiDrawUs) {
     g_peakUiDrawUs = g_lastUiDrawUs;
@@ -293,7 +306,133 @@ static void logHeapCaps(const char* tag) {
   Serial.printf("[%s] freeInt=%u largInt=%u free8=%u larg8=%u\n",
                 tag, (unsigned)freeInt, (unsigned)largInt,
                 (unsigned)free8, (unsigned)larg8);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  esp_rom_printf("[BOOT-MEM %s] free=%u largest=%u\n", tag,
+                 (unsigned)freeInt, (unsigned)largInt);
+#endif
 }
+
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+static void drawAcceptanceOverlay() {
+  constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  char line[56];
+  g_display.fillRect(0, 54, 240, 81, CP_BLACK);
+  g_display.setTextColor(IGfxColor::White());
+  snprintf(line, sizeof(line), "ROLE %s att=%lu det=%lu on=%lu",
+           CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host ? "KBD" : "PC",
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::attachCount(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::detachCount(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount());
+  g_display.drawText(0, 55, line);
+  snprintf(line, sizeof(line), "MEM f=%u min=%u blk=%u",
+           (unsigned)heap_caps_get_free_size(caps),
+           (unsigned)heap_caps_get_minimum_free_size(caps),
+           (unsigned)heap_caps_get_largest_free_block(caps));
+  g_display.drawText(0, 64, line);
+  snprintf(line, sizeof(line), "STK loop=%u disp=%u aud=%u",
+           (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+           (unsigned)cardputerUsbDispatchStackFreeBytes(),
+           (unsigned)(g_audioTaskHandle ? uxTaskGetStackHighWaterMark(g_audioTaskHandle) * sizeof(StackType_t) : 0));
+  g_display.drawText(0, 73, line);
+  const int page = g_miniDisplay ? g_miniDisplay->currentPageIndex() : -1;
+  if (g_miniAcid && (page == WorkflowPages::kPerform ||
+      page == WorkflowPages::kSynthA || page == WorkflowPages::kSynthB)) {
+    const int voice = page == WorkflowPages::kSynthB ? 1 :
+        page == WorkflowPages::kSynthA ? 0 :
+        g_performanceKeyboard.target() == MusicalEventTarget::SynthB ? 1 : 0;
+    int liveNote;
+    bool muted, patternOwned, testTone;
+    float master, trackVolume;
+    bool activeA, activeB;
+    float ampA, ampB;
+    int pcmPeak = 0;
+    bool delayOn, tapeOn;
+    int tapeMode;
+    std::string engineName;
+    {
+      // Snapshot engine state at an audio block boundary. Release the gate
+      // before formatting and drawing; no display work runs while audio waits.
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      liveNote = g_miniAcid->liveNote(voice);
+      muted = g_miniAcid->is303Muted(voice);
+      patternOwned = g_miniAcid->patternOwnsInternalSynth(voice);
+      testTone = g_miniAcid->isTestToneEnabled();
+      master = g_miniAcid->mainVolume();
+      trackVolume = g_miniAcid->getTrackVolume(
+          voice == 0 ? VoiceId::SynthA : VoiceId::SynthB);
+      engineName = g_miniAcid->currentSynthEngineName(voice);
+      activeA = g_miniAcid->diagnostic303Active(0);
+      activeB = g_miniAcid->diagnostic303Active(1);
+      ampA = g_miniAcid->diagnostic303Envelope(0);
+      ampB = g_miniAcid->diagnostic303Envelope(1);
+      const auto& waveform = g_miniAcid->getWaveformBuffer();
+      for (size_t i = 0; i < waveform.count && i < AUDIO_BUFFER_SAMPLES; ++i) {
+        const int sample = waveform.data[i];
+        const int magnitude = sample < 0 ? -sample : sample;
+        if (magnitude > pcmPeak) pcmPeak = magnitude;
+      }
+      delayOn = g_miniAcid->is303DelayEnabled(voice);
+      const auto& tape = g_miniAcid->sceneManager().currentScene().tape;
+      tapeOn = tape.fxEnabled;
+      tapeMode = static_cast<int>(tape.mode);
+    }
+    snprintf(line, sizeof(line), "KEY %s %s en%d nm%d arp%d",
+        g_performanceKeyboard.targetName(), g_performanceKeyboard.voiceModeName(),
+        g_performanceKeyboard.enabled(), g_performanceKeyboard.noteModeEnabled(),
+        g_performanceKeyboard.arpeggiatorEnabled());
+    g_display.drawText(0, 82, line);
+    snprintf(line, sizeof(line), "NOTE h=%u key=%d live%c=%d",
+        (unsigned)g_performanceKeyboard.heldCount(), g_performanceKeyboard.activeNote(),
+        'A' + voice, liveNote);
+    g_display.drawText(0, 91, line);
+    snprintf(line, sizeof(line), "INT%d MUTE%d PAT%d LEAD%u VOL%.0f",
+        GroovePuterOutput::allowsInternal(g_performanceKeyboard.target(),
+            GroovePuterOutput::SourceClass::Performance), muted, patternOwned,
+        (unsigned)g_performanceKeyboard.leadMode(), trackVolume * 100.0f);
+    g_display.drawText(0, 100, line);
+    snprintf(line, sizeof(line), "ENG%c %.10s MASTER%.0f TONE%d",
+        'A' + voice, engineName.c_str(), master * 100.0f, testTone);
+    g_display.drawText(0, 109, line);
+    if (engineName == "TB303") {
+      snprintf(line, sizeof(line), "DSP A%d:%.2f B%d:%.2f P%d",
+          activeA, ampA, activeB, ampB, pcmPeak);
+      g_display.drawText(0, 118, line);
+      snprintf(line, sizeof(line), "FX D%d T%d L%d Q%u DROP%u",
+          delayOn, tapeOn, tapeMode,
+          (unsigned)g_performanceKeyboard.scheduledDepth(),
+          (unsigned)g_performanceKeyboard.staleGeneratedNoteOnDrops());
+      g_display.drawText(0, 127, line);
+    }
+    return;
+  }
+  snprintf(line, sizeof(line), "Q held=%u drop=%lu ring=%lu",
+           (unsigned)g_performanceKeyboard.externalHeldCount(),
+           (unsigned long)cardputerExternalNoteQueue().dropped(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::droppedPackets());
+  g_display.drawText(0, 82, line);
+  const auto& ringLat = cardputerUsbRingLatency();
+  snprintf(line, sizeof(line), "LAT usb>disp n=%lu %lu/%lu/%lu",
+           (unsigned long)ringLat.count(), (unsigned long)ringLat.percentileUs(50),
+           (unsigned long)ringLat.percentileUs(95), (unsigned long)ringLat.maxUs());
+  g_display.drawText(0, 91, line);
+  snprintf(line, sizeof(line), "LAT disp>keys n=%lu %lu/%lu/%lu",
+           (unsigned long)g_queueLatency.count(),
+           (unsigned long)g_queueLatency.percentileUs(50),
+           (unsigned long)g_queueLatency.percentileUs(95),
+           (unsigned long)g_queueLatency.maxUs());
+  g_display.drawText(0, 100, line);
+  cardputerUsbClockRxText(line, sizeof(line));
+  g_display.drawText(0, 109, line);
+  cardputerUsbLastRawText(line, sizeof(line));
+  g_display.drawText(0, 118, line);
+  {
+    char cc[40], pb[40];
+    cardputerUsbRampText(cc, sizeof(cc), pb, sizeof(pb));
+    snprintf(line, sizeof(line), "%s  %s", cc, pb);
+    g_display.drawText(0, 127, line);
+  }
+}
+#endif
 
 static void startAudioTask() {
   // Reserve the realtime stack before allocating lazy UI pages. Reducing this
@@ -356,20 +495,6 @@ void setup() {
   
   Serial.println("[Audio] ES8311 custom I2C Config complete (MCLK derived from BCLK)");
 
-  // Reserve the I2S channel and DMA while internal RAM is still contiguous.
-  // Starting the audio task later keeps setup and driver initialization
-  // serialized on one task.
-  markBootStage(21, "before direct I2S init");
-  g_audioOutputReady = g_audioOut.begin(kSampleRate, kBlockFrames);
-  markBootStage(g_audioOutputReady ? 22 : 922,
-                g_audioOutputReady ? "after direct I2S init"
-                                   : "direct I2S init failed");
-  
-  // Seed random number generator with hardware RNG
-  srand(esp_random());
-  
-  logHeapCaps("after-m5-begin");
-  
   esp_reset_reason_t reason = esp_reset_reason();
   Serial.println("\n\n=== MiniAcid STARTUP DIAGNOSTICS ===");
   Serial.printf("Reset Reason: %d\n", (int)reason);
@@ -380,12 +505,37 @@ void setup() {
   markBootStage(30, "before display.begin");
   g_display.setRotation(1);
   g_display.begin();
+  if (!g_display.bufferReady()) {
+    markBootStage(930, "display framebuffer allocation failed");
+    esp_rom_printf("[BOOT-FAIL] framebuffer unavailable; free=%u largest=%u\n",
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    M5Cardputer.Display.fillScreen(0);
+    M5Cardputer.Display.setCursor(0, 0);
+    M5Cardputer.Display.setTextColor(0xffff);
+    M5Cardputer.Display.println("BOOT: DISPLAY MEMORY LOW");
+    M5Cardputer.Display.println("See serial startup log");
+    while (true) delay(1000);
+  }
   markBootStage(31, "after display.begin");
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
   g_display.setTextColor(IGfxColor::White());
   logHeapCaps("after-display");
+
+  // The display framebuffer needs one contiguous 64,800-byte allocation.
+  // Allocate it before I2S reserves its internal stereo/DMA buffers, then
+  // initialize I2S before creating the audio task as before.
+  markBootStage(21, "before direct I2S init");
+  g_audioOutputReady = g_audioOut.begin(kSampleRate, kBlockFrames);
+  markBootStage(g_audioOutputReady ? 22 : 922,
+                g_audioOutputReady ? "after direct I2S init"
+                                   : "direct I2S init failed");
+  logHeapCaps("after-i2s-init");
+
+  // Seed random number generator with hardware RNG
+  srand(esp_random());
   
   
   // Speaker initialization removed - using direct I2S in audioTask
@@ -821,6 +971,17 @@ void loop() {
       evt.shift ? 1 : 0, (uint8_t)evt.key, evt.scancode);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
 
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    if (!repeat && evt.meta && !evt.alt && !evt.ctrl &&
+        (evt.key == 'd' || evt.key == 'D')) {
+      g_acceptanceOverlayEnabled = !g_acceptanceOverlayEnabled;
+      Serial.printf("[DIAG-OVERLAY] %s (Fn+D toggles)\n",
+                    g_acceptanceOverlayEnabled ? "ON" : "OFF");
+      drawUI();
+      return;
+    }
+#endif
+
     if (evt.scancode == GROOVEPUTER_ESCAPE || evt.key == '`' || evt.key == 0x1B) {
       if (UI::dismissHintOverlay()) {
         drawUI();
@@ -1041,6 +1202,13 @@ void loop() {
         evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
         dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
         shouldSend = true;
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+      } else if (GroovePuterInput::claimDiagnosticFnD(
+                     ks, hid, evt.key, dispatchedLetterMask)) {
+        // Fn+D is reserved only in the diagnostic image for the overlay toggle.
+        mapHidLetterScancode(hid, evt.scancode);
+        shouldSend = true;
+#endif
       } else if (!ks.ctrl && !ks.alt && !ks.fn && hid >= 0x04 && hid <= 0x1D) {
         evt.key = static_cast<char>('a' + (hid - 0x04));
         mapHidLetterScancode(hid, evt.scancode);
@@ -1204,56 +1372,7 @@ void loop() {
   static unsigned long lastUIUpdate = 0;
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
-    if (g_miniDisplay) g_miniDisplay->update();
-#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
-    // Acceptance overlay (diagnostic image only): memory, stacks, reconnects, queue and hop latency.
-    {
-      constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-      char line[56];
-      g_display.fillRect(0, 54, 240, 81, CP_BLACK);
-      g_display.setTextColor(IGfxColor::White());
-      snprintf(line, sizeof(line), "ROLE %s att=%lu det=%lu on=%lu",
-               CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host ? "KBD" : "PC",
-               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::attachCount(),
-               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::detachCount(),
-               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount());
-      g_display.drawText(0, 55, line);
-      snprintf(line, sizeof(line), "MEM f=%u min=%u blk=%u", (unsigned)heap_caps_get_free_size(caps),
-               (unsigned)heap_caps_get_minimum_free_size(caps),
-               (unsigned)heap_caps_get_largest_free_block(caps));
-      g_display.drawText(0, 64, line);
-      snprintf(line, sizeof(line), "STK loop=%u disp=%u aud=%u",
-               (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
-               (unsigned)cardputerUsbDispatchStackFreeBytes(),
-               (unsigned)(g_audioTaskHandle ? uxTaskGetStackHighWaterMark(g_audioTaskHandle) * sizeof(StackType_t) : 0));
-      g_display.drawText(0, 73, line);
-      snprintf(line, sizeof(line), "Q held=%u drop=%lu ring=%lu",
-               (unsigned)g_performanceKeyboard.externalHeldCount(),
-               (unsigned long)cardputerExternalNoteQueue().dropped(),
-               (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::droppedPackets());
-      g_display.drawText(0, 82, line);
-      const auto& ringLat = cardputerUsbRingLatency();
-      snprintf(line, sizeof(line), "LAT usb>disp n=%lu %lu/%lu/%lu", (unsigned long)ringLat.count(),
-               (unsigned long)ringLat.percentileUs(50), (unsigned long)ringLat.percentileUs(95),
-               (unsigned long)ringLat.maxUs());
-      g_display.drawText(0, 91, line);
-      snprintf(line, sizeof(line), "LAT disp>keys n=%lu %lu/%lu/%lu", (unsigned long)g_queueLatency.count(),
-               (unsigned long)g_queueLatency.percentileUs(50), (unsigned long)g_queueLatency.percentileUs(95),
-               (unsigned long)g_queueLatency.maxUs());
-      g_display.drawText(0, 100, line);
-      cardputerUsbClockRxText(line, sizeof(line));
-      g_display.drawText(0, 109, line);
-      cardputerUsbLastRawText(line, sizeof(line));
-      g_display.drawText(0, 118, line);
-      {
-        char cc[40], pb[40];
-        cardputerUsbRampText(cc, sizeof(cc), pb, sizeof(pb));
-        snprintf(line, sizeof(line), "%s  %s", cc, pb);
-        g_display.drawText(0, 127, line);
-      }
-      g_display.flush();
-    }
-#endif
+    drawUI();
   }
 
   static unsigned long lastMemLog = 0;

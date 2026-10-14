@@ -117,7 +117,8 @@ ownership; internal Synth A/B remain sequencer/pattern instruments.
 | `Enter` | Apply selected policy |
 | `G` | Explicit full Stage 15 generation |
 | `P` | `P1 CANON -> P2 VAR -> P3 TRANS` |
-| `M` | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
+| `M` on HARMONY | Cycle the project scale shown as `KEY`; affects the next generation |
+| `M` on other fields | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
 
 During PLAY, accepted full generation publishes at the next real `BAR_START`; while
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
@@ -250,6 +251,11 @@ Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 | `Y/H` | Filter type +/- |
 | `N/M` | Distortion / Delay |
 | `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |
+
+`Ctrl+A` is context-sensitive: it accents the selected Pattern step in PATTERN
+and resets the selected TB303 synth's cutoff in SOUND. SOUND confirms the reset
+with an `A FILTER 800Hz` or `B FILTER 800Hz` toast. Other synth engines show
+`FILTER RESET: TB303 ONLY` and keep their parameters.
 
 ## DRUMS
 

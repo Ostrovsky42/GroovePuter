@@ -962,8 +962,21 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
+      (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) &&
+      !isTb303Engine()) {
+    UI::showToast("FILTER RESET: TB303 ONLY", 1100);
+    return true;
+  }
+
   if (isTb303Engine() && ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    if (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_); }); return true; }
+    if (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) {
+      withAudioGuard([&]() {
+        mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_);
+      });
+      UI::showToast(voice_index_ == 0 ? "A FILTER 800Hz" : "B FILTER 800Hz", 1000);
+      return true;
+    }
     if (lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Resonance, 0.0f, voice_index_); }); return true; }
     if (lowerKey == 'c' || ui_event.scancode == GROOVEPUTER_C) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvAmount, 400.0f, voice_index_); }); return true; }
     if (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }

@@ -44,7 +44,7 @@ constexpr const char* kGenreLines[] = {
     "P           CANON / VAR / TRANS",
     "Alt+L/R     Morph selected variant",
     "Enter       Apply profile/materialize",
-    "M           Cycle apply mode",
+    "M HARMONY: scale; else: apply",
     "PROFILE     Keep existing patterns",
     "MATERIALIZE Regenerate patterns",
     "RHYTHM AUTO or fixed identity",
@@ -154,6 +154,7 @@ constexpr const char* kSynthASoundLines[] = {
     "Y/H         Filter type +/-",
     "N/M         Distortion/Delay",
     "Ctrl+A/X/C/V Reset parameter",
+    "TB303 Ctrl+A: cutoff 800Hz",
 };
 
 constexpr const char* kSynthBSoundLines[] = {
@@ -169,6 +170,7 @@ constexpr const char* kSynthBSoundLines[] = {
     "Y/H         Filter type +/-",
     "N/M         Distortion/Delay",
     "Ctrl+A/X/C/V Reset parameter",
+    "TB303 Ctrl+A: cutoff 800Hz",
 };
 
 constexpr const char* kDrumLines[] = {

@@ -197,6 +197,7 @@ int main() {
     snapshot.tonal.scaleMask = GroovePuterHarmony::transposePitchSet(
         GroovePuterHarmony::scaleDefinition(1)->intervalMask, 0);
     snapshot.tonal.homeScaleMask = snapshot.tonal.scaleMask;
+    snapshot.onsetStep = 24; // Absolute project step: performer context stores step-in-bar.
     for (auto& policy : snapshot.roles) {
         policy.allowed = snapshot.tonal.scaleMask;
         policy.preferred = snapshot.tonal.scaleMask;
@@ -204,6 +205,7 @@ int main() {
     assert(keyboard.setPerformanceRole(PerformanceRole::Lead));
     assert(keyboard.setLeadMode(LeadMode::Chord));
     assert(keyboard.setHarmonySnapshot(snapshot));
+    assert(keyboard.performanceContextSnapshot().eventOnset == 8);
     auto snapshotOwner = midi(64);
     assert(keyboard.externalNoteOn(64, 90, snapshotOwner));
     assert(sink.count(MusicalEventType::NoteOn, 64) == 1); // E is a Fmaj7 tone.
@@ -215,8 +217,8 @@ int main() {
     assert(!keyboard.externalNoteOn(65, 90, forbiddenBass));
     assert(keyboard.lastNotePlanStatus() == NotePlanStatus::InvalidContext);
 
-    // A valid quality outside the legacy enum is still represented exactly by
-    // the shared HarmonySnapshot pitch mask and Smart Arp reads that mask.
+    // A valid HGS quality outside the legacy enum must be rejected instead
+    // of inheriting Triad voicing semantics through the compatibility bridge.
     snapshot.base.qualityId = GroovePuterHarmony::kQualityAugmented;
     snapshot.base.rootPc = 0;
     snapshot.base.pitchMask = GroovePuterHarmony::transposePitchSet(
@@ -234,17 +236,31 @@ int main() {
     snapshot.roles[static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass)] = {};
     snapshot.roles[static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord)] = {
         restrictedChord, restrictedChord};
-    assert(keyboard.setHarmonySnapshot(snapshot));
-    assert(keyboard.setArpPitchSource(ArpPitchSource::Harmony));
-    uint8_t arpNotes[8]{};
-    uint8_t arpVelocities[8]{};
-    const std::size_t augmentedCount = keyboard.collectArpeggioPool(
-        arpNotes, arpVelocities, 8);
-    assert(augmentedCount == 3 && arpNotes[0] == 60 &&
-           arpNotes[1] == 64 && arpNotes[2] == 68);
-    snapshot.roles[static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord)] = {};
-    assert(keyboard.setHarmonySnapshot(snapshot));
-    assert(keyboard.collectArpeggioPool(arpNotes, arpVelocities, 8) == 0);
+    const PerformanceContext contextBeforeAugmented = keyboard.performanceContextSnapshot();
+    assert(!keyboard.setHarmonySnapshot(snapshot));
+    const PerformanceContext contextAfterAugmented = keyboard.performanceContextSnapshot();
+    assert(contextAfterAugmented.hasHarmony == contextBeforeAugmented.hasHarmony);
+    assert(contextAfterAugmented.sourceOrdinal == contextBeforeAugmented.sourceOrdinal);
+    assert(contextAfterAugmented.harmonyPitchClasses ==
+           contextBeforeAugmented.harmonyPitchClasses);
+
+    // Minor is also unrepresentable by the legacy quality enum.
+    GroovePuterHarmony::HarmonySnapshot unsupportedQuality = snapshot;
+    unsupportedQuality.base.qualityId = GroovePuterHarmony::kQualityMinor;
+    unsupportedQuality.base.rootPc = 0;
+    unsupportedQuality.base.pitchMask = GroovePuterHarmony::transposePitchSet(
+        GroovePuterHarmony::qualityDefinition(unsupportedQuality.base.qualityId)->intervalMask, 0);
+    for (auto& policy : unsupportedQuality.roles) {
+        policy.allowed = unsupportedQuality.tonal.scaleMask;
+        policy.preferred = unsupportedQuality.tonal.scaleMask;
+    }
+    const PerformanceContext contextBeforeUnsupported = keyboard.performanceContextSnapshot();
+    assert(!keyboard.setHarmonySnapshot(unsupportedQuality));
+    const PerformanceContext contextAfterUnsupported = keyboard.performanceContextSnapshot();
+    assert(contextAfterUnsupported.hasHarmony == contextBeforeUnsupported.hasHarmony);
+    assert(contextAfterUnsupported.sourceOrdinal == contextBeforeUnsupported.sourceOrdinal);
+    assert(contextAfterUnsupported.harmonyPitchClasses ==
+           contextBeforeUnsupported.harmonyPitchClasses);
 
     // Enabling arp from RAW moves the visible performance role to ARP.
     assert(keyboard.setPerformanceRole(PerformanceRole::Raw));

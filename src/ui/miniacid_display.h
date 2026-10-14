@@ -30,7 +30,8 @@ public:
   ~MiniAcidDisplay();
   void setAudioGuard(AudioGuard guard);
   void setAudioRecorder(IAudioRecorder* recorder);
-  void update();
+  // Optional control-side overlay, composed before the frame is flushed.
+  void update(void (*frameOverlay)() = nullptr);
   
   template <typename F>
   void withAudioGuard(F&& fn) {

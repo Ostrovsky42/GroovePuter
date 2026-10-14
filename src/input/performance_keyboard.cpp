@@ -788,7 +788,15 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
 
 void PerformanceKeyboard::setPerformanceContext(
     const GroovePuterPerformance::PerformanceContext& context) {
-    const bool changed = performanceContext_.hasHarmony != context.hasHarmony ||
+    hasHarmonyEventKey_ = false;
+    applyPerformanceContext(context, false);
+}
+
+void PerformanceKeyboard::applyPerformanceContext(
+    const GroovePuterPerformance::PerformanceContext& context,
+    bool eventIdentityChanged) {
+    const bool changed = eventIdentityChanged ||
+        performanceContext_.hasHarmony != context.hasHarmony ||
         performanceContext_.rootMidi != context.rootMidi ||
         performanceContext_.harmony.degree != context.harmony.degree ||
         performanceContext_.harmony.quality != context.harmony.quality ||
@@ -875,15 +883,21 @@ bool PerformanceKeyboard::setHarmonySnapshot(
     if (!GroovePuterHarmony::validateHarmonySnapshot(snapshot)) return false;
 
     GroovePuterRhythm::ChordQuality legacyQuality = GroovePuterRhythm::ChordQuality::Triad;
+    bool hasLegacyQuality = false;
     for (uint8_t i = 0; i < static_cast<uint8_t>(GroovePuterRhythm::ChordQuality::Count); ++i) {
         GroovePuterHarmony::QualityId id = 0;
         const auto candidate = static_cast<GroovePuterRhythm::ChordQuality>(i);
         if (GroovePuterHarmony::legacyQualityToId(candidate, id) &&
             id == snapshot.base.qualityId) {
             legacyQuality = candidate;
+            hasLegacyQuality = true;
             break;
         }
     }
+    // Do not let the legacy harmonic carrier reinterpret a valid HGS quality
+    // as a triad. Reject before publishing anything so the previous context
+    // and its source identity stay intact.
+    if (!hasLegacyQuality) return false;
     GroovePuterPerformance::PerformanceContext context{};
     context.harmony = GroovePuterRhythm::HarmonicEvent{0, legacyQuality, 0};
     context.scalePitchClasses = snapshot.tonal.scaleMask;
@@ -895,14 +909,17 @@ bool PerformanceKeyboard::setHarmonySnapshot(
     context.rootMidi = static_cast<uint8_t>(60u + snapshot.base.rootPc);
     context.minNote = kMinNote;
     context.maxNote = kMaxNote;
-    context.sourceOrdinal = static_cast<uint8_t>(
-        snapshot.key.eventOrdinal > 255u ? 255u : snapshot.key.eventOrdinal);
-    context.eventOnset = static_cast<uint8_t>(snapshot.onsetStep > 255u ? 255u : snapshot.onsetStep);
+    context.sourceOrdinal = snapshot.key.eventOrdinal;
+    context.eventOnset = static_cast<uint8_t>(snapshot.onsetStep % 16u);
     context.eventDuration = static_cast<uint8_t>(
         snapshot.durationSteps > 255u ? 255u : snapshot.durationSteps);
     context.allowChromatic = false;
     context.hasHarmony = true;
-    setPerformanceContext(context);
+    const bool eventIdentityChanged = !hasHarmonyEventKey_ ||
+        !GroovePuterHarmony::sameHarmonyEvent(harmonyEventKey_, snapshot.key);
+    applyPerformanceContext(context, eventIdentityChanged);
+    harmonyEventKey_ = snapshot.key;
+    hasHarmonyEventKey_ = true;
     for (uint8_t i = 0; i < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count); ++i)
         harmonyRolePitchMasks_[i] = snapshot.roles[i].allowed;
     hasHarmonyRolePitchMasks_ = true;
@@ -910,6 +927,7 @@ bool PerformanceKeyboard::setHarmonySnapshot(
 }
 
 void PerformanceKeyboard::clearPerformanceHarmonyContext() {
+    hasHarmonyEventKey_ = false;
     const bool hadHarmony = performanceContext_.hasHarmony || arpHoldActive_;
     const bool harmonyArp = pendingClocked_.arpEnabled &&
         (arpPitchSource_ == GroovePuterPerformance::ArpPitchSource::Harmony ||
@@ -1478,7 +1496,9 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     if (!noteModeEnabled_) return false;
     if (!enabled_) return true;
     if (findHeld(physicalKey) >= 0) return true;
-    if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+    // Capacity is per held-note owner. Reject this key without disrupting
+    // notes already owned by other physical keys or external inputs.
+    if (heldCount_ >= kMaxHeldNotes) return true;
     if (velocity == 0) velocity = keyVelocity_;
     if (velocity > 127) velocity = 127;
 
@@ -1644,7 +1664,7 @@ bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity
         for (std::size_t i = 0; i < heldCount_; ++i) {
             if (held_[i].physicalKey == '\0' && held_[i].channel == drumChannel) return true;
         }
-        if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+        if (heldCount_ >= kMaxHeldNotes) return false;
         held_[heldCount_++] = HeldNote{'\0', kSeqtrakDrumNote, velocity, drumChannel};
         if (!hasPhysicalSemanticOwner(kSeqtrakDrumNote, drumChannel))
             emitNoteOn(held_[heldCount_ - 1]);
@@ -1652,7 +1672,7 @@ bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity
     }
 
     if (findHeldExternal(note) >= 0) return true;
-    if (heldCount_ >= kMaxHeldNotes) { panic(); return true; }
+    if (heldCount_ >= kMaxHeldNotes) return false;
 
     const std::size_t priorHeld = heldCount_;
     held_[heldCount_++] = HeldNote{'\0', note, velocity, 0};
@@ -1980,15 +2000,16 @@ void PerformanceKeyboard::markConfigPersisted() {
     persistedConfig_ = exportConfiguration();
 }
 
-void PerformanceKeyboard::externalSustain(bool down) {
+bool PerformanceKeyboard::externalSustain(bool down) {
     serviceHardwareClock();
     legacyExternalSustainDown_ = down;
     updateExternalSustainAggregate();
+    return true;
 }
 
-void PerformanceKeyboard::externalSustain(bool down, PerformanceInputIdentity input) {
+bool PerformanceKeyboard::externalSustain(bool down, PerformanceInputIdentity input) {
     serviceHardwareClock();
-    if (input.source >= 3u || input.channel >= 16u || input.cable >= 16u) return;
+    if (input.source >= 3u || input.channel >= 16u || input.cable >= 16u) return false;
     std::size_t found = kMaxExternalInputOwners;
     std::size_t free = kMaxExternalInputOwners;
     for (std::size_t i = 0; i < kMaxExternalInputOwners; ++i) {
@@ -2007,11 +2028,18 @@ void PerformanceKeyboard::externalSustain(bool down, PerformanceInputIdentity in
         if (found == kMaxExternalInputOwners && free < kMaxExternalInputOwners) {
             externalSustainOwners_[free] = ExternalSustainOwner{
                 true, input.generation, input.source, input.channel, input.cable};
+        } else if (found == kMaxExternalInputOwners) {
+            // Keep existing sustain owners intact. The caller gets an explicit
+            // rejection and a bounded diagnostic count instead of a silent drop.
+            if (externalSustainOverflowCount_ != UINT32_MAX)
+                ++externalSustainOverflowCount_;
+            return false;
         }
     } else if (found < kMaxExternalInputOwners) {
         externalSustainOwners_[found] = ExternalSustainOwner{};
     }
     updateExternalSustainAggregate();
+    return true;
 }
 
 std::size_t PerformanceKeyboard::externalHeldCount() const {

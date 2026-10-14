@@ -123,6 +123,66 @@ int main() {
     assert(keyboard.externalNoteOff(67, ch1));
     assert(sink.count(MusicalEventType::NoteOff, 67) == noteOffBefore + 1);
 
+    // Held-note capacity rejects only the incoming owner. Existing physical
+    // and external owners remain live; an overflowed external NoteOn cannot
+    // leave a phantom identity that later appears releasable.
+    {
+        MusicalEventRouter capacityRouter;
+        RecordingSink capacitySink;
+        assert(capacityRouter.addSink(capacitySink));
+        PerformanceKeyboard capacity(capacityRouter);
+        capacity.setVoiceMode(PerformanceVoiceMode::Poly);
+        PerformanceInputIdentity owners[PerformanceKeyboard::kMaxHeldNotes]{};
+        for (std::size_t i = 0; i < PerformanceKeyboard::kMaxHeldNotes - 1; ++i) {
+            owners[i] = input(100, 1, static_cast<uint8_t>(40 + i));
+            assert(capacity.externalNoteOn(owners[i].inputNote, 90, owners[i]));
+        }
+        assert(capacity.keyDown('a', 100)); // 19th owner
+        assert(capacity.heldCount() == PerformanceKeyboard::kMaxHeldNotes);
+        const std::size_t eventsBeforeOverflow = capacitySink.events.size();
+        assert(capacity.keyDown('s', 100)); // consumed, but cannot steal existing owners
+        assert(capacity.heldCount() == PerformanceKeyboard::kMaxHeldNotes);
+        assert(capacity.isPhysicalKeyHeld('a'));
+        assert(capacitySink.events.size() == eventsBeforeOverflow);
+
+        const auto rejected = input(100, 1, 100);
+        assert(!capacity.externalNoteOn(100, 90, rejected));
+        assert(capacity.heldCount() == PerformanceKeyboard::kMaxHeldNotes);
+        assert(capacity.releaseExternalInput(1, 100) ==
+               PerformanceKeyboard::kMaxHeldNotes - 1);
+        assert(!capacity.externalNoteOff(100, rejected));
+        assert(capacity.isPhysicalKeyHeld('a'));
+        assert(capacity.keyUp('a'));
+        assert(capacity.heldCount() == 0);
+    }
+
+    // Sustain owner-table exhaustion is explicit and bounded. A rejected
+    // owner cannot cancel existing sustain; once one slot is freed it can retry.
+    {
+        MusicalEventRouter sustainRouter;
+        RecordingSink sustainSink;
+        assert(sustainRouter.addSink(sustainSink));
+        PerformanceKeyboard sustain(sustainRouter);
+        sustain.setArpeggiatorEnabled(true);
+        PerformanceInputIdentity inputs[33]{};
+        for (uint32_t i = 0; i < 32; ++i) {
+            inputs[i] = PerformanceInputIdentity{
+                400u + i, 1, static_cast<uint8_t>(i % 16u), 0,
+                static_cast<uint8_t>(i / 16u)};
+            assert(sustain.externalSustain(true, inputs[i]));
+        }
+        inputs[32] = PerformanceInputIdentity{999u, 2, 0, 0, 0};
+        assert(sustain.externalSustainDown());
+        assert(!sustain.externalSustain(true, inputs[32]));
+        assert(sustain.externalSustainOverflowCount() == 1u);
+        assert(sustain.externalSustainDown());
+        assert(sustain.externalSustain(false, inputs[0]));
+        assert(sustain.externalSustain(true, inputs[32]));
+        for (const PerformanceInputIdentity& owner : inputs)
+            assert(sustain.externalSustain(false, owner));
+        assert(!sustain.externalSustainDown());
+    }
+
     PerformanceIntent unsupported{};
     unsupported.kind = static_cast<PerformanceIntentKind>(255);
     assert(!keyboard.dispatchIntent(unsupported));
