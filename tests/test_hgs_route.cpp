@@ -188,6 +188,60 @@ int main() {
   assert(planRouteChunk(request, recent, scratch, workspace, route) == HarmonyStatus::Ready);
   assert(route.count <= kMaxRouteChunkEvents);
 
+  // Full phrase assembly carries state, canonical function memory and section
+  // budgets across bounded planner chunks. A repeated request is byte-field
+  // deterministic and preserves phrase-global timing ordinals.
+  request = baseRequest();
+  request.candidateRequest.section = SectionIntent::Develop;
+  request.candidateRequest.current = request.candidateRequest.home;
+  request.candidateRequest.currentContext = request.candidateRequest.homeContext;
+  request.availableTimingSlots = 12;
+  ResolvedHarmonicEvent phraseA[32]{};
+  ResolvedHarmonicEvent phraseB[32]{};
+  uint8_t phraseACount = 0;
+  uint8_t phraseBCount = 0;
+  HarmonicState terminalA{};
+  HarmonicState terminalB{};
+  TonalContext terminalContextA{};
+  TonalContext terminalContextB{};
+  assert(planRoute(request, recent, scratch, workspace, phraseA, 32,
+                   phraseACount, terminalA, terminalContextA) ==
+         HarmonyStatus::Ready);
+  assert(planRoute(request, recent, scratch, workspace, phraseB, 32,
+                   phraseBCount, terminalB, terminalContextB) ==
+         HarmonyStatus::Ready);
+  assert(phraseACount == 12 && phraseBCount == phraseACount);
+  for (uint8_t i = 0; i < phraseACount; ++i) {
+    assert(phraseA[i].timingSlotOrdinal == i);
+    assert(phraseA[i].state.rootPc == phraseB[i].state.rootPc);
+    assert(phraseA[i].state.qualityId == phraseB[i].state.qualityId);
+    assert(phraseA[i].tonal.scaleId == phraseB[i].tonal.scaleId);
+    assert(phraseA[i].tonal.tonicPc == phraseB[i].tonal.tonicPc);
+  }
+  assert(terminalA.rootPc == phraseA[phraseACount - 1].state.rootPc);
+  assert(terminalContextA.tonicPc ==
+         phraseA[phraseACount - 1].tonal.tonicPc);
+
+  // Failure preserves caller outputs, including the event array.
+  ResolvedHarmonicEvent protectedPhrase[32]{};
+  protectedPhrase[0].state = state(9, kQualityMinor);
+  const HarmonicState protectedTerminal = protectedPhrase[0].state;
+  uint8_t protectedCount = 77;
+  RouteRequest invalidPhrase = request;
+  invalidPhrase.availableTimingSlots = 33;
+  assert(planRoute(invalidPhrase, recent, scratch, workspace, protectedPhrase,
+                   32, protectedCount, terminalA, terminalContextA) ==
+         HarmonyStatus::Invalid);
+  assert(protectedCount == 77 && protectedPhrase[0].state.rootPc ==
+         protectedTerminal.rootPc);
+  RouteRequest invalidEmpty = request;
+  invalidEmpty.availableTimingSlots = 0;
+  invalidEmpty.candidateRequest.style = static_cast<HarmonicStyleId>(255);
+  assert(planRoute(invalidEmpty, recent, scratch, workspace, nullptr, 0,
+                   protectedCount, terminalA, terminalContextA) ==
+         HarmonyStatus::Invalid);
+  assert(protectedCount == 77);
+
   // Removing home scale capability makes exact RETURN unreachable. Failure
   // must leave the previous output untouched.
   request = baseRequest();

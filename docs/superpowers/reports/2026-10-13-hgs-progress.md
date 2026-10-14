@@ -497,3 +497,24 @@
   into the production generated-phrase transaction; add explicit persisted LEGACY/GRAPH
   selection with a validated capability/N/A reason; then test Graph consumer and UI/config end
   to end before HGS2-8.
+
+### HGS2-7c route assembly prerequisite — in progress
+
+- Added `planRoute()` as a fixed-capacity phrase assembler over the existing ≤4-event
+  `planRouteChunk()` API. It carries the current harmonic state, previous canonical function
+  tokens, and section change/modulation budgets across chunks. RETURN fills remaining existing
+  timing slots with the exact home state after the bounded bridge reaches home; it does not add
+  onsets. Invalid requests and planner failures leave caller route outputs untouched.
+- Extended `test_hgs_route` to cover a deterministic 12-event assembled route, global timing
+  ordinals, terminal state, failure atomicity, and invalid zero-event requests.
+- Verification: full HGS suite — PASS; full Smart Play suite — PASS; Phrase Core and persistence
+  suites — PASS; SDL build — PASS with existing C++ standard/format warnings; Cardputer ADV build
+  — PASS, flash 1,559,810 bytes / static RAM 188,804 bytes; final route test and `git diff --check`
+  — PASS.
+- This helper is an assembly primitive, not production Graph activation. The saved
+  `harmonicStrategy` field is currently backward-compatible configuration groundwork; no UI
+  exposes it and no generated Song consumes it yet. Graph route creation, participant/version
+  capture, durable sidecar transaction, and honest genre capability UI remain open. Hardware
+  acceptance is still `NOT_RUN` and remains premature.
+- NEXT_TASK=HGS2-7c: connect the phrase route assembler to Graph WHAT materialization and the
+  generated-song state/persistence transaction, including cycle/undo/replay behavior.

@@ -70,6 +70,20 @@ HarmonyStatus planRouteChunk(const RouteRequest& request,
                              RouteCandidateWorkspace& candidateWorkspace,
                              ResolvedRouteChunk& out);
 
+// Assemble up to 32 phrase events by repeatedly invoking the bounded
+// four-event planner. State, canonical transition tokens and section budgets
+// carry across chunks. For RETURN, any slots after exact home is reached are
+// filled with the home state. Outputs remain untouched on failure.
+HarmonyStatus planRoute(const RouteRequest& request,
+                        const RecentHarmonyMemory& recent,
+                        RouteScratch& scratch,
+                        RouteCandidateWorkspace& candidateWorkspace,
+                        ResolvedHarmonicEvent* outEvents,
+                        uint8_t outCapacity,
+                        uint8_t& outCount,
+                        HarmonicState& outTerminal,
+                        TonalContext& outTerminalContext);
+
 }  // namespace GroovePuterHarmony
 
 #endif  // GROOVEPUTER_GENERATION_HARMONY_HARMONIC_ROUTE_H

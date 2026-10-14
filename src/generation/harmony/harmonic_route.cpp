@@ -485,4 +485,99 @@ HarmonyStatus planRouteChunk(const RouteRequest& request,
   return HarmonyStatus::Ready;
 }
 
+HarmonyStatus planRoute(const RouteRequest& request,
+                        const RecentHarmonyMemory& recent,
+                        RouteScratch& scratch,
+                        RouteCandidateWorkspace& candidateWorkspace,
+                        ResolvedHarmonicEvent* outEvents,
+                        uint8_t outCapacity,
+                        uint8_t& outCount,
+                        HarmonicState& outTerminal,
+                        TonalContext& outTerminalContext) {
+  const uint8_t total = request.availableTimingSlots;
+  if (total > 32 || request.firstTimingSlot > 31 ||
+      static_cast<uint16_t>(request.firstTimingSlot) + total > 32 ||
+      outCapacity < total || (total != 0 && outEvents == nullptr)) {
+    return HarmonyStatus::Invalid;
+  }
+
+  RouteRequest validationRequest = request;
+  validationRequest.availableTimingSlots = 0;
+  ResolvedRouteChunk validationResult{};
+  const HarmonyStatus validationStatus = planRouteChunk(
+      validationRequest, recent, scratch, candidateWorkspace, validationResult);
+  if (validationStatus != HarmonyStatus::Ready) return validationStatus;
+
+  ResolvedHarmonicEvent staged[32]{};
+  uint8_t stagedCount = 0;
+  CandidateRequest current = request.candidateRequest;
+  uint32_t globalOrdinal = request.globalEventOrdinal;
+  uint8_t changes = current.changesInSection;
+  uint8_t modulations = current.modulationsInSection;
+  while (stagedCount < total) {
+    const uint8_t remaining = static_cast<uint8_t>(total - stagedCount);
+    const uint8_t chunkSize = remaining < kMaxRouteChunkEvents
+        ? remaining
+        : kMaxRouteChunkEvents;
+    RouteRequest chunkRequest = request;
+    chunkRequest.candidateRequest = current;
+    chunkRequest.candidateRequest.changesInSection = changes;
+    chunkRequest.candidateRequest.modulationsInSection = modulations;
+    chunkRequest.availableTimingSlots = chunkSize;
+    chunkRequest.firstTimingSlot = static_cast<uint8_t>(
+        request.firstTimingSlot + stagedCount);
+    if (globalOrdinal > 0xffffu) return HarmonyStatus::Invalid;
+    chunkRequest.globalEventOrdinal = static_cast<uint16_t>(globalOrdinal);
+
+    ResolvedRouteChunk chunk{};
+    const HarmonyStatus status = planRouteChunk(
+        chunkRequest, recent, scratch, candidateWorkspace, chunk);
+    if (status != HarmonyStatus::Ready) return status;
+
+    if (current.section == SectionIntent::Return && chunk.count < chunkSize) {
+      // The bounded RETURN search returns the exact bridge length. Once home
+      // has been reached, preserve the remaining WHEN slots as a home hold.
+      for (uint8_t i = 0; i < chunk.count; ++i)
+        staged[stagedCount++] = chunk.events[i];
+      current.current = request.candidateRequest.home;
+      current.currentContext = request.candidateRequest.homeContext;
+      while (stagedCount < total) {
+        ResolvedHarmonicEvent& hold = staged[stagedCount];
+        hold.state = current.current;
+        hold.tonal = current.currentContext;
+        hold.cadenceClass = CadenceClass::HoldHome;
+        hold.timingSlotOrdinal = static_cast<uint8_t>(
+            request.firstTimingSlot + stagedCount);
+        ++stagedCount;
+      }
+      break;
+    }
+    if (chunk.count != chunkSize) return HarmonyStatus::CapacityExceeded;
+
+    for (uint8_t i = 0; i < chunk.count; ++i) {
+      const ResolvedHarmonicEvent& event = chunk.events[i];
+      staged[stagedCount++] = event;
+      current.current = event.state;
+      current.currentContext = event.tonal;
+      current.previous2 = current.previous1;
+      if (canonicalFunctionTokenFor(event.state, event.tonal,
+                                    current.previous1) != HarmonyStatus::Ready)
+        return HarmonyStatus::Invalid;
+    }
+    changes = chunk.endingChangesInSection;
+    modulations = chunk.endingModulationsInSection;
+    globalOrdinal += chunk.count;
+  }
+
+  if (total == 0) {
+    current.current = request.candidateRequest.current;
+    current.currentContext = request.candidateRequest.currentContext;
+  }
+  for (uint8_t i = 0; i < total; ++i) outEvents[i] = staged[i];
+  outCount = stagedCount;
+  outTerminal = current.current;
+  outTerminalContext = current.currentContext;
+  return HarmonyStatus::Ready;
+}
+
 }  // namespace GroovePuterHarmony
