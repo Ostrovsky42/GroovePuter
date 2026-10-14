@@ -5,6 +5,19 @@
 
 namespace GroovePuterHarmony {
 
+// v2 canonicalizes sounded relative pitch, not unrecoverable Roman spelling.
+// Degrees use a fixed major reference; chromatic roots use the next degree
+// lowered by one semitone (C# == bII). This is independent of key/mode.
+constexpr uint16_t kCanonicalFunctionCodecVersion = 2;
+inline uint8_t canonicalRootDegree(uint8_t relativePc) {
+  static constexpr uint8_t degrees[12] = {0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6};
+  return degrees[relativePc % 12u];
+}
+inline uint8_t canonicalRootAlteration(uint8_t relativePc) {
+  static constexpr uint8_t alterations[12] = {2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2};
+  return alterations[relativePc % 12u];
+}
+
 constexpr uint8_t kNoFunctionDegree = 255;
 constexpr uint8_t kNoSlashBassClass = 255;
 

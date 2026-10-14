@@ -148,7 +148,7 @@ def render_header(model):
     lines += _byte_array("kCoarseBytes", model["coarse_bytes"])
     lines += [
         "",
-        "inline constexpr uint16_t kModelVersion = 1;",
+        "inline constexpr uint16_t kModelVersion = 2;",
         f"inline constexpr uint64_t kContentChecksum = 0x{model['content_sha256'][:16]}ull;",
         f"inline constexpr uint16_t kTokenCount = {model['counts']['token']};",
         f"inline constexpr uint16_t kTrigramCount = {model['counts']['trigram']};",

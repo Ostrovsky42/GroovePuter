@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "tools/harmony"))
 
 from build_transition_stats import (  # noqa: E402
     compile_transition_stats,
+    _canonical_token,
     quantize_successors,
     top_n_report,
     validate_stats,
@@ -63,6 +64,19 @@ def model(routes):
 
 
 class HarmonyStatsTests(unittest.TestCase):
+    def test_shared_runtime_codec_vectors(self):
+        registry = {q["id"]: q for q in QUALITY["qualities"]}
+        rows = (ROOT / "tests/fixtures/harmony/canonical_codec_v2.tsv").read_text().splitlines()
+        for line in rows:
+            if not line or line.startswith("#"):
+                continue
+            tonic, scale, root, quality, slash, ext, degree, signed, group, alt, bass, spelling = map(int, line.split())
+            raw = token(1, root, quality, slash=None if slash == 255 else slash)
+            self.assertEqual(_canonical_token(raw, registry),
+                             (degree, signed, group, ext, alt, bass, spelling),
+                             (tonic, scale, root, quality, slash))
+
+
     def _pinned_model(self):
         lock = json.loads((ROOT / "tools/harmony/source_lock.json").read_text())
         quality = json.loads((ROOT / "tools/harmony/quality_registry.json").read_text())

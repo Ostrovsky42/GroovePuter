@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-TOKEN_SCHEMA = "canonical-function-v1"
+TOKEN_SCHEMA = "canonical-function-v2"
 TOKEN_SIZE = 8
 QUALITY_GROUPS = {
     "major": 0,
@@ -79,7 +79,11 @@ def _canonical_token(raw, quality_by_id):
     interval_mask = _mask(quality["intervals"])
     skeleton_mask = _mask(quality["skeleton"])
     extension_flags = interval_mask & ~skeleton_mask & 0x0FFF
-    alteration_flags = accidental + 2
+    # Sounded semantics, not source spelling: deterministic major-reference
+    # degrees and flat chromatic aliases, matching corpus_prior.h codec v2.
+    canonical_degrees = (0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6)
+    canonical_alterations = (2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2)
+    alteration_flags = canonical_alterations[root_offset]
     skeleton = tuple(quality["skeleton"])
     if 6 in skeleton and 7 not in skeleton:
         alteration_flags |= 1 << 3
@@ -93,13 +97,13 @@ def _canonical_token(raw, quality_by_id):
         alteration_flags |= 1 << 7
 
     return (
-        255 if degree is None else degree - 1,
+        canonical_degrees[root_offset],
         ((root_offset + 6) % 12) - 6,
         _quality_group(quality),
         extension_flags,
         alteration_flags,
         255 if slash_interval is None else slash_interval,
-        0,  # Reserved spelling flags; v1 groups semantic function, not source notation.
+        0,  # Reserved spelling flags; v2 groups sounded semantics, not source notation.
     )
 
 

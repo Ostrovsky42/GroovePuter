@@ -1,6 +1,10 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include "src/generation/harmony/generated/corpus_prior_data.h"
 
 #include "src/generation/harmony/harmonic_candidate.h"
 #include "src/generation/harmony/harmonic_quality.h"
@@ -130,6 +134,45 @@ int main() {
   req.current.qualityId = 31;
   assert(collectCandidates(req, scratch, candidates, contexts) ==
          HarmonyStatus::Invalid);
+
+  // Shared vectors pin the offline/runtime semantic codec, including minor,
+  // non-C keys, altered roots, sevenths/ninths and slash bass.
+  std::ifstream vectors("tests/fixtures/harmony/canonical_codec_v2.tsv");
+  assert(vectors.good());
+  std::string line;
+  unsigned vectorCount = 0;
+  while (std::getline(vectors, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream row(line);
+    int tonic, scale, relativeRoot, quality, slash;
+    int extensions, degree, signedRoot, group, alterations, bass, spelling;
+    assert(row >> tonic >> scale >> relativeRoot >> quality >> slash >>
+           extensions >> degree >> signedRoot >> group >> alterations >> bass >> spelling);
+    auto chord = state(static_cast<uint8_t>((tonic + relativeRoot) % 12), quality);
+    if (slash != 255) chord.bassPc = static_cast<uint8_t>((chord.rootPc + slash) % 12);
+    CanonicalFunctionToken token{};
+    assert(canonicalFunctionTokenFor(chord, context(tonic, scale), token) == HarmonyStatus::Ready);
+    assert(token.extensionFlags == extensions && token.degree == degree &&
+           token.rootOffset == signedRoot && token.qualityGroup == group &&
+           token.alterationFlags == alterations && token.slashBassClass == bass &&
+           token.spellingFlags == spelling);
+    ++vectorCount;
+  }
+  assert(vectorCount == 12);
+  CanonicalFunctionToken tonicMajor{};
+  assert(canonicalFunctionTokenFor(state(0, kQualityMajor), context(0, 1), tonicMajor)
+         == HarmonyStatus::Ready);
+  bool exactTonic = false;
+  for (uint16_t i = 0; i < GeneratedCorpusPrior::kTokenCount; ++i) {
+    const auto& token = GeneratedCorpusPrior::kTokens[i];
+    if (token.extensionFlags == tonicMajor.extensionFlags &&
+        token.degree == tonicMajor.degree && token.rootOffset == tonicMajor.rootOffset &&
+        token.qualityGroup == tonicMajor.qualityGroup &&
+        token.alterationFlags == tonicMajor.alterationFlags &&
+        token.slashBassClass == tonicMajor.slashBassClass &&
+        token.spellingFlags == tonicMajor.spellingFlags) exactTonic = true;
+  }
+  assert(exactTonic);
 
   std::cout << "HGS bounded candidates: PASS\n";
   return 0;

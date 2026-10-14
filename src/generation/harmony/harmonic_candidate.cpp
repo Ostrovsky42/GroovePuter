@@ -156,25 +156,35 @@ CanonicalFunctionToken makeToken(const HarmonicState& state,
   if (rootOffset > 5) rootOffset -= 12;
   if (rootOffset < -6) rootOffset += 12;
   token.rootOffset = rootOffset;
-  token.qualityGroup = static_cast<uint8_t>(quality->family);
-  token.extensionFlags = quality->cardinality > 3
-                             ? static_cast<uint16_t>(1u << (quality->cardinality - 4u))
-                             : 0;
+  // These stable groups match the offline codec, not QualityFamily IDs.
+  switch (quality->family) {
+    case QualityFamily::MajorMinor:
+      token.qualityGroup = quality->triadicSkeleton == 0x091u ? 0 :
+                           quality->triadicSkeleton == 0x089u ? 1 : 8;
+      break;
+    case QualityFamily::Dominant: token.qualityGroup = 2; break;
+    case QualityFamily::Diminished: token.qualityGroup = 3; break;
+    case QualityFamily::Augmented: token.qualityGroup = 4; break;
+    case QualityFamily::Suspended:
+      token.qualityGroup = quality->triadicSkeleton == 0x0a1u ? 5 :
+                           quality->triadicSkeleton == 0x085u ? 6 :
+                           quality->triadicSkeleton == 0x081u ? 7 : 8;
+      break;
+  }
+  token.extensionFlags = static_cast<uint16_t>(
+      quality->intervalMask & ~quality->triadicSkeleton & kPitchSet12Mask);
   token.slashBassClass = state.bassPc == kNoBassPc
                              ? kNoSlashBassClass
                              : static_cast<uint8_t>((state.bassPc + 12u - state.rootPc) % 12u);
   const uint8_t relativePc = static_cast<uint8_t>((state.rootPc + 12u - context.tonicPc) % 12u);
-  uint8_t degree = 0;
-  for (uint8_t offset = 0; offset < 12; ++offset) {
-    const uint8_t pitch = static_cast<uint8_t>((context.tonicPc + offset) % 12u);
-    if ((context.scaleMask & (1u << pitch)) == 0) continue;
-    if (pitch == state.rootPc) {
-      token.degree = degree;
-      break;
-    }
-    ++degree;
-  }
-  if (token.degree == kNoFunctionDegree) token.alterationFlags = relativePc;
+  token.degree = canonicalRootDegree(relativePc);
+  token.alterationFlags = canonicalRootAlteration(relativePc);
+  const PitchSet12 skeleton = quality->triadicSkeleton;
+  if ((skeleton & (1u << 6u)) && !(skeleton & (1u << 7u))) token.alterationFlags |= 1u << 3u;
+  if ((skeleton & (1u << 8u)) && !(skeleton & (1u << 7u))) token.alterationFlags |= 1u << 4u;
+  if (skeleton == 0x085u) token.alterationFlags |= 1u << 5u;
+  if (skeleton == 0x0a1u) token.alterationFlags |= 1u << 6u;
+  if (skeleton == 0x081u) token.alterationFlags |= 1u << 7u;
   return token;
 }
 
