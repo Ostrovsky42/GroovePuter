@@ -11,6 +11,7 @@
 #include "src/ui/miniacid_display.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/internal_synth_output.h"
+#include "src/generation/migration/genre_harmony_selection.h"
 #include "src/output/output_ownership.h"
 #include "src/ui/workflow_mode.h"
 #include <vector>
@@ -86,14 +87,14 @@ int main() {
   for(int i=0;i<4;++i) { auto e=scan(GROOVEPUTER_DOWN); assert(page.handleEvent(e)); }
   page.draw(gfx);
   assert(gfx.has("KEY C CHR"));
-  assert(gfx.has("N/A:SCALE"));
+  assert(gfx.has("GENRE"));
   auto m=key('m'); assert(page.handleEvent(m));
   assert(scene.generatorParams.scale == MINOR);
   gfx.text.clear(); UI::drawToast(gfx); assert(gfx.has("KEY C MIN"));
   gfx.text.clear(); page.draw(gfx);
   assert(gfx.has("KEY C MIN"));
   auto right=scan(GROOVEPUTER_RIGHT); assert(page.handleEvent(right));
-  gfx.text.clear(); page.draw(gfx); assert(gfx.has("GRAPH"));
+  gfx.text.clear(); page.draw(gfx); assert(gfx.has("KEY C MIN / AUTO"));
   auto enter=key('\n'); assert(page.handleEvent(enter));
   assert(scene.genre.harmonicStrategy == 1);
   auto tab=key('\t'); assert(page.handleEvent(tab));
@@ -229,5 +230,87 @@ int main() {
       assert(releasePeak <= 4);
     }
   }
+  static_assert(sizeof(GenreSettings) == 12, "AUTO must use existing padding");
+  // Resolver honors actual catalog/capability bounds and old explicit source.
+  GenreSettings autoSettings{};
+  assert(!autoSettings.harmonicAuto && autoSettings.harmonicStrategy == 0);
+  autoSettings.harmonicAuto = true;
+  assert(GroovePuterRhythm::resolveGenreHarmony(autoSettings, 0).settings.harmonicStrategy == 1);
+  autoSettings.generativeMode = 2;
+  assert(GroovePuterRhythm::resolveGenreHarmony(autoSettings, 0).settings.harmonicStrategy == 0);
+  autoSettings.generativeMode = 0;
+  assert(GroovePuterRhythm::resolveGenreHarmony(autoSettings, 9).settings.harmonicStrategy == 0);
+  autoSettings.harmonicAuto = false;
+  assert(GroovePuterRhythm::resolveGenreHarmony(autoSettings, 0).settings.harmonicStrategy == 0);
+  autoSettings.harmonicStrategy = 1;
+  assert(GroovePuterRhythm::resolveGenreHarmony(autoSettings, 9).settings.harmonicStrategy == 1);
+
+  // AUTO is a real, persisted next-Phrase preference. Existing Legacy0 stays
+  // default; unsupported scale falls back to genre generation, not whole-Harmony N/A.
+  auto& autoScene = engine.sceneManager().currentScene();
+  autoScene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::LoFi);
+  autoScene.genre.recipe = 0;
+  autoScene.genre.harmonicStrategy = 0;
+  autoScene.genre.harmonicAuto = false;
+  autoScene.genre.regenerateOnApply = false;
+  autoScene.generatorParams.scale = MINOR;
+  engine.genreManager().setGenerativeMode(GenerativeMode::LoFi);
+  engine.genreManager().setRecipe(0);
+  GenrePage autoPage(gfx, engine, AudioGuard{});
+  UI::UiShellFrameModel shellFrame{};
+  for (int i = 0; i < 4; ++i) { auto down = scan(GROOVEPUTER_DOWN); assert(autoPage.handleEvent(down)); }
+  auto autoRight = scan(GROOVEPUTER_RIGHT);
+  assert(autoPage.handleEvent(autoRight));
+  UI::beginShellFrameModel(shellFrame);
+  gfx.text.clear(); autoPage.draw(gfx);
+  UI::endShellFrameModel();
+  assert(gfx.has("KEY C MIN / AUTO"));
+  auto apply = key('\n'); assert(autoPage.handleEvent(apply));
+  const auto& appliedScene = engine.sceneManager().currentScene();
+  assert(appliedScene.genre.harmonicStrategy == 1);
+  const auto appliedAuto = GroovePuterRhythm::resolveGenreHarmony(
+      appliedScene.genre, static_cast<uint8_t>(appliedScene.generatorParams.scale));
+  assert(appliedAuto.settings.harmonicAuto &&
+         appliedAuto.settings.harmonicStrategy == 1);
+  std::string savedJson;
+  assert(engine.sceneManager().writeSceneJson(savedJson));
+  assert(savedJson.find("\"hma\":true") != std::string::npos);
+  SceneManager domLoaded;
+  assert(domLoaded.loadSceneJson(savedJson));
+  assert(domLoaded.currentScene().genre.harmonicAuto &&
+         domLoaded.currentScene().genre.harmonicStrategy == 1);
+  struct JsonReader {
+    const std::string& text;
+    size_t position = 0;
+    int read() { return position < text.size() ? static_cast<unsigned char>(text[position++]) : -1; }
+  } eventedReader{savedJson};
+  SceneManager evented;
+  assert(evented.loadSceneEvented(eventedReader));
+  assert(evented.currentScene().genre.harmonicAuto &&
+         evented.currentScene().genre.harmonicStrategy == 1);
+
+  engine.sceneManager().currentScene().generatorParams.scale = CHROMATIC;
+  UI::beginShellFrameModel(shellFrame);
+  gfx.text.clear(); autoPage.draw(gfx);
+  UI::endShellFrameModel();
+  assert(gfx.has("KEY C CHR / AUTO") && !gfx.has("N/A:") &&
+         std::string(shellFrame.footer.right) == "AUTO>GENRE SCALE M:SCALE");
+  assert(autoPage.handleEvent(apply));
+  assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 0 &&
+         engine.sceneManager().currentScene().genre.harmonicAuto);
+  // Explicit GRAPH is still refused on unsupported scale, with a specific reason.
+  assert(autoPage.handleEvent(autoRight));
+  gfx.text.clear(); UI::drawToast(gfx); assert(gfx.has("GRAPH: SCALE"));
+  // Unknown/missing persisted Auto preference defaults to ordinary Legacy.
+  std::string legacyJson = savedJson;
+  const size_t autoField = legacyJson.find(",\"hma\":true");
+  assert(autoField != std::string::npos);
+  legacyJson.erase(autoField, std::strlen(",\"hma\":true"));
+  const size_t graphStrategy = legacyJson.find("\"hsm\":1");
+  assert(graphStrategy != std::string::npos);
+  legacyJson.replace(graphStrategy, std::strlen("\"hsm\":1"), "\"hsm\":0");
+  assert(engine.sceneManager().loadSceneJson(legacyJson));
+  assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 0 &&
+         !engine.sceneManager().currentScene().genre.harmonicAuto);
   std::puts("GENRE project-scale and SOUND action feedback: PASS");
 }

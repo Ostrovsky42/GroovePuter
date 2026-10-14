@@ -7,6 +7,7 @@
 #include "../axis_page_palette.h"
 #include "../genre_palette.h"
 #include "../project_key.h"
+#include "src/generation/migration/genre_harmony_selection.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -73,14 +74,30 @@ const char* graphCapabilityName(
   switch (status) {
     case Status::Ready: return "GRAPH";
     case Status::Disabled: return "LEGACY";
-    case Status::UnsupportedGenre: return "GRAPH N/A:GENRE";
-    case Status::UnsupportedScale: return "GRAPH N/A:SCALE";
-    case Status::UnsupportedHome: return "GRAPH N/A:HOME";
-    case Status::UnsupportedProjection: return "GRAPH N/A:PITCH";
-    case Status::PlannerFailure: return "GRAPH N/A:ROUTE";
-    case Status::InvalidContext: return "GRAPH N/A:SETUP";
+    case Status::UnsupportedGenre: return "GRAPH: GENRE UNSUPPORTED";
+    case Status::UnsupportedScale: return "GRAPH: SCALE UNSUPPORTED";
+    case Status::UnsupportedHome: return "GRAPH: HOME UNSUPPORTED";
+    case Status::UnsupportedProjection: return "GRAPH: PITCH UNSUPPORTED";
+    case Status::PlannerFailure: return "GRAPH: ROUTE FAILED";
+    case Status::InvalidContext: return "GRAPH: SETUP INVALID";
   }
-  return "GRAPH N/A";
+  return "GRAPH UNAVAILABLE";
+}
+
+const char* graphCapabilityReason(
+    GroovePuterHarmony::PhraseGraphRouteBuildStatus status) {
+  using Status = GroovePuterHarmony::PhraseGraphRouteBuildStatus;
+  switch (status) {
+    case Status::Ready: return "READY";
+    case Status::Disabled: return "DISABLED";
+    case Status::UnsupportedGenre: return "GENRE";
+    case Status::UnsupportedScale: return "SCALE";
+    case Status::UnsupportedHome: return "HOME";
+    case Status::UnsupportedProjection: return "PITCH";
+    case Status::PlannerFailure: return "ROUTE";
+    case Status::InvalidContext: return "SETUP";
+  }
+  return "UNKNOWN";
 }
 
 GroovePuterHarmony::PhraseGraphRouteBuildStatus graphCapabilityFor(
@@ -166,15 +183,14 @@ GenreSettings GenrePage::pendingSettings() const {
   settings.morphAmount = 0;
   settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   settings.rhythmArchetypeId = rhythmArchetypeId_;
-  settings.harmonicStrategy = pendingHarmonyStrategy_;
-  if (settings.harmonicStrategy == static_cast<uint8_t>(
-          GroovePuterHarmony::HarmonicStrategy::Graph) &&
-      graphCapabilityFor(settings, static_cast<uint8_t>(
-          mini_acid_.sceneManager().currentScene().generatorParams.scale)) !=
-          GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    settings.harmonicStrategy = static_cast<uint8_t>(
-        GroovePuterHarmony::HarmonicStrategy::Legacy);
-  }
+  settings.harmonicAuto = pendingHarmonyStrategy_ == 2;
+  settings.harmonicStrategy = pendingHarmonyStrategy_ == 1 ? 1 : 0;
+  const auto selection = GroovePuterRhythm::resolveGenreHarmony(settings,
+      static_cast<uint8_t>(mini_acid_.sceneManager().currentScene().generatorParams.scale));
+  settings = selection.settings;
+  if (!settings.harmonicAuto && settings.harmonicStrategy == 1 &&
+      selection.graphCapability != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready)
+    settings.harmonicStrategy = 0; // preserve the existing pending fallback
   return settings;
 }
 
@@ -228,37 +244,24 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
-bool GenrePage::cycleHarmonyStrategy() {
-  if (pendingHarmonyStrategy_ == static_cast<uint8_t>(
-          GroovePuterHarmony::HarmonicStrategy::Graph)) {
-    pendingHarmonyStrategy_ = static_cast<uint8_t>(
-        GroovePuterHarmony::HarmonicStrategy::Legacy);
-    UI::showToast("HARMONY: LEGACY", 900);
-    return true;
-  }
-  const GenreSettings graphSettings = [&]() {
-    GenreSettings settings = pendingSettings();
-    settings.harmonicStrategy = static_cast<uint8_t>(
-        GroovePuterHarmony::HarmonicStrategy::Graph);
-    return settings;
-  }();
-  const auto status = graphCapabilityFor(graphSettings, static_cast<uint8_t>(
-      mini_acid_.sceneManager().currentScene().generatorParams.scale));
-  if (status != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    char message[64];
-    char projectKey[24];
+bool GenrePage::cycleHarmonyStrategy(int direction) {
+  static constexpr uint8_t choices[] = {0, 2, 1}; // GENRE, AUTO, explicit GRAPH
+  int position = 0;
+  for (int i = 0; i < 3; ++i) if (choices[i] == pendingHarmonyStrategy_) position = i;
+  const uint8_t next = choices[wrapIndex(position + direction, 3)];
+  if (next == 1) {
     const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
-    ProjectKey::format(project.scaleRoot,
-        static_cast<ProjectKey::ScaleTypeValue>(project.scale), projectKey,
-        sizeof(projectKey));
-    std::snprintf(message, sizeof(message), "%s %s",
-                  graphCapabilityName(status), projectKey);
-    UI::showToast(message, 1300);
-    return false;
+    const auto status = graphCapabilityFor(pendingSettings(), static_cast<uint8_t>(project.scale));
+    if (status != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+      UI::showToast(graphCapabilityName(status), 1300);
+      return false;
+    }
   }
-  pendingHarmonyStrategy_ = static_cast<uint8_t>(
-      GroovePuterHarmony::HarmonicStrategy::Graph);
-  UI::showToast("GRAPH FOR NEXT TAKE", 1100);
+  pendingHarmonyStrategy_ = next;
+  const auto settings = pendingSettings();
+  UI::showToast(next == 2 ? (settings.harmonicStrategy == 1
+                    ? "AUTO: GRAPH ON NEXT PHRASE" : "AUTO: GENRE ON NEXT PHRASE")
+                         : next == 1 ? "GRAPH ON NEXT PHRASE" : "GENRE ON NEXT PHRASE", 1100);
   return true;
 }
 
@@ -283,6 +286,7 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   requestedSettings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   requestedSettings.rhythmArchetypeId = rhythmArchetypeId_;
   requestedSettings.harmonicStrategy = pendingSettings().harmonicStrategy;
+  requestedSettings.harmonicAuto = pendingSettings().harmonicAuto;
 
   const bool changed = doRegenerate || mini_acid_.grooveboxMode() != nextMode ||
       activeSettings.generativeMode != requestedSettings.generativeMode ||
@@ -291,7 +295,8 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       activeSettings.morphAmount != requestedSettings.morphAmount ||
       activeSettings.rhythmSelectionMode != requestedSettings.rhythmSelectionMode ||
       activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId ||
-      activeSettings.harmonicStrategy != requestedSettings.harmonicStrategy;
+      activeSettings.harmonicStrategy != requestedSettings.harmonicStrategy ||
+      activeSettings.harmonicAuto != requestedSettings.harmonicAuto;
 
   float requestedBpm = mini_acid_.bpm();
   if (doApplyTempo) {
@@ -348,7 +353,7 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   if (!doRegenerate ||
       generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow ||
       generationResult == GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar) {
-    pendingHarmonyStrategy_ = requestedSettings.harmonicStrategy;
+    pendingHarmonyStrategy_ = requestedSettings.harmonicAuto ? 2 : requestedSettings.harmonicStrategy;
   }
 
   char toast[96];
@@ -363,7 +368,7 @@ void GenrePage::updateFromEngine() {
   const GenerativeMode genre = sceneGenerativeMode(settings);
   genre_index_ = static_cast<int>(genre);
   recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(genre, sceneRecipe(settings)));
-  pendingHarmonyStrategy_ = settings.harmonicStrategy;
+  pendingHarmonyStrategy_ = settings.harmonicAuto ? 2 : settings.harmonicStrategy;
   rhythmMode_ = settings.rhythmSelectionMode == static_cast<uint8_t>(
                     GroovePuterRhythm::RhythmSelectionMode::Manual)
                     ? GroovePuterRhythm::RhythmSelectionMode::Manual
@@ -388,6 +393,7 @@ void GenrePage::applyPendingProfile() {
       active.rhythmSelectionMode == requested.rhythmSelectionMode &&
       active.rhythmArchetypeId == requested.rhythmArchetypeId &&
       active.harmonicStrategy == requested.harmonicStrategy &&
+      active.harmonicAuto == requested.harmonicAuto &&
       mini_acid_.grooveboxMode() == nextMode) {
     return;
   }
@@ -544,14 +550,9 @@ void GenrePage::draw(IGfx& gfx) {
   ProjectKey::format(project.scaleRoot,
       static_cast<ProjectKey::ScaleTypeValue>(project.scale), projectKey,
       sizeof(projectKey));
-  if (graphCapability == GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / %s", projectKey,
-        pendingHarmonyStrategy_ == static_cast<uint8_t>(
-            GroovePuterHarmony::HarmonicStrategy::Graph) ? "GRAPH" : "LEGACY");
-  } else {
-    std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / N/A:%s", projectKey,
-        graphCapabilityName(graphCapability) + 10);
-  }
+  const auto effective = pendingSettings();
+  std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / %s", projectKey,
+      effective.harmonicAuto ? "AUTO" : effective.harmonicStrategy == 1 ? "GRAPH" : "GENRE");
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
       harmonyValue, focus_ == FocusRow::Harmony, axisColor, palette);
 
@@ -572,9 +573,17 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
+  char harmonyHint[40];
+  if (effective.harmonicAuto && graphCapability !=
+      GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    std::snprintf(harmonyHint, sizeof(harmonyHint), "AUTO>GENRE %s M:SCALE",
+        graphCapabilityReason(graphCapability));
+  } else {
+    std::snprintf(harmonyHint, sizeof(harmonyHint), "NEXT PHRASE: %s; M:SCALE",
+        effective.harmonicStrategy == 1 ? "GRAPH" : "GENRE");
+  }
   UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",
-      focus_ == FocusRow::Harmony ? "M:SCALE ENTER:APPLY G:TAKE"
-                                  : "ENTER:APPLY G:TAKE");
+      focus_ == FocusRow::Harmony ? harmonyHint : "ENTER:APPLY G:TAKE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -640,7 +649,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Depth:
         (void)GroovePuterState::cycleGenerationLevel(delta);
         return true;
-      case FocusRow::Harmony: (void)cycleHarmonyStrategy(); return true;
+      case FocusRow::Harmony: (void)cycleHarmonyStrategy(delta); return true;
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }

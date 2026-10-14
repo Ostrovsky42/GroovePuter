@@ -6,6 +6,7 @@
 #include "phrase_generator.h"
 #include "src/generation/migration/phrase_execution.h"
 #include "src/generation/harmony/phrase_graph_route_builder.h"
+#include "src/generation/migration/genre_harmony_selection.h"
 #include "src/state/generation_request_state.h"
 
 #include <array>
@@ -394,7 +395,7 @@ inline bool materializeOneBar(
 inline PreparationDisposition prepare(
     MiniAcid& engine,
     const Scene& scene,
-    const GenreSettings& genre,
+    const GenreSettings& requestedGenre,
     uint8_t bars,
     int pageIndex,
     int firstLocalSlot,
@@ -403,6 +404,8 @@ inline PreparationDisposition prepare(
     GroovePuterRhythm::PreparedPhraseExecution& executionOut,
     PreparationEvidence& evidence,
     const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
+  const GenreSettings genre = GroovePuterRhythm::resolveGenreHarmony(
+      requestedGenre, static_cast<uint8_t>(scene.generatorParams.scale)).settings;
   evidence = PreparationEvidence{};
   const bool graphRequested = genre.harmonicStrategy ==
       static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph);

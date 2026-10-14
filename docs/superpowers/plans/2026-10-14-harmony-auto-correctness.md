@@ -34,38 +34,39 @@ Files: harmonic_route.cpp/.h; tests/test_hgs_phrase_graph_route_builder.cpp.
 ### 2. Canonical corpus codec
 Files: harmonic_candidate.cpp, corpus_prior.h, tools/harmony/build_transition_stats.py,
 generated corpus data and tests/test_hgs_candidates.cpp/test_harmony_stats.py.
-- [ ] Add cross-language canonical vectors and exact-vocabulary witness; observe RED.
-- [ ] Align quality groups/extensions/root/slash encoding and version if needed.
-- [ ] Run corpus/candidates and compiler byte parity.
+- [x] Add cross-language canonical vectors and exact-vocabulary witness; observe RED.
+- [x] Align quality groups/extensions/root/slash encoding and version if needed.
+- [x] Run corpus/candidates and compiler byte parity.
 
 ### 3. Root and scoring semantics
 Files: harmonic_candidate.cpp/harmonic_route.cpp; candidate/route tests.
-- [ ] Add non-C relative-root order and functional/diatonic tag witnesses, RED.
-- [ ] Remove double tonic application; connect each bonus to correct tags.
-- [ ] Run transposition and route repeatability/policy tests.
+- [x] Add non-C relative-root order and functional/diatonic tag witnesses, RED.
+- [x] Remove double tonic application; connect each bonus to correct tags.
+- [x] Run transposition and route repeatability/policy tests.
 
 ### 4. Rich bounded candidates
 Files: harmonic_candidate.cpp; tests/test_hgs_candidates.cpp.
-- [ ] Prove maj7/min9/maj9 introduction at new legal roots under production mask, RED.
-- [ ] Balance shortlist/global cap across allowed quality tiers; preserve hard gates.
-- [ ] Run candidate/policy/projection/routes and inspect selection traces.
+- [x] Prove maj7/min9/maj9 introduction at new legal roots under production mask, RED.
+- [x] Balance shortlist/global cap across allowed quality tiers; preserve hard gates.
+- [x] Run candidate/policy/projection/routes and inspect selection traces.
 
 ### 5. Publication transaction
 Files: strong_rhythm_migration.cpp and relevant generation tests.
-- [ ] Capture late projection failure without altering A/B/drums, RED.
-- [ ] Publish all final outputs only after checks; run transaction/Legacy gates.
+- [x] Capture late projection failure without altering A/B/drums, RED.
+- [x] Publish all final outputs only after checks; run transaction/Legacy gates.
 
 ### 6. AUTO/UI
 Files: source/selection definitions, scene persistence validation, generation
 orchestration and GenrePage; exact touch set determined from call-site audit.
-- [ ] Pin Legacy0/Graph1/default compatibility, AUTO resolution and truthful UI, RED.
-- [ ] Resolve AUTO to actual source before existing executors; maintain typed errors.
-- [ ] Replace whole-Harmony N/A with effective source and specific GRAPH reason.
-- [ ] Run persistence, source gates, real-engine UI and focused SDL.
+- [x] Pin Legacy0/Graph1/default compatibility, AUTO resolution and truthful UI, RED.
+- [x] Resolve AUTO to actual source before existing executors; maintain typed errors.
+- [x] Replace whole-Harmony N/A with effective source and specific GRAPH reason.
+- [x] Run persistence, source gates and real-engine UI.
+- [x] Run focused SDL after the final host/firmware builds.
 
 ### 7. Final verification
-- [ ] HGS/Smart Play/Legacy checks and report-vs-current repro matrix.
-- [ ] FS1B firmware/static budget, diff review and experimental status report.
+- [x] HGS/Smart Play/Legacy checks and report-vs-current repro matrix.
+- [x] FS1B firmware/static budget and final diff review.
 - [ ] Commit reviewable changes; no release merge or unsolicited hardware claim.
 
 ## Execution ledger
@@ -97,3 +98,22 @@ orchestration and GenrePage; exact touch set determined from call-site audit.
   single-bar Graph pipeline. Single-bar G retains established generation and UI
   must identify next-Phrase scope. A separate persisted Auto preference leaves
   concrete Legacy0/Graph1 executor contracts intact; no third materializer source.
+- Task6 RED/GREEN: old UI test expected GRAPH after first selection; the revised
+  GENRE -> AUTO -> GRAPH selector, M:SCALE fallback reason, bool scene field,
+  streaming/DOM/evented persistence and missing-key Legacy default pass the
+  real MiniAcid boundary UI gate. AUTO uses existing GRAPH/GENRE executors and
+  stores the effective source with the Auto preference. Exact-generation
+  integration is not claimed by this UI gate; GRAPH routing is independently
+  covered by the phrase builder and current production trace.
+- Current production route trace (un-instrumented current source): 1,360/1,360
+  profile/seed/scale/section requests Ready, including 272/272 RETURN; output is
+  `/tmp/gp-hgs-current-genre-traces.tsv`. This is routing evidence, not audio.
+- Default Legacy host dump remains byte-identical to a5f74f73 for the checked
+  16 modes x 8 ordinals sample: non-tonal SHA-256
+  `877edf7f36d933f62d1d4e19947ce0f06bbec22bf1e24eb7882e793d09d832bc`; tonal
+  SHA-256 `f02339456ce039909055c6feb011c78fde37223bfd471ac21ed60a73b555b90c`.
+
+- Final verification: focused SDL window smoke shows `C DOR / AUTO` and the
+  toast `AUTO: GRAPH ON NEXT PHRASE`; no audio claim. Cardputer FS1B build PASS
+  (flash 1,671,962 B / 53%; DRAM 189,652 B / 191,488 B), SDL build PASS, and
+  real-engine boundary UI gate PASS. Hardware was not flashed.

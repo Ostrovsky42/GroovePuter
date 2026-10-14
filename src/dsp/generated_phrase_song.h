@@ -418,7 +418,8 @@ inline bool loadPriorGraphSongHarmonicState(
     GroovePuterHarmony::SongHarmonicState& stateOut) {
   using namespace GroovePuterHarmony;
   if (songSlot < 0 || songSlot > 1 || nextStartPosition <= 0 ||
-      nextStartPosition > 128 || scene.genre.harmonicStrategy !=
+      nextStartPosition > 128 || GroovePuterRhythm::resolveGenreHarmony(
+          scene.genre, static_cast<uint8_t>(scene.generatorParams.scale)).settings.harmonicStrategy !=
           static_cast<uint8_t>(HarmonicStrategy::Graph)) return false;
   HarmonicStyleId expectedStyle{};
   if (harmonicStyleFor(scene.genre, expectedStyle) != HarmonyStatus::Ready)
@@ -472,7 +473,8 @@ inline bool loadGraphSongHarmonicStateAt(
   using namespace GroovePuterHarmony;
   if (songSlot < 0 || songSlot > 1 || startPosition < 0 || rowCount <= 0 ||
       startPosition + rowCount > Song::kMaxPositions || rowCount > 8 ||
-      scene.genre.harmonicStrategy != static_cast<uint8_t>(HarmonicStrategy::Graph)) {
+      GroovePuterRhythm::resolveGenreHarmony(
+          scene.genre, static_cast<uint8_t>(scene.generatorParams.scale)).settings.harmonicStrategy != static_cast<uint8_t>(HarmonicStrategy::Graph)) {
     return false;
   }
   HarmonicStyleId expectedStyle{};
@@ -842,7 +844,8 @@ inline bool prepareWithGenerationAttempt(
     return false;
   }
 
-  const GenreSettings genre = scene.genre;
+  const GenreSettings genre = GroovePuterRhythm::resolveGenreHarmony(
+      scene.genre, static_cast<uint8_t>(scene.generatorParams.scale)).settings;
   prepared.genre = genre;
   GraphContinuationContext continuation{};
   if (graphContinuationOut != nullptr && songStart > 0 &&
@@ -1216,7 +1219,7 @@ inline bool sameGenre(const GenreSettings& a, const GenreSettings& b) {
          a.morphTarget == b.morphTarget && a.morphAmount == b.morphAmount &&
          a.rhythmSelectionMode == b.rhythmSelectionMode &&
          a.rhythmArchetypeId == b.rhythmArchetypeId &&
-         a.harmonicStrategy == b.harmonicStrategy;
+         a.harmonicStrategy == b.harmonicStrategy && a.harmonicAuto == b.harmonicAuto;
 }
 
 inline bool sameSettingsExceptOrdinal(
@@ -1393,7 +1396,8 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   }
 
   // R1: everything the rebuild reads that the recipe does not store.
-  if (!sameGenre(scene.genre, recipe.genre) ||
+  if (!sameGenre(GroovePuterRhythm::resolveGenreHarmony(scene.genre,
+          static_cast<uint8_t>(scene.generatorParams.scale)).settings, recipe.genre) ||
       GeneratedPhraseP1R::pitchSourceFingerprint(engine) != recipe.contextFingerprint ||
       !sameSettingsExceptOrdinal(
           GeneratedPhraseP1R::materializationSettingsFor(

@@ -1373,6 +1373,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
+    else if (lastKey_ == "hma") target_.genre.harmonicAuto = value;
     else if (lastKey_ == "cur" || lastKey_ == "curated" ||
              lastKey_ == "sound" || lastKey_ == "snd") {
       // Legacy TEXTURE policy values are decode-only.
@@ -2534,6 +2535,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["rsm"] = scene_->genre.rhythmSelectionMode;
   genreObj["rid"] = scene_->genre.rhythmArchetypeId;
   genreObj["hsm"] = scene_->genre.harmonicStrategy;
+  if (scene_->genre.harmonicAuto) genreObj["hma"] = true;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2872,6 +2874,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     const int harmonicStrategy = valueToInt(genreObj["hsm"], 0);
     loaded->genre.harmonicStrategy =
         harmonicStrategy == 1 ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+    loaded->genre.harmonicAuto = genreObj["hma"].is<bool>() && genreObj["hma"].as<bool>();
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();

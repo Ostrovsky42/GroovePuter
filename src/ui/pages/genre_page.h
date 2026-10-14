@@ -66,7 +66,7 @@ class GenrePage : public IPage {
   void cycleRhythmSelection(int delta);
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
-  bool cycleHarmonyStrategy();
+  bool cycleHarmonyStrategy(int direction = 1);
   void applyCurrent(bool forceRegenerate = false);
   void applyPendingProfile();
   bool generateFromG();
