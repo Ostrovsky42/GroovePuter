@@ -5,6 +5,7 @@
 
 #include "harmonic_candidate.h"
 #include "harmonic_fingerprint.h"
+#include "harmonic_source.h"
 
 namespace GroovePuterHarmony {
 
@@ -83,6 +84,20 @@ HarmonyStatus planRoute(const RouteRequest& request,
                         uint8_t& outCount,
                         HarmonicState& outTerminal,
                         TonalContext& outTerminalContext);
+
+// Build the immutable materializer view for a complete phrase route. Identity
+// metadata is supplied by the caller; a failed route leaves all outputs
+// untouched.
+HarmonyStatus planGraphHarmony(
+    const RouteRequest& request,
+    const RecentHarmonyMemory& recent,
+    RouteScratch& scratch,
+    RouteCandidateWorkspace& candidateWorkspace,
+    uint32_t materialId,
+    uint32_t publicationGeneration,
+    PreparedGraphHarmony& out,
+    HarmonicState& outTerminal,
+    TonalContext& outTerminalContext);
 
 }  // namespace GroovePuterHarmony
 

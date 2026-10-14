@@ -6,6 +6,7 @@
 #include "src/generation/harmony/harmonic_route.h"
 #include "src/generation/harmony/harmonic_quality.h"
 #include "src/generation/harmony/harmonic_scale.h"
+#include "src/generation/harmony/harmonic_source.h"
 
 using namespace GroovePuterHarmony;
 using namespace GroovePuterRhythm;
@@ -221,6 +222,34 @@ int main() {
   assert(terminalA.rootPc == phraseA[phraseACount - 1].state.rootPc);
   assert(terminalContextA.tonicPc ==
          phraseA[phraseACount - 1].tonal.tonicPc);
+
+  PreparedGraphHarmony graph{};
+  HarmonicState graphTerminal{};
+  TonalContext graphTerminalContext{};
+  assert(planGraphHarmony(request, recent, scratch, workspace, 71, 93,
+                          graph, graphTerminal,
+                          graphTerminalContext) == HarmonyStatus::Ready);
+  assert(graph.materialId == 71 && graph.publicationGeneration == 93);
+  assert(graph.modelVersion == request.modelVersion);
+  assert(graph.authority == HarmonicAuthority::Graph);
+  assert(graph.eventCount == phraseACount);
+  for (uint8_t i = 0; i < graph.eventCount; ++i) {
+    assert(graph.events[i].state.rootPc == phraseA[i].state.rootPc);
+    assert(graph.events[i].state.qualityId == phraseA[i].state.qualityId);
+    assert(graph.events[i].timingSlotOrdinal == phraseA[i].timingSlotOrdinal);
+  }
+  PreparedGraphHarmony protectedGraph = graph;
+  assert(planGraphHarmony(request, recent, scratch, workspace, 0, 93,
+                          graph, graphTerminal,
+                          graphTerminalContext) == HarmonyStatus::Invalid);
+  assert(graph.materialId == protectedGraph.materialId &&
+         graph.eventCount == protectedGraph.eventCount);
+  RouteRequest nonzeroGraphStart = request;
+  nonzeroGraphStart.firstTimingSlot = 1;
+  assert(planGraphHarmony(nonzeroGraphStart, recent, scratch, workspace, 71,
+                          93, graph, graphTerminal,
+                          graphTerminalContext) == HarmonyStatus::Invalid);
+  assert(graph.materialId == protectedGraph.materialId);
 
   // Failure preserves caller outputs, including the event array.
   ResolvedHarmonicEvent protectedPhrase[32]{};

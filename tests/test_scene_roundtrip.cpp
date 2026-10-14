@@ -65,6 +65,7 @@ void populateNonDefaultScene(SceneManager& manager) {
   scene.genre.rhythmSelectionMode = static_cast<uint8_t>(
       GroovePuterRhythm::RhythmSelectionMode::Manual);
   scene.genre.rhythmArchetypeId = 712;
+  scene.genre.harmonicStrategy = 1;  // persisted GRAPH selection
   scene.samplerEnabled = false;
 
   scene.generatorParams.minNotes = 3;
@@ -184,6 +185,7 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(scene.genre.rhythmSelectionMode == static_cast<uint8_t>(
              GroovePuterRhythm::RhythmSelectionMode::Manual));
   assert(scene.genre.rhythmArchetypeId == 712);
+  assert(scene.genre.harmonicStrategy == 1);
   assert(!scene.samplerEnabled);
 
   assert(scene.generatorParams.minNotes == 3);
@@ -263,6 +265,7 @@ int main() {
   populateNonDefaultScene(manager);
 
   const std::string json = manager.dumpCurrentScene();
+  assert(json.find("\"hsm\":1") != std::string::npos);
   assert(!json.empty());
   assert(json.find("\\n") != std::string::npos);
   assert(json.find("\\t") != std::string::npos);
@@ -296,6 +299,16 @@ int main() {
   assert(manager.currentScene().genre.rhythmSelectionMode == static_cast<uint8_t>(
              GroovePuterRhythm::RhythmSelectionMode::Auto));
   assert(manager.currentScene().genre.rhythmArchetypeId == 0);
+  assert(manager.currentScene().genre.harmonicStrategy == 1);
+
+  // Documents without the optional HGS selection retain the Legacy default.
+  std::string legacyHarmony = json;
+  const std::string harmonyField = ",\"hsm\":1";
+  const size_t harmonyPos = legacyHarmony.find(harmonyField);
+  assert(harmonyPos != std::string::npos);
+  legacyHarmony.erase(harmonyPos, harmonyField.size());
+  assert(manager.loadScene(legacyHarmony));
+  assert(manager.currentScene().genre.harmonicStrategy == 0);
 
   // Legacy documents have no Feel profile and decode as Straight.
   std::string legacyFeel = json;

@@ -10,6 +10,7 @@
 namespace GroovePuterHarmony {
 
 enum class HarmonicStrategy : uint8_t { Legacy = 0, Graph = 1 };
+constexpr uint8_t kMaxPreparedGraphEvents = 32;
 
 struct MaterializerCapabilityView {
   uint32_t qualityMask = 0;
@@ -24,7 +25,7 @@ struct PreparedGraphHarmony {
   uint16_t modelVersion = 0;
   HarmonicAuthority authority = HarmonicAuthority::Unknown;
   uint8_t eventCount = 0;
-  ResolvedHarmonicEvent events[32]{};
+  ResolvedHarmonicEvent events[kMaxPreparedGraphEvents]{};
 };
 static_assert(sizeof(PreparedGraphHarmony) <= 672,
               "prepared graph harmony exceeded its bounded memory budget");

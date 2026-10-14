@@ -13,7 +13,7 @@
 
 namespace GroovePuterHarmony {
 
-constexpr uint8_t kMaxSongHarmonyEvents = 32;
+constexpr uint8_t kMaxSongHarmonyEvents = kMaxPreparedGraphEvents;
 constexpr uint8_t kMaxSongHarmonyParticipants = 16;
 
 struct SongHarmonicParticipant {

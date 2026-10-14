@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "../composition/phrase_harmonic_clock_projection.h"
+#include "../harmony/harmonic_source.h"
 #include "phrase_semantic_result.h"
 
 namespace GroovePuterRhythm {
@@ -17,6 +18,7 @@ enum class PhraseExecutionStatus : uint8_t {
   HarmonicProjectionFailure,
   SemanticProbeFailure,
   SemanticContractFailure,
+  GraphSourceFailure,
   Count,
 };
 
@@ -65,7 +67,8 @@ PhraseExecutionStatus preparePhraseExecution(
     uint16_t phraseGenerationIdentity,
     uint8_t requestedPhraseBars,
     PhraseExecutionScratch& scratch,
-    PreparedPhraseExecution& destination);
+    PreparedPhraseExecution& destination,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr);
 
 // Random-access physical materialization. physicalPatternAddress is a storage
 // destination coordinate only; explicit phraseBarOrdinal remains the musical
@@ -91,7 +94,8 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
     int16_t physicalPatternAddress,
     DrumPatternSet& drums,
     SynthPattern& synthA,
-    SynthPattern& synthB);
+    SynthPattern& synthB,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr);
 
 static_assert(std::is_trivially_copyable<PhraseExecutionMaterializationSettings>::value,
               "phrase execution settings must remain fixed-capacity");

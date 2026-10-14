@@ -967,6 +967,8 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 0xFFFF) v = 0xFFFF;
       target_.genre.rhythmArchetypeId = static_cast<uint16_t>(v);
+    } else if (lastKey_ == "hsm") {
+      target_.genre.harmonicStrategy = v == 1 ? 1 : 0;
     }
     return;
   }
@@ -2531,6 +2533,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
   genreObj["rsm"] = scene_->genre.rhythmSelectionMode;
   genreObj["rid"] = scene_->genre.rhythmArchetypeId;
+  genreObj["hsm"] = scene_->genre.harmonicStrategy;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2865,6 +2868,10 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (rhythmId < 0) rhythmId = 0;
     if (rhythmId > 0xFFFF) rhythmId = 0xFFFF;
     loaded->genre.rhythmArchetypeId = static_cast<uint16_t>(rhythmId);
+
+    const int harmonicStrategy = valueToInt(genreObj["hsm"], 0);
+    loaded->genre.harmonicStrategy =
+        harmonicStrategy == 1 ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();

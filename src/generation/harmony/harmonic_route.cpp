@@ -580,4 +580,47 @@ HarmonyStatus planRoute(const RouteRequest& request,
   return HarmonyStatus::Ready;
 }
 
+HarmonyStatus planGraphHarmony(
+    const RouteRequest& request,
+    const RecentHarmonyMemory& recent,
+    RouteScratch& scratch,
+    RouteCandidateWorkspace& candidateWorkspace,
+    uint32_t materialId,
+    uint32_t publicationGeneration,
+    PreparedGraphHarmony& out,
+    HarmonicState& outTerminal,
+    TonalContext& outTerminalContext) {
+  if (materialId == 0 || publicationGeneration == 0 ||
+      request.modelVersion == 0 || request.availableTimingSlots == 0 ||
+      request.availableTimingSlots > kMaxPreparedGraphEvents ||
+      request.firstTimingSlot != 0) {
+    return HarmonyStatus::Invalid;
+  }
+
+  ResolvedHarmonicEvent events[kMaxPreparedGraphEvents]{};
+  uint8_t eventCount = 0;
+  HarmonicState terminal{};
+  TonalContext terminalContext{};
+  const HarmonyStatus status = planRoute(
+      request, recent, scratch, candidateWorkspace, events,
+      kMaxPreparedGraphEvents, eventCount, terminal, terminalContext);
+  if (status != HarmonyStatus::Ready) return status;
+  if (eventCount != request.availableTimingSlots || eventCount == 0) {
+    return HarmonyStatus::CapacityExceeded;
+  }
+
+  PreparedGraphHarmony staged{};
+  staged.materialId = materialId;
+  staged.publicationGeneration = publicationGeneration;
+  staged.modelVersion = request.modelVersion;
+  staged.authority = HarmonicAuthority::Graph;
+  staged.eventCount = eventCount;
+  for (uint8_t i = 0; i < eventCount; ++i) staged.events[i] = events[i];
+
+  out = staged;
+  outTerminal = terminal;
+  outTerminalContext = terminalContext;
+  return HarmonyStatus::Ready;
+}
+
 }  // namespace GroovePuterHarmony

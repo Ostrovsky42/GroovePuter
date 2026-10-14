@@ -259,7 +259,8 @@ inline bool materializeOneBar(
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
     PhraseGenerator::PhraseBar& scratch,
-    MaterializedSynthABarEvidence& evidence) {
+    MaterializedSynthABarEvidence& evidence,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   evidence = MaterializedSynthABarEvidence{};
   scratch = PhraseGenerator::PhraseBar{};
   if (!prepareDestinationIndependentPitchSource(engine, execution, scratch)) {
@@ -267,7 +268,7 @@ inline bool materializeOneBar(
   }
   const auto result = GroovePuterRhythm::materializePreparedPhraseBar(
       execution, phraseBarOrdinal, physicalPatternAddress,
-      scratch.drums, scratch.synthA, scratch.synthB);
+      scratch.drums, scratch.synthA, scratch.synthB, graphSource);
   const bool applied =
       result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
   // Valid only when BOTH required owner results exist (fail closed).
@@ -287,10 +288,12 @@ inline bool materializeOneBar(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
-    PhraseGenerator::PhraseBar& scratch) {
+    PhraseGenerator::PhraseBar& scratch,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   MaterializedSynthABarEvidence ignored{};
   return materializeOneBar(engine, execution, phraseBarOrdinal,
-                           physicalPatternAddress, scratch, ignored);
+                           physicalPatternAddress, scratch, ignored,
+                           graphSource);
 }
 
 inline PreparationDisposition prepare(
@@ -303,7 +306,8 @@ inline PreparationDisposition prepare(
     uint32_t generationAttemptOrdinal,
     bool attemptAvailable,
     GroovePuterRhythm::PreparedPhraseExecution& executionOut,
-    PreparationEvidence& evidence) {
+    PreparationEvidence& evidence,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   evidence = PreparationEvidence{};
   if (GroovePuterRhythm::selectStrongRhythmRoute(genre) ==
       GroovePuterRhythm::StrongRhythmRoute::Legacy) {
@@ -324,7 +328,8 @@ inline PreparationDisposition prepare(
       evidence.phraseGenerationIdentity,
       bars,
       scratch,
-      executionOut);
+      executionOut,
+      graphSource);
   if (evidence.executionStatus !=
       GroovePuterRhythm::PhraseExecutionStatus::Ready) {
     return PreparationDisposition::Failed;
@@ -355,7 +360,7 @@ inline PreparationDisposition prepare(
         localSlot % Bank<SynthPattern>::kPatterns);
     if (!materializeOneBar(engine, executionOut, bar,
                            static_cast<int16_t>(globalPattern),
-                           preflightScratch)) {
+                           preflightScratch, graphSource)) {
       evidence.materializationStatus =
           GroovePuterRhythm::StrongRhythmMigrationStatus::MaterializationFailed;
       return PreparationDisposition::Failed;

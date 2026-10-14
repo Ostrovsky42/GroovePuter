@@ -106,11 +106,21 @@ PhraseExecutionStatus preparePhraseExecution(
     uint16_t phraseGenerationIdentity,
     uint8_t requestedPhraseBars,
     PhraseExecutionScratch& scratch,
-    PreparedPhraseExecution& destination) {
+    PreparedPhraseExecution& destination,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource) {
   destination = PreparedPhraseExecution{};
   destination.settings = settings;
   destination.materialization = materialization;
   destination.phraseGenerationIdentity = phraseGenerationIdentity;
+
+  if (settings.harmonicStrategy > 1 ||
+      (settings.harmonicStrategy == 1 && graphSource == nullptr) ||
+      (settings.harmonicStrategy == 0 && graphSource != nullptr)) {
+    destination.status = settings.harmonicStrategy == 1
+        ? PhraseExecutionStatus::GraphSourceFailure
+        : PhraseExecutionStatus::InvalidContext;
+    return destination.status;
+  }
 
   StrongRhythmMigrationContext selectionContext{};
   selectionContext.patternAddress = 0;
@@ -227,9 +237,14 @@ PhraseExecutionStatus preparePhraseExecution(
     StrongRhythmPhraseExecutionOverride execution{};
     execution.harmonicRhythm =
         &destination.harmonicClock.bars[bar].harmonicRhythm;
-    const GroovePuterHarmony::HarmonicSourceView harmonicSource{
-        GroovePuterHarmony::HarmonicStrategy::Legacy,
-        &destination.progressionSource, nullptr};
+    const GroovePuterHarmony::HarmonicSourceView harmonicSource =
+        settings.harmonicStrategy == 1
+            ? GroovePuterHarmony::HarmonicSourceView{
+                  GroovePuterHarmony::HarmonicStrategy::Graph, nullptr,
+                  graphSource}
+            : GroovePuterHarmony::HarmonicSourceView{
+                  GroovePuterHarmony::HarmonicStrategy::Legacy,
+                  &destination.progressionSource, nullptr};
     execution.harmonicSourceView = &harmonicSource;
     execution.firstGlobalHarmonicOrdinal =
         destination.harmonicClock.bars[bar].eventRange.firstOrdinal;
@@ -312,13 +327,17 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
     int16_t physicalPatternAddress,
     DrumPatternSet& drums,
     SynthPattern& synthA,
-    SynthPattern& synthB) {
+    SynthPattern& synthB,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource) {
   if (prepared.status != PhraseExecutionStatus::Ready ||
       prepared.semantic.status != PhraseSemanticContractStatus::Ready ||
       !prepared.selection.resolved ||
       phraseBarOrdinal >= prepared.length.effectivePhraseBars ||
       physicalPatternAddress < 0 ||
-      physicalPatternAddress >= kMaxGlobalPatterns) {
+      physicalPatternAddress >= kMaxGlobalPatterns ||
+      (prepared.settings.harmonicStrategy == 1 && graphSource == nullptr) ||
+      (prepared.settings.harmonicStrategy == 0 && graphSource != nullptr) ||
+      prepared.settings.harmonicStrategy > 1) {
     return invalidMaterializationResult();
   }
 
@@ -327,9 +346,14 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
   StrongRhythmPhraseExecutionOverride execution{};
   execution.harmonicRhythm =
       &prepared.harmonicClock.bars[phraseBarOrdinal].harmonicRhythm;
-  const GroovePuterHarmony::HarmonicSourceView harmonicSource{
-      GroovePuterHarmony::HarmonicStrategy::Legacy,
-      &prepared.progressionSource, nullptr};
+  const GroovePuterHarmony::HarmonicSourceView harmonicSource =
+      prepared.settings.harmonicStrategy == 1
+          ? GroovePuterHarmony::HarmonicSourceView{
+                GroovePuterHarmony::HarmonicStrategy::Graph, nullptr,
+                graphSource}
+          : GroovePuterHarmony::HarmonicSourceView{
+                GroovePuterHarmony::HarmonicStrategy::Legacy,
+                &prepared.progressionSource, nullptr};
   execution.harmonicSourceView = &harmonicSource;
   execution.firstGlobalHarmonicOrdinal =
       prepared.harmonicClock.bars[phraseBarOrdinal].eventRange.firstOrdinal;

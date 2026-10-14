@@ -330,7 +330,8 @@ inline void applyPreparedPersistent(
     // P0 cycle: bars >= sectionBars come from `secondSection` (bar - sectionBars);
     // both sections are prepared from one recipe. Null keeps the single-execution shape.
     const GroovePuterRhythm::PreparedPhraseExecution* secondSection = nullptr,
-    int sectionBars = 0) {
+    int sectionBars = 0,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   Song& song = scene.songs[prepared.songSlot];
   PhraseGenerator::PhraseBar scratch{};
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
@@ -348,7 +349,8 @@ inline void applyPreparedPersistent(
     if (prepared.useP1RRoute) {
       GeneratedPhraseP1R::materializeOneBar(
           engine, execution, static_cast<uint8_t>(sectionBar),
-          static_cast<int16_t>(globalPattern), scratch, barEvidence);
+          static_cast<int16_t>(globalPattern), scratch, barEvidence,
+          graphSource);
     } else {
       materializeLegacyBar(engine, scene, prepared, bar, scratch);
     }
@@ -923,7 +925,8 @@ inline bool sameGenre(const GenreSettings& a, const GenreSettings& b) {
   return a.generativeMode == b.generativeMode && a.recipe == b.recipe &&
          a.morphTarget == b.morphTarget && a.morphAmount == b.morphAmount &&
          a.rhythmSelectionMode == b.rhythmSelectionMode &&
-         a.rhythmArchetypeId == b.rhythmArchetypeId;
+         a.rhythmArchetypeId == b.rhythmArchetypeId &&
+         a.harmonicStrategy == b.harmonicStrategy;
 }
 
 inline bool sameSettingsExceptOrdinal(

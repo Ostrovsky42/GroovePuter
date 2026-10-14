@@ -518,3 +518,25 @@
   acceptance is still `NOT_RUN` and remains premature.
 - NEXT_TASK=HGS2-7c: connect the phrase route assembler to Graph WHAT materialization and the
   generated-song state/persistence transaction, including cycle/undo/replay behavior.
+
+### HGS2-7c Graph source materialization boundary — in progress
+
+- Added `planGraphHarmony()` to turn the bounded complete route into the existing immutable
+  `PreparedGraphHarmony` view, with caller-supplied material/publication identity. It validates
+  identity and model metadata and leaves outputs unchanged on failure.
+- Extended phrase execution so Graph-selected preparation requires an explicit Graph source,
+  probes semantic material against that source, and later materializes physical bars from the
+  same source. Legacy remains the default and keeps the existing source path. The P1R one-bar
+  materializer accepts a caller-owned graph pointer; it is not stored in the 1024-byte
+  arrangement carrier and does not enter the audio renderer.
+- Added a fail-closed Graph-missing-source check and T16 production-path test proving semantic
+  preparation and one-bar materialization report Graph authority; invalid/missing source leaves
+  output patterns untouched.
+- Verification: HGS full suite — PASS; Phrase Core — PASS; SDL build — PASS with existing
+  warnings; Cardputer ADV build — PASS, flash 1,560,022 bytes / static RAM 188,804 bytes.
+  P1R focused T1–T16 and deterministic replay, ASan and UBSan — PASS; its chained M1 runner still
+  exits on the known baseline `SparseCall` selection assertion. `git diff --check` — PASS.
+- Remaining HGS2-7c work: construct routes from production song/genre/scale identity, pass the
+  caller-owned source through PREPARE/PREFLIGHT/COMMIT, persist exact A/B participant identities
+  and versions with undo/replay/cycle semantics, then expose only capability-valid Genre UI
+  selection. Hardware acceptance stays `NOT_RUN`.

@@ -193,6 +193,14 @@ void testT3TypedRejects() {
   assert(inadmissible.length.status == PhraseLengthRequestStatus::Rejected);
   assert(inadmissible.length.rejectReason ==
          PhraseLengthRejectReason::NoAdmissibleLawForRequestedLength);
+
+  GenreSettings graphSettings = genre(GenerativeMode::Electro);
+  graphSettings.harmonicStrategy = 1;
+  PreparedPhraseExecution missingGraph{};
+  status = preparePhraseExecution(
+      graphSettings, materializationSettings(), 51, 4, scratch,
+      missingGraph);
+  assert(status == PhraseExecutionStatus::GraphSourceFailure);
   std::puts("T3 typed rejects: OK");
 }
 
@@ -472,6 +480,62 @@ void testT15TaggedGraphSourceProjection() {
   std::puts("T15 tagged graph source/global ordinal projection: OK");
 }
 
+void testT16PreparedGraphMaterializationBoundary() {
+  const PreparedPhraseExecution legacyClock =
+      prepare(genre(GenerativeMode::Electro), 52, 4);
+  assert(legacyClock.status == PhraseExecutionStatus::Ready);
+
+  GroovePuterHarmony::PreparedGraphHarmony graph{};
+  graph.materialId = 0x47524150u;
+  graph.publicationGeneration = 8;
+  graph.modelVersion = 7;
+  graph.authority = GroovePuterHarmony::HarmonicAuthority::Graph;
+  graph.eventCount = legacyClock.harmonicClock.timeline.totalEventPositions;
+  assert(graph.eventCount > 0);
+  const auto* quality = GroovePuterHarmony::qualityDefinition(
+      GroovePuterHarmony::kQualityMajor);
+  const auto* scale = GroovePuterHarmony::scaleDefinition(2);
+  for (uint8_t i = 0; i < graph.eventCount; ++i) {
+    const uint8_t root = i % 2u == 0 ? 0u : 5u;
+    graph.events[i].state = {
+        GroovePuterHarmony::kQualityMajor,
+        GroovePuterHarmony::transposePitchSet(quality->intervalMask, root),
+        root, GroovePuterHarmony::kNoBassPc};
+    graph.events[i].tonal = {
+        2, 2,
+        GroovePuterHarmony::transposePitchSet(scale->intervalMask, 0),
+        GroovePuterHarmony::transposePitchSet(scale->intervalMask, 0),
+        0, 0};
+    graph.events[i].timingSlotOrdinal = i;
+  }
+
+  GenreSettings graphGenre = genre(GenerativeMode::Electro);
+  graphGenre.harmonicStrategy = 1;
+  PhraseExecutionScratch executionScratch{};
+  PreparedPhraseExecution execution{};
+  assert(preparePhraseExecution(
+             graphGenre, materializationSettings(), 52, 4,
+             executionScratch, execution, &graph) ==
+         PhraseExecutionStatus::Ready);
+  assert(execution.semantic.status == PhraseSemanticContractStatus::Ready);
+
+  PhysicalBar bar = seededPhysicalBar();
+  const PhysicalBar before = bar;
+  const StrongRhythmMigrationResult missing = materializePreparedPhraseBar(
+      execution, 0, 52, bar.drums, bar.synthA, bar.synthB);
+  assert(missing.status == StrongRhythmMigrationStatus::InvalidContext);
+  assert(samePhysical(before, bar));
+
+  const StrongRhythmMigrationResult materialized = materializePreparedPhraseBar(
+      execution, 0, 52, bar.drums, bar.synthA, bar.synthB, &graph);
+  assert(materialized.status == StrongRhythmMigrationStatus::Applied);
+  assert(materialized.harmonicStrategy ==
+         GroovePuterHarmony::HarmonicStrategy::Graph);
+  assert(materialized.harmonicAuthority ==
+         GroovePuterHarmony::HarmonicAuthority::Graph);
+  std::puts("T16 prepared Graph materialization boundary: OK");
+}
+
 void testT14NoPublicationAndInvalidOutputUntouched() {
   const PreparedPhraseExecution prepared =
       prepare(genre(GenerativeMode::LoFi), 91, 8);
@@ -520,6 +584,7 @@ int main() {
   testT12LifetimeCarrierInert();
   testT13LegacyNullOverride();
   testT15TaggedGraphSourceProjection();
+  testT16PreparedGraphMaterializationBoundary();
   testT14NoPublicationAndInvalidOutputUntouched();
   printMemoryReport();
   std::puts("P1R focused production phrase execution: OK");

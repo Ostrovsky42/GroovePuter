@@ -364,6 +364,7 @@ struct GenreSettings {
     uint8_t rhythmSelectionMode = static_cast<uint8_t>(
         GroovePuterRhythm::RhythmSelectionMode::Auto);
     uint16_t rhythmArchetypeId = 0; // stable ID; meaningful only in MANUAL
+    uint8_t harmonicStrategy = 0; // 0 = Legacy, 1 = Graph; old projects stay Legacy
 };
 
 struct DrumFX {
@@ -1191,6 +1192,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->genre.rhythmSelectionMode)) return false;
   if (!writeLiteral(",\"rid\":")) return false;
   if (!writeInt(scene_->genre.rhythmArchetypeId)) return false;
+  if (!writeLiteral(",\"hsm\":")) return false;
+  if (!writeInt(scene_->genre.harmonicStrategy)) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;
