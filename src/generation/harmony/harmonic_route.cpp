@@ -253,6 +253,7 @@ HarmonyStatus planReturn(const RouteRequest& request,
       request.projectSeed, request.songIdentity, request.candidateRequest.style,
       request.modelVersion, GenerationDomain::HarmonicCandidateTieBreak);
   uint8_t expanded = 0;
+  bool discoveryTruncated = false;
   int16_t goalIndex = -1;
 
   while (expanded < kMaxReturnSearchNodes) {
@@ -324,7 +325,12 @@ HarmonyStatus planReturn(const RouteRequest& request,
             (sameContext(tonal, current.tonal) ? 0u : 1u));
         continue;
       }
-      if (scratch.nodeCount >= kMaxReturnSearchNodes) return HarmonyStatus::CapacityExceeded;
+      if (scratch.nodeCount >= kMaxReturnSearchNodes) {
+        // Discovery capacity and expansion budget are different bounds. Keep
+        // settling the retained frontier, including an already-discovered home.
+        discoveryTruncated = true;
+        continue;
+      }
       RouteSearchNode& node = scratch.nodes[scratch.nodeCount++];
       node = {candidate.state, tonal, static_cast<uint16_t>(totalCost), currentIndex,
               candidate.features.tags, static_cast<uint8_t>(current.depth + 1u), 0,
@@ -334,7 +340,7 @@ HarmonyStatus planReturn(const RouteRequest& request,
                   (sameContext(tonal, current.tonal) ? 0u : 1u))};
     }
   }
-  if (goalIndex < 0) return expanded >= kMaxReturnSearchNodes
+  if (goalIndex < 0) return discoveryTruncated || expanded >= kMaxReturnSearchNodes
                                 ? HarmonyStatus::CapacityExceeded
                                 : HarmonyStatus::ReturnUnreachable;
 

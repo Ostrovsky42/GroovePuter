@@ -119,6 +119,37 @@ int main() {
   assert(build(unsupported, 0, 0, graphA, metadataA) ==
          PhraseGraphRouteBuildStatus::UnsupportedGenre);
 
+  // A saturated discovery pool must not discard an already-queued legal
+  // exact-home path (review Synthwave/LoFi BREAK terminal reproductions).
+  for (uint8_t styleId : {uint8_t{16}, uint8_t{7}}) {
+    GenreSettings returning{};
+    returning.harmonicStrategy = 1;
+    returning.generativeMode = styleId == 16 ? 1 : 15;
+    const uint8_t root = styleId == 16 ? 4 : 7;
+    const QualityId quality = styleId == 16 ? kQualityDiminished : kQualityMajor;
+    const uint8_t tonic = styleId == 16 ? 5 : 10;
+    HarmonicState current{quality,
+        transposePitchSet(qualityDefinition(quality)->intervalMask, root),
+        root, kNoBassPc};
+    TonalContext currentTonal{1, 0,
+        transposePitchSet(scaleDefinition(1)->intervalMask, tonic),
+        scaleDefinition(0)->intervalMask, tonic, 0};
+    PreparedGraphHarmony result{};
+    PreparedPhraseGraphMetadata metadata{};
+    RouteScratch boundedScratch{};
+    RouteCandidateWorkspace candidates{};
+    const uint8_t slots = styleId == 16 ? 8 : 16;
+    assert(buildPhraseGraphRoute(returning, 0, 0, slots, 1,
+        0x48475300u ^ (uint32_t{styleId} << 16u) ^ 1u, 1, 1, recent,
+        boundedScratch, candidates, result, metadata, &current, &currentTonal,
+        SectionIntent::Return) == PhraseGraphRouteBuildStatus::Ready);
+    assert(boundedScratch.nodeCount <= kMaxReturnSearchNodes);
+    assert(result.eventCount == slots);
+    const auto& last = result.events[result.eventCount - 1];
+    assert(last.state.rootPc == 0 && last.state.qualityId == kQualityMinor7);
+    assert(last.tonal.scaleId == 0 && last.tonal.tonicPc == 0);
+  }
+
   std::cout << "HGS phrase graph route builder tests passed\n";
   return 0;
 }

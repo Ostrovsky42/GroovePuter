@@ -65,6 +65,9 @@ struct RouteCandidateWorkspace {
 static_assert(sizeof(RouteCandidateWorkspace) <= 5120,
               "candidate workspace exceeded its bounded memory budget");
 
+// RETURN settles the cheapest exact-home path in the retained bounded graph.
+// When discovery is truncated this does not certify global optimality over
+// omitted nodes. A truncated search without a retained goal is CapacityExceeded.
 HarmonyStatus planRouteChunk(const RouteRequest& request,
                              const RecentHarmonyMemory& recent,
                              RouteScratch& scratch,
