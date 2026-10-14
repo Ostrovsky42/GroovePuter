@@ -70,6 +70,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   MaterializationFailed,
   CompatibilityBindingFailed,
   FeelApplyFailed,
+  GraphHarmonyProjectionFailed,
   Count,
 };
 

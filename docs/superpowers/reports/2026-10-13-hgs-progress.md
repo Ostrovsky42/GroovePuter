@@ -444,3 +444,27 @@
 - NEXT_TASK=HGS2-7c: integrate generated idiom pitch projection against the checked route while
   preserving ChordRhythm WHEN, then wire validated song-state snapshots to live Smart Play and
   add explicit next-generation GRAPH selection.
+
+### HGS2-7c idiom consumer progress
+
+- Follow-up start SHA: `aed16759`.
+- Added bounded `projectPatternToGraphHarmony()`: it indexes the phrase-global route by the
+  existing harmonic event ordinal and applies the shared role policy to note attacks. It edits
+  note pitch only; a same-pitch slide continuation carries the already projected pitch across a
+  chord boundary. It copies into a bounded local Pattern and publishes only after all events and
+  notes validate.
+- Connected this projection after `GenreIdiom::apply()` for Graph strategy. Graph output now
+  reports `HarmonicAuthority::Graph`; Legacy idiom output retains `Idiom`. Failure returns a
+  typed migration status before the caller's patterns are assigned. Generic Graph materialization
+  continues through the existing tagged source and the unchanged ChordRhythm WHEN path.
+- Tests: full `bash tests/run_hgs_tests.sh` and full `bash tests/run_smart_play_tests.sh` — PASS.
+  Dedicated role and idiom-consumer HGS tests — PASS. P1R production run passed T1–T15,
+  including the tagged Graph source materialization assertion, repeated deterministic output,
+  ASan and UBSan. Its chained M1 compatibility runner still fails at the previously baseline-red
+  `SparseCall` selection assertion; this test had been reproduced red at the pre-implementation
+  baseline. The M1 harness also contained a duplicate `harmonic_source.cpp`; removed that duplicate
+  so the actual legacy assertion can run. SDL build — PASS; Cardputer ADV build — PASS at1,551,142
+  bytes flash and187,172 bytes static RAM; `git diff --check` — PASS.
+- NEXT_TASK=HGS2-7c: verify idiom projector across idiom-backed profiles, then add a state-backed
+  live snapshot consumer that validates all current A/B participant IDs and versions before
+  exposing Graph harmony; only then wire persisted next-generation GRAPH selection.

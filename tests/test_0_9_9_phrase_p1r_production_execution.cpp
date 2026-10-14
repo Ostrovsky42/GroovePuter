@@ -436,6 +436,7 @@ void testT15TaggedGraphSourceProjection() {
   rhythm.progression = ProgressionId::Auto;
   rhythm.onsets = static_cast<StepMask>(stepBit(0) | stepBit(8));
   rhythm.eventCount = 2;
+  rhythm.phraseHarmonicPosition = 4;
   StrongRhythmPhraseExecutionOverride execution{};
   execution.harmonicRhythm = &rhythm;
   execution.harmonicSourceView = &graphView;
@@ -448,6 +449,7 @@ void testT15TaggedGraphSourceProjection() {
       settings, frozen, context, bar.drums, bar.synthA, bar.synthB);
   assert(result.status == StrongRhythmMigrationStatus::Applied);
   assert(result.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Graph);
+  assert(result.harmonicAuthority == GroovePuterHarmony::HarmonicAuthority::Graph);
   assert(result.progressionId == ProgressionId::Auto);
   assert(result.harmonicEventCount == 2);
   assert(result.harmonicEventOnsets == rhythm.onsets);

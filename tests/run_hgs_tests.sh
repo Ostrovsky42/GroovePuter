@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [role] [song-state] [persistence] [song-storage]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [role] [idiom-consumption] [song-state] [persistence] [song-storage]" >&2
 }
 
 run_legacy() {
@@ -167,9 +167,18 @@ run_role() {
   "${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
     ${EXTRA_CXXFLAGS} \
     "${ROOT_DIR}/tests/test_hgs_role_policy.cpp" \
-    "${ROOT_DIR}/src/generation/harmony/harmonic_role_policy.cpp" \
     -o "${BUILD_DIR}/test_role_policy"
   "${BUILD_DIR}/test_role_policy"
+}
+
+run_idiom_consumption() {
+  # scenes.h uses defaulted bit-fields; keep this host target on C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_idiom_consumption.cpp" \
+    -o "${BUILD_DIR}/test_idiom_consumption"
+  "${BUILD_DIR}/test_idiom_consumption"
 }
 
 run_song_state() {
@@ -245,7 +254,7 @@ CPP
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection role song-state persistence song-storage)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection role idiom-consumption song-state persistence song-storage)
 fi
 
 for target in "${targets[@]}"; do
@@ -265,6 +274,7 @@ for target in "${targets[@]}"; do
     route) run_route ;;
     projection) run_projection ;;
     role) run_role ;;
+    idiom-consumption) run_idiom_consumption ;;
     song-state) run_song_state ;;
     persistence) run_persistence ;;
     song-storage) run_song_storage ;;

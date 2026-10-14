@@ -1,4 +1,6 @@
 #include "strong_rhythm_migration.h"
+
+#include "graph_harmony_pattern_projector.h"
 #include "../idiom/genre_idiom.h"
 #include "../../state/generation_shape_state.h"
 #include "../roles/bar_function_roles.h"
@@ -1317,8 +1319,34 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   // The idiom wrote Synth A after the role plan was exported: the origin
   // evidence (bass rhythm plan + pitch-class witness, read by DEVELOP's P0
   // preservation) must describe the bass that was actually committed.
+  if (idiomApplied && harmonicStrategy ==
+          GroovePuterHarmony::HarmonicStrategy::Graph) {
+    const StrongRhythmPhraseExecutionOverride* execution =
+        context.phraseExecutionOverride;
+    if (execution == nullptr || execution->harmonicRhythm == nullptr ||
+        execution->harmonicSourceView == nullptr ||
+        execution->harmonicSourceView->graphSource == nullptr ||
+        projectPatternToGraphHarmony(
+            nextSynthA, *execution->harmonicRhythm,
+            *execution->harmonicSourceView->graphSource,
+            execution->firstGlobalHarmonicOrdinal,
+            GroovePuterHarmony::HarmonicRole::Bass) !=
+            GroovePuterHarmony::HarmonyStatus::Ready ||
+        projectPatternToGraphHarmony(
+            nextSynthB, *execution->harmonicRhythm,
+            *execution->harmonicSourceView->graphSource,
+            execution->firstGlobalHarmonicOrdinal,
+            GroovePuterHarmony::HarmonicRole::Lead) !=
+            GroovePuterHarmony::HarmonyStatus::Ready) {
+      result.status = StrongRhythmMigrationStatus::GraphHarmonyProjectionFailed;
+      return result;
+    }
+  }
   if (idiomApplied) rebuildBassEvidenceFromPattern(nextSynthA, result);
-  result.harmonicAuthority = idiomApplied
+  result.harmonicAuthority = harmonicStrategy ==
+          GroovePuterHarmony::HarmonicStrategy::Graph
+      ? GroovePuterHarmony::HarmonicAuthority::Graph
+      : idiomApplied
       ? GroovePuterHarmony::HarmonicAuthority::Idiom
       : result.tonalMaterializationApplied
           ? GroovePuterHarmony::HarmonicAuthority::Generic

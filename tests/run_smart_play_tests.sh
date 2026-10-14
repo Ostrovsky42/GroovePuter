@@ -47,7 +47,6 @@ run_legacy_context() {
 run_bridge() {
   compile_run smart_play_harmony_bridge \
     "${ROOT_DIR}/tests/test_smart_play_harmony_bridge.cpp" \
-    "${ROOT_DIR}/src/generation/harmony/harmonic_role_policy.cpp" \
     "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
     "${ROOT_DIR}/src/generation/generation_context.cpp"
 }
