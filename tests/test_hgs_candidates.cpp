@@ -135,6 +135,45 @@ int main() {
   assert(collectCandidates(req, scratch, candidates, contexts) ==
          HarmonyStatus::Invalid);
 
+  // Root priority must rotate with the tonic. Scale masks already contain
+  // absolute pitch classes; adding tonic to those bits transposes twice.
+  req = request();
+  assert(collectCandidates(req, scratch, candidates, contexts) == HarmonyStatus::Ready);
+  const CandidateScratch referenceRoots = scratch;
+  for (uint8_t tonic = 1; tonic < 12; ++tonic) {
+    req = request();
+    req.current = req.home = state(tonic, kQualityMajor);
+    req.currentContext = req.homeContext = context(tonic, 1);
+    assert(collectCandidates(req, scratch, candidates, contexts) == HarmonyStatus::Ready);
+    assert(scratch.rootCount == referenceRoots.rootCount);
+    for (uint8_t i = 0; i < scratch.rootCount; ++i)
+      assert(scratch.roots[i] == (referenceRoots.roots[i] + tonic) % 12u);
+  }
+
+  // Rich qualities must be introduced at NEW roots with the real shipped
+  // projection mask, not merely retained when already present in current/home.
+  for (auto style : {HarmonicStyleId::UkGarage, HarmonicStyleId::DubTechno,
+                     HarmonicStyleId::LoFi, HarmonicStyleId::HipHop,
+                     HarmonicStyleId::Synthwave}) {
+    for (ScaleId scale : {ScaleId{0}, ScaleId{1}}) {
+      req = request();
+      req.style = style;
+      req.current = req.home = state(0, scale == 0 ? kQualityMinor7 : kQualityMajor);
+      req.currentContext = req.homeContext = context(0, scale);
+      req.runtimeQualityMask = 1005u; // materializerCapabilityView Phase A
+      req.runtimeScaleMask = 0x7fu;
+      assert(collectCandidates(req, scratch, candidates, contexts) == HarmonyStatus::Ready);
+      assert(candidates.count <= kMaxHarmonicCandidates);
+      for (QualityId rich : {kQualityMajor7, kQualityMinor9, kQualityMajor9}) {
+        bool introduced = false;
+        for (uint8_t i = 0; i < candidates.count; ++i)
+          if (candidates.items[i].state.qualityId == rich &&
+              candidates.items[i].state.rootPc != req.current.rootPc) introduced = true;
+        assert(introduced);
+      }
+    }
+  }
+
   // Shared vectors pin the offline/runtime semantic codec, including minor,
   // non-C keys, altered roots, sevenths/ninths and slash bass.
   std::ifstream vectors("tests/fixtures/harmony/canonical_codec_v2.tsv");

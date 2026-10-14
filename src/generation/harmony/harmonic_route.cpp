@@ -129,6 +129,9 @@ int32_t scoreCandidate(const RouteRequest& request,
   score -= static_cast<int32_t>(f.rootFifthsDistance) * w.fifthsDistancePenalty;
   score -= static_cast<int32_t>(f.outOfScaleTargetTones) * w.outOfScalePenalty;
   if (f.tags & relationTag(RelationTag::DiatonicFunctional))
+    score += w.diatonicTag;
+  if (f.tags & static_cast<RelationTags>(relationTag(RelationTag::DominantToTarget) |
+                                       relationTag(RelationTag::SecondaryDominant)))
     score += w.functionalTag + g.functionalBias / 32u;
   if (f.tags & static_cast<RelationTags>(
                    relationTag(RelationTag::PrlP) |

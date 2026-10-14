@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [role] [idiom-consumption] [graph-live] [song-state] [persistence] [song-storage] [phrase-graph-builder]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [scoring] [projection] [role] [idiom-consumption] [graph-live] [song-state] [persistence] [song-storage] [phrase-graph-builder]" >&2
 }
 
 run_legacy() {
@@ -145,6 +145,24 @@ run_route() {
     "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
     -o "${BUILD_DIR}/test_route"
   "${BUILD_DIR}/test_route"
+}
+
+run_scoring() {
+  # scenes.h has defaulted bit-fields; genre policy dependency uses C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_scoring.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    -o "${BUILD_DIR}/test_scoring"
+  "${BUILD_DIR}/test_scoring"
 }
 
 run_projection() {
@@ -296,7 +314,7 @@ run_phrase_graph_builder() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection role idiom-consumption graph-live song-state persistence song-storage phrase-graph-builder)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route scoring projection role idiom-consumption graph-live song-state persistence song-storage phrase-graph-builder)
 fi
 
 for target in "${targets[@]}"; do
@@ -314,6 +332,7 @@ for target in "${targets[@]}"; do
     candidates) run_candidates ;;
     fingerprint) run_fingerprint ;;
     route) run_route ;;
+    scoring) run_scoring ;;
     projection) run_projection ;;
     role) run_role ;;
     idiom-consumption) run_idiom_consumption ;;

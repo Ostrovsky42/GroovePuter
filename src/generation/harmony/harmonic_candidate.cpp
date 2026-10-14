@@ -92,12 +92,12 @@ void buildRoots(const CandidateRequest& request, CandidateScratch& scratch) {
   addRoot(scratch, request.current.rootPc);
   addRoot(scratch, request.home.rootPc);
   for (uint8_t offset = 0; offset < 12; ++offset) {
-    if (request.currentContext.scaleMask & (1u << offset))
-      addRoot(scratch, static_cast<uint8_t>(request.currentContext.tonicPc + offset));
+    const uint8_t pitch = static_cast<uint8_t>((request.currentContext.tonicPc + offset) % 12u);
+    if (request.currentContext.scaleMask & (1u << pitch)) addRoot(scratch, pitch);
   }
   for (uint8_t offset = 0; offset < 12; ++offset) {
-    if (request.homeContext.scaleMask & (1u << offset))
-      addRoot(scratch, static_cast<uint8_t>(request.homeContext.tonicPc + offset));
+    const uint8_t pitch = static_cast<uint8_t>((request.homeContext.tonicPc + offset) % 12u);
+    if (request.homeContext.scaleMask & (1u << pitch)) addRoot(scratch, pitch);
   }
   static constexpr uint8_t kColorIntervals[] = {7, 5, 4, 3, 9, 1,
                                                  2, 6, 11, 8, 10};
@@ -288,6 +288,32 @@ HarmonyStatus collectCandidates(const CandidateRequest& request,
     }
     if (homeContextIndex < nextContexts.count)
       appendState(request.home, homeContextIndex);
+  }
+
+  // Reserve one legal NEW-root representative per supported extended quality
+  // before triad/context rounds can exhaust the 32-slot list. Prefer contained
+  // chords, then the least outside color allowed by the existing genre gates.
+  // Only the ten bootstrap qualities are scanned; this is not vocabulary growth.
+  for (QualityId qualityId = 0; qualityId < kBootstrapQualityCount; ++qualityId) {
+    const auto* quality = qualityDefinition(qualityId);
+    if (quality->cardinality < 4 ||
+        !(request.runtimeQualityMask & (1u << qualityId)) ||
+        !(policy->qualityMask & (1u << qualityId))) continue;
+    bool represented = false;
+    for (uint8_t outside = 0; outside <= quality->cardinality && !represented; ++outside) {
+      for (uint8_t contextIndex = 0; contextIndex < nextContexts.count && !represented; ++contextIndex) {
+        for (uint8_t rootIndex = 0; rootIndex < scratch.rootCount && !represented; ++rootIndex) {
+          const uint8_t root = scratch.roots[rootIndex];
+          if (root == request.current.rootPc) continue;
+          const PitchSet12 pitches = transposePitchSet(quality->intervalMask, root);
+          if (popcountPitchSet12(static_cast<PitchSet12>(
+                  pitches & ~nextContexts.items[contextIndex].scaleMask)) != outside) continue;
+          const uint8_t before = nextCandidates.count;
+          appendState(HarmonicState{qualityId, pitches, root, kNoBassPc}, contextIndex);
+          represented = nextCandidates.count > before;
+        }
+      }
+    }
   }
 
   // Fill in stable rounds: first shortlist quality per root/context, then the

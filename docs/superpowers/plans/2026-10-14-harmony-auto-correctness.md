@@ -83,3 +83,17 @@ orchestration and GenrePage; exact touch set determined from call-site audit.
   with flat chromatic aliases; original Roman spelling cannot be recovered from
   HarmonicState, so provenance remains offline and is not promised by tokens.
   Corpus model version advances2; byte width/top-N/memory caps unchanged.
+
+- Task2 GREEN: shared twelve Python/C++ vectors, pinned corpus byte parity,
+  exact tonic vocabulary witness; corpus/candidates/routes/builder pass.
+- Task3 RED root rotation and diatonic score assertions; GREEN all12 keys and
+  isolated diatonic/dominant/secondary bonus probes plus routes.
+- Task4 RED new-root rich introductions; GREEN five mapped profiles x major/
+  minor with shipped mask1005 and hard policy/projection/RETURN tests. Reserve
+  legal rich representatives before optional context/triad rounds, no cap growth.
+- Task5 late invalid-override repro RED: status8 but drums changed. GREEN after
+  final publication relocation: Stage5 GCC/Clang/ASan+UBSan matrix passes.
+- Ruling: AUTO applies to existing Phrase harmonic source selection, not a new
+  single-bar Graph pipeline. Single-bar G retains established generation and UI
+  must identify next-Phrase scope. A separate persisted Auto preference leaves
+  concrete Legacy0/Graph1 executor contracts intact; no third materializer source.
