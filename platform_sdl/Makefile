@@ -72,6 +72,17 @@ SOURCES := \
 	../src/generation/roles/melodic_pitch_intent.cpp \
 	../src/generation/tonal/tonal_projector.cpp \
 	../src/generation/tonal/tonal_materializer.cpp \
+	../src/generation/harmony/harmonic_source.cpp \
+	../src/generation/harmony/song_harmonic_state.cpp \
+	../src/generation/harmony/harmonic_source_codec.cpp \
+	../src/generation/harmony/harmonic_fingerprint.cpp \
+	../src/generation/harmony/song_variant_genome.cpp \
+	../src/generation/harmony/genre_harmonic_policy.cpp \
+	../src/generation/harmony/harmonic_relation.cpp \
+	../src/generation/harmony/pitch_set.cpp \
+	../src/generation/harmony/corpus_prior.cpp \
+	../src/generation/harmony/harmonic_candidate.cpp \
+	../src/generation/harmony/harmonic_route.cpp \
 	../src/generation/phrase/phrase_evolution.cpp \
 	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \

@@ -4,6 +4,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/c1a-material-id-persistence"
 CXX="${CXX:-g++}"
 mkdir -p "${BUILD_DIR}"
+source "${ROOT_DIR}/tests/hgs_song_state_sources.sh"
 cat > "${BUILD_DIR}/pattern_paging_scratch.cpp" <<'CPP'
 #include "scenes.h"
 Scene& sceneTransactionScratch() {
@@ -16,6 +17,8 @@ CPP
   "${ROOT_DIR}/tests/test_0_9_11_c1a_material_id_persistence.cpp" \
   "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
   "${ROOT_DIR}/src/audio/pattern_project_cleanup.cpp" \
+  "${HGS_SONG_STATE_SOURCES[@]}" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
   "${BUILD_DIR}/pattern_paging_scratch.cpp" \
   -o "${BUILD_DIR}/test_c1a_material_id_persistence"
 "${BUILD_DIR}/test_c1a_material_id_persistence"

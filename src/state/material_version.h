@@ -6,6 +6,7 @@
 
 #include "scenes.h"
 #include "src/phrase/runtime_synth_events.h"
+#include "material_version_token.h"
 
 // 0.9.11 A2: exact accepted-state fingerprint.
 //
@@ -14,25 +15,6 @@
 // resolved/prepared?"  It is recomputable after reboot and requires no
 // per-material resident metadata table.
 namespace GroovePuterMaterial {
-
-struct MaterialVersionToken {
-  uint32_t low = 0;
-  uint32_t high = 0;
-
-  constexpr bool valid() const { return low != 0 || high != 0; }
-
-  friend constexpr bool operator==(MaterialVersionToken lhs,
-                                   MaterialVersionToken rhs) {
-    return lhs.low == rhs.low && lhs.high == rhs.high;
-  }
-  friend constexpr bool operator!=(MaterialVersionToken lhs,
-                                   MaterialVersionToken rhs) {
-    return !(lhs == rhs);
-  }
-};
-
-static_assert(sizeof(MaterialVersionToken) == 8,
-              "MaterialVersionToken must remain exactly eight bytes");
 
 namespace material_version_detail {
 

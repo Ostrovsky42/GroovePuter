@@ -37,5 +37,6 @@ bool PatternPagingService::clearProjectPages(const std::string& projectName) {
         ok = removeIfPresent(slotPathForProject(projectName, page, GroovePuterMaterial::PublicationSlot::SlotB)) && ok;
         GroovePuterPlatform::clearMaterialPublication(projectName, page);
     }
+    ok = PatternPagingService::clearSongHarmonicStorage(projectName) && ok;
     return ok;
 }

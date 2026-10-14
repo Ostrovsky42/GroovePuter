@@ -128,6 +128,152 @@ std::string identityMetaPathFor(const std::string& projectName) {
     return projectDirectoryFor(projectName) + "/material_id.meta";
 }
 
+bool removeIfExists(const std::string& path);
+bool copyFile(const std::string& sourcePath, const std::string& targetPath);
+
+std::string songHarmonicPathFor(
+    const std::string& projectName, uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    char fileName[64];
+    std::snprintf(fileName, sizeof(fileName),
+                  "/hgs_s%02u_p%03u_m%08x_v%08x%08x.bin",
+                  static_cast<unsigned>(songSlot),
+                  static_cast<unsigned>(startPosition), anchorMaterialId.value,
+                  anchorVersion.high, anchorVersion.low);
+    return projectDirectoryFor(projectName) + fileName;
+}
+
+bool validSongHarmonicStorageKey(
+    uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    return songSlot < 2 && startPosition < 128 && anchorMaterialId.valid() &&
+           anchorVersion.valid();
+}
+
+bool stateHasSongHarmonicStorageKey(
+    const GroovePuterHarmony::SongHarmonicState& state,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    if (state.participantCount < 2) return false;
+    for (uint8_t i = 0; i < state.participantCount; ++i) {
+        const auto& participant = state.participants[i];
+        if (participant.track == 0 &&
+            participant.songPosition == state.startPosition) {
+            return participant.materialId == anchorMaterialId &&
+                   participant.version == anchorVersion;
+        }
+    }
+    return false;
+}
+
+const GroovePuterHarmony::SongHarmonicParticipant* songHarmonicAnchor(
+    const GroovePuterHarmony::SongHarmonicState& state) {
+    for (uint8_t i = 0; i < state.participantCount; ++i) {
+        const auto& participant = state.participants[i];
+        if (participant.track == 0 &&
+            participant.songPosition == state.startPosition) {
+            return &participant;
+        }
+    }
+    return nullptr;
+}
+
+SongHarmonicStorageStatus codecStorageStatus(
+    GroovePuterHarmony::SongHarmonicCodecStatus status) {
+    using GroovePuterHarmony::SongHarmonicCodecStatus;
+    switch (status) {
+        case SongHarmonicCodecStatus::Ok: return SongHarmonicStorageStatus::Ok;
+        case SongHarmonicCodecStatus::InvalidInput:
+            return SongHarmonicStorageStatus::InvalidInput;
+        case SongHarmonicCodecStatus::InvalidData:
+            return SongHarmonicStorageStatus::InvalidData;
+        case SongHarmonicCodecStatus::Corrupt:
+            return SongHarmonicStorageStatus::Corrupt;
+        case SongHarmonicCodecStatus::UnsupportedVersion:
+            return SongHarmonicStorageStatus::UnsupportedVersion;
+        case SongHarmonicCodecStatus::BufferTooSmall:
+            return SongHarmonicStorageStatus::InvalidData;
+    }
+    return SongHarmonicStorageStatus::InvalidData;
+}
+
+bool readSongHarmonicFile(const std::string& path, uint8_t* bytes,
+                          size_t& size) {
+    File file = SD.open(path.c_str(), FILE_READ);
+    if (!file) return false;
+    size = file.size();
+    if (size == 0 || size > GroovePuterHarmony::kMaxSongHarmonicStateBytes) {
+        file.close();
+        return false;
+    }
+    size_t offset = 0;
+    while (offset < size) {
+        const size_t count = file.read(bytes + offset, size - offset);
+        if (count == 0) {
+            file.close();
+            return false;
+        }
+        offset += count;
+    }
+    file.close();
+    return true;
+}
+
+bool copySongHarmonicFiles(const std::string& sourceProject,
+                           const std::string& targetProject) {
+    File directory = SD.open(projectDirectoryFor(sourceProject).c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) {
+        directory.close();
+        return true;
+    }
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const char* rawName = entry.name();
+        const char* baseName = rawName;
+        for (const char* p = rawName; *p; ++p) {
+            if (*p == '/') baseName = p + 1;
+        }
+        const std::string name(baseName);
+        const bool isHarmonic = name.compare(0, 4, "hgs_") == 0;
+        entry.close();
+        if (!isHarmonic) continue;
+        if (!copyFile(projectDirectoryFor(sourceProject) + "/" + name,
+                      projectDirectoryFor(targetProject) + "/" + name)) {
+            ok = false;
+            break;
+        }
+    }
+    directory.close();
+    return ok;
+}
+
+bool clearSongHarmonicFilesFor(const std::string& projectName) {
+    File directory = SD.open(projectDirectoryFor(projectName).c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) {
+        directory.close();
+        return true;
+    }
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const char* rawName = entry.name();
+        const char* baseName = rawName;
+        for (const char* p = rawName; *p; ++p) {
+            if (*p == '/') baseName = p + 1;
+        }
+        const std::string name(baseName);
+        const bool isHarmonic = name.compare(0, 4, "hgs_") == 0;
+        const std::string path = projectDirectoryFor(projectName) + "/" + name;
+        entry.close();
+        if (isHarmonic && !removeIfExists(path)) ok = false;
+    }
+    directory.close();
+    return ok;
+}
+
 std::string legacyPagePath(int pageIndex) {
     char buffer[48];
     std::snprintf(buffer, sizeof(buffer), "%s/page_%02d.gpp",
@@ -195,6 +341,7 @@ bool clearProjectPagesFor(const std::string& projectName) {
         ok = removeIfExists(slotPathFor(projectName, page, GroovePuterMaterial::PublicationSlot::SlotB)) && ok;
         GroovePuterPlatform::clearMaterialPublication(projectName, page);
     }
+    ok = PatternPagingService::clearSongHarmonicStorage(projectName) && ok;
     // Material identity high-water is intentionally not removed here. Address
     // reuse after Clear must still receive a fresh identity in the same project.
     return ok;
@@ -698,6 +845,11 @@ bool PatternPagingService::ensureDirectory() {
     return ensureProjectDirectory(activeProjectNameStorage());
 }
 
+bool PatternPagingService::clearSongHarmonicStorage(
+    const std::string& projectName) {
+    return clearSongHarmonicFilesFor(projectName);
+}
+
 std::string PatternPagingService::projectDirectory(
     const std::string& projectName) {
     return projectDirectoryFor(projectName);
@@ -1138,6 +1290,157 @@ bool PatternPagingService::commitMelodyDescriptor(
                                candidateId);
 }
 
+SongHarmonicStorageStatus PatternPagingService::saveSongHarmonicState(
+    const GroovePuterHarmony::SongHarmonicState& state) {
+    using namespace GroovePuterHarmony;
+    if (!validSongHarmonicState(state)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    const auto* anchor = songHarmonicAnchor(state);
+    if (anchor == nullptr) return SongHarmonicStorageStatus::InvalidData;
+    const auto keyStatus = validSongHarmonicStorageKey(
+        state.songSlot, state.startPosition, anchor->materialId,
+        anchor->version);
+    if (!keyStatus || !stateHasSongHarmonicStorageKey(
+                          state, anchor->materialId, anchor->version)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+
+    uint8_t encoded[kMaxSongHarmonicStateBytes]{};
+    uint8_t scratch[kMaxSongHarmonicStateBytes]{};
+    size_t encodedSize = 0;
+    const auto encodedStatus = encodeSongHarmonicState(
+        state, encoded, sizeof(encoded), encodedSize);
+    if (encodedStatus != SongHarmonicCodecStatus::Ok) {
+        return codecStorageStatus(encodedStatus);
+    }
+
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), state.songSlot, state.startPosition,
+        anchor->materialId, anchor->version);
+    const std::string temporaryPath = path + ".tmp";
+    if (SD.exists(path.c_str())) {
+        size_t existingSize = 0;
+        if (!readSongHarmonicFile(path, scratch, existingSize)) {
+            return SongHarmonicStorageStatus::Corrupt;
+        }
+        return existingSize == encodedSize &&
+                       std::memcmp(scratch, encoded, encodedSize) == 0
+                   ? SongHarmonicStorageStatus::Ok
+                   : SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!removeIfExists(temporaryPath)) return SongHarmonicStorageStatus::IoError;
+
+    File file = SD.open(temporaryPath.c_str(), FILE_WRITE);
+    if (!file) return SongHarmonicStorageStatus::IoError;
+    const bool wrote = file.write(encoded, encodedSize) == encodedSize;
+    file.flush();
+    file.close();
+    if (!wrote) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::IoError;
+    }
+
+    size_t readbackSize = 0;
+    SongHarmonicState verified{};
+    if (!readSongHarmonicFile(temporaryPath, scratch, readbackSize) ||
+        readbackSize != encodedSize ||
+        std::memcmp(scratch, encoded, encodedSize) != 0) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::Corrupt;
+    }
+    const auto decodeStatus = decodeSongHarmonicState(
+        scratch, readbackSize, verified);
+    if (decodeStatus != SongHarmonicCodecStatus::Ok ||
+        !validSongHarmonicState(verified) ||
+        !stateHasSongHarmonicStorageKey(verified, anchor->materialId,
+                                        anchor->version)) {
+        removeIfExists(temporaryPath);
+        return decodeStatus == SongHarmonicCodecStatus::Ok
+                   ? SongHarmonicStorageStatus::InvalidData
+                   : codecStorageStatus(decodeStatus);
+    }
+    if (!SD.rename(temporaryPath.c_str(), path.c_str())) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::IoError;
+    }
+    return SongHarmonicStorageStatus::Ok;
+}
+
+SongHarmonicStorageStatus PatternPagingService::loadSongHarmonicState(
+    uint8_t songSlot, uint8_t startPosition,
+    const GroovePuterHarmony::SongHarmonicParticipant* currentParticipants,
+    uint8_t currentParticipantCount,
+    GroovePuterHarmony::SongHarmonicState& out) {
+    using namespace GroovePuterHarmony;
+    if (songSlot >= 2 || startPosition >= 128 || currentParticipants == nullptr ||
+        currentParticipantCount == 0 ||
+        currentParticipantCount > kMaxSongHarmonyParticipants) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    const SongHarmonicParticipant* anchor = nullptr;
+    for (uint8_t i = 0; i < currentParticipantCount; ++i) {
+        if (currentParticipants[i].track == 0 &&
+            currentParticipants[i].songPosition == startPosition) {
+            anchor = &currentParticipants[i];
+            break;
+        }
+    }
+    if (anchor == nullptr ||
+        !validSongHarmonicStorageKey(songSlot, startPosition,
+                                     anchor->materialId, anchor->version)) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), songSlot, startPosition,
+        anchor->materialId, anchor->version);
+    if (!SD.exists(path.c_str())) return SongHarmonicStorageStatus::NotFound;
+
+    uint8_t bytes[kMaxSongHarmonicStateBytes]{};
+    size_t size = 0;
+    if (!readSongHarmonicFile(path, bytes, size)) {
+        return SongHarmonicStorageStatus::Corrupt;
+    }
+    SongHarmonicState decoded{};
+    const auto decodeStatus = decodeSongHarmonicState(bytes, size, decoded);
+    if (decodeStatus != SongHarmonicCodecStatus::Ok) {
+        return codecStorageStatus(decodeStatus);
+    }
+    if (!validSongHarmonicState(decoded) || decoded.songSlot != songSlot ||
+        decoded.startPosition != startPosition ||
+        !stateHasSongHarmonicStorageKey(decoded, anchor->materialId,
+                                        anchor->version) ||
+        !songHarmonicParticipantsMatch(decoded, currentParticipants,
+                                       currentParticipantCount)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    out = decoded;
+    return SongHarmonicStorageStatus::Ok;
+}
+
+SongHarmonicStorageStatus PatternPagingService::removeSongHarmonicState(
+    uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    if (!validSongHarmonicStorageKey(songSlot, startPosition,
+                                     anchorMaterialId, anchorVersion)) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), songSlot, startPosition,
+        anchorMaterialId, anchorVersion);
+    const std::string temporaryPath = path + ".tmp";
+    const bool existed = SD.exists(path.c_str());
+    if (!removeIfExists(path) || !removeIfExists(temporaryPath)) {
+        return SongHarmonicStorageStatus::IoError;
+    }
+    return existed ? SongHarmonicStorageStatus::Ok
+                   : SongHarmonicStorageStatus::NotFound;
+}
+
 
 bool PatternPagingService::restoreBackup(int pageIndex) {
     if (!validPageIndex(pageIndex)) return false;
@@ -1241,6 +1544,10 @@ bool PatternPagingService::copyProjectPages(
         if (GroovePuterPlatform::loadMaterialPublication(source, page, pub)) {
             GroovePuterPlatform::saveMaterialPublication(target, page, pub);
         }
+    }
+    if (!copySongHarmonicFiles(source, target)) {
+        clearProjectPagesFor(target);
+        return false;
     }
 
     const uint32_t copiedHighWater =

@@ -42,6 +42,7 @@ MIGRATION_SOURCES=(
   "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp"
+  "${ROOT_DIR}/src/generation/harmony/harmonic_source.cpp"
   "${ROOT_DIR}/src/generation/migration/tonal_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/migration/strong_rhythm_migration.cpp"
 )

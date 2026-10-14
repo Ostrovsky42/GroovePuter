@@ -387,3 +387,36 @@
   hardware listening after HGS2-7b persistence/transaction work, HGS2-7c production consumers and
   the HGS2-8 host/listening package are complete. No firmware was flashed.
 - NEXT_TASK=HGS2-7b: committed song continuity, transaction, undo and durable replay.
+
+## HGS2-7b — song state and project sidecar (model/storage complete)
+
+- Start SHA: `65b283fc`.
+- Extracted the exact eight-byte `MaterialVersionToken` into a lightweight header so the
+  harmonic-state owner does not pull the full Scene definition into its pure host model.
+- Added bounded `SongHarmonicState` / `SongHarmonicStateWindow`, transaction/idempotence rules,
+  route memory carry-forward and exact participant identity/version matching. Explicit stage-next
+  and boundary-promotion operations enforce same-song/model/home identity and contiguous section
+  placement; pending state does not replace active state before promotion. The active+next pair
+  remains below the 4,096-byte resident cap. Added explicit little-endian schema1 codec
+  with checksum, fail-closed decode and maximum 2,048-byte encoded storage.
+- Added project-scoped immutable SD sidecars keyed by song placement and the exact Synth A
+  material identity/version. Save uses temp-write, flush, readback, decode and rename. Save As
+  copies HGS files; Clear removes them while preserving the material identity high-water mark.
+  Distinct material versions retain separate records so a later undo/revert can load the prior
+  route. Storage checks do not run in audio render.
+- Host coverage now includes maximum-size codec records, transaction retry/conflict, participant
+  version matching, two material generations at one placement, copy/clear lifecycle, corrupt-file
+  rejection and unchanged output on failed load. `bash tests/run_hgs_tests.sh` — PASS;
+  HGS state/codec/storage under ASan+UBSan — PASS; C1A material persistence and legacy tests —
+  PASS; M1 identity and 0.9.9-D1 focused tests — PASS; GF2-I2 tests — PASS; SDL desktop build —
+  PASS; Cardputer ADV build — PASS at1,550,102 bytes flash and187,172 bytes static RAM;
+  `git diff --check` — PASS.
+- Route transaction/idempotence, section continuity, immutable material-version history and
+  validated loading are now host-proven. A simulated Undo back to the earlier material version
+  reloads its exact prior route, while an edit to any participant rejects the sidecar without
+  modifying the caller's output. This closes the bounded HGS2-7b state/storage contract.
+- The stored route is not yet selected by production phrase generation or consumed during Song
+  playback; that is the explicit HGS2-7c integration boundary. Hardware/listening acceptance
+  remains `NOT_RUN`; no firmware was flashed.
+- NEXT_TASK=HGS2-7c: connect idioms, live consumers and production GRAPH selection to the state
+  and persistence APIs.

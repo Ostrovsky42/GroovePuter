@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [song-state] [persistence] [song-storage]" >&2
 }
 
 run_legacy() {
@@ -162,9 +162,80 @@ run_projection() {
   "${BUILD_DIR}/test_projection"
 }
 
+run_song_state() {
+  # scenes.h uses defaulted bit-fields; keep this host target on C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_song_state.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_harmonic_state.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_route.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    -o "${BUILD_DIR}/test_song_state"
+  "${BUILD_DIR}/test_song_state"
+}
+
+run_persistence() {
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_persistence.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_harmonic_state.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_source_codec.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_route.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    -o "${BUILD_DIR}/test_persistence"
+  "${BUILD_DIR}/test_persistence"
+}
+
+run_song_storage() {
+  cat > "${BUILD_DIR}/pattern_paging_scratch.cpp" <<'CPP'
+#include "scenes.h"
+Scene& sceneTransactionScratch() {
+  static Scene scratch{};
+  return scratch;
+}
+CPP
+  # The paging adapter uses C++20 scene declarations and the HGS codec/state.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+    ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_song_storage.cpp" \
+    "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
+    "${ROOT_DIR}/src/audio/pattern_project_cleanup.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_harmonic_state.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_source_codec.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_route.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    "${BUILD_DIR}/pattern_paging_scratch.cpp" \
+    -o "${BUILD_DIR}/test_song_storage"
+  "${BUILD_DIR}/test_song_storage"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection song-state persistence song-storage)
 fi
 
 for target in "${targets[@]}"; do
@@ -183,6 +254,9 @@ for target in "${targets[@]}"; do
     fingerprint) run_fingerprint ;;
     route) run_route ;;
     projection) run_projection ;;
+    song-state) run_song_state ;;
+    persistence) run_persistence ;;
+    song-storage) run_song_storage ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

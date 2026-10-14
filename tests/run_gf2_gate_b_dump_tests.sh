@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 mkdir -p "${BUILD_DIR}"
+source "${ROOT}/tests/hgs_song_state_sources.sh"
 
 mapfile -t SOURCES < <(
   sed -n '/COMMON_SOURCES=(/,/)/p' "${ROOT}/tests/run_stage15_tonal_integration_tests.sh" |
@@ -11,6 +12,9 @@ mapfile -t SOURCES < <(
     sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
 )
 SOURCES+=("/src/generation/migration/phrase_execution.cpp")
+for source_path in "${HGS_SONG_STATE_SOURCES[@]}"; do
+  SOURCES+=("${source_path#${ROOT}}")
+done
 
 compile_dump() {
   local compiler="$1"
