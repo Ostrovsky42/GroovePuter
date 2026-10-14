@@ -60,6 +60,11 @@ run_suite() {
     "$@"
 
   build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_hgs_generation_transaction.cpp" \
+    "${BUILD_DIR}/test_graph_transaction_${suffix}" \
+    "$@"
+
+  build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage5_invalid_context.cpp" \
     "${BUILD_DIR}/test_rhythm_stage5_invalid_${suffix}" \
     "$@"

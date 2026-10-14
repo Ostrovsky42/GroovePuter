@@ -1305,7 +1305,6 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       applyFullMaterialRerollArticulation(
           context.generationAttemptOrdinal, nextDrums);
     }
-    drums = nextDrums;
   } else {
     if (sameSynthMaterial(nextSynthA, synthA)) {
       applySynthRerollArticulation(
@@ -1351,6 +1350,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       : result.tonalMaterializationApplied
           ? GroovePuterHarmony::HarmonicAuthority::Generic
           : GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // Publish only after every graph/idiom check. A late projection failure
+  // must leave drums and both synth destinations as one unchanged transaction.
+  if (replaceDrums) drums = nextDrums;
   synthA = nextSynthA;
   synthB = nextSynthB;
   return result;
