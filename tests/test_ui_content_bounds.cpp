@@ -25,6 +25,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,7 @@
 #include "src/ui/pages/synth_sequencer_page.h"
 #include "src/ui/layout_manager.h"
 #include "src/ui/screen_geometry.h"
+#include "src/ui/ui_common.h"
 
 // The SDL production sources are linked without sdl_main.cpp, which is
 // where these live; the PHW-P1 harness does the same.
@@ -94,7 +96,8 @@ int g_failures = 0;
 std::vector<int> headerRowsY() {
   MiniAcid engine(kTestSampleRate, nullptr);
   RecordingGfx gfx;
-  UI::drawStandardHeader(gfx, engine, "TITLE");
+  UI::drawStatusChrome(
+      gfx, UI::captureUiStatusSnapshot(engine, UI::UiStatusContext::SynthA));
   std::vector<int> rows;
   for (const auto& entry : gfx.texts) rows.push_back(entry.y);
   return rows;
@@ -173,10 +176,19 @@ void checkStackedFooter(RecordingGfx& gfx) {
   const char* kRight = "L/R PICK SOUND  ALT+L/R SHORTER LONGER";
   LayoutManager::drawFooter(gfx, kLeft, kRight);
 
-  std::vector<RecordingGfx::TextEntry> rows;
+  std::map<int, RecordingGfx::TextEntry> rowsByY;
   for (const auto& entry : gfx.texts) {
-    if (entry.y >= footerTop - 4) rows.push_back(entry);
+    if (entry.y < footerTop - 4) continue;
+    auto found = rowsByY.find(entry.y);
+    if (found == rowsByY.end()) {
+      rowsByY.emplace(entry.y, entry);
+    } else {
+      found->second.text += entry.text;
+    }
   }
+
+  std::vector<RecordingGfx::TextEntry> rows;
+  for (const auto& item : rowsByY) rows.push_back(item.second);
 
   if (rows.size() != 2) {
     std::fprintf(stderr,
@@ -257,6 +269,16 @@ int main() {
     RecordingGfx gfx;
     GenrePage page(gfx, engine, AudioGuard{});
     page.onEnter(0);
+    UIEvent nav{};
+    nav.event_type = GROOVEPUTER_KEY_DOWN;
+    nav.scancode = GROOVEPUTER_DOWN;
+    for (int i = 0; i < 4; ++i) (void)page.handleEvent(nav);
+    nav.scancode = GROOVEPUTER_RIGHT;
+    (void)page.handleEvent(nav);
+    nav.scancode = GROOVEPUTER_NO_SCANCODE;
+    nav.key = '\n';
+    (void)page.handleEvent(nav);
+    assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 1);
     page.draw(gfx);
     checkBottomBound("GenrePage", gfx);
     checkTopBound("GenrePage", gfx, headerRows);
@@ -303,22 +325,33 @@ int main() {
   // hints were clipped on screen before anyone noticed.
   {
     MiniAcid engine(kTestSampleRate, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 3);
     // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
     (void)engine.rebuildPatternRuntimeEventBank();
     RecordingGfx gfx;
     SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
     page.onEnter(0);
-    (void)engine.makePhrase(0);
+    UIEvent startMelody{};
+    startMelody.event_type = GROOVEPUTER_KEY_DOWN;
+    startMelody.key = 'n';
+    startMelody.alt = true;
+    assert(page.handleEvent(startMelody));
+    assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
     page.draw(gfx);
     // A gate that silently rendered the Pattern view would prove nothing, so
     // check the melody path was the one exercised before believing its result.
-    bool drewMelody = false;
+    bool drewMelodyView = false;
     for (const auto& entry : gfx.texts) {
-      if (entry.text == "MELODY") drewMelody = true;
+      if (entry.text == "NO MELODY" || entry.text == "MELODY UNREADABLE" ||
+          entry.text.find("GRID ") == 0 || entry.text == "NOTES") {
+        drewMelodyView = true;
+      }
     }
-    if (!drewMelody) {
+    if (!drewMelodyView) {
       std::fprintf(stderr,
-                   "content bounds FAIL: the melody editor was never rendered, "
+                   "content bounds FAIL: the melody editor view was never rendered, "
                    "so this page was not actually under test\n");
       ++g_failures;
     }
@@ -333,12 +366,20 @@ int main() {
   // roll's hints got clipped twice before anyone noticed.
   {
     MiniAcid engine(kTestSampleRate, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 3);
     // MAKE PHRASE binds to the resident page's runtime bank (c33ad622).
     (void)engine.rebuildPatternRuntimeEventBank();
     RecordingGfx gfx;
     SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
     page.onEnter(0);
-    (void)engine.makePhrase(0);
+    UIEvent startMelody{};
+    startMelody.event_type = GROOVEPUTER_KEY_DOWN;
+    startMelody.key = 'n';
+    startMelody.alt = true;
+    assert(page.handleEvent(startMelody));
+    assert(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase);
     UIEvent toList{};
     toList.event_type = GROOVEPUTER_KEY_DOWN;
     toList.key = 'v';

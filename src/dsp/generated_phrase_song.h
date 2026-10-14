@@ -10,6 +10,8 @@
 #include "src/audio/pattern_paging.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
+#include "src/generation/harmony/song_harmonic_state.h"
+#include "src/generation/harmony/generated/corpus_prior_data.h"
 #include "src/state/generated_phrase_recipe.h"
 #include "src/state/generated_synth_a_origin.h"
 #include "src/state/generation_request_state.h"
@@ -119,6 +121,14 @@ static_assert(std::is_trivially_copyable<PreparedPhraseArrangement>::value,
 static_assert(sizeof(PreparedPhraseArrangement) <= 1024,
               "PMB-P1: PreparedPhraseArrangement must stay a compact plan, "
               "not per-bar physical material");
+
+struct GraphContinuationContext {
+  bool valid = false;
+  uint32_t songIdentity = 0;
+  GroovePuterHarmony::HarmonicState current{};
+  GroovePuterHarmony::TonalContext currentTonal{};
+  GroovePuterHarmony::RecentHarmonyMemory recent{};
+};
 
 inline uint8_t atlasVariationForRole(PhraseGenerator::PhraseBarRole role) {
   switch (role) {
@@ -319,6 +329,191 @@ beginOriginCandidate(const PreparedPhraseArrangement& prepared) {
   return candidate;
 }
 
+inline bool prepareGraphSongHarmonicState(
+    MiniAcid& engine,
+    const PreparedPhraseArrangement& prepared,
+    const GroovePuterHarmony::PreparedGraphHarmony& graph,
+    const GroovePuterHarmony::PreparedPhraseGraphMetadata& metadata,
+    GroovePuterMaterial::MaterialIdReservation synthBReservation,
+    const GraphContinuationContext& continuation,
+    GroovePuterHarmony::SongHarmonicState& stateOut,
+    const GroovePuterRhythm::PreparedPhraseExecution* secondSection = nullptr,
+    int sectionBars = 0) {
+  using namespace GroovePuterHarmony;
+  using namespace GroovePuterMaterial;
+  if (graph.authority != HarmonicAuthority::Graph ||
+      prepared.genre.harmonicStrategy !=
+          static_cast<uint8_t>(HarmonicStrategy::Graph) ||
+      !prepared.synthAReservation.valid() || !synthBReservation.valid() ||
+      graph.eventCount == 0 || prepared.request.bars == 0 ||
+      prepared.request.bars > kMaxSongHarmonyParticipants / 2u) {
+    return false;
+  }
+
+  SongHarmonicCandidate candidate{};
+  candidate.songIdentity = GeneratedPhraseP1R::stableSongIdentity(
+      engine.modeManager().generationSeed(), prepared.songSlot);
+  candidate.songSlot = static_cast<uint8_t>(prepared.songSlot);
+  candidate.startPosition = static_cast<uint8_t>(prepared.request.songStart);
+  candidate.rowCount = prepared.request.bars;
+  candidate.projectSeed = GeneratedPhraseP1R::stableProjectSeed(
+      engine.modeManager().generationSeed());
+  candidate.style = metadata.style;
+  candidate.modelVersion = GeneratedCorpusPrior::kModelVersion;
+  candidate.corpusChecksum = GeneratedCorpusPrior::kContentChecksum;
+  candidate.genome = metadata.genome;
+  candidate.home = metadata.home;
+  candidate.homeTonal = metadata.homeTonal;
+  candidate.harmony = graph;
+  candidate.terminal = metadata.terminal;
+  candidate.terminalTonal = metadata.terminalTonal;
+  candidate.participantCount = static_cast<uint8_t>(candidate.rowCount * 2u);
+
+  PhraseGenerator::PhraseBar scratch{};
+  for (uint8_t bar = 0; bar < candidate.rowCount; ++bar) {
+    const bool inSecond = secondSection != nullptr && bar >= sectionBars;
+    const auto& execution = inSecond ? *secondSection : prepared.p1rExecution;
+    const uint8_t sectionBar = static_cast<uint8_t>(
+        inSecond ? bar - sectionBars : bar);
+    const int localSlot = prepared.firstLocalSlot + bar;
+    const int globalPattern = songPatternFromPageBankIndex(
+        prepared.request.pageIndex,
+        localSlot / Bank<SynthPattern>::kPatterns,
+        localSlot % Bank<SynthPattern>::kPatterns);
+    if (!GeneratedPhraseP1R::materializeOneBar(
+            engine, execution, sectionBar,
+            static_cast<int16_t>(globalPattern), scratch, &graph)) {
+      return false;
+    }
+    const uint8_t row = static_cast<uint8_t>(prepared.request.songStart + bar);
+    candidate.participants[bar * 2u] = {
+        0, row, 0, prepared.synthAReservation.idAt(bar),
+        versionForPattern(scratch.synthA)};
+    candidate.participants[bar * 2u + 1u] = {
+        1, row, 0, synthBReservation.idAt(bar),
+        versionForPattern(scratch.synthB)};
+  }
+
+  SongHarmonicState staged{};
+  if (continuation.valid &&
+      continuation.songIdentity == candidate.songIdentity) {
+    staged.songIdentity = candidate.songIdentity;
+    staged.recent = continuation.recent;
+  }
+  if (commitSongHarmonicCandidate(
+          staged, candidate, prepared.synthAReservation.idAt(0).value) !=
+      SongHarmonicCommitStatus::Committed) {
+    return false;
+  }
+  stateOut = staged;
+  return true;
+}
+
+inline bool loadPriorGraphSongHarmonicState(
+    MiniAcid& engine,
+    const Scene& scene,
+    int songSlot,
+    int nextStartPosition,
+    uint32_t generationAttemptOrdinal,
+    GroovePuterHarmony::SongHarmonicState& stateOut) {
+  using namespace GroovePuterHarmony;
+  if (songSlot < 0 || songSlot > 1 || nextStartPosition <= 0 ||
+      nextStartPosition > 128 || scene.genre.harmonicStrategy !=
+          static_cast<uint8_t>(HarmonicStrategy::Graph)) return false;
+  HarmonicStyleId expectedStyle{};
+  if (harmonicStyleFor(scene.genre, expectedStyle) != HarmonyStatus::Ready)
+    return false;
+  const uint32_t projectSeed = GeneratedPhraseP1R::stableProjectSeed(
+      engine.modeManager().generationSeed());
+  const uint32_t songIdentity =
+      GeneratedPhraseP1R::stableSongIdentity(projectSeed, songSlot);
+  const auto materialization = GeneratedPhraseP1R::materializationSettingsFor(
+      scene, GroovePuterState::currentGenerationLevel(),
+      generationAttemptOrdinal);
+  const uint8_t scaleId =
+      static_cast<uint8_t>(materialization.scaleTypeValue);
+  const uint8_t rootPc = materialization.rootPitchClass;
+
+  for (int rows = std::min<int>(8, nextStartPosition); rows >= 1; --rows) {
+    const int start = nextStartPosition - rows;
+    SongHarmonicParticipant participants[kMaxSongHarmonyParticipants]{};
+    uint8_t participantCount = 0;
+    if (!engine.tryCaptureSongHarmonicParticipants(
+            static_cast<uint8_t>(songSlot), static_cast<uint8_t>(start),
+            static_cast<uint8_t>(rows), participants,
+            kMaxSongHarmonyParticipants, participantCount)) continue;
+    SongHarmonicState prior{};
+    if (PatternPagingService::loadSongHarmonicState(
+            static_cast<uint8_t>(songSlot), static_cast<uint8_t>(start),
+            participants, participantCount, prior) !=
+        SongHarmonicStorageStatus::Ok) continue;
+    if (prior.songIdentity != songIdentity ||
+        prior.projectSeed != projectSeed || prior.songSlot != songSlot ||
+        prior.startPosition + prior.rowCount != nextStartPosition ||
+        prior.style != expectedStyle ||
+        prior.modelVersion != GeneratedCorpusPrior::kModelVersion ||
+        prior.corpusChecksum != GeneratedCorpusPrior::kContentChecksum ||
+        prior.home.rootPc != rootPc ||
+        prior.homeTonal.homeScaleId != scaleId ||
+        prior.homeTonal.homeTonicPc != rootPc) continue;
+    stateOut = prior;
+    return true;
+  }
+  return false;
+}
+
+inline bool loadGraphSongHarmonicStateAt(
+    MiniAcid& engine,
+    const Scene& scene,
+    int songSlot,
+    int startPosition,
+    int rowCount,
+    GroovePuterHarmony::SongHarmonicState& stateOut) {
+  using namespace GroovePuterHarmony;
+  if (songSlot < 0 || songSlot > 1 || startPosition < 0 || rowCount <= 0 ||
+      startPosition + rowCount > Song::kMaxPositions || rowCount > 8 ||
+      scene.genre.harmonicStrategy != static_cast<uint8_t>(HarmonicStrategy::Graph)) {
+    return false;
+  }
+  HarmonicStyleId expectedStyle{};
+  if (harmonicStyleFor(scene.genre, expectedStyle) != HarmonyStatus::Ready)
+    return false;
+
+  SongHarmonicParticipant participants[kMaxSongHarmonyParticipants]{};
+  uint8_t participantCount = 0;
+  if (!engine.tryCaptureSongHarmonicParticipants(
+          static_cast<uint8_t>(songSlot), static_cast<uint8_t>(startPosition),
+          static_cast<uint8_t>(rowCount), participants,
+          kMaxSongHarmonyParticipants, participantCount)) {
+    return false;
+  }
+  SongHarmonicState stored{};
+  if (PatternPagingService::loadSongHarmonicState(
+          static_cast<uint8_t>(songSlot), static_cast<uint8_t>(startPosition),
+          participants, participantCount, stored) != SongHarmonicStorageStatus::Ok)
+    return false;
+
+  const uint32_t projectSeed = GeneratedPhraseP1R::stableProjectSeed(
+      engine.modeManager().generationSeed());
+  const uint32_t songIdentity = GeneratedPhraseP1R::stableSongIdentity(
+      projectSeed, songSlot);
+  const auto materialization = GeneratedPhraseP1R::materializationSettingsFor(
+      scene, GroovePuterState::currentGenerationLevel(), 0);
+  if (stored.songIdentity != songIdentity || stored.projectSeed != projectSeed ||
+      stored.songSlot != songSlot || stored.startPosition != startPosition ||
+      stored.rowCount != rowCount || stored.style != expectedStyle ||
+      stored.modelVersion != GeneratedCorpusPrior::kModelVersion ||
+      stored.corpusChecksum != GeneratedCorpusPrior::kContentChecksum ||
+      stored.home.rootPc != materialization.rootPitchClass ||
+      stored.homeTonal.homeScaleId !=
+          static_cast<uint8_t>(materialization.scaleTypeValue) ||
+      stored.homeTonal.homeTonicPc != materialization.rootPitchClass) {
+    return false;
+  }
+  stateOut = stored;
+  return true;
+}
+
 // When `candidate` is non-null and the route is P1R, per-bar origin is filled
 // from the exact evidence the materializer returned for that bar; any bar
 // without valid evidence poisons the candidate (fail closed).
@@ -331,7 +526,8 @@ inline void applyPreparedPersistent(
     // both sections are prepared from one recipe. Null keeps the single-execution shape.
     const GroovePuterRhythm::PreparedPhraseExecution* secondSection = nullptr,
     int sectionBars = 0,
-    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr,
+    GroovePuterMaterial::MaterialIdReservation synthBReservation = {}) {
   Song& song = scene.songs[prepared.songSlot];
   PhraseGenerator::PhraseBar scratch{};
   for (int bar = 0; bar < prepared.request.bars; ++bar) {
@@ -378,6 +574,13 @@ inline void applyPreparedPersistent(
         scene, 0, localSlot,
         GroovePuterMaterial::MaterialKind::Pattern,
         prepared.synthAReservation.idAt(static_cast<uint8_t>(bar)));
+    if (prepared.genre.harmonicStrategy == static_cast<uint8_t>(
+            GroovePuterHarmony::HarmonicStrategy::Graph)) {
+      GroovePuterMaterial::setResidentDescriptor(
+          scene, 1, localSlot,
+          GroovePuterMaterial::MaterialKind::Pattern,
+          synthBReservation.idAt(static_cast<uint8_t>(bar)));
+    }
 
     if (candidate != nullptr && prepared.useP1RRoute) {
       const auto id = prepared.synthAReservation.idAt(static_cast<uint8_t>(bar));
@@ -497,6 +700,7 @@ inline void restoreUndo(
     scene.synthBBanks[bank].patterns[index] = SynthPattern{};
     scene.drumBanks[bank].patterns[index] = DrumPatternSet{};
     GroovePuterMaterial::clearResidentDescriptor(scene, 0, localSlot);
+    GroovePuterMaterial::clearResidentDescriptor(scene, 1, localSlot);
   }
   scene.songs[payload.songSlot] = payload.beforeSong;
   scene.feel.patternBars = payload.previousPatternBars;
@@ -587,7 +791,10 @@ inline bool prepareWithGenerationAttempt(
     int songStart,
     uint32_t generationAttemptOrdinal,
     bool attemptAvailable,
-    PreparedPhraseArrangement& prepared) {
+    PreparedPhraseArrangement& prepared,
+    GroovePuterHarmony::PreparedGraphHarmony* graphOut = nullptr,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata* metadataOut = nullptr,
+    GraphContinuationContext* graphContinuationOut = nullptr) {
   SceneManager& scenes = engine.sceneManager();
   const Scene& scene = scenes.currentScene();
 
@@ -637,6 +844,46 @@ inline bool prepareWithGenerationAttempt(
 
   const GenreSettings genre = scene.genre;
   prepared.genre = genre;
+  GraphContinuationContext continuation{};
+  if (graphContinuationOut != nullptr && songStart > 0 &&
+      genre.harmonicStrategy == static_cast<uint8_t>(
+          GroovePuterHarmony::HarmonicStrategy::Graph)) {
+    GroovePuterHarmony::SongHarmonicState priorGraphState{};
+    if (loadPriorGraphSongHarmonicState(
+            engine, scene, prepared.songSlot, songStart,
+            generationAttemptOrdinal, priorGraphState)) {
+      continuation.valid = true;
+      continuation.songIdentity = priorGraphState.songIdentity;
+      continuation.current = priorGraphState.terminal;
+      continuation.currentTonal = priorGraphState.terminalTonal;
+      continuation.recent = priorGraphState.recent;
+    }
+  }
+  if (graphContinuationOut != nullptr) {
+    *graphContinuationOut = continuation;
+  }
+  const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr;
+  if (genre.harmonicStrategy == static_cast<uint8_t>(
+          GroovePuterHarmony::HarmonicStrategy::Graph)) {
+    if (graphOut == nullptr || metadataOut == nullptr) {
+      prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
+      return false;
+    }
+    GroovePuterRhythm::PhraseExecutionStatus graphFailure =
+        GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+    if (!GeneratedPhraseP1R::prepareGraphRoute(
+            engine, scene, genre, bars, generationAttemptOrdinal,
+            continuation.valid ? &continuation.current : nullptr,
+            continuation.valid ? &continuation.currentTonal : nullptr,
+            continuation.valid ? &continuation.recent : nullptr,
+            *graphOut, *metadataOut, graphFailure)) {
+      prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
+      prepared.p1r.usedP1r = true;
+      prepared.p1r.executionStatus = graphFailure;
+      return false;
+    }
+    graphSource = graphOut;
+  }
   const auto p1rDisposition = GeneratedPhraseP1R::prepare(
       engine,
       scene,
@@ -647,7 +894,8 @@ inline bool prepareWithGenerationAttempt(
       generationAttemptOrdinal,
       attemptAvailable,
       prepared.p1rExecution,
-      prepared.p1r);
+      prepared.p1r,
+      graphSource);
   if (p1rDisposition == GeneratedPhraseP1R::PreparationDisposition::Failed) {
     prepared.result.error = PhraseGenerator::PhraseError::GenerationFailed;
     return false;
@@ -736,6 +984,10 @@ Result generate(
   // them), but nothing sets that status on this path any longer.
   PreparedPhraseArrangement preparedStorage{};
   PreparedPhraseArrangement* const prepared = &preparedStorage;
+  GroovePuterHarmony::PreparedGraphHarmony graphSource{};
+  GroovePuterHarmony::PreparedPhraseGraphMetadata graphMetadata{};
+  GraphContinuationContext graphContinuation{};
+  GroovePuterMaterial::MaterialIdReservation synthBReservation{};
 
   if (engine.isPlaying() &&
       (!engine.songModeEnabled() ||
@@ -774,7 +1026,10 @@ Result generate(
           songStart,
           generationAttemptOrdinal,
           attemptAvailable,
-          *prepared)) {
+          *prepared,
+          &graphSource,
+          &graphMetadata,
+          &graphContinuation)) {
     releaseWriteSlot(lease.slot);
     output.phrase = prepared->result;
     output.p1r = prepared->p1r;
@@ -800,6 +1055,37 @@ Result generate(
     return output;
   }
   prepared->synthAReservation = reservation;
+  if (graphSource.authority == GroovePuterHarmony::HarmonicAuthority::Graph) {
+    synthBReservation =
+        PatternPagingService::reserveMaterialIds(prepared->request.bars);
+    if (!synthBReservation.valid()) {
+      releaseWriteSlot(lease.slot);
+      output.status = LifecycleStatus::Failed;
+      return output;
+    }
+    graphSource.materialId = reservation.idAt(0).value;
+  }
+
+  if (graphSource.authority == GroovePuterHarmony::HarmonicAuthority::Graph) {
+    GroovePuterHarmony::SongHarmonicState graphState{};
+    if (!prepareGraphSongHarmonicState(
+            engine, *prepared, graphSource, graphMetadata,
+            synthBReservation, graphContinuation, graphState) ||
+        PatternPagingService::saveSongHarmonicState(graphState) !=
+            SongHarmonicStorageStatus::Ok) {
+      releaseWriteSlot(lease.slot);
+      output.status = LifecycleStatus::Failed;
+      return output;
+    }
+  }
+
+  // Sidecar preparation can involve SD I/O. Revalidate the exact target and
+  // active transport boundary before entering the audio publication phase.
+  if (!preparedTargetStillCommitSafe(engine, *prepared)) {
+    releaseWriteSlot(lease.slot);
+    output.status = LifecycleStatus::TargetChanged;
+    return output;
+  }
 
   const GeneratedPhraseUndoPayload before = captureUndo(
       engine.sceneManager().currentScene(), *prepared);
@@ -831,7 +1117,11 @@ Result generate(
         const auto apply = [&]() {
           applyPreparedPersistent(
               engine, engine.sceneManager().currentScene(), *prepared,
-              &originCandidate);
+              &originCandidate, nullptr, 0,
+              graphSource.authority == GroovePuterHarmony::HarmonicAuthority::Graph
+                  ? &graphSource
+                  : nullptr,
+              synthBReservation);
         };
         applyGuard(apply);
       });
@@ -945,11 +1235,12 @@ inline CycleStatus verifyKeptPhrase(
     MiniAcid& engine,
     const Scene& scene,
     const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
-    GroovePuterRhythm::PreparedPhraseExecution& execution) {
+    GroovePuterRhythm::PreparedPhraseExecution& execution,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
   if (GroovePuterRhythm::preparePhraseExecution(
           recipe.genre, recipe.materialization, recipe.phraseGenerationIdentity,
-          recipe.bars, scratch, execution) !=
+          recipe.bars, scratch, execution, graphSource) !=
       GroovePuterRhythm::PhraseExecutionStatus::Ready) {
     return CycleStatus::EditedSinceGeneration;
   }
@@ -968,7 +1259,8 @@ inline CycleStatus verifyKeptPhrase(
       return CycleStatus::EditedSinceGeneration;
     }
     if (!GeneratedPhraseP1R::materializeOneBar(
-            engine, execution, bar, static_cast<int16_t>(globalPattern), rebuilt)) {
+            engine, execution, bar, static_cast<int16_t>(globalPattern), rebuilt,
+            graphSource)) {
       return CycleStatus::EditedSinceGeneration;
     }
     if (GeneratedPhraseP1R::canonicalBarHash(
@@ -992,6 +1284,75 @@ inline CycleStatus statusForLaw(GroovePuterRhythm::PhraseLawApplyStatus status) 
     case S::InvalidContext: return CycleStatus::Failed;
   }
   return CycleStatus::Failed;
+}
+
+inline CycleStatus prepareGraphCycleSection(
+    MiniAcid& engine,
+    const Scene& scene,
+    const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
+    GroovePuterHarmony::SectionIntent section,
+    GroovePuterHarmony::HarmonicState current,
+    GroovePuterHarmony::TonalContext currentTonal,
+    const GroovePuterHarmony::RecentHarmonyMemory& recent,
+    GroovePuterRhythm::PhraseEvolutionLawId law,
+    GroovePuterHarmony::PreparedGraphHarmony& graph,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata& metadata,
+    GroovePuterRhythm::PreparedPhraseExecution& execution) {
+  GroovePuterRhythm::PhraseExecutionStatus failure =
+      GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+  if (!GeneratedPhraseP1R::prepareGraphRoute(
+          engine, scene, recipe.genre, kCycleSectionBars,
+          recipe.materialization.generationAttemptOrdinal,
+          &current, &currentTonal, &recent, graph, metadata, failure, section)) {
+    return CycleStatus::NoTrajectory;
+  }
+  GroovePuterRhythm::PhraseExecutionScratch scratch{};
+  if (GroovePuterRhythm::preparePhraseExecution(
+          recipe.genre, recipe.materialization,
+          recipe.phraseGenerationIdentity, kCycleSectionBars,
+          scratch, execution, &graph) !=
+      GroovePuterRhythm::PhraseExecutionStatus::Ready) {
+    return CycleStatus::Failed;
+  }
+  return statusForLaw(
+      GroovePuterRhythm::applyPhraseLawToExecution(execution, law));
+}
+
+inline bool appendGraphRoute(
+    GroovePuterHarmony::PreparedGraphHarmony& destination,
+    const GroovePuterHarmony::PreparedGraphHarmony& source) {
+  using namespace GroovePuterHarmony;
+  if (source.authority != HarmonicAuthority::Graph || source.eventCount == 0 ||
+      source.eventCount > kMaxPreparedGraphEvents ||
+      destination.eventCount + source.eventCount > kMaxPreparedGraphEvents) {
+    return false;
+  }
+  if (destination.authority == HarmonicAuthority::Unknown) {
+    destination = source;
+    return true;
+  }
+  if (destination.authority != HarmonicAuthority::Graph ||
+      destination.modelVersion != source.modelVersion ||
+      destination.materialId != source.materialId ||
+      destination.publicationGeneration != source.publicationGeneration) {
+    return false;
+  }
+  const uint8_t offset = destination.eventCount;
+  for (uint8_t i = 0; i < source.eventCount; ++i) {
+    destination.events[offset + i] = source.events[i];
+    destination.events[offset + i].timingSlotOrdinal = static_cast<uint8_t>(
+        destination.events[offset + i].timingSlotOrdinal + offset);
+  }
+  destination.eventCount = static_cast<uint8_t>(offset + source.eventCount);
+  return true;
+}
+
+inline void offsetGraphExecutionOrdinals(
+    GroovePuterRhythm::PreparedPhraseExecution& execution,
+    uint8_t offset) {
+  for (uint8_t bar = 0; bar < execution.length.effectivePhraseBars; ++bar) {
+    execution.harmonicClock.bars[bar].eventRange.firstOrdinal += offset;
+  }
 }
 
 template <typename Guard>
@@ -1045,9 +1406,19 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   PreparedPhraseArrangement preparedStorage{};
   PreparedPhraseArrangement* const prepared = &preparedStorage;
   GroovePuterRhythm::PreparedPhraseExecution breakExecution{};
+  GroovePuterHarmony::SongHarmonicState keptGraphState{};
+  const bool graphRequested = recipe.genre.harmonicStrategy ==
+      static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph);
+  if (graphRequested && !loadGraphSongHarmonicStateAt(
+          engine, scene, recipe.songSlot, recipe.songStart, recipe.bars,
+          keptGraphState)) {
+    return refuse(CycleStatus::ContextChanged);
+  }
 
   // R0 uses the BREAK slot as scratch; it is rebuilt below.
-  const CycleStatus verified = verifyKeptPhrase(engine, scene, recipe, breakExecution);
+  const CycleStatus verified = verifyKeptPhrase(
+      engine, scene, recipe, breakExecution,
+      graphRequested ? &keptGraphState.harmony : nullptr);
   if (verified != CycleStatus::CommittedNow) return refuse(verified);
 
   // The origin sidecar describes the LATEST generated phrase. It is evidence about A only while it
@@ -1074,26 +1445,95 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   // Both sections come from the same recipe; neither depends on the other. A section whose
   // programme equals the kept phrase's own would publish a copy of it, so it is skipped.
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
-  const auto build = [&](GroovePuterRhythm::PreparedPhraseExecution& execution,
-                         GroovePuterRhythm::PhraseEvolutionLawId law) {
-    if (GroovePuterRhythm::preparePhraseExecution(
-            recipe.genre, recipe.materialization, recipe.phraseGenerationIdentity,
-            kCycleSectionBars, scratch, execution) !=
-        GroovePuterRhythm::PhraseExecutionStatus::Ready) {
-      return CycleStatus::Failed;
-    }
-    return statusForLaw(GroovePuterRhythm::applyPhraseLawToExecution(execution, law));
-  };
   using Law = GroovePuterRhythm::PhraseEvolutionLawId;
-  CycleStatus built = build(prepared->p1rExecution, Law::DevelopReturn);
-  if (built != CycleStatus::CommittedNow) return refuse(built);
-  const bool developSkipped = prepared->p1rExecution.phraseTrajectory == naturalTrajectory;
+  bool developSkipped = false;
+  bool breakSkipped = false;
+  GroovePuterHarmony::PreparedGraphHarmony cycleGraph{};
+  GroovePuterHarmony::PreparedPhraseGraphMetadata cycleGraphMetadata{};
+  if (graphRequested) {
+    GroovePuterHarmony::PreparedGraphHarmony developGraph{};
+    GroovePuterHarmony::PreparedPhraseGraphMetadata developMetadata{};
+    GroovePuterHarmony::PreparedGraphHarmony breakGraph{};
+    GroovePuterHarmony::PreparedPhraseGraphMetadata breakMetadata{};
+    GroovePuterRhythm::PreparedPhraseExecution developExecution{};
+    GroovePuterRhythm::PreparedPhraseExecution plannedBreakExecution{};
+    // The trajectory selected by the source phrase is the authoritative skip test.
+    developSkipped = naturalTrajectory ==
+        GroovePuterRhythm::phraseTrajectoryForLaw(
+            Law::DevelopReturn, recipe.materialization.level);
+    CycleStatus graphSectionStatus = CycleStatus::CommittedNow;
+    if (!developSkipped && (graphSectionStatus = prepareGraphCycleSection(
+            engine, scene, recipe, GroovePuterHarmony::SectionIntent::Develop,
+            keptGraphState.terminal, keptGraphState.terminalTonal,
+            keptGraphState.recent, Law::DevelopReturn, developGraph,
+            developMetadata, developExecution)) != CycleStatus::CommittedNow) {
+      return refuse(graphSectionStatus);
+    }
+    GroovePuterHarmony::RecentHarmonyMemory breakRecent = keptGraphState.recent;
+    GroovePuterHarmony::HarmonicState breakCurrent = keptGraphState.terminal;
+    GroovePuterHarmony::TonalContext breakTonal = keptGraphState.terminalTonal;
+    if (!developSkipped) {
+      const GroovePuterHarmony::ResolvedRouteView developRoute{
+          developGraph.events, developGraph.eventCount,
+          keptGraphState.home, keptGraphState.homeTonal};
+      if (GroovePuterHarmony::commitAcceptedRoute(breakRecent, developRoute) !=
+          GroovePuterHarmony::HarmonyStatus::Ready) {
+        return refuse(CycleStatus::Failed);
+      }
+      breakCurrent = developMetadata.terminal;
+      breakTonal = developMetadata.terminalTonal;
+    }
+    graphSectionStatus = prepareGraphCycleSection(
+            engine, scene, recipe, GroovePuterHarmony::SectionIntent::Break,
+            breakCurrent, breakTonal, breakRecent, Law::SparseDrift,
+            breakGraph, breakMetadata, plannedBreakExecution);
+    if (graphSectionStatus != CycleStatus::CommittedNow) {
+      return refuse(graphSectionStatus);
+    }
+    breakSkipped = plannedBreakExecution.phraseTrajectory == naturalTrajectory;
+    if (!developSkipped && !appendGraphRoute(cycleGraph, developGraph))
+      return refuse(CycleStatus::Failed);
+    if (!breakSkipped && !appendGraphRoute(cycleGraph, breakGraph))
+      return refuse(CycleStatus::Failed);
+    if (developSkipped && breakSkipped) return refuse(CycleStatus::NothingToAdd);
 
-  GroovePuterRhythm::PreparedPhraseExecution* const breakSlot =
-      developSkipped ? &prepared->p1rExecution : &breakExecution;
-  built = build(*breakSlot, Law::SparseDrift);
-  if (built != CycleStatus::CommittedNow) return refuse(built);
-  const bool breakSkipped = breakSlot->phraseTrajectory == naturalTrajectory;
+    if (developSkipped) {
+      prepared->p1rExecution = plannedBreakExecution;
+      cycleGraphMetadata = breakMetadata;
+    } else {
+      prepared->p1rExecution = developExecution;
+      cycleGraphMetadata = developMetadata;
+      if (!breakSkipped) {
+        offsetGraphExecutionOrdinals(plannedBreakExecution, developGraph.eventCount);
+        breakExecution = plannedBreakExecution;
+        cycleGraphMetadata.terminal = breakMetadata.terminal;
+        cycleGraphMetadata.terminalTonal = breakMetadata.terminalTonal;
+      }
+    }
+    cycleGraphMetadata.home = keptGraphState.home;
+    cycleGraphMetadata.homeTonal = keptGraphState.homeTonal;
+  } else {
+    const auto build = [&](GroovePuterRhythm::PreparedPhraseExecution& execution,
+                           GroovePuterRhythm::PhraseEvolutionLawId law) {
+      if (GroovePuterRhythm::preparePhraseExecution(
+              recipe.genre, recipe.materialization,
+              recipe.phraseGenerationIdentity, kCycleSectionBars,
+              scratch, execution) !=
+          GroovePuterRhythm::PhraseExecutionStatus::Ready) {
+        return CycleStatus::Failed;
+      }
+      return statusForLaw(
+          GroovePuterRhythm::applyPhraseLawToExecution(execution, law));
+    };
+    CycleStatus built = build(prepared->p1rExecution, Law::DevelopReturn);
+    if (built != CycleStatus::CommittedNow) return refuse(built);
+    developSkipped = prepared->p1rExecution.phraseTrajectory == naturalTrajectory;
+    GroovePuterRhythm::PreparedPhraseExecution* const breakSlot =
+        developSkipped ? &prepared->p1rExecution : &breakExecution;
+    built = build(*breakSlot, Law::SparseDrift);
+    if (built != CycleStatus::CommittedNow) return refuse(built);
+    breakSkipped = breakSlot->phraseTrajectory == naturalTrajectory;
+  }
   if (developSkipped && breakSkipped) return refuse(CycleStatus::NothingToAdd);
   const bool twoSections = !developSkipped && !breakSkipped;
   const uint8_t kCycleBars = twoSections ? 2 * kCycleSectionBars : kCycleSectionBars;
@@ -1137,7 +1577,8 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
       if (!GeneratedPhraseP1R::materializeOneBar(
               engine, second ? breakExecution : prepared->p1rExecution,
               static_cast<uint8_t>(second ? bar - kCycleSectionBars : bar),
-              static_cast<int16_t>(globalPattern), preflightScratch)) {
+              static_cast<int16_t>(globalPattern), preflightScratch,
+              graphRequested ? &cycleGraph : nullptr)) {
         return refuse(CycleStatus::Failed);
       }
     }
@@ -1150,6 +1591,28 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
   const auto reservation = PatternPagingService::reserveMaterialIds(kCycleBars);
   if (!reservation.valid()) return refuse(CycleStatus::ReservationFailed);
   prepared->synthAReservation = reservation;
+  GroovePuterMaterial::MaterialIdReservation synthBReservation{};
+  if (graphRequested) {
+    synthBReservation = PatternPagingService::reserveMaterialIds(kCycleBars);
+    if (!synthBReservation.valid()) return refuse(CycleStatus::ReservationFailed);
+    cycleGraph.materialId = reservation.idAt(0).value;
+    GraphContinuationContext continuation{};
+    continuation.valid = true;
+    continuation.songIdentity = keptGraphState.songIdentity;
+    continuation.current = keptGraphState.terminal;
+    continuation.currentTonal = keptGraphState.terminalTonal;
+    continuation.recent = keptGraphState.recent;
+    GroovePuterHarmony::SongHarmonicState cycleHarmonicState{};
+    if (!prepareGraphSongHarmonicState(
+            engine, *prepared, cycleGraph, cycleGraphMetadata,
+            synthBReservation, continuation, cycleHarmonicState,
+            twoSections ? &breakExecution : nullptr,
+            twoSections ? kCycleSectionBars : 0) ||
+        PatternPagingService::saveSongHarmonicState(cycleHarmonicState) !=
+            SongHarmonicStorageStatus::Ok) {
+      return refuse(CycleStatus::Failed);
+    }
+  }
 
   const GeneratedPhraseUndoPayload before = captureUndo(scene, *prepared);
   auto&& applyGuard = guard;
@@ -1172,7 +1635,9 @@ CycleResult generateCycle(MiniAcid& engine, Guard&& guard) {
           applyPreparedPersistent(
               engine, engine.sceneManager().currentScene(), *prepared,
               &originCandidate, twoSections ? &breakExecution : nullptr,
-              kCycleSectionBars);
+              kCycleSectionBars,
+              graphRequested ? &cycleGraph : nullptr,
+              synthBReservation);
         };
         applyGuard(apply);
       });

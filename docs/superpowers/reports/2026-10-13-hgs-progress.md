@@ -540,3 +540,84 @@
   caller-owned source through PREPARE/PREFLIGHT/COMMIT, persist exact A/B participant identities
   and versions with undo/replay/cycle semantics, then expose only capability-valid Genre UI
   selection. Hardware acceptance stays `NOT_RUN`.
+
+### HGS2-7c production phrase route and sidecar — in progress
+
+- Start SHA: `21c787493e3028a53e6d28d3a2e2e7b47f3a561f`.
+- Added a bounded production route builder from the selected GenreSettings, current root/scale,
+  stable project/song identity, deterministic genome, existing timing slots, and optional prior
+  harmonic terminal/repeat memory. Genre policy and materializer capability are intersected;
+  an unsupported route or one that cannot project through the current event carrier fails before
+  physical material is committed.
+- Generated phrase PREPARE now builds a caller-owned Graph source from the actual harmonic timing
+  probe and reuses it through semantic preparation, bar preflight, and commit. Graph generation
+  reserves distinct Synth A/B material IDs, captures exact participant versions, and saves the
+  harmonic sidecar before publication; a missing/incompatible preceding sidecar begins from the
+  stable home state. Sidecar I/O remains on the control path and commit targets are revalidated
+  after I/O.
+- The planner scratch is stack scoped on the control path. To avoid nesting its large workspace
+  under the former Graph P1R preparation frame, route timing probe/build now runs in a separate
+  control-side helper before materializer preparation. The latest ADV build reports flash
+  1,588,134 bytes and static RAM 188,804 bytes. `-fstack-usage` reports `generate` 7,392 B,
+  generation preparation 3,552 B, route helper 9,552 B, builder/planner frames 4,112 B combined,
+  and the PhrasePage caller 192 B: about 24.8 KB of measured nested frames against the 32 KB loop
+  stack, leaving about 8 KB before unlisted runtime/caller use. This remains a static estimate;
+  device high-water measurement is required.
+- Verification: full HGS suite — PASS; full Smart Play suite — PASS; Phrase Core — PASS; SDL build
+  — PASS; ADV build with stack-usage reports — PASS; `git diff --check` — PASS. The chained legacy
+  P1R/M1 runner still reaches the known baseline-red `SparseCall` assertion. Hardware and listening
+  acceptance remain `NOT_RUN`.
+- Still open before hardware testing: Graph route continuity through cycle/development and undo;
+  capability-valid user-facing LEGACY/GRAPH selection with a useful unsupported reason; end-to-end
+  selection/persistence tests; HGS2-8 deterministic genre/listening package; physical stack
+  high-water and musical acceptance. Device testing is not ready yet.
+
+### HGS2-7c Genre selection UI — partial
+
+- Added a control-side Graph capability query and tests for supported Acid/Dorian, unsupported
+  mapped genre, and unsupported scale. The GENRE page now exposes `HARMONY LEGACY/GRAPH`, keeps
+  Legacy as the default, shows `GRAPH N/A` for unsupported profiles/scales, and applies the
+  selected strategy with the next profile/generation request. Scene save/load already carries the
+  strategy field; existing round-trip tests cover it.
+- ADV rebuild after the UI change — PASS, flash 1,588,050 bytes / static RAM 188,804 bytes. Full
+  HGS, Smart Play, Phrase Core, source regressions and SDL build — PASS. The separate UI content
+  bounds script ran but exits with two existing harness assertions (footer row count records 13;
+  melody fixture never enters the melody editor); it reported no GenrePage bound violation.
+- The UI bounds gate initially exposed stale harness assumptions about shell chrome and segmented
+  footer text. Those checks now model the actual shell and group text by screen row; the gate passes
+  and drives the selector to Graph, asserting that Enter stores the strategy.
+- This does not close HGS2-7c: cycle/development Graph source and sidecar undo/replay remain open;
+  the current capability check does not claim those paths. Hardware/listening acceptance remains
+  `NOT_RUN` until those production paths and HGS2-8 are complete.
+
+## HGS2-7c production cycle/undo and HGS2-8 evidence package — software complete
+
+- Graph phrase cycling now loads the exact persisted harmonic state for the kept phrase, plans
+  DEVELOP/BREAK from the prior terminal state, plans RETURN to the home state, persists the exact
+  cycle sidecar for Synth A/B before publish, and removes it on Undo. The Synth B sidecar now
+  captures Synth B's actual pattern version. The production cycle test uses a genre-admitted DnB
+  route; conservative Acid rejection remains an explicit genre contract.
+- Graph selection reports unsupported route capability rather than exposing a broken option.
+  Seed zero is normalized for Graph identity so initial generation and saved/reloaded identity
+  agree.
+- Added a deterministic 17-profile × 256-seed × major/minor × five-section trace generator and
+  A/B event fixtures. Full sweep: 43,520 route requests; 38,877 ready, 4,643 typed
+  `CAPACITY_EXCEEDED` results (all RETURN), zero invariant failures. RETURN reaches exact home
+  in 4,061/8,704 cases. This 53.3% bounded RETURN rejection rate is disclosed as a limitation,
+  not folded into a generic PASS; no material is mutated on a rejected route.
+- Added report/checklist at `docs/superpowers/reports/2026-10-13-hgs-listening.md`, documented
+  `LEGACY/GRAPH` workflow in MANUAL, and recorded Phase A/hardware status in PLAN. A/B output is
+  harmonic event evidence only: rendered audio and musician listening have not run.
+- Verification: listening-package smoke + full sweep — PASS; ASan/UBSan sweep smoke (2 seeds) —
+  PASS; full HGS suite — PASS; Smart Play suite — PASS; P0 cycle/Undo — PASS; Phrase Core — PASS;
+  source regressions — PASS; UI content bounds — PASS; SDL — PASS (no rebuild required); ADV
+  `--warnings all` build — PASS. GCC 13.3.0. Clang unavailable. ADV flash 1,592,006 B, static
+  RAM 188,804 B. Stack estimates include `generateCycle` 10,832 B and `prepareGraphRoute` 9,552
+  B; physical task high-water remains unmeasured.
+- Candidate ADV binary SHA-256: `ab460a2ed858b156d6c88a7d75be7650e2e8dd6634003f76ad69d4cf5b550e38`.
+  No firmware flash, commit, push, tag, or release was performed. Device hardware/listening
+  acceptance remains `NOT_RUN`.
+- NEXT_TASK=hardware smoke/listening with the exact candidate binary, beginning with mapped
+  profiles and capturing the RETURN rejection behavior plus task-stack high-water. Review the
+  RETURN search's bounded capacity outcome before treating Phase A as product-ready. Phase B
+  remains conditional on named, user-accepted blocked-value evidence.

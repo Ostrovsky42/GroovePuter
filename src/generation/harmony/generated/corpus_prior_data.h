@@ -336,6 +336,8 @@ inline constexpr uint8_t kCoarseBytes[] = {
     0x07u, 0x04u, 0x01u, 0x0fu, 0x07u, 0x05u, 0x01u, 0x0fu,
 };
 
+inline constexpr uint16_t kModelVersion = 1;
+inline constexpr uint64_t kContentChecksum = 0x9a0b50e81abf7e21ull;
 inline constexpr uint16_t kTokenCount = 64;
 inline constexpr uint16_t kTrigramCount = 357;
 inline constexpr uint16_t kBigramCount = 257;

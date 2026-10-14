@@ -2117,8 +2117,11 @@ bool MiniAcid::tryCaptureSongHarmonicParticipants(
       const int index = songPatternIndexInBank(pattern);
       if (!id.valid() || bank < 0 || bank >= kBankCount || index < 0 ||
           index >= Bank<SynthPattern>::kPatterns) return false;
-      const auto version = GroovePuterMaterial::versionForPattern(
-          scene.synthABanks[bank].patterns[index]);
+      const auto version = track == 0
+          ? GroovePuterMaterial::versionForPattern(
+                scene.synthABanks[bank].patterns[index])
+          : GroovePuterMaterial::versionForPattern(
+                scene.synthBBanks[bank].patterns[index]);
       if (!version.valid()) return false;
       staged[count++] = {track, row, 0, id, version};
     }

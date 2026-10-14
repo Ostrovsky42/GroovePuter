@@ -25,6 +25,7 @@ class GenrePage : public IPage {
     Variant,
     Rhythm,
     Depth,
+    Harmony,
     Apply,
   };
 
@@ -65,6 +66,7 @@ class GenrePage : public IPage {
   void cycleRhythmSelection(int delta);
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
+  bool cycleHarmonyStrategy();
   void applyCurrent(bool forceRegenerate = false);
   void applyPendingProfile();
   bool generateFromG();
@@ -93,6 +95,7 @@ class GenrePage : public IPage {
       GroovePuterRhythm::RhythmSelectionMode::Auto;
   GroovePuterRhythm::RhythmArchetypeId rhythmArchetypeId_ =
       GroovePuterRhythm::kNoArchetypeId;
+  uint8_t pendingHarmonyStrategy_ = 0;
   bool rhythmFallbackPending_ = false;
   std::string title_ = "GENRE";
 };

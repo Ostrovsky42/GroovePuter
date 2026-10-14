@@ -18,6 +18,7 @@
 #include "../../state/phrase_generation_request_state.h"
 #include "synth_sequencer_page.h"
 #include "../../state/scene_revision.h"
+#include "../../generation/harmony/phrase_graph_route_builder.h"
 
 namespace {
 int wrapIndex(int value, int count) {
@@ -65,6 +66,34 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
+const char* graphCapabilityName(
+    GroovePuterHarmony::PhraseGraphRouteBuildStatus status) {
+  using Status = GroovePuterHarmony::PhraseGraphRouteBuildStatus;
+  switch (status) {
+    case Status::Ready: return "GRAPH";
+    case Status::Disabled: return "LEGACY";
+    case Status::UnsupportedGenre: return "GRAPH N/A:GENRE";
+    case Status::UnsupportedScale: return "GRAPH N/A:SCALE";
+    case Status::UnsupportedHome: return "GRAPH N/A:HOME";
+    case Status::UnsupportedProjection: return "GRAPH N/A:PITCH";
+    case Status::PlannerFailure: return "GRAPH N/A:ROUTE";
+    case Status::InvalidContext: return "GRAPH N/A:SETUP";
+  }
+  return "GRAPH N/A";
+}
+
+GroovePuterHarmony::PhraseGraphRouteBuildStatus graphCapabilityFor(
+    const GenreSettings& source, uint8_t scaleId) {
+  GenreSettings graphSettings = source;
+  graphSettings.harmonicStrategy = static_cast<uint8_t>(
+      GroovePuterHarmony::HarmonicStrategy::Graph);
+  if (GroovePuterRhythm::selectStrongRhythmRoute(graphSettings) ==
+      GroovePuterRhythm::StrongRhythmRoute::Legacy) {
+    return GroovePuterHarmony::PhraseGraphRouteBuildStatus::UnsupportedGenre;
+  }
+  return GroovePuterHarmony::graphRouteCapability(graphSettings, scaleId);
+}
+
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
   (void)gfx;
   (void)recipeIndex;
@@ -97,7 +126,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 5;
+  constexpr int kCount = 6;
   focus_ = static_cast<FocusRow>(wrapIndex(static_cast<int>(focus_) + delta, kCount));
 }
 
@@ -136,6 +165,15 @@ GenreSettings GenrePage::pendingSettings() const {
   settings.morphAmount = 0;
   settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   settings.rhythmArchetypeId = rhythmArchetypeId_;
+  settings.harmonicStrategy = pendingHarmonyStrategy_;
+  if (settings.harmonicStrategy == static_cast<uint8_t>(
+          GroovePuterHarmony::HarmonicStrategy::Graph) &&
+      graphCapabilityFor(settings, static_cast<uint8_t>(
+          mini_acid_.sceneManager().currentScene().generatorParams.scale)) !=
+          GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    settings.harmonicStrategy = static_cast<uint8_t>(
+        GroovePuterHarmony::HarmonicStrategy::Legacy);
+  }
   return settings;
 }
 
@@ -189,6 +227,34 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
+bool GenrePage::cycleHarmonyStrategy() {
+  if (pendingHarmonyStrategy_ == static_cast<uint8_t>(
+          GroovePuterHarmony::HarmonicStrategy::Graph)) {
+    pendingHarmonyStrategy_ = static_cast<uint8_t>(
+        GroovePuterHarmony::HarmonicStrategy::Legacy);
+    UI::showToast("HARMONY: LEGACY", 900);
+    return true;
+  }
+  const GenreSettings graphSettings = [&]() {
+    GenreSettings settings = pendingSettings();
+    settings.harmonicStrategy = static_cast<uint8_t>(
+        GroovePuterHarmony::HarmonicStrategy::Graph);
+    return settings;
+  }();
+  const auto status = graphCapabilityFor(graphSettings, static_cast<uint8_t>(
+      mini_acid_.sceneManager().currentScene().generatorParams.scale));
+  if (status != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    char message[32];
+    std::snprintf(message, sizeof(message), "%s", graphCapabilityName(status));
+    UI::showToast(message, 1300);
+    return false;
+  }
+  pendingHarmonyStrategy_ = static_cast<uint8_t>(
+      GroovePuterHarmony::HarmonicStrategy::Graph);
+  UI::showToast("GRAPH FOR NEXT TAKE", 1100);
+  return true;
+}
+
 void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
@@ -209,6 +275,7 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   requestedSettings.morphAmount = 0;
   requestedSettings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   requestedSettings.rhythmArchetypeId = rhythmArchetypeId_;
+  requestedSettings.harmonicStrategy = pendingSettings().harmonicStrategy;
 
   const bool changed = doRegenerate || mini_acid_.grooveboxMode() != nextMode ||
       activeSettings.generativeMode != requestedSettings.generativeMode ||
@@ -216,7 +283,8 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       activeSettings.morphTarget != requestedSettings.morphTarget ||
       activeSettings.morphAmount != requestedSettings.morphAmount ||
       activeSettings.rhythmSelectionMode != requestedSettings.rhythmSelectionMode ||
-      activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId;
+      activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId ||
+      activeSettings.harmonicStrategy != requestedSettings.harmonicStrategy;
 
   float requestedBpm = mini_acid_.bpm();
   if (doApplyTempo) {
@@ -270,6 +338,12 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     }
   }
 
+  if (!doRegenerate ||
+      generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow ||
+      generationResult == GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar) {
+    pendingHarmonyStrategy_ = requestedSettings.harmonicStrategy;
+  }
+
   char toast[96];
   std::snprintf(toast, sizeof(toast), "%s / %s: %s",
                 GenreCatalog::generativeModeName(genre),
@@ -282,6 +356,7 @@ void GenrePage::updateFromEngine() {
   const GenerativeMode genre = sceneGenerativeMode(settings);
   genre_index_ = static_cast<int>(genre);
   recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(genre, sceneRecipe(settings)));
+  pendingHarmonyStrategy_ = settings.harmonicStrategy;
   rhythmMode_ = settings.rhythmSelectionMode == static_cast<uint8_t>(
                     GroovePuterRhythm::RhythmSelectionMode::Manual)
                     ? GroovePuterRhythm::RhythmSelectionMode::Manual
@@ -305,6 +380,7 @@ void GenrePage::applyPendingProfile() {
       active.recipe == requested.recipe &&
       active.rhythmSelectionMode == requested.rhythmSelectionMode &&
       active.rhythmArchetypeId == requested.rhythmArchetypeId &&
+      active.harmonicStrategy == requested.harmonicStrategy &&
       mini_acid_.grooveboxMode() == nextMode) {
     return;
   }
@@ -412,8 +488,6 @@ void GenrePage::draw(IGfx& gfx) {
   const int profileIndex = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
   const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
-  const GroovePuterRhythm::GenerationProfileView selectedProfile =
-      GroovePuterRhythm::generationProfileFor(pendingSettings());
   const GenreSettings& settings = mini_acid_.sceneManager().currentScene().genre;
   const auto activeGenre = sceneGenerativeMode(settings);
   const auto activeRecipe = sceneRecipe(settings);
@@ -449,17 +523,29 @@ void GenrePage::draw(IGfx& gfx) {
           GroovePuterState::currentGenerationLevel()),
       focus_ == FocusRow::Depth, axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
-                       applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
+  const GenreSettings graphSettings = [&]() {
+    GenreSettings settings = pendingSettings();
+    settings.harmonicStrategy = static_cast<uint8_t>(
+        GroovePuterHarmony::HarmonicStrategy::Graph);
+    return settings;
+  }();
+  const auto graphCapability = graphCapabilityFor(graphSettings,
+      static_cast<uint8_t>(mini_acid_.sceneManager().currentScene().generatorParams.scale));
+  if (graphCapability == GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
+        pendingHarmonyStrategy_ == static_cast<uint8_t>(
+            GroovePuterHarmony::HarmonicStrategy::Graph) ? "GRAPH" : "LEGACY",
+        focus_ == FocusRow::Harmony, axisColor, palette);
+  } else {
+    char harmonyValue[40];
+    std::snprintf(harmonyValue, sizeof(harmonyValue), "LEGACY / N/A:%s",
+        graphCapabilityName(graphCapability) + 10);
+    AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
+        harmonyValue, focus_ == FocusRow::Harmony, axisColor, palette);
+  }
 
-  std::snprintf(value, sizeof(value), "BPM %u (%u-%u) D%u..%u",
-      static_cast<unsigned>(selectedProfile.corridor.suggestedBpm),
-      static_cast<unsigned>(selectedProfile.corridor.bpmMin),
-      static_cast<unsigned>(selectedProfile.corridor.bpmMax),
-      static_cast<unsigned>(selectedProfile.corridor.densityMin),
-      static_cast<unsigned>(selectedProfile.corridor.densityMax));
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width, "APPLY",
+                       applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
 
   const char* pendingSuffix =
       GroovePuterRhythm::hasPendingQuantizedGeneration(mini_acid_)
@@ -475,7 +561,7 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
-  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE", "G:NEW TAKE P:STYLE M:APPLY");
+  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE", "ENTER:APPLY G:TAKE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -541,6 +627,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Depth:
         (void)GroovePuterState::cycleGenerationLevel(delta);
         return true;
+      case FocusRow::Harmony: (void)cycleHarmonyStrategy(); return true;
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }

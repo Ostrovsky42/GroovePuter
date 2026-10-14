@@ -83,6 +83,7 @@ SOURCES := \
 	../src/generation/harmony/corpus_prior.cpp \
 	../src/generation/harmony/harmonic_candidate.cpp \
 	../src/generation/harmony/harmonic_route.cpp \
+	../src/generation/harmony/phrase_graph_route_builder.cpp \
 	../src/generation/phrase/phrase_evolution.cpp \
 	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \

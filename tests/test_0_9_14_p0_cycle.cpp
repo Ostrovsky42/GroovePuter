@@ -73,21 +73,25 @@ const auto kGuard = [](auto&& body) { body(); };
 struct Fixture {
   SceneStorageSdl storage;
   MiniAcid engine{kSampleRate, &storage};
-  explicit Fixture(const char* project, R::RealizationLevel level) {
+  explicit Fixture(const char* project, R::RealizationLevel level,
+                   bool graphHarmony = false) {
     CHECK(PatternPagingService::setProjectName(project));
     CHECK(PatternPagingService::clearProjectPages());
     engine.init();
     engine.setSongMode(false);
     Scene& scene = engine.sceneManager().currentScene();
-    scene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::Techno);
-    scene.genre.recipe = 0;
+    scene.genre.generativeMode = static_cast<uint8_t>(
+        graphHarmony ? GenerativeMode::Broken : GenerativeMode::Techno);
+    scene.genre.recipe = graphHarmony ? 2 : 0;
+    scene.genre.harmonicStrategy = graphHarmony ? 1 : 0;
     scene.genre.morphTarget = 0;
     scene.genre.morphAmount = 0;
     scene.genre.regenerateOnApply = false;
     scene.genre.applyTempoOnApply = false;
-    scene.genre.rhythmSelectionMode =
-        static_cast<uint8_t>(R::RhythmSelectionMode::Manual);
-    scene.genre.rhythmArchetypeId = 404;  // broken_techno: admitted at P3
+    scene.genre.rhythmSelectionMode = static_cast<uint8_t>(
+        graphHarmony ? R::RhythmSelectionMode::Auto
+                     : R::RhythmSelectionMode::Manual);
+    scene.genre.rhythmArchetypeId = graphHarmony ? 0 : 404;
     scene.activeSongSlot = 0;
     scene.songs[0] = Song{};
     scene.songs[1] = Song{};
@@ -104,8 +108,9 @@ struct Fixture {
         scene.materialSlots[v][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
       }
     }
-    engine.genreManager().setGenerativeMode(GenerativeMode::Techno);
-    engine.genreManager().setRecipe(0);
+    engine.genreManager().setGenerativeMode(
+        graphHarmony ? GenerativeMode::Broken : GenerativeMode::Techno);
+    engine.genreManager().setRecipe(graphHarmony ? 2 : 0);
     engine.setBpm(120.0f);
     GroovePuterState::setGenerationLevel(level);
   }
@@ -114,8 +119,14 @@ struct Fixture {
   }
   Scene& scene() { return engine.sceneManager().currentScene(); }
   bool generateKept() {
-    return GeneratedPhraseSong::generate(engine, 4, 0, kGuard).status ==
-           LifecycleStatus::CommittedNow;
+    const auto result = GeneratedPhraseSong::generate(engine, 4, 0, kGuard);
+    if (result.status != LifecycleStatus::CommittedNow) {
+      std::fprintf(stderr, "generate status=%d phrase=%d p1r=%d\n",
+                   static_cast<int>(result.status),
+                   static_cast<int>(result.phrase.error),
+                   static_cast<int>(result.p1r.executionStatus));
+    }
+    return result.status == LifecycleStatus::CommittedNow;
   }
   uint64_t rowHash(int row) {
     const Song& song = scene().songs[0];
@@ -159,6 +170,33 @@ void testNoRecipe() {
   CHECK(f.engine.generatedPhraseRecipe() == nullptr);
   CHECK(f.cycle() == CycleStatus::NoRecipe);
   std::puts("P0 cycle: no recipe -> typed NoRecipe: PASS");
+}
+
+void testGraphHarmonyCycleContinuesAndUndoes() {
+  Fixture f("p0-graph-cycle", R::RealizationLevel::P3Transformation, true);
+  CHECK(f.generateKept());
+  const auto* keptState = f.engine.generatedPhraseRecipe();
+  CHECK(keptState != nullptr);
+  const auto firstCycle = f.cycle();
+  if (firstCycle != CycleStatus::CommittedNow) {
+    std::fprintf(stderr, "Graph cycle status=%d\n", static_cast<int>(firstCycle));
+  }
+  CHECK(firstCycle == CycleStatus::CommittedNow);
+  const auto* origin = f.engine.generatedSynthAOrigin();
+  CHECK(origin != nullptr && origin->valid());
+  const auto* recipe = f.engine.generatedPhraseRecipe();
+  CHECK(recipe != nullptr && recipe->cycleSongStart >= 0);
+  const int cycleStart = recipe->cycleSongStart;
+  const int cycleBars = f.scene().songs[0].length - cycleStart;
+  GroovePuterHarmony::SongHarmonicState cycleState{};
+  CHECK(GeneratedPhraseSong::loadGraphSongHarmonicStateAt(
+      f.engine, f.scene(), 0, cycleStart, cycleBars, cycleState));
+  CHECK(GeneratedPhraseSong::undoLastGeneratedPhrase(f.engine, kGuard) ==
+        GroovePuterUndo::UndoResult::Restored);
+  CHECK(f.scene().songs[0].length == 4);
+  CHECK(!GeneratedPhraseSong::loadGraphSongHarmonicStateAt(
+      f.engine, f.scene(), 0, cycleStart, cycleBars, cycleState));
+  CHECK(f.cycle() == CycleStatus::CommittedNow);
 }
 
 void testPublishUndoRepeat() {
@@ -610,6 +648,7 @@ void testSaveKeepsCycleUndo() {
 
 int main() {
   testNoRecipe();
+  testGraphHarmonyCycleContinuesAndUndoes();
   testPublishUndoRepeat();
   testRefusals();
   testOriginOfLaterCycleDoesNotJudgeKeptPhrase();

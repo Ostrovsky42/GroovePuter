@@ -217,6 +217,10 @@ PERFORM        - continuous live ownership
 
 Restore the controller-independent Smart Play layer as bounded live-note interpretation owned by the existing `PerformanceKeyboard`. The dependency order is shared harmonic semantics and snapshots → source-owned note lifecycle → RAW/BASS/LEAD/CHORD/ARP live roles → deterministic Smart Arp → published legacy harmony → standalone UI/configuration → software acceptance and hardware handoff. Genre-aware HGS supplies future harmony snapshots through the same boundary; it does not add a second chord-quality table or let performance input mutate composition state. Hardware testing starts after the SP-7 host/core, SDL and firmware gates pass; until a person tests the Cardputer, hardware acceptance remains NOT RUN.
 
+### Unified harmonic system / genre HGS
+
+Phase A implementation is in the isolated `feature/smart-play-return` worktree. It adds bounded genre policy/genome routing, shared harmonic semantics, deterministic route memory, persisted Graph harmony for generated material, Graph capability reporting, and Song cycle/Undo integration. HGS2 software verification is recorded in `docs/superpowers/reports/2026-10-13-hgs-listening.md`; all 17 profiles are swept, while only nine currently map to device GENRE settings. Hardware and listening acceptance remain pending. The sweep reports typed four-event RETURN capacity rejections explicitly; do not interpret those requests as successful returns. Phase B semantic descriptors stay conditional on named listening evidence and an accepted blocked-value case.
+
 ### Musical boundaries by default
 
 - Region selection snaps to bars by default.

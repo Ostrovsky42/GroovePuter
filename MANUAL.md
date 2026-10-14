@@ -107,6 +107,12 @@ While stopped, accepted generation commits immediately. During PLAY the full Syn
 
 Repeated accepted `G` requests reroll the same selected musical direction through the bounded session attempt stream.
 
+On supported GENRE/scale combinations, the `HARMONY` row can select `GRAPH` for the next generated Take. `LEGACY` keeps the existing progression source. If the current genre, scale, or home chord cannot be represented by the bounded materializer, the row shows `LEGACY / N/A:...`; graph generation is not available for that setup. This setting affects newly generated material. It does not reinterpret notes in a Take that is already playing.
+
+`GRAPH` builds harmony from the selected genre policy, a deterministic song variation, the current harmonic state, and legal neighbors. The generated harmonic events are saved with their exact Synth A/B participant identities so later Song operations can keep the same meaning. `BREAK` may still be conservative for styles such as Acid, Jungle, and DnB. A bounded route that cannot satisfy the request is rejected with its source material preserved.
+
+The development host package includes deterministic event traces for all 17 harmonic profiles. Eight profiles are host-only today; nine map to existing device genre settings. These traces are evidence for inspection, not rendered audio or a substitute for listening on the Cardputer.
+
 ### FEEL 2/2
 
 FEEL owns timing and velocity only:

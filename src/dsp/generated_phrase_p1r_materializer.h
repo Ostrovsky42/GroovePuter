@@ -5,6 +5,7 @@
 #include "mode_manager.h"
 #include "phrase_generator.h"
 #include "src/generation/migration/phrase_execution.h"
+#include "src/generation/harmony/phrase_graph_route_builder.h"
 #include "src/state/generation_request_state.h"
 
 #include <array>
@@ -13,6 +14,23 @@
 #include <cstring>
 
 namespace GeneratedPhraseP1R {
+
+struct GraphRoutePlanningWorkspace {
+  GroovePuterHarmony::RouteScratch route{};
+  GroovePuterHarmony::RouteCandidateWorkspace candidates{};
+  GroovePuterHarmony::RecentHarmonyMemory recent{};
+};
+
+inline uint32_t stableProjectSeed(uint32_t projectSeed) {
+  return projectSeed == 0 ? 0x47505331u : projectSeed;
+}
+
+inline uint32_t stableSongIdentity(uint32_t projectSeed, int songSlot) {
+  projectSeed = stableProjectSeed(projectSeed);
+  const uint32_t identity = GroovePuterRhythm::deterministicValue(
+      projectSeed, 0x534F4E47u + static_cast<uint32_t>(songSlot));
+  return identity == 0 ? 1u : identity;
+}
 
 constexpr int kLogicalPhraseAttemptChannel = 0xFFFF;
 static_assert(kMaxGlobalPatterns < kLogicalPhraseAttemptChannel,
@@ -67,6 +85,83 @@ materializationSettingsFor(const Scene& scene,
   settings.scaleTypeValue =
       static_cast<GroovePuterRhythm::ScaleTypeValue>(scene.generatorParams.scale);
   return settings;
+}
+
+inline bool probeGraphEventCount(
+    const Scene& scene, const GenreSettings& genre, uint8_t bars,
+    uint32_t generationAttemptOrdinal, uint8_t& eventCount,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus) {
+  GenreSettings legacyProbeGenre = genre;
+  legacyProbeGenre.harmonicStrategy = static_cast<uint8_t>(
+      GroovePuterHarmony::HarmonicStrategy::Legacy);
+  GroovePuterRhythm::PreparedPhraseExecution probe{};
+  GroovePuterRhythm::PhraseExecutionScratch probeScratch{};
+  const uint16_t phraseIdentity = phraseIdentityForAttempt(
+      generationAttemptOrdinal);
+  const auto probeStatus = GroovePuterRhythm::preparePhraseExecution(
+      legacyProbeGenre,
+      materializationSettingsFor(scene, GroovePuterState::currentGenerationLevel(),
+                                 generationAttemptOrdinal),
+      phraseIdentity, bars, probeScratch, probe, nullptr);
+  if (probeStatus != GroovePuterRhythm::PhraseExecutionStatus::Ready ||
+      probe.semantic.harmonicTimeline.totalEventPositions == 0 ||
+      probe.semantic.harmonicTimeline.totalEventPositions >
+          GroovePuterHarmony::kMaxPreparedGraphEvents) {
+    failureStatus = probeStatus == GroovePuterRhythm::PhraseExecutionStatus::Ready
+        ? GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure
+        : probeStatus;
+    return false;
+  }
+  eventCount = probe.semantic.harmonicTimeline.totalEventPositions;
+  return true;
+}
+
+inline bool prepareGraphRoute(
+    MiniAcid& engine, const Scene& scene, const GenreSettings& genre,
+    uint8_t bars, uint32_t generationAttemptOrdinal,
+    const GroovePuterHarmony::HarmonicState* current,
+    const GroovePuterHarmony::TonalContext* currentTonal,
+    const GroovePuterHarmony::RecentHarmonyMemory* recent,
+    GroovePuterHarmony::PreparedGraphHarmony& graphOut,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata& metadataOut,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus,
+    GroovePuterHarmony::SectionIntent section =
+        GroovePuterHarmony::SectionIntent::Develop) {
+  uint8_t eventCount = 0;
+  if (!probeGraphEventCount(scene, genre, bars, generationAttemptOrdinal,
+                            eventCount, failureStatus)) return false;
+
+  GraphRoutePlanningWorkspace workspace{};
+  if (recent != nullptr) workspace.recent = *recent;
+  const uint32_t projectSeed = stableProjectSeed(
+      engine.modeManager().generationSeed());
+  const uint32_t songIdentity = stableSongIdentity(
+      projectSeed, std::clamp(scene.activeSongSlot, 0, 1));
+  const uint16_t phraseIdentity = phraseIdentityForAttempt(
+      generationAttemptOrdinal);
+  const uint32_t provisionalMaterialId =
+      static_cast<uint32_t>(phraseIdentity) + 1u;
+  const uint32_t provisionalGeneration =
+      static_cast<uint32_t>(phraseIdentity) + 1u;
+  const auto materialization = materializationSettingsFor(
+      scene, GroovePuterState::currentGenerationLevel(),
+      generationAttemptOrdinal);
+  GroovePuterHarmony::PreparedGraphHarmony graph{};
+  GroovePuterHarmony::PreparedPhraseGraphMetadata metadata{};
+  if (GroovePuterHarmony::buildPhraseGraphRoute(
+          genre, materialization.rootPitchClass,
+          static_cast<uint8_t>(materialization.scaleTypeValue), eventCount,
+          projectSeed, songIdentity, provisionalMaterialId,
+          provisionalGeneration, workspace.recent, workspace.route,
+          workspace.candidates, graph, metadata, current, currentTonal,
+          section) !=
+      GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    failureStatus = GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+    return false;
+  }
+  graphOut = graph;
+  metadataOut = metadata;
+  return true;
 }
 
 inline GenreBehavior synthBehaviorForVoice(GenreBehavior behavior,
@@ -309,8 +404,16 @@ inline PreparationDisposition prepare(
     PreparationEvidence& evidence,
     const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
   evidence = PreparationEvidence{};
+  const bool graphRequested = genre.harmonicStrategy ==
+      static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph);
   if (GroovePuterRhythm::selectStrongRhythmRoute(genre) ==
       GroovePuterRhythm::StrongRhythmRoute::Legacy) {
+    if (graphRequested) {
+      evidence.usedP1r = true;
+      evidence.executionStatus =
+          GroovePuterRhythm::PhraseExecutionStatus::Rejected;
+      return PreparationDisposition::Failed;
+    }
     return PreparationDisposition::LegacyRoute;
   }
 
@@ -322,6 +425,12 @@ inline PreparationDisposition prepare(
   const auto level = GroovePuterState::currentGenerationLevel();
 
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
+  if (graphRequested && graphSource == nullptr) {
+    evidence.executionStatus =
+        GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+    return PreparationDisposition::Failed;
+  }
+
   evidence.executionStatus = GroovePuterRhythm::preparePhraseExecution(
       genre,
       materializationSettingsFor(scene, level, generationAttemptOrdinal),
