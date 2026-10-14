@@ -3,6 +3,7 @@
 Date: 2026-10-14
 Worktree: `feature/smart-play-return`
 Start/HEAD SHA: `21c787493e3028a53e6d28d3a2e2e7b47f3a561f`
+Implementation commit: `48e48c96fe1847e513d8d8f3822b6f6bd548df60`
 Firmware target: Cardputer ADV, ESP32-S3, Arduino ESP32 core 3.2.2
 Compiler: GCC 13.3.0; Clang is not installed in this environment.
 
