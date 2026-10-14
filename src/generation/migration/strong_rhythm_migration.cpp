@@ -923,6 +923,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  result.harmonicPlan = harmonic.plan;
+  result.harmonicProgression = progression.plan;
+  result.harmonicRootPitchClass = context.rootPitchClass;
+  result.harmonicScaleTypeValue = context.scaleTypeValue;
 
   MelodicMotifRequest melodicRequest{};
   melodicRequest.requestedRhythm = result.melodicRhythmId;

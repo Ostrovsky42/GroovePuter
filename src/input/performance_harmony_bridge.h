@@ -6,6 +6,7 @@
 
 #include "performance_harmony_context.h"
 #include "performance_keyboard.h"
+#include "../state/generated_pattern_harmony_origin.h"
 #include "../generation/harmony/harmonic_scale.h"
 #include "../generation/harmony/harmonic_role_policy.h"
 #include "../generation/harmony/harmonic_snapshot.h"
@@ -26,6 +27,95 @@ struct HarmonyPlaybackPosition {
   uint32_t transportEpoch = 0;
   uint64_t absoluteStep = 0;
 };
+
+struct PatternHarmonyPlaybackPosition {
+  int16_t activePage = -1;
+  int16_t activePatternGlobal = -1;
+  GroovePuterMaterial::MaterialVersionToken activeVersion{};
+  uint32_t publicationGeneration = 0;
+  uint32_t transportEpoch = 0;
+  uint64_t absoluteStep = 0;
+};
+
+inline bool makePatternHarmonySnapshot(
+    const GroovePuterMaterial::GeneratedPatternHarmonyOrigin& origin,
+    const PatternHarmonyPlaybackPosition& position,
+    GroovePuterHarmony::HarmonySnapshot& out) {
+  out = GroovePuterHarmony::HarmonySnapshot{};
+  out.status = GroovePuterHarmony::HarmonyStatus::Stale;
+  if (!origin.valid() || position.activePage < 0 ||
+      position.activePatternGlobal < 0 ||
+      songPatternPage(position.activePatternGlobal) != position.activePage ||
+      origin.address.globalSlot != position.activePatternGlobal ||
+      position.activeVersion != origin.version ||
+      position.publicationGeneration != origin.publicationGeneration)
+    return false;
+  if (origin.authority != GroovePuterHarmony::HarmonicAuthority::Generic) {
+    out.status = GroovePuterHarmony::HarmonyStatus::Unsupported;
+    return false;
+  }
+  const uint8_t step = static_cast<uint8_t>(position.absoluteStep % 16u);
+  uint8_t index = 0;
+  uint8_t onset = 0;
+  uint8_t nextOnset = 16;
+  bool found = false;
+  for (uint8_t at = 0, ordinal = 0; at < 16; ++at) {
+    if ((origin.onsets & GroovePuterRhythm::stepBit(at)) == 0) continue;
+    if (at > step) { nextOnset = at; break; }
+    index = ordinal++;
+    onset = at;
+    found = true;
+  }
+  if (!found || index >= origin.eventCount) return false;
+  GroovePuterHarmony::QualityId qualityId = 0;
+  GroovePuterHarmony::ScaleId scaleId = 0;
+  const auto& event = origin.events[index];
+  if (!GroovePuterHarmony::legacyQualityToId(event.quality, qualityId) ||
+      !GroovePuterHarmony::legacyScaleToId(origin.scaleTypeValue, scaleId)) {
+    out.status = GroovePuterHarmony::HarmonyStatus::Unsupported;
+    return false;
+  }
+  const auto* quality = GroovePuterHarmony::qualityDefinition(qualityId);
+  const auto* scale = GroovePuterHarmony::scaleDefinition(scaleId);
+  if (quality == nullptr || scale == nullptr) return false;
+  const int root = static_cast<int>(origin.rootPitchClass) +
+      GroovePuterRhythm::scaleDegreeToSemitone(origin.scaleTypeValue, event.degree) +
+      event.rootOffsetSemitones;
+  if (root < 0) return false;
+  const uint64_t elapsed = step - onset;
+  if (position.absoluteStep < elapsed ||
+      position.absoluteStep - elapsed > UINT32_MAX) return false;
+  const uint64_t absoluteOnset = position.absoluteStep - elapsed;
+  out.key = {origin.sourceId, origin.publicationGeneration,
+             position.transportEpoch, static_cast<uint32_t>(absoluteOnset)};
+  out.onsetStep = absoluteOnset;
+  out.durationSteps = static_cast<uint16_t>(nextOnset - onset);
+  out.base.qualityId = qualityId;
+  out.base.rootPc = static_cast<uint8_t>(root % 12);
+  out.base.bassPc = out.base.rootPc;
+  out.base.pitchMask = GroovePuterHarmony::transposePitchSet(
+      quality->intervalMask, out.base.rootPc);
+  out.tonal.scaleId = out.tonal.homeScaleId = scaleId;
+  out.tonal.tonicPc = out.tonal.homeTonicPc = origin.rootPitchClass;
+  out.tonal.scaleMask = out.tonal.homeScaleMask =
+      GroovePuterHarmony::transposePitchSet(scale->intervalMask,
+                                               origin.rootPitchClass);
+  for (uint8_t role = 0;
+       role < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count);
+       ++role) {
+    const auto status = GroovePuterHarmony::rolePitchPolicy(
+        out.base, out.tonal,
+        static_cast<GroovePuterHarmony::HarmonicRole>(role), 0,
+        out.roles[role]);
+    if (status != GroovePuterHarmony::HarmonyStatus::Ready) {
+      out = GroovePuterHarmony::HarmonySnapshot{};
+      out.status = status;
+      return false;
+    }
+  }
+  out.status = GroovePuterHarmony::HarmonyStatus::Ready;
+  return GroovePuterHarmony::validateHarmonySnapshot(out);
+}
 
 inline uint16_t legacyEventDurationSteps(
     const GroovePuterMaterial::GeneratedSynthAOrigin& origin,

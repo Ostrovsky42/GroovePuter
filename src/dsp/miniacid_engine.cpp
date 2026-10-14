@@ -2085,6 +2085,66 @@ bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
   return false;
 }
 
+void MiniAcid::publishGeneratedPatternHarmony(
+    GroovePuterMaterial::GeneratedPatternHarmonyOrigin candidate) {
+  generatedPatternHarmonyOrigin_ =
+      GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
+  if (candidate.address.voice != 0 ||
+      candidate.authority != GroovePuterHarmony::HarmonicAuthority::Generic ||
+      candidate.eventCount == 0 || candidate.eventCount >
+          GroovePuterRhythm::kMaxHarmonicEvents) return;
+  const int global = candidate.address.globalSlot;
+  if (songPatternPage(global) != currentPageIndex()) return;
+  const int bank = songPatternBank(global);
+  const int slot = songPatternIndexInBank(global);
+  if (bank < 0 || bank >= kBankCount || slot < 0 ||
+      slot >= Bank<SynthPattern>::kPatterns) return;
+  const Scene& scene = sceneManager_.currentScene();
+  candidate.version = GroovePuterMaterial::versionForPattern(
+      scene.synthABanks[bank].patterns[slot]);
+  if (++generatedPatternHarmonySerial_ == 0) ++generatedPatternHarmonySerial_;
+  candidate.sourceId = generatedPatternHarmonySerial_;
+  // Song uses an even seqlock generation; keep Pattern keys in the odd domain.
+  candidate.publicationGeneration = (generatedPatternHarmonySerial_ << 1u) | 1u;
+  if (candidate.valid()) generatedPatternHarmonyOrigin_ = candidate;
+}
+
+bool MiniAcid::tryCapturePatternHarmonyPlaybackPosition(
+    GroovePuterPerformance::PatternHarmonyPlaybackPosition& out) const {
+  out = GroovePuterPerformance::PatternHarmonyPlaybackPosition{};
+  if (songMode_ || isPageLoading() ||
+      generatedPatternHarmonyOrigin() == nullptr ||
+      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
+          *this, 0) != nullptr ||
+      activeMaterial_[0].kind != GroovePuterMaterial::MaterialKind::Pattern)
+    return false;
+  const int global = current303GlobalSlot_(0);
+  if (global < 0 || global >= kMaxGlobalPatterns ||
+      songPatternPage(global) != currentPageIndex()) return false;
+  const auto& origin = generatedPatternHarmonyOrigin_;
+  if (origin.address.globalSlot != global) return false;
+  const Scene& scene = sceneManager_.currentScene();
+  const int bank = songPatternBank(global);
+  const int slot = songPatternIndexInBank(global);
+  const auto version = GroovePuterMaterial::versionForPattern(
+      scene.synthABanks[bank].patterns[slot]);
+  if (version != origin.version) return false;
+  GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+  if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport))
+    return false;
+  const bool playing = transport.valid && transport.playing;
+  const double steps = playing ? transport.absoluteSteps() : 0.0;
+  if (!std::isfinite(steps) || steps < 0.0) return false;
+  out.activePage = currentPageIndex();
+  out.activePatternGlobal = global;
+  out.activeVersion = version;
+  out.publicationGeneration = origin.publicationGeneration;
+  out.transportEpoch = playing ? transport.transportEpoch
+                               : origin.publicationGeneration;
+  out.absoluteStep = playing ? static_cast<uint64_t>(steps) : 0;
+  return true;
+}
+
 bool MiniAcid::tryCaptureSongHarmonicParticipants(
     uint8_t songSlot, uint8_t startPosition, uint8_t rowCount,
     GroovePuterHarmony::SongHarmonicParticipant* out,
@@ -3128,6 +3188,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // D1-B: session-local generated-origin evidence never survives a scene
   // replacement attempt (MaterialIds are per-project; fail closed).
   clearGeneratedSynthAOrigin();
+  clearGeneratedPatternHarmony();
   clearGeneratedPhraseRecipe();
   clearReuseMarks();
   
@@ -3190,6 +3251,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
 
   sceneManager_.wipeToZero();
+  clearGeneratedPatternHarmony();
   clearReuseMarks();
   applySceneStateFromManager();
   const int residentPage = PatternPagingService::activePageIndex();
@@ -3212,6 +3274,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 void MiniAcid::loadSceneFromStorage() {
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   clearGeneratedSynthAOrigin();  // D1-B: see loadSceneByName
+  clearGeneratedPatternHarmony();
   clearGeneratedPhraseRecipe();
   clearReuseMarks();
   lastSceneLoadRecoveredAutosave_ = false;

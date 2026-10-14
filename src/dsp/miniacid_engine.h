@@ -7,6 +7,7 @@
 #include "src/state/material_version.h"
 #include "src/state/material_lineage.h"
 #include "src/state/generated_synth_a_origin.h"
+#include "src/state/generated_pattern_harmony_origin.h"
 #include "src/state/generated_phrase_recipe.h"
 #include "src/state/reuse_marks.h"
 #include "src/dsp/p0_preservation_types.h"
@@ -20,6 +21,7 @@ enum class GrowthMode : uint8_t;
 
 namespace GroovePuterPerformance {
 struct HarmonyPlaybackPosition;
+struct PatternHarmonyPlaybackPosition;
 }
 namespace GroovePuterHarmony {
 struct SongHarmonicParticipant;
@@ -364,6 +366,17 @@ public:
   void clearGeneratedPhraseRecipe() {
     generatedPhraseRecipe_ = GroovePuterMaterial::GeneratedPhraseRecipe{};
   }
+  const GroovePuterMaterial::GeneratedPatternHarmonyOrigin*
+  generatedPatternHarmonyOrigin() const {
+    return generatedPatternHarmonyOrigin_.valid() ? &generatedPatternHarmonyOrigin_
+                                                  : nullptr;
+  }
+  void publishGeneratedPatternHarmony(
+      GroovePuterMaterial::GeneratedPatternHarmonyOrigin candidate);
+  void clearGeneratedPatternHarmony() {
+    generatedPatternHarmonyOrigin_ =
+        GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
+  }
 
   // PML-C: session-only "allow replacement" marks for Pattern slots of the current page.
   // Marks are managed by slot_reuse.h (which verifies every holder); nothing here decides
@@ -550,6 +563,8 @@ public:
   // Returns false while Song/page/material publication is incomplete.
   bool tryCaptureHarmonyPlaybackPosition(
       GroovePuterPerformance::HarmonyPlaybackPosition& out) const;
+  bool tryCapturePatternHarmonyPlaybackPosition(
+      GroovePuterPerformance::PatternHarmonyPlaybackPosition& out) const;
   // Control-side fixed snapshot for the exact A/B material identities and
   // versions in one 1..8-row Song harmonic placement. No SD access occurs.
   bool tryCaptureSongHarmonicParticipants(
@@ -957,6 +972,8 @@ private:
   GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
   bool generatedSynthAOriginValid_ = false;
   GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin generatedPatternHarmonyOrigin_{};
+  uint32_t generatedPatternHarmonySerial_ = 0;
   GroovePuterMaterial::ReuseMarks reuseMarks_{};
   GroovePuterMaterial::GeneratedLedger generatedLedger_{};
   // Version of the Melody last loaded from / accepted into savedMelodySlot_.

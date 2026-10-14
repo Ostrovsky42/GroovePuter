@@ -101,12 +101,15 @@ inline bool commitPreparedGeneration(
     return false;
   }
 
-  return GroovePuterUndo::undoOwner().commitPrepared(
+  const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
       GroovePuterUndo::UndoKind::Generation,
       before,
       [&engine, &pending]() {
         applyPreparedGenerationPersistent(engine, pending);
       });
+  if (committed && pending.scope != QuantizedGenerationScope::SynthB)
+    engine.publishGeneratedPatternHarmony(pending.patternHarmony);
+  return committed;
 }
 
 inline bool commitPreparedGeneration(
@@ -359,6 +362,8 @@ inline bool validateGenerationUndo(
 inline void restoreGenerationUndo(
     MiniAcid& engine,
     const GenerationUndoPayload& before) {
+  if (before.scope != QuantizedGenerationScope::SynthB)
+    engine.clearGeneratedPatternHarmony();
   Scene& scene = engine.sceneManager().currentScene();
   if (before.scope == QuantizedGenerationScope::Full) {
     scene.synthABanks[before.target.synthBank[0]]
@@ -384,6 +389,8 @@ inline void restoreGenerationUndo(
 
 inline void exchangeGenerationUndo(MiniAcid& engine,
                                    GenerationUndoPayload& retained) {
+  if (retained.scope != QuantizedGenerationScope::SynthB)
+    engine.clearGeneratedPatternHarmony();
   SceneManager& scenes = engine.sceneManager();
   Scene& scene = scenes.currentScene();
   if (retained.scope == QuantizedGenerationScope::Full) {

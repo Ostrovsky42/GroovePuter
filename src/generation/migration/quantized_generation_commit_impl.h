@@ -61,6 +61,7 @@ struct PendingGeneration {
   SynthPattern synth[2]{};
   PhraseRuntime::RuntimePatternEventBuffer synthRuntime[2]{};
   DrumPatternSet drums{};
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin patternHarmony{};
   uint32_t committedRevision = 0;
 };
 
@@ -128,6 +129,28 @@ inline bool sameTarget(const PatternTarget& lhs, const PatternTarget& rhs) {
 inline int patternAddressFor(const PatternTarget& target) {
   return songPatternFromPageBankIndex(
       target.page, target.drumBank, target.drumSlot);
+}
+
+inline GroovePuterMaterial::GeneratedPatternHarmonyOrigin
+patternHarmonyFromMigration(const PatternTarget& target,
+                            const StrongRhythmMigrationResult& migration) {
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin origin{};
+  origin.address = {0, static_cast<uint8_t>(
+      songPatternFromPageBankIndex(target.page, target.synthBank[0],
+                                   target.synthSlot[0]))};
+  origin.authority = migration.harmonicAuthority;
+  origin.rootPitchClass = migration.harmonicRootPitchClass;
+  origin.scaleTypeValue = migration.harmonicScaleTypeValue;
+  origin.onsets = migration.harmonicPlan.onsets;
+  origin.eventCount = migration.harmonicPlan.eventCount;
+  if (origin.eventCount == migration.harmonicProgression.eventCount &&
+      origin.eventCount <= GroovePuterRhythm::kMaxHarmonicEvents) {
+    for (uint8_t i = 0; i < origin.eventCount; ++i)
+      origin.events[i] = migration.harmonicProgression.events[i];
+  } else {
+    origin.eventCount = 0;
+  }
+  return origin;
 }
 
 inline bool targetStillActive(const SceneManager& scenes, const PatternTarget& target) {
@@ -291,6 +314,7 @@ inline bool preparePlayingCandidate(
       : engine.bpm();
   candidate.swingPct = scene.feel.swingPct;
   candidate.scope = QuantizedGenerationScope::Full;
+  candidate.patternHarmony = GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
 
   if (!reusePriorMaterial) {
     // Copy the exact captured target, not a second lookup through mutable current
@@ -354,6 +378,8 @@ inline bool preparePlayingCandidate(
                                   candidate.synth[0], candidate.synth[1])
       : migrateStrongRhythmMaterial(requestedGenre, context, candidate.drums,
                                     candidate.synth[0], candidate.synth[1]);
+  if (migration.status == StrongRhythmMigrationStatus::Applied)
+    candidate.patternHarmony = patternHarmonyFromMigration(target, migration);
 
   // The audio transport may advance Song/page ownership while generation runs.
   // Never publish a candidate for a target that is no longer the exact active
@@ -383,6 +409,7 @@ inline bool prepareSynthCandidate(
   candidate.scope = voice == 0
       ? QuantizedGenerationScope::SynthA
       : QuantizedGenerationScope::SynthB;
+  candidate.patternHarmony = GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
   candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
       .patterns[target.synthSlot[0]];
   candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
@@ -402,6 +429,8 @@ inline bool prepareSynthCandidate(
       candidate.drums,
       candidate.synth[0],
       candidate.synth[1]);
+  if (migration.status == StrongRhythmMigrationStatus::Applied && voice == 0)
+    candidate.patternHarmony = patternHarmonyFromMigration(target, migration);
   return migration.status == StrongRhythmMigrationStatus::Applied &&
          targetStillActive(scenes, target);
 }

@@ -228,6 +228,12 @@ struct StrongRhythmMigrationResult {
   HarmonicRhythmStatus harmonicRhythmStatus = HarmonicRhythmStatus::InvalidRequest;
   StepMask harmonicEventOnsets = 0;
   uint8_t harmonicEventCount = 0;
+  // Exact one-bar harmony consumed by tonal materialization. The Pattern
+  // publication owner may retain it only when harmonicAuthority is Generic.
+  HarmonicRhythmPlan harmonicPlan{};
+  ChordProgressionPlan harmonicProgression{};
+  uint8_t harmonicRootPitchClass = 0;
+  ScaleTypeValue harmonicScaleTypeValue = kDefaultScaleTypeValue;
   ChordProgressionStatus chordProgressionStatus =
       ChordProgressionStatus::InvalidRequest;
   ProgressionId progressionId = ProgressionId::Auto;

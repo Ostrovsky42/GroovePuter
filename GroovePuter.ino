@@ -783,6 +783,13 @@ static void updatePerformanceHarmonyContext() {
       (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
           *origin, *recipe, position, snapshot);
     }
+  } else if (g_miniAcid && !g_miniAcid->songModeEnabled()) {
+    const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
+    GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+    if (patternOrigin &&
+        g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition))
+      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+          *patternOrigin, patternPosition, snapshot);
   }
   g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
 }

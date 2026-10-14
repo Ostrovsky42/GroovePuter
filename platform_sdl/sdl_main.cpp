@@ -408,6 +408,13 @@ static void mainLoopTick(void* userdata) {
       (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
           *origin, *recipe, position, snapshot);
     }
+  } else if (!s->audio.synth.songModeEnabled()) {
+    const auto* patternOrigin = s->audio.synth.generatedPatternHarmonyOrigin();
+    GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+    if (patternOrigin &&
+        s->audio.synth.tryCapturePatternHarmonyPlaybackPosition(patternPosition))
+      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+          *patternOrigin, patternPosition, snapshot);
   }
   s->harmonyBridge.update(s->keyboard, snapshot);
   s->keyboard.service(SDL_GetTicks() * 1000u);

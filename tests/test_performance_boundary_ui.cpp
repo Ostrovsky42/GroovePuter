@@ -10,8 +10,10 @@
 #include "src/ui/pages/tb303_params_page.h"
 #include "src/ui/miniacid_display.h"
 #include "src/input/performance_keyboard.h"
+#include "src/input/performance_harmony_bridge.h"
 #include "src/input/internal_synth_output.h"
 #include "src/generation/migration/genre_harmony_selection.h"
+#include "src/generation/migration/quantized_generation_commit.h"
 #include "src/output/output_ownership.h"
 #include "src/ui/workflow_mode.h"
 #include <vector>
@@ -312,5 +314,38 @@ int main() {
   assert(engine.sceneManager().loadSceneJson(legacyJson));
   assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 0 &&
          !engine.sceneManager().currentScene().genre.harmonicAuto);
+  // A stopped, one-bar G publishes its own Pattern harmony to the same
+  // performer that previously saw only NO HARM outside Song.
+  auto& patternScene = engine.sceneManager().currentScene();
+  patternScene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::Rave);
+  patternScene.genre.recipe = 0;
+  patternScene.generatorParams.scale = MINOR;
+  engine.setSongMode(false);
+  const auto generation = GroovePuterRhythm::regenerateWithQuantizedCommit(
+      engine, patternScene.genre, engine.grooveboxMode(), false, engine.bpm());
+  assert(generation == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow);
+  const auto* patternOrigin = engine.generatedPatternHarmonyOrigin();
+  assert(patternOrigin != nullptr);
+  GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+  assert(engine.tryCapturePatternHarmonyPlaybackPosition(patternPosition));
+  GroovePuterHarmony::HarmonySnapshot patternHarmony{};
+  assert(GroovePuterPerformance::makePatternHarmonySnapshot(
+      *patternOrigin, patternPosition, patternHarmony));
+  assert(keyboard.setArpPitchSource(GroovePuterPerformance::ArpPitchSource::Harmony));
+  GroovePuterPerformance::PerformanceHarmonyBridge patternBridge;
+  patternBridge.update(keyboard, patternHarmony);
+  assert(keyboard.performanceHarmonyAvailable());
+  uint8_t arpNotes[PerformanceKeyboard::kMaxPolyChordNotes]{};
+  uint8_t arpVelocities[PerformanceKeyboard::kMaxPolyChordNotes]{};
+  assert(keyboard.collectArpeggioPool(arpNotes, arpVelocities,
+                                     PerformanceKeyboard::kMaxPolyChordNotes) > 0);
+  const int patternBank = songPatternBank(patternPosition.activePatternGlobal);
+  const int patternSlot = songPatternIndexInBank(patternPosition.activePatternGlobal);
+  auto& editedStep = patternScene.synthABanks[patternBank].patterns[patternSlot].steps[0];
+  const int8_t savedNote = editedStep.note;
+  editedStep.note = savedNote == 36 ? 37 : 36;
+  GroovePuterPerformance::PatternHarmonyPlaybackPosition stalePattern{};
+  assert(!engine.tryCapturePatternHarmonyPlaybackPosition(stalePattern));
+  editedStep.note = savedNote;
   std::puts("GENRE project-scale and SOUND action feedback: PASS");
 }
