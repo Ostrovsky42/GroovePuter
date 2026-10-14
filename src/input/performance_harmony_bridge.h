@@ -7,6 +7,7 @@
 #include "performance_harmony_context.h"
 #include "performance_keyboard.h"
 #include "../generation/harmony/harmonic_scale.h"
+#include "../generation/harmony/harmonic_role_policy.h"
 #include "../generation/harmony/harmonic_snapshot.h"
 
 namespace GroovePuterPerformance {
@@ -138,15 +139,19 @@ inline bool makeLegacyHarmonySnapshot(
   out.tonal.scaleMask = GroovePuterHarmony::transposePitchSet(
       scale->intervalMask, out.tonal.tonicPc);
   out.tonal.homeScaleMask = out.tonal.scaleMask;
-  const uint8_t bass = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass);
-  const uint8_t chord = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Chord);
-  const uint8_t lead = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
-  out.roles[bass].allowed = out.tonal.scaleMask;
-  out.roles[bass].preferred = out.base.pitchMask;
-  out.roles[chord].allowed = out.base.pitchMask;
-  out.roles[chord].preferred = out.base.pitchMask;
-  out.roles[lead].allowed = out.tonal.scaleMask;
-  out.roles[lead].preferred = out.base.pitchMask;
+  for (uint8_t role = 0;
+       role < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count);
+       ++role) {
+    const auto status = GroovePuterHarmony::rolePitchPolicy(
+        out.base, out.tonal,
+        static_cast<GroovePuterHarmony::HarmonicRole>(role), 0,
+        out.roles[role]);
+    if (status != GroovePuterHarmony::HarmonyStatus::Ready) {
+      out = GroovePuterHarmony::HarmonySnapshot{};
+      out.status = status;
+      return false;
+    }
+  }
   out.status = GroovePuterHarmony::HarmonyStatus::Ready;
   if (!GroovePuterHarmony::validateHarmonySnapshot(out)) {
     out = GroovePuterHarmony::HarmonySnapshot{};

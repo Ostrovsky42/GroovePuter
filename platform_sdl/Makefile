@@ -73,6 +73,7 @@ SOURCES := \
 	../src/generation/tonal/tonal_projector.cpp \
 	../src/generation/tonal/tonal_materializer.cpp \
 	../src/generation/harmony/harmonic_source.cpp \
+	../src/generation/harmony/harmonic_role_policy.cpp \
 	../src/generation/harmony/song_harmonic_state.cpp \
 	../src/generation/harmony/harmonic_source_codec.cpp \
 	../src/generation/harmony/harmonic_fingerprint.cpp \

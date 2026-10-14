@@ -420,3 +420,27 @@
   remains `NOT_RUN`; no firmware was flashed.
 - NEXT_TASK=HGS2-7c: connect idioms, live consumers and production GRAPH selection to the state
   and persistence APIs.
+
+## HGS2-7c — in progress
+
+- Start SHA: `10661a48`.
+- Added one bounded `rolePitchPolicy()` owner for BASS / CHORD / LEAD. BASS prefers chord
+  root/fifth, CHORD uses the base chord, and LEAD allows scale union chord so valid borrowed
+  chord tones survive. A caller-provided hard-forbidden mask is removed from both allowed and
+  preferred sets. Invalid input leaves the caller's result untouched.
+- Legacy live harmony snapshots now use that shared policy, so Smart Play consumes explicit role
+  masks rather than a separate hand-built interpretation. Graph-to-live projection is still
+  pending: its runtime bridge must validate exact persisted Synth A+B participant identities and
+  versions, and use playback-position generation separately from route generation.
+- Tests: `bash tests/run_hgs_tests.sh` — PASS including new role policy; full
+  `bash tests/run_smart_play_tests.sh` — PASS; focused HGS role/projection — PASS; SDL build —
+  PASS after adding the new source to its explicit source list; ADV build — PASS at1,550,478 bytes
+  flash and187,172 bytes static RAM. The initial SDL link failed before its source list was
+  updated; the corrected full SDL build passed. `git diff --check` — PASS.
+- The new shared role policy is not yet applied to graph-enabled generated idioms. Production
+  GRAPH selection, exact state-backed live bridge, idiom pitch consumption/provenance, UI/config
+  selection, and HGS2-8 listening package remain open. Hardware/listening acceptance remains
+  `NOT_RUN`; do not flash/test the new graph behavior yet.
+- NEXT_TASK=HGS2-7c: integrate generated idiom pitch projection against the checked route while
+  preserving ChordRhythm WHEN, then wire validated song-state snapshots to live Smart Play and
+  add explicit next-generation GRAPH selection.

@@ -80,6 +80,14 @@ int main() {
   assert(snapshot.key.eventOrdinal > 0u);
   assert(snapshot.onsetStep == 24u);
   assert(snapshot.durationSteps > 0u);
+  const uint8_t bassRole = static_cast<uint8_t>(HarmonicRole::Bass);
+  const uint8_t chordRole = static_cast<uint8_t>(HarmonicRole::Chord);
+  const uint8_t leadRole = static_cast<uint8_t>(HarmonicRole::Lead);
+  assert(snapshot.roles[bassRole].allowed == snapshot.base.pitchMask);
+  assert((snapshot.roles[bassRole].preferred & ~snapshot.base.pitchMask) == 0);
+  assert(snapshot.roles[chordRole].allowed == snapshot.base.pitchMask);
+  assert(snapshot.roles[leadRole].allowed == static_cast<PitchSet12>(
+      snapshot.tonal.scaleMask | snapshot.base.pitchMask));
 
   auto beforeBarLine = makePosition(9u);
   beforeBarLine.songRow = 10;
