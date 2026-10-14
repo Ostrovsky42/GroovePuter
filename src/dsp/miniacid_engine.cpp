@@ -2085,6 +2085,49 @@ bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
   return false;
 }
 
+bool MiniAcid::tryCaptureSongHarmonicParticipants(
+    uint8_t songSlot, uint8_t startPosition, uint8_t rowCount,
+    GroovePuterHarmony::SongHarmonicParticipant* out,
+    uint8_t outCapacity, uint8_t& outCount) const {
+  using GroovePuterHarmony::SongHarmonicParticipant;
+  outCount = 0;
+  if (out == nullptr || songSlot >= 2 || rowCount == 0 || rowCount > 8 ||
+      static_cast<uint16_t>(startPosition) + rowCount > 128 ||
+      outCapacity < rowCount * 2u) return false;
+
+  SongHarmonicParticipant staged[GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+  uint8_t count = 0;
+  const int page = currentPageIndex();
+  const Scene& scene = sceneManager_.currentScene();
+  for (uint8_t rowOffset = 0; rowOffset < rowCount; ++rowOffset) {
+    const uint8_t row = static_cast<uint8_t>(startPosition + rowOffset);
+    for (uint8_t track = 0; track < 2; ++track) {
+      const int pattern = songPatternAtSlot(
+          songSlot, row, static_cast<SongTrack>(track));
+      if (pattern < 0 || pattern >= kMaxGlobalPatterns ||
+          songPatternPage(pattern) != page) return false;
+      const GroovePuterMaterial::MaterialAddress address{
+          track, static_cast<uint8_t>(pattern)};
+      if (!GroovePuterMaterial::materialAddressIsResident(address, page))
+        return false;
+      const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+      const GroovePuterMaterial::MaterialId id =
+          GroovePuterMaterial::residentId(scene, track, residentSlot);
+      const int bank = songPatternBank(pattern);
+      const int index = songPatternIndexInBank(pattern);
+      if (!id.valid() || bank < 0 || bank >= kBankCount || index < 0 ||
+          index >= Bank<SynthPattern>::kPatterns) return false;
+      const auto version = GroovePuterMaterial::versionForPattern(
+          scene.synthABanks[bank].patterns[index]);
+      if (!version.valid()) return false;
+      staged[count++] = {track, row, 0, id, version};
+    }
+  }
+  for (uint8_t i = 0; i < count; ++i) out[i] = staged[i];
+  outCount = count;
+  return true;
+}
+
 // REWRITTEN LOGIC
 void MiniAcid::acknowledgeRehearsal() {
   if (waitingForRehearsal_) {

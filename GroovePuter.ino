@@ -46,6 +46,8 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/input/performance_keyboard.h"
 #include "src/input/performance_control.h"
 #include "src/input/performance_harmony_bridge.h"
+#include "src/input/performance_harmony_route_cache.h"
+#include "src/audio/pattern_paging.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
@@ -84,6 +86,7 @@ static ExternalMidiTransportEventQueue g_externalMidiTransportQueue;
 static GroovePuterMidi::ExternalMidiClockFollower g_externalClockFollower;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
 static GroovePuterPerformance::PerformanceHarmonyBridge g_performanceHarmonyBridge;
+static GroovePuterPerformance::PerformanceHarmonyRouteCache g_performanceHarmonyRouteCache;
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
 MiniAcid* volatile g_miniAcid = nullptr;
@@ -584,8 +587,52 @@ static void updatePerformanceHarmonyContext() {
   const auto* recipe = g_miniAcid ? g_miniAcid->generatedPhraseRecipe() : nullptr;
   if (g_miniAcid && origin && recipe &&
       g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
-    (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
-        *origin, *recipe, position, snapshot);
+    if (origin->common.harmonicAuthority ==
+        GroovePuterHarmony::HarmonicAuthority::Graph) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      if (recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          g_miniAcid->tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars,
+              participants, GroovePuterHarmony::kMaxSongHarmonyParticipants,
+              participantCount)) {
+        auto& cache = g_performanceHarmonyRouteCache;
+        const std::string& project = PatternPagingService::currentProjectName();
+        const uint32_t now = millis();
+        if (cache.shouldLookup(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now)) {
+          GroovePuterHarmony::SongHarmonicState loaded{};
+          const auto result = PatternPagingService::loadSongHarmonicState(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), participants,
+              participantCount, loaded);
+          const bool ok = result == SongHarmonicStorageStatus::Ok;
+          const bool retryable = result == SongHarmonicStorageStatus::NotFound ||
+                                 result == SongHarmonicStorageStatus::IoError;
+          cache.rememberResult(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now, ok,
+                               retryable, ok ? &loaded : nullptr);
+        }
+        if (const auto* state = cache.stateFor(
+                project, static_cast<uint8_t>(recipe->songSlot),
+                static_cast<uint8_t>(recipe->songStart), participants,
+                participantCount)) {
+          (void)GroovePuterPerformance::makeGraphHarmonySnapshot(
+              *state, participants, participantCount, *origin, *recipe,
+              position, snapshot);
+        }
+      }
+    } else {
+      (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+          *origin, *recipe, position, snapshot);
+    }
   }
   g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
 }

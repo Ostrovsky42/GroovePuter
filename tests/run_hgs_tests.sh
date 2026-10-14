@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${HGS_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [role] [idiom-consumption] [song-state] [persistence] [song-storage]" >&2
+  echo "usage: $0 [legacy] [vocab] [roman] [manifest] [algebra] [pcvl] [relation] [corpus] [genre] [genome] [candidates] [fingerprint] [route] [projection] [role] [idiom-consumption] [graph-live] [song-state] [persistence] [song-storage]" >&2
 }
 
 run_legacy() {
@@ -181,6 +181,26 @@ run_idiom_consumption() {
   "${BUILD_DIR}/test_idiom_consumption"
 }
 
+run_graph_live() {
+  # scenes.h uses defaulted bit-fields; keep this host target on C++20.
+  # shellcheck disable=SC2086
+  "${CXX}" -std=c++20 -Wall -Wextra -Werror -Wno-c++20-extensions \
+    -I"${ROOT_DIR}" ${EXTRA_CXXFLAGS} \
+    "${ROOT_DIR}/tests/test_hgs_graph_live_snapshot.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_harmonic_state.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_fingerprint.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/song_variant_genome.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/genre_harmonic_policy.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_relation.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/pitch_set.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/corpus_prior.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_candidate.cpp" \
+    "${ROOT_DIR}/src/generation/harmony/harmonic_route.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp" \
+    -o "${BUILD_DIR}/test_graph_live"
+  "${BUILD_DIR}/test_graph_live"
+}
+
 run_song_state() {
   # scenes.h uses defaulted bit-fields; keep this host target on C++20.
   # shellcheck disable=SC2086
@@ -254,7 +274,7 @@ CPP
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection role idiom-consumption song-state persistence song-storage)
+  targets=(legacy vocab roman manifest algebra pcvl relation corpus genre genome candidates fingerprint route projection role idiom-consumption graph-live song-state persistence song-storage)
 fi
 
 for target in "${targets[@]}"; do
@@ -275,6 +295,7 @@ for target in "${targets[@]}"; do
     projection) run_projection ;;
     role) run_role ;;
     idiom-consumption) run_idiom_consumption ;;
+    graph-live) run_graph_live ;;
     song-state) run_song_state ;;
     persistence) run_persistence ;;
     song-storage) run_song_storage ;;

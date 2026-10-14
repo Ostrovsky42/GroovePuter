@@ -468,3 +468,32 @@
 - NEXT_TASK=HGS2-7c: verify idiom projector across idiom-backed profiles, then add a state-backed
   live snapshot consumer that validates all current A/B participant IDs and versions before
   exposing Graph harmony; only then wire persisted next-generation GRAPH selection.
+
+### HGS2-7c live Graph snapshot slice — in progress
+
+- Start SHA: `78fdbc2d`.
+- Added `makeGraphHarmonySnapshot()` for a persisted `SongHarmonicState`. It validates the exact
+  current A/B participant set and versions, generated Synth A origin/recipe, active playback
+  material identity/version, Song row, page, harmonic event slot, and transport-derived onset.
+  Playback publication generation is used for the live snapshot key; the route's persisted
+  generation remains separate. The shared BASS/CHORD/LEAD policy constructs the role masks.
+- Added a bounded control-loop `PerformanceHarmonyRouteCache`. Cardputer and SDL now capture all
+  participants from resident Song material and load the project sidecar only when placement or
+  identity/version changes; missing/I/O-failed records retry at most once per second. The
+  Graph-authority path never falls back to Legacy. Pattern paging / SD work is called only from
+  the control loop, not the audio renderer. The Cardputer cache accounts for about1.3KB of the
+  observed static-RAM increase.
+- `bash tests/run_hgs_tests.sh graph-live` — PASS; live snapshot tests cover correct event lookup,
+  separate route/playback generations, stale A/B identity/version rejection, and wrong authority.
+  Route-cache tests cover exact-request reuse, invalidation and bounded transient retry.
+- `bash tests/run_hgs_tests.sh` — PASS; `bash tests/run_smart_play_tests.sh` — PASS;
+  `make -C platform_sdl -j2` — PASS (pre-existing C++17/C++20 bit-field warnings);
+  `scripts/build.sh --warnings all` — PASS, ADV flash1,560,038 bytes / static RAM188,804 bytes;
+  `git diff --check` — PASS.
+- This is only the read side of live Graph consumption. Production phrase generation still has no
+  Graph selector and does not create/commit the route sidecar; the adapter therefore remains
+  dormant for generated Song material. Device test is still premature.
+- NEXT_TASK=HGS2-7c: integrate state construction, participant versions and durable sidecar save
+  into the production generated-phrase transaction; add explicit persisted LEGACY/GRAPH
+  selection with a validated capability/N/A reason; then test Graph consumer and UI/config end
+  to end before HGS2-8.

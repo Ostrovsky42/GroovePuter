@@ -18,8 +18,10 @@
 #include "../src/sampler/ram_sample_store.h"
 #include "../src/input/performance_keyboard.h"
 #include "../src/input/performance_harmony_bridge.h"
+#include "../src/input/performance_harmony_route_cache.h"
 #include "../src/input/internal_synth_output.h"
 #include "../src/audio/audio_mutation_gate.h"
+#include "../src/audio/pattern_paging.h"
 #include "arduino_compat.h"
 
 // Define Serial and SD instances for SDL build
@@ -60,6 +62,7 @@ struct AppState {
   MusicalEventRouter router;
   PerformanceKeyboard keyboard;
   GroovePuterPerformance::PerformanceHarmonyBridge harmonyBridge;
+  GroovePuterPerformance::PerformanceHarmonyRouteCache harmonyRouteCache;
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
@@ -359,8 +362,52 @@ static void mainLoopTick(void* userdata) {
   const auto* recipe = s->audio.synth.generatedPhraseRecipe();
   if (origin && recipe &&
       s->audio.synth.tryCaptureHarmonyPlaybackPosition(position)) {
-    (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
-        *origin, *recipe, position, snapshot);
+    if (origin->common.harmonicAuthority ==
+        GroovePuterHarmony::HarmonicAuthority::Graph) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      if (recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          s->audio.synth.tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars,
+              participants, GroovePuterHarmony::kMaxSongHarmonyParticipants,
+              participantCount)) {
+        auto& cache = s->harmonyRouteCache;
+        const std::string& project = PatternPagingService::currentProjectName();
+        const uint32_t now = SDL_GetTicks();
+        if (cache.shouldLookup(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now)) {
+          GroovePuterHarmony::SongHarmonicState loaded{};
+          const auto result = PatternPagingService::loadSongHarmonicState(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), participants,
+              participantCount, loaded);
+          const bool ok = result == SongHarmonicStorageStatus::Ok;
+          const bool retryable = result == SongHarmonicStorageStatus::NotFound ||
+                                 result == SongHarmonicStorageStatus::IoError;
+          cache.rememberResult(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now, ok,
+                               retryable, ok ? &loaded : nullptr);
+        }
+        if (const auto* state = cache.stateFor(
+                project, static_cast<uint8_t>(recipe->songSlot),
+                static_cast<uint8_t>(recipe->songStart), participants,
+                participantCount)) {
+          (void)GroovePuterPerformance::makeGraphHarmonySnapshot(
+              *state, participants, participantCount, *origin, *recipe,
+              position, snapshot);
+        }
+      }
+    } else {
+      (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+          *origin, *recipe, position, snapshot);
+    }
   }
   s->harmonyBridge.update(s->keyboard, snapshot);
   s->keyboard.service(SDL_GetTicks() * 1000u);

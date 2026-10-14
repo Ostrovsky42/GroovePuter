@@ -9,6 +9,7 @@
 #include "../generation/harmony/harmonic_scale.h"
 #include "../generation/harmony/harmonic_role_policy.h"
 #include "../generation/harmony/harmonic_snapshot.h"
+#include "../generation/harmony/song_harmonic_state.h"
 
 namespace GroovePuterPerformance {
 
@@ -139,6 +140,126 @@ inline bool makeLegacyHarmonySnapshot(
   out.tonal.scaleMask = GroovePuterHarmony::transposePitchSet(
       scale->intervalMask, out.tonal.tonicPc);
   out.tonal.homeScaleMask = out.tonal.scaleMask;
+  for (uint8_t role = 0;
+       role < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count);
+       ++role) {
+    const auto status = GroovePuterHarmony::rolePitchPolicy(
+        out.base, out.tonal,
+        static_cast<GroovePuterHarmony::HarmonicRole>(role), 0,
+        out.roles[role]);
+    if (status != GroovePuterHarmony::HarmonyStatus::Ready) {
+      out = GroovePuterHarmony::HarmonySnapshot{};
+      out.status = status;
+      return false;
+    }
+  }
+  out.status = GroovePuterHarmony::HarmonyStatus::Ready;
+  if (!GroovePuterHarmony::validateHarmonySnapshot(out)) {
+    out = GroovePuterHarmony::HarmonySnapshot{};
+    out.status = GroovePuterHarmony::HarmonyStatus::Invalid;
+    return false;
+  }
+  return true;
+}
+
+inline bool makeGraphHarmonySnapshot(
+    const GroovePuterHarmony::SongHarmonicState& state,
+    const GroovePuterHarmony::SongHarmonicParticipant* currentParticipants,
+    uint8_t currentParticipantCount,
+    const GroovePuterMaterial::GeneratedSynthAOrigin& origin,
+    const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
+    const HarmonyPlaybackPosition& position,
+    GroovePuterHarmony::HarmonySnapshot& out) {
+  out = GroovePuterHarmony::HarmonySnapshot{};
+  out.status = GroovePuterHarmony::HarmonyStatus::Stale;
+  if (!GroovePuterHarmony::songHarmonicParticipantsMatch(
+          state, currentParticipants, currentParticipantCount) ||
+      !origin.valid() || !recipe.valid ||
+      origin.common.harmonicAuthority !=
+          GroovePuterHarmony::HarmonicAuthority::Graph ||
+      origin.common.barCount != recipe.bars || recipe.bars == 0 ||
+      recipe.pageIndex != position.activePage ||
+      recipe.songSlot != position.playbackSongSlot ||
+      recipe.songStart < 0 || recipe.songStart != state.startPosition ||
+      recipe.bars != state.rowCount || recipe.songSlot != state.songSlot ||
+      position.songRow < recipe.songStart ||
+      position.songRow >= recipe.songStart + recipe.bars ||
+      position.activeSynthAPatternGlobal < 0 ||
+      position.activeSynthAPatternGlobal > 255 ||
+      position.publicationGeneration == 0 ||
+      position.activeMaterial.address.voice != 0u ||
+      position.activeMaterial.address.globalSlot !=
+          position.activeSynthAPatternGlobal ||
+      !position.activeMaterial.id.valid() ||
+      !position.activeMaterialVersion.valid() ||
+      songPatternPage(position.activeSynthAPatternGlobal) != position.activePage) {
+    return false;
+  }
+
+  const uint8_t barOrdinal =
+      static_cast<uint8_t>(position.songRow - recipe.songStart);
+  const auto& bar = origin.bars[barOrdinal];
+  if (bar.phraseBarOrdinal != barOrdinal ||
+      !GroovePuterMaterial::materialReferenceMatches(
+          position.activeMaterial, bar.material.address, bar.material.id) ||
+      bar.originPatternVersion != position.activeMaterialVersion) {
+    return false;
+  }
+  bool foundActiveParticipant = false;
+  for (uint8_t i = 0; i < state.participantCount; ++i) {
+    const auto& participant = state.participants[i];
+    if (participant.track != 0 || participant.songPosition != position.songRow)
+      continue;
+    if (participant.materialId != position.activeMaterial.id ||
+        participant.version != position.activeMaterialVersion) return false;
+    foundActiveParticipant = true;
+  }
+  if (!foundActiveParticipant) return false;
+
+  const auto& rhythm = bar.harmonicRhythm;
+  if (rhythm.phraseBarOrdinal != barOrdinal || rhythm.eventCount == 0u ||
+      rhythm.eventCount > GroovePuterRhythm::kMaxHarmonicEvents ||
+      GroovePuterRhythm::phraseHarmonicPositionCount(rhythm.onsets) !=
+          rhythm.eventCount) {
+    return false;
+  }
+  const uint8_t stepInBar = static_cast<uint8_t>(position.absoluteStep % 16u);
+  uint8_t eventInBar = 0;
+  uint8_t eventOnset = 0;
+  bool foundEvent = false;
+  uint8_t ordinal = 0;
+  for (uint8_t step = 0; step < 16u; ++step) {
+    if ((rhythm.onsets & GroovePuterRhythm::stepBit(step)) == 0u) continue;
+    if (step <= stepInBar) {
+      eventInBar = ordinal;
+      eventOnset = step;
+      foundEvent = true;
+    } else {
+      break;
+    }
+    ++ordinal;
+  }
+  if (!foundEvent) return false;
+  const uint16_t eventOrdinal = static_cast<uint16_t>(
+      rhythm.phraseHarmonicPosition + eventInBar);
+  if (eventOrdinal >= state.harmony.eventCount) return false;
+  const uint64_t stepsSinceEvent = stepInBar - eventOnset;
+  if (position.absoluteStep < stepsSinceEvent) return false;
+  const uint64_t eventOnsetAbsolute = position.absoluteStep - stepsSinceEvent;
+  if (eventOnsetAbsolute > UINT32_MAX) return false;
+  const uint16_t duration = legacyEventDurationSteps(
+      origin, barOrdinal, eventOnset);
+  if (duration == 0) return false;
+
+  const auto& event = state.harmony.events[eventOrdinal];
+  out.key.materialId = position.activeMaterial.id.value;
+  out.key.publicationGeneration = position.publicationGeneration;
+  out.key.transportEpoch = position.transportEpoch;
+  out.key.eventOrdinal = static_cast<uint32_t>(eventOnsetAbsolute);
+  out.onsetStep = eventOnsetAbsolute;
+  out.durationSteps = duration;
+  out.base = event.state;
+  out.tonal = event.tonal;
   for (uint8_t role = 0;
        role < static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Count);
        ++role) {

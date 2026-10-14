@@ -21,6 +21,9 @@ enum class GrowthMode : uint8_t;
 namespace GroovePuterPerformance {
 struct HarmonyPlaybackPosition;
 }
+namespace GroovePuterHarmony {
+struct SongHarmonicParticipant;
+}
 
 #include <stddef.h>
 #include <stdint.h>
@@ -536,6 +539,12 @@ public:
   // Returns false while Song/page/material publication is incomplete.
   bool tryCaptureHarmonyPlaybackPosition(
       GroovePuterPerformance::HarmonyPlaybackPosition& out) const;
+  // Control-side fixed snapshot for the exact A/B material identities and
+  // versions in one 1..8-row Song harmonic placement. No SD access occurs.
+  bool tryCaptureSongHarmonicParticipants(
+      uint8_t songSlot, uint8_t startPosition, uint8_t rowCount,
+      GroovePuterHarmony::SongHarmonicParticipant* out,
+      uint8_t outCapacity, uint8_t& outCount) const;
   void setSongPosition(int position);
   void setSongPattern(int position, SongTrack track, int16_t patternIndex);
   void clearSongPattern(int position, SongTrack track);
