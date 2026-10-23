@@ -1,0 +1,37 @@
+--- vendor/felucca/dsp.c	2026-10-23 19:33:47.279495436 +0200
++++ fork22k/dsp.c	2026-10-23 20:02:42.857845519 +0200
+@@ -13,8 +13,10 @@
+ #if !defined(FS) || !defined(CTL)
+ #error "dsp.c: the tables header (FS, CTL, ...) comes first"
+ #endif
+-#if FS < 32000 || FS > 192000
+-#error "dsp.c: FS is supported from 32000 to 192000"
++/* 22.05 kHz fork (FORK.md): the floor is 16 kHz here; the playable note range is enforced by the caller (fa_analog.c:
++ * fa_playable_max_midi), because a note above ~0.45 FS aliases */
++#if FS < 16000 || FS > 192000
++#error "dsp.c: FS is supported from 16000 to 192000 (22.05 kHz fork)"
+ #endif
+ #if FS != 44100 && !defined(FE_RATE_CONSTS)
+ #error "dsp.c: FS is not 44100: make the tables header with tools/gen_engine_tables.py --fs FS (the rate constants)"
+--- vendor/tools/gen_engine_tables.py	2026-10-23 19:33:47.280495449 +0200
++++ fork22k/tools/gen_engine_tables.py	2026-10-23 20:02:42.858019956 +0200
+@@ -23,7 +23,7 @@
+ FS = 44100                       # the default rate (Felucca's); main() sets the one asked for
+ CTL = 32                         # samples a control tick (a block): kept at every rate
+ FS_REF = 44100                   # the rate the engines' constants were designed at
+-FS_MIN = 32000                   # below ~26.5 kHz the top note (13.2 kHz) passes Nyquist: PITCH_OCT breaks
++FS_MIN = 16000                   # 22.05 kHz fork (FORK.md): notes above ~0.45 FS are the caller's to refuse
+ FS_MAX = 192000
+ 
+ 
+@@ -45,7 +45,9 @@
+     inc = []
+     for p in range(128 * 16):
+         f = 440.0 * 2 ** ((p / 16 - 69) / 12)
+-        inc.append(min(int(f / FS * 2 ** 32), 0x7FFFFFFF))
++        # uint32 table: the phase increment is exact up to f = FS (no int32 cap; the cap clamped notes above FS/2)
++        assert f < FS, "pitch above the sample rate"
++        inc.append(int(f / FS * 2 ** 32))
+     # stored as its top octave (1856..2047) shifted down: floor(floor(x) / 2^k) = floor(x / 2^k), so
+     # pitch_inc(p) equals the 2048-entry table bit for bit (checked here); 7.4 KB less flash
+     oct_ = inc[1856:2048]
