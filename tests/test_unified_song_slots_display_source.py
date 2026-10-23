@@ -40,7 +40,7 @@ require("currentPhrasePlayTick(voiceIndex)" in NOTES,
 require("NO ACTIVE NOTE DATA" in NOTES,
         "Awaiting/load failure must not render stale Pattern note data")
 require(NOTES.index("activeMelodyForDisplay(voiceIndex)") <
-        NOTES.index("const int8_t* notes = mini_acid_.pattern303Steps(voice_index_)"),
+        NOTES.index("const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_)"),
         "Melody/awaiting branch must resolve before Pattern note source access")
 
 require('"NEXT BUSY: SONG"' in UX,

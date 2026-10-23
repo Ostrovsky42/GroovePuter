@@ -5,9 +5,11 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../selection_popup.h"
 #include "../ui_view_continuity.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/generation/composition/rhythm_selection.h"
+#include "src/generation/tonal/scale_catalog.h"
 #include "src/state/scene_revision.h"
 
 class GenrePage : public IPage {
@@ -25,7 +27,7 @@ class GenrePage : public IPage {
     Variant,
     Rhythm,
     Depth,
-    Harmony,
+    Key,
     Apply,
   };
 
@@ -66,12 +68,16 @@ class GenrePage : public IPage {
   void cycleRhythmSelection(int delta);
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
-  bool cycleHarmonyStrategy(int direction = 1);
   void applyCurrent(bool forceRegenerate = false);
   void applyPendingProfile();
   bool generateFromG();
   void drawGenPanel(IGfx& gfx);
   bool handleGenPanelNav(int nav);
+  void openRecipePopup();
+  void openScalePopup();
+  void openHarmonyPopup();
+  bool cycleProjectKeyRoot(int direction = 1);
+  bool handleSelectionPopup(UIEvent& event);
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
@@ -97,5 +103,16 @@ class GenrePage : public IPage {
       GroovePuterRhythm::kNoArchetypeId;
   uint8_t pendingHarmonyStrategy_ = 0;
   bool rhythmFallbackPending_ = false;
+  enum class PopupKind : uint8_t { None = 0, Recipe, Scale, Harmony };
+  PopupKind popupKind_{PopupKind::None};
+  UI::SelectionPopup selectionPopup_;
+  static constexpr uint8_t kMaxPopupItems = 32;
+  const char* recipePopupLabels_[kMaxPopupItems]{};
+  GenreRecipeId recipePopupRecipes_[kMaxPopupItems]{};
+  uint8_t recipePopupCount_{0};
+  const char* scalePopupLabels_[GroovePuterRhythm::kScaleTypeCount]{};
+  const char* harmonyPopupLabels_[3]{};
+  uint8_t harmonyPopupValues_[3]{};
+  uint8_t harmonyPopupCount_{0};
   std::string title_ = "GENRE";
 };

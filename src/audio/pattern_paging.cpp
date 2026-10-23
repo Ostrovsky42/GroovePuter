@@ -330,6 +330,59 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
     return ok;
 }
 
+// Melody payloads live beside, rather than inside, the resident Pattern pages.
+std::string melodyDirectoryFor(const std::string& projectName) {
+    return "/projects/" + projectName + "/melody";
+}
+
+bool clearProjectMelodiesFor(const std::string& projectName) {
+    const std::string path = melodyDirectoryFor(projectName);
+    if (!SD.exists(path.c_str())) return true;
+    File directory = SD.open(path.c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const bool nested = entry.isDirectory();
+        std::string leaf = entry.name();
+        leaf = leaf.substr(leaf.find_last_of('/') + 1);
+        entry.close();
+        if (nested || !removeIfExists(path + "/" + leaf)) ok = false;
+    }
+    directory.close();
+    return ok;
+}
+
+bool copyProjectMelodies(const std::string& sourceProject,
+                         const std::string& targetProject) {
+    const std::string source = melodyDirectoryFor(sourceProject);
+    if (!SD.exists(source.c_str())) return true;
+    const std::string targetProjectPath = "/projects/" + targetProject;
+    const std::string target = melodyDirectoryFor(targetProject);
+    for (const auto& directory : {std::string("/projects"), targetProjectPath, target}) {
+        if (!SD.exists(directory.c_str()) && !SD.mkdir(directory.c_str())) return false;
+    }
+    File directory = SD.open(source.c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const bool nested = entry.isDirectory();
+        std::string leaf = entry.name();
+        leaf = leaf.substr(leaf.find_last_of('/') + 1);
+        entry.close();
+        // Copy both committed generations and legacy payloads, never scratch.
+        if (nested || leaf.size() < 5 ||
+            leaf.compare(leaf.size() - 5, 5, ".gpml") != 0) continue;
+        if (!copyFile(source + "/" + leaf, target + "/" + leaf)) {
+            ok = false;
+            break;
+        }
+    }
+    directory.close();
+    return ok;
+}
+
 bool clearProjectPagesFor(const std::string& projectName) {
     bool ok = true;
     for (int page = 0; page < kMaxPages; ++page) {
@@ -342,6 +395,7 @@ bool clearProjectPagesFor(const std::string& projectName) {
         GroovePuterPlatform::clearMaterialPublication(projectName, page);
     }
     ok = PatternPagingService::clearSongHarmonicStorage(projectName) && ok;
+    ok = clearProjectMelodiesFor(projectName) && ok;
     // Material identity high-water is intentionally not removed here. Address
     // reuse after Clear must still receive a fresh identity in the same project.
     return ok;
@@ -814,6 +868,10 @@ bool PatternPagingService::setProjectName(const std::string& projectName) {
 
 const std::string& PatternPagingService::currentProjectName() {
     return activeProjectNameStorage();
+}
+
+void PatternPagingService::resetLoadedPageIndex() {
+    activePageIndexStorage() = 0;
 }
 
 int PatternPagingService::activePageIndex() {
@@ -1542,10 +1600,18 @@ bool PatternPagingService::copyProjectPages(
         }
         GroovePuterMaterial::MaterialPublicationRecord pub{};
         if (GroovePuterPlatform::loadMaterialPublication(source, page, pub)) {
-            GroovePuterPlatform::saveMaterialPublication(target, page, pub);
+            if (!GroovePuterPlatform::saveMaterialPublication(target, page, pub)) {
+                clearProjectPagesFor(target);
+                return false;
+            }
         }
     }
     if (!copySongHarmonicFiles(source, target)) {
+        clearProjectPagesFor(target);
+        return false;
+    }
+
+    if (!copyProjectMelodies(source, target)) {
         clearProjectPagesFor(target);
         return false;
     }
@@ -1564,5 +1630,13 @@ bool PatternPagingService::clearProjectPages() {
     if (!ensureDirectory()) return false;
     const bool cleared = clearProjectPagesFor(activeProjectNameStorage());
     if (cleared) activePageIndexStorage() = 0;
+    return cleared;
+}
+
+bool PatternPagingService::clearProjectPages(const std::string& projectName) {
+    const std::string project = normalizeProjectName(projectName);
+    if (!ensureProjectDirectory(project)) return false;
+    const bool cleared = clearProjectPagesFor(project);
+    if (cleared && project == activeProjectNameStorage()) activePageIndexStorage() = 0;
     return cleared;
 }

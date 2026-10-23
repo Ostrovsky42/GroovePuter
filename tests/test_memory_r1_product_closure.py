@@ -107,6 +107,47 @@ with tempfile.TemporaryDirectory(prefix="memory-r1-closure-") as tmp:
     else:
         staged_ino = (staged / "GroovePuter.ino").read_text(encoding="utf-8")
         require("[MEM-BASE]" in staged_ino, "Runtime instrumentation lost passive memory telemetry")
+        state_record = staged_ino.split('"[E0-STATE]', 1)[-1].split('"[E0-SD]', 1)[0]
+        require(
+            "sourceA=%s sourceB=%s" in state_record
+            and "currentSequencedSource(0)" in state_record
+            and "currentSequencedSource(1)" in state_record,
+            "E0 state telemetry must identify the active source of both synths",
+        )
+        staged_scene_storage = (staged / "scene_storage_cardputer.cpp").read_text(encoding="utf-8")
+        require(
+            staged_scene_storage.count("cardputerE0RecordSceneLoad(") == 4,
+            "Runtime telemetry must time primary and backup scene loads without per-byte hooks",
+        )
+        require(
+            staged_scene_storage.count("cardputerE0RecordSceneSave(") == 2,
+            "Runtime telemetry must time both manual and autosave Scene writes",
+        )
+        staged_scene_filter = (staged / "src/sampler/sample_scene_persistence.h").read_text(encoding="utf-8")
+        require(
+            "readStartedAt = micros()" not in staged_scene_filter,
+            "Runtime telemetry must not add a timer call for every JSON byte",
+        )
+        staged_pattern_paging = (staged / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+        require(
+            'LOG_DEBUG("[commitPageCandidate] SD.open(' in staged_pattern_paging,
+            "SD instrumentation must preserve the original failure message",
+        )
+        auto_start = staged_scene_storage.find(
+            "bool SceneStorageCardputer::readSceneAuto(SceneManager& manager)"
+        )
+        auto_end = staged_scene_storage.find(
+            "bool SceneStorageCardputer::hasSceneAuto()", auto_start
+        )
+        auto_body = staged_scene_storage[auto_start:auto_end] if auto_start >= 0 and auto_end >= 0 else ""
+        require(
+            auto_body.count("cardputerE0RecordSongLoaded(true);") == 2,
+            "Runtime telemetry must mark both primary and backup autosave restores as loaded",
+        )
+        require(
+            "cardputerE0RecordSongLoaded(false);" in auto_body,
+            "Runtime telemetry must clear loaded state before trying autosave recovery",
+        )
         for token in ("P3DramCharacterization", "P3AudibleAB", "P3_DRAM_CHARACTERIZATION", "P3_AUDIBLE_AB"):
             require(token not in staged_ino, f"Instrumented runtime autonomously contains {token}")
 

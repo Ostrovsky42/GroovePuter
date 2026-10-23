@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../ui_common.h"
+#include "../selection_popup.h"
 #include "../ui_view_continuity.h"
 #include "../workflow_mode.h"
 #include "src/input/performance_keyboard.h"
@@ -64,6 +65,8 @@ private:
     const char* selectedRowHint() const;
     void drawToolTabs(IGfx& gfx, int y);
     void drawToolsLayer(IGfx& gfx);
+    void openChordModePopup();
+    void applyChordModePopup();
 
     MiniAcid& miniAcid_;
     PerformanceKeyboard& keyboard_;
@@ -72,5 +75,6 @@ private:
     // selected row. Musical values are always read from PerformanceKeyboard.
     PerformanceToolContext selectedContext_{PerformanceToolContext::Key};
     uint8_t selectedRow_[static_cast<int>(PerformanceToolContext::Count)]{};
+    UI::SelectionPopup chordModePopup_;
     std::string title_{"PERFORM"};
 };

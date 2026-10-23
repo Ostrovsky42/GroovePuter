@@ -457,12 +457,14 @@ def test_enter_applies_selected_recipe() -> None:
     footer_block = page[footer_start:footer_end]
     require('"ENTER:APPLY G:TAKE"' in footer_block,
             "Genre footer must show how to apply the selected profile and generate a take")
-    require('case FocusRow::Harmony: (void)cycleHarmonyStrategy(delta); return true;' in page,
-            "Genre harmony selector must be editable from the selected row")
-    require('"HARMONY"' in page and '"GRAPH: SCALE UNSUPPORTED"' in page,
-            "Genre page must expose Graph selection and explain unsupported scale")
-    require('"GRAPH ON NEXT PHRASE"' in page,
-            "Graph selection must explain that the next Phrase uses it")
+    require('case FocusRow::Key: (void)cycleProjectKeyRoot(delta); return true;' in page,
+            "Genre KEY selector must be editable from the selected row")
+    require('"KEY"' in page and '"SCALE SELECT"' in page and
+            'openScalePopup();' in page,
+            "Genre page must open the scale list from the KEY row")
+    require('"ENT:SCALE H:HARM L/R:ROOT"' in page and
+            'openHarmonyPopup();' in page and '"HARMONY SELECT"' in page,
+            "Genre KEY footer must expose scale, root and harmony controls")
 
 
 def test_performance_workflow_boundaries() -> None:

@@ -32,7 +32,7 @@ assert "if (phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event)" in handle, 
 )
 assert "UndoKind::RuntimePhrase" in handle
 assert "toggleRuntimePrepared" in handle
-assert "UNDO: PHRASE" in handle and "REDO: PHRASE" in handle
+assert "UNDO: MATERIAL" in handle and "REDO: MATERIAL" in handle
 assert "if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event)" in handle, (
     "Pattern Undo must remain independently gated by Pattern NOTES context"
 )

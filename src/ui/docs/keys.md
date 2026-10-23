@@ -100,7 +100,7 @@ target and MONO/POLY receiver mode are rows in KEY.
 | `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM) |
 | `Up` / `Down` | Select parameter row |
 | `Left` / `Right` | Decrease / increase selected value |
-| `Enter` | Toggle or secondary action for the row (see hint line) |
+| `Enter` | Toggle or secondary action for the row; `CHORD MODE` opens a list |
 | `Esc` / `` ` `` | Return to live PERFORM |
 
 The `; , . /` characters are swallowed while the layer is open: on the
@@ -116,15 +116,23 @@ ownership; internal Synth A/B remain sequencer/pattern instruments.
 |---|---|
 | `Tab` / `Up/Down` | Select Genre/Variant/Rhythm/Apply field |
 | `Left/Right` | Adjust selected field |
-| `Enter` | Apply selected policy |
+| `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy |
 | `G` | Explicit full Stage 15 generation |
 | `P` | `P1 CANON -> P2 VAR -> P3 TRANS` |
-| `M` on HARMONY | Cycle the project scale shown as `KEY`; affects the next generation |
+| `Left/Right` on KEY | Choose the project tonic; affects the next generation |
+| `M` on KEY | Cycle the project scale; affects the next generation |
+| `H` on KEY | Open the `GENRE/AUTO/GRAPH` harmony strategy list |
 | `M` on other fields | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
 
 During PLAY, accepted full generation publishes at the next real `BAR_START`; while
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
 musical identity through the bounded session attempt stream.
+
+In a selector, `Up/Down` chooses an item, `Enter` confirms it, and `Esc` cancels.
+On the KEY row, `Enter` opens the scale list; `Left/Right` changes the tonic directly.
+GENRE/RECIPE/RHYTHM selections remain pending until the `APPLY` row is confirmed;
+the project `KEY` is changed immediately and affects the next generation.
+The harmony strategy selected with `H` also waits for `APPLY`.
 
 ## GEN 2/3
 

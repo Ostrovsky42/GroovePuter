@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_GENRE_HARMONY_SELECTION_H
+#define GROOVEPUTER_GENERATION_MIGRATION_GENRE_HARMONY_SELECTION_H
 
 #include "strong_rhythm_migration.h"
 #include "src/generation/harmony/phrase_graph_route_builder.h"
@@ -27,3 +28,5 @@ inline GenreHarmonySelection resolveGenreHarmony(
 }
 
 } // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_GENRE_HARMONY_SELECTION_H

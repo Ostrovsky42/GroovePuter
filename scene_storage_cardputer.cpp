@@ -439,11 +439,6 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   const bool sceneAlreadyExists =
       SD.exists(targetPath.c_str()) || SD.exists(targetBackup.c_str());
 
-  if (!sceneAlreadyExists &&
-      !PatternPagingService::copyProjectPages(previous, normalized)) {
-    return false;
-  }
-
   currentSceneName_ = normalized;
   if (!PatternPagingService::setProjectName(currentSceneName_)) {
     currentSceneName_ = previous;

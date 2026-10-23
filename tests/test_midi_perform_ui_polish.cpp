@@ -98,6 +98,18 @@ int main() {
   Events events;
   router.addSink(events);
   PerformanceKeyboard keyboard(router);
+  PerformPage popupPerform(gfx, engine, keyboard);
+  auto popupSend = [&](UIEvent e) { popupPerform.handleEvent(e); };
+  popupSend(key('\t'));  // open tools on KEY
+  popupSend(key('\t'));  // switch to CHORD
+  popupSend(key('\n'));  // open the shared selector on CHORD MODE
+  gfx.texts.clear();
+  popupPerform.drawContent(gfx);
+  assert(gfx.has("CHORD MODE"));
+  popupSend(scan(GROOVEPUTER_DOWN));
+  popupSend(key('\n'));
+  assert(keyboard.chordMode() == PerformanceChordMode::Major);
+
   PerformPage perform(gfx, engine, keyboard);
   auto send = [&](UIEvent e) { perform.handleEvent(e); };
   for (int i = 0; i < 5; ++i) send(key('\t'));

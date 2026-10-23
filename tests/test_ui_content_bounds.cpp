@@ -278,7 +278,14 @@ int main() {
     nav.scancode = GROOVEPUTER_NO_SCANCODE;
     nav.key = '\n';
     (void)page.handleEvent(nav);
-    assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 1);
+    (void)page.handleEvent(nav);
+    nav.scancode = GROOVEPUTER_DOWN;
+    nav.key = 0;
+    (void)page.handleEvent(nav);
+    nav.scancode = GROOVEPUTER_NO_SCANCODE;
+    nav.key = '\n';
+    (void)page.handleEvent(nav);
+    assert(engine.sceneManager().currentScene().generatorParams.scaleRoot == 1);
     page.draw(gfx);
     checkBottomBound("GenrePage", gfx);
     checkTopBound("GenrePage", gfx, headerRows);

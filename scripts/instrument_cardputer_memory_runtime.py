@@ -13,6 +13,10 @@ registry_cpp_path = root / "src/platform/cardputer_smf_player_registry.cpp"
 transport_header_path = root / "src/platform/cardputer_usb_midi_transport.h"
 transport_cpp_path = root / "src/platform/cardputer_usb_midi_transport.cpp"
 phrase_page_path = root / "src/ui/pages/phrase_page.cpp"
+pattern_edit_path = root / "src/ui/pages/pattern_edit_page.cpp"
+generation_commit_path = root / "src/generation/migration/quantized_generation_commit_impl.h"
+scene_storage_path = root / "scene_storage_cardputer.cpp"
+pattern_paging_path = root / "src/audio/pattern_paging.cpp"
 
 
 def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
@@ -129,6 +133,250 @@ replace_once(
     "PHRASE probe end hook",
 )
 
+# A single G press can report the same toast for a busy pending activation and
+# for a rejected musical candidate. Keep the diagnostic confined to runtime
+# copies so the next hardware reproduction exposes the actual boundary.
+replace_once(
+    pattern_edit_path,
+    '    const char* label = "GEN FAILED";\n',
+    '    if (result == QuantizedGenerationResult::Failed) {\n'
+    '      const auto& genre = mini_acid_.sceneManager().currentScene().genre;\n'
+    '      Serial.printf("[GEN-DIAG] voice=%d playing=%u result=%u status=%u "\n'
+    '                    "genre=%u recipe=%u page=%d\\n",\n'
+    '                    voice_index_, static_cast<unsigned>(mini_acid_.isPlaying()),\n'
+    '                    static_cast<unsigned>(result),\n'
+    '                    static_cast<unsigned>(\n'
+    '                        GroovePuterRhythm::quantizedGenerationStatus()),\n'
+    '                    static_cast<unsigned>(genre.generativeMode),\n'
+    '                    static_cast<unsigned>(genre.recipe),\n'
+    '                    mini_acid_.sceneManager().currentPageIndex());\n'
+    '    }\n'
+    '    const char* label = "GEN FAILED";\n',
+    "Pattern G result diagnostic",
+)
+replace_once(
+    generation_commit_path,
+    '  const StrongRhythmMigrationResult migration = migrateStrongRhythmSynths(\n'
+    '      requestedGenre,\n'
+    '      context,\n'
+    '      candidate.drums,\n'
+    '      candidate.synth[0],\n'
+    '      candidate.synth[1]);\n',
+    '  const StrongRhythmMigrationResult migration = migrateStrongRhythmSynths(\n'
+    '      requestedGenre,\n'
+    '      context,\n'
+    '      candidate.drums,\n'
+    '      candidate.synth[0],\n'
+    '      candidate.synth[1]);\n'
+    '  if (migration.status != StrongRhythmMigrationStatus::Applied) {\n'
+    '    Serial.printf("[GEN-DIAG] migration=%u route=%u address=%d "\n'
+    '                  "feel=%u amount=%u root=%u scale=%u ordinal=%lu\\n",\n'
+    '                  static_cast<unsigned>(migration.status),\n'
+    '                  static_cast<unsigned>(migration.route),\n'
+    '                  static_cast<int>(context.patternAddress),\n'
+    '                  static_cast<unsigned>(context.feelProfile),\n'
+    '                  static_cast<unsigned>(context.feelAmount),\n'
+    '                  static_cast<unsigned>(context.rootPitchClass),\n'
+    '                  static_cast<unsigned>(context.scaleTypeValue),\n'
+    '                  static_cast<unsigned long>(generationAttemptOrdinal));\n'
+    '  }\n',
+    "Synth migration rejection diagnostic",
+)
+
+# E0 SD latency probes are runtime-build-only. They count SD.open() latency in
+# scene and pattern storage, and direct File read/write latency at the shared
+# serialization boundaries used by those paths.
+replace_once(
+    scene_storage_path,
+    '#include "src/platform/cardputer_sd.h"\n',
+    '#include "src/platform/cardputer_sd.h"\n'
+    '#include "src/diag/cardputer_e0_sd_metrics.h"\n',
+    "scene storage E0 metrics include",
+)
+replace_once(
+    pattern_paging_path,
+    "#include <SD.h>\n#else",
+    '#include <SD.h>\n#include "../diag/cardputer_e0_sd_metrics.h"\n#else',
+    "pattern paging E0 metrics include",
+)
+for path in (scene_storage_path, pattern_paging_path):
+    source = path.read_text(encoding="utf-8")
+    if "cardputerE0TimedSdOpen(" in source:
+        raise SystemExit(
+            f"memory baseline instrumentation: SD.open() already instrumented in {path}")
+    instrumented = []
+    open_count = 0
+    for line in source.splitlines(keepends=True):
+        offset = line.find("SD.open(")
+        if offset < 0 or line.lstrip().startswith("//"):
+            instrumented.append(line)
+            continue
+        if line.lstrip().startswith('LOG_DEBUG("[commitPageCandidate] SD.open('):
+            instrumented.append(line)
+            continue
+        if '"' in line[:offset]:
+            raise SystemExit(
+                f"memory baseline instrumentation: review SD.open() in string at {path}: {line.strip()}")
+        if line.count("SD.open(") != 1:
+            raise SystemExit(
+                f"memory baseline instrumentation: review SD.open() line in {path}: {line.strip()}")
+        instrumented.append(line.replace("SD.open(", "cardputerE0TimedSdOpen(", 1))
+        open_count += 1
+    if open_count == 0:
+        raise SystemExit(
+            f"memory baseline instrumentation: expected SD.open() calls in {path}")
+    path.write_text("".join(instrumented), encoding="utf-8")
+
+replace_once(
+    pattern_paging_path,
+    "bool writeAll(File& file, const void* data, size_t length) {\n"
+    "    return file.write(reinterpret_cast<const uint8_t*>(data), length) == length;\n"
+    "}\n\n"
+    "bool readAll(File& file, void* data, size_t length) {\n"
+    "    return file.read(reinterpret_cast<uint8_t*>(data), length) == length;\n"
+    "}",
+    "bool writeAll(File& file, const void* data, size_t length) {\n"
+    "    const uint32_t startedAt = micros();\n"
+    "    const size_t written =\n"
+    "        file.write(reinterpret_cast<const uint8_t*>(data), length);\n"
+    "    cardputerE0RecordSdWrite(micros() - startedAt, written);\n"
+    "    return written == length;\n"
+    "}\n\n"
+    "bool readAll(File& file, void* data, size_t length) {\n"
+    "    const uint32_t startedAt = micros();\n"
+    "    const size_t read = file.read(reinterpret_cast<uint8_t*>(data), length);\n"
+    "    cardputerE0RecordSdRead(micros() - startedAt, read);\n"
+    "    return read == length;\n"
+    "}",
+    "pattern page SD read/write latency hooks",
+)
+
+scene_save_anchor = (
+    "  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);\n"
+    "  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();\n"
+    "  file.flush();\n"
+    "  const size_t bytesWritten = file.size();"
+)
+scene_save_replacement = (
+    "  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);\n"
+    "  const uint32_t saveStartedAt = micros();\n"
+    "  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();\n"
+    "  file.flush();\n"
+    "  const size_t bytesWritten = file.size();\n"
+    "  cardputerE0RecordSceneSave(micros() - saveStartedAt, bytesWritten);"
+)
+scene_storage_text = scene_storage_path.read_text(encoding="utf-8")
+scene_save_count = scene_storage_text.count(scene_save_anchor)
+if scene_save_count != 2:
+    raise SystemExit(
+        "memory baseline instrumentation: expected two Scene save anchors "
+        f"in {scene_storage_path}, found {scene_save_count}")
+scene_storage_path.write_text(
+    scene_storage_text.replace(scene_save_anchor, scene_save_replacement),
+    encoding="utf-8")
+
+replace_once(
+    scene_storage_path,
+    "bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {\n"
+    "  if (!isInitialized_) return false;",
+    "bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {\n"
+    "  if (!isInitialized_) return false;\n"
+    "  cardputerE0RecordSongLoaded(false);",
+    "autosave load probe start",
+)
+replace_once(
+    scene_storage_path,
+    "    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);\n"
+    "    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();",
+    "    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);\n"
+    "    const uint32_t loadStartedAt = micros();\n"
+    "    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();\n"
+    "    cardputerE0RecordSceneLoad(micros() - loadStartedAt, autoFile.size());",
+    "autosave primary scene-load latency",
+)
+replace_once(
+    scene_storage_path,
+    "    autoFile.close();\n"
+    "    if (ok) return true;",
+    "    autoFile.close();\n"
+    "    if (ok) {\n"
+    "      cardputerE0RecordSongLoaded(true);\n"
+    "      return true;\n"
+    "    }",
+    "autosave load probe success",
+)
+replace_once(
+    scene_storage_path,
+    "    autoBackupFile.close();\n"
+    "    if (ok) return true;",
+    "    autoBackupFile.close();\n"
+    "    if (ok) {\n"
+    "      cardputerE0RecordSongLoaded(true);\n"
+    "      return true;\n"
+    "    }",
+    "autosave backup load probe success",
+)
+replace_once(
+    scene_storage_path,
+    "    GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(\n"
+    "        autoBackupFile);\n"
+    "    const bool ok = manager.loadSceneEvented(filteredBackup) &&\n"
+    "                    !filteredBackup.failed();",
+    "    GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(\n"
+    "        autoBackupFile);\n"
+    "    const uint32_t loadStartedAt = micros();\n"
+    "    const bool ok = manager.loadSceneEvented(filteredBackup) &&\n"
+    "                    !filteredBackup.failed();\n"
+    "    cardputerE0RecordSceneLoad(micros() - loadStartedAt,\n"
+    "                              autoBackupFile.size());",
+    "autosave backup scene-load latency",
+)
+
+replace_once(
+    scene_storage_path,
+    "bool SceneStorageCardputer::readScene(SceneManager& manager) {\n"
+    "  if (!isInitialized_) return false;",
+    "bool SceneStorageCardputer::readScene(SceneManager& manager) {\n"
+    "  if (!isInitialized_) return false;\n"
+    "  cardputerE0RecordSongLoaded(false);",
+    "song load probe start",
+)
+replace_once(
+    scene_storage_path,
+    "    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();\n"
+    "    file.close();\n"
+    "    if (ok) return true;",
+    "    const uint32_t loadStartedAt = micros();\n"
+    "    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();\n"
+    "    cardputerE0RecordSceneLoad(micros() - loadStartedAt, file.size());\n"
+    "    file.close();\n"
+    "    cardputerE0RecordSongLoaded(ok);\n"
+    "    if (ok) return true;",
+    "song load probe success",
+)
+replace_once(
+    scene_storage_path,
+    "  const bool recovered = manager.loadSceneEvented(filteredBackup) &&\n"
+    "                         !filteredBackup.failed();\n"
+    "  backup.close();\n"
+    "  return recovered;",
+    "  const uint32_t loadStartedAt = micros();\n"
+    "  const bool recovered = manager.loadSceneEvented(filteredBackup) &&\n"
+    "                         !filteredBackup.failed();\n"
+    "  cardputerE0RecordSceneLoad(micros() - loadStartedAt, backup.size());\n"
+    "  backup.close();\n"
+    "  cardputerE0RecordSongLoaded(recovered);\n"
+    "  return recovered;",
+    "song backup load probe and scene-load latency",
+)
+
+replace_once(
+    ino_path,
+    '#include "src/dsp/miniacid_engine.h"\n',
+    '#include "src/dsp/miniacid_engine.h"\n#include "src/audio/pattern_paging.h"\n',
+    "persistence diagnostic namespace accessor include",
+)
+
 text = ino_path.read_text(encoding="utf-8")
 
 state_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
@@ -137,6 +385,8 @@ state_injection = r'''static uint32_t g_peakUiDrawUs = 0;
 // Narrow forward declaration avoids importing the TinyUSB transport header into
 // the main sketch translation unit and changing its include graph.
 TaskHandle_t cardputerMidiDispatchTaskHandleForMemoryBaseline();
+extern MiniAcid* volatile g_miniAcid;
+extern MiniAcidDisplay* g_miniDisplay;
 
 // Diagnostic-build-only memory watermarks. This code is injected into the
 // temporary runtime source tree and is never part of the product image.
@@ -147,6 +397,56 @@ static uint32_t g_memoryBaselineMinFreeInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineMinLargestInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineLastSampleMs = 0;
 static uint32_t g_memoryBaselineLastLogMs = 0;
+static uint32_t g_e0SdOpenCount = 0;
+static uint32_t g_e0SdOpenFailCount = 0;
+static uint32_t g_e0SdOpenMaxUs = 0;
+static uint32_t g_e0SdReadCount = 0;
+static uint32_t g_e0SdReadMaxUs = 0;
+static uint32_t g_e0SdReadBytes = 0;
+static uint32_t g_e0SdWriteCount = 0;
+static uint32_t g_e0SdWriteMaxUs = 0;
+static uint32_t g_e0SdWriteBytes = 0;
+static uint32_t g_e0SceneLoadCount = 0;
+static uint32_t g_e0SceneLoadMaxUs = 0;
+static uint32_t g_e0SceneLoadBytes = 0;
+static uint32_t g_e0SceneSaveCount = 0;
+static uint32_t g_e0SceneSaveMaxUs = 0;
+static uint32_t g_e0SceneSaveBytes = 0;
+static bool g_e0SongLoaded = false;
+
+void cardputerE0RecordSdOpen(uint32_t elapsedUs, bool succeeded) {
+  ++g_e0SdOpenCount;
+  if (!succeeded) ++g_e0SdOpenFailCount;
+  if (elapsedUs > g_e0SdOpenMaxUs) g_e0SdOpenMaxUs = elapsedUs;
+}
+
+void cardputerE0RecordSdRead(uint32_t elapsedUs, uint32_t bytes) {
+  ++g_e0SdReadCount;
+  g_e0SdReadBytes += bytes;
+  if (elapsedUs > g_e0SdReadMaxUs) g_e0SdReadMaxUs = elapsedUs;
+}
+
+void cardputerE0RecordSdWrite(uint32_t elapsedUs, uint32_t bytes) {
+  ++g_e0SdWriteCount;
+  g_e0SdWriteBytes += bytes;
+  if (elapsedUs > g_e0SdWriteMaxUs) g_e0SdWriteMaxUs = elapsedUs;
+}
+
+void cardputerE0RecordSceneLoad(uint32_t elapsedUs, uint32_t bytes) {
+  ++g_e0SceneLoadCount;
+  g_e0SceneLoadBytes += bytes;
+  if (elapsedUs > g_e0SceneLoadMaxUs) g_e0SceneLoadMaxUs = elapsedUs;
+}
+
+void cardputerE0RecordSceneSave(uint32_t elapsedUs, uint32_t bytes) {
+  ++g_e0SceneSaveCount;
+  g_e0SceneSaveBytes += bytes;
+  if (elapsedUs > g_e0SceneSaveMaxUs) g_e0SceneSaveMaxUs = elapsedUs;
+}
+
+void cardputerE0RecordSongLoaded(bool loaded) {
+  g_e0SongLoaded = loaded;
+}
 
 static void sampleCardputerMemoryBaseline() {
   const uint32_t free8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -234,6 +534,59 @@ static void logCardputerMemoryBaseline(const char* phase) {
       (unsigned)dispatchStackFreeBytes,
       (unsigned)(smfTask ? 1 : 0),
       (unsigned)(dispatchTask ? 1 : 0));
+
+  Serial.printf(
+      "[E0-STATE] phase=%s ms=%u sdMounted=%u songLoaded=%u playing=%u "
+      "uiPage=%d patternPage=%d sourceA=%s sourceB=%s\n",
+      phase ? phase : "periodic",
+      (unsigned)nowMs,
+      (unsigned)(SD.cardType() != CARD_NONE),
+      (unsigned)(g_e0SongLoaded ? 1 : 0),
+      (unsigned)(g_miniAcid && g_miniAcid->isPlaying()),
+      g_miniDisplay ? g_miniDisplay->currentPageIndex() : -1,
+      g_miniAcid ? g_miniAcid->currentPageIndex() : -1,
+      !g_miniAcid ? "NONE" :
+          g_miniAcid->currentSequencedSource(0) ==
+                  MiniAcid::SequencedSource::Phrase ? "MELODY" : "STEPS",
+      !g_miniAcid ? "NONE" :
+          g_miniAcid->currentSequencedSource(1) ==
+                  MiniAcid::SequencedSource::Phrase ? "MELODY" : "STEPS");
+
+  const auto* persistMelodyA = g_miniAcid ? g_miniAcid->readableWorkingMelody(0) : nullptr;
+  const auto* persistMelodyB = g_miniAcid ? g_miniAcid->readableWorkingMelody(1) : nullptr;
+  Serial.printf(
+      "[PERSIST-STATE] project=%s barsA=%u eventsA=%u dirtyA=%u barsB=%u eventsB=%u dirtyB=%u\n",
+      PatternPagingService::currentProjectName().c_str(),
+      persistMelodyA ? static_cast<unsigned>(persistMelodyA->lengthTicks / PhraseRuntime::kTicksPerBar) : 0u,
+      persistMelodyA ? static_cast<unsigned>(persistMelodyA->count) : 0u,
+      static_cast<unsigned>(g_miniAcid && g_miniAcid->hasUnsavedWorkingMelody(0)),
+      persistMelodyB ? static_cast<unsigned>(persistMelodyB->lengthTicks / PhraseRuntime::kTicksPerBar) : 0u,
+      persistMelodyB ? static_cast<unsigned>(persistMelodyB->count) : 0u,
+      static_cast<unsigned>(g_miniAcid && g_miniAcid->hasUnsavedWorkingMelody(1)));
+
+  Serial.printf(
+      "[E0-SD] phase=%s ms=%u openCount=%u openFail=%u openMaxUs=%u "
+      "readCount=%u readMaxUs=%u readBytes=%u writeCount=%u "
+      "writeMaxUs=%u writeBytes=%u sceneLoadCount=%u sceneLoadMaxUs=%u "
+      "sceneLoadBytes=%u sceneSaveCount=%u sceneSaveMaxUs=%u "
+      "sceneSaveBytes=%u longMelodyAllocs=NA(layer-absent)\n",
+      phase ? phase : "periodic",
+      (unsigned)nowMs,
+      (unsigned)g_e0SdOpenCount,
+      (unsigned)g_e0SdOpenFailCount,
+      (unsigned)g_e0SdOpenMaxUs,
+      (unsigned)g_e0SdReadCount,
+      (unsigned)g_e0SdReadMaxUs,
+      (unsigned)g_e0SdReadBytes,
+      (unsigned)g_e0SdWriteCount,
+      (unsigned)g_e0SdWriteMaxUs,
+      (unsigned)g_e0SdWriteBytes,
+      (unsigned)g_e0SceneLoadCount,
+      (unsigned)g_e0SceneLoadMaxUs,
+      (unsigned)g_e0SceneLoadBytes,
+      (unsigned)g_e0SceneSaveCount,
+      (unsigned)g_e0SceneSaveMaxUs,
+      (unsigned)g_e0SceneSaveBytes);
 }
 
 // The first heap_caps_monitor_local_minimum_free_size_start() may allocate

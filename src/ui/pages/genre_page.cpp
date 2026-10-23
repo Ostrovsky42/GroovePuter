@@ -68,38 +68,6 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
-const char* graphCapabilityName(
-    GroovePuterHarmony::PhraseGraphRouteBuildStatus status) {
-  using Status = GroovePuterHarmony::PhraseGraphRouteBuildStatus;
-  switch (status) {
-    case Status::Ready: return "GRAPH";
-    case Status::Disabled: return "LEGACY";
-    case Status::UnsupportedGenre: return "GRAPH: GENRE UNSUPPORTED";
-    case Status::UnsupportedScale: return "GRAPH: SCALE UNSUPPORTED";
-    case Status::UnsupportedHome: return "GRAPH: HOME UNSUPPORTED";
-    case Status::UnsupportedProjection: return "GRAPH: PITCH UNSUPPORTED";
-    case Status::PlannerFailure: return "GRAPH: ROUTE FAILED";
-    case Status::InvalidContext: return "GRAPH: SETUP INVALID";
-  }
-  return "GRAPH UNAVAILABLE";
-}
-
-const char* graphCapabilityReason(
-    GroovePuterHarmony::PhraseGraphRouteBuildStatus status) {
-  using Status = GroovePuterHarmony::PhraseGraphRouteBuildStatus;
-  switch (status) {
-    case Status::Ready: return "READY";
-    case Status::Disabled: return "DISABLED";
-    case Status::UnsupportedGenre: return "GENRE";
-    case Status::UnsupportedScale: return "SCALE";
-    case Status::UnsupportedHome: return "HOME";
-    case Status::UnsupportedProjection: return "PITCH";
-    case Status::PlannerFailure: return "ROUTE";
-    case Status::InvalidContext: return "SETUP";
-  }
-  return "UNKNOWN";
-}
-
 GroovePuterHarmony::PhraseGraphRouteBuildStatus graphCapabilityFor(
     const GenreSettings& source, uint8_t scaleId) {
   GenreSettings graphSettings = source;
@@ -125,6 +93,125 @@ GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   (void)gfx;
   style_ = UI::currentStyle;
   updateFromEngine();
+}
+
+void GenrePage::openRecipePopup() {
+  const auto genre = static_cast<GenerativeMode>(
+      std::clamp(genre_index_, 0, kGenerativeModeCount - 1));
+  recipePopupCount_ = GroovePuterRhythm::availableRecipeCount(genre);
+  if (recipePopupCount_ == 0 || recipePopupCount_ > kMaxPopupItems) return;
+  for (uint8_t i = 0; i < recipePopupCount_; ++i) {
+    GenreRecipeId recipe = kBaseRecipeId;
+    if (!GroovePuterRhythm::availableRecipeAt(genre, i, recipe)) {
+      recipePopupCount_ = i;
+      break;
+    }
+    recipePopupRecipes_[i] = recipe;
+    recipePopupLabels_[i] = GenreCatalog::recipeName(recipe);
+  }
+  const GenreRecipeId current = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  const int selected = recipeChoiceIndex(genre, current);
+  if (selected < 0 || selected >= recipePopupCount_ ||
+      !selectionPopup_.open("RECIPE SELECT", recipePopupCount_,
+                            static_cast<uint8_t>(selected))) {
+    return;
+  }
+  popupKind_ = PopupKind::Recipe;
+}
+
+void GenrePage::openScalePopup() {
+  static constexpr const char* kScaleNames[] = {
+      "NATURAL MINOR", "MAJOR", "DORIAN", "PHRYGIAN", "LYDIAN",
+      "MIXOLYDIAN", "LOCRIAN", "PENTATONIC MAJOR",
+      "PENTATONIC MINOR", "CHROMATIC"};
+  static_assert(sizeof(kScaleNames) / sizeof(kScaleNames[0]) ==
+                GroovePuterRhythm::kScaleTypeCount);
+  for (uint8_t i = 0; i < GroovePuterRhythm::kScaleTypeCount; ++i) {
+    scalePopupLabels_[i] = kScaleNames[i];
+  }
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  const uint8_t selected = static_cast<uint8_t>(project.scale);
+  if (selectionPopup_.open("SCALE SELECT", GroovePuterRhythm::kScaleTypeCount,
+                           selected < GroovePuterRhythm::kScaleTypeCount ? selected : 0)) {
+    popupKind_ = PopupKind::Scale;
+  }
+}
+
+void GenrePage::openHarmonyPopup() {
+  harmonyPopupCount_ = 0;
+  const uint8_t choices[] = {0, 2, 1}; // GENRE, AUTO, explicit GRAPH
+  const char* labels[] = {"GENRE", "AUTO", "GRAPH"};
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (choices[i] == 1 &&
+        graphCapabilityFor(pendingSettings(), static_cast<uint8_t>(project.scale)) !=
+            GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+      continue;
+    }
+    harmonyPopupValues_[harmonyPopupCount_] = choices[i];
+    harmonyPopupLabels_[harmonyPopupCount_] = labels[i];
+    ++harmonyPopupCount_;
+  }
+  uint8_t selected = 0;
+  for (uint8_t i = 0; i < harmonyPopupCount_; ++i) {
+    if (harmonyPopupValues_[i] == pendingHarmonyStrategy_) {
+      selected = i;
+      break;
+    }
+  }
+  if (harmonyPopupCount_ > 0 && selectionPopup_.open(
+          "HARMONY SELECT", harmonyPopupCount_, selected)) {
+    popupKind_ = PopupKind::Harmony;
+  }
+}
+
+bool GenrePage::handleSelectionPopup(UIEvent& event) {
+  if (!selectionPopup_.isOpen()) return false;
+  const UI::SelectionPopupResult result = selectionPopup_.handleEvent(event);
+  if (result == UI::SelectionPopupResult::Confirmed) {
+    const uint8_t selected = selectionPopup_.selectedIndex();
+    if (popupKind_ == PopupKind::Recipe && selected < recipePopupCount_) {
+      recipeIndex_ = static_cast<int>(recipePopupRecipes_[selected]);
+      normalizePendingRhythm(true);
+    } else if (popupKind_ == PopupKind::Scale &&
+               selected < GroovePuterRhythm::kScaleTypeCount) {
+      withAudioGuard([&]() {
+        mini_acid_.sceneManager().currentScene().generatorParams.scale =
+            static_cast<ScaleType>(selected);
+      });
+      GroovePuterState::markSceneMutated();
+      char changedKey[24];
+      const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+      ProjectKey::format(project.scaleRoot,
+          static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+          sizeof(changedKey));
+      UI::showToast(changedKey, 1000);
+    } else if (popupKind_ == PopupKind::Harmony && selected < harmonyPopupCount_) {
+      pendingHarmonyStrategy_ = harmonyPopupValues_[selected];
+      UI::showToast(pendingHarmonyStrategy_ == 2 ? "AUTO ON NEXT PHRASE"
+                    : pendingHarmonyStrategy_ == 1 ? "GRAPH ON NEXT PHRASE"
+                    : "GENRE ON NEXT PHRASE", 1100);
+    }
+    popupKind_ = PopupKind::None;
+  } else if (result == UI::SelectionPopupResult::Cancelled) {
+    popupKind_ = PopupKind::None;
+  }
+  return true;
+}
+
+bool GenrePage::cycleProjectKeyRoot(int direction) {
+  auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  const uint8_t next = ProjectKey::pitchClass(
+      static_cast<int>(project.scaleRoot) + direction);
+  withAudioGuard([&]() { project.scaleRoot = next; });
+  GroovePuterState::markSceneMutated();
+  char changedKey[24];
+  ProjectKey::format(project.scaleRoot,
+      static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+      sizeof(changedKey));
+  UI::showToast(changedKey, 1000);
+  return true;
 }
 
 GenrePage::ApplyMode GenrePage::currentApplyMode() const {
@@ -244,27 +331,6 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
-bool GenrePage::cycleHarmonyStrategy(int direction) {
-  static constexpr uint8_t choices[] = {0, 2, 1}; // GENRE, AUTO, explicit GRAPH
-  int position = 0;
-  for (int i = 0; i < 3; ++i) if (choices[i] == pendingHarmonyStrategy_) position = i;
-  const uint8_t next = choices[wrapIndex(position + direction, 3)];
-  if (next == 1) {
-    const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
-    const auto status = graphCapabilityFor(pendingSettings(), static_cast<uint8_t>(project.scale));
-    if (status != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-      UI::showToast(graphCapabilityName(status), 1300);
-      return false;
-    }
-  }
-  pendingHarmonyStrategy_ = next;
-  const auto settings = pendingSettings();
-  UI::showToast(next == 2 ? (settings.harmonicStrategy == 1
-                    ? "AUTO: GRAPH ON NEXT PHRASE" : "AUTO: GENRE ON NEXT PHRASE")
-                         : next == 1 ? "GRAPH ON NEXT PHRASE" : "GENRE ON NEXT PHRASE", 1100);
-  return true;
-}
-
 void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
@@ -342,6 +408,9 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::AttemptUnavailable:
         resultLabel = "TAKE LIMIT";
+        break;
+      case GroovePuterRhythm::QuantizedGenerationResult::Busy:
+        resultLabel = "TAKE BUSY";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::Failed:
       default:
@@ -536,25 +605,15 @@ void GenrePage::draw(IGfx& gfx) {
           GroovePuterState::currentGenerationLevel()),
       focus_ == FocusRow::Depth, axisColor, palette);
 
-  const GenreSettings graphSettings = [&]() {
-    GenreSettings settings = pendingSettings();
-    settings.harmonicStrategy = static_cast<uint8_t>(
-        GroovePuterHarmony::HarmonicStrategy::Graph);
-    return settings;
-  }();
-  const auto graphCapability = graphCapabilityFor(graphSettings,
-      static_cast<uint8_t>(mini_acid_.sceneManager().currentScene().generatorParams.scale));
   const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
-  char harmonyValue[64];
-  char projectKey[24];
-  ProjectKey::format(project.scaleRoot,
-      static_cast<ProjectKey::ScaleTypeValue>(project.scale), projectKey,
-      sizeof(projectKey));
-  const auto effective = pendingSettings();
-  std::snprintf(harmonyValue, sizeof(harmonyValue), "%s / %s", projectKey,
+  const GenreSettings effective = pendingSettings();
+  char keyValue[32];
+  std::snprintf(keyValue, sizeof(keyValue), "%s %s  H:%s",
+      ProjectKey::rootName(project.scaleRoot),
+      ProjectKey::scaleShortName(static_cast<ProjectKey::ScaleTypeValue>(project.scale)),
       effective.harmonicAuto ? "AUTO" : effective.harmonicStrategy == 1 ? "GRAPH" : "GENRE");
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "HARMONY",
-      harmonyValue, focus_ == FocusRow::Harmony, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "KEY",
+      keyValue, focus_ == FocusRow::Key, axisColor, palette);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
@@ -573,17 +632,19 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
-  char harmonyHint[40];
-  if (effective.harmonicAuto && graphCapability !=
-      GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
-    std::snprintf(harmonyHint, sizeof(harmonyHint), "AUTO>GENRE %s M:SCALE",
-        graphCapabilityReason(graphCapability));
-  } else {
-    std::snprintf(harmonyHint, sizeof(harmonyHint), "NEXT PHRASE: %s; M:SCALE",
-        effective.harmonicStrategy == 1 ? "GRAPH" : "GENRE");
-  }
+  char keyHint[40];
+  std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");
   UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",
-      focus_ == FocusRow::Harmony ? harmonyHint : "ENTER:APPLY G:TAKE");
+      focus_ == FocusRow::Key ? keyHint
+      : focus_ == FocusRow::Variant ? "ENTER:LIST L/R:STEP"
+                                    : "ENTER:APPLY G:TAKE");
+  if (popupKind_ == PopupKind::Recipe) {
+    selectionPopup_.draw(gfx, recipePopupLabels_);
+  } else if (popupKind_ == PopupKind::Scale) {
+    selectionPopup_.draw(gfx, scalePopupLabels_);
+  } else if (popupKind_ == PopupKind::Harmony) {
+    selectionPopup_.draw(gfx, harmonyPopupLabels_);
+  }
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -615,6 +676,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return false;
   }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (handleSelectionPopup(event)) return true;
 
   if (!event.ctrl && !event.alt && !event.meta) {
     if (UIInput::isTab(event)) {
@@ -649,7 +711,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Depth:
         (void)GroovePuterState::cycleGenerationLevel(delta);
         return true;
-      case FocusRow::Harmony: (void)cycleHarmonyStrategy(delta); return true;
+      case FocusRow::Key: (void)cycleProjectKeyRoot(delta); return true;
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }
@@ -657,7 +719,13 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
   const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
   const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
-  if (panel_ == Panel::Genre && focus_ == FocusRow::Harmony &&
+  if (panel_ == Panel::Genre && focus_ == FocusRow::Key &&
+      !event.ctrl && !event.alt && !event.meta &&
+      (key == 'h' || event.scancode == GROOVEPUTER_H)) {
+    openHarmonyPopup();
+    return true;
+  }
+  if (panel_ == Panel::Genre && focus_ == FocusRow::Key &&
       !event.ctrl && !event.alt &&
       !event.meta && key == 'm') {
     withAudioGuard([&]() {
@@ -679,6 +747,14 @@ bool GenrePage::handleEvent(UIEvent& event) {
   // Stage 15 materialization command. Repeated accepted G requests advance the
   // bounded session reroll ordinal for this mode/recipe/P-level/address tuple.
   if (event.key == '\n' || event.key == '\r') {
+    if (panel_ == Panel::Genre && focus_ == FocusRow::Variant) {
+      openRecipePopup();
+      return true;
+    }
+    if (panel_ == Panel::Genre && focus_ == FocusRow::Key) {
+      openScalePopup();
+      return true;
+    }
     applyCurrent();
     return true;
   }
