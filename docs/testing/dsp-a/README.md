@@ -8,11 +8,11 @@ Shared base: `64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f`, the accepted MEMORY-PRU
 - Active, non-slide TB303 and WAVEMORPH retriggers reset amplitude to zero. They now begin the attack from the current amplitude. Idle attacks, NoteOff, reset and slide contracts remain intact. Standard sequence retrigger jumps: TB303 0.102378 → 0.002537; WAVEMORPH 0.220550 → 0.003732.
 - TB303 oscillator/filter selections were absent from its four persisted controls. State now appends those two values within the existing six-slot capacity. Real project Save/Load tests cover both voices, all six engines, track/master levels and legacy four-control TB patches. Old four-control patches retain their defaults; no schema or saved value migration occurs. Internal TB trim remains unchanged and is not a persisted control.
 
-Global gain, factory defaults, sample rate (22050 Hz), voice count and crossfade are unchanged. No HGS, generation, Melody, FORM, Song, MIDI routing or production UI changes.
+Global gain, factory defaults, sample rate (22050 Hz), voice count and crossfade are unchanged. No HGS, generation, Melody, FORM, Song or MIDI routing changes. The follow-up UI change below was explicitly requested by the user.
 
 ## Presets
 
-Explicit control-thread recipes are in `src/dsp/sound_quality_presets.h/.cpp`; they do not automatically overwrite project settings. No preset-selector UI is added. Recipes can be auditioned in the rendered WAVs or entered using existing controls.
+Explicit control-thread recipes are in `src/dsp/sound_quality_presets.h/.cpp`; they do not automatically overwrite project settings. The user-requested selector is available in Synth A/B → MORE → PRESET, replacing SRC. Enter opens the existing modal list; Up/Down selects, Enter applies and Escape cancels. Left/Right steps through presets directly. Manual edits show CUSTOM; the name is derived from actual parameters, including after Load. Other engines show an unavailable row. Alt+R switches STEPS/MELODY from the parameter page as well as the note editor. Volume, routing, FX and the other voice remain untouched.
 
 | TB303 | Oscillator / filter | Cutoff | Resonance | Envelope | Decay ms |
 |---|---|---:|---:|---:|---:|
@@ -82,3 +82,9 @@ make -C platform_sdl -j2
 ```
 
 `target_benchmark.h` is inserted only into a staged diagnostic build, never the production sketch. Its target measurements have not been captured. No merge or musical-quality acceptance is implied by this report.
+
+## Preset UI follow-up verification
+
+User explicitly authorized replacing SOURCE after the initial DSP checkpoint. Real-engine UI events verify opening, cancel, confirmation, label/CUSTOM rendering, popup label bounds, Alt+R, voice isolation and preset recognition after Save/Load. Clean host archive rebuild, SDL and ADV builds PASS. An initial stale-object host crash disappeared after rebuilding the header-dependent objects; no claim is based on that failed run.
+
+Latest UI build: .data 41996, .bss 142256, fixed DRAM 184252 (unchanged); flash 1593994 (+2132 versus the initial DSP-only build; +2336 versus accepted base). Runtime heap/largest block and hardware interaction remain OPEN. Initial DSP-only hashes above remain historical evidence; the selector firmware hash is recorded separately in preset-ui-build-evidence.json. DSP algorithms and audio references are unchanged by this follow-up.

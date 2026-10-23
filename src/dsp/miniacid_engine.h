@@ -616,6 +616,8 @@ public:
   const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
   uint8_t synthParameterCount(int voiceIndex) const;
   void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
+  bool applySoundQualityPreset(int voiceIndex, int presetIndex);
+  int soundQualityPresetIndex(int voiceIndex) const;
   void setSynthEngine(int voiceIndex, const std::string& engineName);
   std::vector<std::string> getAvailableSynthEngines() const;
   std::string currentSynthEngineName(int voiceIndex) const;
