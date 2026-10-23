@@ -63,7 +63,7 @@ OPEN: полноценная pinned SDK/core пересборка driver table �
 - PASS: full desktop SDL build; pruned SDL app из тех же engine objects; визуально DRUMS без waveform и unavailable Sampler shortcut. Screenshots `/tmp/gp-memory-prune-sdl/drums-no-samples.png`, `sampler-unavailable.png`. Dummy audio не является проверкой звучания.
 - PASS: полный `bash tests/run_host_tests.sh`, exit 0 (`/tmp/gp-mpa-host.log`), включая завершающие UI navigation, synth engine switch ASan/UBSan и MORE restore. Отдельный pruned sampler compatibility test также PASS под ASan/UBSan.
 - PASS hardware: все normal A/B образы загружены с проверкой hash; после них восстановлен итоговый normal. Все измеренные PERF samples — `underruns=0`, fatal boot markers отсутствуют.
-- PASS hardware USB: CDC и upload/recovery возврат порта; ALSA видит `Cardputer MIDI 1`. Отправлены 3 NoteOn/NoteOff + CC123: serial `rx=7`, компьютер захватил ответные MIDI CC. Это физический USB device MIDI обмен, не тест SEQTRAK или USB Host nanoKEY2.
+- PASS hardware USB: CDC и upload/recovery возврат порта; ALSA видит `Cardputer MIDI 1`. Отправлены 3 NoteOn/NoteOff + CC123: serial `rx=7`, компьютер захватил MIDI CC cleanup. Это проверяет физический USB device RX и TX, но не MIDI echo: выходные кадры могли оставаться от startup cleanup. Не является тестом SEQTRAK или USB Host nanoKEY2.
 - PASS user acceptance: после установки итогового normal пользователь подтвердил «Все работает, отлично пуш» в ответ на проверку обеих Melody 8B, генерации, синтезаторов/барабанов и Save → Reset → Load.
 - OPEN: отдельные внешние SEQTRAK/USB Host MIDI сценарии, аппаратное MIDI-only без CDC, длительный worst-case generation/SD-failure stress и художественная оценка отключённого delay. По ним новые PASS не заявлены.
 
