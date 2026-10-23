@@ -66,9 +66,10 @@ void testSlideAndRetrigger() {
   assert(std::fabs(afterSlide - beforeSlide) < 0.000001f);
   assert(std::isfinite(voice.process()));
 
+  const float beforeRetrigger = voice.amplitudeEnvelope();
   voice.startNote(164.814f, true, false, 100);
-  assert(voice.amplitudeEnvelope() == 0.0f);
-  assert(std::fabs(voice.process()) < 0.02f);
+  assert(voice.amplitudeEnvelope() == beforeRetrigger);
+  assert(std::isfinite(voice.process()));
 
   voice.reset();
   assert(!voice.isVoiceActive());

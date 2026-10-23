@@ -133,7 +133,8 @@ void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag,
   if (velocity < 1) velocity = 1;
   if (velocity > 127) velocity = 127;
   ampVelocity_ = 0.375f * (static_cast<float>(velocity) / 100.0f);
-  ampEnvelope_ = 0.0f;
+  // Keep the sounding level continuous; an idle note still attacks from zero.
+  if (ampStage_ == AmpStage::Idle) ampEnvelope_ = 0.0f;
   ampStage_ = AmpStage::Attack;
 }
 

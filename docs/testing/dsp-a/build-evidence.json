@@ -1,0 +1,30 @@
+{
+  "base_sha": "64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f",
+  "production_sha": "0847dc0a4b1ed66ee5f0b497beea8441d73b1cc0",
+  "product": {
+    "data": 41996,
+    "bss": 142256,
+    "dram": 184252,
+    "dram_limit": 191488,
+    "flash": 1591862,
+    "elf_sha256": "68b847c2743ca4ce70bc923259a6a787756125b858dec6e222acabb3e42921c3",
+    "bin_sha256": "2d758afc6a6dd86a7df293c22baaf67e4d7feb44dcefc67565284951372743a1"
+  },
+  "unchanged_engines": [
+    "SH101",
+    "AY",
+    "SID",
+    "SN76489"
+  ],
+  "unchanged_tb_filter_profiles": [
+    1,
+    2,
+    4,
+    6
+  ],
+  "render_cases": 156,
+  "hardware_cpu": "OPEN: physical USB owned by another session",
+  "hardware_heap": "OPEN: new product execution not captured",
+  "blind_listening": "OPEN: awaiting user ratings",
+  "speaker_vs_jack": "OPEN: physical comparison not recorded"
+}
