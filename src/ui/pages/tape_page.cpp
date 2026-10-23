@@ -1,3 +1,5 @@
+#include "../../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_TAPE
 #include "tape_page.h"
 #include "../../dsp/tape_presets.h"
 #include "../ui_common.h"
@@ -659,3 +661,5 @@ void TapePage::drawReel(IGfx& gfx, int x, int y, int radius, float rotation) {
 void TapePage::drawTape(IGfx& gfx) {
     // Placeholder for tape path if needed later
 }
+
+#endif

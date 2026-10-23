@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sample_index.h"
 
 #include <cstring>
@@ -379,3 +381,5 @@ std::vector<std::string> SampleIndex::getSubdirectories(
   std::sort(dirs.begin(), dirs.end());
   return dirs;
 }
+
+#endif

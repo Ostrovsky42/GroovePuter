@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_TAPE
 #include "tape_looper.h"
 #include "tape_presets.h"
 #include <cstring>
@@ -333,3 +335,5 @@ void TapeLooper::bakeLoopCrossfade() {
         buffer_[i] = static_cast<int16_t>(blended * 32767.0f);
     }
 }
+
+#endif

@@ -15,7 +15,7 @@ namespace UI {
      * State for the waveform overlay (global toggle).
      */
     struct WaveformOverlayState {
-        bool enabled = true;
+        bool enabled = GROOVEPUTER_ENABLE_WAVEFORM != 0;
         int colorIndex = 0;   // Current wave color index
     };
 

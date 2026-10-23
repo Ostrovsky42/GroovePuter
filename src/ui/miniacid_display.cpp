@@ -119,7 +119,7 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
                   static_cast<int>(ui_session_.lastPageByWorkflow[3]),
                   static_cast<int>(ui_session_.lastPageByWorkflow[4]));
     UI::currentStyle = static_cast<VisualStyle>(ui_session_.visualStyle);
-    UI::waveformOverlay.enabled = ui_session_.waveformOverlayEnabled != 0;
+    UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && ui_session_.waveformOverlayEnabled != 0;
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
         GroovePuterState::markSceneMutated();
     }
@@ -169,7 +169,11 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
                 gfx_, mini_acid_, audio_guard_, /*coreMode=*/true);
             break;
         case WorkflowPages::kSampler:
+#if GROOVEPUTER_ENABLE_SAMPLER
             page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
+#else
+            page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
+#endif
             break;
         case kSmfPlayerPage:
             page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);
@@ -681,13 +685,17 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'k' || event.key == 'K')) {
+#if GROOVEPUTER_ENABLE_SAMPLER
             goToPage(WorkflowPages::kSampler);
+#else
+            UI::showToast("SAMPLER NOT IN THIS BUILD", 1200);
+#endif
             return true;
         }
 
         if (event.alt && (event.key == 'w' || event.key == 'W') &&
             page_index_ != WorkflowPages::kPhraseCore) {
-            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && !UI::waveformOverlay.enabled;
             return true;
         }
 
