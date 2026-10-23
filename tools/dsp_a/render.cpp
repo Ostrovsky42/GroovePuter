@@ -13,6 +13,7 @@
 #include <vector>
 #include "src/audio/audio_config.h"
 #include "src/dsp/swappable_synth_voice.h"
+#include "src/dsp/sound_quality_presets.h"
 
 namespace {
 bool audioScope = false;
@@ -24,6 +25,12 @@ void* operator new(size_t n) {
   throw std::bad_alloc();
 }
 void* operator new[](size_t n) { return ::operator new(n); }
+void* operator new(size_t n, const std::nothrow_t&) noexcept {
+  try { return ::operator new(n); } catch (...) { return nullptr; }
+}
+void* operator new[](size_t n, const std::nothrow_t&) noexcept {
+  try { return ::operator new(n); } catch (...) { return nullptr; }
+}
 void operator delete(void* p) noexcept {
   if (audioScope && p) ++audioFrees;
   std::free(p);
@@ -31,13 +38,15 @@ void operator delete(void* p) noexcept {
 void operator delete[](void* p) noexcept { ::operator delete(p); }
 void operator delete(void* p, size_t) noexcept { ::operator delete(p); }
 void operator delete[](void* p, size_t) noexcept { ::operator delete(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { ::operator delete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { ::operator delete(p); }
 
 namespace {
 constexpr int sr = kSampleRate;
 struct Event { int frame; int note; int velocity; bool accent, slide, off; };
 struct Case {
   std::string id, engine;
-  int note=45, velocity=100, filter=-1, osc=-1, table=-1;
+  int note=45, velocity=100, filter=-1, osc=-1, table=-1, recipe=-1, cycles=1;
   float morph=-1, sub=-1;
   bool sequence=false, retrigger=false, morphRamp=false, stress=false;
 };
@@ -51,6 +60,10 @@ std::unique_ptr<IMonoSynthVoice> voiceFor(const std::string& engine) {
   throw std::runtime_error("unknown engine");
 }
 void configure(IMonoSynthVoice& voice, const Case& c) {
+  if (c.recipe >= 0) {
+    if (c.engine == "TB303") SoundQualityPresets::apply(static_cast<TB303Voice&>(voice), static_cast<SoundQualityPresets::Tb303>(c.recipe));
+    else if (c.engine == "WAVEMORPH") SoundQualityPresets::apply(static_cast<WaveMorphSynthVoice&>(voice), static_cast<SoundQualityPresets::WaveMorph>(c.recipe));
+  }
   if (c.engine=="TB303") {
     auto& tb=static_cast<TB303Voice&>(voice);
     if (c.filter>=0) tb.setParameter(TB303ParamId::FilterType,c.filter);
@@ -72,9 +85,9 @@ std::vector<Event> eventsFor(const Case& c) {
   std::vector<Event> events;
   if (c.sequence) {
     const int notes[]={36,43,48,46,36,55,48,43};
-    for (int i=0;i<8;++i) {
-      events.push_back({i*sr/8,notes[i],i%2 ? 110:80,i%4==2,i%4==1,false});
-      if (i==7 || (i+1)%4!=1) events.push_back({i*sr/8+sr*9/100,0,0,false,false,true});
+    for (int i=0;i<8*c.cycles;++i) {
+      events.push_back({i*sr/8,notes[i%8],i%2 ? 110:80,i%4==2,i%4==1,false});
+      if (i==8*c.cycles-1 || (i+1)%4!=1) events.push_back({i*sr/8+sr*9/100,0,0,false,false,true});
     }
   } else if (c.retrigger) {
     for (int i=0;i<5;++i) events.push_back({i*(sr*187/1000)+53,c.note,c.velocity,false,false,false});
@@ -98,7 +111,7 @@ void writeWav(const std::filesystem::path& path,const std::vector<float>& data) 
 void render(const Case& c,const std::filesystem::path& root,std::ofstream& csv) {
   auto voice=voiceFor(c.engine);configure(*voice,c);
   const auto events=eventsFor(c);
-  std::vector<float> output(sr*2);
+  std::vector<float> output(sr*(c.sequence ? c.cycles+1 : 2));
   size_t ei=0;int lastOff=0;
   double maxJump=0,peak=0,energy=0,tail=0;size_t clipped=0;
   const auto allocationsBefore=audioAllocations, freesBefore=audioFrees;
@@ -151,6 +164,9 @@ int main(int argc,char**argv) {
     for(int filter=0;filter<7;++filter) {Case c;c.engine="TB303";c.filter=filter;c.stress=true;c.id="TB303-f"+std::to_string(filter)+"-accent-extreme";render(c,root,csv);}
     for(int table=0;table<8;++table) for(int step=0;step<=4;++step) {Case c;c.engine="WAVEMORPH";c.table=table;c.morph=step*.25f;c.sub=0;c.id="WAVEMORPH-t"+std::to_string(table)+"-m"+std::to_string(step);render(c,root,csv);}
     for(int table=0;table<8;++table) {Case c;c.engine="WAVEMORPH";c.table=table;c.sub=0;c.morphRamp=true;c.id="WAVEMORPH-t"+std::to_string(table)+"-ramp";render(c,root,csv);}
+    for(const auto* engine:{"TB303", "WAVEMORPH"}) for(int preset=0;preset<3;++preset) {
+      Case c;c.engine=engine;c.recipe=preset;c.sequence=true;c.cycles=4;c.id=c.engine+"-preset"+std::to_string(preset);render(c,root,csv);
+    }
   } catch(const std::exception&e) {std::fprintf(stderr,"DSP-A render: %s\n",e.what());return 1;}
   std::puts("DSP-A deterministic references: PASS (all audio-path allocation/free counters zero)");
 }

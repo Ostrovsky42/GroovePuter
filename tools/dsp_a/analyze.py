@@ -37,7 +37,7 @@ def fft(data):
 
 def spectral(samples, sr):
     n = 4096
-    # All cases hold their first note through this common pre-NoteOff window.
+    # A fixed window gives comparable spectra; sequence cases contain changing notes.
     segment = samples[int(.2*sr):int(.2*sr)+n]
     mean = sum(segment)/n
     window = [(x-mean)*(.5-.5*math.cos(2*math.pi*i/(n-1))) for i,x in enumerate(segment)]

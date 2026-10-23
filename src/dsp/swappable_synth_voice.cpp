@@ -142,6 +142,15 @@ SynthVoiceState SwappableSynthVoice::getState() const {
     for (uint8_t i = 0; i < count; ++i) {
         state.params[i] = voice->getParameterNormalized(i);
     }
+    if (state.engineType == SynthEngineType::TB303) {
+        // Append the two explicit TB tone controls to the six-value snapshot.
+        // UI/automation still expose the original four generic knobs, and old
+        // four-value projects retain exactly the same prefix/default behavior.
+        const auto* tb = static_cast<const TB303Voice*>(voice);
+        state.params[4] = tb->parameter(TB303ParamId::Oscillator).normalized();
+        state.params[5] = tb->parameter(TB303ParamId::FilterType).normalized();
+        state.paramCount = 6;
+    }
     return state;
 }
 
@@ -163,6 +172,11 @@ void SwappableSynthVoice::setState(const SynthVoiceState& state) {
         state.paramCount, current_->parameterCount());
     for (uint8_t i = 0; i < count; ++i) {
         current_->setParameterNormalized(i, clamp01(state.params[i]));
+    }
+    if (type_ == SynthEngineType::TB303) {
+        auto* tb = static_cast<TB303Voice*>(current_.get());
+        if (state.paramCount > 4) tb->setParameterNormalized(TB303ParamId::Oscillator, clamp01(state.params[4]));
+        if (state.paramCount > 5) tb->setParameterNormalized(TB303ParamId::FilterType, clamp01(state.params[5]));
     }
 }
 
