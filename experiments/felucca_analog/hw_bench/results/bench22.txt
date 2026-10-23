@@ -1,0 +1,20 @@
+HEAP end ESP-ROM:esp32s3-20210327
+BENCH build fs=22050 ctl=32 cpu_mhz=240 chip=ESP32-S3
+MEM felucca_voice_bytes=84 table_bytes=3588
+HEAP start free8=342492 largest8=270324
+MEM sh101_object=296 wavemorph_object=292
+RESULT FELUCCA_INIT fs=22050 run=1 load_pct=2.27 max_block_us=40.0 budget_us=1451.2 worst_pct_of_budget=2.8
+RESULT FELUCCA_INIT fs=22050 run=2 load_pct=2.28 max_block_us=45.0 budget_us=1451.2 worst_pct_of_budget=3.1
+RESULT FELUCCA_DUAL_SAW fs=22050 run=1 load_pct=2.24 max_block_us=38.0 budget_us=1451.2 worst_pct_of_budget=2.6
+RESULT FELUCCA_DUAL_SAW fs=22050 run=2 load_pct=2.24 max_block_us=46.0 budget_us=1451.2 worst_pct_of_budget=3.2
+RESULT FELUCCA_DEEP_BASS fs=22050 run=1 load_pct=2.75 max_block_us=45.0 budget_us=1451.2 worst_pct_of_budget=3.1
+RESULT FELUCCA_DEEP_BASS fs=22050 run=2 load_pct=2.76 max_block_us=69.0 budget_us=1451.2 worst_pct_of_budget=4.8
+RESULT FELUCCA_ACID_LEAD fs=22050 run=1 load_pct=2.60 max_block_us=45.0 budget_us=1451.2 worst_pct_of_budget=3.1
+RESULT FELUCCA_ACID_LEAD fs=22050 run=2 load_pct=2.61 max_block_us=63.0 budget_us=1451.2 worst_pct_of_budget=4.3
+HEAP after_felucca free8=342012 largest8=270324
+RESULT SH101 fs=22050 run=1 load_pct=8.01 max_block_us=122.0 budget_us=1451.2 worst_pct_of_budget=8.4
+RESULT SH101 fs=22050 run=2 load_pct=8.01 max_block_us=151.0 budget_us=1451.2 worst_pct_of_budget=10.4
+RESULT WAVEMORPH fs=22050 run=1 load_pct=4.21 max_block_us=67.0 budget_us=1451.2 worst_pct_of_budget=4.6
+RESULT WAVEMORPH fs=22050 run=2 load_pct=4.22 max_block_us=92.0 budget_us=1451.2 worst_pct_of_budget=6.3
+HEAP end free8=342012 largest8=270324
+DONE
