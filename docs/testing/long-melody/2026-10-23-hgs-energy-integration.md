@@ -39,6 +39,10 @@ Thus the host verification was completed in a prefix plus resumed stages, not a 
 
 Final runtime binary SHA-256: `72334e3986929ac98089a742928ea9773bbb591d00792e5c748d3fd6fbea78c3`. Build log: `/tmp/gp-integration-cardputer-final.log`. Integration merge: `89989c02` (only tests/report updated afterward).
 
-## Remaining hardware gates
+## Device acceptance — closed by user
 
-This merged image has not been flashed. The user accepted the previous internal-audio and persistence image. External MIDI, SD failure recovery, current-image cold boot and post-STOP heap plateau remain separate hardware gates; integration does not close them.
+The merged diagnostic image `72334e39…` was flashed successfully on 2026-10-23. Upload exited 0, flash hash verification succeeded, and `/dev/ttyACM0` returned. The bounded monitor is `logs/serial-60s-20261023-172650.log`; initial samples had intact heap and zero audio underruns.
+
+After flashing, the requested grouped checks covered both 8-bar Melody voices and generation, separate scale/harmony selection, and Save → Reset → Load. The user reported “все ок” and explicitly closed acceptance. This closes the user-facing acceptance of the merged version; no repeat of the same acceptance checklist is required.
+
+External MIDI, SD failure recovery, controlled cold-boot repeatability and post-STOP heap plateau have not received separate new evidence in this acceptance. These remain technical validation backlog and are not represented as verified by the user's general acceptance. The original E0–E6 evidence goal is therefore not marked fully complete.
