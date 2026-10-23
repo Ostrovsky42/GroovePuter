@@ -53,7 +53,7 @@ struct Ev {
 // next step slides (so the engines see a legato that can glide), else 60 % of the step.
 // Event times are on the control-block grid (CTL samples) for every engine, so Felucca (block-rate) and the GroovePuter
 // voices (sample-rate) get the same timeline: 1.45 ms at 22.05 kHz.
-std::vector<Ev> melody(double fs, uint64_t ctl) {
+std::vector<Ev> melody(double fs, uint64_t ctl, int transpose = 0) {
     auto grid = [ctl](double samples) {
         return static_cast<uint64_t>(std::llround(samples / static_cast<double>(ctl))) * ctl;
     };
@@ -74,7 +74,7 @@ std::vector<Ev> melody(double fs, uint64_t ctl) {
             Ev e;
             e.on = grid(on * fs);
             e.off = grid((on + len) * fs);
-            e.midi = static_cast<float>(pat[i].midi);
+            e.midi = static_cast<float>(pat[i].midi + transpose);
             e.accent = pat[i].acc;
             e.slide = pat[i].slide;
             e.vel = pat[i].acc ? 127 : 100;
@@ -187,9 +187,9 @@ Stats stats(const std::vector<float> &x) {
     return {std::sqrt(s2 / n), pk, s1 / n, bad};
 }
 
-int run_render(int fs, const std::string &dir, int preset) {
+int run_render(int fs, const std::string &dir, int preset, int transpose) {
     const uint64_t ctl = static_cast<uint64_t>(fa_ctl());
-    std::vector<Ev> ev = melody(fs, ctl);
+    std::vector<Ev> ev = melody(fs, ctl, transpose);
     const uint64_t total = (ev.back().off + static_cast<uint64_t>(0.3 * fs) + ctl - 1) / ctl * ctl;
     Rig rig(fs, false, preset);
     for (Engine *e : rig.engines) {
@@ -217,7 +217,8 @@ int run_render(int fs, const std::string &dir, int preset) {
             }
         }
         const Stats s = stats(out);
-        std::string path = dir + "/melody_" + e->name() + "_" + std::to_string(fs) + "_p" + std::to_string(preset) + ".wav";
+        std::string tag = transpose ? "_t" + std::to_string(transpose) : "";   // the default (no transpose) keeps the old names
+        std::string path = dir + "/melody_" + e->name() + "_" + std::to_string(fs) + "_p" + std::to_string(preset) + tag + ".wav";
         write_wav(path, out, fs);
         std::printf("%-15s fs=%d samples=%zu rms=%.5f peak=%.5f dc=%+.6f nonfinite=%zu -> %s\n", e->name(), fs,
                     out.size(), s.rms, s.peak, s.dc, s.nonfinite, path.c_str());
@@ -334,7 +335,10 @@ int main(int argc, char **argv) {
         int preset = 0;
         for (int i = 4; i < argc; ++i)
             if (std::string(argv[i]).rfind("preset=", 0) == 0) preset = std::atoi(argv[i] + 7);
-        return run_render(fs, dir, preset);
+        int transpose = 0;
+        for (int i = 4; i < argc; ++i)
+            if (std::string(argv[i]).rfind("transpose=", 0) == 0) transpose = std::atoi(argv[i] + 10);
+        return run_render(fs, dir, preset, transpose);
     }
     if (mode == "stress" && argc >= 5) return run_stress(fs, static_cast<uint32_t>(std::atoi(argv[4])));
     if (mode == "cpu" && argc >= 5) return run_cpu(fs, std::atof(argv[4]));
