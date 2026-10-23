@@ -1,0 +1,7 @@
+Dir Device    Name
+IO  hw:2,0,0  Cardputer MIDI 1
+
+ALSA send NoteOn/NoteOff x3 + CC123: PASS
+Capture exit: 0 received: '\nB7 7B 00\nB8 7B 00\nB8 7B 00\nB8 7B 00' stderr: ''
+
+Device serial after send: midiMounted=1 rx=7; underruns=0.
