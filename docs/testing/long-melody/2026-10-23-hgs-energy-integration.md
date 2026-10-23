@@ -26,7 +26,18 @@ Cardputer runtime build with candidate-only dynamic FatFs and PSRAM disabled: PA
 
 SDL build: PASS. Focused interactive inspection on X display :1: SCALE popup renders; choosing Phrygian applies it; Right changes C to C# while retaining the chosen scale; H opens the separate GENRE/AUTO/GRAPH popup. Evidence: `/tmp/gp-integrated-sdl-20261023/` (genre.png, scale-list.png, scale-applied-key-changed.png, harmony-list.png). Dummy audio was used; this does not validate sound or physical MIDI.
 
-The general host suite is recorded separately in `/tmp/gp-integration-host.log`; its final status must be checked before declaring the candidate ready.
+General host runner `/tmp/gp-integration-host.log` passed its prefix through generated Melody and Stage 12, then stopped at stale GENRE presentation assertions inherited from the earlier UI. The two source tests were updated to require the current footer and retain the requested-profile tempo invariant. Production behavior was unchanged. The failed stage and remaining tail were then run separately:
+
+- Stage 13/14/15 host matrix (GCC, Clang, ASan/UBSan): PASS, `/tmp/gp-integration-generation13.log`.
+- Unified Song ownership/playback/display: PASS, `/tmp/gp-integration-unified.log`.
+- Melody slot navigation: PASS, `/tmp/gp-integration-melody-nav.log`.
+- TEMPO UI, new empty Melody, chord editing/playback, Synth MORE restore: PASS, `/tmp/gp-integration-ui-tail.log`; linked against the fresh P3 engine archive.
+- Synth engine switch ASan/UBSan: PASS, `/tmp/gp-integration-engine-switch.log`.
+- Both 8-bar Melody voices across separate OS processes, including ignoring unaccepted edits: PASS, `/tmp/gp-integration-process-restart.log`; linked against the fresh P3 engine archive.
+
+Thus the host verification was completed in a prefix plus resumed stages, not a second uninterrupted invocation of the umbrella runner.
+
+Final runtime binary SHA-256: `72334e3986929ac98089a742928ea9773bbb591d00792e5c748d3fd6fbea78c3`. Build log: `/tmp/gp-integration-cardputer-final.log`. Integration merge: `89989c02` (only tests/report updated afterward).
 
 ## Remaining hardware gates
 
