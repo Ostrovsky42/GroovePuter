@@ -8,14 +8,16 @@ The distinction matters: a document can be valuable evidence without describing 
 
 ### User
 
-- [`user/QUICKSTART.md`](user/QUICKSTART.md) — **0.9.17 First Five Minutes**: the shortest path from boot to a generated and developed take.
-- [`../MANUAL.md`](../MANUAL.md) — current 0.9.17 user workflow manual.
+- [`user/QUICKSTART.md`](user/QUICKSTART.md) — **0.9.19 First Five Minutes**: the shortest path from boot to a generated and developed take.
+- [`../MANUAL.md`](../MANUAL.md) — current 0.9.19 user workflow manual.
 - [`../src/ui/docs/keys.md`](../src/ui/docs/keys.md) — canonical current Cardputer ADV key map.
 - [`SONG_PAGE_QUICKSTART.md`](SONG_PAGE_QUICKSTART.md) — focused Song-page editing reference.
 - [`releases/0.9.15-midi-ui-polish-2026-10-02.md`](releases/0.9.15-midi-ui-polish-2026-10-02.md) — external-keyboard / PERFORM routing and UI behavior incorporated into the accepted foundation.
 - [`releases/0.9.15-hardware-acceptance.md`](releases/0.9.15-hardware-acceptance.md) — USB Host hardware acceptance procedure and evidence.
 
-The public hardware-accepted foundation is **v0.9.16 — Foundation Freeze**. 0.9.17 is a productization line: onboarding, installability, discoverability, key consistency and first-session UX. It is not a new musical-architecture phase.
+The current tagged source baseline and latest packaged GitHub Release is **v0.9.19**. It includes genre idioms, phrase ideas, DnB, GRAB, FORM and the local `GEN 2/3` generation-control panel inside GENRE, followed by reboot fixes, cheaper audio rendering and MIDI loop controls in HUB MIDI. The top-level GENERATE workflow remains `GENRE -> FEEL`: `Tab` from GENRE opens GEN, and the next `Tab` continues to FEEL.
+
+**v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation. For the exact v0.9.19 binary and acceptance boundary, use the [release notes](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19).
 
 `reference/EXTERNAL_MIDI_COMPATIBILITY.md` is preserved compatibility evidence from the USB-MIDI-device line. It does not replace the later USB Host keyboard acceptance evidence.
 
