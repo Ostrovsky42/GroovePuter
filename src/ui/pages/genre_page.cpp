@@ -258,6 +258,9 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       case GroovePuterRhythm::QuantizedGenerationResult::AttemptUnavailable:
         resultLabel = "TAKE LIMIT";
         break;
+      case GroovePuterRhythm::QuantizedGenerationResult::Busy:
+        resultLabel = "TAKE BUSY";
+        break;
       case GroovePuterRhythm::QuantizedGenerationResult::Failed:
       default:
         resultLabel = "TAKE FAILED";

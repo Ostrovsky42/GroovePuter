@@ -198,6 +198,7 @@ const char* resultName(QuantizedGenerationResult result) {
     case QuantizedGenerationResult::CommittedNow: return "CommittedNow";
     case QuantizedGenerationResult::PendingNextBar: return "PendingNextBar";
     case QuantizedGenerationResult::AttemptUnavailable: return "AttemptUnavailable";
+    case QuantizedGenerationResult::Busy: return "Busy";
   }
   return "Unknown";
 }

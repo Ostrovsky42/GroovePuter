@@ -93,6 +93,12 @@ for field in (
     "dispatchTaskPresent",
 ):
     require(field in instrument, f"runtime telemetry missing {field}")
+require("cardputerE0RecordSceneLoad" in instrument,
+        "scene-load telemetry must bracket the complete scene load")
+require("sceneLoadMaxUs" in instrument and "sceneSaveMaxUs" in instrument,
+        "E0-SD telemetry must report Scene read and write operation windows")
+require("readStartedAt = micros()" not in instrument,
+        "scene loading must not add a timer call for every JSON byte")
 require("loopStackWords" not in instrument and "audioStackWords" not in instrument,
         "ESP-IDF stack watermarks must not be labelled as words")
 require("xTaskGetHandle" not in instrument,

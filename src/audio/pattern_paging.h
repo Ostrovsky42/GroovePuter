@@ -24,6 +24,8 @@ public:
     static bool setProjectName(const std::string& projectName);
     static const std::string& currentProjectName();
     static int activePageIndex();
+    // A successfully parsed project starts with its page-zero resident payload.
+    static void resetLoadedPageIndex();
 
     // Allocate an opaque non-zero identity inside the active project namespace.
     // The high-water mark is persistent and is deliberately not reset by

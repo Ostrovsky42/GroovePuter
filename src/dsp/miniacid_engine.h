@@ -464,6 +464,8 @@ public:
   };
   const WaveformBuffer& getWaveformBuffer() const;
 
+  // Current audible/editable Pattern, independent of the UI selection cursor.
+  const SynthPattern& synthPatternForDisplay(int voiceIndex) const;
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;
   const bool* pattern303SlideSteps(int voiceIndex = 0) const;
@@ -1048,6 +1050,7 @@ private:
   bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();
+  void resetWorkingMaterialForProjectChange_();
   void hydrateAcceptedMaterialAtBoot_();
   bool saveSceneToStorage();
   void applySceneStateFromManager();

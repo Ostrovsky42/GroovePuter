@@ -3097,6 +3097,8 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   if (!parsed || observer.hadError()) return false;
 
   *scene_ = *loaded;
+  currentPageIndex_ = 0;
+  PatternPagingService::resetLoadedPageIndex();
   // Songs are already in *loaded (target_.songs populated by observer)
   // scene_->songs[0] = observer.songs(0); // Not needed, observer writes to loaded->songs
   drumPatternIndex_ = clampPatternIndex(observer.drumPatternIndex());

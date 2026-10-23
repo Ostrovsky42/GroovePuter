@@ -9,10 +9,8 @@
 //     because 744 % 384 == 360;
 //   - an event at startTick >= 384 is unreachable, because barTick <= 383.
 //
-// Cross-bar note lifetime is NOT under test here: RuntimeSynthPlaybackState
-// already keeps release deadlines in absolute subticks, and
-// testOrdinaryBarWrapIsNotABarrier() in the P2 suite already proves a note
-// survives a bar boundary.
+// The eight-bar cases below also check cross-bar gate lifetime and the
+// explicit release/retrigger policy at the phrase loop boundary.
 
 #include <cassert>
 #include <cstdint>
@@ -61,6 +59,10 @@ struct Fixture {
     assert(engine.rebuildPatternRuntimeEventBank());
     engine.setCurrentPage(
         static_cast<int8_t>(PatternPagingService::activePageIndex()));
+    assert(engine.makePhrase(0));
+    assert(engine.makePhrase(1));
+    engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
+    engine.setSequencedSource(1, MiniAcid::SequencedSource::Pattern);
     engine.setPatternEventQueue(&queue);
     queue.setPhaseReader(readEnginePhase, &engine);
 
@@ -260,12 +262,81 @@ void testPatternVoiceIsUnaffectedByPhraseVoice() {
          "PATTERN voice A stopped repeating every bar");
 }
 
+// An eight-bar Melody is one linear phrase across ordinary bar lines. At its
+// loop end the last gate is terminated and the first onset of the next cycle
+// is started once; no continuation leaks from bar 8 into the new cycle.
+void testEightBarCrossBoundaryAndLoopEndPolicy() {
+  {
+    Fixture f;
+    f.silencePatterns();
+    expect(f.engine.setPhraseLength(kA, 8), "8-bar phrase length rejected");
+    auto& phrase = f.engine.currentPhraseBuffer(kA);
+    phrase.count = 0;
+    authorEvent(phrase, 4 * PhraseRuntime::kTicksPerBar - 2, 60,
+                8 * PhraseRuntime::kSubticksPerTick);
+    f.engine.setSequencedSource(kA, MiniAcid::SequencedSource::Phrase);
+
+    expectTick(f, 4 * PhraseRuntime::kTicksPerBar - 2, kA, 1, 0,
+               "late onset in bar 4");
+    expectTick(f, 4 * PhraseRuntime::kTicksPerBar, kA, 0, 0,
+               "4-to-5 boundary must preserve the active gate");
+    expect(f.engine.patternPlaybackState_[kA].active(),
+           "cross-boundary note ended at bar 5");
+    expectTick(f, 4 * PhraseRuntime::kTicksPerBar + 6, kA, 0, 1,
+               "cross-boundary note releases at its authored end");
+    expectTick(f, 5 * PhraseRuntime::kTicksPerBar, kA, 0, 0,
+               "rest after the cross-boundary note stays silent");
+  }
+
+  {
+    Fixture f;
+    f.silencePatterns();
+    expect(f.engine.setPhraseLength(kA, 8), "8-bar phrase length rejected");
+    auto& phrase = f.engine.currentPhraseBuffer(kA);
+    phrase.count = 0;
+    authorEvent(phrase, 2 * PhraseRuntime::kTicksPerBar + 300, 64,
+                1200 * PhraseRuntime::kSubticksPerTick);
+    f.engine.setSequencedSource(kA, MiniAcid::SequencedSource::Phrase);
+
+    expectTick(f, 2 * PhraseRuntime::kTicksPerBar + 300, kA, 1, 0,
+               "long onset before several bar lines");
+    for (uint32_t boundary : {3u, 4u, 5u}) {
+      expectTick(f, boundary * PhraseRuntime::kTicksPerBar, kA, 0, 0,
+                 "long note must not retrigger or release at a bar line");
+      expect(f.engine.patternPlaybackState_[kA].active(),
+             "multi-bar note stopped before its authored end");
+    }
+    expectTick(f, 2 * PhraseRuntime::kTicksPerBar + 300 + 1200, kA, 0, 1,
+               "multi-bar note releases at its authored end");
+  }
+
+  {
+    Fixture f;
+    f.silencePatterns();
+    expect(f.engine.setPhraseLength(kA, 8), "8-bar phrase length rejected");
+    auto& phrase = f.engine.currentPhraseBuffer(kA);
+    phrase.count = 0;
+    authorEvent(phrase, 0, 72, 8 * PhraseRuntime::kSubticksPerTick);
+    authorEvent(phrase, 8 * PhraseRuntime::kTicksPerBar - 2, 67,
+                2 * PhraseRuntime::kSubticksPerTick);
+    f.engine.setSequencedSource(kA, MiniAcid::SequencedSource::Phrase);
+
+    expectTick(f, 8 * PhraseRuntime::kTicksPerBar - 2, kA, 1, 0,
+               "last event begins near the end of bar 8");
+    expectTick(f, 8 * PhraseRuntime::kTicksPerBar, kA, 1, 1,
+               "8-to-1 loop boundary releases old gate and starts bar 1 once");
+    expect(f.engine.patternPlaybackState_[kA].active(),
+           "bar 1 loop onset did not own the new active gate");
+  }
+}
+
 }  // namespace
 
 int main() {
   testTwoBarPhraseAddressing();
   testPerVoicePhraseLengthsAreIndependent();
   testPatternVoiceIsUnaffectedByPhraseVoice();
+  testEightBarCrossBoundaryAndLoopEndPolicy();
 
   if (g_failures != 0) {
     std::fprintf(stderr, "P3 phrase-relative onset: %d failure(s)\n", g_failures);

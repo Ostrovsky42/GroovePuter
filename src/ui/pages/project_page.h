@@ -73,9 +73,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
   void withAudioGuard(F&& fn) {
-      const bool clearCurrentProject =
-          main_focus_ == MainFocus::ClearProject &&
-          dialog_type_ == DialogType::ConfirmClear;
       const bool creatingNewProject = main_focus_ == MainFocus::New;
       const std::string sceneNameBefore = creatingNewProject
           ? mini_acid_.currentSceneName()
@@ -91,38 +88,24 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
       const std::string sceneNameAfter = creatingNewProject
           ? mini_acid_.currentSceneName()
           : std::string();
-      const bool createdDifferentProject =
-          creatingNewProject && sceneNameAfter != sceneNameBefore;
       const bool newProjectRolledBack =
           creatingNewProject &&
           sceneNameAfter == sceneNameBefore &&
           !requestedNewProject.empty() &&
           requestedNewProject != sceneNameBefore;
 
+      // Core New/Clear already commits the empty project's page and JSON.
+      // Only an abandoned failed New still needs namespace cleanup here.
       bool lifecycleOk = true;
-      if (clearCurrentProject || createdDifferentProject) {
-        lifecycleOk = PatternPagingService::clearProjectPages();
-      } else if (newProjectRolledBack) {
-        // setCurrentSceneName() copies pages before the scene JSON is written.
+      if (newProjectRolledBack) {
+        // A failed New may have created pages before its scene JSON is written.
         // A failed write returns to the original project; remove only the
         // abandoned target namespace without switching active project state.
         lifecycleOk = PatternPagingService::clearProjectPages(
             requestedNewProject);
       }
 
-      // Clear must be durable immediately: rewrite the zeroed scene JSON and
-      // remove its autosave recovery before the confirmation dialog closes.
-      // Otherwise a reboot before the next autosave can restore page 1.
-      if (clearCurrentProject && lifecycleOk) {
-        lifecycleOk = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
-      }
-
-      if (!lifecycleOk) {
-        UI::showToast(clearCurrentProject
-                          ? "Project clear not saved"
-                          : "Pattern cleanup failed",
-                      1400);
-      }
+      if (!lifecycleOk) UI::showToast("Project cleanup failed", 1400);
   }
 
   void autoRouteMidi();

@@ -386,10 +386,15 @@ bool ProjectPage::clearProject() {
   const bool hadUserNext =
       mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
       mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
+  bool cleared = false;
   withAudioGuard([&]() {
-    mini_acid_.sceneManager().wipeToZero();
-    mini_acid_.invalidateSessionNextForProjectChange();
+    cleared = mini_acid_.createNewSceneWithName(mini_acid_.currentSceneName());
   });
+  if (!cleared) {
+    UI::showToast("PROJECT CLEAR FAILED", 1500);
+    return true;
+  }
+  GroovePuterState::markSceneSaveSucceeded();
   UI::showToast(hadUserNext ? "PROJECT CLEARED; NEXT CLEARED"
                             : "Project cleared to zero");
   closeDialog();
@@ -671,7 +676,12 @@ bool ProjectPage::saveCurrentScene() {
     GroovePuterState::markSceneSaveSucceeded();
     closeDialog();
     refreshScenes();
-    UI::showToast("Project and songs saved");
+    const bool workingUnsaved = mini_acid_.hasModifiedWorking303Pattern(0) ||
+        mini_acid_.hasModifiedWorking303Pattern(1) ||
+        mini_acid_.hasUnsavedWorkingMelody(0) ||
+        mini_acid_.hasUnsavedWorkingMelody(1);
+    UI::showToast(workingUnsaved ? "PROJECT SAVED; WORKING UNSAVED"
+                                : "Project and songs saved");
   } else {
     GroovePuterState::restoreSceneRevision(revisionBefore);
     UI::showToast("Project save failed");

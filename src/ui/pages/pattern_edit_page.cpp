@@ -749,6 +749,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       label = "GEN -> NEXT BAR";
     else if (result == QuantizedGenerationResult::AttemptUnavailable)
       label = "GEN ATTEMPT FULL";
+    else if (result == QuantizedGenerationResult::Busy)
+      label = "GEN BUSY: WAIT";
     UI::showToast(label, 1200);
     return true;
   }

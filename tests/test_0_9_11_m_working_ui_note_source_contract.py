@@ -5,6 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 hub = (ROOT / "src/ui/pages/sequencer_hub_page.cpp").read_text(encoding="utf-8")
 legacy = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(encoding="utf-8")
+engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 
 failures = []
 
@@ -57,17 +58,26 @@ require(
     "Sequencer Hub overview and every synth detail renderer prefer exact-bound WORKING",
 )
 
+display_pattern = between(engine, "const SynthPattern& MiniAcid::synthPatternForDisplay", "const int8_t* MiniAcid::pattern303Steps")
+require(
+    "currentWorking303Pattern" in display_pattern
+    and "pendingAudibleSynthPattern" in display_pattern
+    and "activeSynthPattern" in display_pattern,
+    "UI-NOTE-SOURCE",
+    "shared display source resolves audible activation, exact-bound Working, then accepted Pattern",
+)
+
 legacy_minimal = between(legacy, "void PatternEditPage::drawMinimalStyle", "void PatternEditPage::drawRetroClassicStyle")
 legacy_retro = between(legacy, "void PatternEditPage::drawRetroClassicStyle", "void PatternEditPage::drawAmberStyle")
 legacy_amber = between(legacy, "void PatternEditPage::drawAmberStyle", "void PatternEditPage::drawTEGridStyle")
 require(
-    "currentWorking303Pattern" in legacy_minimal,
+    "synthPatternForDisplay" in legacy_minimal,
     "UI-NOTE-D",
     "legacy MINIMAL renderer prefers exact-bound WORKING",
 )
 require(
-    "currentWorking303Pattern" in legacy_retro
-    and "currentWorking303Pattern" in legacy_amber,
+    "synthPatternForDisplay" in legacy_retro
+    and "synthPatternForDisplay" in legacy_amber,
     "UI-NOTE-E",
     "legacy RETRO/AMBER renderers prefer exact-bound WORKING",
 )

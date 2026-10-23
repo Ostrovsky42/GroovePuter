@@ -1079,12 +1079,9 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int body_h = h - 2;
   if (body_h <= 0) return;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
-  const SynthPattern* working = mini_acid_.currentWorking303Pattern(voice_index_);
+  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
@@ -1146,9 +1143,9 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     int col = i % kPatternStepColumns;
     int cell_x = x + col * (cell_w + column_spacing);
     int cell_y = grid_top + row * (row_height + row_spacing);
-    const int8_t note = working ? working->steps[i].note : notes[i];
-    const bool isAccent = working ? working->steps[i].accent : accent[i];
-    const bool isSlide = working ? working->steps[i].slide : slide[i];
+    const int8_t note = pattern.steps[i].note;
+    const bool isAccent = pattern.steps[i].accent;
+    const bool isSlide = pattern.steps[i].slide;
 
     int indicator_w = (cell_w - 2) / 2;
     if (indicator_w < 4) indicator_w = 4;
@@ -1200,14 +1197,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
-  (void)notes;
-  (void)accent;
-  (void)slide;
+  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
@@ -1292,20 +1284,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
               kPatternStepRows;
   if (cellH < 12) cellH = 12;
 
-  int patIdx = activePatternCursor();
-  const SynthPattern* working =
-      patIdx == selectedPattern
-          ? mini_acid_.currentWorking303Pattern(voice_index_)
-          : nullptr;
-  const SynthPattern& pattern =
-      working ? *working
-              : mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
-
-  bool isPlayingPattern = false;
-  if (mini_acid_.isPlaying()) {
-     int playingIdx = mini_acid_.current303PatternIndex(voice_index_);
-     if (playingIdx == patIdx) isPlayingPattern = true;
-  }
+  const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
     int row = i / kPatternStepColumns;
@@ -1401,14 +1380,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
-  (void)notes;
-  (void)accent;
-  (void)slide;
+  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
@@ -1494,20 +1468,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
               kPatternStepRows;
   if (cellH < 12) cellH = 12;
 
-  int patIdx = activePatternCursor();
-  const SynthPattern* working =
-      patIdx == selectedPattern
-          ? mini_acid_.currentWorking303Pattern(voice_index_)
-          : nullptr;
-  const SynthPattern& pattern =
-      working ? *working
-              : mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
-
-  bool isPlayingPattern = false;
-  if (mini_acid_.isPlaying()) {
-     int playingIdx = mini_acid_.current303PatternIndex(voice_index_);
-     if (playingIdx == patIdx) isPlayingPattern = true;
-  }
+  const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
     int row = i / kPatternStepColumns;

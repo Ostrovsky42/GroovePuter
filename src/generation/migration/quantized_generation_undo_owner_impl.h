@@ -521,7 +521,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -563,7 +563,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
       g_status.store(
           static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
           std::memory_order_release);
-      return QuantizedGenerationResult::Failed;
+      return QuantizedGenerationResult::Busy;
     }
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
@@ -578,7 +578,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
   fillAudibleActivationSnapshot(
       g_slots[activationSlot], engine, candidate.target, candidate.scope,
@@ -589,7 +589,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
   releaseWriteSlot(lease.slot);
   if (!committed) {
     abortArmedActivation(activationSlot, QuantizedGenerationStatus::Busy);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   const uint32_t committedRevision =
@@ -619,7 +619,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -657,7 +657,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
       g_status.store(
           static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
           std::memory_order_release);
-      return QuantizedGenerationResult::Failed;
+      return QuantizedGenerationResult::Busy;
     }
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
@@ -672,7 +672,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
   fillAudibleActivationSnapshot(
       g_slots[activationSlot], engine, candidate.target, candidate.scope,
@@ -683,7 +683,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
   releaseWriteSlot(lease.slot);
   if (!committed) {
     abortArmedActivation(activationSlot, QuantizedGenerationStatus::Busy);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   const uint32_t committedRevision =

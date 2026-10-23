@@ -26,15 +26,28 @@ void expect(bool condition, const char* message) {
 
 int main() {
   MiniAcid engine{44100.0f, nullptr};
+  expect(engine.rebuildPatternRuntimeEventBank(),
+         "fixture could not publish its current Pattern runtime bank");
 
   // 1. Default sequenced source is Pattern.
   expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
          "default sequenced source is not Pattern");
 
   // 2. Pattern -> Phrase -> Pattern round-trip.
+  expect(engine.retainedWorkingMelody(0) == nullptr,
+         "fresh engine unexpectedly retained a Melody");
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
+         "Phrase selection bypassed the required Melody material");
+  expect(!engine.setPhraseLength(0, 2),
+         "phrase length edit succeeded before Melody material existed");
+  expect(engine.makePhrase(0), "MAKE PHRASE failed to create bounded material");
+  expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase,
+         "MAKE PHRASE did not select the newly retained Melody");
+  engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
   engine.setSequencedSource(0, MiniAcid::SequencedSource::Phrase);
   expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Phrase,
-         "selecting Phrase did not take effect");
+         "retained Melody could not be selected again");
   engine.setSequencedSource(0, MiniAcid::SequencedSource::Pattern);
   expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
          "returning to Pattern did not take effect");
