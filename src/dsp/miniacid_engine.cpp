@@ -960,6 +960,20 @@ const Parameter& MiniAcid::parameter303(TB303ParamId id, int voiceIndex) const {
   if (v303) return v303->parameter(id);
   return dummyParam;
 }
+const SynthPattern& MiniAcid::synthPatternForDisplay(int voiceIndex) const {
+  const int idx = clamp303Voice(voiceIndex);
+  // Persistent generation can be new while the old snapshot remains audible
+  // until BAR_START. Display the snapshot used by playback during that wait.
+  if (const auto* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
+              *this, idx)) {
+    return *pending;
+  }
+  if (const auto* working = currentWorking303Pattern(idx)) return *working;
+  // Includes the empty Pattern for an unassigned Song row.
+  return activeSynthPattern(idx);
+}
+
 const int8_t* MiniAcid::pattern303Steps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   refreshSynthCaches(idx);
@@ -1269,7 +1283,8 @@ bool MiniAcid::hasPendingSongReverseToggle() const { return false; }
 int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   if (songMode_) {
-    if (songVoiceState_[idx] == SongVoiceState::Held ||
+    if ((songVoiceState_[idx] == SongVoiceState::Held &&
+         activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Melody) ||
         songVoiceState_[idx] == SongVoiceState::Awaiting) {
       // WAIT/HOLD deliberately do not retarget CURRENT to the requested Song
       // row. Display the actual CURRENT identity, not the row/shadow slot.
@@ -3221,6 +3236,20 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   }
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   invalidateSessionNextForProjectChange();
+  hardBarrierPatternPlayback_();
+  // JSON stores project state, while page files own material kinds/identities
+  // and Melody files own the full event timeline. Restore the same layers as
+  // cold boot, and discard session buffers from the preceding project first.
+  resetWorkingMaterialForProjectChange_();
+  songMode_ = false;
+  setCurrentPage(0);
+  if (PatternPagingService::pageExists(0) &&
+      !PatternPagingService::loadPage(0, sceneManager_.currentScene())) {
+    patternRuntimeBank_.invalidatePageIdentity();
+    Serial.println("[LoadScene] resident page restoration failed");
+    return false;
+  }
+  hydrateAcceptedMaterialAtBoot_();
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
   const int residentPage = PatternPagingService::activePageIndex();
@@ -3239,6 +3268,12 @@ bool MiniAcid::saveSceneAs(const std::string& name) {
   if (!sceneStorage_) return false;
   const std::string previousName = sceneStorage_->getCurrentSceneName();
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
+  const std::string targetName = sceneStorage_->getCurrentSceneName();
+  if (targetName != previousName &&
+      !PatternPagingService::copyProjectPages(previousName, targetName)) {
+    sceneStorage_->setCurrentSceneName(previousName);
+    return false;
+  }
   if (saveSceneToStorage()) return true;
   sceneStorage_->setCurrentSceneName(previousName);
   return false;
@@ -3250,6 +3285,14 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
   const std::string previousName = sceneStorage_->getCurrentSceneName();
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
 
+  if (!PatternPagingService::clearProjectPages()) {
+    sceneStorage_->setCurrentSceneName(previousName);
+    return false;
+  }
+  hardBarrierPatternPlayback_();
+  resetWorkingMaterialForProjectChange_();
+  PatternPagingService::resetLoadedPageIndex();
+  setCurrentPage(0);
   sceneManager_.wipeToZero();
   clearGeneratedPatternHarmony();
   clearReuseMarks();
@@ -3299,6 +3342,24 @@ void MiniAcid::loadSceneFromStorage() {
   hydrateAcceptedMaterialAtBoot_();
 }
 
+void MiniAcid::resetWorkingMaterialForProjectChange_() {
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    workingMaterial_[voice].clear();
+    savedMelodySlot_[voice] = -1;
+    savedMelodyVersion_[voice] = {};
+    songVoiceState_[voice] = SongVoiceState::InSync;
+    songVoiceSlot_[voice] = -1;
+    songLoadFailedSlot_[voice] = -1;
+    activeMaterial_[voice] = {};
+    melodyPhaseOriginTick_[voice] = 0;
+    makePhraseSourceBasis_[voice] = {};
+    developmentLineage_[voice] = {};
+    hasSourceAnchorSnapshot_[voice] = false;
+    hasSourceAnchorUndoSnapshot_[voice] = false;
+    dropRuntimePhraseReceiptFor_(voice);
+  }
+}
+
 void MiniAcid::hydrateAcceptedMaterialAtBoot_() {
   const std::string& proj = PatternPagingService::currentProjectName();
   for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
@@ -3343,6 +3404,10 @@ bool MiniAcid::saveSceneToStorage() {
   Serial.printf("[SamplerScene] save layer=%d\n",
                 sceneManager_.currentScene().samplerEnabled ? 1 : 0);
 #endif
+  // An older page file wins over JSON on restart. Persist its canonical banks
+  // and material descriptors in the same explicit Save operation.
+  if (!PatternPagingService::savePage(currentPageIndex(),
+                                      sceneManager_.currentScene())) return false;
   if (!sceneStorage_->writeScene(sceneManager_)) return false;
   if (!sceneStorage_->clearSceneAuto()) {
     Serial.println("[SceneSave] main saved but recovery cleanup failed");
@@ -3355,6 +3420,8 @@ bool MiniAcid::saveSceneToStorage() {
 bool MiniAcid::autoSaveSceneRecovery() {
   if (!sceneStorage_ || playing) return false;
   syncSceneStateToManager();
+  if (!PatternPagingService::savePage(currentPageIndex(),
+                                      sceneManager_.currentScene())) return false;
   return sceneStorage_->writeSceneAuto(sceneManager_);
 }
 
@@ -6550,7 +6617,9 @@ MiniAcid::SongVoiceDisplayState MiniAcid::songVoiceDisplayState(
     return SongVoiceDisplayState::Pattern;
   }
   if (songMode_) {
-    if (songVoiceState_[voiceIndex] == SongVoiceState::Held) {
+    if (songVoiceState_[voiceIndex] == SongVoiceState::Held &&
+        activeMaterial_[voiceIndex].kind ==
+            GroovePuterMaterial::MaterialKind::Melody) {
       return SongVoiceDisplayState::Held;
     }
     if (songVoiceState_[voiceIndex] == SongVoiceState::Awaiting) {

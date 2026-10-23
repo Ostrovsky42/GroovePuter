@@ -37,6 +37,18 @@ enum class EventEditResult : uint8_t {
   Rejected,
 };
 
+enum class RangeEditResult : uint8_t {
+  Changed = 0,
+  NoChange,
+  CapacityFull,
+  Rejected,
+};
+
+enum class RangeExtractResult : uint8_t {
+  Ready = 0,
+  Rejected,
+};
+
 enum class LengthEditResult : uint8_t {
   Changed = 0,
   NoChange,
@@ -171,6 +183,95 @@ inline bool commit(Buffer& live, const Buffer& prepared) {
   return true;
 }
 
+inline void orderEventsByOnset(Buffer& phrase) {
+  for (uint16_t i = 1; i < phrase.count; ++i) {
+    const PhraseRuntime::RuntimeSynthEvent event = phrase.events[i];
+    uint16_t insertion = i;
+    while (insertion > 0 &&
+           phrase.events[insertion - 1u].startTick > event.startTick) {
+      phrase.events[insertion] = phrase.events[insertion - 1u];
+      --insertion;
+    }
+    phrase.events[insertion] = event;
+  }
+}
+
+inline bool sameEventExceptStart(
+    const PhraseRuntime::RuntimeSynthEvent& lhs,
+    const PhraseRuntime::RuntimeSynthEvent& rhs) {
+  return lhs.durationSubticks == rhs.durationSubticks &&
+         lhs.note == rhs.note && lhs.velocity == rhs.velocity &&
+         lhs.probability == rhs.probability && lhs.flags == rhs.flags &&
+         lhs.fx == rhs.fx && lhs.fxParam == rhs.fxParam;
+}
+
+// Project a complete bar-aligned slice into local time. This is the bounded
+// handoff from a generated full-phrase candidate to a selected-range replace.
+// The destination is untouched on rejection, including when a note crosses a
+// selection edge.
+inline RangeExtractResult extractBarRange(const Buffer& source,
+                                          uint8_t firstBar,
+                                          uint8_t barCount,
+                                          Buffer& destination) {
+  if (&source == &destination || !validate(source)) {
+    return RangeExtractResult::Rejected;
+  }
+
+  const uint16_t rangeTicks = lengthTicksForBars(barCount);
+  const uint16_t totalBars = static_cast<uint16_t>(
+      source.lengthTicks / PhraseRuntime::kTicksPerBar);
+  if (rangeTicks == 0 ||
+      static_cast<uint16_t>(firstBar) + barCount > totalBars) {
+    return RangeExtractResult::Rejected;
+  }
+
+  const uint32_t rangeStartSubtick =
+      static_cast<uint32_t>(firstBar) * PhraseRuntime::kTicksPerBar *
+      PhraseRuntime::kSubticksPerTick;
+  const uint32_t rangeEndSubtick = rangeStartSubtick +
+      static_cast<uint32_t>(rangeTicks) * PhraseRuntime::kSubticksPerTick;
+  for (uint16_t i = 0; i < source.count; ++i) {
+    const auto& event = source.events[i];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t endSubtick = startSubtick + event.durationSubticks;
+    const bool overlaps = startSubtick < rangeEndSubtick &&
+                          endSubtick > rangeStartSubtick;
+    if (!overlaps) continue;
+    if (startSubtick < rangeStartSubtick || endSubtick > rangeEndSubtick) {
+      return RangeExtractResult::Rejected;
+    }
+    // A Ready slice must be admissible to replaceBarRange(). The runtime can
+    // hold older material with equal onsets, but a local replacement refuses
+    // that ambiguous monophonic order.
+    for (uint16_t j = 0; j < i; ++j) {
+      if (source.events[j].startTick == event.startTick) {
+        return RangeExtractResult::Rejected;
+      }
+    }
+  }
+  destination = Buffer{};
+  destination.lengthTicks = rangeTicks;
+  const uint16_t rangeStartTick = static_cast<uint16_t>(
+      static_cast<uint16_t>(firstBar) * PhraseRuntime::kTicksPerBar);
+  for (uint16_t i = 0; i < source.count; ++i) {
+    const auto& event = source.events[i];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t endSubtick = startSubtick + event.durationSubticks;
+    if (startSubtick < rangeEndSubtick && endSubtick > rangeStartSubtick) {
+      destination.events[destination.count] = event;
+      destination.events[destination.count].startTick = static_cast<uint16_t>(
+          event.startTick - rangeStartTick);
+      ++destination.count;
+    }
+  }
+  orderEventsByOnset(destination);
+  return RangeExtractResult::Ready;
+}
+
 inline LengthEditResult setLengthBars(Buffer& phrase, uint8_t bars) {
   if (!validate(phrase)) return LengthEditResult::Rejected;
 
@@ -238,9 +339,179 @@ inline EventEditResult insertSnapped(Buffer& phrase,
   event.velocity = velocity;
   event.probability = 100;
 
-  phrase.events[phrase.count] = event;
-  ++phrase.count;
+  phrase.events[phrase.count++] = event;
+  orderEventsByOnset(phrase);
   return EventEditResult::Changed;
+}
+
+// Move one event by one grid cell without changing its lifetime or expression.
+// Equal onsets are rejected because the monophonic runtime would otherwise
+// make note selection depend on storage order.
+inline EventEditResult moveEventByGrid(Buffer& phrase,
+                                       uint16_t eventIndex,
+                                       int direction,
+                                       Grid grid) {
+  if (!validate(phrase)) return EventEditResult::Rejected;
+  if (eventIndex >= phrase.count) return EventEditResult::NoTarget;
+  if (direction != -1 && direction != 1) return EventEditResult::Rejected;
+
+  const uint16_t quantum = gridTicks(grid);
+  if (!validGridTicks(quantum)) return EventEditResult::Rejected;
+  const int32_t nextStart = static_cast<int32_t>(
+      phrase.events[eventIndex].startTick) + direction * quantum;
+  if (nextStart < 0 || nextStart >= phrase.lengthTicks) {
+    return EventEditResult::Rejected;
+  }
+
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    if (i != eventIndex && phrase.events[i].startTick == nextStart) {
+      return EventEditResult::Rejected;
+    }
+  }
+
+  const uint32_t endSubtick =
+      static_cast<uint32_t>(nextStart) * PhraseRuntime::kSubticksPerTick +
+      phrase.events[eventIndex].durationSubticks;
+  const uint32_t phraseEndSubtick =
+      static_cast<uint32_t>(phrase.lengthTicks) *
+      PhraseRuntime::kSubticksPerTick;
+  if (endSubtick > phraseEndSubtick) return EventEditResult::Rejected;
+
+  phrase.events[eventIndex].startTick = static_cast<uint16_t>(nextStart);
+  orderEventsByOnset(phrase);
+  return EventEditResult::Changed;
+}
+
+// Replace a complete bar-aligned region in phrase-relative time. `firstBar`
+// is zero-based. Notes which
+// cross either selection boundary make the operation ambiguous, so the whole
+// edit is rejected before mutation. `replacement` is local to the selected
+// region; unrelated events keep their exact event fields and only shift index
+// when chronological ordering requires it.
+inline RangeEditResult replaceBarRange(Buffer& phrase,
+                                       uint8_t firstBar,
+                                       uint8_t barCount,
+                                       const Buffer& replacement) {
+  if (&phrase == &replacement || !validate(phrase) ||
+      !validate(replacement)) {
+    return RangeEditResult::Rejected;
+  }
+
+  const uint16_t rangeTicks = lengthTicksForBars(barCount);
+  const uint16_t totalBars = static_cast<uint16_t>(
+      phrase.lengthTicks / PhraseRuntime::kTicksPerBar);
+  if (rangeTicks == 0 || replacement.lengthTicks != rangeTicks ||
+      static_cast<uint16_t>(firstBar) + barCount > totalBars) {
+    return RangeEditResult::Rejected;
+  }
+
+  const uint32_t rangeStartSubtick =
+      static_cast<uint32_t>(firstBar) * PhraseRuntime::kTicksPerBar *
+      PhraseRuntime::kSubticksPerTick;
+  const uint32_t rangeEndSubtick = rangeStartSubtick +
+      static_cast<uint32_t>(rangeTicks) * PhraseRuntime::kSubticksPerTick;
+  uint16_t preservedCount = 0;
+  uint16_t replacedCount = 0;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    const auto& event = phrase.events[i];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t endSubtick = startSubtick + event.durationSubticks;
+    const bool overlaps = startSubtick < rangeEndSubtick &&
+                          endSubtick > rangeStartSubtick;
+    if (!overlaps) {
+      ++preservedCount;
+      continue;
+    }
+    if (startSubtick < rangeStartSubtick || endSubtick > rangeEndSubtick) {
+      return RangeEditResult::Rejected;
+    }
+    ++replacedCount;
+  }
+
+  if (static_cast<uint32_t>(preservedCount) + replacement.count >
+      PhraseRuntime::kMaxSynthEvents) {
+    return RangeEditResult::CapacityFull;
+  }
+
+  const uint16_t rangeStartTick = static_cast<uint16_t>(
+      static_cast<uint16_t>(firstBar) * PhraseRuntime::kTicksPerBar);
+  for (uint16_t i = 0; i < replacement.count; ++i) {
+    const uint16_t absoluteStart = static_cast<uint16_t>(
+        rangeStartTick + replacement.events[i].startTick);
+    for (uint16_t j = 0; j < i; ++j) {
+      if (replacement.events[j].startTick == replacement.events[i].startTick) {
+        return RangeEditResult::Rejected;
+      }
+    }
+    for (uint16_t j = 0; j < phrase.count; ++j) {
+      const auto& existing = phrase.events[j];
+      const uint32_t startSubtick =
+          static_cast<uint32_t>(existing.startTick) *
+          PhraseRuntime::kSubticksPerTick;
+      const uint32_t endSubtick = startSubtick + existing.durationSubticks;
+      const bool overlaps = startSubtick < rangeEndSubtick &&
+                            endSubtick > rangeStartSubtick;
+      if (!overlaps && existing.startTick == absoluteStart) {
+        return RangeEditResult::Rejected;
+      }
+    }
+  }
+
+  bool sameReplacement = replacedCount == replacement.count;
+  bool matched[PhraseRuntime::kMaxSynthEvents]{};
+  if (sameReplacement) {
+    for (uint16_t i = 0; i < replacement.count && sameReplacement; ++i) {
+      const auto& next = replacement.events[i];
+      const uint16_t absoluteStart = static_cast<uint16_t>(
+          rangeStartTick + next.startTick);
+      bool found = false;
+      for (uint16_t j = 0; j < phrase.count; ++j) {
+        if (matched[j]) continue;
+        const auto& old = phrase.events[j];
+        const uint32_t oldStartSubtick =
+            static_cast<uint32_t>(old.startTick) *
+            PhraseRuntime::kSubticksPerTick;
+        const uint32_t oldEndSubtick = oldStartSubtick + old.durationSubticks;
+        const bool isInside = oldStartSubtick >= rangeStartSubtick &&
+                              oldEndSubtick <= rangeEndSubtick;
+        if (isInside && old.startTick == absoluteStart &&
+            sameEventExceptStart(old, next)) {
+          matched[j] = true;
+          found = true;
+          break;
+        }
+      }
+      sameReplacement = found;
+    }
+  }
+  if (sameReplacement) return RangeEditResult::NoChange;
+
+  const uint16_t oldCount = phrase.count;
+  uint16_t write = 0;
+  for (uint16_t read = 0; read < phrase.count; ++read) {
+    const auto& event = phrase.events[read];
+    const uint32_t startSubtick =
+        static_cast<uint32_t>(event.startTick) *
+        PhraseRuntime::kSubticksPerTick;
+    const uint32_t endSubtick = startSubtick + event.durationSubticks;
+    const bool overlaps = startSubtick < rangeEndSubtick &&
+                          endSubtick > rangeStartSubtick;
+    if (!overlaps) phrase.events[write++] = event;
+  }
+  for (uint16_t i = 0; i < replacement.count; ++i) {
+    phrase.events[write] = replacement.events[i];
+    phrase.events[write].startTick = static_cast<uint16_t>(
+        rangeStartTick + replacement.events[i].startTick);
+    ++write;
+  }
+  phrase.count = write;
+  orderEventsByOnset(phrase);
+  for (uint16_t i = write; i < oldCount; ++i) {
+    phrase.events[i] = PhraseRuntime::RuntimeSynthEvent{};
+  }
+  return RangeEditResult::Changed;
 }
 
 // U4B7 pitch primitive. Deliberately shaped like resizeEventByGrid: a single

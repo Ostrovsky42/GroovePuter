@@ -1,6 +1,6 @@
-# GroovePuter 0.9.17 Key Map — Cardputer ADV
+# GroovePuter 0.9.19 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.17 productization runtime built on the hardware-accepted v0.9.16 Foundation Freeze. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical external key reference for the current tagged and packaged v0.9.19 source baseline. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 
@@ -17,7 +17,7 @@ You do not need the whole table below before making music. Start with these rule
 
 These are beginner rules, not global overrides. In particular, `D` means DEVELOP in this first-session vocabulary only on MATERIAL; MATERIAL BANK keeps `D` as derive and Synth pages keep their own development/edit semantics.
 
-`Alt+V` opens GENRE (0.9.17; the v0.9.16 foundation sent it to FEEL).
+`Alt+V` opens GENRE directly.
 
 For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
 
@@ -30,6 +30,8 @@ HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
 SONG:     SONG -> MATERIAL -> MATERIAL BANK
 SETTINGS: PROJECT / SETUP
 ```
+
+GEN is a local panel inside GENRE, not a third WorkflowPages destination. `Tab` opens it; `Tab` again moves to FEEL.
 
 There are **12 active pages**. Persisted `GENERATION` and `TEXTURE` IDs resolve to
 FEEL. Persisted standalone Synth SOUND IDs resolve to their owning Synth A/B page;
@@ -98,7 +100,7 @@ target and MONO/POLY receiver mode are rows in KEY.
 | `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM) |
 | `Up` / `Down` | Select parameter row |
 | `Left` / `Right` | Decrease / increase selected value |
-| `Enter` | Toggle or secondary action for the row (see hint line) |
+| `Enter` | Toggle or secondary action for the row; `CHORD MODE` opens a list |
 | `Esc` / `` ` `` | Return to live PERFORM |
 
 The `; , . /` characters are swallowed while the layer is open: on the
@@ -114,15 +116,23 @@ ownership; internal Synth A/B remain sequencer/pattern instruments.
 |---|---|
 | `Tab` / `Up/Down` | Select Genre/Variant/Rhythm/Apply field |
 | `Left/Right` | Adjust selected field |
-| `Enter` | Apply selected policy |
+| `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy |
 | `G` | Explicit full Stage 15 generation |
 | `P` | `P1 CANON -> P2 VAR -> P3 TRANS` |
-| `M` on HARMONY | Cycle the project scale shown as `KEY`; affects the next generation |
+| `Left/Right` on KEY | Choose the project tonic; affects the next generation |
+| `M` on KEY | Cycle the project scale; affects the next generation |
+| `H` on KEY | Open the `GENRE/AUTO/GRAPH` harmony strategy list |
 | `M` on other fields | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
 
 During PLAY, accepted full generation publishes at the next real `BAR_START`; while
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
 musical identity through the bounded session attempt stream.
+
+In a selector, `Up/Down` chooses an item, `Enter` confirms it, and `Esc` cancels.
+On the KEY row, `Enter` opens the scale list; `Left/Right` changes the tonic directly.
+GENRE/RECIPE/RHYTHM selections remain pending until the `APPLY` row is confirmed;
+the project `KEY` is changed immediately and affects the next generation.
+The harmony strategy selected with `H` also waits for `APPLY`.
 
 ## GEN 2/3
 
@@ -238,7 +248,6 @@ Undo before that boundary cancels the pending activation; Redo during PLAY and
 Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 
 ### KNOBS / MORE
-
 | Key | Action |
 |---|---|
 | `Tab` | Cycle NOTES / KNOBS / MORE |

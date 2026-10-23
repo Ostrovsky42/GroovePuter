@@ -36,7 +36,7 @@ for needle in (
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
-    '"G:NEW TAKE P:STYLE M:APPLY"',
+    '"ENTER:APPLY G:TAKE"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
 for retired_affordance in ('"REROLL"', '"REPEAT G"'):

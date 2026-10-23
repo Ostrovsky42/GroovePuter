@@ -29,6 +29,10 @@ constexpr int kSynthB = 1;
 
 int main() {
   MiniAcid engine{44100.0f, nullptr};
+  expect(engine.rebuildPatternRuntimeEventBank(),
+         "fixture could not publish its Pattern runtime bank");
+  expect(engine.makePhrase(kSynthA), "could not create Synth A Melody source");
+  expect(engine.makePhrase(kSynthB), "could not create Synth B Melody source");
 
   // Every combination of per-synth source selection is representable.
   const MiniAcid::SequencedSource kPattern = MiniAcid::SequencedSource::Pattern;

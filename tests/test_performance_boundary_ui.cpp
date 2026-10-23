@@ -88,17 +88,55 @@ int main() {
   GenrePage page(gfx, engine, AudioGuard{});
   for(int i=0;i<4;++i) { auto e=scan(GROOVEPUTER_DOWN); assert(page.handleEvent(e)); }
   page.draw(gfx);
-  assert(gfx.has("KEY C CHR"));
+  assert(gfx.has("C CHR"));
   assert(gfx.has("GENRE"));
-  auto m=key('m'); assert(page.handleEvent(m));
+  GenrePage recipePage(gfx, engine, AudioGuard{});
+  auto recipeFocus = scan(GROOVEPUTER_DOWN);
+  assert(recipePage.handleEvent(recipeFocus));
+  auto recipePopup = key('\n');
+  assert(recipePage.handleEvent(recipePopup));
+  gfx.text.clear(); recipePage.draw(gfx);
+  assert(gfx.has("RECIPE SELECT"));
+  auto cancelPopup = key(0x1B);
+  assert(recipePage.handleEvent(cancelPopup));
+  auto scalePopup = key('\n');
+  assert(page.handleEvent(scalePopup));
+  gfx.text.clear(); page.draw(gfx);
+  assert(gfx.has("SCALE SELECT"));
+  auto popupDown = scan(GROOVEPUTER_DOWN);
+  assert(page.handleEvent(popupDown));
+  assert(page.handleEvent(scalePopup));
   assert(scene.generatorParams.scale == MINOR);
+  assert(scene.generatorParams.scaleRoot == 0);
   gfx.text.clear(); UI::drawToast(gfx); assert(gfx.has("KEY C MIN"));
   gfx.text.clear(); page.draw(gfx);
-  assert(gfx.has("KEY C MIN"));
+  assert(gfx.has("C MIN"));
+  auto m=key('m'); assert(page.handleEvent(m));
+  assert(scene.generatorParams.scale == MAJOR);
+  assert(page.handleEvent(scalePopup));
+  auto popupUp = scan(GROOVEPUTER_UP);
+  assert(page.handleEvent(popupUp));
+  assert(page.handleEvent(scalePopup));
+  assert(scene.generatorParams.scale == MINOR);
   auto right=scan(GROOVEPUTER_RIGHT); assert(page.handleEvent(right));
-  gfx.text.clear(); page.draw(gfx); assert(gfx.has("KEY C MIN / AUTO"));
-  auto enter=key('\n'); assert(page.handleEvent(enter));
-  assert(scene.genre.harmonicStrategy == 1);
+  assert(scene.generatorParams.scaleRoot == 1);
+  gfx.text.clear(); page.draw(gfx); assert(gfx.has("C# MIN"));
+  assert(page.handleEvent(right));
+  assert(scene.generatorParams.scaleRoot == 2);
+  auto enter=key('\n');
+  auto harmonyKey = key('h');
+  assert(page.handleEvent(harmonyKey));
+  gfx.text.clear(); page.draw(gfx);
+  assert(gfx.has("HARMONY SELECT"));
+  assert(page.handleEvent(popupDown));
+  assert(page.handleEvent(enter));
+  assert(!scene.genre.harmonicAuto);
+  gfx.text.clear(); page.draw(gfx);
+  assert(gfx.has("D MIN  H:AUTO"));
+  auto applyFocus = scan(GROOVEPUTER_DOWN);
+  assert(page.handleEvent(applyFocus));
+  assert(page.handleEvent(enter));
+  assert(scene.genre.harmonicAuto);
   auto tab=key('\t'); assert(page.handleEvent(tab));
   assert(page.handleEvent(m));
   assert(scene.generatorParams.scale == MINOR);
@@ -253,9 +291,10 @@ int main() {
   autoScene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::LoFi);
   autoScene.genre.recipe = 0;
   autoScene.genre.harmonicStrategy = 0;
-  autoScene.genre.harmonicAuto = false;
+  autoScene.genre.harmonicAuto = true;
   autoScene.genre.regenerateOnApply = false;
   autoScene.generatorParams.scale = MINOR;
+  autoScene.generatorParams.scaleRoot = 0;
   engine.genreManager().setGenerativeMode(GenerativeMode::LoFi);
   engine.genreManager().setRecipe(0);
   GenrePage autoPage(gfx, engine, AudioGuard{});
@@ -263,11 +302,18 @@ int main() {
   for (int i = 0; i < 4; ++i) { auto down = scan(GROOVEPUTER_DOWN); assert(autoPage.handleEvent(down)); }
   auto autoRight = scan(GROOVEPUTER_RIGHT);
   assert(autoPage.handleEvent(autoRight));
+  assert(autoScene.generatorParams.scaleRoot == 1);
   UI::beginShellFrameModel(shellFrame);
   gfx.text.clear(); autoPage.draw(gfx);
   UI::endShellFrameModel();
-  assert(gfx.has("KEY C MIN / AUTO"));
+  assert(gfx.has("C# MIN"));
   auto apply = key('\n'); assert(autoPage.handleEvent(apply));
+  gfx.text.clear(); autoPage.draw(gfx);
+  assert(gfx.has("SCALE SELECT"));
+  assert(autoPage.handleEvent(apply));
+  auto autoApplyFocus = scan(GROOVEPUTER_DOWN);
+  assert(autoPage.handleEvent(autoApplyFocus));
+  assert(autoPage.handleEvent(apply));
   const auto& appliedScene = engine.sceneManager().currentScene();
   assert(appliedScene.genre.harmonicStrategy == 1);
   const auto appliedAuto = GroovePuterRhythm::resolveGenreHarmony(
@@ -292,17 +338,39 @@ int main() {
          evented.currentScene().genre.harmonicStrategy == 1);
 
   engine.sceneManager().currentScene().generatorParams.scale = CHROMATIC;
+  auto focusHarmony = scan(GROOVEPUTER_UP);
+  assert(autoPage.handleEvent(focusHarmony));
   UI::beginShellFrameModel(shellFrame);
   gfx.text.clear(); autoPage.draw(gfx);
   UI::endShellFrameModel();
-  assert(gfx.has("KEY C CHR / AUTO") && !gfx.has("N/A:") &&
-         std::string(shellFrame.footer.right) == "AUTO>GENRE SCALE M:SCALE");
+  assert(gfx.has("C# CHR") && !gfx.has(" / AUTO") &&
+         std::string(shellFrame.footer.right) == "ENT:SCALE H:HARM L/R:ROOT");
+  auto unavailableHarmony = key('h');
+  assert(autoPage.handleEvent(unavailableHarmony));
+  gfx.text.clear(); autoPage.draw(gfx);
+  assert(gfx.has("HARMONY SELECT") && !gfx.has("GRAPH"));
+  auto escapeHarmony = key(0x1B);
+  assert(autoPage.handleEvent(escapeHarmony));
+  assert(autoPage.handleEvent(apply));
+  assert(autoPage.handleEvent(apply));
+  auto focusApply = scan(GROOVEPUTER_DOWN);
+  assert(autoPage.handleEvent(focusApply));
   assert(autoPage.handleEvent(apply));
   assert(engine.sceneManager().currentScene().genre.harmonicStrategy == 0 &&
          engine.sceneManager().currentScene().genre.harmonicAuto);
-  // Explicit GRAPH is still refused on unsupported scale, with a specific reason.
-  assert(autoPage.handleEvent(autoRight));
-  gfx.text.clear(); UI::drawToast(gfx); assert(gfx.has("GRAPH: SCALE"));
+  auto backToKey = scan(GROOVEPUTER_UP);
+  assert(autoPage.handleEvent(backToKey));
+  const uint8_t rootBeforeScaleSelect =
+      engine.sceneManager().currentScene().generatorParams.scaleRoot;
+  assert(autoPage.handleEvent(apply));
+  gfx.text.clear(); autoPage.draw(gfx);
+  assert(gfx.has("SCALE SELECT"));
+  auto popupNextScale = scan(GROOVEPUTER_DOWN);
+  assert(autoPage.handleEvent(popupNextScale));
+  assert(autoPage.handleEvent(apply));
+  assert(engine.sceneManager().currentScene().generatorParams.scale == MINOR);
+  assert(engine.sceneManager().currentScene().generatorParams.scaleRoot ==
+         rootBeforeScaleSelect);
   // Unknown/missing persisted Auto preference defaults to ordinary Legacy.
   std::string legacyJson = savedJson;
   const size_t autoField = legacyJson.find(",\"hma\":true");

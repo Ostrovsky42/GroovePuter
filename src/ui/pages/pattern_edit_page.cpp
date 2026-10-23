@@ -776,9 +776,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       label = "GEN -> NEXT BAR";
     else if (result == QuantizedGenerationResult::AttemptUnavailable)
       label = "GEN ATTEMPT FULL";
-    else if (GroovePuterRhythm::quantizedGenerationStatus() ==
-             GroovePuterRhythm::QuantizedGenerationStatus::Busy)
-      label = "GEN BUSY";
+    else if (result == QuantizedGenerationResult::Busy)
+      label = "GEN BUSY: WAIT";
 
     if (result == QuantizedGenerationResult::Failed) {
       const Scene& scene = mini_acid_.sceneManager().currentScene();

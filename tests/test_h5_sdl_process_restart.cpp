@@ -53,10 +53,10 @@ std::string number(uint32_t value) { return std::to_string(value); }
 
 PhraseRuntime::RuntimeSynthEventBuffer melodyC() {
   PhraseRuntime::RuntimeSynthEventBuffer out{};
-  out.lengthTicks = 2 * PhraseRuntime::kTicksPerBar;
-  out.count = 3;
+  out.lengthTicks = 8 * PhraseRuntime::kTicksPerBar;
+  out.count = 8;
   for (uint16_t i = 0; i < out.count; ++i) {
-    out.events[i].startTick = static_cast<uint16_t>(i * 144);
+    out.events[i].startTick = static_cast<uint16_t>(i * PhraseRuntime::kTicksPerBar + 24);
     out.events[i].durationSubticks = 96;
     out.events[i].note = static_cast<uint8_t>(55 + i * 3);
     out.events[i].velocity = 105;
@@ -133,7 +133,14 @@ int acceptWrite(const std::filesystem::path& root) {
   scene.materialSlots[kVoice][0].kind = MaterialKind::Pattern;
   const auto c = melodyC();
   engine.workingMaterial_[kVoice].storeMelody(c);
-  if (engine.acceptMaterialWorking(kVoice) != MiniAcid::AcceptResult::Accepted ||
+  auto voiceB = c;
+  for (uint16_t i = 0; i < voiceB.count; ++i) voiceB.events[i].note += 12;
+  if (engine.acceptMaterialWorking(kVoice) != MiniAcid::AcceptResult::Accepted) {
+    std::fprintf(stderr, "H5 FAIL accept_A\n");
+    return 1;
+  }
+  engine.workingMaterial_[1].storeMelody(voiceB);
+  if (engine.acceptMaterialWorking(1) != MiniAcid::AcceptResult::Accepted ||
       !engine.saveSceneToStorage()) {
     std::fprintf(stderr, "H5 FAIL accept_C_written\n");
     return 1;
@@ -183,6 +190,12 @@ int assertFreshRestoredC(const std::filesystem::path& root,
         fail("accepted event " + std::to_string(i), "C event", "diverged");
       }
     }
+  }
+  auto expectedB = melodyC();
+  for (uint16_t i = 0; i < expectedB.count; ++i) expectedB.events[i].note += 12;
+  const auto* actualB = engine.readableWorkingMelody(1);
+  if (!actualB || versionForMelody(*actualB) != versionForMelody(expectedB)) {
+    fail("voice B full 8-bar content", "accepted 8 bars", "missing/different");
   }
   if (engine.hasPendingMaterial(kVoice)) fail("NEXT state", "empty", "queued");
   if (engine.isGoQueued(kVoice)) fail("GO state", "empty", "queued");

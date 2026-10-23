@@ -215,7 +215,7 @@ bool SceneStorageSdl::readScene(SceneManager& manager) {
 }
 
 bool SceneStorageSdl::writeScene(const std::string& data) {
-  persistCurrentSceneName();
+  if (!persistCurrentSceneName()) return false;
 #ifdef __EMSCRIPTEN__
   std::string key = sceneKeyForStorage(currentSceneName_);
   return wasm_write_scene(key.c_str(), data.c_str()) > 0;
@@ -294,19 +294,6 @@ bool SceneStorageSdl::setCurrentSceneName(const std::string& name) {
   if (normalized == previous) {
     return PatternPagingService::setProjectName(previous) &&
            persistCurrentSceneName();
-  }
-
-  bool sceneAlreadyExists = false;
-#ifdef __EMSCRIPTEN__
-  const std::string targetKey = sceneKeyForStorage(normalized);
-  sceneAlreadyExists = wasm_read_scene(targetKey.c_str(), nullptr, 0) > 0;
-#else
-  sceneAlreadyExists = std::filesystem::exists(normalized + kSceneExtension);
-#endif
-
-  if (!sceneAlreadyExists &&
-      !PatternPagingService::copyProjectPages(previous, normalized)) {
-    return false;
   }
 
   currentSceneName_ = normalized;

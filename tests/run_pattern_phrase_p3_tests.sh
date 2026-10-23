@@ -80,6 +80,9 @@ TESTS=(
   test_p3_bounded_phrase_source_real
   test_p3_per_synth_phrase_cardinality
   test_p3_phrase_relative_onset
+  test_synth_note_display_truth
+  test_project_melody_copy
+  test_project_melody_reload
 )
 
 for test_name in "${TESTS[@]}"; do

@@ -20,6 +20,24 @@ constexpr const char* kToolContextNames[] = {
 constexpr const char* kToolContextActiveNames[] = {
     "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]",
 };
+constexpr PerformanceChordMode kChordPopupModes[] = {
+    PerformanceChordMode::Off,
+    PerformanceChordMode::Major,
+    PerformanceChordMode::Minor,
+    PerformanceChordMode::Fifth,
+    PerformanceChordMode::Minor7,
+    PerformanceChordMode::Memory,
+    PerformanceChordMode::Sus2,
+    PerformanceChordMode::Sus4,
+    PerformanceChordMode::Dominant7,
+    PerformanceChordMode::Major7,
+    PerformanceChordMode::ScaleTriad,
+    PerformanceChordMode::ScaleSeventh,
+};
+constexpr const char* kChordPopupLabels[] = {
+    "OFF", "MAJ", "MIN", "5TH", "MIN7", "MEM",
+    "SUS2", "SUS4", "7", "MAJ7", "SCALE3", "SCALE7",
+};
 
 const char* roleName(GroovePuterPerformance::PerformanceRole role) {
     switch (role) {
@@ -99,6 +117,21 @@ const char* strumDirectionLabel(PerformanceStrumDirection direction) {
     return "UP";
 }
 }  // namespace
+
+void PerformPage::openChordModePopup() {
+    const uint8_t selected = static_cast<uint8_t>(keyboard_.chordMode());
+    chordModePopup_.open("CHORD MODE", static_cast<uint8_t>(
+        sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])), selected);
+}
+
+void PerformPage::applyChordModePopup() {
+    const uint8_t selected = chordModePopup_.selectedIndex();
+    if (selected >= sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])) return;
+    keyboard_.setChordMode(kChordPopupModes[selected]);
+    char toast[32];
+    std::snprintf(toast, sizeof(toast), "CHORD: %s", kChordPopupLabels[selected]);
+    UI::showToast(toast, 900);
+}
 
 PerformPage::PerformPage(IGfx& gfx,
                          MiniAcid& miniAcid,
@@ -333,6 +366,10 @@ void PerformPage::toggleSelectedValue() {
             return;
 
         case PerformanceToolContext::Chord:
+            if (row == 0) {
+                openChordModePopup();
+                return;
+            }
             if (row == 2 && chordActive) {
                 keyboard_.toggleChordSpread();
                 return;
@@ -422,7 +459,7 @@ const char* PerformPage::selectedRowHint() const {
 
         case PerformanceToolContext::Chord:
             switch (row) {
-                case 0: return "</> CHORD MODE";
+                case 0: return "ENTER: LIST  </> STEP";
                 case 1: return chordActive ? "</> INVERSION" : "N/A: SET CHORD MODE";
                 case 2: return chordActive ? "</> OR ENTER: CLOSE/WIDE" : "N/A: SET CHORD MODE";
                 case 3:
@@ -777,10 +814,16 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(7) - 2,
                              Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X,
                              selectedRowHint());
+    chordModePopup_.draw(gfx, kChordPopupLabels);
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
     if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+    if (chordModePopup_.isOpen()) {
+        const UI::SelectionPopupResult result = chordModePopup_.handleEvent(event);
+        if (result == UI::SelectionPopupResult::Confirmed) applyChordModePopup();
+        return true;
+    }
     // The Cardputer keycaps label the arrows as Fn alternates, so arrows are
     // accepted with Fn (meta) held while the tools layer is open. Every other
     // modifier combination passes through to the global shortcuts.

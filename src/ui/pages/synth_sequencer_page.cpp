@@ -1778,7 +1778,12 @@ bool SynthSequencerPage::changeProjectKey(bool tonic) {
 }
 
 void SynthSequencerPage::draw(IGfx& gfx) {
-  if (synth_tab_ == SynthTab::Notes &&
+  const auto displayState = mini_acid_.songVoiceDisplayState(voice_index_);
+  // Awaiting Song material is silent even while the previous Melody remains
+  // retained. Let the Pattern child render its WAIT/FAIL view, never that buffer.
+  const bool awaiting = displayState == MiniAcid::SongVoiceDisplayState::Awaiting ||
+                        displayState == MiniAcid::SongVoiceDisplayState::LoadFailed;
+  if (synth_tab_ == SynthTab::Notes && !awaiting &&
       mini_acid_.currentSequencedSource(voice_index_) ==
           MiniAcid::SequencedSource::Phrase) {
     drawPhraseNotes(gfx);

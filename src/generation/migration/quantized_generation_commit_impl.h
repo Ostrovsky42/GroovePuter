@@ -20,6 +20,7 @@ enum class QuantizedGenerationResult : uint8_t {
   CommittedNow,
   PendingNextBar,
   AttemptUnavailable,
+  Busy,
 };
 
 enum class QuantizedGenerationStatus : uint8_t {
@@ -554,7 +555,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -611,7 +612,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   // Synth A/B rerolls consume the same tuple-local attempt stream as GENRE G.
