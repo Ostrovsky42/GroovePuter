@@ -1,6 +1,9 @@
 #include "sample_scene_persistence.h"
 
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sample_index.h"
+#endif
 
 #include <cctype>
 #include <cstdio>
@@ -201,15 +204,15 @@ bool decodeSampleRefHex(const char* data, std::size_t len, SampleRef& out) {
   return true;
 }
 
+void clearSceneSampleReferences() {
+  for (auto& ref : g_unresolvedSampleRefs) ref = {};
+}
+
 SamplerSceneFilter::SamplerSceneFilter(SceneSampleFilterDirection direction,
                                        const SampleIndex* index)
     : direction_(direction),
       index_(index ? index : scenePersistenceSampleIndex()) {
-  if (direction_ == SceneSampleFilterDirection::Load) {
-    // A new Scene load owns the unresolved-asset sidecar. Failed loads leave
-    // it empty; only finish() publishes refs from a successfully parsed Scene.
-    for (auto& ref : g_unresolvedSampleRefs) ref = {};
-  }
+  // Keep the resident project sidecar until a successful load is acknowledged.
 }
 
 bool SamplerSceneFilter::appendPadChar(char c) {
@@ -309,6 +312,7 @@ bool SamplerSceneFilter::transformPad(
         return appendBytes(output, outputCap, outputLen, input, inputLen);
       }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
       const std::size_t matches =
           index_->legacyMatchCount(SampleId{fields.id});
       if (matches > 1) return false;
@@ -328,14 +332,20 @@ bool SamplerSceneFilter::transformPad(
       return appendBytes(output, outputCap, outputLen,
                          input + fields.idEnd,
                          inputLen - fields.idEnd);
+#else
+      return appendBytes(output, outputCap, outputLen, input, inputLen);
+#endif
     }
 
     SampleRef ref{};
     if (!decodeSampleRefHex(fields.ref, fields.refLen, ref)) return false;
 
-    const SampleId runtime =
-        index_ ? index_->runtimeIdForRef(ref) : SampleId{0};
-    if (runtime.value == 0 && samplerPadIndex_ < kSamplerPadCount) {
+#if GROOVEPUTER_ENABLE_SAMPLER
+    const uint32_t runtimeValue = index_ ? index_->runtimeIdForRef(ref).value : 0;
+#else
+    const uint32_t runtimeValue = 0;
+#endif
+    if (runtimeValue == 0 && samplerPadIndex_ < kSamplerPadCount) {
       // External asset is missing, not the project. Keep the stable identity
       // in a control-side sidecar and publish a silent runtime pad.
       pendingUnresolvedRefs_[samplerPadIndex_] = ref;
@@ -344,7 +354,7 @@ bool SamplerSceneFilter::transformPad(
     if (!appendBytes(output, outputCap, outputLen,
                      input, fields.idStart)) return false;
     if (!appendUint32(output, outputCap, outputLen,
-                      runtime.value)) return false;
+                      runtimeValue)) return false;
     return appendBytes(output, outputCap, outputLen,
                        input + fields.idEnd,
                        inputLen - fields.idEnd);
@@ -374,6 +384,7 @@ bool SamplerSceneFilter::transformPad(
     return appendBytes(output, outputCap, outputLen, input, inputLen);
   }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   const SampleRef ref = index_->resolveRuntimeId(SampleId{fields.id});
   const SampleFileInfo* file = index_->findByRef(ref);
   if (!ref.valid() || file == nullptr) {
@@ -390,6 +401,9 @@ bool SamplerSceneFilter::transformPad(
   return appendBytes(output, outputCap, outputLen,
                      input + fields.idEnd,
                      inputLen - fields.idEnd);
+#else
+  return appendBytes(output, outputCap, outputLen, input, inputLen);
+#endif
 }
 
 bool SamplerSceneFilter::acceptPad(char c, const char*& data,
@@ -438,7 +452,7 @@ bool SamplerSceneFilter::accept(char c, const char*& data,
   return acceptOutsidePad(c, data, len);
 }
 
-bool SamplerSceneFilter::finish() {
+bool SamplerSceneFilter::finish(bool publishLoad) {
   if (finished_) return !failed_;
   if (failed_) return false;
   if (bufferingPad_ || inSamplerArray_ || globalInString_ ||
@@ -447,13 +461,16 @@ bool SamplerSceneFilter::finish() {
     return false;
   }
 
-  if (direction_ == SceneSampleFilterDirection::Load) {
-    for (std::size_t i = 0; i < kSamplerPadCount; ++i) {
-      g_unresolvedSampleRefs[i] = pendingUnresolvedRefs_[i];
-    }
-  }
   finished_ = true;
+  if (publishLoad) publishLoadedReferences();
   return true;
+}
+
+void SamplerSceneFilter::publishLoadedReferences() {
+  if (direction_ != SceneSampleFilterDirection::Load || !finished_ || failed_) return;
+  for (std::size_t i = 0; i < kSamplerPadCount; ++i) {
+    g_unresolvedSampleRefs[i] = pendingUnresolvedRefs_[i];
+  }
 }
 
 bool transformSamplerSceneString(const std::string& input,

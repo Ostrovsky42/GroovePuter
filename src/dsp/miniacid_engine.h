@@ -2,6 +2,8 @@
 #ifndef MINIACID_ENGINE_H
 #define MINIACID_ENGINE_H
 
+#include "../platform/cardputer_capabilities.h"
+
 #include "src/state/material_slot.h"
 #include "src/state/material_slot_access.h"
 #include "src/state/material_version.h"
@@ -50,13 +52,16 @@ struct SongHarmonicParticipant;
 #include "../phrase/runtime_synth_playback.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
+#if GROOVEPUTER_ENABLE_TAPE
 #include "tape_fx.h"
 #include "tape_looper.h"
+#endif
 #include "../audio/audio_config.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "../sampler/sample_store.h"
 #include "../sampler/sample_index.h"
 #include "../sampler/drum_sampler_track.h"
-#include "../sampler/sample_index.h"
+#endif
 #include "formant_synth.h"
 #include "../audio/vocal_mixer.h"
 #include "voice_compressor.h"
@@ -501,10 +506,15 @@ public:
   const Parameter& parameter303(TB303ParamId id, int voiceIndex = 0) const;
 
   struct WaveformBuffer {
+#if GROOVEPUTER_ENABLE_WAVEFORM
     int16_t data[AUDIO_BUFFER_SAMPLES];
+#else
+    int16_t data[1];  // empty compatibility view, never an audio history
+#endif
     size_t count;
   };
   const WaveformBuffer& getWaveformBuffer() const;
+  uint16_t lastAudioPeak() const { return lastAudioPeak_.load(std::memory_order_relaxed); }
 #ifdef GROOVEPUTER_USB_ACCEPT_DIAG
   // Read only on the control thread under AudioMutationScope.
   bool diagnostic303Active(int voiceIndex) const {
@@ -703,7 +713,13 @@ public:
   void applyFeelTimingFromScene_();
 
   int currentScene() const { return current303BankIndex(0); }
-  bool isRecording() const { return sceneManager().currentScene().tape.mode == TapeMode::Rec; }
+  bool isRecording() const {
+#if GROOVEPUTER_ENABLE_TAPE
+    return sceneManager().currentScene().tape.mode == TapeMode::Rec;
+#else
+    return false;
+#endif
+  }
   float swing() const { return genreManager().getGenerativeParams().swingAmount; }
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
@@ -1128,9 +1144,14 @@ private:
   float dcBlockPrev_ = 0.0f;
   float dcBlockOut_ = 0.0f;
 
+#if GROOVEPUTER_ENABLE_WAVEFORM
   WaveformBuffer waveformBuffers_[2];
   std::atomic<int> displayBufferIndex_{0};
   int writeBufferIndex_ = 1;
+
+#endif
+  std::atomic<uint16_t> lastAudioPeak_{0};
+  void captureAudioObservation_(const int16_t* buffer, size_t count);
 
   FormantSynth vocalSynth_;
   VoiceCache voiceCache_;
@@ -1147,12 +1168,16 @@ private:
 
 public:
   PerfStats perfStats;
+#if GROOVEPUTER_ENABLE_SAMPLER
   ISampleStore* sampleStore = nullptr;
   SampleIndex sampleIndex;
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
   std::unique_ptr<TapeFX> tapeFX;
   std::unique_ptr<TapeLooper> tapeLooper;
 
+#endif
   SceneManager& sceneManager() { return sceneManager_; }
   const SceneManager& sceneManager() const { return sceneManager_; }
 
@@ -1161,6 +1186,7 @@ private:
   GenreManager genreManager_{sceneManager_};
 
   uint32_t ditherState_ = 12345;
+#if GROOVEPUTER_ENABLE_TAPE
   bool tapeControlCached_ = false;
   TapeMacro lastTapeMacro_{};
   uint8_t lastTapeSpace_ = 0xFF;
@@ -1169,9 +1195,12 @@ private:
   TapeMode lastTapeMode_ = TapeMode::Stop;
   uint8_t lastTapeSpeed_ = 0xFF;
   float lastTapeLooperVolume_ = -1.0f;
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
   float fxSafetyMix_ = 1.0f;
   uint16_t fxSafetyHold_ = 0;
   uint32_t lastUnderrunCount_ = 0;
+#endif
   uint32_t perfDetailCounter_ = 0;
 
   bool waitingForRehearsal_ = false;

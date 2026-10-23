@@ -37,14 +37,20 @@ SDMock SD;
 struct AudioContext {
   explicit AudioContext(float sampleRate)
       : storage(),
+#if GROOVEPUTER_ENABLE_SAMPLER
         pool(),
+#endif
         synth(sampleRate, &storage),
         internalSynthOutput(synth, mutationGate),
         device(0) {
+#if GROOVEPUTER_ENABLE_SAMPLER
     synth.sampleStore = &pool;
+#endif
   }
   SceneStorageSdl storage;
+#if GROOVEPUTER_ENABLE_SAMPLER
   RamSampleStore pool;
+#endif
   MiniAcid synth;
   AudioMutationGate mutationGate;
   InternalSynthOutput internalSynthOutput;
@@ -458,12 +464,14 @@ int main(int argc, char **argv) {
   state.gfx->begin();
   state.audio.synth.init();
   
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Initialize sample index and register files into the store
   state.audio.synth.sampleIndex.scanDirectory("../samples");
   for (const auto& file : state.audio.synth.sampleIndex.getFiles()) {
       state.audio.pool.registerFile(file.id, file.fullPath);
   }
 
+#endif
   SDL_AudioSpec desired{};
   desired.freq = kSampleRate;
   desired.format = AUDIO_S16SYS;

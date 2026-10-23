@@ -1,3 +1,5 @@
+#include "src/platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "src/platform/cardputer_sd.h"
 #include "src/sampler/sample_scene_persistence.h"
 
@@ -42,3 +44,5 @@ __attribute__((constructor)) void installSamplerBootRegistryHook() {
 }
 
 }  // namespace
+
+#endif

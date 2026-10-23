@@ -32,7 +32,11 @@
 #include "../input/musical_event_queue.h"
 #include "../generation/migration/quantized_generation_commit.h"
 
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "../sampler/sample_index.h"
+#else
+#include "../sampler/sample_scene_persistence.h"
+#endif
 #include "../ui/led_manager.h"
 
 #if defined(ESP32) || defined(ESP_PLATFORM)
@@ -108,6 +112,10 @@ TempoDelay::TempoDelay(float sampleRate)
 }
 
 void TempoDelay::init(float maxSeconds) {
+#if GROOVEPUTER_EXPERIMENT_NO_TEMPO_DELAY
+  (void)maxSeconds;
+  return;
+#endif
   silentRun_ = 0;
   if (maxSeconds <= 0.0f) maxSeconds = 1.0f;
   
@@ -251,9 +259,13 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     sampleRateValue(sampleRate),
     drumEngineName_("808"),
     sceneStorage_(sceneStorage),
+#if GROOVEPUTER_ENABLE_SAMPLER
     samplerTrack(std::make_unique<DrumSamplerTrack>()),
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
     tapeFX(std::make_unique<TapeFX>()),
     tapeLooper(std::make_unique<TapeLooper>()),
+#endif
     playing(false),
     mute303(false),
     mute303_2(false),
@@ -335,8 +347,12 @@ void MiniAcid::init() {
   if (hasPsram) {
     LOG_PRINTLN("  - MiniAcid::init: PSRAM mode (high performance)");
     // PSRAM: High-performance mode (44.1kHz = ~176KB per second float)
+#if GROOVEPUTER_ENABLE_TAPE
     if (tapeLooper) tapeLooper->init(8);           // 8s looper (~1.4MB)
+#endif
+#if GROOVEPUTER_ENABLE_SAMPLER
     if (sampleStore) sampleStore->setPoolSize(2 * 1024 * 1024); // 2MB pool
+#endif
     delay303.init(1.0f);
     delay3032.init(1.0f);
   } else {
@@ -344,13 +360,19 @@ void MiniAcid::init() {
     // DRAM: Constrained mode (44.1kHz is expensive!)
     // Keep a practical looper length so REC/PLAY is musically usable without PSRAM.
     // 1.0s mono int16 looper ~= 88KB.
+#if GROOVEPUTER_ENABLE_TAPE
     if (tapeLooper) tapeLooper->init(0.5f);
+#endif
+#if GROOVEPUTER_ENABLE_SAMPLER
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
+#endif
     delay303.init(0.1f);
     delay3032.init(0.1f);
     
     // TAPE FX DISABLED BY DEFAULT IN DRAM MODE
+#if GROOVEPUTER_ENABLE_TAPE
     if (tapeFX) tapeFX->setEnabled(false);
+#endif
     
     LOG_PRINTLN("  - MiniAcid::init: DRAM MODE ACTIVE (Reduced buffers)");
   }
@@ -492,6 +514,7 @@ void MiniAcid::reset() {
   distortion303.setEnabled(distortion303Enabled);
   distortion3032.setEnabled(distortion3032Enabled);
   
+#if GROOVEPUTER_ENABLE_WAVEFORM
   // Initialize waveform buffers
   for (int b = 0; b < 2; ++b) {
     waveformBuffers_[b].count = 0;
@@ -499,6 +522,8 @@ void MiniAcid::reset() {
       waveformBuffers_[b].data[i] = 0;
     }
   }
+#endif
+
   
   songMode_ = false;
   songPlayheadPosition_ = 0;
@@ -1534,8 +1559,13 @@ std::string MiniAcid::currentDrumEngineName() const {
 
 // Thread-safe waveform buffer access for UI
 const MiniAcid::WaveformBuffer& MiniAcid::getWaveformBuffer() const {
+#if GROOVEPUTER_ENABLE_WAVEFORM
   int idx = displayBufferIndex_.load(std::memory_order_acquire);
   return waveformBuffers_[idx];
+#else
+  static const WaveformBuffer empty{};
+  return empty;
+#endif
 }
 
 void MiniAcid::toggleMute303(int voiceIndex) {
@@ -2625,12 +2655,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       if (val < -1.0f) val = -1.0f;
       buffer[i] = static_cast<int16_t>(val * 32767.0f);
     }
-    // Copy to waveform buffer for UI
-    size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
-    memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
-    waveformBuffers_[writeBufferIndex_].count = copyCount;
-    displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
-    writeBufferIndex_ = 1 - writeBufferIndex_;
+    captureAudioObservation_(buffer, numSamples);
     return;
   }
 
@@ -2638,6 +2663,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 
+#if GROOVEPUTER_ENABLE_TAPE
   // Update tape controls only on change (avoids per-buffer control overhead spikes).
   const TapeState& tapeState = sceneManager_.currentScene().tape;
   const bool macroChanged =
@@ -2677,13 +2703,18 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     lastTapeLooperVolume_ = tapeState.looperVolume;
   }
   tapeControlCached_ = true;
+#endif
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   const bool hasSampleStore = (sampleStore != nullptr);
+#endif
 
   // Cache immutable-per-buffer flags
   const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
+#if GROOVEPUTER_ENABLE_TAPE
   const bool looperActive = (tapeState.mode != TapeMode::Stop);
   const bool tapeFxEnabled = tapeState.fxEnabled;
+#endif
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
   // Fine-grained profiling makes ten micros() calls per sample: the profiled
@@ -2692,6 +2723,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   // and runs on one block in 128.
   const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x7Fu) == 0);
 
+#if GROOVEPUTER_ENABLE_TAPE
   // FX safety guard: if previous callback was near/over budget, reduce FX wet path
   // first (Tape/Looper) to avoid audible underruns, then recover gradually.
   const float cpuLoad = perfStats.cpuAudioPctIdeal;
@@ -2716,6 +2748,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   if (fxSafetyMix_ < 0.35f) fxSafetyMix_ = 0.35f;
   if (fxSafetyMix_ > 1.0f) fxSafetyMix_ = 1.0f;
 
+#endif
   // Profiling accumulators (detailed sections only when diagnostics is enabled)
   uint32_t tVoicesTotal = 0;
   uint32_t tDrumsTotal = 0;
@@ -2797,14 +2830,46 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
                  }
 
                  switch(v) {
-                     case kDrumKickVoice: if (!muteKick) { drums->triggerKick(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(0, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumSnareVoice: if (!muteSnare) { drums->triggerSnare(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(1, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumHatVoice: if (!muteHat) { drums->triggerHat(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(2, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumOpenHatVoice: if (!muteOpenHat) { drums->triggerOpenHat(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(3, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumMidTomVoice: if (!muteMidTom) { drums->triggerMidTom(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(4, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumHighTomVoice: if (!muteHighTom) { drums->triggerHighTom(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(5, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumRimVoice: if (!muteRim) { drums->triggerRim(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(6, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
-                     case kDrumClapVoice: if (!muteClap) { drums->triggerClap(accent, trigVelocity); if(sampleStore) samplerTrack->triggerPad(7, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumKickVoice: if (!muteKick) { drums->triggerKick(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(0, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumSnareVoice: if (!muteSnare) { drums->triggerSnare(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(1, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumHatVoice: if (!muteHat) { drums->triggerHat(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(2, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumOpenHatVoice: if (!muteOpenHat) { drums->triggerOpenHat(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(3, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumMidTomVoice: if (!muteMidTom) { drums->triggerMidTom(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(4, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumHighTomVoice: if (!muteHighTom) { drums->triggerHighTom(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(5, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumRimVoice: if (!muteRim) { drums->triggerRim(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(6, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
+                     case kDrumClapVoice: if (!muteClap) { drums->triggerClap(accent, trigVelocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
+if(sampleStore) samplerTrack->triggerPad(7, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse);
+#endif
+ } break;
                  }
                  retrigDrums_[v].counter = retrigDrums_[v].interval;
                  retrigDrums_[v].countRemaining--;
@@ -2865,6 +2930,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
     uint32_t tS0 = 0;
     if (detailedProfile) tS0 = micros();
+#if GROOVEPUTER_ENABLE_SAMPLER
     if (hasSampleStore) {
       // Tick/retrig dispatch above can start a sampler voice at this exact
       // frame. Render only after those triggers so the WAV stays aligned with
@@ -2872,6 +2938,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       samplerTrack->processFrame(samplerSample, *sampleStore);
       sample += samplerSample;
     }
+#endif
     if (detailedProfile) tSamplerTotal += (micros() - tS0);
     uint32_t tVocal0 = 0;
     if (detailedProfile) tVocal0 = micros();
@@ -2885,8 +2952,13 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tF0 = 0;
     if (detailedProfile) tF0 = micros();
     if (diagEnabled) {
+#if GROOVEPUTER_ENABLE_TAPE
       diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, tapeLooper->getPeak(), 0.0f);
+#else
+      diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, 0.0f, 0.0f);
+#endif
     }
+#if GROOVEPUTER_ENABLE_TAPE
     if (looperActive) {
       float loopSample = 0.0f;
       tapeLooper->process(sample, &loopSample);
@@ -2904,6 +2976,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       sample = sample + (wet - sample) * fxSafetyMix_;
     }
 
+#endif
     sample *= 0.65f;
     masterOutputLpState_ += masterOutputLpAlpha_ * (sample - masterOutputLpState_);
     sample = masterOutputLpState_;
@@ -2937,6 +3010,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     perfStats.dspFxUs = tFxTotal;
   }
 
+#if GROOVEPUTER_ENABLE_TAPE
   // Tape looper can change mode internally (e.g. REC->PLAY, safety DUB->PLAY).
   // Mirror it back into scene state so UI/state remain consistent.
   if (tapeState.mode != tapeLooper->mode()) {
@@ -2944,12 +3018,26 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     lastTapeMode_ = tapeLooper->mode();
   }
 
-  size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
+#endif
+  captureAudioObservation_(buffer, numSamples);
+  if (diagEnabled) diag.flushIfReady(millis());
+}
+
+void MiniAcid::captureAudioObservation_(const int16_t* buffer, size_t count) {
+  uint16_t peak = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int32_t value = buffer[i];
+    const uint16_t magnitude = static_cast<uint16_t>(value < 0 ? -value : value);
+    if (magnitude > peak) peak = magnitude;
+  }
+  lastAudioPeak_.store(peak, std::memory_order_relaxed);
+#if GROOVEPUTER_ENABLE_WAVEFORM
+  const size_t copyCount = std::min(count, static_cast<size_t>(AUDIO_BUFFER_SAMPLES));
   memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
   waveformBuffers_[writeBufferIndex_].count = copyCount;
   displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
   writeBufferIndex_ = 1 - writeBufferIndex_;
-  if (diagEnabled) diag.flushIfReady(millis());
+#endif
 }
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
@@ -3294,6 +3382,9 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
   PatternPagingService::resetLoadedPageIndex();
   setCurrentPage(0);
   sceneManager_.wipeToZero();
+#if !GROOVEPUTER_ENABLE_SAMPLER
+  GroovePuterSampler::clearSceneSampleReferences();
+#endif
   clearGeneratedPatternHarmony();
   clearReuseMarks();
   applySceneStateFromManager();
@@ -3338,6 +3429,9 @@ void MiniAcid::loadSceneFromStorage() {
     LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
   }
   sceneManager_.loadDefaultScene();
+#if !GROOVEPUTER_ENABLE_SAMPLER
+  GroovePuterSampler::clearSceneSampleReferences();
+#endif
   PatternPagingService::loadPage(0, sceneManager_.currentScene());
   hydrateAcceptedMaterialAtBoot_();
 }
@@ -3566,6 +3660,7 @@ void MiniAcid::applySceneStateFromManager() {
     publishedHarmonyGeneration_.fetch_add(1, std::memory_order_release);
   }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
   // Sync Sampler
   samplerTrack->setEnabled(sceneManager_.currentScene().samplerEnabled);
@@ -3587,6 +3682,8 @@ void MiniAcid::applySceneStateFromManager() {
     if (p.id.value != 0 && sampleStore) sampleStore->preload(p.id);
   }
 
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Tape...");
   // Sync Tape - uses dirty flag so this is safe to call
   const auto& t = sceneManager_.currentScene().tape;
@@ -3597,6 +3694,7 @@ void MiniAcid::applySceneStateFromManager() {
     tapeLooper->setVolume(t.looperVolume);
   }
 
+#endif
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Voice...");
   const auto& v = sceneManager_.currentScene().vocal;
   params[static_cast<int>(MiniAcidParamId::VoicePitch)].setValue(v.pitch);
@@ -3733,6 +3831,7 @@ void MiniAcid::syncSceneStateToManager() {
     sceneManager_.setLegacySynthParametersPresent(idx, false);
   }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   // SamplerPage edits the realtime pad objects. Explicit Save must mirror
   // those values into the resident Scene before the Scene writer converts the
   // compact runtime SampleId to its authoritative stable SampleRef.
@@ -3752,6 +3851,7 @@ void MiniAcid::syncSceneStateToManager() {
     }
   }
 
+#endif
   // Save voice parameters to scene
   auto& v = sceneManager_.currentScene().vocal;
   v.pitch = params[static_cast<int>(MiniAcidParamId::VoicePitch)].value();
@@ -4595,42 +4695,58 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   switch(voiceIdx) {
     case kDrumKickVoice: 
         drums->triggerKick(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(0, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
         break;
     case kDrumSnareVoice:
         drums->triggerSnare(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(1, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
         break;
     case kDrumHatVoice:
         drums->triggerHat(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(2, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
         break;
     case kDrumOpenHatVoice:
         drums->triggerOpenHat(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(3, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
         break;
     case kDrumMidTomVoice:
         drums->triggerMidTom(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(4, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
         break;
     case kDrumHighTomVoice:
         drums->triggerHighTom(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(5, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
         break;
     case kDrumRimVoice:
         drums->triggerRim(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(6, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
         break;
     case kDrumClapVoice:
         drums->triggerClap(accent, (uint8_t)step.velocity);
+#if GROOVEPUTER_ENABLE_SAMPLER
         if (sampleStore) samplerTrack->triggerPad(7, accent ? 1.0f : 0.6f, *sampleStore, rev);
+#endif
         LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
         break;
   }

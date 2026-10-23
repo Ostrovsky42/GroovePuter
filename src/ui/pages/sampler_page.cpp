@@ -1,3 +1,5 @@
+#include "../../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sampler_page.h"
 #include "../ui_common.h"
 #include "../../dsp/miniacid_engine.h"
@@ -390,3 +392,5 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
 }
 
 const std::string& SamplerPage::getTitle() const { return title_; }
+
+#endif

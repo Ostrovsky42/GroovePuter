@@ -127,6 +127,7 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::NoteOn: {
                 triggerRegisteredLocalDrumVoice(lane, event.velocity);
                 engine_.pulseLedForDrumLane(lane);
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if (engine_.sampleStore && engine_.samplerTrack &&
                     engine_.samplerTrack->isEnabled() &&
                     engine_.samplerTrack->pad(lane).id.value != 0) {
@@ -136,9 +137,11 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                         *engine_.sampleStore);
                     liveDrumPadMask_ |= mask;
                 }
+#endif
                 break;
             }
             case MusicalEventType::NoteOff:
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if ((liveDrumPadMask_ & mask) != 0u) {
                     if (engine_.samplerTrack &&
                         engine_.samplerTrack->pad(lane).loop) {
@@ -146,8 +149,10 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                     }
                     liveDrumPadMask_ &= static_cast<uint8_t>(~mask);
                 }
+#endif
                 break;
             case MusicalEventType::AllNotesOff:
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if (engine_.samplerTrack) {
                     for (uint8_t pad = 0; pad < 8; ++pad) {
                         const uint8_t padMask =
@@ -157,6 +162,7 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                         }
                     }
                 }
+#endif
                 liveDrumPadMask_ = 0;
                 break;
             case MusicalEventType::PitchBend:

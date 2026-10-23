@@ -111,6 +111,7 @@ void DrumSequencerPage::draw(IGfx& gfx) {
 }
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Product sampler controls belong to the DRUMS workflow. Keep the retained
   // three-tab legacy constructor untouched and attach SAMPLES lazily before the
   // first Drum event; components inside SamplerPage remain lazy until displayed.
@@ -123,6 +124,7 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+#endif
   // Output ownership belongs to the logical DRUMS track, not to one sub-page.
   // Alt+O therefore works from GRID/FEEL/AUTO/SAMPLES. A legacy project has no
   // fourth visible mode: the first explicit press canonicalizes it to LAYER.

@@ -67,9 +67,12 @@ CardputerDisplay g_display;
 MiniAcidDisplay* g_miniDisplay = nullptr;
 SceneStorageCardputer g_sceneStorage;
 CardputerAudioRecorder* g_audioRecorder = nullptr;
-#include "src/sampler/ram_sample_store.h"
 #include "src/audio/audio_out_i2s.h"
+#include "src/platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
+#include "src/sampler/ram_sample_store.h"
 RamSampleStore g_sampleStore;
+#endif
 
 static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
@@ -365,16 +368,11 @@ static void drawAcceptanceOverlay() {
       activeB = g_miniAcid->diagnostic303Active(1);
       ampA = g_miniAcid->diagnostic303Envelope(0);
       ampB = g_miniAcid->diagnostic303Envelope(1);
-      const auto& waveform = g_miniAcid->getWaveformBuffer();
-      for (size_t i = 0; i < waveform.count && i < AUDIO_BUFFER_SAMPLES; ++i) {
-        const int sample = waveform.data[i];
-        const int magnitude = sample < 0 ? -sample : sample;
-        if (magnitude > pcmPeak) pcmPeak = magnitude;
-      }
+      pcmPeak = g_miniAcid->lastAudioPeak();
       delayOn = g_miniAcid->is303DelayEnabled(voice);
       const auto& tape = g_miniAcid->sceneManager().currentScene().tape;
-      tapeOn = tape.fxEnabled;
-      tapeMode = static_cast<int>(tape.mode);
+      tapeOn = GROOVEPUTER_ENABLE_TAPE && tape.fxEnabled;
+      tapeMode = GROOVEPUTER_ENABLE_TAPE ? static_cast<int>(tape.mode) : static_cast<int>(TapeMode::Stop);
     }
     snprintf(line, sizeof(line), "KEY %s %s en%d nm%d arp%d",
         g_performanceKeyboard.targetName(), g_performanceKeyboard.voiceModeName(),
@@ -632,7 +630,9 @@ void setup() {
 
   screenLog("6. Engine Init...");
   // Link sample store before init
+#if GROOVEPUTER_ENABLE_SAMPLER
   g_miniAcidInstance.sampleStore = &g_sampleStore;
+#endif
   markBootStage(50, "before MiniAcid::init");
   g_miniAcidInstance.init();
   g_miniAcid = &g_miniAcidInstance;
@@ -642,6 +642,7 @@ void setup() {
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
   markBootStage(60, "before sample scan");
@@ -659,6 +660,7 @@ void setup() {
       // Note: "registerFile" just stores the path for lazy loading.
       g_sampleStore.registerFile(file.id, file.fullPath);
   }
+#endif
 
   
   Serial.println("7a. UI Instance Created");

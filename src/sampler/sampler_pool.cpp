@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sampler_pool.h"
 
 SamplerPool::SamplerPool() {
@@ -44,3 +46,5 @@ void SamplerPool::stopByTag(int tag) {
     }
   }
 }
+
+#endif

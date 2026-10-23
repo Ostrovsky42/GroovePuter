@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "ram_sample_store.h"
 #include "sample_index.h"
 #include <atomic>
@@ -326,3 +328,5 @@ std::size_t RamSampleStore::freePoolBytes() const {
   if (currentPoolUsage_ > maxPoolBytes_) return 0;
   return maxPoolBytes_ - currentPoolUsage_;
 }
+
+#endif

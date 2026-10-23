@@ -23,10 +23,12 @@ namespace UI {
 
     // Internal state for the compact global audio waveform.
     namespace {
+#if GROOVEPUTER_ENABLE_WAVEFORM
         constexpr int kOverlayMaxPoints = 256;
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
 
+#endif
         bool g_hintOverlayHeld = false;
         uint32_t g_hPressStartMs = 0;
         bool g_hintOverlayTimedActive = false;
@@ -400,6 +402,7 @@ namespace UI {
     }
 
     void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid) {
+#if GROOVEPUTER_ENABLE_WAVEFORM
         if (!waveformOverlay.enabled) return;
 
         // The waveform shares the reserved performance strip without entering
@@ -466,6 +469,10 @@ namespace UI {
         // frame, so a ghost layer only masks motion on the physical display.
         IGfxColor waveColor = WAVE_COLORS[waveformOverlay.colorIndex % NUM_WAVE_COLORS];
         drawWave(overlayWave, overlayLength, waveColor);
+#else
+        (void)gfx;
+        (void)mini_acid;
+#endif
     }
 
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
