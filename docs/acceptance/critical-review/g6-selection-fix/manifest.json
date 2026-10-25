@@ -53,5 +53,20 @@
     52
   ],
   "unpaired_candidate_largest_block_delta_bytes": 0,
-  "memory_comparison_status": "CONTEXT_ONLY_NOT_PAIRED_GATE"
+  "memory_comparison_status": "CONTEXT_ONLY_NOT_PAIRED_GATE",
+  "followup_monitor_path": "g6-user-check.serial",
+  "followup_monitor_sha256": "fb7ec122cd0a1cf1426c6fda920acb7412487d1fd1bfd27b2c5258b579c9d36f",
+  "followup_monitor_duration_seconds": 175,
+  "followup_perf_samples": 36,
+  "followup_underruns": 0,
+  "followup_free_internal_range_bytes": [
+    19528,
+    19532
+  ],
+  "followup_largest_block_bytes": 10740,
+  "followup_uptime_ms": [
+    450041,
+    625061
+  ],
+  "followup_reset_panic_markers": "NONE_OBSERVED"
 }

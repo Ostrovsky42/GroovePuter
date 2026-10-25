@@ -33,3 +33,7 @@ BIN SHA matched before upload; esptool wrote the app and verified the device fla
 A second passive serial capture (`hardware-interaction.serial`, 125 seconds / 27 PERF samples) continued the same idle observation: 0 underruns; audio load 6.2–7.0%, peak 7.7–9.7%, free internal heap 19528–19532 B and largest block 10740 B. Serial uptime advanced monotonically from 130009 to 255023 ms, with no reset marker. No Save/Load interaction was visible in this capture, so it does not close G1, G6 or the 30-minute runtime gate.
 
 The nearest short #495 control capture reported free internal heap 19480 B and largest block 10740 B; this candidate's passive captures reported 19528–19532 B and 10740 B. The observed free-heap difference is +48 to +52 B and largest block is unchanged, but capture timing/workload is not paired, so this is supporting context only, not the paired memory/runtime gate.
+
+## Follow-up device monitor
+
+A further 175-second passive capture (`g6-user-check.serial`, 36 PERF samples) reports 0 underruns, free internal heap 19528–19532 B, largest block 10740 B, and uptime progressing 450041→625061 ms. No reset/panic markers were present. No explicit Save/Reset/Load action was confirmed; this does not close G1/G6 or the 30-minute workload gate.
