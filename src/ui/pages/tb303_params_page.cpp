@@ -1056,8 +1056,8 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
       }
       return true;
 
-    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(directKnobStep); return true;
-    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(-directKnobStep); return true;
+    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(isDualOsc() ? 1 : directKnobStep); return true;
+    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(isDualOsc() ? -1 : -directKnobStep); return true;
     case 's': if (resonance_knob_) resonance_knob_->setValue(directKnobStep); return true;
     case 'x': if (resonance_knob_) resonance_knob_->setValue(-directKnobStep); return true;
     case 'd': if (env_amount_knob_) env_amount_knob_->setValue(directKnobStep); return true;

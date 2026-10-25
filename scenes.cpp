@@ -40,6 +40,9 @@ float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
 }
 
 bool isStableSynthEngineName(const std::string& name) {
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  if (name == "DUAL OSC") return true;
+#endif
   return name == "TB303" || name == "SID" || name == "AY" ||
          name == "SH101" || name == "SN76489" || name == "WAVEMORPH";
 }
