@@ -1,5 +1,5 @@
 {
-  "base_sha": "b4eb046a",
+  "base_sha": "b4eb046a8f4ec3abbf0f48806184e2e94e885f30",
   "source_sha256": {
     "scenes.cpp": "c99d7d8376c739ef022d281115a9dd48fecc6115d0162f84f4ceae7dac65ea60"
   },
@@ -14,5 +14,11 @@
     "MelodyPromotion_loadMaterial": 2816,
     "MelodyStore_decode": 1344
   },
-  "runtime_stack_high_water": "OPEN; compiler frames are not runtime measurement"
+  "runtime_stack_high_water": "OPEN; compiler frames are not runtime measurement",
+  "production_sha": "879fafbfe41f7aefe5280ec658bcba91d088f508",
+  "test_date": "2026-10-25",
+  "operator": "Codex host/build; no hardware operator",
+  "board_revision": "NOT TESTED",
+  "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+  "loop_stack_size": 32768
 }
