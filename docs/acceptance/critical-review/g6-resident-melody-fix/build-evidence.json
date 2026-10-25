@@ -1,0 +1,18 @@
+{
+  "base_sha": "b4eb046a",
+  "source_sha256": {
+    "scenes.cpp": "c99d7d8376c739ef022d281115a9dd48fecc6115d0162f84f4ceae7dac65ea60"
+  },
+  "bin_sha256": "fcf1969eb746b6be68bb9428baaff6e05a77ab45f2b080d5a82f241dc9a80813",
+  "data": 41996,
+  "bss": 142256,
+  "flash": 1593262,
+  "dram_limit": 191488,
+  "hardware": "NOT FLASHED / NOT TESTED",
+  "stack_frames_bytes": {
+    "SceneManager_loadSceneEventedWithReader": 2928,
+    "MelodyPromotion_loadMaterial": 2816,
+    "MelodyStore_decode": 1344
+  },
+  "runtime_stack_high_water": "OPEN; compiler frames are not runtime measurement"
+}

@@ -4,6 +4,7 @@
 #include "src/audio/pattern_paging.h"
 #include "src/phrase/phrase_core.h"
 #include "src/state/generated_phrase_product_state.h"
+#include "src/state/melody_promotion.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -3112,6 +3113,22 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
   // existing staging Scene; no canonical state or page index is published yet.
   if (restoreResidentPage && PatternPagingService::pageExists(0) &&
       !PatternPagingService::loadPage(0, *loaded, false)) return false;
+  // A resident descriptor is not usable material unless its accepted event
+  // file can be decoded. Include non-selected slots: Song may request them.
+  if (restoreResidentPage) {
+    PhraseRuntime::RuntimeSynthEventBuffer verified{};
+    const auto& project = PatternPagingService::currentProjectName();
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+      for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+        if (loaded->materialSlots[voice][slot].kind !=
+            GroovePuterMaterial::MaterialKind::Melody) continue;
+        const GroovePuterMaterial::MaterialAddress address{
+            static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)};
+        if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                          project, address, verified)) return false;
+      }
+    }
+  }
   // Streaming filters may reject the completed input after JSON parsing.
   // Their final acknowledgement must precede canonical Scene publication.
   if (acknowledge && !acknowledge()) return false;
