@@ -18,7 +18,7 @@
     "bss_bytes": 142256,
     "static_dram_bytes": 184252,
     "dram_limit_bytes": 191488,
-    "upload": "NOT UPLOADED",
+    "upload": "PASS; user requested flash, esptool hash verified; flash-record.json",
     "runtime_heap_largest_cpu": "NOT MEASURED on this combined BIN"
   },
   "comparison": {
@@ -36,7 +36,7 @@
     "sdl_enabled_build": "PASS exit0; consistent experimental flag, C shim compiled as C; pruned sampler persistence module included",
     "sdl_visual": "PASS for scoped preset UI on DISPLAY=:1, logical240x135 at2x; dummy audio; wider Pattern/Phrase acceptance not rerun",
     "cardputer_adv_enabled_build": "PASS exit0, candidate-only FatFs link proof and DRAM gate",
-    "hardware": "OPEN; combined BIN not flashed",
+    "hardware": "OPEN; image uploaded/hash verified, no app output in first60s monitor",
     "midi_physical": "NOT TESTED; G5 remains DEFERRED"
   },
   "provenance": "Build started on merge commit plus the two fixes subsequently committed as production_commit. All compiled production file contents match that commit; source-inputs.sha256 pins the inputs. Later report commits change documentation only. Byte reproducibility was not established.",

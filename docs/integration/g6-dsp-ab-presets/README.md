@@ -42,7 +42,7 @@ The flag is required to expose DUAL OSC. The default firmware configuration was 
 | DUAL OSC both-voice popup/keys/patch Save/Load | PASS | `ui-final.log.gz` |
 | SDL build with DUAL OSC and Cardputer prune flags | PASS | `sdl-final.log.gz` |
 | Cardputer ADV experimental build and DRAM gate | PASS | `cardputer-final.log.gz` |
-| Combined-image physical acceptance | OPEN | Not flashed |
+| Combined-image physical acceptance | OPEN | Uploaded/hash verified; app boot not yet confirmed |
 
 The first custom pruned SDL invocation omitted `sample_scene_persistence.cpp` and failed to link `clearSceneSampleReferences`. The final invocation includes the existing module; no product code was changed for that invocation error. The reproducible final SDL build command is `bash docs/integration/g6-dsp-ab-presets/build-sdl.sh`.
 
@@ -66,4 +66,4 @@ SDL SMOKE: GREEN — proceed to physical hardware (preset integration scope only
 
 The reported hardware Save refusal from the preceding diagnostic session still lacks an exact failure-stage trace; the New/Clear defect was reproduced and repaired separately. Current recovery-scanner directory absence claims remain limited by its already documented filename-prefix filter bug; this merge does not repair or restore old absent payloads. Existing unaccepted working material still requires KEEP/ACCEPT before project saving, as in the current product contract.
 
-No push, release-branch merge or firmware upload was performed for this combined image.
+The user subsequently requested flashing: the exact combined BIN was uploaded successfully and esptool verified app data hash. The first 60-second serial monitor connected to CDC but captured no application output; boot and functional acceptance remain OPEN. See `flash-record.json`. No push or release-branch merge.

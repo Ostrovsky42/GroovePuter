@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-25T22:25:41.574322+01:00",
+  "branch": "integration/20261025-g6-dsp-ab-presets",
+  "head": "3d31832a5f3ff54195e71bc1e437018d67c78d82",
+  "production_commit": "385585693470236213906f1726932aff4fd6ed0f",
+  "bin_sha256": "7b9a98a9123cef335e1014ab9e131335819fb68a61aaefca86ba4dfdd869d61b",
+  "bin_bytes": 1622480,
+  "port": "/dev/ttyACM0",
+  "upload": "PASS exit0, esptool app hash verified, hard reset via RTS",
+  "upload_log_sha256": "2450787174862c6370368e915751645a915798089296ca7c3f1fcca3a11d8ace",
+  "post_flash_monitor": {
+    "seconds": 60,
+    "path": "serial-60s-20261025-222422.log",
+    "sha256": "6b1222e8467492cdddac8723ef9188f4f8416b64a713793dcf7ed03b45fa6345",
+    "result": "CDC connected, no application output captured; application startup NOT CONFIRMED"
+  },
+  "functional_hardware_acceptance": "OPEN; old-image acceptance not transferred"
+}
