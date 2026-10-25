@@ -1,0 +1,44 @@
+{
+  "branch": "integration/20261025-g6-dsp-ab-presets",
+  "production_commit": "385585693470236213906f1726932aff4fd6ed0f",
+  "storage_base": "0cfb94c38a12e42e9c8cd8f8da4c77620ed421b6",
+  "new_clear_checkpoint": "317065b5",
+  "analog_tip": "ba5b095f639ef5981c411ad807c685596758ad5a",
+  "merge_commit": "d29060cdaa257276b961f210864eea1319a9697e",
+  "common_memory_base": "64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f",
+  "candidate": {
+    "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+    "extra_cpp_flags": "-DGROOVEPUTER_FELUCCA_ANALOG=1",
+    "loop_stack_bytes": 32768,
+    "path": "build/integration-dual-osc-adv/GroovePuter.ino.bin",
+    "sha256": "7b9a98a9123cef335e1014ab9e131335819fb68a61aaefca86ba4dfdd869d61b",
+    "bin_bytes": 1622480,
+    "flash_usage_bytes": 1622326,
+    "data_bytes": 41996,
+    "bss_bytes": 142256,
+    "static_dram_bytes": 184252,
+    "dram_limit_bytes": 191488,
+    "upload": "NOT UPLOADED",
+    "runtime_heap_largest_cpu": "NOT MEASURED on this combined BIN"
+  },
+  "comparison": {
+    "prior_user_tested_bin_sha256": "22679b20166e33c3b48dad0a8eb369c2a32adfc0764b36729e746f4c652d1f8a",
+    "prior_flash_usage_bytes": 1609742,
+    "flash_delta_bytes": 12584,
+    "static_dram_delta_bytes": 0,
+    "hardware_acceptance_transfer": "NONE; earlier three user cold cycles apply only to prior image"
+  },
+  "verification": {
+    "g6_host_suite": "PASS exit0 after final production changes",
+    "dsp_a_release_and_asan_ubsan": "PASS exit0; does not certify the Felucca DSP implementation",
+    "dsp_a_six_engine_save_load": "PASS exit0",
+    "dual_osc_ui_and_preset_save_load": "PASS exit0, both voices; 13 presets/main/MORE/a/z/arrows/cancel, normal host mode",
+    "sdl_enabled_build": "PASS exit0; consistent experimental flag, C shim compiled as C; pruned sampler persistence module included",
+    "sdl_visual": "PASS for scoped preset UI on DISPLAY=:1, logical240x135 at2x; dummy audio; wider Pattern/Phrase acceptance not rerun",
+    "cardputer_adv_enabled_build": "PASS exit0, candidate-only FatFs link proof and DRAM gate",
+    "hardware": "OPEN; combined BIN not flashed",
+    "midi_physical": "NOT TESTED; G5 remains DEFERRED"
+  },
+  "provenance": "Build started on merge commit plus the two fixes subsequently committed as production_commit. All compiled production file contents match that commit; source-inputs.sha256 pins the inputs. Later report commits change documentation only. Byte reproducibility was not established.",
+  "unchanged_checkouts": "Original primary, analog, G6 and DSP-A worktrees retained their branches and unrelated uncommitted changes. No push, PR merge or release branch changes."
+}
