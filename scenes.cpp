@@ -3137,6 +3137,15 @@ bool validateStoredProjectMaterial(const Scene& resident) {
         if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
                                           project, address, verified)) {
 #ifdef ARDUINO
+          const auto& fs = MelodyPromotion::defaultFileSystem();
+          const auto pathA = MelodyPromotion::slotPath(
+              project, address, GroovePuterMaterial::PublicationSlot::SlotA);
+          const auto pathB = MelodyPromotion::slotPath(
+              project, address, GroovePuterMaterial::PublicationSlot::SlotB);
+          const auto legacyPath = MelodyPromotion::finalPath(project, address);
+          Serial.printf("[SCENE-MATERIAL] payload_files a=%d b=%d legacy=%d\n",
+                        fs.exists(pathA.c_str()), fs.exists(pathB.c_str()),
+                        fs.exists(legacyPath.c_str()));
           Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
                         page, voice, slot, project.c_str());
 #endif
