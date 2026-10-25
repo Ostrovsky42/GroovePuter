@@ -14,5 +14,7 @@
     "src/audio/pattern_paging.cpp": "f42926a7846f4de39bcc023c1e5e2f90be07da16ee4b4b15f3ee220389ca549a",
     "src/audio/pattern_paging.h": "44ff5dde7c65027ff517eac33a8e1981242a9c94108ccf5c21e1ed8dff89195a"
   },
-  "hardware": "NOT FLASHED / NOT TESTED"
+  "hardware": "NOT FLASHED / NOT TESTED",
+  "production_sha": "fc3e35bb14deba6a648804da13671322e7504429",
+  "build_note": "Compiled production source matches recorded file hashes; captured before commit."
 }
