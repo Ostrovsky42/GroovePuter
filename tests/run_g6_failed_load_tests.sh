@@ -39,3 +39,8 @@ for damage in header crc missing oversized page-crc page-missing drums-page-miss
  ../build/cardputer-prune-host/g6-nonresident-load "$damage"
 done
 printf '%s\n' 'G6 nonresident material, page faults and legacy JSON: PASS'
+
+"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_new_project_melody_reset.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-new-project-melody-reset
+../build/cardputer-prune-host/g6-new-project-melody-reset
+../build/cardputer-prune-host/g6-new-project-melody-reset clear
+printf '%s\n' 'G6 New/Clear resets Melody descriptors and reloads blank project: PASS'

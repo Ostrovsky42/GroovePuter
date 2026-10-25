@@ -1830,6 +1830,13 @@ void SceneManager::loadDefaultScene() {
 }
 
 void SceneManager::wipeToZero() {
+  // New/Clear removes the project's Melody payloads. Clear their descriptors
+  // and identities as well, so the saved blank page has no dangling material.
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene_->materialSlots[voice][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
+    }
+  }
   drumPatternIndex_ = 0;
   drumBankIndex_ = 0;
   synthPatternIndex_[0] = 0;

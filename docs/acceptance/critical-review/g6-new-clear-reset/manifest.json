@@ -1,0 +1,93 @@
+{
+  "source_head": "0cfb94c38a12e42e9c8cd8f8da4c77620ed421b6",
+  "flashed_bin_sha256": "d56d32d8213aaf50e0e9f11336c004639ac5eda37e5e06cb9b545de84cdf63c2",
+  "serial_path": "serial-180s-20261025-204310.log",
+  "serial_sha256": "8095988cc47921d533ddf7f9ed001b447060663a62c8bed1fb8584046c0fc6a1",
+  "duration_seconds": 180,
+  "metrics": {
+    "audio": {
+      "samples": 31,
+      "min": 6.1,
+      "max": 37.8
+    },
+    "peak": {
+      "samples": 31,
+      "min": 62.1,
+      "max": 62.1
+    },
+    "underruns": {
+      "samples": 31,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "freeInt": {
+      "samples": 31,
+      "min": 16356.0,
+      "max": 19120.0
+    },
+    "largest": {
+      "samples": 31,
+      "min": 7668.0,
+      "max": 8180.0
+    }
+  },
+  "user_report": "Failed Save project",
+  "observed": "Two transactionally saved test-save1 JSON files followed by failed Load due missing Synth A page0 slot0 Melody payload. Exact reported Save refusal stage is not present in current serial instrumentation. AUTOSAVE recovery revisions 32,41,43,45 are present; do not claim SD untouched.",
+  "reproduction": "Valid source A+B 8-bar Melody at slots0/3; New or Clear reports success but leaves four Melody descriptors pointing at removed/absent payloads; subsequent reload refuses. RED both exit1, created1 stale4 reload0.",
+  "hardware_acceptance": "FAIL/OPEN; no fixed firmware uploaded.",
+  "repair": "wipeToZero resets existing material kind/identity descriptors; no allocation or new runtime state",
+  "host_suite": "PASS exit0",
+  "sdl_build": "PASS exit0; incremental build recompiled scenes.cpp; existing bit-field C++20-extension warnings",
+  "cardputer_adv_build": "PASS exit0; frozen FQBN; DRAM budget unchanged",
+  "candidate": {
+    "base_head": "0cfb94c38a12e42e9c8cd8f8da4c77620ed421b6",
+    "source_state": "uncommitted repair.patch; no other production changes",
+    "patch_sha256": "55c309aa426c649510e210d4529526f73e659c868f0f03f41487a841403d3bb7",
+    "bin_path": "build/g6-new-clear-reset-adv/GroovePuter.ino.bin",
+    "bin_sha256": "22679b20166e33c3b48dad0a8eb369c2a32adfc0764b36729e746f4c652d1f8a",
+    "bin_bytes": 1609904,
+    "flash_usage_bytes": 1609742,
+    "data_bytes": 41996,
+    "bss_bytes": 142256,
+    "static_dram_bytes": 184252,
+    "dram_limit_bytes": 191488,
+    "flash_delta_from_d56": 36,
+    "static_dram_delta_from_d56": 0,
+    "upload": "PASS; arduino-cli upload exit0; esptool Hash of data verified; hard reset via RTS",
+    "runtime_heap_largest_after_fix": "NOT TESTED on hardware",
+    "uploaded_bin_sha256": "22679b20166e33c3b48dad0a8eb369c2a32adfc0764b36729e746f4c652d1f8a",
+    "upload_log_sha256": "6493c58c7434e12c788d6609b92bb36c7a605b05aaf234fdae5201ec3dd00bcc",
+    "post_flash_boot": "CONFIRMED RUNNING after user Reset: application KEY/PERF/MIDI/UI telemetry captured; early setup output not captured",
+    "post_flash_serial_log": "serial-60s-20261025-211422.log",
+    "post_flash_serial_sha256": "6b1222e8467492cdddac8723ef9188f4f8416b64a713793dcf7ed03b45fa6345"
+  },
+  "post_reset_capture": {
+    "path": "serial-60s-20261025-211800.log",
+    "sha256": "acd3120033661db52aab9ff86f14c21fdeec0ae8c1b03d57b2ccaf2d6835fa67",
+    "duration_seconds": 60,
+    "perf_samples": 11,
+    "metrics": {
+      "audio": {
+        "min": 17.3,
+        "max": 33.3
+      },
+      "peak": {
+        "min": 35.6,
+        "max": 52.1
+      },
+      "underruns": {
+        "min": 0.0,
+        "max": 0.0
+      },
+      "freeInt": {
+        "min": 17940.0,
+        "max": 18792.0
+      },
+      "largest": {
+        "min": 9716.0,
+        "max": 9716.0
+      }
+    },
+    "new_clear_save_load": "NOT CAPTURED; no save or LoadScene marker in this window"
+  }
+}
