@@ -28,7 +28,7 @@ public:
   float getParameterNormalized(uint8_t index) const override;
   const Parameter& getParameter(uint8_t index) const override;
 
-  const char* getEngineName() const override { return "ANALOG"; }
+  const char* getEngineName() const override { return "DUAL OSC"; }
   void setMode(GrooveboxMode mode) override { (void)mode; }
   void setLoFiAmount(float amount) override { (void)amount; }
 

@@ -41,7 +41,7 @@ SynthEngineType SwappableSynthVoice::parseEngineName(const std::string& name) {
             std::toupper(static_cast<unsigned char>(character)));
     }
 #if defined(GROOVEPUTER_FELUCCA_ANALOG)
-    if (upper.find("ANALOG") != std::string::npos) return SynthEngineType::FELUCCA_ANALOG;
+    if (upper.find("DUAL OSC") != std::string::npos) return SynthEngineType::FELUCCA_ANALOG;
 #endif
     if (upper.find("WAVEMORPH") != std::string::npos ||
         upper.find("WAVE MORPH") != std::string::npos) {
