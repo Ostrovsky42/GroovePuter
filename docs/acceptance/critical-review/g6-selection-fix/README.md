@@ -1,6 +1,6 @@
 # G6 project-selection rollback — software fix
 
-Status: host regression PASS; SDL/ADV builds pending for final source; hardware G6 OPEN.
+Status: host regression, SDL build, Cardputer ADV build, image upload/hash verification PASS; physical G6 Save/Reset/Load and SD-failure cases OPEN.
 
 Base: accepted #495 source `64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f`.
 
@@ -22,7 +22,7 @@ Scene JSON/project formats and material identities are unchanged. No persistent 
 - Source contracts: output ownership, memory instrumentation applicability, sampler persistence/atomic pointer ordering, scene revision.
 - SDL: forced full build with `make -B -C platform_sdl -j2 CXX=g++`.
 - Cardputer ADV: clean frozen-FQBN build via `scripts/build_cardputer_dynbuffers.sh`; DRAM limit remains 191488 bytes. Exact final BIN SHA and `.data/.bss/flash` are in `build-evidence.txt`.
-- The repair image was flashed with esptool hash verification. Hardware Save/Reset/Load confirmation and SD-failure tests remain OPEN; the 60s passive capture is recorded below and is not a workload gate.
+- The repair image was flashed with esptool hash verification. Hardware Save/Reset/Load confirmation and SD-failure tests remain OPEN; passive captures below are not workload gates.
 
 No push or merge performed.
 
