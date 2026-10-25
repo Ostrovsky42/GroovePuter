@@ -1,11 +1,14 @@
 // PROJECT -> MIDI: the USB role row. L/R previews, ENTER saves (the running role does not change),
 // a second ENTER restarts; a project with unsaved changes is never restarted from here.
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/state/scene_revision.h"
+#include "platform_sdl/scene_storage_sdl.h"
 #include "src/ui/pages/project_page.h"
 #include "src/ui/ui_common.h"
 
@@ -37,6 +40,18 @@ class NullGfx : public IGfx {
   int fontHeight() const override { return 8; }
   int width() const override { return 240; }
   int height() const override { return 135; }
+};
+
+class FailTargetLoadStorage : public SceneStorageSdl {
+ public:
+  bool failTargetRead = false;
+
+  bool readScene(SceneManager& manager,
+                 const SceneSynthPreparation& prepare = {},
+                 bool publishSelection = false) override {
+    if (failTargetRead && getCurrentSceneName() == "target-b") return false;
+    return SceneStorageSdl::readScene(manager, prepare, publishSelection);
+  }
 };
 
 UIEvent key(char k) {
@@ -100,6 +115,56 @@ int main() {
   send(key('\n'));
   assert(CardputerUsbRoleRuntime::pendingRole() == UsbBootRole::Off);
   assert(CardputerUsbRoleRuntime::restartPending());
+
+  // A UI Load refusal must preserve the saved/clean revision as well as the
+  // canonical scene. The generic ProjectPage::withAudioGuard wrapper currently
+  // marks every operation mutated, even when loadSceneByName returns false.
+  namespace fs = std::filesystem;
+  const fs::path root = fs::temp_directory_path() /
+      ("gp-project-load-refusal-" + std::to_string(
+          std::chrono::steady_clock::now().time_since_epoch().count()));
+  fs::create_directories(root);
+  fs::current_path(root);
+  SD.setRoot(root);
+  FailTargetLoadStorage storage;
+  storage.initializeStorage();
+  assert(storage.setCurrentSceneName("source-a"));
+  MiniAcid loadEngine(44100.0f, &storage);
+  loadEngine.init();
+  loadEngine.setSongMode(false);
+  loadEngine.sceneManager().currentScene().synthABanks[0].patterns[0].steps[0].note = 73;
+  assert(storage.writeScene(loadEngine.sceneManager()));
+  assert(storage.setCurrentSceneName("target-b"));
+  loadEngine.sceneManager().currentScene().synthABanks[0].patterns[0].steps[0].note = 41;
+  assert(storage.writeScene(loadEngine.sceneManager()));
+  assert(storage.setCurrentSceneName("source-a"));
+  assert(loadEngine.loadSceneByName("source-a"));
+  std::string canonicalBefore;
+  assert(loadEngine.sceneManager().writeSceneJson(canonicalBefore));
+  GroovePuterState::restoreSceneRevision({21, 21});
+
+  const auto names = loadEngine.availableSceneNames();
+  assert(names.size() == 2 && names[0] == "source-a" && names[1] == "target-b");
+  storage.failTargetRead = true;
+  ProjectPage loadPage(gfx, loadEngine, AudioGuard{});
+  loadPage.onEnter(0);
+  auto openLoad = key('\n');
+  assert(loadPage.handleEvent(openLoad));  // Open Load list, initially on source-a.
+  auto selectTarget = scan(GROOVEPUTER_DOWN);
+  assert(loadPage.handleEvent(selectTarget));
+  auto refuseLoad = key('\n');
+  assert(loadPage.handleEvent(refuseLoad));  // Refuse target-b.
+
+  const auto revisionAfterRefusal = GroovePuterState::sceneRevisionSnapshot();
+  std::string canonicalAfter;
+  assert(loadEngine.sceneManager().writeSceneJson(canonicalAfter));
+  assert(canonicalAfter == canonicalBefore);
+  assert(loadEngine.currentSceneName() == "source-a");
+  assert(revisionAfterRefusal.currentRevision == 21);
+  assert(revisionAfterRefusal.persistedRevision == 21);
+
+  fs::current_path(fs::temp_directory_path());
+  fs::remove_all(root);
 
   std::puts("PROJECT USB role row: PASS");
   return 0;

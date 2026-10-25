@@ -672,11 +672,16 @@ bool ProjectPage::loadSceneAtSelection() {
       mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   std::string name = scenes_[selection_index_];
   SAVE_PROBE_BEGIN("load", mini_acid_.isPlaying())
-  withAudioGuard([&]() {
+  const auto loadSelectedScene = [&]() {
     SAVE_PROBE_HOLD_BEGIN();
     loaded = mini_acid_.loadSceneByName(name);
     SAVE_PROBE_HOLD_END();
-  });
+  };
+  // Load owns its success/recovery revision publication below. The generic
+  // withAudioGuard wrapper marks every action as a mutation, including a
+  // rejected Load that leaves the existing project unchanged.
+  if (audio_guard_) audio_guard_(loadSelectedScene);
+  else loadSelectedScene();
   SAVE_PROBE_END(loaded);
   if (loaded) {
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
