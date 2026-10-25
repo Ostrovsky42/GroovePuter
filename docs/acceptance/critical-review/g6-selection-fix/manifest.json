@@ -1,0 +1,22 @@
+{
+  "product_source_commit": "a54d3e8e5d8a92ea5538e97a6d423e44b61ba725",
+  "base_commit": "64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f",
+  "bin_path": "build/g6-selection-final-adv2/GroovePuter.ino.bin",
+  "bin_sha256": "88f10f6f106ab63e4dd6be452b6be569cb435340b119fba88737ae30545e70e9",
+  "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+  "board_revision": "NOT_RECORDED",
+  "build_date": "2026-10-25",
+  "operator": "Codex software verification",
+  "flash_bytes": 1596490,
+  "data_bytes": 41996,
+  "bss_bytes": 142256,
+  "static_dram_bytes": 184252,
+  "static_dram_limit_bytes": 191488,
+  "host_persistence_suite": "PASS",
+  "sdl_forced_build": "PASS",
+  "cardputer_adv_build": "PASS",
+  "hardware_load_save_sd_failure_runtime_gates": "NOT_TESTED",
+  "push": false,
+  "merge": false,
+  "flash": false
+}
