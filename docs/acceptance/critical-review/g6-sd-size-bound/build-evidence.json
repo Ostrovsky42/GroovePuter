@@ -14,5 +14,7 @@
     "src/state/melody_promotion.h": "3cb77cb54976066a2444ea091355f368e03ff089739475ea285ca84a6255b984",
     "src/state/melody_store.h": "7d994b3e1672bd1656ae60ef027d0d48088dce0c35a24a7b944e11d3c8c3c63d"
   },
-  "hardware": "NOT FLASHED / NOT TESTED"
+  "hardware": "NOT FLASHED / NOT TESTED",
+  "production_sha": "12dbf9e9e1254c5bf722a1024357567b73a9b746",
+  "build_note": "Built from same production source before commit; source hashes and base pin contents."
 }
