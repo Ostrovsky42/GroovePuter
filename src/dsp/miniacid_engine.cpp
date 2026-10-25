@@ -1422,6 +1422,12 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
 
   SynthEngineType target = SynthEngineType::TB303;
   const char* targetName = "TB303";
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  if (name.find("ANALOG") != std::string::npos) {
+    target = SynthEngineType::FELUCCA_ANALOG;
+    targetName = "ANALOG";
+  } else
+#endif
   if (name.find("WAVEMORPH") != std::string::npos ||
       name.find("WAVE MORPH") != std::string::npos) {
     target = SynthEngineType::WAVEMORPH;
@@ -1493,7 +1499,11 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH", "ANALOG"};
+#else
   return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH"};
+#endif
 }
 
 std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {
