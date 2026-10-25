@@ -3148,6 +3148,34 @@ bool validateStoredProjectMaterial(const Scene& resident) {
                         fs.exists(legacyPath.c_str()));
           Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
                         page, voice, slot, project.c_str());
+          // Read-only recovery census: a prior Save As or interrupted project
+          // migration may have left the payload under another project name.
+          // Never copy or publish it automatically; report valid candidates so
+          // recovery can be reviewed without changing the SD card.
+          File projects = SD.open("/projects", FILE_READ);
+          if (projects && projects.isDirectory()) {
+            for (File entry = projects.openNextFile(); entry;
+                 entry = projects.openNextFile()) {
+              const bool isDirectory = entry.isDirectory();
+              std::string candidateProject = entry.name();
+              entry.close();
+              if (!isDirectory) continue;
+              const size_t slash = candidateProject.find_last_of('/');
+              if (slash != std::string::npos) {
+                candidateProject.erase(0, slash + 1);
+              }
+              if (candidateProject.empty() || candidateProject == project) continue;
+              if (MelodyPromotion::loadMaterial(fs, candidateProject, address,
+                                                verified)) {
+                Serial.printf("[SCENE-MATERIAL] recovery_candidate project=%s bars=%u events=%u\n",
+                              candidateProject.c_str(),
+                              static_cast<unsigned>(verified.lengthTicks /
+                                  PhraseRuntime::kTicksPerBar),
+                              static_cast<unsigned>(verified.count));
+              }
+            }
+          }
+          projects.close();
 #endif
           return false;
         }
