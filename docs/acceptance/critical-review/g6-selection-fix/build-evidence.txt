@@ -1,8 +1,12 @@
-Base source: 64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f (#495 accepted control)
-FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
-Build command: BUILD_PATH=/tmp/gp-g6-failed-load-64ae/build/g6-selection-final-adv2 bash scripts/build_cardputer_dynbuffers.sh
-Flash: 1596490 bytes
-.data: 41996 bytes
-.bss: 142256 bytes
-Static DRAM total: 184252 bytes (unchanged vs #495; policy ceiling 191488)
-Hardware free heap/largest/stack/CPU/underrun: NOT TESTED on this image
+Base: accepted #495 source 64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f
+Local code commits: c93447478f76b6d58d7f80c0695b3654ff425791 (refused Load does not dirty revision), f8242d774a1071ad2d93d1caebefe8bef9041067 / 1bd83be87ed851f11e25ac0425242105a0a83256 / 8b4a5aeae557cc57a43547aac05edc7c35b94836 (diagnostic stage and missing-file logs)
+Build: Cardputer ADV FQBN m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+Command: BUILD_PATH=/tmp/gp-g6-failed-load-64ae/build/g6-scene-files-diag-adv bash scripts/build_cardputer_dynbuffers.sh
+Latest BIN path: build/g6-scene-files-diag-adv/GroovePuter.ino.bin
+Latest BIN SHA-256: 8e1e49e3bab82e940394e9cee38875c0d26bb16a328bb7c4f2a44ee357310357
+Reported flash usage 1597182 B; BIN file 1597344 B
+.data 41996 B; .bss 142256 B; static DRAM 184252 B (budget 191488 B; threshold not increased)
+Verification: G6 host suite PASS; ProjectPage refused-Load UI regression RED→GREEN; forced SDL full build PASS; Cardputer ADV PASS. Build logs and gzip copies are archived beside this report.
+Upload: /dev/ttyACM0; esptool verified app data hash. 60-second boot monitor: 12 PERF samples, 0 underruns, freeInt 19148–21548 B, largest block 10228–11252 B, uptime 5003→60012 ms; no reboot/panic marker observed. This is passive runtime evidence only.
+Boot persistence: FAIL/OPEN. Main and backup `/scenes/test-save.json` both parsed JSON but failed `stored_material` validation for project test-save, page0, Synth B voice1 slot5. The corresponding A, B and legacy Melody files are all absent: `/projects/test-save/melody/v1_g005_a.gpml`, `/projects/test-save/melody/v1_g005_b.gpml`, `/projects/test-save/melody/v1_g005.gpml`. Device then loaded the default Scene. Whether this project is disposable fixture data or expected user work is unconfirmed; do not mutate SD until operator confirms.
+SD failure injection, Save→Reset→Load, paired runtime/memory workload, 30-minute run, user screen confirmation and other G-gates: OPEN. No push or merge.

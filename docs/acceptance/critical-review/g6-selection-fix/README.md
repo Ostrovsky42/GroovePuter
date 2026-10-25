@@ -37,3 +37,21 @@ The nearest short #495 control capture reported free internal heap 19480 B and l
 ## Follow-up device monitor
 
 A further 175-second passive capture (`g6-user-check.serial`, 36 PERF samples) reports 0 underruns, free internal heap 19528–19532 B, largest block 10740 B, and uptime progressing 450041→625061 ms. No reset/panic markers were present. No explicit Save/Reset/Load action was confirmed; this does not close G1/G6 or the 30-minute workload gate.
+
+## Refused Load revision regression follow-up
+
+An actual ProjectPage test exposed a separate bug: the generic audio-guard wrapper marked the scene dirty after a refused Load. The Load path now keeps the audio pause guard but does not run the generic mutation-marking wrapper. The test asserts canonical JSON, project name, and both current/persisted revision stay unchanged. The regression failed before the fix and passes after it. See [`review-disposition.md`](review-disposition.md) for the prior independent review finding and rationale.
+
+The follow-up is commit `c93447478f76b6d58d7f80c0695b3654ff425791`; its Cardputer BIN SHA-256 is `844ed89ac755ecc6a84640c96700ed2e51c34936b13791e87fd0cf53183506ff`. Host G6 suite, SDL, and Cardputer ADV rebuilds pass. This exact image was uploaded to `/dev/ttyACM0` and esptool verified the written app hash. An earlier upload of the same source produced BIN `b7d755437ecf51659c9886c4f6c220ef9f610925ab9f7745f809473b2b710ffe` and had a 60-second idle observation (12 PERF samples, 0 underruns). A later clean rebuild produced a different BIN; it is the current uploaded image listed in `bin.sha256` and `manifest.json`. Its 60-second capture is summarized below and exposes a startup scene-load failure. Do not treat the earlier idle capture as evidence for the latest BIN.
+
+A subsequent clean rebuild yielded a different BIN SHA despite identical source SHA, BIN size, `.data`, and `.bss`; the currently listed `bin.sha256` is the later build, which was uploaded and hash-verified. This build nondeterminism remains an artifact-release risk and must be explained before freezing a release BIN.
+
+
+## Boot scene load finding on the latest image
+
+The post-upload 60-second serial capture is clean for runtime basics (12 PERF records, 0 underruns; free internal heap 19148–21548 B; largest block 10228–11252 B; uptime advanced 5003→60007 ms). It also exposes a persistence acceptance failure: Cardputer reports the selected main scene invalid, attempts `/scenes/test-save.json` backup, then `loadSceneFromStorage()` reports streaming parse failure and loads the default scene. Stage-specific diagnostics localize the rejection to stored material. The project is `test-save`, page0, Synth B voice1 slot5; both A/B publication payloads and the legacy payload are absent. The `out` warning is nonfatal and not the rejection cause. This may be legacy test data on the card; the expected on-screen project has not yet been confirmed. Treat G6 boot restore as FAIL/OPEN and do not overwrite the SD project until the operator confirms what appeared and whether recovery is required.
+
+
+### Exact missing material record
+
+A second diagnostic BIN `8e1e49e3bab82e940394e9cee38875c0d26bb16a328bb7c4f2a44ee357310357` narrowed both main and backup rejection to the same `test-save` record: page 0, Synth B (voice 1), local slot 5 / global slot 5. None of its dual-publication files or legacy file exists (`v1_g005_a.gpml`, `v1_g005_b.gpml`, `v1_g005.gpml`). Boot therefore falls back to the default Scene. This confirms the fail-closed validator is responding to a dangling Melody descriptor; it does not establish whether that project is disposable test content or user work. The SD card has not been modified. Do not save over this project until the operator confirms what should be present and whether recovery is required.

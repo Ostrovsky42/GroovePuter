@@ -1,0 +1,111 @@
+[MONITOR] connected /dev/ttyACM0
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+  - loadSceneEventedWithReader: Parse done, result=1, error=0
+[SCENE-MATERIAL] payload_files a=0 b=0 legacy=0
+[SCENE-MATERIAL] reject=melody_payload page=0 voice=1 slot=5 project=test-save
+[SCENE-LOAD] rejected stage=stored_material
+  - loadSceneEventedWithReader: Using static loading buffer...
+  - loadSceneEventedWithReader: Starting Parse...
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/1 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=3 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=1/1/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/1/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=5003ms
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+  - loadSceneEventedWithReader: Parse done, result=1, error=0
+[SCENE-MATERIAL] payload_files a=0 b=0 legacy=0
+[SCENE-MATERIAL] reject=melody_payload page=0 voice=1 slot=5 project=test-save
+[SCENE-LOAD] rejected stage=stored_material
+Main scene is invalid, trying backup: /scenes/test-save.json
+  - loadSceneEventedWithReader: Using static loading buffer...
+  - loadSceneEventedWithReader: Starting Parse...
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+  - loadSceneEventedWithReader: Parse done, result=1, error=0
+[SCENE-MATERIAL] payload_files a=0 b=0 legacy=0
+[SCENE-MATERIAL] reject=melody_payload page=0 voice=1 slot=5 project=test-save
+[SCENE-LOAD] rejected stage=stored_material
+  - loadSceneFromStorage: Streaming parse failed, loading default scene
+  - MiniAcid::init: reset()...
+    - MiniAcid::reset: Start
+    - MiniAcid::reset: voices reset
+    - MiniAcid::reset: resetting drums...
+    - MiniAcid::reset: Done
+  - MiniAcid::init: applySceneStateFromManager()...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+  - MiniAcid::init: Done
+[BOOT-STAGE] 51 after MiniAcid::init
+7a. UI Instance Created
+[BOOT-STAGE] 70 before MiniAcidDisplay alloc
+[SESSION] load=1 active=1 mem=12,0,1,14,10
+[UI] Creating page 1 (DRAM: 24176 bytes free)
+[UI] Page 1 created SUCCESS (size: 1080, DRAM left: 23096)
+[BOOT-STAGE] 71 after MiniAcidDisplay alloc
+7b. UI setAudioGuard
+7c. UI setAudioRecorder
+9. Final Init...
+[BOOT-STAGE] 90 before encoder init
+[BOOT-STAGE] 91 after encoder init
+[BOOT-STAGE] 92 before led init
+[BOOT-STAGE] 93 after led init
+10. First drawUI...
+[BOOT-STAGE] 94 before first drawUI
+[BOOT-STAGE] 95 after first drawUI
+setup() complete
+[BOOT-STAGE] 100 setup-complete
+[PERF] audio=6.7% peak=7.0% underruns=0 ui=8967us uiPeak=20130us freeInt=21548 largest=11252 dsp=0/0/0/0
+[UI-TRACE] page=1 stage=frame.bounds.begin freeInt=19148 largestInt=10228
+[UI-TRACE] page=1 stage=frame.end freeInt=19148 largestInt=10228
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=10004ms
+[PERF] audio=6.2% peak=7.1% underruns=0 ui=10270us uiPeak=27773us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=15005ms
+[PERF] audio=6.4% peak=7.1% underruns=0 ui=7814us uiPeak=10321us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=20004ms
+[PERF] audio=6.3% peak=7.1% underruns=0 ui=9333us uiPeak=11200us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=25005ms
+[PERF] audio=6.3% peak=7.1% underruns=0 ui=9363us uiPeak=10315us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=30005ms
+[PERF] audio=6.6% peak=7.1% underruns=0 ui=7664us uiPeak=10287us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=35006ms
+[PERF] audio=6.2% peak=7.1% underruns=0 ui=10216us uiPeak=10317us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=40007ms
+[PERF] audio=6.4% peak=7.1% underruns=0 ui=8619us uiPeak=10323us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=45009ms
+[PERF] audio=6.2% peak=9.5% underruns=0 ui=10216us uiPeak=10321us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=50010ms
+[PERF] audio=6.3% peak=9.5% underruns=0 ui=8579us uiPeak=10346us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=55011ms
+[PERF] audio=6.1% peak=9.5% underruns=0 ui=7733us uiPeak=11350us freeInt=19532 largest=10228 dsp=0/0/0/0
+[MIDI-DISPATCH] sched=0 transport=0 smf=0 live=0 sent=0/2 drumGate=0/0/0 active=0 smfSent=0 smfStale=0 smfPanic=0 smfRetry=0 smfDrop=0 smfLateDrop=0 smfLateSent=0 smfMaxLateOnUs=0 smfLateOff=0 smfEpochDrop=0 smfCleanRetry=0 smfStall=0/0 smfMaxBlockUs=0 clockSent=0 clockLate=0 clockDropped=0 start=0 continue=0 stop=0 transportFail=0 late=0 maxLateUs=0 stale=0/0 badFrame=0 drop=0/0 transportDrop=0 overflow=0 recovery=0 liveDrop=0/0 suppressed=0 panic=0/0 din=1 dinQ=0 dinMaxQ=3 dinSent=6 dinDropOn=0 dinDropOff=0 dinDefer=0 dinPanic=0 dinRt=0 dinTeeRej=0 usbStallRej=0 usbDemoted=0
+[MIDI-RX] source=GP MASTER state=WAIT running=0 bpm=0.00 rx=0/0/0/0 ignored=0 masterIgnored=0 queue=0 clockDrop=0 criticalOverflow=0 failures=0 txSuppressed=0
+[USB-DIAG] midiMounted=1 edge=up/down=1/0 tx=attempt/ok/reject/noMount=2/2/0/0 pace=0/0ms ep=busy/stalled=0/0 last=0/0 rx=0 live=q/dispatched/drop=0/2/0/0 smf=cleanup/stalled=0/0 health=0 reject=0 stall=0/0 block=0ms max=0ms susp=0/0/0 up=60012ms
+[PERF] audio=6.2% peak=9.5% underruns=0 ui=9432us uiPeak=10320us freeInt=19532 largest=10228 dsp=0/0/0/0
