@@ -1,0 +1,25 @@
+{
+  "base_sha": "5ecca63bde1acbfb037b21f9c16ab0f8d514001d",
+  "test_date": "2026-10-25",
+  "operator": "Codex host/build",
+  "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+  "loop_stack_size": 32768,
+  "board_revision": "NOT TESTED",
+  "bin_sha256": "ec04f918bef757a64c66c1650ee26d1c337cb90ca53344bbb0982be7e8d6a53f",
+  "data": 41996,
+  "bss": 142256,
+  "flash": 1594250,
+  "dram_limit": 191488,
+  "source_sha256": {
+    "scene_storage.h": "c629b0a8c17323af08727879de0305ee1ed5d53d48526354bb823fe4be71b980",
+    "scene_storage_cardputer.h": "b68428851fb2446b62988065d3656f3f9d5d1a95598597ac181a95ce3d49aae3",
+    "scene_storage_cardputer.cpp": "099970a30ee21a1525bceeec150183251031c9ee0fa2ad132fefed308fa0d0b4",
+    "platform_sdl/scene_storage_sdl.h": "905598fdfd0fa7b2c32e2fd93a6120ed859681ef21653487421602447bb516f7",
+    "platform_sdl/scene_storage_sdl.cpp": "4dc4924ce7b643b2e96129b21223cb8f9c1e5bf3121037aa06ff76a4dc8cc957",
+    "scenes.h": "dfc415c16914fb5176d81cea170c7e1abb974a81500ed9b12303c818daa6b255",
+    "scenes.cpp": "eb2525b73e1d8e89944bef4f55a983f02d4451cd6b9ec6578267a6ce16596105",
+    "src/dsp/miniacid_engine.h": "4e9bb9b8e613a1074923e2f2a47b8c5934ea923e062dba2c8cce2dffbbcbeb88",
+    "src/dsp/miniacid_engine.cpp": "c9f5c6c74b5c39edaeb26eee20285807421f200904f1b9cf1f068ccc7a00bd0b"
+  },
+  "hardware": "NOT FLASHED / NOT TESTED"
+}

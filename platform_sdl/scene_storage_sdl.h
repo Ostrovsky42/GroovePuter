@@ -10,9 +10,9 @@ public:
   bool readScene(std::string& out) override;
   bool writeScene(const std::string& data) override;
   bool writeScene(const SceneManager& manager) override;
-  bool readScene(SceneManager& manager) override;
+  bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}) override;
   bool writeSceneAuto(const SceneManager& manager) override;
-  bool readSceneAuto(SceneManager& manager) override;
+  bool readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare = {}) override;
   bool hasSceneAuto() const override;
   bool clearSceneAuto() override;
   void initializeStorage() override;

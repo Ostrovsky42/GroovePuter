@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import sys
+import re
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: instrument_cardputer_memory_runtime.py <source-root>")
@@ -19,7 +20,29 @@ scene_storage_path = root / "scene_storage_cardputer.cpp"
 pattern_paging_path = root / "src/audio/pattern_paging.cpp"
 
 
+# Keep the same probes usable on both the accepted baseline and the staged
+# load pipeline. Only adapt exact load-expression anchors; never change logic.
+_scene_load_source = scene_storage_path.read_text(encoding="utf-8")
+_scene_prepared_load = "const SceneSynthPreparation& prepare" in _scene_load_source
+_scene_staged_load = "manager.loadSceneEvented(filtered, true," in _scene_load_source
+
+def scene_load_anchor(text: str) -> str:
+    if _scene_prepared_load:
+        text = text.replace("SceneManager& manager)",
+            "SceneManager& manager, const SceneSynthPreparation& prepare)")
+    if _scene_staged_load:
+        suffix = ", prepare" if _scene_prepared_load else ""
+        text = text.replace("manager.loadSceneEvented(filtered) && !filtered.failed()",
+            "manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }" + suffix + ")")
+        text = re.sub(r"manager\.loadSceneEvented\(filteredBackup\)\s*&&\s*!filteredBackup\.failed\(\)",
+            "manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }" + suffix + ")", text)
+    return text
+
+
 def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
+    if path == scene_storage_path:
+        anchor = scene_load_anchor(anchor)
+        replacement = scene_load_anchor(replacement)
     text = path.read_text(encoding="utf-8")
     count = text.count(anchor)
     if count != 1:

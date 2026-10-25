@@ -1159,7 +1159,8 @@ private:
 
   void loadSceneFromStorage();
   void resetWorkingMaterialForProjectChange_();
-  void hydrateAcceptedMaterialAtBoot_();
+  void hydrateAcceptedMaterialAtBoot_(
+      const PhraseRuntime::RuntimeSynthEventBuffer* prepared = nullptr);
   bool saveSceneToStorage();
   void applySceneStateFromManager();
   void syncSceneStateToManager();

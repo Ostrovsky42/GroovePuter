@@ -1,0 +1,509 @@
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:44:8:virtual bool MelodyPromotion::SdFileSystem::available() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:42:7:constexpr MelodyPromotion::SdFileSystem::~SdFileSystem()	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:42:7:virtual constexpr MelodyPromotion::SdFileSystem::~SdFileSystem()	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:45:8:virtual bool MelodyPromotion::SdFileSystem::exists(const char*) const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:97:8:virtual bool MelodyPromotion::SdFileSystem::remove(const char*)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:94:8:virtual bool MelodyPromotion::SdFileSystem::rename(const char*, const char*)	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:267:7:), _Functor>::_M_manager(std::_Any_data&, const std::_Any_data&, std::_Manager_operation) [with _Res = bool; _Functor = MiniAcid::loadSceneFromStorage()::<lambda(const Scene&, uint8_t, uint8_t)>; _ArgTypes = {const Scene&, unsigned char, unsigned char}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:267:7:), _Functor>::_M_manager(std::_Any_data&, const std::_Any_data&, std::_Manager_operation) [with _Res = bool; _Functor = MiniAcid::loadSceneByName(const std::string&)::<lambda(const Scene&, uint8_t, uint8_t)>; _ArgTypes = {const Scene&, unsigned char, unsigned char}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algobase.h:913:5:constexpr _BI2 std::move_backward(_BI1, _BI1, _BI2) [with _BI1 = unsigned char*; _BI2 = unsigned char*]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:377:7:constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:138:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::pointer std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_create(size_type&, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/mode_manager.h:37:23:const ModeConfig& GrooveboxModeManager::config() const	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/char_traits.h:419:7:static constexpr std::char_traits<char>::char_type* std::char_traits<char>::copy(char_type*, const char_type*, std::size_t)	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:241:5:std::_Function_base::~_Function_base()	32	static
+/tmp/gp-g6-failed-load-64ae/src/dsp/mini_dsp_params.h:91:13:void Parameter::setValue(float)	32	static
+/tmp/gp-g6-failed-load-64ae/scenes.h:237:12:int songPatternBank(int)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_slot_access.h:78:12:int GroovePuterMaterial::residentSlotFor(MaterialAddress)	32	static
+/tmp/gp-g6-failed-load-64ae/scenes.h:247:12:int songPatternFromPageBankIndex(int, int, int)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_slot_access.h:26:21:GroovePuterMaterial::MaterialKind GroovePuterMaterial::residentKind(const Scene&, int, int)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_slot_access.h:31:19:GroovePuterMaterial::MaterialId GroovePuterMaterial::residentId(const Scene&, int, int)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_slot_access.h:84:13:bool GroovePuterMaterial::materialAddressIsResident(MaterialAddress, int)	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_version.h:29:13:void GroovePuterMaterial::material_version_detail::feedU16(uint64_t&, uint16_t)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_version.h:43:29:GroovePuterMaterial::MaterialVersionToken GroovePuterMaterial::versionForPattern(const SynthPattern&)	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_version.h:65:29:GroovePuterMaterial::MaterialVersionToken GroovePuterMaterial::versionForMelody(const PhraseRuntime::RuntimeSynthEventBuffer&)	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/material_lineage.h:27:18:constexpr bool GroovePuterMaterial::PreparationBasis::valid() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/generated_pattern_harmony_origin.h:32:8:bool GroovePuterMaterial::GeneratedPatternHarmonyOrigin::valid() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/phrase/runtime_synth_events.h:35:8:constexpr PhraseRuntime::RuntimeSynthEventBuffer::RuntimeSynthEventBuffer()	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:65:8:bool GroovePuterMaterial::WorkingMaterialStorage::empty() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:66:8:bool GroovePuterMaterial::WorkingMaterialStorage::holdsPattern() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:67:8:bool GroovePuterMaterial::WorkingMaterialStorage::holdsMelody() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:69:21:GroovePuterMaterial::MaterialReference GroovePuterMaterial::WorkingMaterialStorage::patternReference() const	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:79:8:bool GroovePuterMaterial::WorkingMaterialStorage::patternMatches(const GroovePuterMaterial::MaterialReference&) const	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:91:23:const GroovePuterMaterial::WorkingMaterialStorage::MelodyBuffer* GroovePuterMaterial::WorkingMaterialStorage::melodyIfHeld() const	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/working_material_storage.h:132:8:void GroovePuterMaterial::WorkingMaterialStorage::markEmpty()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/atomic:116:5:bool std::atomic<bool>::load(std::memory_order) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_ownership.h:171:13:bool GroovePuterOutput::allowsMidiNoteOn(const MusicalEvent&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:56:10:bool OutputOwnedSynthVoiceSlot::switchSettled() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:60:21:SynthVoiceState OutputOwnedSynthVoiceSlot::getState() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:72:10:void OutputOwnedSynthVoiceSlot::startNote(float, bool, bool, uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:83:10:void OutputOwnedSynthVoiceSlot::release()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:95:10:void OutputOwnedSynthVoiceSlot::setParameterNormalized(uint8_t, float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:104:10:void OutputOwnedSynthVoiceSlot::setMode(GrooveboxMode)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:107:10:void OutputOwnedSynthVoiceSlot::setLoFiAmount(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/output/output_owned_synth_voice.h:110:17:const char* OutputOwnedSynthVoiceSlot::getEngineName() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/midi/project_transport_timeline.h:138:10:bool GroovePuterMidi::ProjectTransportTimeline::trySnapshot(GroovePuterMidi::ProjectTransportBlockSnapshot&) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/midi/scheduled_musical_event_queue.h:88:10:void ScheduledMusicalEventQueue::invalidateTarget(MusicalEventTarget)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/midi/scheduled_musical_event_queue.h:157:10:bool ScheduledMusicalEventQueue::suppressNonRealtimeEvent(const MusicalEvent&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/midi/scheduled_musical_event_queue.h:29:10:bool ScheduledMusicalEventQueue::tryPush(const MusicalEvent&, uint32_t, uint16_t)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/input/musical_event_queue.h:104:10:bool MusicalEventQueue::tryPush(const MusicalEvent&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:53:10:bool PatternEventQueueHandle::tryPush(const MusicalEvent&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:127:10:void PatternPublishingDrumVoice::reset()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:131:10:void PatternPublishingDrumVoice::triggerLocal(uint8_t, bool, uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:147:10:void PatternPublishingDrumVoice::triggerPattern(uint8_t, bool, uint8_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:203:10:void PatternPublishingDrumVoice::setLoFiMode(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/pattern_drum_event_tap.h:204:10:void PatternPublishingDrumVoice::setLoFiAmount(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_pattern_event_bank.h:23:28:const PhraseRuntime::RuntimeSynthEvent* PhraseRuntime::RuntimePatternEventBuffer::eventForSourceStep(uint8_t) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_pattern_event_bank.h:49:28:PhraseRuntime::PatternBankRefreshStatus PhraseRuntime::RuntimePatternEventBank::refresh(uint8_t, uint8_t, uint8_t, const SynthPattern&, const PhraseRuntime::PatternProjectionSettings&)	1520	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/audio/voice_cache.h:142:10:void VoiceCache::stopPlayback()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:430:7:static constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_S_copy(_CharT*, const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:221:7:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_construct(_InIterator, _InIterator, std::forward_iterator_tag) [with _FwdIterator = const char*; _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:646:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _CharT*, const _Alloc&) [with <template-parameter-2-1> = std::allocator<char>; _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:552:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::basic_string(const std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:352:8:void MiniAcid::clearGeneratedSynthAOrigin()	368	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:371:8:void MiniAcid::clearGeneratedPhraseRecipe()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:381:8:void MiniAcid::clearGeneratedPatternHarmony()	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:392:8:void MiniAcid::clearReuseMarks()	240	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:559:7:int MiniAcid::currentPageIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_phrase_edit.h:76:17:uint16_t RuntimePhraseEdit::lengthTicksForBars(uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_phrase_edit.h:91:13:bool RuntimePhraseEdit::validLengthTicks(uint16_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_phrase_edit.h:111:13:bool RuntimePhraseEdit::validate(const Buffer&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/phrase/runtime_phrase_edit.h:275:25:RuntimePhraseEdit::LengthEditResult RuntimePhraseEdit::setLengthBars(Buffer&, uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/musical_development.h:142:13:bool GroovePuterDevelopment::hasEventOnTheOne(const PhraseRuntime::RuntimeSynthEventBuffer&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/musical_development.h:154:17:GroovePuterDevelopment::TriState GroovePuterDevelopment::evaluateContourPreservation(const PhraseRuntime::RuntimeSynthEventBuffer&, const PhraseRuntime::RuntimeSynthEventBuffer&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/development_semantic_adapter.h:100:13:void GroovePuterDevelopmentSemantic::setCapability(SemanticFacts&, CapabilityClaim, CapabilityStatus)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/p0_preservation_evaluator.h:35:13:bool GroovePuterDevelopmentSemantic::P0Detail::stepIn(GroovePuterRhythm::StepMask, uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/p0_preservation_evaluator.h:70:33:GroovePuterDevelopmentSemantic::P0PreservationAssessment GroovePuterDevelopmentSemantic::evaluateP0Preservation(const GroovePuterMaterial::GeneratedSynthABarOrigin&, const PhraseRuntime::RuntimeSynthEventBuffer&, const uint8_t (&)[16], const PhraseRuntime::RuntimeSynthEventBuffer&)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/p0_preservation_evaluator.h:180:22:GroovePuterDevelopmentSemantic::SemanticFacts GroovePuterDevelopmentSemantic::adaptP0Preservation(const PhraseRuntime::RuntimeSynthEventBuffer&, const PhraseRuntime::RuntimeSynthEventBuffer&, const GroovePuterDevelopment::DevelopmentEvidence&, const GroovePuterDevelopment::DevelopmentRequest&, const P0PreservationAssessment&)	96	static
+/tmp/gp-g6-failed-load-64ae/src/platform/log.h:13:15:void log_println(const char*)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:58:17:uint32_t MelodyStore::read32(const uint8_t*)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:64:17:uint32_t MelodyStore::crc32(const uint8_t*, size_t)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:110:13:bool MelodyStore::decode(const uint8_t*, size_t, Buffer&, uint32_t*)	1344	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3772:5:constexpr bool std::operator==(const __cxx11::basic_string<_CharT, _Traits, _Allocator>&, const _CharT*) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:102:20:MelodyPromotion::FileSystem& MelodyPromotion::defaultFileSystem()	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:179:13:bool MelodyPromotion::sameMelody(const Buffer&, const Buffer&)	32	static
+/tmp/gp-g6-failed-load-64ae/src/audio/audio_mutation_gate.h:51:8:bool AudioMutationGate::openControlIoWindow()	32	static
+/tmp/gp-g6-failed-load-64ae/src/audio/audio_mutation_gate.h:62:8:bool AudioMutationGate::closeControlIoWindow()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_commit_impl.h:108:13:bool GroovePuterRhythm::QuantizedGenerationDetail::validBankSlot(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_commit_impl.h:157:13:bool GroovePuterRhythm::QuantizedGenerationDetail::targetStillActive(const SceneManager&, const PatternTarget&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_undo_owner_impl.h:185:33:const GroovePuterRhythm::QuantizedGenerationDetail::PendingGeneration* GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleActivation(const MiniAcid&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_undo_owner_impl.h:200:28:const SynthPattern* GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(const MiniAcid&, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_undo_owner_impl.h:224:30:const DrumPatternSet* GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(const MiniAcid&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/phrase_live_arrangement_activation.h:43:13:void GroovePuterRhythm::PhraseLiveArrangementDetail::clearPhraseActivationMetadata(int)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/live_song_arrangement_activation.h:109:13:void GroovePuterRhythm::LiveSongArrangementDetail::clearSongActivationPayload(int)	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:2740:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::size_type std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::find(const _CharT*, size_type) const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:94:1:TempoDelay::TempoDelay(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:154:6:void TempoDelay::reset()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:185:6:void TempoDelay::setBpm(float)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:198:6:void TempoDelay::setBeats(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:204:6:void TempoDelay::setMix(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:212:6:void TempoDelay::setFeedback(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:220:6:void TempoDelay::setEnabled(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:222:6:bool TempoDelay::isEnabled() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:224:7:float TempoDelay::process(float)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:576:6:void MiniAcid::invalidateSongPreparedNext_(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:590:6:void MiniAcid::dropSongPreparedNext_()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:596:6:bool MiniAcid::userOwnsNext_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:602:6:bool MiniAcid::invalidateSessionNextForProjectChange()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:703:8:double MiniAcid::advanceStartPhase(double)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:746:6:void MiniAcid::pulseLedForDrumLane(uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:754:6:void MiniAcid::liveNoteOff(int, uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:761:6:void MiniAcid::allLiveNotesOff()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:770:6:void MiniAcid::suspendLiveNoteProjection(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:774:6:bool MiniAcid::patternOwnsInternalSynth(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:780:6:void MiniAcid::setPatternEventQueue(MusicalEventQueue*)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:786:6:void MiniAcid::publishPatternNoteOn_(int, uint8_t, uint8_t, bool, bool)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:817:6:void MiniAcid::publishPatternNoteOff_(int, uint8_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:841:6:void MiniAcid::publishPatternAllNotesOff_()	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:716:6:void MiniAcid::continueTransport()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:858:5:int MiniAcid::liveNote(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:890:6:void MiniAcid::setMasterOutputHighCutHz(float)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:902:7:float MiniAcid::bpm() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:903:7:float MiniAcid::sampleRate() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:905:6:bool MiniAcid::isPlaying() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:907:5:int MiniAcid::currentStep() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:912:7:float MiniAcid::getStepProgress() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:921:7:float MiniAcid::transportPhaseSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:930:5:int MiniAcid::cycleBarCount() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:936:5:int MiniAcid::cycleBarIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:944:9:int16_t MiniAcid::currentDrumPatternIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:948:9:int16_t MiniAcid::current303PatternIndex(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:953:9:int16_t MiniAcid::currentDrumBankIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:957:9:int16_t MiniAcid::current303BankIndex(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:962:6:bool MiniAcid::is303Muted(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:966:6:bool MiniAcid::isKickMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:967:6:bool MiniAcid::isSnareMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:968:6:bool MiniAcid::isHatMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:969:6:bool MiniAcid::isOpenHatMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:970:6:bool MiniAcid::isMidTomMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:971:6:bool MiniAcid::isHighTomMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:972:6:bool MiniAcid::isRimMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:973:6:bool MiniAcid::isClapMuted() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:974:6:bool MiniAcid::is303DelayEnabled(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:978:6:bool MiniAcid::is303DistortionEnabled(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1082:6:bool MiniAcid::songModeEnabled() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1177:6:bool MiniAcid::loopModeEnabled() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1179:6:void MiniAcid::setLoopMode(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1181:6:void MiniAcid::setLoopRange(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1185:5:int MiniAcid::loopStartRow() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1187:5:int MiniAcid::loopEndRow() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1189:5:int MiniAcid::songLength() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1190:6:void MiniAcid::setSongLength(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1192:5:int MiniAcid::currentSongPosition() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1194:5:int MiniAcid::songPlayheadPosition() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1242:9:int16_t MiniAcid::songPatternAt(int, SongTrack) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1246:9:int16_t MiniAcid::songPatternAtSlot(int, int, SongTrack) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1250:13:const Song& MiniAcid::song() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1251:5:int MiniAcid::activeSongSlot() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1266:5:int MiniAcid::songPlaybackSlot() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1277:6:bool MiniAcid::liveMixModeEnabled() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1288:6:void MiniAcid::mergeSongs()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1289:6:void MiniAcid::alternateSongs()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1290:6:void MiniAcid::insertSongRow(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1295:6:void MiniAcid::deleteSongRow(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1300:6:void MiniAcid::setSongReverse(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1301:6:bool MiniAcid::isSongReverse() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1302:6:void MiniAcid::queueSongReverseToggle()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1306:6:bool MiniAcid::hasPendingSongReverseToggle() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1376:18:const Parameter& MiniAcid::synthParameter(int, int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1385:9:uint8_t MiniAcid::synthParameterCount(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1391:6:void MiniAcid::adjustSynthParameter(int, int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1499:13:std::string MiniAcid::currentSynthEngineName(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1556:13:std::string MiniAcid::currentDrumEngineName() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1561:33:const MiniAcid::WaveformBuffer& MiniAcid::getWaveformBuffer() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1584:6:void MiniAcid::toggleMuteKick()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1588:6:void MiniAcid::toggleMuteSnare()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1592:6:void MiniAcid::toggleMuteHat()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1596:6:void MiniAcid::toggleMuteOpenHat()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1600:6:void MiniAcid::toggleMuteMidTom()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1604:6:void MiniAcid::toggleMuteHighTom()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1608:6:void MiniAcid::toggleMuteRim()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1612:6:void MiniAcid::toggleMuteClap()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1625:6:bool MiniAcid::isTrackActive(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1641:6:void MiniAcid::setTrackVolume(VoiceId, float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1645:7:float MiniAcid::getTrackVolume(VoiceId) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1649:6:void MiniAcid::toggleDelay303(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1659:6:void MiniAcid::toggleDistortion303(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1670:6:void MiniAcid::set303DelayEnabled(int, bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1681:6:void MiniAcid::set303DistortionEnabled(int, bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1692:6:void MiniAcid::setDrumPatternIndex(int16_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1696:6:void MiniAcid::shiftDrumPatternIndex(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1704:6:void MiniAcid::setDrumBankIndex(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1714:6:void MiniAcid::set303ParameterNormalized(TB303ParamId, float, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1747:6:void MiniAcid::requestPageSwitch(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1863:13:TB303Voice* MiniAcid::tb303Voice(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1708:6:void MiniAcid::adjust303Parameter(TB303ParamId, int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1711:6:void MiniAcid::set303Parameter(TB303ParamId, float, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:982:18:const Parameter& MiniAcid::parameter303(TB303ParamId, int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1870:19:const TB303Voice* MiniAcid::tb303Voice(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1877:5:int MiniAcid::clamp303Voice(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1882:5:int MiniAcid::clampDrumVoice(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1890:6:void MiniAcid::setupDrumStepFx_(int, uint8_t, uint8_t, uint8_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1929:5:int MiniAcid::clamp303Step(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1934:5:int MiniAcid::clamp303Note(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1940:21:const SynthPattern& MiniAcid::synthPattern(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1945:15:SynthPattern& MiniAcid::editSynthPattern(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1761:6:void MiniAcid::adjust303StepNote(int, int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1785:6:void MiniAcid::adjust303StepOctave(int, int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1788:6:void MiniAcid::clear303StepNote(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1794:6:void MiniAcid::toggle303AccentStep(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1800:6:void MiniAcid::toggle303SlideStep(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1827:6:void MiniAcid::cycle303StepFx(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1849:6:void MiniAcid::adjust303StepFxParam(int, int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1950:20:const DrumPattern& MiniAcid::drumPattern(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1956:14:DrumPattern& MiniAcid::editDrumPattern(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1807:6:void MiniAcid::toggleDrumStep(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1818:6:void MiniAcid::setDrumAccentStep(int, int, bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2007:5:int MiniAcid::clampSongPosition(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1962:5:int MiniAcid::songPatternIndexForTrack(SongTrack) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1981:21:const SynthPattern& MiniAcid::activeSynthPattern(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1994:20:const DrumPattern& MiniAcid::activeDrumPattern(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1308:9:int16_t MiniAcid::display303PatternIndex(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1337:5:int MiniAcid::display303LocalPatternIndex(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:1240:13:bool MiniAcid::current303MaterialReference_(int, GroovePuterMaterial::MaterialReference&) const	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:988:21:const SynthPattern& MiniAcid::synthPatternForDisplay(int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.h:1287:13:bool MiniAcid::hasModifiedWorking303Pattern(int) const	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1345:9:uint8_t MiniAcid::reuseEngineHolders(int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1327:9:int16_t MiniAcid::displayDrumPatternIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1368:5:int MiniAcid::displayDrumLocalPatternIndex() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2072:6:bool MiniAcid::tryCaptureHarmonyPlaybackPosition(GroovePuterPerformance::HarmonyPlaybackPosition&) const	144	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2133:6:void MiniAcid::publishGeneratedPatternHarmony(GroovePuterMaterial::GeneratedPatternHarmonyOrigin)	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2193:6:bool MiniAcid::tryCaptureSongHarmonicParticipants(uint8_t, uint8_t, uint8_t, GroovePuterHarmony::SongHarmonicParticipant*, uint8_t, uint8_t&) const	352	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2240:6:void MiniAcid::acknowledgeRehearsal()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2248:5:int MiniAcid::nextSongRowFrom_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2301:6:bool MiniAcid::songRowIsPause_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2336:6:void MiniAcid::refreshSynthCaches(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1002:15:const int8_t* MiniAcid::pattern303Steps(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1007:13:const bool* MiniAcid::pattern303AccentSteps(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1012:13:const bool* MiniAcid::pattern303SlideSteps(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2346:6:void MiniAcid::refreshDrumCache(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1017:13:const bool* MiniAcid::patternKickSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1021:13:const bool* MiniAcid::patternSnareSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1025:13:const bool* MiniAcid::patternHatSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1029:13:const bool* MiniAcid::patternOpenHatSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1033:13:const bool* MiniAcid::patternMidTomSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1037:13:const bool* MiniAcid::patternHighTomSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1041:13:const bool* MiniAcid::patternRimSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1045:13:const bool* MiniAcid::patternClapSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1049:13:const bool* MiniAcid::patternKickAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1053:13:const bool* MiniAcid::patternSnareAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1057:13:const bool* MiniAcid::patternHatAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1061:13:const bool* MiniAcid::patternOpenHatAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1065:13:const bool* MiniAcid::patternMidTomAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1069:13:const bool* MiniAcid::patternHighTomAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1073:13:const bool* MiniAcid::patternRimAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1077:13:const bool* MiniAcid::patternClapAccentSteps() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2355:6:void MiniAcid::updateTickIncrement()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:862:6:void MiniAcid::setBpm(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:874:6:void MiniAcid::setExternalClockBpm(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:883:6:void MiniAcid::restoreProjectBpm()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2365:7:float MiniAcid::noteToFreq(int)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:730:6:void MiniAcid::liveNoteOn(int, uint8_t, uint8_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2369:5:int MiniAcid::grooveOverrideTicksForStep_(const DrumPatternSet&, int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2405:5:int MiniAcid::timingTicksForStep_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2417:7:float MiniAcid::evaluateAutomationLaneAtStep_(const AutomationLane&, int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3026:6:void MiniAcid::captureAudioObservation_(const int16_t*, size_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3068:6:void MiniAcid::setParameter(MiniAcidParamId, float)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3078:6:void MiniAcid::adjustParameter(MiniAcidParamId, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3083:6:void MiniAcid::randomizeDrumPattern()	144	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3091:6:void MiniAcid::randomizeDrumVoice(int)	144	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3102:6:void MiniAcid::clear303Step(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3116:6:void MiniAcid::randomizeDrumPatternChaos()	144	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3198:6:void MiniAcid::toggleAudioDiag()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3217:6:void MiniAcid::syncModeToVoices()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3204:6:void MiniAcid::setGrooveboxMode(GrooveboxMode)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3187:6:void MiniAcid::syncGrooveModeToGenre()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3136:6:void MiniAcid::regeneratePatternsWithGenre()	240	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3210:6:void MiniAcid::activateCommittedGrooveboxModeRuntime(GrooveboxMode)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3243:15:GrooveboxMode MiniAcid::grooveboxMode() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3247:6:void MiniAcid::toggleGrooveboxMode()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3251:6:void MiniAcid::setGrooveFlavor(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3260:5:int MiniAcid::grooveFlavor() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3264:6:void MiniAcid::shiftGrooveFlavor(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3271:13:std::string MiniAcid::currentSceneName() const	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3755:5:constexpr bool std::operator==(const __cxx11::basic_string<_CharT, _Traits, _Allocator>&, const __cxx11::basic_string<_CharT, _Traits, _Allocator>&) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3541:7:float MiniAcid::mainVolume() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3545:6:void MiniAcid::setDeviceMasterVolume(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3752:6:void MiniAcid::applyTextureFromScene_()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3796:6:void MiniAcid::applyFeelTimingFromScene_()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3893:6:static void PatternGenerator::generateRandom303Pattern(SynthPattern&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3912:6:static void PatternGenerator::generateRandomDrumPattern(DrumPatternSet&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3996:6:void MiniAcid::setTestTone(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4028:6:void MiniAcid::speak(const char*)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4032:6:void MiniAcid::speakPhrase(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4038:6:void MiniAcid::speakCustomPhrase(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4042:6:void MiniAcid::stopSpeaking()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4060:6:void MiniAcid::toggleVoiceTrackMute()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4064:6:void MiniAcid::setVoiceTrackMute(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4222:6:void MiniAcid::updateDrumCompression(float)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2483:6:void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet&, int)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4228:6:void MiniAcid::updateDrumTransientAttack(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4232:6:void MiniAcid::updateDrumTransientSustain(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4236:6:void MiniAcid::updateDrumReverbMix(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4240:6:bool MiniAcid::rebuildPatternRuntimeEventBank()	5520	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4279:6:bool MiniAcid::refreshPatternRuntimeEvents(int, int, int)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4317:1:const PhraseRuntime::RuntimePatternEventBuffer& MiniAcid::activePatternRuntimeEvents(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4344:6:void MiniAcid::updateDrumReverbDecay(float)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4363:6:void MiniAcid::cleanupLiveNotesForTransportBarrier_(uint8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4485:6:void MiniAcid::followChordWithInternalVoice_(int, bool)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4514:6:void MiniAcid::publishChordNoteOn_(int, uint8_t, uint8_t, bool)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4533:6:void MiniAcid::publishChordNoteOff_(int, uint8_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4466:6:bool MiniAcid::translateChordVoiceAction_(int, const PhraseRuntime::RuntimeSynthPlaybackAction&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4377:6:void MiniAcid::consumePatternPlaybackActions_(int, const PhraseRuntime::RuntimeSynthPlaybackActions&)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4348:6:void MiniAcid::hardBarrierPatternPlayback_(int)	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1571:6:void MiniAcid::toggleMute303(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1617:6:void MiniAcid::setMute303(int, bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1720:6:void MiniAcid::set303PatternIndex(int, int16_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1725:6:void MiniAcid::shift303PatternIndex(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1735:6:void MiniAcid::set303BankIndex(int, int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3043:6:void MiniAcid::randomize303Pattern(int)	144	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4353:6:void MiniAcid::hardBarrierPatternPlayback_()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1741:6:void MiniAcid::setCurrentPage(int8_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4359:6:void MiniAcid::barrierPatternRuntimeSourceTransition()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/quantized_generation_undo_owner_impl.h:291:13:bool GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(MiniAcid&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:436:6:void MiniAcid::reset()	128	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:682:6:void MiniAcid::pauseTransport()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:620:6:void MiniAcid::silenceAwaitingSongVoice_(int)	128	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4548:10:uint32_t MiniAcid::currentAbsoluteSubtick_() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4555:47:const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::retainedWorkingMelody_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4565:47:const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::readableWorkingMelody_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4575:10:uint16_t MiniAcid::phraseRelativeTick_(int, uint32_t) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4585:41:const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(int, uint32_t) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4623:6:void MiniAcid::triggerSynthStep_(int, const PhraseRuntime::RuntimeSynthEvent&, uint32_t, bool)	112	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4601:6:void MiniAcid::triggerPhraseOnsets_(int, uint32_t, uint32_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4680:6:void MiniAcid::triggerDrumVoice_(int, int)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4795:6:void MiniAcid::setSequencedSource(int, SequencedSource)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4809:27:MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4834:6:bool MiniAcid::pendingMaterialReady() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4841:6:bool MiniAcid::sourceAnchorMemoryReady_() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4816:6:bool MiniAcid::initPendingMaterial()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4845:13:const void* MiniAcid::pendingMaterialAddress(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4850:6:bool MiniAcid::hasPendingMaterial(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4856:28:MiniAcid::CurrentNextState MiniAcid::classifyCurrentForNext_(int, GroovePuterMaterial::MaterialReference&, GroovePuterMaterial::MaterialVersionToken&) const	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4908:28:MiniAcid::PreparationBasis MiniAcid::captureCurrentPreparationBasis(int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5040:6:bool MiniAcid::acquireWorkingMelodySourceImpl_(int, PhraseRuntime::RuntimeSynthEventBuffer&, uint8_t (*)[16]) const	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5034:6:bool MiniAcid::acquireWorkingMelodySource(int, PhraseRuntime::RuntimeSynthEventBuffer&) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5136:6:bool MiniAcid::isGoQueued(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5141:6:void MiniAcid::cancelGoQueue(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5017:6:bool MiniAcid::cancelNextMaterial(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5206:6:void MiniAcid::observeP0Preservation_(int, const PreparationBasis&, const PhraseRuntime::RuntimeSynthEventBuffer&, const uint8_t (&)[16], bool, const GroovePuterDevelopment::DevelopmentResult&, const GroovePuterDevelopment::DevelopmentRequest&, GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation&) const	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5282:28:MiniAcid::PreparationBasis MiniAcid::sourceAnchor(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5291:28:MiniAcid::PreparationBasis MiniAcid::predecessor(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5300:47:const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::sourceAnchorSnapshot(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5560:32:MiniAcid::MaterialLengthResult MiniAcid::setMaterialLength(int, uint8_t)	2864	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6042:6:bool MiniAcid::stagePendingMaterial(int, uint16_t, GroovePuterMaterial::MaterialKind, const PhraseRuntime::RuntimeSynthEventBuffer*)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6071:6:bool MiniAcid::activatePendingMaterialForVoice_(int)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5308:32:MiniAcid::NextActivationResult MiniAcid::_ZN8MiniAcid30activateNextMaterialAtBoundaryEi$part$0(int)	1600	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5308:32:MiniAcid::NextActivationResult MiniAcid::activateNextMaterialAtBoundary(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5103:27:MiniAcid::GoRequestResult MiniAcid::requestGoNextMaterial(int)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6087:6:void MiniAcid::activatePendingMaterial()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6093:6:void MiniAcid::publishActiveMaterial(int, uint16_t, GroovePuterMaterial::MaterialKind)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6100:5:int MiniAcid::current303GlobalSlot_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2157:6:bool MiniAcid::tryCapturePatternHarmonyPlaybackPosition(GroovePuterPerformance::PatternHarmonyPlaybackPosition&) const	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6112:6:void MiniAcid::recordSavedMelody_(int, int, const PhraseRuntime::RuntimeSynthEventBuffer&)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6120:6:bool MiniAcid::isMelodySlot(int, int, int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6134:6:bool MiniAcid::hasUnsavedWorkingMelody(int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6243:33:const MiniAcid::ActiveMaterial& MiniAcid::activeMaterial(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6249:10:uint16_t MiniAcid::currentPhrasePlayTick(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6254:6:bool MiniAcid::makePhrase(int)	1392	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6341:6:bool MiniAcid::setPhraseLength(int, uint8_t)	1328	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6367:41:PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6372:47:const PhraseRuntime::RuntimeSynthEventBuffer& MiniAcid::currentPhraseBuffer(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6386:9:int16_t MiniAcid::songSynthSlotAt_(int, int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6392:5:int MiniAcid::peekNextSongRow_() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6415:6:bool MiniAcid::workingMelodyUnsaved_(int) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6423:6:bool MiniAcid::songVoiceInSync_(int, int16_t) const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6585:6:bool MiniAcid::drumEngineSwitchDue() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6599:6:bool MiniAcid::synthEngineSwitchDue() const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6610:6:void MiniAcid::commitSettledSynthEngineSwitches()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6670:6:bool MiniAcid::songNeedsNext_(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4960:29:MiniAcid::NextPrepareResult MiniAcid::prepareNextMelody(int, const PhraseRuntime::RuntimeSynthEventBuffer&, const PreparationBasis&, GroovePuterMaterial::IdeaClassification)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5248:29:MiniAcid::NextPrepareResult MiniAcid::growWorkingMaterial(int, uint8_t, GroovePuterDevelopment::GrowthMode, const GroovePuterDevelopment::DevelopmentRequest&, GroovePuterDevelopment::DevelopmentResult*)	2704	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5146:29:MiniAcid::NextPrepareResult MiniAcid::developWorkingMaterial(int, const GroovePuterDevelopment::DevelopmentRequest&, GroovePuterDevelopment::DevelopmentResult*, GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation*)	2736	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6684:6:bool MiniAcid::songMaterialServiceDue() const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6728:6:bool MiniAcid::songVoiceHeld(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6733:32:MiniAcid::SongCellMaterialKind MiniAcid::songCellMaterialKind(int, int16_t) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6749:33:MiniAcid::SongVoiceDisplayState MiniAcid::songVoiceDisplayState(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6776:1:const PhraseRuntime::RuntimeSynthEventBuffer* MiniAcid::activeMelodyForDisplay(int) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6787:6:bool MiniAcid::songNeedsNextBuffer(int) const	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:267:7:constexpr bool std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_is_local() const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:858:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::operator=(std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:682:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1180:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::size_type std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::capacity() const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/shared_ptr_base.h:1066:7:std::__shared_count<_Lp>::~__shared_count() [with __gnu_cxx::_Lock_policy _Lp = __gnu_cxx::_S_atomic]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:285:7:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_dispose() [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3801:6:void MiniAcid::syncSceneStateToManager()	208	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3513:6:bool MiniAcid::saveSceneToStorage()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3533:6:bool MiniAcid::autoSaveSceneRecovery()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3366:6:bool MiniAcid::saveSceneAs(const std::string&)	96	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:366:7:constexpr std::_Vector_base<_Tp, _Alloc>::~_Vector_base() [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/vector.tcc:67:5:constexpr void std::vector<_Tp, _Alloc>::reserve(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3208:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc> std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::substr(size_type, size_type) const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:61:8:virtual bool MelodyPromotion::SdFileSystem::write(const char*, const uint8_t*, size_t)	160	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:366:7:constexpr std::_Vector_base<_Tp, _Alloc>::~_Vector_base() [with _Tp = float; _Alloc = std::allocator<float>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:1075:5:) [with _Tp = TR808DrumSynthVoice; _Args = {float&}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:672:7:std::unique_ptr<_Tp [], _Dp>::~unique_ptr() [with _Tp = PhraseRuntime::RuntimeSynthEventBuffer; _Dp = std::default_delete<PhraseRuntime::RuntimeSynthEventBuffer []>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:1075:5:) [with _Tp = SwappableSynthVoice; _Args = {float&, SynthEngineType}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:392:7:std::unique_ptr<_Tp, _Dp>::~unique_ptr() [with _Tp = PhraseRuntime::RuntimeSynthEventBuffer; _Dp = std::default_delete<PhraseRuntime::RuntimeSynthEventBuffer>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:366:7:constexpr std::_Vector_base<_Tp, _Alloc>::~_Vector_base() [with _Tp = std::__cxx11::basic_string<char>; _Alloc = std::allocator<std::__cxx11::basic_string<char> >]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:707:2:constexpr std::vector<_Tp, _Alloc>::vector(_InputIterator, _InputIterator, const allocator_type&) [with _InputIterator = const char* const*; <template-parameter-2-2> = void; _Tp = std::__cxx11::basic_string<char>; _Alloc = std::allocator<std::__cxx11::basic_string<char> >]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1491:26:std::vector<std::__cxx11::basic_string<char> > MiniAcid::getAvailableDrumEngines() const	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1495:26:std::vector<std::__cxx11::basic_string<char> > MiniAcid::getAvailableSynthEngines() const	48	static
+/tmp/gp-g6-failed-load-64ae/src/platform/log.h:18:15:) [with Args = {}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:325:5:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_mutate(size_type, size_type, const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:413:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Allocator>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_append(const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1480:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::append(const _CharT*) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/audio/voice_cache.h:97:10:bool VoiceCache::startPlayback(const char*)	128	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4047:6:bool MiniAcid::speakCached(const char*)	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1466:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::append(const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3616:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Allocator> std::operator+(const _CharT*, const __cxx11::basic_string<_CharT, _Traits, _Allocator>&) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	64	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:130:20:std::string MelodyPromotion::slotPath(const std::string&, GroovePuterMaterial::MaterialAddress, GroovePuterMaterial::PublicationSlot)	144	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:194:13:bool MelodyPromotion::loadMaterial(const FileSystem&, const std::string&, GroovePuterMaterial::MaterialAddress, Buffer&, uint32_t*)	2816	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3285:6:bool {anonymous}::prepareLoadedMelodies(const Scene&, uint8_t, uint8_t, PhraseRuntime::RuntimeSynthEventBuffer (&)[2])	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:288:7:) [with _Res = bool; _Functor = MiniAcid::loadSceneFromStorage()::<lambda(const Scene&, uint8_t, uint8_t)>; _ArgTypes = {const Scene&, unsigned char, unsigned char}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:288:7:) [with _Res = bool; _Functor = MiniAcid::loadSceneByName(const std::string&)::<lambda(const Scene&, uint8_t, uint8_t)>; _ArgTypes = {const Scene&, unsigned char, unsigned char}]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3470:6:void MiniAcid::hydrateAcceptedMaterialAtBoot_(const PhraseRuntime::RuntimeSynthEventBuffer*)	1360	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3419:6:void MiniAcid::loadSceneFromStorage()	2624	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6148:28:MiniAcid::MelodySlotResult MiniAcid::loadSlotMelody_(int, int, int, PhraseRuntime::RuntimeSynthEventBuffer&) const	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6179:28:MiniAcid::MelodySlotResult MiniAcid::prepareMelodySlot(int, int, int, PhraseRuntime::RuntimeSynthEventBuffer&) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6196:6:bool MiniAcid::loadCurrentSlotMelody(int, PhraseRuntime::RuntimeSynthEventBuffer&) const	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5530:25:MiniAcid::DiscardResult MiniAcid::discardToAcceptedMelody_(int)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5411:25:MiniAcid::DiscardResult MiniAcid::discardCurrentMaterial(int)	112	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6547:6:bool MiniAcid::loadSongMelodyIntoNext_(int, int, int16_t)	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:828:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::operator=(const _CharT*) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:1906:7:constexpr std::vector<_Tp, _Alloc>::size_type std::vector<_Tp, _Alloc>::_M_check_len(size_type, const char*) const [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:1283:7:constexpr void std::vector<_Tp, _Alloc>::push_back(const value_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/vector.tcc:111:7:) [with _Args = {unsigned char}; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:48:13:void MelodyStore::put32(std::vector<unsigned char>&, uint32_t)	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:43:13:void MelodyStore::put16(std::vector<unsigned char>&, uint16_t)	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/vector.tcc:270:5:constexpr void std::vector<_Tp, _Alloc>::_M_fill_assign(std::size_t, const value_type&) [with _Tp = float; _Alloc = std::allocator<float>]	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:114:6:void TempoDelay::init(float)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:329:6:void MiniAcid::preallocateConstrainedDelayBuffers()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:166:6:void TempoDelay::setSampleRate(float)	48	static
+/tmp/gp-g6-failed-load-64ae/src/state/bounded_undo_slot.h:74:8:bool GroovePuterUndo::BoundedUndoSlot<PayloadBytes>::read(GroovePuterUndo::UndoKind, Payload&) const [with Payload = GroovePuterUndo::RuntimePhraseUndoPayload; unsigned int PayloadBytes = 1536]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6399:6:void MiniAcid::dropRuntimePhraseReceiptFor_(int)	1488	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6399:6:void MiniAcid::dropRuntimePhraseReceiptFor_(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3452:6:void MiniAcid::resetWorkingMaterialForProjectChange_()	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6205:6:void MiniAcid::releaseSavedWorkingMelody_(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1153:6:void MiniAcid::restoreSlotMaterialAfterSong_(int)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6217:6:bool MiniAcid::activateMelodySlot(int, int, int, const PhraseRuntime::RuntimeSynthEventBuffer&)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6444:6:bool MiniAcid::activateSongMelody_(int, int16_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6464:6:void MiniAcid::applySongSynthRow_(int, int16_t)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2016:6:void MiniAcid::applySongPositionSelection()	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1196:6:void MiniAcid::setSongPosition(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1206:6:void MiniAcid::setSongPattern(int, SongTrack, int16_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1223:6:void MiniAcid::clearSongPattern(int, SongTrack)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1252:6:void MiniAcid::setActiveSongSlot(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1267:6:void MiniAcid::setSongPlaybackSlot(int)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/live_song_arrangement_activation.h:498:13:bool GroovePuterRhythm::LiveSongArrangementDetail::settlePendingSongArrangementOnStop(MiniAcid&)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2310:6:void MiniAcid::advanceSongPlayhead()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4780:6:void MiniAcid::advanceSongBar_()	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2528:6:void MiniAcid::processSequencerEvents(uint32_t)	80	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2522:6:void MiniAcid::advanceTick()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2639:6:void MiniAcid::_ZN8MiniAcid19generateAudioBufferEPsj$part$0(int16_t*, size_t)	256	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:2639:6:void MiniAcid::generateAudioBuffer(int16_t*, size_t)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1084:6:void MiniAcid::setSongMode(bool)	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/generation/migration/phrase_live_arrangement_activation.h:274:13:bool GroovePuterRhythm::PhraseLiveArrangementDetail::settlePendingPhraseArrangementOnStop(MiniAcid&)	128	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:643:6:void MiniAcid::stop()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1175:6:void MiniAcid::toggleSongMode()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1278:6:void MiniAcid::setLiveMixMode(bool)	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1287:6:void MiniAcid::toggleLiveMixMode()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:550:6:void MiniAcid::start()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4075:6:bool MiniAcid::renderProjectToWav(const std::string&, std::function<void(float)>)	1152	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6620:6:void MiniAcid::serviceSongMaterial()	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5706:6:bool MiniAcid::undoMaterialWorking(int)	1536	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:392:7:std::unique_ptr<_Tp, _Dp>::~unique_ptr() [with _Tp = IMonoSynthVoice; _Dp = std::default_delete<IMonoSynthVoice>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/swappable_synth_voice.h:39:5:SwappableSynthVoice::~SwappableSynthVoice()	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/swappable_synth_voice.h:39:5:virtual SwappableSynthVoice::~SwappableSynthVoice()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:392:7:std::unique_ptr<_Tp, _Dp>::~unique_ptr() [with _Tp = SwappableSynthVoice; _Dp = std::default_delete<SwappableSynthVoice>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:200:12:void std::__uniq_ptr_impl<_Tp, _Dp>::reset(pointer) [with _Tp = SwappableSynthVoice; _Dp = std::default_delete<SwappableSynthVoice>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1410:6:void MiniAcid::setSynthEngine(int, const std::string&)	160	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:257:1:MiniAcid::MiniAcid(float, SceneStorage*)	80	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/move.h:213:5:constexpr std::_Require<std::__not_<std::__is_tuple_like<_Tp> >, std::is_move_constructible<_Tp>, std::is_move_assignable<_Tp> > std::swap(_Tp&, _Tp&) [with _Tp = SynthStep]	48	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:4200:6:void MiniAcid::rotatePattern(int, int)	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:200:12:void std::__uniq_ptr_impl<_Tp, _Dp>::reset(pointer) [with _Tp = DrumSynthVoice; _Dp = std::default_delete<DrumSynthVoice>]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:1506:6:void MiniAcid::setDrumEngine(const std::string&)	96	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6589:6:void MiniAcid::applyPendingDrumEngineSwitch()	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3550:6:void MiniAcid::applySceneStateFromManager()	128	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3299:6:bool MiniAcid::loadSceneByName(const std::string&)	2672	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3381:6:bool MiniAcid::createNewSceneWithName(const std::string&)	64	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:337:6:void MiniAcid::init()	80	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_uninitialized.h:660:9:static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = unsigned int]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/vector.tcc:805:5:constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:78:8:virtual bool MelodyPromotion::SdFileSystem::read(const char*, std::vector<unsigned char>&) const	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3790:5:constexpr decltype (__char_traits_cmp_cat<_Traits>(0)) std::operator<=>(const __cxx11::basic_string<_CharT, _Traits, _Allocator>&, const __cxx11::basic_string<_CharT, _Traits, _Allocator>&) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algo.h:1750:5:constexpr void std::__unguarded_linear_insert(_RandomAccessIterator, _Compare) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Compare = __gnu_cxx::__ops::_Val_less_iter]	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algo.h:1770:5:constexpr void std::__insertion_sort(_RandomAccessIterator, _RandomAccessIterator, _Compare) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Compare = __gnu_cxx::__ops::_Iter_less_iter]	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algobase.h:448:2:static constexpr _Up* std::__copy_move<_IsMove, true, std::random_access_iterator_tag>::__copy_m(_Tp*, _Tp*, _Up*) [with _Tp = const unsigned char; _Up = unsigned char; bool _IsMove = false]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algobase.h:448:2:static constexpr _Up* std::__copy_move<_IsMove, true, std::random_access_iterator_tag>::__copy_m(_Tp*, _Tp*, _Up*) [with _Tp = unsigned char; _Up = unsigned char; bool _IsMove = false]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_heap.h:224:5:constexpr void std::__adjust_heap(_RandomAccessIterator, _Distance, _Distance, _Tp, _Compare) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Distance = int; _Tp = __cxx11::basic_string<char>; _Compare = __gnu_cxx::__ops::_Iter_less_iter]	80	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_heap.h:254:5:constexpr void std::__pop_heap(_RandomAccessIterator, _RandomAccessIterator, _RandomAccessIterator, _Compare&) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Compare = __gnu_cxx::__ops::_Iter_less_iter]	96	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algo.h:1589:5:constexpr void std::__heap_select(_RandomAccessIterator, _RandomAccessIterator, _RandomAccessIterator, _Compare) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Compare = __gnu_cxx::__ops::_Iter_less_iter]	96	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:59:5:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::swap(std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	80	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algo.h:1876:5:constexpr void std::__introsort_loop(_RandomAccessIterator, _RandomAccessIterator, _Size, _Compare) [with _RandomAccessIterator = __gnu_cxx::__normal_iterator<__cxx11::basic_string<char>*, vector<__cxx11::basic_string<char> > >; _Size = int; _Compare = __gnu_cxx::__ops::_Iter_less_iter]	32	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:3276:26:std::vector<std::__cxx11::basic_string<char> > MiniAcid::availableSceneNames() const	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_algobase.h:448:2:static constexpr _Up* std::__copy_move<_IsMove, true, std::random_access_iterator_tag>::__copy_m(_Tp*, _Tp*, _Up*) [with _Tp = unsigned char; _Up = unsigned char; bool _IsMove = true]	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:75:13:bool MelodyStore::encode(const Buffer&, std::vector<unsigned char>&, uint32_t)	80	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_promotion.h:256:14:MelodyPromotion::Error MelodyPromotion::commitMelodyCandidate(FileSystem&, const std::string&, GroovePuterMaterial::MaterialAddress, const Buffer&, uint32_t&)	2800	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:5780:24:MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int)	2976	static
+/tmp/grooveputer-build.GMv6r8/GroovePuter/src/dsp/miniacid_engine.cpp:6790:1:cpp)	32	static

@@ -30,8 +30,8 @@ assert "std::numeric_limits<uint32_t>::max()" in persist_cpp
 assert '#include "src/sampler/sample_scene_persistence.h"' in store_cpp
 assert store_cpp.count("SamplerSceneReadFilter<File>") >= 4
 assert store_cpp.count("SamplerSceneWriteFilter<File>") >= 2
-assert store_cpp.count("manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); })") == 2
-assert store_cpp.count("manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); })") == 2
+assert store_cpp.count("manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }, prepare)") == 2
+assert store_cpp.count("manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }, prepare)") == 2
 scene_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
 load = scene_cpp[scene_cpp.index("bool SceneManager::loadSceneEventedWithReader"):]
 assert load.index("if (acknowledge && !acknowledge()) return false;") < load.index("*scene_ = *loaded;")
@@ -47,7 +47,7 @@ assert "samplerEnabled" in scene_h
 # Keep the public raw string storage overload raw; applying the filter there as
 # well would permit accidental double encoding of a stable ref.
 raw_write_start = store_cpp.index("bool SceneStorageCardputer::writeScene(const std::string& data)")
-manager_read_start = store_cpp.index("bool SceneStorageCardputer::readScene(SceneManager& manager)")
+manager_read_start = store_cpp.index("bool SceneStorageCardputer::readScene(SceneManager& manager,")
 raw_write_body = store_cpp[raw_write_start:manager_read_start]
 assert "SamplerScene" not in raw_write_body
 

@@ -3,9 +3,14 @@
 #define SCENE_STORAGE_H
 
 #include <string>
+#include <functional>
+#include <cstdint>
 #include <vector>
 
 class SceneManager;
+struct Scene;
+// Temporary load preparation; selected resident slots A/B come from parsed JSON.
+using SceneSynthPreparation = std::function<bool(const Scene&, uint8_t, uint8_t)>;
 
 // Abstract interface for loading and saving scene JSON blobs.
 class SceneStorage {
@@ -19,13 +24,13 @@ public:
   // Returns true on success after writing the provided JSON string.
   // it should also always write to a general, to persist the name of the current scene being opened.
   virtual bool writeScene(const std::string& data) = 0;
-  virtual bool readScene(SceneManager& manager) = 0;
+  virtual bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}) = 0;
   virtual bool writeScene(const SceneManager& manager) = 0;
   
   // Auto-save variants (saves to *.auto.json)
   virtual bool writeSceneAuto(const SceneManager& manager) = 0;
   // Reads only the recovery snapshot. The caller owns fallback to the main scene.
-  virtual bool readSceneAuto(SceneManager& manager) = 0;
+  virtual bool readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare = {}) = 0;
   virtual bool hasSceneAuto() const = 0;
   virtual bool clearSceneAuto() = 0;
 

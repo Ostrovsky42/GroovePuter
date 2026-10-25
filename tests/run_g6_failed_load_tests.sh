@@ -18,3 +18,9 @@ printf '%s\n' 'G6 resident Melody refusal (header, CRC, missing, nonselected, ov
 cd "$ROOT"
 "${CXX:-g++}" -std=c++17 -Wno-c++20-extensions -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h tests/test_g6_melody_read_size.cpp -o build/cardputer-prune-host/g6-melody-read-size
 build/cardputer-prune-host/g6-melody-read-size
+
+cd "$ROOT/platform_sdl"
+"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_late_hydration.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-late-hydration
+../build/cardputer-prune-host/g6-late-hydration
+../build/cardputer-prune-host/g6-late-hydration prepare-fail
+printf '%s\n' 'G6 selected Melody preparation and post-read fault: PASS'

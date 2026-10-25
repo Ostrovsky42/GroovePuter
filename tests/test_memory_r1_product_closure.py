@@ -134,7 +134,7 @@ with tempfile.TemporaryDirectory(prefix="memory-r1-closure-") as tmp:
             "SD instrumentation must preserve the original failure message",
         )
         auto_start = staged_scene_storage.find(
-            "bool SceneStorageCardputer::readSceneAuto(SceneManager& manager)"
+            "bool SceneStorageCardputer::readSceneAuto(SceneManager& manager,"
         )
         auto_end = staged_scene_storage.find(
             "bool SceneStorageCardputer::hasSceneAuto()", auto_start

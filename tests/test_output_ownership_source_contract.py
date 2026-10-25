@@ -127,18 +127,18 @@ def test_scene_persistence_is_transactional_and_composed() -> None:
     require("outputState_.commit()" not in sampler[:failed_start],
             "Cardputer output state must not mutate runtime during parsing")
 
-    require("manager.loadScene(serialized)" in sdl,
-            "SDL must validate Scene content before committing OutputMode")
-    main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager)")
+    require("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)" in sdl,
+            "SDL must pass OutputMode commit as the validated prepublication acknowledgement")
+    main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager,")
     main_end = sdl.index("bool SceneStorageSdl::writeScene(const std::string& data)", main_load)
     main_block = sdl[main_load:main_end]
-    require(main_block.index("manager.loadScene(serialized)") <
+    require(main_block.index("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)") <
             main_block.index("outputModes.commit()"),
             "SDL main Scene must commit OutputMode only after successful manager load")
-    auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager)")
+    auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager,")
     auto_end = sdl.index("bool SceneStorageSdl::hasSceneAuto()", auto_load)
     auto_block = sdl[auto_load:auto_end]
-    require(auto_block.index("manager.loadScene(serialized)") <
+    require(auto_block.index("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)") <
             auto_block.index("outputModes.commit()"),
             "SDL autosave must commit OutputMode only after successful manager load")
 

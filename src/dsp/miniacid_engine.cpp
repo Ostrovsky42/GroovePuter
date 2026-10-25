@@ -3281,6 +3281,21 @@ std::vector<std::string> MiniAcid::availableSceneNames() const {
   return names;
 }
 
+namespace {
+bool prepareLoadedMelodies(const Scene& scene, uint8_t slotA, uint8_t slotB,
+    PhraseRuntime::RuntimeSynthEventBuffer (&prepared)[2]) {
+  const uint8_t slots[] = {slotA, slotB};
+  for (uint8_t voice = 0; voice < 2; ++voice) {
+    if (scene.materialSlots[voice][slots[voice]].kind !=
+        GroovePuterMaterial::MaterialKind::Melody) continue;
+    const GroovePuterMaterial::MaterialAddress address{voice, slots[voice]};
+    if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+          PatternPagingService::currentProjectName(), address, prepared[voice])) return false;
+  }
+  return true;
+}
+}
+
 bool MiniAcid::loadSceneByName(const std::string& name) {
   if (!sceneStorage_) {
     Serial.println("[LoadScene] ERROR: sceneStorage_ is null");
@@ -3297,13 +3312,17 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     return false;
   }
 
+  PhraseRuntime::RuntimeSynthEventBuffer prepared[2]{};
+  const SceneSynthPreparation prepare = [&](const Scene& candidate, uint8_t a, uint8_t b) {
+    return prepareLoadedMelodies(candidate, a, b, prepared);
+  };
   bool recoveredAuto = false;
   bool loaded = false;
   if (sceneStorage_->hasSceneAuto()) {
-    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_);
+    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_, prepare);
     loaded = recoveredAuto;
   }
-  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_);
+  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_, prepare);
   Serial.printf("[LoadScene] loaded=%d recovery=%d\n",
                 loaded ? 1 : 0, recoveredAuto ? 1 : 0);
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
@@ -3329,7 +3348,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   resetWorkingMaterialForProjectChange_();
   songMode_ = false;
   setCurrentPage(0);
-  hydrateAcceptedMaterialAtBoot_();
+  hydrateAcceptedMaterialAtBoot_(prepared);
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
   const int residentPage = PatternPagingService::activePageIndex();
@@ -3404,16 +3423,20 @@ void MiniAcid::loadSceneFromStorage() {
   clearGeneratedPhraseRecipe();
   clearReuseMarks();
   lastSceneLoadRecoveredAutosave_ = false;
+  PhraseRuntime::RuntimeSynthEventBuffer prepared[2]{};
+  const SceneSynthPreparation prepare = [&](const Scene& candidate, uint8_t a, uint8_t b) {
+    return prepareLoadedMelodies(candidate, a, b, prepared);
+  };
   if (sceneStorage_) {
     if (sceneStorage_->hasSceneAuto() &&
-        sceneStorage_->readSceneAuto(sceneManager_)) {
+        sceneStorage_->readSceneAuto(sceneManager_, prepare)) {
       lastSceneLoadRecoveredAutosave_ = true;
       LOG_PRINTLN("  - loadSceneFromStorage: recovered autosave");
-      hydrateAcceptedMaterialAtBoot_();
+      hydrateAcceptedMaterialAtBoot_(prepared);
       return;
     }
-    if (sceneStorage_->readScene(sceneManager_)) {
-      hydrateAcceptedMaterialAtBoot_();
+    if (sceneStorage_->readScene(sceneManager_, prepare)) {
+      hydrateAcceptedMaterialAtBoot_(prepared);
       return;
     }
     LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
@@ -3444,7 +3467,8 @@ void MiniAcid::resetWorkingMaterialForProjectChange_() {
   }
 }
 
-void MiniAcid::hydrateAcceptedMaterialAtBoot_() {
+void MiniAcid::hydrateAcceptedMaterialAtBoot_(
+    const PhraseRuntime::RuntimeSynthEventBuffer* prepared) {
   const std::string& proj = PatternPagingService::currentProjectName();
   for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
     makePhraseSourceBasis_[idx] = {};
@@ -3463,6 +3487,11 @@ void MiniAcid::hydrateAcceptedMaterialAtBoot_() {
     publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot), kind);
     if (kind == GroovePuterMaterial::MaterialKind::Melody) {
       setSequencedSource(idx, SequencedSource::Phrase);
+      if (prepared) {
+        workingMaterial_[idx].storeMelody(prepared[idx]);
+        recordSavedMelody_(idx, globalSlot, prepared[idx]);
+        continue;
+      }
       PhraseRuntime::RuntimeSynthEventBuffer loaded{};
       const GroovePuterMaterial::MaterialAddress addr{
           static_cast<uint8_t>(idx),

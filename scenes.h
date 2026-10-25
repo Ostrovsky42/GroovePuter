@@ -2,6 +2,7 @@
 #define SCENES_H
 
 #include <functional>
+#include "scene_storage.h"
 
 
 #include <stdint.h>
@@ -685,7 +686,8 @@ public:
 
   std::string dumpCurrentScene() const;
   bool loadScene(const std::string& json, bool restoreResidentPage = false,
-                 const std::function<bool()>& acknowledge = {});
+                 const std::function<bool()>& acknowledge = {},
+                 const SceneSynthPreparation& prepare = {});
 
   void setDrumMute(int voiceIdx, bool mute);
   bool getDrumMute(int voiceIdx) const;
@@ -755,7 +757,8 @@ public:
   bool loadSceneJson(TReader&& reader);
   template <typename TReader>
   bool loadSceneEvented(TReader&& reader, bool restoreResidentPage = false,
-                        const std::function<bool()>& acknowledge = {});
+                        const std::function<bool()>& acknowledge = {},
+                 const SceneSynthPreparation& prepare = {});
 
   // static constexpr size_t sceneJsonCapacity();
 
@@ -772,7 +775,8 @@ private:
   void buildSceneDocument(ArduinoJson::JsonDocument& doc) const;
   bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
   bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
-      bool restoreResidentPage, const std::function<bool()>& acknowledge);
+      bool restoreResidentPage, const std::function<bool()>& acknowledge,
+      const SceneSynthPreparation& prepare);
 
   Scene* scene_;
   int drumPatternIndex_ = 0;
@@ -1376,10 +1380,11 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 
 template <typename TReader>
 bool SceneManager::loadSceneEvented(TReader&& reader, bool restoreResidentPage,
-                                    const std::function<bool()>& acknowledge) {
+                                    const std::function<bool()>& acknowledge,
+                                    const SceneSynthPreparation& prepare) {
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
     return reader.read();
   };
-  return loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge);
+  return loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge, prepare);
 }
 #endif // SCENES_H

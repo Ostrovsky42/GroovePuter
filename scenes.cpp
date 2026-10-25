@@ -3057,13 +3057,14 @@ std::string SceneManager::dumpCurrentScene() const {
 }
 
 bool SceneManager::loadScene(const std::string& json, bool restoreResidentPage,
-                             const std::function<bool()>& acknowledge) {
+                             const std::function<bool()>& acknowledge,
+                             const SceneSynthPreparation& prepare) {
   size_t idx = 0;
   JsonVisitor::NextChar nextChar = [&json, &idx]() -> int {
     if (idx >= json.size()) return -1;
     return static_cast<unsigned char>(json[idx++]);
   };
-  if (loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge)) return true;
+  if (loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge, prepare)) return true;
   
   // DISABLED: ArduinoJson fallback causes abort() on ESP32 due to insufficient DRAM
   // return loadSceneJson(json);
@@ -3081,7 +3082,8 @@ Scene& sceneTransactionScratch() {
 }
 
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
-    bool restoreResidentPage, const std::function<bool()>& acknowledge) {
+    bool restoreResidentPage, const std::function<bool()>& acknowledge,
+                             const SceneSynthPreparation& prepare) {
 #ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
 #endif
@@ -3128,6 +3130,13 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
                                           project, address, verified)) return false;
       }
     }
+  }
+  if (prepare) {
+    const uint8_t slotA = clampIndex(observer.synthBankIndex(0), kBankCount) *
+        Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(0));
+    const uint8_t slotB = clampIndex(observer.synthBankIndex(1), kBankCount) *
+        Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(1));
+    if (!prepare(*loaded, slotA, slotB)) return false;
   }
   // Streaming filters may reject the completed input after JSON parsing.
   // Their final acknowledgement must precede canonical Scene publication.

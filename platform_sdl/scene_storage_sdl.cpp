@@ -203,14 +203,14 @@ bool SceneStorageSdl::writeScene(const SceneManager& manager) {
   return writeScene(persisted);
 }
 
-bool SceneStorageSdl::readScene(SceneManager& manager) {
+bool SceneStorageSdl::readScene(SceneManager& manager, const SceneSynthPreparation& prepare) {
   std::string serialized;
   if (!readScene(serialized)) return false;
   GroovePuterOutput::PersistedOutputModes outputModes{};
   if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
     return false;
   }
-  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); });
+  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare);
 }
 
 bool SceneStorageSdl::writeScene(const std::string& data) {
@@ -324,7 +324,7 @@ bool SceneStorageSdl::writeSceneAuto(const SceneManager& manager) {
 #endif
 }
 
-bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
+bool SceneStorageSdl::readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare) {
   std::string serialized;
 #ifdef __EMSCRIPTEN__
   const std::string key = autoSceneKeyForStorage();
@@ -345,7 +345,7 @@ bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
   if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
     return false;
   }
-  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); });
+  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare);
 }
 
 bool SceneStorageSdl::hasSceneAuto() const {
