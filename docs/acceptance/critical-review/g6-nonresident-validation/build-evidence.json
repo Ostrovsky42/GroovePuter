@@ -1,0 +1,18 @@
+{
+  "base_sha": "a65d99bfecab0bc2d49decbee45a39f4d4e2cb68",
+  "test_date": "2026-10-25",
+  "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+  "operator": "Codex host/build",
+  "board_revision": "NOT TESTED",
+  "bin_sha256": "4fd5caf1464587259f26afb3feb107253a52bc3f56985bcd3c3bbc5288bf3aff",
+  "data": 41996,
+  "bss": 142256,
+  "flash": 1595582,
+  "dram_limit": 191488,
+  "source_sha256": {
+    "scenes.cpp": "8b5ca5706c15215ab0a8771360a5b401e96c6c39d29ffe63b8bbe76d63632a7a",
+    "src/audio/pattern_paging.cpp": "f42926a7846f4de39bcc023c1e5e2f90be07da16ee4b4b15f3ee220389ca549a",
+    "src/audio/pattern_paging.h": "44ff5dde7c65027ff517eac33a8e1981242a9c94108ccf5c21e1ed8dff89195a"
+  },
+  "hardware": "NOT FLASHED / NOT TESTED"
+}

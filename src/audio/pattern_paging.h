@@ -5,6 +5,7 @@
 #include "../state/material_publication_record.h"
 #include "../generation/harmony/harmonic_source_codec.h"
 #include <cstdint>
+#include <array>
 #include <string>
 
 enum class SongHarmonicStorageStatus : uint8_t {
@@ -53,6 +54,10 @@ public:
     // previous page file, and a failed load leaves Scene unchanged.
     static bool savePage(int pageIndex, const Scene& scene);
     static bool loadPage(int pageIndex, Scene& scene, bool publishPageIndex = true);
+    using PageMaterialDescriptors = std::array<GroovePuterMaterial::MaterialSlotDescriptor,
+        Scene::kMaterialVoices * Scene::kMaterialSlotsPerVoice>;
+    // Control-side integrity read; does not touch Scene scratch or page identity.
+    static bool readPageMaterialDescriptors(int pageIndex, PageMaterialDescriptors& out);
 
     // Atomically commit a page candidate (pattern or descriptor) to the inactive dual-generation slot,
     // readback-verify, write NVS publication record, and update scene RAM infallibly.

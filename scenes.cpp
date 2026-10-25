@@ -10,6 +10,7 @@
 #endif
 
 #include <memory>
+#include <algorithm>
 
 namespace {
 int clampIndex(int value, int maxExclusive) {
@@ -3081,6 +3082,48 @@ Scene& sceneTransactionScratch() {
   return s_tempLoadScene;
 }
 
+namespace {
+bool validateStoredProjectMaterial(const Scene& resident) {
+  bool referencedPages[kMaxPages]{};
+  for (const auto& song : resident.songs) {
+    for (int row = 0; row < std::clamp<int>(song.length, 0, Song::kMaxPositions); ++row) {
+      // Synth A/B and drums reference pattern pages; the vocal column does not.
+      for (int track = 0; track < 3; ++track) {
+        const int reference = song.positions[row].patterns[track];
+        if (reference < 0) continue;
+        const int page = songPatternPage(reference);
+        if (page < 0 || page >= kMaxPages) return false;
+        referencedPages[page] = true;
+      }
+    }
+  }
+  PhraseRuntime::RuntimeSynthEventBuffer verified{};
+  PatternPagingService::PageMaterialDescriptors descriptors{};
+  const auto& project = PatternPagingService::currentProjectName();
+  for (int page = 0; page < kMaxPages; ++page) {
+    if (page != 0) {
+      if (!PatternPagingService::pageExists(page)) {
+        if (referencedPages[page]) return false;
+        continue;
+      }
+      if (!PatternPagingService::readPageMaterialDescriptors(page, descriptors)) return false;
+    }
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+      for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+        const auto& descriptor = page == 0 ? resident.materialSlots[voice][slot]
+            : descriptors[voice * Scene::kMaterialSlotsPerVoice + slot];
+        if (descriptor.kind != GroovePuterMaterial::MaterialKind::Melody) continue;
+        const GroovePuterMaterial::MaterialAddress address{static_cast<uint8_t>(voice),
+            static_cast<uint8_t>(page * Scene::kMaterialSlotsPerVoice + slot)};
+        if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                          project, address, verified)) return false;
+      }
+    }
+  }
+  return true;
+}
+}
+
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
     bool restoreResidentPage, const std::function<bool()>& acknowledge,
                              const SceneSynthPreparation& prepare) {
@@ -3115,22 +3158,9 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
   // existing staging Scene; no canonical state or page index is published yet.
   if (restoreResidentPage && PatternPagingService::pageExists(0) &&
       !PatternPagingService::loadPage(0, *loaded, false)) return false;
-  // A resident descriptor is not usable material unless its accepted event
-  // file can be decoded. Include non-selected slots: Song may request them.
-  if (restoreResidentPage) {
-    PhraseRuntime::RuntimeSynthEventBuffer verified{};
-    const auto& project = PatternPagingService::currentProjectName();
-    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
-      for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
-        if (loaded->materialSlots[voice][slot].kind !=
-            GroovePuterMaterial::MaterialKind::Melody) continue;
-        const GroovePuterMaterial::MaterialAddress address{
-            static_cast<uint8_t>(voice), static_cast<uint8_t>(slot)};
-        if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
-                                          project, address, verified)) return false;
-      }
-    }
-  }
+  // Validate stored material on every page without overwriting this resident
+  // candidate. JSON-only page 0 remains valid for historical projects.
+  if (restoreResidentPage && !validateStoredProjectMaterial(*loaded)) return false;
   if (prepare) {
     const uint8_t slotA = clampIndex(observer.synthBankIndex(0), kBankCount) *
         Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(0));

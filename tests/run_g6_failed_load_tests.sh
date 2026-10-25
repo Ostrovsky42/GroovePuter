@@ -24,3 +24,11 @@ cd "$ROOT/platform_sdl"
 ../build/cardputer-prune-host/g6-late-hydration
 ../build/cardputer-prune-host/g6-late-hydration prepare-fail
 printf '%s\n' 'G6 selected Melody preparation and post-read fault: PASS'
+
+"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_page_metadata.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-page-metadata
+../build/cardputer-prune-host/g6-page-metadata
+"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_nonresident_load.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-nonresident-load
+for damage in header crc missing oversized page-crc page-missing drums-page-missing legacy-json last-slot; do
+ ../build/cardputer-prune-host/g6-nonresident-load "$damage"
+done
+printf '%s\n' 'G6 nonresident material, page faults and legacy JSON: PASS'

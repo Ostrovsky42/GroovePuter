@@ -1,0 +1,6 @@
+G6 metadata v3: same descriptors, scratch/index untouched: PASS
+G6 metadata v4: same descriptors, scratch/index untouched: PASS
+G6 metadata v5: same descriptors, scratch/index untouched: PASS
+G6 metadata v6: same descriptors, scratch/index untouched: PASS
+G6 fallback reread failure: loaded=1 readsA=2
+g6-page-metadata: tests/test_g6_page_metadata.cpp:46: int main(): Assertion `!loaded && readsA==2' failed.

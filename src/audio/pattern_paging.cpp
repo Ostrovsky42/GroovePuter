@@ -8,6 +8,7 @@
 #endif
 
 #include <cctype>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -721,7 +722,9 @@ bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
     return false;
 }
 
-bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* outGeneration = nullptr) {
+bool readAndValidatePageData(const std::string& path, Scene* staging,
+    PatternPagingService::PageMaterialDescriptors* descriptors,
+    uint32_t* outGeneration) {
     File file = SD.open(path.c_str(), FILE_READ);
     if (!file) return false;
 
@@ -768,14 +771,27 @@ bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* outG
         *outGeneration = hasStorageGeneration ? header.storageGeneration : 0;
     }
 
-    if (!readAll(file, staging.synthABanks, sizeof(staging.synthABanks)) ||
-        !readAll(file, staging.synthBBanks, sizeof(staging.synthBBanks)) ||
-        !readAll(file, staging.drumBanks, sizeof(staging.drumBanks))) {
-        file.close();
-        return false;
+    uint32_t crc = kCrcInitial;
+    if (staging) {
+        if (!readAll(file, staging->synthABanks, sizeof(staging->synthABanks)) ||
+            !readAll(file, staging->synthBBanks, sizeof(staging->synthBBanks)) ||
+            !readAll(file, staging->drumBanks, sizeof(staging->drumBanks))) return false;
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->synthABanks), sizeof(staging->synthABanks));
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->synthBBanks), sizeof(staging->synthBBanks));
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->drumBanks), sizeof(staging->drumBanks));
+    } else {
+        // Validate banks without retaining them: the parsed resident candidate
+        // must stay intact while another page's material is inspected.
+        uint8_t chunk[64];
+        size_t remaining = kSynthBanksSize * 2 + kDrumBanksSize;
+        while (remaining) {
+            const size_t count = std::min(remaining, sizeof(chunk));
+            if (!readAll(file, chunk, count)) return false;
+            crc = crc32Update(crc, chunk, count);
+            remaining -= count;
+        }
     }
 
-    resetMaterialMetadata(staging);
     uint8_t kinds[kMaterialSlotCount]{};
     GroovePuterMaterial::MaterialId ids[kMaterialSlotCount]{};
     if (hasMaterialKinds) {
@@ -788,12 +804,6 @@ bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* outG
                 file.close();
                 return false;
             }
-            const int voice =
-                static_cast<int>(index / Scene::kMaterialSlotsPerVoice);
-            const int slot =
-                static_cast<int>(index % Scene::kMaterialSlotsPerVoice);
-            staging.materialSlots[voice][slot].kind =
-                static_cast<GroovePuterMaterial::MaterialKind>(kinds[index]);
         }
     }
     if (hasMaterialIds) {
@@ -801,32 +811,101 @@ bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* outG
             file.close();
             return false;
         }
-        for (size_t index = 0; index < kMaterialSlotCount; ++index) {
-            const int voice =
-                static_cast<int>(index / Scene::kMaterialSlotsPerVoice);
-            const int slot =
-                static_cast<int>(index % Scene::kMaterialSlotsPerVoice);
-            staging.materialSlots[voice][slot].id = ids[index];
-        }
     }
     file.close();
 
-    uint32_t crc = kCrcInitial;
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthABanks),
-        sizeof(staging.synthABanks));
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthBBanks),
-        sizeof(staging.synthBBanks));
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.drumBanks),
-        sizeof(staging.drumBanks));
     if (hasMaterialKinds) crc = crc32Update(crc, kinds, sizeof(kinds));
     if (hasMaterialIds) {
         crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(ids), sizeof(ids));
     }
-    return finalizeCrc(crc) == header.payloadCrc32;
+    if (finalizeCrc(crc) != header.payloadCrc32) return false;
+    if (staging) resetMaterialMetadata(*staging);
+    for (size_t index = 0; index < kMaterialSlotCount; ++index) {
+        GroovePuterMaterial::MaterialSlotDescriptor value{};
+        if (hasMaterialKinds) value.kind = static_cast<GroovePuterMaterial::MaterialKind>(kinds[index]);
+        if (hasMaterialIds) value.id = ids[index];
+        if (staging) staging->materialSlots[index / Scene::kMaterialSlotsPerVoice]
+                                            [index % Scene::kMaterialSlotsPerVoice] = value;
+        if (descriptors) (*descriptors)[index] = value;
+    }
+    return true;
 }
+
+bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* generation = nullptr) {
+    return readAndValidatePageData(path, &staging, nullptr, generation);
+}
+
+template <typename Read>
+bool readPageCandidate(int pageIndex, Read&& read) {
+    const std::string& proj = activeProjectNameStorage();
+    bool loaded = false;
+
+    // 1. Try NVS publication record
+    GroovePuterMaterial::MaterialPublicationRecord pub{};
+    if (GroovePuterPlatform::loadMaterialPublication(proj, pageIndex, pub)) {
+        auto primarySlot = static_cast<GroovePuterMaterial::PublicationSlot>(pub.slot);
+        auto altSlot = GroovePuterMaterial::alternateSlot(primarySlot);
+        const std::string primaryPath = slotPathFor(proj, pageIndex, primarySlot);
+        const std::string altPath = slotPathFor(proj, pageIndex, altSlot);
+
+        if (read(primaryPath, nullptr)) {
+            loaded = true;
+        } else if (read(altPath, nullptr)) {
+            loaded = true;
+        }
+    }
+
+    // 2. If NVS not available or both failed, probe slot A and slot B
+    if (!loaded) {
+        const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
+        const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
+        uint32_t genA = 0;
+        bool validA = read(pathA, &genA);
+        if (validA) {
+            uint32_t genB = 0;
+            File fb = SD.open(pathB.c_str(), FILE_READ);
+            bool bMightBeNewer = false;
+            if (fb) {
+                PageFileHeader h{};
+                if (readAll(fb, static_cast<PageFileHeaderV3*>(&h), sizeof(PageFileHeaderV3)) &&
+                    h.version == PatternPagingService::kDualGenFormatVersion) {
+                    if (readAll(fb, &h.materialKindBytes, sizeof(h.materialKindBytes)) &&
+                        readAll(fb, &h.materialIdBytes, sizeof(h.materialIdBytes)) &&
+                        readAll(fb, &h.storageGeneration, sizeof(h.storageGeneration))) {
+                        if (h.storageGeneration > genA) bMightBeNewer = true;
+                    }
+                }
+                fb.close();
+            }
+            if (bMightBeNewer) {
+                if (read(pathB, &genB)) {
+                    loaded = true;
+                } else {
+                    loaded = read(pathA, &genA);
+                }
+            } else {
+                loaded = true;
+            }
+        } else {
+            uint32_t genB = 0;
+            if (read(pathB, &genB)) {
+                loaded = true;
+            }
+        }
+    }
+
+    // 3. Fallback to legacy single file and backup
+    if (!loaded) {
+        const std::string mainPath = pagePathFor(proj, pageIndex);
+        const std::string oldBackupPath = pagePathFor(proj, pageIndex) + ".bak";
+        loaded = read(mainPath, nullptr);
+        if (!loaded) loaded = read(oldBackupPath, nullptr);
+    }
+
+    return loaded;
+
+}
+
 
 bool commitTemporaryPage(const std::string& mainPath,
                          const std::string& temporaryPath,
@@ -1041,77 +1120,23 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     return true;
 }
 
+bool PatternPagingService::readPageMaterialDescriptors(int pageIndex, PageMaterialDescriptors& out) {
+    if (!validPageIndex(pageIndex)) return false;
+    PageMaterialDescriptors candidate{};
+    if (!readPageCandidate(pageIndex, [&](const std::string& path, uint32_t* generation) {
+            return readAndValidatePageData(path, nullptr, &candidate, generation);
+        })) return false;
+    out = candidate;
+    return true;
+}
+
 bool PatternPagingService::loadPage(int pageIndex, Scene& scene, bool publishPageIndex) {
     if (!validPageIndex(pageIndex)) return false;
 
-    const std::string& proj = activeProjectNameStorage();
     Scene& staging = sceneTransactionScratch();
-    bool loaded = false;
-
-    // 1. Try NVS publication record
-    GroovePuterMaterial::MaterialPublicationRecord pub{};
-    if (GroovePuterPlatform::loadMaterialPublication(proj, pageIndex, pub)) {
-        auto primarySlot = static_cast<GroovePuterMaterial::PublicationSlot>(pub.slot);
-        auto altSlot = GroovePuterMaterial::alternateSlot(primarySlot);
-        const std::string primaryPath = slotPathFor(proj, pageIndex, primarySlot);
-        const std::string altPath = slotPathFor(proj, pageIndex, altSlot);
-
-        if (readAndValidatePage(primaryPath, staging)) {
-            loaded = true;
-        } else if (readAndValidatePage(altPath, staging)) {
-            loaded = true;
-        }
-    }
-
-    // 2. If NVS not available or both failed, probe slot A and slot B
-    if (!loaded) {
-        const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
-        const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
-        uint32_t genA = 0;
-        bool validA = readAndValidatePage(pathA, staging, &genA);
-        if (validA) {
-            uint32_t genB = 0;
-            File fb = SD.open(pathB.c_str(), FILE_READ);
-            bool bMightBeNewer = false;
-            if (fb) {
-                PageFileHeader h{};
-                if (readAll(fb, static_cast<PageFileHeaderV3*>(&h), sizeof(PageFileHeaderV3)) &&
-                    h.version == kDualGenFormatVersion) {
-                    if (readAll(fb, &h.materialKindBytes, sizeof(h.materialKindBytes)) &&
-                        readAll(fb, &h.materialIdBytes, sizeof(h.materialIdBytes)) &&
-                        readAll(fb, &h.storageGeneration, sizeof(h.storageGeneration))) {
-                        if (h.storageGeneration > genA) bMightBeNewer = true;
-                    }
-                }
-                fb.close();
-            }
-            if (bMightBeNewer) {
-                if (readAndValidatePage(pathB, staging, &genB)) {
-                    loaded = true;
-                } else {
-                    readAndValidatePage(pathA, staging, &genA);
-                    loaded = true;
-                }
-            } else {
-                loaded = true;
-            }
-        } else {
-            uint32_t genB = 0;
-            if (readAndValidatePage(pathB, staging, &genB)) {
-                loaded = true;
-            }
-        }
-    }
-
-    // 3. Fallback to legacy single file and backup
-    if (!loaded) {
-        const std::string mainPath = pagePath(pageIndex);
-        const std::string oldBackupPath = backupPath(pageIndex);
-        loaded = readAndValidatePage(mainPath, staging);
-        if (!loaded) loaded = readAndValidatePage(oldBackupPath, staging);
-    }
-
-    if (!loaded) return false;
+    if (!readPageCandidate(pageIndex, [&](const std::string& path, uint32_t* generation) {
+            return readAndValidatePage(path, staging, generation);
+        })) return false;
 
     if (&scene != &staging) {
       std::memcpy(scene.synthABanks, staging.synthABanks,
