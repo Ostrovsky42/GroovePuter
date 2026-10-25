@@ -253,6 +253,8 @@ Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 | `Tab` | Cycle NOTES / KNOBS / MORE |
 | `Left/Right` | Focus/change value |
 | `Up/Down` | Adjust value/select row |
+| `Enter` on MORE `TYPE` | Open the synthesizer engine list; Up/Down selects, Enter applies, Esc cancels |
+| `Enter` on `PRESET` | Open the current engine's sound presets; DUAL OSC also opens this from its MAIN Preset knob |
 | `Ctrl+1..2` | Pattern bank A/B |
 | `Q..I` | Pattern selection when NOTE mode is off |
 | `A/Z S/X D/C F/V` | Quick parameter controls |

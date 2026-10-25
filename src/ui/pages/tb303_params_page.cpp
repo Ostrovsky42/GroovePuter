@@ -414,6 +414,11 @@ void TB303ParamsPage::cycleEngine(int direction) {
   if (index < 0) index += static_cast<int>(options.size());
 
   const std::string selected = options[index];
+  applyEngine(selected);
+}
+
+void TB303ParamsPage::applyEngine(const std::string& selected) {
+  if (selected == mini_acid_.currentSynthEngineName(voice_index_)) return;
   withAudioGuard([&]() { mini_acid_.setSynthEngine(voice_index_, selected); });
 
   char toast[32];
@@ -886,13 +891,21 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
-                           "[ENTER]PRESET [ALT+R]SOURCE");
+                           "[ENTER]LIST [ALT+R]SOURCE");
   }
-  const int n = presetCount();
-  const char* labels[kDualOscPresetCount];
-  for (int i = 0; i < n; ++i) labels[i] = isDualOsc() ? kDualOscPresetNames[i]
-      : isTb303Engine() ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
-  preset_popup_.draw(gfx, labels);
+  if (engine_popup_ && preset_popup_.isOpen()) {
+    const auto options = availableSynthEngines(mini_acid_);
+    std::vector<const char*> labels;
+    labels.reserve(options.size());
+    for (const auto& option : options) labels.push_back(option.c_str());
+    preset_popup_.draw(gfx, labels.data());
+  } else {
+    const int n = presetCount();
+    const char* labels[kDualOscPresetCount];
+    for (int i = 0; i < n; ++i) labels[i] = isDualOsc() ? kDualOscPresetNames[i]
+        : isTb303Engine() ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
+    preset_popup_.draw(gfx, labels);
+  }
 }
 
 const std::string& TB303ParamsPage::getTitle() const {
@@ -906,8 +919,21 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
 
   if (preset_popup_.isOpen()) {
     const auto result = preset_popup_.handleEvent(ui_event);
-    if (result == UI::SelectionPopupResult::Confirmed) applyPreset(preset_popup_.selectedIndex());
+    if (result == UI::SelectionPopupResult::Confirmed) {
+      const int index = preset_popup_.selectedIndex();
+      if (engine_popup_) {
+        const auto options = availableSynthEngines(mini_acid_);
+        if (index < static_cast<int>(options.size())) applyEngine(options[index]);
+      } else {
+        applyPreset(index);
+      }
+    }
     return true;
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == '\n' || ui_event.key == '\r') &&
+      engine_type_control_ && engine_type_control_->isFocused()) {
+    openEnginePopup(); return true;
   }
   if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == 'r' || ui_event.key == 'R' || ui_event.scancode == GROOVEPUTER_R)) {
@@ -1095,8 +1121,16 @@ int TB303ParamsPage::currentPresetIndex() const {
 }
 void TB303ParamsPage::openPresetPopup() {
   if (!hasSoundPresets()) return;
+  engine_popup_ = false;
   const int index = currentPresetIndex();
   preset_popup_.open(isDualOsc() ? "DUAL OSC PRESET" : "SOUND PRESET", presetCount(), index < 0 ? 0 : index);
+}
+void TB303ParamsPage::openEnginePopup() {
+  const auto options = availableSynthEngines(mini_acid_);
+  if (options.empty()) return;
+  const int index = findEngineIndex(options, mini_acid_.currentSynthEngineName(voice_index_));
+  engine_popup_ = true;
+  preset_popup_.open("SYNTH TYPE", static_cast<uint8_t>(options.size()), index < 0 ? 0 : index);
 }
 void TB303ParamsPage::applyPreset(int index) {
   if (!hasSoundPresets()) return;

@@ -84,6 +84,42 @@ int main() {
       auto send = [&](UIEvent event) { assert(page.handleEvent(event)); };
       auto preset = [&]() { return engine.synthParameter(voice, 0).optionIndex(); };
       draw();
+      // TYPE uses the same modal interaction, while L/R remains a stepper.
+      page.showMoreTab(true);
+      draw();
+      const auto revisionBeforeType = GroovePuterState::sceneRevisionSnapshot();
+      auto enterType = character('\r');
+      (void)page.handleEvent(enterType);
+      draw();
+      assert(drawn(gfx, "SYNTH TYPE"));
+      send(navigation(GROOVEPUTER_DOWN));  // DUAL OSC -> first item, TB303.
+      const char* types[] = {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH", "DUAL OSC"};
+      for (int index = 0; index < 7; ++index) {
+        draw();
+        assert(drawn(gfx, types[index]));
+        assert(engine.currentSynthEngineName(voice) == "DUAL OSC");
+        if (index < 6) send(navigation(GROOVEPUTER_DOWN));
+      }
+      send(character(0x1b));
+      assert(engine.currentSynthEngineName(voice) == "DUAL OSC");
+      assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == revisionBeforeType.currentRevision);
+      const auto otherEngine = engine.currentSynthEngineName(1 - voice);
+      send(character('\r'));
+      send(navigation(GROOVEPUTER_DOWN));
+      send(character('\r'));
+      assert(engine.currentSynthEngineName(voice) == "TB303");
+      assert(engine.currentSynthEngineName(1 - voice) == otherEngine);
+      draw();
+      send(navigation(GROOVEPUTER_LEFT));
+      assert(engine.currentSynthEngineName(voice) == "DUAL OSC");
+      send(navigation(GROOVEPUTER_RIGHT));
+      assert(engine.currentSynthEngineName(voice) == "TB303");
+      send(character('\r'));
+      send(navigation(GROOVEPUTER_UP));
+      send(character('\r'));
+      assert(engine.currentSynthEngineName(voice) == "DUAL OSC");
+      page.showMoreTab(false);
+      draw();
       send(character('\r'));
       for (int index = 0; index < 13; ++index) {
         draw();

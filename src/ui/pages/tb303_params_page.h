@@ -39,7 +39,9 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   int presetCount() const;
   int currentPresetIndex() const;
   void openPresetPopup();
+  void openEnginePopup();
   void applyPreset(int index);
+  void applyEngine(const std::string& name);
   UI::SelectionPopup preset_popup_;
   void cycleEngine(int direction);
   void adjustGenericParameter(int parameterIndex, int direction, bool fine);
@@ -60,6 +62,7 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   int voice_index_;
   int current_preset_index_ = -1;
   bool initialized_ = false;
+  bool engine_popup_ = false;
   std::shared_ptr<KnobComponent> cutoff_knob_;
   std::shared_ptr<KnobComponent> resonance_knob_;
   std::shared_ptr<KnobComponent> env_amount_knob_;
