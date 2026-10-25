@@ -45,5 +45,13 @@
   "hardware_interaction_uptime_ms": [
     130009,
     255023
-  ]
+  ],
+  "unpaired_495_control_free_internal_bytes": 19480,
+  "unpaired_495_control_largest_block_bytes": 10740,
+  "unpaired_candidate_free_internal_delta_bytes": [
+    48,
+    52
+  ],
+  "unpaired_candidate_largest_block_delta_bytes": 0,
+  "memory_comparison_status": "CONTEXT_ONLY_NOT_PAIRED_GATE"
 }
