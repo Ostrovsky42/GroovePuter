@@ -15,10 +15,10 @@
   "host_persistence_suite": "PASS",
   "sdl_forced_build": "PASS",
   "cardputer_adv_build": "PASS",
-  "hardware_load_save_sd_failure_runtime_gates": "NOT_TESTED",
+  "hardware_load_save_sd_failure_runtime_gates": "OPEN; 60s passive serial capture: 12 PERF samples, 0 underruns, freeInt 19528 B, largest 10740 B; Save/Reset/Load and SD-failure pending",
   "push": false,
   "merge": false,
-  "flash": false,
+  "flash": true,
   "hardware_monitor_path": "hardware-monitor.serial",
   "hardware_monitor_sha256": "ba27955098c9a0da6fe246defd57ef3e98437eb3b8a9f29418821851f3a82274",
   "hardware_monitor_duration_seconds": 60,
@@ -27,5 +27,23 @@
   "hardware_free_internal_bytes": 19528,
   "hardware_largest_block_bytes": 10740,
   "save_reset_load": "PENDING_USER_CONFIRMATION",
-  "sd_failure_injection": "NOT_TESTED"
+  "sd_failure_injection": "NOT_TESTED",
+  "upload_sha_verified": true,
+  "uploaded_bin_sha256": "88f10f6f106ab63e4dd6be452b6be569cb435340b119fba88737ae30545e70e9",
+  "upload_port": "/dev/ttyACM0",
+  "upload_date": "2026-10-25",
+  "hardware_interaction_capture_path": "hardware-interaction.serial",
+  "hardware_interaction_capture_sha256": "07a2734b3dff781523f646f57e65450cc72272acca2382ca1e2bdf65a4578ad0",
+  "hardware_interaction_capture_duration_seconds": 125,
+  "hardware_interaction_perf_samples": 27,
+  "hardware_interaction_underruns": 0,
+  "hardware_interaction_free_internal_range_bytes": [
+    19528,
+    19532
+  ],
+  "hardware_interaction_largest_block_bytes": 10740,
+  "hardware_interaction_uptime_ms": [
+    130009,
+    255023
+  ]
 }

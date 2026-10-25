@@ -22,6 +22,12 @@ Scene JSON/project formats and material identities are unchanged. No persistent 
 - Source contracts: output ownership, memory instrumentation applicability, sampler persistence/atomic pointer ordering, scene revision.
 - SDL: forced full build with `make -B -C platform_sdl -j2 CXX=g++`.
 - Cardputer ADV: clean frozen-FQBN build via `scripts/build_cardputer_dynbuffers.sh`; DRAM limit remains 191488 bytes. Exact final BIN SHA and `.data/.bss/flash` are in `build-evidence.txt`.
-- Hardware Save/Reset/Load, SD failure, G1/G3/G6 and runtime memory tests are NOT TESTED on this repair image.
+- The repair image was flashed with esptool hash verification. Hardware Save/Reset/Load confirmation and SD-failure tests remain OPEN; the 60s passive capture is recorded below and is not a workload gate.
 
-No push, merge, or flash performed.
+No push or merge performed.
+
+## First device observation
+
+BIN SHA matched before upload; esptool wrote the app and verified the device flash hash, then hard-reset. A 60-second serial capture (`hardware-monitor.serial`) recorded 12 PERF samples: underruns remained 0; audio load 6.2–6.7%, peak 7.0–7.7%, free internal heap 19528 B and largest block 10740 B throughout this passive window. MIDI USB mounted. This is a short idle observation only, not the 30-minute runtime gate or paired #495 benchmark. Boot screen and Save→Reset→Load await user confirmation; SD-failure testing remains OPEN.
+
+A second passive serial capture (`hardware-interaction.serial`, 125 seconds / 27 PERF samples) continued the same idle observation: 0 underruns; audio load 6.2–7.0%, peak 7.7–9.7%, free internal heap 19528–19532 B and largest block 10740 B. Serial uptime advanced monotonically from 130009 to 255023 ms, with no reset marker. No Save/Load interaction was visible in this capture, so it does not close G1, G6 or the 30-minute runtime gate.
