@@ -3148,6 +3148,42 @@ bool validateStoredProjectMaterial(const Scene& resident) {
                         fs.exists(legacyPath.c_str()));
           Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
                         page, voice, slot, project.c_str());
+          // Check whether the same project's Melody folder contains a valid
+          // Synth B payload under another global slot. This is read-only and
+          // helps distinguish a missing file from a stale slot address.
+          const std::string melodyDirectoryPath =
+              "/projects/" + project + "/melody";
+          File melodyDirectory = SD.open(melodyDirectoryPath.c_str(), FILE_READ);
+          if (melodyDirectory && melodyDirectory.isDirectory()) {
+            for (File entry = melodyDirectory.openNextFile(); entry;
+                 entry = melodyDirectory.openNextFile()) {
+              const bool isDirectory = entry.isDirectory();
+              std::string leaf = entry.name();
+              entry.close();
+              if (isDirectory) continue;
+              const size_t slash = leaf.find_last_of('/');
+              if (slash != std::string::npos) leaf.erase(0, slash + 1);
+              if (leaf.compare(0, 5, "v1_g") != 0 ||
+                  leaf.size() < 10 ||
+                  leaf.compare(leaf.size() - 5, 5, ".gpml") != 0) continue;
+              int candidateSlot = -1;
+              if (std::sscanf(leaf.c_str(), "v1_g%3d_", &candidateSlot) != 1 ||
+                  candidateSlot < 0 || candidateSlot >= kMaxGlobalPatterns) continue;
+              const std::string fullPath = melodyDirectoryPath + "/" + leaf;
+              std::vector<uint8_t> payload;
+              uint32_t generation = 0;
+              if (fs.read(fullPath.c_str(), payload) &&
+                  MelodyStore::decode(payload.data(), payload.size(), verified,
+                                      &generation)) {
+                Serial.printf("[SCENE-MATERIAL] same_project_candidate slot=%d bars=%u events=%u gen=%u\n",
+                              candidateSlot,
+                              static_cast<unsigned>(verified.lengthTicks /
+                                  PhraseRuntime::kTicksPerBar),
+                              static_cast<unsigned>(verified.count), generation);
+              }
+            }
+          }
+          melodyDirectory.close();
           // Read-only recovery census: a prior Save As or interrupted project
           // migration may have left the payload under another project name.
           // Never copy or publish it automatically; report valid candidates so
