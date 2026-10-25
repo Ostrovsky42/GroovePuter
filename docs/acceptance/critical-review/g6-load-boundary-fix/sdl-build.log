@@ -1,0 +1,1707 @@
+make: Entering directory '/tmp/gp-g6-failed-load-64ae/platform_sdl'
+g++ -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME -I/usr/include/SDL2 -D_REENTRANT -I/usr/include/SDL2 -D_REENTRANT  ../src/dsp/filter.cpp ../src/dsp/mini_tb303.cpp ../src/dsp/mini_drumvoices.cpp ../src/dsp/tube_distortion.cpp ../src/dsp/miniacid_engine.cpp ../src/dsp/atlas_runtime.cpp ../src/dsp/swappable_synth_voice.cpp ../src/dsp/sid_synth_voice.cpp ../src/dsp/sid_synth.cpp ../src/dsp/ay_synth_voice.cpp ../src/dsp/sh101_synth_voice.cpp ../src/dsp/sn76489_synth_voice.cpp ../src/dsp/wave_morph_synth_voice.cpp ../src/dsp/mode_manager.cpp ../src/dsp/genre_manager.cpp ../src/dsp/audio_wavetables.cpp ../src/dsp/formant_synth.cpp ../src/dsp/pattern_generator.cpp ../src/dsp/tape_fx.cpp ../src/dsp/tape_looper.cpp ../src/dsp/drum_reverb.cpp ../src/dsp/one_knob_compressor.cpp ../src/dsp/transient_shaper.cpp ../src/dsp/groove_profile.cpp ../src/dsp/advanced_pattern_generator.cpp ../src/phrase/runtime_synth_events.cpp ../src/phrase/runtime_synth_playback.cpp ../src/generation/generation_context.cpp ../src/generation/composition/rhythm_selection.cpp ../src/generation/composition/generation_profile.cpp ../src/generation/composition/phrase_length_request.cpp ../src/generation/composition/tonal_profile.cpp ../src/generation/feel/feel_interpreter.cpp ../src/generation/feel/feel_pattern_adapter.cpp ../src/generation/rhythm/rhythm_catalog.cpp ../src/generation/rhythm/relationship_resolver.cpp ../src/generation/rhythm/rhythm_realizer.cpp ../src/generation/rhythm/rhythm_realizer_evolution.cpp ../src/generation/rhythm/reference_vocabulary.cpp ../src/generation/rhythm/reference_phrase_vocabulary.cpp ../src/generation/rhythm/bar_evolution.cpp ../src/generation/materialization/pattern_materializer.cpp ../src/generation/roles/semantic_pattern_projector.cpp ../src/generation/roles/bass_rhythm.cpp ../src/generation/roles/bass_pitch_behavior.cpp ../src/generation/roles/chord_rhythm.cpp ../src/generation/roles/chord_progression.cpp ../src/generation/roles/melodic_motif.cpp ../src/generation/roles/melodic_pitch_intent.cpp ../src/generation/tonal/tonal_projector.cpp ../src/generation/tonal/tonal_materializer.cpp ../src/generation/harmony/harmonic_source.cpp ../src/generation/harmony/song_harmonic_state.cpp ../src/generation/harmony/harmonic_source_codec.cpp ../src/generation/harmony/harmonic_fingerprint.cpp ../src/generation/harmony/song_variant_genome.cpp ../src/generation/harmony/genre_harmonic_policy.cpp ../src/generation/harmony/harmonic_relation.cpp ../src/generation/harmony/pitch_set.cpp ../src/generation/harmony/corpus_prior.cpp ../src/generation/harmony/harmonic_candidate.cpp ../src/generation/harmony/harmonic_route.cpp ../src/generation/harmony/phrase_graph_route_builder.cpp ../src/generation/phrase/phrase_evolution.cpp ../src/generation/migration/tonal_pattern_adapter.cpp ../src/generation/migration/strong_rhythm_migration.cpp ../src/generation/migration/strong_rhythm_live_bridge.cpp ../src/generation/migration/phrase_execution.cpp ../src/input/performance_keyboard.cpp ../src/input/internal_synth_output.cpp ../src/ui/miniacid_display.cpp ../src/ui/global_midi_sync_overlay.cpp ../src/ui/cassette_skin.cpp ../src/ui/led_manager.cpp ../src/ui/ui_core.cpp ../src/ui/ui_common.cpp ../src/ui/ui_themes.cpp ../src/ui/layout_manager.cpp ../src/ui/ui_widgets.cpp ../src/ui/ui_clipboard.cpp ../src/ui/midi_file_manager.cpp ../src/platform/cardputer_ui_session.cpp ../src/platform/cardputer_material_publication_session.cpp ../src/platform/cardputer_usb_role_runtime.cpp ../src/platform/cardputer_usb_host_midi.cpp ../src/ui/pages/help_page.cpp ../src/ui/pages/help_dialog.cpp ../src/ui/pages/tb303_params_page.cpp ../src/ui/pages/waveform_page.cpp ../src/ui/pages/voice_page.cpp ../src/ui/pages/color_test_page.cpp ../src/ui/pages/pattern_edit_page.cpp ../src/ui/pages/synth_sequencer_page.cpp ../src/ui/pages/drum_sequencer_page.cpp ../src/ui/pages/drum_automation_page.cpp ../src/ui/pages/song_page.cpp ../src/ui/pages/phrase_page.cpp ../src/ui/pages/project_page.cpp ../src/ui/pages/genre_page.cpp ../src/ui/pages/perform_page.cpp ../src/ui/pages/smf_player_page.cpp ../src/ui/pages/smf_player_page_structural.cpp ../src/ui/pages/sequencer_hub_page.cpp ../src/ui/pages/sequencer_hub_page_midi.cpp ../src/ui/pages/feel_page.cpp ../src/ui/pages/sampler_page.cpp ../src/ui/pages/tape_page.cpp ../src/ui/components/pattern_selection_bar.cpp ../src/ui/components/bank_selection_bar.cpp ../src/ui/components/label_option.cpp ../src/ui/components/drum_sequencer_grid.cpp ../src/audio/desktop_audio_recorder.cpp ../src/audio/wasm_audio_recorder.cpp ../src/audio/pattern_paging.cpp ../src/audio/pattern_project_cleanup.cpp ../src/audio/midi_importer.cpp ../src/sampler/sample_loader.cpp ../src/sampler/ram_sample_store.cpp ../src/sampler/sample_index.cpp ../src/sampler/sampler_voice.cpp ../src/sampler/sampler_pool.cpp ../src/sampler/drum_sampler_track.cpp ../cardputer_display.cpp ../scenes.cpp ../json_evented.cpp sdl_main.cpp sdl_display.cpp scene_storage_sdl.cpp -lSDL2 -lSDL2_gfx -lSDL2  -o grooveputer
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/dsp/miniacid_engine.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/melody_promotion.h:16,
+                 from ../src/dsp/miniacid_engine.cpp:8:
+../src/platform/log.h: In instantiation of ‘void log_debug(const char*, Args ...) [with Args = {}]’:
+../src/dsp/miniacid_engine.cpp:5754:5:   required from here
+../src/platform/log.h:39:16: warning: format not a string literal and no format arguments [-Wformat-security]
+   39 |     std::printf(fmt, args...);
+      |     ~~~~~~~~~~~^~~~~~~~~~~~~~
+In file included from ../src/dsp/atlas_runtime.h:4,
+                 from ../src/dsp/atlas_runtime.cpp:1:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/mode_manager.h:9,
+                 from ../src/dsp/mode_manager.cpp:1:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/genre_manager.cpp:4:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/tape_fx.h:6,
+                 from ../src/dsp/tape_fx.cpp:3:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/tape_looper.h:4,
+                 from ../src/dsp/tape_looper.cpp:3:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/groove_profile.h:4,
+                 from ../src/dsp/groove_profile.cpp:1:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/dsp/advanced_pattern_generator.h:5,
+                 from ../src/dsp/advanced_pattern_generator.cpp:1:
+../src/dsp/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/dsp/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/dsp/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/dsp/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/dsp/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/phrase/runtime_synth_events.h:8,
+                 from ../src/phrase/runtime_synth_events.cpp:1:
+../src/phrase/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/phrase/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/phrase/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/phrase/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/phrase/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/phrase/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/phrase/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/phrase/runtime_synth_events.h:8,
+                 from ../src/phrase/runtime_synth_playback.h:6,
+                 from ../src/phrase/runtime_synth_playback.cpp:1:
+../src/phrase/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/phrase/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/phrase/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/phrase/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/phrase/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/phrase/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/phrase/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/composition/rhythm_selection.cpp:5:
+../src/generation/composition/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/composition/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/composition/generation_profile.cpp:5:
+../src/generation/composition/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/composition/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/composition/tonal_profile.cpp:3:
+../src/generation/composition/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/composition/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/composition/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/composition/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/feel/../materialization/pattern_materializer.h:8,
+                 from ../src/generation/feel/feel_pattern_adapter.h:5,
+                 from ../src/generation/feel/feel_pattern_adapter.cpp:1:
+../src/generation/feel/../materialization/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/feel/../materialization/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/feel/../materialization/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/feel/../materialization/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/feel/../materialization/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/feel/../materialization/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/feel/../materialization/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/materialization/pattern_materializer.h:8,
+                 from ../src/generation/materialization/pattern_materializer.cpp:1:
+../src/generation/materialization/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/materialization/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/materialization/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/materialization/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/materialization/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/materialization/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/materialization/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/roles/semantic_pattern_projector.h:6,
+                 from ../src/generation/roles/semantic_pattern_projector.cpp:1:
+../src/generation/roles/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/roles/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/roles/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/roles/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/roles/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/roles/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/roles/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/harmony/genre_harmonic_policy.cpp:3:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/harmony/phrase_graph_route_builder.cpp:9:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/migration/tonal_pattern_adapter.h:6,
+                 from ../src/generation/migration/tonal_pattern_adapter.cpp:1:
+../src/generation/migration/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/migration/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/migration/strong_rhythm_migration.h:6,
+                 from ../src/generation/migration/strong_rhythm_migration.cpp:1:
+../src/generation/migration/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/migration/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/migration/strong_rhythm_migration.h:6,
+                 from ../src/generation/migration/strong_rhythm_live_bridge.h:4,
+                 from ../src/generation/migration/strong_rhythm_live_bridge.cpp:1:
+../src/generation/migration/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/migration/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/generation/migration/strong_rhythm_migration.h:6,
+                 from ../src/generation/migration/phrase_semantic_result.h:10,
+                 from ../src/generation/migration/phrase_execution.h:9,
+                 from ../src/generation/migration/phrase_execution.cpp:1:
+../src/generation/migration/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/generation/migration/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/generation/migration/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/generation/migration/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/input/internal_synth_output.cpp:3:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/miniacid_display.cpp:4:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/miniacid_display.h:20,
+                 from ../src/ui/miniacid_display.cpp:2:
+../src/ui/workspace_launcher_overlay.h: In member function ‘void WorkspaceLauncherOverlay::draw(IGfx&) const’:
+../src/ui/workspace_launcher_overlay.h:187:58: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size between 4 and 24 [-Wformat-truncation=]
+  187 |         std::snprintf(memory, sizeof(memory), "MEM %d %d %d %d %d",
+      |                                                          ^~
+../src/ui/workspace_launcher_overlay.h:187:47: note: directive argument in the range [-2147483647, 2147483647]
+  187 |         std::snprintf(memory, sizeof(memory), "MEM %d %d %d %d %d",
+      |                                               ^~~~~~~~~~~~~~~~~~~~
+../src/ui/workspace_launcher_overlay.h:187:47: note: directive argument in the range [-2147483647, 2147483647]
+../src/ui/workspace_launcher_overlay.h:187:47: note: directive argument in the range [-2147483647, 2147483647]
+../src/ui/workspace_launcher_overlay.h:187:22: note: ‘snprintf’ output between 14 and 64 bytes into a destination of size 32
+  187 |         std::snprintf(memory, sizeof(memory), "MEM %d %d %d %d %d",
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  188 |                       child_by_workflow_[0] + 1,
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  189 |                       child_by_workflow_[1] + 1,
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  190 |                       child_by_workflow_[2] + 1,
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  191 |                       child_by_workflow_[3] + 1,
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  192 |                       child_by_workflow_[4] + 1);
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/global_midi_sync_overlay.cpp:6:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/led_manager.h:5,
+                 from ../src/ui/led_manager.cpp:1:
+../src/ui/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/ui/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/ui/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/ui/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/ui/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/ui_status_chrome.h:7,
+                 from ../src/ui/ui_common.h:6,
+                 from ../src/ui/ui_common.cpp:1:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/ui_status_chrome.h:7,
+                 from ../src/ui/layout_manager.cpp:3:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/ui_clipboard.h:3,
+                 from ../src/ui/ui_clipboard.cpp:1:
+../src/ui/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/ui/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/ui/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/ui/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/ui/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/audio/midi_importer.h:5,
+                 from ../src/ui/midi_file_manager.h:9,
+                 from ../src/ui/midi_file_manager.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/undo_receipts.h:11,
+                 from ../src/ui/pages/tb303_params_page.cpp:2:
+../src/state/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/state/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/state/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/state/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/state/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/state/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/state/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/ui/pages/../../dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/voice_page.cpp:2:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/pages/../ui_status_chrome.h:7,
+                 from ../src/ui/pages/../ui_common.h:6,
+                 from ../src/ui/pages/color_test_page.cpp:4:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/ui/pages/../../dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/pattern_edit_page.h:9,
+                 from ../src/ui/pages/pattern_edit_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/pages/../../phrase/runtime_synth_events.h:8,
+                 from ../src/ui/pages/../../phrase/runtime_phrase_edit.h:10,
+                 from ../src/ui/pages/../phrase_notes_cursor.h:7,
+                 from ../src/ui/pages/synth_sequencer_page.h:5,
+                 from ../src/ui/pages/synth_sequencer_page.cpp:1:
+../src/ui/pages/../../phrase/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/ui/pages/../../phrase/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/pages/../../phrase/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/ui/pages/../../phrase/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/ui/pages/../../phrase/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/pages/../../phrase/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/ui/pages/../../phrase/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+../src/ui/pages/synth_sequencer_page.cpp: In member function ‘void SynthSequencerPage::drawPhraseRoll(IGfx&)’:
+../src/ui/pages/synth_sequencer_page.cpp:305:58: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+  305 |   std::snprintf(melodyLabel, sizeof(melodyLabel), "MEL %c%d%s",
+      |                                                          ^~
+../src/ui/pages/synth_sequencer_page.cpp:305:51: note: directive argument in the range [-2147483647, 2147483647]
+  305 |   std::snprintf(melodyLabel, sizeof(melodyLabel), "MEL %c%d%s",
+      |                                                   ^~~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:305:16: note: ‘snprintf’ output 7 or more bytes (assuming 17) into a destination of size 12
+  305 |   std::snprintf(melodyLabel, sizeof(melodyLabel), "MEL %c%d%s",
+      |   ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  306 |                 static_cast<char>('A' + mini_acid_.current303BankIndex(voice_index_)),
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  307 |                 mini_acid_.display303LocalPatternIndex(voice_index_) + 1,
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  308 |                 mini_acid_.hasUnsavedWorkingMelody(voice_index_) ? "*" : "");
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:502:41: warning: ‘%d’ directive output may be truncated writing between 1 and 10 bytes into a region of size 7 [-Wformat-truncation=]
+  502 |     std::snprintf(more, sizeof(more), "^%d", aboveWindow);
+      |                                         ^~
+../src/ui/pages/synth_sequencer_page.cpp:502:39: note: directive argument in the range [1, 2147483647]
+  502 |     std::snprintf(more, sizeof(more), "^%d", aboveWindow);
+      |                                       ^~~~~
+../src/ui/pages/synth_sequencer_page.cpp:502:18: note: ‘snprintf’ output between 3 and 12 bytes into a destination of size 8
+  502 |     std::snprintf(more, sizeof(more), "^%d", aboveWindow);
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:507:41: warning: ‘%d’ directive output may be truncated writing between 1 and 10 bytes into a region of size 7 [-Wformat-truncation=]
+  507 |     std::snprintf(more, sizeof(more), "v%d", belowWindow);
+      |                                         ^~
+../src/ui/pages/synth_sequencer_page.cpp:507:39: note: directive argument in the range [1, 2147483647]
+  507 |     std::snprintf(more, sizeof(more), "v%d", belowWindow);
+      |                                       ^~~~~
+../src/ui/pages/synth_sequencer_page.cpp:507:18: note: ‘snprintf’ output between 3 and 12 bytes into a destination of size 8
+  507 |     std::snprintf(more, sizeof(more), "v%d", belowWindow);
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp: In member function ‘void SynthSequencerPage::drawPhraseList(IGfx&)’:
+../src/ui/pages/synth_sequencer_page.cpp:707:65: warning: ‘%s’ directive output may be truncated writing up to 23 bytes into a region of size between 16 and 31 [-Wformat-truncation=]
+  707 |     std::snprintf(status, sizeof(status), "NOTE %u OF %u   %s   %s",
+      |                                                                 ^~
+  708 |                   static_cast<unsigned>(selectedRow) + 1u,
+  709 |                   static_cast<unsigned>(phrase.count), name, length);
+      |                                                              ~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:707:18: note: ‘snprintf’ output between 18 and 56 bytes into a destination of size 48
+  707 |     std::snprintf(status, sizeof(status), "NOTE %u OF %u   %s   %s",
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  708 |                   static_cast<unsigned>(selectedRow) + 1u,
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  709 |                   static_cast<unsigned>(phrase.count), name, length);
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp: In member function ‘bool SynthSequencerPage::addChordTone()’:
+../src/ui/pages/synth_sequencer_page.cpp:1179:62: warning: ‘ OFF KEY’ directive output may be truncated writing 8 bytes into a region of size between 2 and 30 [-Wformat-truncation=]
+ 1179 |       std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  %s OFF KEY", low, mid,
+      |                                                              ^~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:1179:20: note: ‘snprintf’ output between 19 and 47 bytes into a destination of size 40
+ 1179 |       std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  %s OFF KEY", low, mid,
+      |       ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1180 |                     name, low);
+      |                     ~~~~~~~~~~
+../src/ui/pages/synth_sequencer_page.cpp:1177:69: warning: ‘snprintf’ output may be truncated before the last format character [-Wformat-truncation=]
+ 1177 |       std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+C ARP", low, mid, name);
+      |                                                                     ^
+../src/ui/pages/synth_sequencer_page.cpp:1177:20: note: ‘snprintf’ output between 20 and 41 bytes into a destination of size 40
+ 1177 |       std::snprintf(toast, sizeof(toast), "CHORD %s %s %s  ALT+C ARP", low, mid, name);
+      |       ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/drum_automation_page.h:4,
+                 from ../src/ui/pages/drum_sequencer_page.cpp:2:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/pages/drum_sequencer_page.cpp:96:
+../src/ui/pages/drum_sequencer_page_legacy.h: In member function ‘void DrumSequencerMainPage::drawRetroClassicStyle(IGfx&)’:
+../src/ui/pages/drum_sequencer_page_legacy.h:946:55: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 9 [-Wformat-truncation=]
+  946 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |                                                       ^~
+../src/ui/pages/drum_sequencer_page_legacy.h:946:47: note: directive argument in the range [-2147483647, 2147483647]
+  946 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |                                               ^~~~~~~~~~~
+../src/ui/pages/drum_sequencer_page_legacy.h:946:18: note: ‘snprintf’ output between 9 and 19 bytes into a destination of size 16
+  946 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/drum_sequencer_page_legacy.h: In member function ‘void DrumSequencerMainPage::drawAmberStyle(IGfx&)’:
+../src/ui/pages/drum_sequencer_page_legacy.h:996:55: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 9 [-Wformat-truncation=]
+  996 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |                                                       ^~
+../src/ui/pages/drum_sequencer_page_legacy.h:996:47: note: directive argument in the range [-2147483647, 2147483647]
+  996 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |                                               ^~~~~~~~~~~
+../src/ui/pages/drum_sequencer_page_legacy.h:996:18: note: ‘snprintf’ output between 9 and 19 bytes into a destination of size 16
+  996 |     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/drum_sequencer_page_legacy.h: In member function ‘void DrumSequencerMainPage::drawMinimalStyle(IGfx&)’:
+../src/ui/pages/drum_sequencer_page_legacy.h:907:40: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+  907 |   snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+      |                                        ^~
+../src/ui/pages/drum_sequencer_page_legacy.h:907:38: note: directive argument in the range [-2147483647, 2147483647]
+  907 |   snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+      |                                      ^~~~~
+../src/ui/pages/drum_sequencer_page_legacy.h:907:11: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+  907 |   snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/drum_automation_page.h:4,
+                 from ../src/ui/pages/drum_automation_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/pages/song_page.h:5,
+                 from ../src/ui/pages/song_page.cpp:1:
+../src/ui/pages/../../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/ui/pages/../../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/pages/../../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/ui/pages/../../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/ui/pages/../../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/ui/pages/../../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/ui/pages/../../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+../src/ui/pages/song_page.cpp: In lambda function:
+../src/ui/pages/song_page.cpp:1888:46: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 8 [-Wformat-truncation=]
+ 1888 |       std::snprintf(rowBuf, sizeof(rowBuf), "%d", row + 1);
+      |                                              ^~
+../src/ui/pages/song_page.cpp:1888:45: note: directive argument in the range [-2147483647, 128]
+ 1888 |       std::snprintf(rowBuf, sizeof(rowBuf), "%d", row + 1);
+      |                                             ^~~~
+../src/ui/pages/song_page.cpp:1888:20: note: ‘snprintf’ output between 2 and 12 bytes into a destination of size 8
+ 1888 |       std::snprintf(rowBuf, sizeof(rowBuf), "%d", row + 1);
+      |       ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:1900:59: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 1900 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                           ^~
+../src/ui/pages/song_page.cpp:1900:57: note: directive argument in the range [-2147483647, 128]
+ 1900 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~~~~
+../src/ui/pages/song_page.cpp:1900:24: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 1900 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |           ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:1959:57: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 1959 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~
+../src/ui/pages/song_page.cpp:1959:55: note: directive argument in the range [-2147483647, 128]
+ 1959 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                       ^~~~~
+../src/ui/pages/song_page.cpp:1959:22: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 1959 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp: In lambda function:
+../src/ui/pages/song_page.cpp:2464:46: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 8 [-Wformat-truncation=]
+ 2464 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |                                              ^~
+../src/ui/pages/song_page.cpp:2464:45: note: directive argument in the range [-2147483647, 128]
+ 2464 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |                                             ^~~~
+../src/ui/pages/song_page.cpp:2464:20: note: ‘snprintf’ output between 2 and 12 bytes into a destination of size 8
+ 2464 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |       ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:2478:59: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 2478 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                           ^~
+../src/ui/pages/song_page.cpp:2478:57: note: directive argument in the range [-2147483647, 128]
+ 2478 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~~~~
+../src/ui/pages/song_page.cpp:2478:24: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 2478 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |           ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:2544:57: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 2544 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~
+../src/ui/pages/song_page.cpp:2544:55: note: directive argument in the range [-2147483647, 128]
+ 2544 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                       ^~~~~
+../src/ui/pages/song_page.cpp:2544:22: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 2544 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp: In lambda function:
+../src/ui/pages/song_page.cpp:2720:46: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 8 [-Wformat-truncation=]
+ 2720 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |                                              ^~
+../src/ui/pages/song_page.cpp:2720:45: note: directive argument in the range [-2147483647, 128]
+ 2720 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |                                             ^~~~
+../src/ui/pages/song_page.cpp:2720:20: note: ‘snprintf’ output between 2 and 12 bytes into a destination of size 8
+ 2720 |       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
+      |       ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:2735:59: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 2735 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                           ^~
+../src/ui/pages/song_page.cpp:2735:57: note: directive argument in the range [-2147483647, 128]
+ 2735 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~~~~
+../src/ui/pages/song_page.cpp:2735:24: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 2735 |           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |           ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:2801:57: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+ 2801 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                         ^~
+../src/ui/pages/song_page.cpp:2801:55: note: directive argument in the range [-2147483647, 128]
+ 2801 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |                                                       ^~~~~
+../src/ui/pages/song_page.cpp:2801:22: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+ 2801 |         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/ui/pages/song_page.cpp:3161:
+../src/ui/pages/song_page_form.inc: In member function ‘void SongPage::drawForm(IGfx&)’:
+../src/ui/pages/song_page_form.inc:164:67: warning: ‘ BARS’ directive output may be truncated writing 5 bytes into a region of size between 0 and 25 [-Wformat-truncation=]
+  164 |     std::snprintf(line, sizeof(line), "SRC %d-%d  INSERT AT %d  %u BARS",
+      |                                                                   ^~~~~
+../src/ui/pages/song_page_form.inc:164:18: note: ‘snprintf’ output between 29 and 63 bytes into a destination of size 48
+  164 |     std::snprintf(line, sizeof(line), "SRC %d-%d  INSERT AT %d  %u BARS",
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  165 |                   first + 1, first + count, first + count + 1,
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  166 |                   static_cast<unsigned>(EnergyCurve::totalBars(curve)));
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp: In member function ‘void SongPage::drawTEGridStyle(IGfx&)’:
+../src/ui/pages/song_page.cpp:2308:47: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size between 1 and 11 [-Wformat-truncation=]
+ 2308 |     snprintf(loopBuf, sizeof(loopBuf), "LP:%d-%d", loopStart, loopEnd);
+      |                                               ^~
+../src/ui/pages/song_page.cpp:2308:40: note: directive argument in the range [-2147483647, 2147483647]
+ 2308 |     snprintf(loopBuf, sizeof(loopBuf), "LP:%d-%d", loopStart, loopEnd);
+      |                                        ^~~~~~~~~~
+../src/ui/pages/song_page.cpp:2308:13: note: ‘snprintf’ output between 7 and 27 bytes into a destination of size 16
+ 2308 |     snprintf(loopBuf, sizeof(loopBuf), "LP:%d-%d", loopStart, loopEnd);
+      |     ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page_form.inc: In member function ‘bool SongPage::applyForm()’:
+../src/ui/pages/song_page_form.inc:76:63: warning: ‘  CTRL+Z’ directive output may be truncated writing 8 bytes into a region of size between 5 and 19 [-Wformat-truncation=]
+   76 |   std::snprintf(toast, sizeof(toast), "FORM: %u BARS AT ROW %d  CTRL+Z",
+      |                                                               ^~~~~~~~
+../src/ui/pages/song_page_form.inc:76:16: note: ‘snprintf’ output between 30 and 44 bytes into a destination of size 40
+   76 |   std::snprintf(toast, sizeof(toast), "FORM: %u BARS AT ROW %d  CTRL+Z",
+      |   ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   77 |                 static_cast<unsigned>(EnergyCurve::totalBars(form_curve_)),
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   78 |                 insertAt + 1);
+      |                 ~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp: In member function ‘bool SongPage::handleEventLegacyUnowned(UIEvent&)’:
+../src/ui/pages/song_page.cpp:1596:52: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 10 [-Wformat-truncation=]
+ 1596 |     std::snprintf(buf, sizeof(buf), "PHRASE <- ROW %d", row + 1);
+      |                                                    ^~
+../src/ui/pages/song_page.cpp:1596:37: note: directive argument in the range [-2147483647, 2147483647]
+ 1596 |     std::snprintf(buf, sizeof(buf), "PHRASE <- ROW %d", row + 1);
+      |                                     ^~~~~~~~~~~~~~~~~~
+../src/ui/pages/song_page.cpp:1596:18: note: ‘snprintf’ output between 16 and 26 bytes into a destination of size 24
+ 1596 |     std::snprintf(buf, sizeof(buf), "PHRASE <- ROW %d", row + 1);
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/phrase_page.h:9,
+                 from ../src/ui/pages/phrase_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/audio/midi_importer.h:5,
+                 from ../src/ui/pages/../midi_file_manager.h:9,
+                 from ../src/ui/pages/project_page.h:8,
+                 from ../src/ui/pages/project_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+../src/ui/pages/project_page.cpp: In member function ‘virtual void ProjectPage::draw(IGfx&)’:
+../src/ui/pages/project_page.cpp:1723:63: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+ 1723 |       case MainFocus::Load: std::snprintf(line, sizeof(line), ""); break;
+      |                                                               ^~
+../src/ui/pages/project_page.cpp:1724:65: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+ 1724 |       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), ""); break;
+      |                                                                 ^~
+../src/ui/pages/project_page.cpp:1725:62: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+ 1725 |       case MainFocus::New: std::snprintf(line, sizeof(line), ""); break;
+      |                                                              ^~
+../src/ui/pages/project_page.cpp:1726:69: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+ 1726 |       case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), ""); break;
+      |                                                                     ^~
+../src/ui/pages/project_page.cpp:1727:71: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+ 1727 |       case MainFocus::ClearProject: std::snprintf(line, sizeof(line), ""); break;
+      |                                                                       ^~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/genre_page.h:10,
+                 from ../src/ui/pages/genre_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/pages/../ui_status_chrome.h:7,
+                 from ../src/ui/pages/../ui_common.h:6,
+                 from ../src/ui/pages/perform_page.h:6,
+                 from ../src/ui/pages/perform_page.cpp:1:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/pages/../ui_status_chrome.h:7,
+                 from ../src/ui/pages/../ui_common.h:6,
+                 from ../src/ui/pages/smf_player_page.h:6,
+                 from ../src/ui/pages/smf_player_page.cpp:1:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/pages/smf_player_page.cpp:9:
+../src/ui/pages/smf_loop_keys.h: In function ‘void smf_loop_keys_detail::handleSmfLoopKey(GroovePuterMidi::ISmfPlayerService&, const GroovePuterMidi::SmfPlayerSnapshot&, SmfLoopKey)’:
+../src/ui/pages/smf_loop_keys.h:52:64: warning: ‘snprintf’ output may be truncated before the last format character [-Wformat-truncation=]
+   52 |         std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
+      |                                                                ^
+../src/ui/pages/smf_loop_keys.h:52:22: note: ‘snprintf’ output between 15 and 33 bytes into a destination of size 32
+   52 |         std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   53 |                       static_cast<unsigned long>(region.startBar),
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   54 |                       static_cast<unsigned long>(region.endBar));
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/smf_player_page.cpp: In member function ‘void SmfPlayerPageBase::drawNowPlaying(IGfx&)’:
+../src/ui/pages/smf_player_page.cpp:693:49: warning: ‘%lu’ directive output may be truncated writing between 1 and 10 bytes into a region of size between 8 and 17 [-Wformat-truncation=]
+  693 |         std::snprintf(chip, sizeof(chip), "L%lu-%lu",
+      |                                                 ^~~
+../src/ui/pages/smf_player_page.cpp:693:43: note: directive argument in the range [0, 4294967295]
+  693 |         std::snprintf(chip, sizeof(chip), "L%lu-%lu",
+      |                                           ^~~~~~~~~~
+../src/ui/pages/smf_player_page.cpp:693:22: note: ‘snprintf’ output between 5 and 23 bytes into a destination of size 20
+  693 |         std::snprintf(chip, sizeof(chip), "L%lu-%lu",
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  694 |                       static_cast<unsigned long>(state.loopStartBar),
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  695 |                       static_cast<unsigned long>(state.loopEndBar));
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/smf_player_page.cpp:773:72: warning: ‘ Q’ directive output may be truncated writing 2 bytes into a region of size between 0 and 39 [-Wformat-truncation=]
+  773 |     std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
+      |                                                                        ^~
+../src/ui/pages/smf_player_page.cpp:773:39: note: directive argument in the range [0, 65535]
+  773 |     std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
+      |                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/smf_player_page.cpp:773:18: note: ‘snprintf’ output between 29 and 72 bytes into a destination of size 64
+  773 |     std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
+      |     ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  774 |                   usbState,
+      |                   ~~~~~~~~~
+  775 |                   static_cast<unsigned>(usb.mounted),
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  776 |                   static_cast<unsigned long>(usb.txAccepted),
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  777 |                   static_cast<unsigned long>(usb.txRejected),
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  778 |                   static_cast<unsigned long>(usb.txRejectedEndpointBusy),
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  779 |                   static_cast<unsigned long>(usb.txRejectedEndpointStalled),
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  780 |                   static_cast<unsigned>(usb.queuedSmfEvents));
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/pages/../ui_status_chrome.h:7,
+                 from ../src/ui/pages/../ui_common.h:6,
+                 from ../src/ui/pages/smf_player_page.h:6,
+                 from ../src/ui/pages/smf_player_page_structural.cpp:2:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/sequencer_hub_page.h:6,
+                 from ../src/ui/pages/sequencer_hub_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+../src/ui/pages/sequencer_hub_page.cpp: In member function ‘bool SequencerHubPageBase::handleQuickKeys(UIEvent&)’:
+../src/ui/pages/sequencer_hub_page.cpp:1022:62: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size between 7 and 17 [-Wformat-truncation=]
+ 1022 |             std::snprintf(buf, sizeof(buf), "Track %d -> Pat %d", selectedTrack_ + 1, patIdx + 1);
+      |                                                              ^~
+../src/ui/pages/sequencer_hub_page.cpp:1022:45: note: directive argument in the range [-2147483647, 2147483647]
+ 1022 |             std::snprintf(buf, sizeof(buf), "Track %d -> Pat %d", selectedTrack_ + 1, patIdx + 1);
+      |                                             ^~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/sequencer_hub_page.cpp:1022:26: note: ‘snprintf’ output between 17 and 37 bytes into a destination of size 32
+ 1022 |             std::snprintf(buf, sizeof(buf), "Track %d -> Pat %d", selectedTrack_ + 1, patIdx + 1);
+      |             ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/sequencer_hub_page.cpp: In member function ‘void SequencerHubPageBase::drawTEGridStyle(IGfx&)’:
+../src/ui/pages/sequencer_hub_page.cpp:165:52: warning: ‘%d’ directive output may be truncated writing between 1 and 11 bytes into a region of size 7 [-Wformat-truncation=]
+  165 |             snprintf(drumName, sizeof(drumName), "D%d", selectedTrack_ - 1);
+      |                                                    ^~
+../src/ui/pages/sequencer_hub_page.cpp:165:50: note: directive argument in the range [-2147483648, 2147483646]
+  165 |             snprintf(drumName, sizeof(drumName), "D%d", selectedTrack_ - 1);
+      |                                                  ^~~~~
+../src/ui/pages/sequencer_hub_page.cpp:165:21: note: ‘snprintf’ output between 3 and 13 bytes into a destination of size 8
+  165 |             snprintf(drumName, sizeof(drumName), "D%d", selectedTrack_ - 1);
+      |             ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/sequencer_hub_page.h:6,
+                 from ../src/ui/pages/sequencer_hub_page_midi.cpp:2:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/ui/pages/sequencer_hub_page_midi.cpp:12:
+../src/ui/pages/smf_loop_keys.h: In function ‘void smf_loop_keys_detail::handleSmfLoopKey(GroovePuterMidi::ISmfPlayerService&, const GroovePuterMidi::SmfPlayerSnapshot&, SmfLoopKey)’:
+../src/ui/pages/smf_loop_keys.h:52:64: warning: ‘snprintf’ output may be truncated before the last format character [-Wformat-truncation=]
+   52 |         std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
+      |                                                                ^
+../src/ui/pages/smf_loop_keys.h:52:22: note: ‘snprintf’ output between 15 and 33 bytes into a destination of size 32
+   52 |         std::snprintf(toast, sizeof(toast), "LOOP: BARS %lu-%lu",
+      |         ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   53 |                       static_cast<unsigned long>(region.startBar),
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   54 |                       static_cast<unsigned long>(region.endBar));
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ui/pages/sequencer_hub_page_midi.cpp: In member function ‘bool SequencerHubPage::handleMidiOverviewEvent(UIEvent&)’:
+../src/ui/pages/sequencer_hub_page_midi.cpp:1041:76: warning: ‘ SLOT’ directive output may be truncated writing 5 bytes into a region of size between 0 and 21 [-Wformat-truncation=]
+ 1041 |             std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > NEW %c SLOT",
+      |                                                                            ^~~~~
+../src/ui/pages/sequencer_hub_page_midi.cpp:1041:26: note: ‘snprintf’ output between 25 and 46 bytes into a destination of size 40
+ 1041 |             std::snprintf(toast, sizeof(toast), "Y: T%02u B%lu-%lu > NEW %c SLOT",
+      |             ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1042 |                           static_cast<unsigned>(layer.trackIndex + 1u),
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1043 |                           static_cast<unsigned long>(startBar),
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1044 |                           static_cast<unsigned long>(endBar),
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1045 |                           static_cast<char>('A' + voice));
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/feel_page.h:10,
+                 from ../src/ui/pages/feel_page.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/pages/../ui_status_chrome.h:7,
+                 from ../src/ui/pages/../ui_common.h:6,
+                 from ../src/ui/pages/sampler_page.cpp:4:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/pages/tape_page.h:6,
+                 from ../src/ui/pages/tape_page.cpp:3:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/ui/components/drum_sequencer_grid.h:5,
+                 from ../src/ui/components/drum_sequencer_grid.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/audio/pattern_paging.h:4,
+                 from ../src/audio/pattern_paging.cpp:1:
+../src/audio/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/audio/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/audio/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/audio/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/audio/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/audio/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/audio/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/audio/pattern_paging.h:4,
+                 from ../src/audio/pattern_project_cleanup.cpp:1:
+../src/audio/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/audio/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/audio/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/audio/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/audio/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/audio/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/audio/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/state/material_slot_access.h:10,
+                 from ../src/dsp/miniacid_engine.h:8,
+                 from ../src/audio/midi_importer.h:5,
+                 from ../src/audio/midi_importer.cpp:1:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../scenes.cpp:2:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from ../src/pattern/pattern_address.h:6,
+                 from ../src/ui/ui_status_chrome.h:7,
+                 from ../src/ui/ui_common.h:6,
+                 from sdl_main.cpp:14:
+../src/pattern/../../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../src/pattern/../../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../src/pattern/../../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../src/pattern/../../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../src/pattern/../../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+In file included from scene_storage_sdl.cpp:11:
+../scenes.h:68:19: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   68 |   uint8_t hit : 1 {0};
+      |                   ^
+../scenes.h:69:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   69 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:70:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+   70 |   uint8_t unused : 6 {0};
+      |                      ^
+../scenes.h:121:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  121 |   uint8_t slide : 1 {0};
+      |                     ^
+../scenes.h:122:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  122 |   uint8_t accent : 1 {0};
+      |                      ^
+../scenes.h:123:21: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  123 |   uint8_t ghost : 1 {0};
+      |                     ^
+../scenes.h:124:22: warning: default member initializers for bit-fields only available with ‘-std=c++20’ or ‘-std=gnu++20’ [-Wc++20-extensions]
+  124 |   uint8_t unused : 5 {0};
+      |                      ^
+make: Leaving directory '/tmp/gp-g6-failed-load-64ae/platform_sdl'
