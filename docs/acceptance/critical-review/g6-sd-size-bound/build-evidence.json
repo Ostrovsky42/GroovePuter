@@ -1,0 +1,18 @@
+{
+  "base_sha": "08a52482b42b783f407231282f9ea1886c3f6a6f",
+  "test_date": "2026-10-25",
+  "operator": "Codex host/build",
+  "fqbn": "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc",
+  "loop_stack_size": 32768,
+  "board_revision": "NOT TESTED",
+  "bin_sha256": "6751bac68c32fc4cd7e456246c8dd4018d2a6c0356b6c8a73ca18c4b89069bfa",
+  "data": 41996,
+  "bss": 142256,
+  "flash": 1593162,
+  "dram_limit": 191488,
+  "source_sha256": {
+    "src/state/melody_promotion.h": "3cb77cb54976066a2444ea091355f368e03ff089739475ea285ca84a6255b984",
+    "src/state/melody_store.h": "7d994b3e1672bd1656ae60ef027d0d48088dce0c35a24a7b944e11d3c8c3c63d"
+  },
+  "hardware": "NOT FLASHED / NOT TESTED"
+}

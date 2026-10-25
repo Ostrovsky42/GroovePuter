@@ -37,6 +37,8 @@ constexpr size_t kHeaderBytes = kHeaderBytesV2;
 
 // startTick(2) durationSubticks(2) note velocity probability flags fx fxParam
 constexpr size_t kEventBytes = 10;
+constexpr size_t kMaximumEncodedBytes =
+    kHeaderBytesV2 + PhraseRuntime::kMaxSynthEvents * kEventBytes;
 
 inline void put16(std::vector<uint8_t>& out, uint16_t value) {
   out.push_back(static_cast<uint8_t>(value & 0xFFu));

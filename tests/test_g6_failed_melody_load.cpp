@@ -36,7 +36,9 @@ int main(int argc,char** argv){
  for(const auto& entry:fs::recursive_directory_iterator(root)){
   const auto path=entry.path();
   if(entry.is_regular_file() && path.string().find("g6-melody-b")!=std::string::npos && path.extension()==".gpml"){
-   if(argc>1 && std::string(argv[1])=="missing") fs::remove(path);
+   if(argc>1 && std::string(argv[1])=="oversized") {
+    std::ofstream out(path,std::ios::binary|std::ios::trunc);out.seekp(65535);out.put('x');
+   } else if(argc>1 && std::string(argv[1])=="missing") fs::remove(path);
    else if(argc>1 && std::string(argv[1])=="crc") {
     std::fstream file(path,std::ios::in|std::ios::out|std::ios::binary);
     file.seekg(-1,std::ios::end);char byte=0;file.get(byte);byte^=0x5a;

@@ -78,7 +78,15 @@ class SdFileSystem : public FileSystem {
   bool read(const char* path, std::vector<uint8_t>& out) const override {
     File f = SD.open(path, FILE_READ);
     if (!f) return false;
-    out.resize(f.size());
+    const size_t length = f.size();
+    // Reject corrupt sizes before allocating from the constrained SD heap.
+    // Both supported versions fit the v2 header + maximum event payload.
+    if (length < MelodyStore::kHeaderBytesV1 ||
+        length > MelodyStore::kMaximumEncodedBytes) {
+      f.close();
+      return false;
+    }
+    out.resize(length);
     const size_t readCount = f.read(out.data(), out.size());
     f.close();
     return readCount == out.size();

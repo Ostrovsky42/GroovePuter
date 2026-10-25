@@ -10,7 +10,11 @@ COMMON=(-std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h -DUS
 printf '%s\n' 'G6 staged Scene refusal, corrupt header and CRC: PASS'
 
 "${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_failed_melody_load.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-failed-melody-load
-for damage in header crc missing nonselected; do
+for damage in header crc missing nonselected oversized; do
   ../build/cardputer-prune-host/g6-failed-melody-load "$damage"
 done
-printf '%s\n' 'G6 resident Melody refusal (header, CRC, missing, nonselected): PASS'
+printf '%s\n' 'G6 resident Melody refusal (header, CRC, missing, nonselected, oversized): PASS'
+
+cd "$ROOT"
+"${CXX:-g++}" -std=c++17 -Wno-c++20-extensions -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h tests/test_g6_melody_read_size.cpp -o build/cardputer-prune-host/g6-melody-read-size
+build/cardputer-prune-host/g6-melody-read-size
