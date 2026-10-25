@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -I"$ROOT" \
+  "$ROOT/tests/test_atomic_file_commit.cpp" -o "$ROOT/build/cardputer-prune-host/g6-atomic-file-commit"
+"$ROOT/build/cardputer-prune-host/g6-atomic-file-commit"
+printf '%s\n' 'G6 Cardputer pointer backup retry: PASS'
 bash "$ROOT/tests/run_cardputer_prune_tests.sh"
 cd "$ROOT/platform_sdl"
 COMMON=(-std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME -DGROOVEPUTER_ENABLE_SAMPLER=0 -DGROOVEPUTER_ENABLE_TAPE=0 -DGROOVEPUTER_ENABLE_WAVEFORM=0)
@@ -8,6 +12,9 @@ COMMON=(-std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h -DUS
 ../build/cardputer-prune-host/g6-failed-load
 ../build/cardputer-prune-host/g6-failed-load crc
 printf '%s\n' 'G6 staged Scene refusal, corrupt header and CRC: PASS'
+
+"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_selection_rollback.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-selection-rollback
+../build/cardputer-prune-host/g6-selection-rollback
 
 "${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_failed_melody_load.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-failed-melody-load
 for damage in header crc missing nonselected oversized; do

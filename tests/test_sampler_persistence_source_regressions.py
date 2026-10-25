@@ -25,13 +25,21 @@ assert "decodeSampleRefHex" in persist_cpp
 assert "len != 16" in persist_cpp
 assert "std::numeric_limits<uint32_t>::max()" in persist_cpp
 
+commit_body = (ROOT / "src/storage/atomic_file_commit.h").read_text(encoding="utf-8")
+assert commit_body.index("const bool hadMain") < commit_body.index("if (hadMain && storage.exists(backupPath.c_str())")
+assert "if (hadMain && storage.exists(backupPath.c_str()) &&" in commit_body
+assert commit_body.index("if (hadMain && storage.exists(backupPath.c_str())") < commit_body.index("storage.rename(tempPath.c_str(), path.c_str())")
+
 # The Cardputer main and recovery Scene paths are both filtered without
 # materializing the full Scene JSON in RAM.
 assert '#include "src/sampler/sample_scene_persistence.h"' in store_cpp
 assert store_cpp.count("SamplerSceneReadFilter<File>") >= 4
 assert store_cpp.count("SamplerSceneWriteFilter<File>") >= 2
-assert store_cpp.count("manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }, prepare)") == 2
-assert store_cpp.count("manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }, prepare)") == 2
+assert store_cpp.count("manager.loadSceneEvented(filtered, true, [&]() { return finishSceneRead(filtered, publishSelection); }, prepare)") == 2
+assert store_cpp.count("manager.loadSceneEvented(filteredBackup, true, [&]() { return finishSceneRead(filteredBackup, publishSelection); }, prepare)") == 2
+cardputer_storage_header = (ROOT / "scene_storage_cardputer.h").read_text(encoding="utf-8")
+cardputer_read_ack = cardputer_storage_header[cardputer_storage_header.index("bool finishSceneRead"):]
+assert cardputer_read_ack.index("if (!reader.validateRead()) return false;") < cardputer_read_ack.index("persistCurrentSceneName()") < cardputer_read_ack.index("return !reader.failed();")
 scene_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
 load = scene_cpp[scene_cpp.index("bool SceneManager::loadSceneEventedWithReader"):]
 assert load.index("if (acknowledge && !acknowledge()) return false;") < load.index("*scene_ = *loaded;")

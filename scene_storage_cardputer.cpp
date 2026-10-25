@@ -16,6 +16,7 @@
 #include "src/audio/pattern_paging.h"
 #include "src/platform/cardputer_sd.h"
 #include "src/sampler/sample_scene_persistence.h"
+#include "src/storage/atomic_file_commit.h"
 
 namespace {
 constexpr size_t kMaxSceneNamesInUi = 24;
@@ -56,26 +57,8 @@ bool verifyFileSize(const std::string& path, size_t expectedSize) {
 }
 
 bool commitTempFile(const std::string& path, const std::string& tempPath) {
-  const std::string backupPath = siblingPath(path, kBackupSuffix);
-  SD.remove(backupPath.c_str());
-
-  const bool hadMain = SD.exists(path.c_str());
-  if (hadMain && !SD.rename(path.c_str(), backupPath.c_str())) {
-    Serial.printf("Failed to move current scene to backup: %s\n", path.c_str());
-    SD.remove(tempPath.c_str());
-    return false;
-  }
-
-  if (!SD.rename(tempPath.c_str(), path.c_str())) {
-    Serial.printf("Failed to promote temporary scene: %s\n", tempPath.c_str());
-    if (hadMain) {
-      SD.rename(backupPath.c_str(), path.c_str());
-    }
-    SD.remove(tempPath.c_str());
-    return false;
-  }
-
-  return true;
+  return GroovePuterStorage::commitTempFile(
+      SD, path, tempPath, siblingPath(path, kBackupSuffix));
 }
 
 File openMainOrBackup(const std::string& path) {
@@ -249,14 +232,14 @@ bool SceneStorageCardputer::writeScene(const std::string& data) {
   return persistCurrentSceneName();
 }
 
-bool SceneStorageCardputer::readScene(SceneManager& manager, const SceneSynthPreparation& prepare) {
+bool SceneStorageCardputer::readScene(SceneManager& manager, const SceneSynthPreparation& prepare, bool publishSelection) {
   if (!isInitialized_) return false;
 
   const std::string path = currentScenePath();
   File file = SD.open(path.c_str(), FILE_READ);
   if (file) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filtered(file);
-    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }, prepare);
+    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return finishSceneRead(filtered, publishSelection); }, prepare);
     file.close();
     if (ok) return true;
     Serial.printf("Main scene is invalid, trying backup: %s\n", path.c_str());
@@ -266,7 +249,7 @@ bool SceneStorageCardputer::readScene(SceneManager& manager, const SceneSynthPre
   File backup = SD.open(backupPath.c_str(), FILE_READ);
   if (!backup) return false;
   GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(backup);
-  const bool recovered = manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }, prepare);
+  const bool recovered = manager.loadSceneEvented(filteredBackup, true, [&]() { return finishSceneRead(filteredBackup, publishSelection); }, prepare);
   backup.close();
   return recovered;
 }
@@ -329,14 +312,14 @@ bool SceneStorageCardputer::writeSceneAuto(const SceneManager& manager) {
   return commitTempFile(path, tempPath);
 }
 
-bool SceneStorageCardputer::readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare) {
+bool SceneStorageCardputer::readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare, bool publishSelection) {
   if (!isInitialized_) return false;
 
   const std::string autoPath = currentAutoScenePath();
   File autoFile = SD.open(autoPath.c_str(), FILE_READ);
   if (autoFile) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);
-    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }, prepare);
+    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return finishSceneRead(filtered, publishSelection); }, prepare);
     autoFile.close();
     if (ok) return true;
   }
@@ -346,7 +329,7 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager, const SceneSynt
   if (autoBackupFile) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(
         autoBackupFile);
-    const bool ok = manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }, prepare);
+    const bool ok = manager.loadSceneEvented(filteredBackup, true, [&]() { return finishSceneRead(filteredBackup, publishSelection); }, prepare);
     autoBackupFile.close();
     if (ok) return true;
   }
@@ -452,4 +435,21 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   currentSceneName_ = previous;
   PatternPagingService::setProjectName(previous);
   return false;
+}
+
+bool SceneStorageCardputer::beginSceneLoad(const std::string& name) {
+  if (!isInitialized_) return false;
+  const std::string previous = currentSceneName_;
+  currentSceneName_ = normalizeSceneName(name);
+  if (!PatternPagingService::setProjectName(currentSceneName_)) {
+    currentSceneName_ = previous;
+    PatternPagingService::restoreProjectNameInMemory(previous);
+    return false;
+  }
+  return true;
+}
+
+void SceneStorageCardputer::restoreSceneSelection(const std::string& name) {
+  currentSceneName_ = normalizeSceneName(name);
+  PatternPagingService::restoreProjectNameInMemory(currentSceneName_);
 }

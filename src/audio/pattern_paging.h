@@ -34,6 +34,9 @@ public:
     // Select the project namespace used by all following page operations.
     // Names are encoded before becoming SD paths; callers pass scene names.
     static bool setProjectName(const std::string& projectName);
+    // Restore an already-selected namespace in RAM after a failed scene load.
+    // This deliberately performs no filesystem access.
+    static void restoreProjectNameInMemory(const std::string& projectName);
     static const std::string& currentProjectName();
     static int activePageIndex();
     // A successfully parsed project starts with its page-zero resident payload.

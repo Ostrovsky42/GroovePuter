@@ -124,22 +124,28 @@ def test_scene_persistence_is_transactional_and_composed() -> None:
     failed_block = sampler[failed_start:failed_end]
     require("outputState_.commit()" in failed_block,
             "Cardputer OutputMode must commit only after SceneManager completed the filtered read")
+    require("bool validateRead()" in sampler and "outputState_.failed()" in sampler,
+            "Cardputer read filter must validate without publishing before external pointer commit")
     require("outputState_.commit()" not in sampler[:failed_start],
             "Cardputer output state must not mutate runtime during parsing")
 
-    require("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)" in sdl,
+    require("manager.loadScene(serialized, true," in sdl,
             "SDL must pass OutputMode commit as the validated prepublication acknowledgement")
     main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager,")
     main_end = sdl.index("bool SceneStorageSdl::writeScene(const std::string& data)", main_load)
     main_block = sdl[main_load:main_end]
-    require(main_block.index("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)") <
-            main_block.index("outputModes.commit()"),
+    require(main_block.index("manager.loadScene(serialized, true,") <
+            main_block.index("finishSceneRead(outputModes, publishSelection)"),
             "SDL main Scene must commit OutputMode only after successful manager load")
+    sdl_header = (ROOT / "platform_sdl/scene_storage_sdl.h").read_text(encoding="utf-8")
+    require(sdl_header.index("persistCurrentSceneName()") <
+            sdl_header.index("return readState.commit();"),
+            "SDL must publish boot pointer after validation and before runtime publication")
     auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager,")
     auto_end = sdl.index("bool SceneStorageSdl::hasSceneAuto()", auto_load)
     auto_block = sdl[auto_load:auto_end]
-    require(auto_block.index("manager.loadScene(serialized, true, [&]() { return outputModes.commit(); }, prepare)") <
-            auto_block.index("outputModes.commit()"),
+    require(auto_block.index("manager.loadScene(serialized, true,") <
+            auto_block.index("finishSceneRead(outputModes, publishSelection)"),
             "SDL autosave must commit OutputMode only after successful manager load")
 
     require("\"out\"" in persistence and "values[3]" in persistence,

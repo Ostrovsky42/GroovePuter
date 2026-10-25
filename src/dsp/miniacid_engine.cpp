@@ -3307,7 +3307,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // Scene persistence is explicit via Save/Save As.
   std::string previousName = sceneStorage_->getCurrentSceneName();
   
-  if (!sceneStorage_->setCurrentSceneName(name)) {
+  if (!sceneStorage_->beginSceneLoad(name)) {
     Serial.printf("[LoadScene] Failed to select scene: %s\n", name.c_str());
     return false;
   }
@@ -3319,17 +3319,17 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   bool recoveredAuto = false;
   bool loaded = false;
   if (sceneStorage_->hasSceneAuto()) {
-    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_, prepare);
+    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_, prepare, true);
     loaded = recoveredAuto;
   }
-  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_, prepare);
+  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_, prepare, true);
   Serial.printf("[LoadScene] loaded=%d recovery=%d\n",
                 loaded ? 1 : 0, recoveredAuto ? 1 : 0);
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
   
   if (!loaded) {
     Serial.printf("[LoadScene] FAILED - reverting to: %s\n", previousName.c_str());
-    sceneStorage_->setCurrentSceneName(previousName);
+    sceneStorage_->restoreSceneSelection(previousName);
     return false;
   }
   lastSceneLoadRecoveredAutosave_ = recoveredAuto;

@@ -25,17 +25,24 @@ pattern_paging_path = root / "src/audio/pattern_paging.cpp"
 _scene_load_source = scene_storage_path.read_text(encoding="utf-8")
 _scene_prepared_load = "const SceneSynthPreparation& prepare" in _scene_load_source
 _scene_staged_load = "manager.loadSceneEvented(filtered, true," in _scene_load_source
+_scene_selection_publication = "bool publishSelection" in _scene_load_source
 
 def scene_load_anchor(text: str) -> str:
     if _scene_prepared_load:
         text = text.replace("SceneManager& manager)",
             "SceneManager& manager, const SceneSynthPreparation& prepare)")
+    if _scene_selection_publication:
+        text = text.replace(
+            "SceneManager& manager, const SceneSynthPreparation& prepare)",
+            "SceneManager& manager, const SceneSynthPreparation& prepare, bool publishSelection)")
     if _scene_staged_load:
         suffix = ", prepare" if _scene_prepared_load else ""
+        selection = "finishSceneRead(filtered, publishSelection)" if _scene_selection_publication else "!filtered.failed()"
+        backup_selection = "finishSceneRead(filteredBackup, publishSelection)" if _scene_selection_publication else "!filteredBackup.failed()"
         text = text.replace("manager.loadSceneEvented(filtered) && !filtered.failed()",
-            "manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); }" + suffix + ")")
+            "manager.loadSceneEvented(filtered, true, [&]() { return " + selection + "; }" + suffix + ")")
         text = re.sub(r"manager\.loadSceneEvented\(filteredBackup\)\s*&&\s*!filteredBackup\.failed\(\)",
-            "manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); }" + suffix + ")", text)
+            "manager.loadSceneEvented(filteredBackup, true, [&]() { return " + backup_selection + "; }" + suffix + ")", text)
     return text
 
 

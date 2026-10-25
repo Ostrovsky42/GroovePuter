@@ -949,6 +949,10 @@ const std::string& PatternPagingService::currentProjectName() {
     return activeProjectNameStorage();
 }
 
+void PatternPagingService::restoreProjectNameInMemory(const std::string& projectName) {
+    activeProjectNameStorage() = normalizeProjectName(projectName);
+}
+
 void PatternPagingService::resetLoadedPageIndex() {
     activePageIndexStorage() = 0;
 }

@@ -9,16 +9,18 @@ public:
   SceneStorageCardputer() : isInitialized_(false), currentSceneName_(kDefaultSceneName) {}
   bool readScene(std::string& out) override;
   bool writeScene(const std::string& data) override;
-  bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}) override;
+  bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}, bool publishSelection = false) override;
   bool writeScene(const SceneManager& manager) override;
   bool writeSceneAuto(const SceneManager& manager) override;
-  bool readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare = {}) override;
+  bool readSceneAuto(SceneManager& manager, const SceneSynthPreparation& prepare = {}, bool publishSelection = false) override;
   bool hasSceneAuto() const override;
   bool clearSceneAuto() override;
   void initializeStorage() override;
   std::vector<std::string> getAvailableSceneNames() const override;
   std::string getCurrentSceneName() const override;
   bool setCurrentSceneName(const std::string& name) override;
+  bool beginSceneLoad(const std::string& name) override;
+  void restoreSceneSelection(const std::string& name) override;
 
 private:
   static constexpr const char* kDefaultSceneName = "grooveputer_scene";
@@ -34,6 +36,12 @@ private:
   std::string normalizeSceneName(const std::string& name) const;
   void loadStoredSceneName();
   bool persistCurrentSceneName() const;
+  template <typename Reader>
+  bool finishSceneRead(Reader& reader, bool publishSelection) {
+    if (!reader.validateRead()) return false;
+    if (publishSelection && !persistCurrentSceneName()) return false;
+    return !reader.failed();
+  }
 
   bool isInitialized_;
   std::string currentSceneName_;

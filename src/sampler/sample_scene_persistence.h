@@ -205,6 +205,14 @@ public:
     }
     return failed_ || filter_.failed() || outputState_.failed();
   }
+  // Finalize and validate without publishing output modes or sample references.
+  // After this returns true, failed()'s publication path is infallible for the
+  // validated enum/reference state, so callers may commit an external pointer
+  // between validation and failed().
+  bool validateRead() {
+    finalizeFilter();
+    return !failed_ && !filter_.failed() && !outputState_.failed();
+  }
   bool eof() const { return eof_; }
 
 private:

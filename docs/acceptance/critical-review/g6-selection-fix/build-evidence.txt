@@ -1,0 +1,8 @@
+Base source: 64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f (#495 accepted control)
+FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+Build command: BUILD_PATH=/tmp/gp-g6-failed-load-64ae/build/g6-selection-final-adv2 bash scripts/build_cardputer_dynbuffers.sh
+Flash: 1596490 bytes
+.data: 41996 bytes
+.bss: 142256 bytes
+Static DRAM total: 184252 bytes (unchanged vs #495; policy ceiling 191488)
+Hardware free heap/largest/stack/CPU/underrun: NOT TESTED on this image

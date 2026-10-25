@@ -16,13 +16,13 @@ public:
    }
   }
  }
- bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}) override {
+ bool readScene(SceneManager& manager, const SceneSynthPreparation& prepare = {}, bool publishSelection = false) override {
   if(armed && beforePrepare && getCurrentSceneName()=="g6-melody-b") {
    return SceneStorageSdl::readScene(manager,[&](const Scene& scene,uint8_t a,uint8_t b){
     damage();return prepare && prepare(scene,a,b);
-   });
+   }, publishSelection);
   }
-  const bool ok=SceneStorageSdl::readScene(manager, prepare);
+  const bool ok=SceneStorageSdl::readScene(manager, prepare, publishSelection);
   if(ok && armed && getCurrentSceneName()=="g6-melody-b") damage();
   return ok;
  }
