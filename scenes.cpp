@@ -3152,25 +3152,50 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
 #ifdef ARDUINO
   Serial.printf("  - loadSceneEventedWithReader: Parse done, result=%d, error=%d\n", (int)parsed, (int)observer.hadError());
 #endif
-  if (!parsed || observer.hadError()) return false;
+  if (!parsed || observer.hadError()) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=json_parse");
+#endif
+    return false;
+  }
 
   // JSON and the resident page form one candidate. Both readers use the same
   // existing staging Scene; no canonical state or page index is published yet.
   if (restoreResidentPage && PatternPagingService::pageExists(0) &&
-      !PatternPagingService::loadPage(0, *loaded, false)) return false;
+      !PatternPagingService::loadPage(0, *loaded, false)) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=resident_page");
+#endif
+    return false;
+  }
   // Validate stored material on every page without overwriting this resident
   // candidate. JSON-only page 0 remains valid for historical projects.
-  if (restoreResidentPage && !validateStoredProjectMaterial(*loaded)) return false;
+  if (restoreResidentPage && !validateStoredProjectMaterial(*loaded)) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=stored_material");
+#endif
+    return false;
+  }
   if (prepare) {
     const uint8_t slotA = clampIndex(observer.synthBankIndex(0), kBankCount) *
         Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(0));
     const uint8_t slotB = clampIndex(observer.synthBankIndex(1), kBankCount) *
         Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(1));
-    if (!prepare(*loaded, slotA, slotB)) return false;
+    if (!prepare(*loaded, slotA, slotB)) {
+#ifdef ARDUINO
+      Serial.println("[SCENE-LOAD] rejected stage=melody_prepare");
+#endif
+      return false;
+    }
   }
   // Streaming filters may reject the completed input after JSON parsing.
   // Their final acknowledgement must precede canonical Scene publication.
-  if (acknowledge && !acknowledge()) return false;
+  if (acknowledge && !acknowledge()) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=finish_ack");
+#endif
+    return false;
+  }
 
   *scene_ = *loaded;
   currentPageIndex_ = 0;
