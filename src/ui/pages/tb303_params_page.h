@@ -35,6 +35,9 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
 
   bool isTb303Engine() const;
   bool hasSoundPresets() const;
+  bool isDualOsc() const;
+  int presetCount() const;
+  int currentPresetIndex() const;
   void openPresetPopup();
   void applyPreset(int index);
   UI::SelectionPopup preset_popup_;

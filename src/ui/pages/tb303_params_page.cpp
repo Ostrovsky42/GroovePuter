@@ -8,6 +8,7 @@
 #endif
 #include "tb303_params_page.h"
 #include "src/dsp/sound_quality_presets.h"
+#include "src/dsp/dual_osc_presets.h"
 #include "../ui_common.h"
 #include "../ui_theme.h"
 #include "../phrase_source_toggle.h"
@@ -513,8 +514,9 @@ void TB303ParamsPage::layoutComponents() {
   const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
   preset_control_->setLabel("PRESET");
-  const int preset = mini_acid_.soundQualityPresetIndex(voice_index_);
+  const int preset = currentPresetIndex();
   preset_control_->setValue(!hasSoundPresets() ? "--" : preset < 0 ? "CUSTOM" :
+      isDualOsc() ? kDualOscPresetNames[preset] :
       isTb303Engine() ? SoundQualityPresets::tb303[preset].name :
                        SoundQualityPresets::waveMorph[preset].name);
   preset_control_->setEnabled(hasSoundPresets());
@@ -748,7 +750,8 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   const int step = fine ? kKnobStepFine : kKnobStepCoarse;
 
   if (cutoff_knob_ && cutoff_knob_->isFocused()) {
-    cutoff_knob_->setValue(direction * step);
+    // DUAL OSC: this knob is its Preset (a list of 13): one preset per key, not a coarse step of 5
+    cutoff_knob_->setValue(direction * (isDualOsc() ? 1 : step));
     return;
   }
   if (resonance_knob_ && resonance_knob_->isFocused()) {
@@ -764,8 +767,9 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     return;
   }
   if (preset_control_ && preset_control_->isFocused()) {
-    const int current = mini_acid_.soundQualityPresetIndex(voice_index_);
-    applyPreset(current < 0 ? (direction > 0 ? 0 : 2) : (current + direction + 3) % 3);
+    const int current = currentPresetIndex();
+    const int n = presetCount();
+    applyPreset(current < 0 ? (direction > 0 ? 0 : n - 1) : (current + direction + n) % n);
     return;
   }
   if (make_phrase_control_ && make_phrase_control_->isFocused()) {
@@ -884,9 +888,10 @@ void TB303ParamsPage::draw(IGfx& gfx) {
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
                            "[ENTER]PRESET [ALT+R]SOURCE");
   }
-  const char* labels[3];
-  for (int i = 0; i < 3; ++i) labels[i] = isTb303Engine()
-      ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
+  const int n = presetCount();
+  const char* labels[kDualOscPresetCount];
+  for (int i = 0; i < n; ++i) labels[i] = isDualOsc() ? kDualOscPresetNames[i]
+      : isTb303Engine() ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
   preset_popup_.draw(gfx, labels);
 }
 
@@ -914,7 +919,8 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == '\n' || ui_event.key == '\r') &&
-      preset_control_ && preset_control_->isFocused()) {
+      ((preset_control_ && preset_control_->isFocused()) ||
+       (isDualOsc() && cutoff_knob_ && cutoff_knob_->isFocused()))) {
     openPresetPopup(); return true;
   }
 
@@ -1074,15 +1080,32 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
 
 bool TB303ParamsPage::hasSoundPresets() const {
   const auto name = mini_acid_.currentSynthEngineName(voice_index_);
-  return name == "TB303" || name == "WAVEMORPH";
+  return name == "TB303" || name == "WAVEMORPH" || name == "DUAL OSC";
+}
+bool TB303ParamsPage::isDualOsc() const {
+  return mini_acid_.currentSynthEngineName(voice_index_) == "DUAL OSC";
+}
+int TB303ParamsPage::presetCount() const {
+  return isDualOsc() ? kDualOscPresetCount : 3;
+}
+int TB303ParamsPage::currentPresetIndex() const {
+  // DUAL OSC: its Preset parameter (index 0) is always one of the 13, so there is no CUSTOM state
+  if (isDualOsc()) return mini_acid_.synthParameter(voice_index_, 0).optionIndex();
+  return mini_acid_.soundQualityPresetIndex(voice_index_);
 }
 void TB303ParamsPage::openPresetPopup() {
   if (!hasSoundPresets()) return;
-  const int index = mini_acid_.soundQualityPresetIndex(voice_index_);
-  preset_popup_.open("SOUND PRESET", 3, index < 0 ? 0 : index);
+  const int index = currentPresetIndex();
+  preset_popup_.open(isDualOsc() ? "DUAL OSC PRESET" : "SOUND PRESET", presetCount(), index < 0 ? 0 : index);
 }
 void TB303ParamsPage::applyPreset(int index) {
   if (!hasSoundPresets()) return;
+  if (isDualOsc()) {
+    // the Preset parameter moves by steps of 1; the difference to the target index is the number of steps
+    const int steps = index - currentPresetIndex();
+    if (steps != 0) withAudioGuard([&]() { mini_acid_.adjustSynthParameter(voice_index_, 0, steps); });
+    return;
+  }
   withAudioGuard([&]() { mini_acid_.applySoundQualityPreset(voice_index_, index); });
 }
 

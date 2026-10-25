@@ -3,6 +3,10 @@
 #if defined(GROOVEPUTER_FELUCCA_ANALOG)
 #include "felucca_analog_voice.h"
 
+#include "dual_osc_presets.h"
+
+constexpr uint8_t kPresetIndex = 0;   // the preset is applied first, so saved knob values override it on restore
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,17 +30,12 @@ namespace {
 constexpr float kEngineRate = 22050.0f;  // the rate the engine's tables are built for (felucca/fe_tables.h)
 constexpr int kWaveCount = 7;
 const char* const kWaveNames[kWaveCount] = {"Saw", "Square", "Tri", "Sine", "PWM", "Sync", "Sub"};
-// Preset: INIT (one saw), then the library's 12 ANALOG presets in their order (eng_analog.c ANALOG_PRESETS)
-constexpr int kPresetCount = 13;
-constexpr uint8_t kPresetIndex = 0;   // the preset is applied first, so saved knob values override it on restore
-const char* const kPresetNames[kPresetCount] = {"INIT", "SAW LEAD", "SOFT PAD", "SQR BASS", "PWM STR", "ACID",
-    "SINE KEY", "RAVE", "SUB BASS", "PLUCK", "BRASS", "WIND", "STRINGS"};
 }  // namespace
 
 FeluccaAnalogVoice::FeluccaAnalogVoice(float sampleRate)
     // Layout: 0-3 are the main tab's four knobs (Preset, Cutoff, Reso, Decay); 4-5 are the MORE tab's two (Wave, Drive).
     // Mix is not a knob: the preset sets it. Preset is index 0 so that a restored scene applies it before the knobs.
-    : params_{Parameter("Preset", "", kPresetNames, kPresetCount, 0),
+    : params_{Parameter("Preset", "", kDualOscPresetNames, kDualOscPresetCount, 0),
               Parameter("Cutoff", "", 0.0f, 127.0f, 61.0f, 1.0f),
               Parameter("Reso", "", 0.0f, 127.0f, 83.0f, 1.0f),
               Parameter("Decay", "ms", 30.0f, 2400.0f, 250.0f, 10.0f),
