@@ -3085,14 +3085,21 @@ Scene& sceneTransactionScratch() {
 namespace {
 bool validateStoredProjectMaterial(const Scene& resident) {
   bool referencedPages[kMaxPages]{};
-  for (const auto& song : resident.songs) {
+  for (size_t songIndex = 0; songIndex < sizeof(resident.songs) / sizeof(resident.songs[0]); ++songIndex) {
+    const auto& song = resident.songs[songIndex];
     for (int row = 0; row < std::clamp<int>(song.length, 0, Song::kMaxPositions); ++row) {
       // Synth A/B and drums reference pattern pages; the vocal column does not.
       for (int track = 0; track < 3; ++track) {
         const int reference = song.positions[row].patterns[track];
         if (reference < 0) continue;
         const int page = songPatternPage(reference);
-        if (page < 0 || page >= kMaxPages) return false;
+        if (page < 0 || page >= kMaxPages) {
+#ifdef ARDUINO
+          Serial.printf("[SCENE-MATERIAL] reject=bad_song_ref song=%u row=%d track=%d ref=%d\n",
+                        static_cast<unsigned>(songIndex), row, track, reference);
+#endif
+          return false;
+        }
         referencedPages[page] = true;
       }
     }
@@ -3103,10 +3110,22 @@ bool validateStoredProjectMaterial(const Scene& resident) {
   for (int page = 0; page < kMaxPages; ++page) {
     if (page != 0) {
       if (!PatternPagingService::pageExists(page)) {
-        if (referencedPages[page]) return false;
+        if (referencedPages[page]) {
+#ifdef ARDUINO
+          Serial.printf("[SCENE-MATERIAL] reject=missing_song_page page=%d project=%s\n",
+                        page, project.c_str());
+#endif
+          return false;
+        }
         continue;
       }
-      if (!PatternPagingService::readPageMaterialDescriptors(page, descriptors)) return false;
+      if (!PatternPagingService::readPageMaterialDescriptors(page, descriptors)) {
+#ifdef ARDUINO
+        Serial.printf("[SCENE-MATERIAL] reject=page_descriptors page=%d project=%s\n",
+                      page, project.c_str());
+#endif
+        return false;
+      }
     }
     for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
       for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
@@ -3116,7 +3135,13 @@ bool validateStoredProjectMaterial(const Scene& resident) {
         const GroovePuterMaterial::MaterialAddress address{static_cast<uint8_t>(voice),
             static_cast<uint8_t>(page * Scene::kMaterialSlotsPerVoice + slot)};
         if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
-                                          project, address, verified)) return false;
+                                          project, address, verified)) {
+#ifdef ARDUINO
+          Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
+                        page, voice, slot, project.c_str());
+#endif
+          return false;
+        }
       }
     }
   }
