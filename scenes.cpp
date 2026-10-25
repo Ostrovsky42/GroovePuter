@@ -3148,9 +3148,9 @@ bool validateStoredProjectMaterial(const Scene& resident) {
                         fs.exists(legacyPath.c_str()));
           Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
                         page, voice, slot, project.c_str());
-          // Check whether the same project's Melody folder contains a valid
-          // Synth B payload under another global slot. This is read-only and
-          // helps distinguish a missing file from a stale slot address.
+          // Check whether the same project's Melody folder contains valid
+          // payloads under this or another slot. This is read-only and helps
+          // distinguish a missing file from stale slot descriptors.
           const std::string melodyDirectoryPath =
               "/projects/" + project + "/melody";
           File melodyDirectory = SD.open(melodyDirectoryPath.c_str(), FILE_READ);
@@ -3163,11 +3163,13 @@ bool validateStoredProjectMaterial(const Scene& resident) {
               if (isDirectory) continue;
               const size_t slash = leaf.find_last_of('/');
               if (slash != std::string::npos) leaf.erase(0, slash + 1);
-              if (leaf.compare(0, 5, "v1_g") != 0 ||
+              if ((leaf.compare(0, 5, "v0_g") != 0 &&
+                   leaf.compare(0, 5, "v1_g") != 0) ||
                   leaf.size() < 10 ||
                   leaf.compare(leaf.size() - 5, 5, ".gpml") != 0) continue;
+              const int candidateVoice = leaf[1] - '0';
               int candidateSlot = -1;
-              if (std::sscanf(leaf.c_str(), "v1_g%3d_", &candidateSlot) != 1 ||
+              if (std::sscanf(leaf.c_str(), "v%*1d_g%3d_", &candidateSlot) != 1 ||
                   candidateSlot < 0 || candidateSlot >= kMaxGlobalPatterns) continue;
               const std::string fullPath = melodyDirectoryPath + "/" + leaf;
               std::vector<uint8_t> payload;
@@ -3175,8 +3177,8 @@ bool validateStoredProjectMaterial(const Scene& resident) {
               if (fs.read(fullPath.c_str(), payload) &&
                   MelodyStore::decode(payload.data(), payload.size(), verified,
                                       &generation)) {
-                Serial.printf("[SCENE-MATERIAL] same_project_candidate slot=%d bars=%u events=%u gen=%u\n",
-                              candidateSlot,
+                Serial.printf("[SCENE-MATERIAL] same_project_candidate voice=%d slot=%d bars=%u events=%u gen=%u\n",
+                              candidateVoice, candidateSlot,
                               static_cast<unsigned>(verified.lengthTicks /
                                   PhraseRuntime::kTicksPerBar),
                               static_cast<unsigned>(verified.count), generation);
@@ -3201,13 +3203,20 @@ bool validateStoredProjectMaterial(const Scene& resident) {
                 candidateProject.erase(0, slash + 1);
               }
               if (candidateProject.empty() || candidateProject == project) continue;
-              if (MelodyPromotion::loadMaterial(fs, candidateProject, address,
-                                                verified)) {
-                Serial.printf("[SCENE-MATERIAL] recovery_candidate project=%s bars=%u events=%u\n",
-                              candidateProject.c_str(),
-                              static_cast<unsigned>(verified.lengthTicks /
-                                  PhraseRuntime::kTicksPerBar),
-                              static_cast<unsigned>(verified.count));
+              for (uint8_t candidateVoice = 0;
+                   candidateVoice < Scene::kMaterialVoices; ++candidateVoice) {
+                const GroovePuterMaterial::MaterialAddress candidateAddress{
+                    candidateVoice, address.globalSlot};
+                if (MelodyPromotion::loadMaterial(fs, candidateProject,
+                                                  candidateAddress, verified)) {
+                  Serial.printf("[SCENE-MATERIAL] recovery_candidate project=%s voice=%u slot=%u bars=%u events=%u\n",
+                                candidateProject.c_str(),
+                                static_cast<unsigned>(candidateVoice),
+                                static_cast<unsigned>(address.globalSlot),
+                                static_cast<unsigned>(verified.lengthTicks /
+                                    PhraseRuntime::kTicksPerBar),
+                                static_cast<unsigned>(verified.count));
+                }
               }
             }
           }
