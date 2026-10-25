@@ -3288,13 +3288,6 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   }
   
   Serial.printf("[LoadScene] Starting load for: %s\n", name.c_str());
-  // D1-B: session-local generated-origin evidence never survives a scene
-  // replacement attempt (MaterialIds are per-project; fail closed).
-  clearGeneratedSynthAOrigin();
-  clearGeneratedPatternHarmony();
-  clearGeneratedPhraseRecipe();
-  clearReuseMarks();
-  
   // Do not auto-save here: filesystem writes can stall UX/audio path on constrained devices.
   // Scene persistence is explicit via Save/Save As.
   std::string previousName = sceneStorage_->getCurrentSceneName();
@@ -3311,7 +3304,6 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     loaded = recoveredAuto;
   }
   if (!loaded) loaded = sceneStorage_->readScene(sceneManager_);
-  lastSceneLoadRecoveredAutosave_ = loaded && recoveredAuto;
   Serial.printf("[LoadScene] loaded=%d recovery=%d\n",
                 loaded ? 1 : 0, recoveredAuto ? 1 : 0);
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
@@ -3319,9 +3311,15 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   if (!loaded) {
     Serial.printf("[LoadScene] FAILED - reverting to: %s\n", previousName.c_str());
     sceneStorage_->setCurrentSceneName(previousName);
-    lastSceneLoadRecoveredAutosave_ = false;
     return false;
   }
+  lastSceneLoadRecoveredAutosave_ = recoveredAuto;
+  // Invalidate session origin only after a successful replacement.
+  clearGeneratedSynthAOrigin();
+  clearGeneratedPatternHarmony();
+  clearGeneratedPhraseRecipe();
+  clearReuseMarks();
+
   GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   invalidateSessionNextForProjectChange();
   hardBarrierPatternPlayback_();
@@ -3331,12 +3329,6 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   resetWorkingMaterialForProjectChange_();
   songMode_ = false;
   setCurrentPage(0);
-  if (PatternPagingService::pageExists(0) &&
-      !PatternPagingService::loadPage(0, sceneManager_.currentScene())) {
-    patternRuntimeBank_.invalidatePageIdentity();
-    Serial.println("[LoadScene] resident page restoration failed");
-    return false;
-  }
   hydrateAcceptedMaterialAtBoot_();
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
@@ -3417,12 +3409,10 @@ void MiniAcid::loadSceneFromStorage() {
         sceneStorage_->readSceneAuto(sceneManager_)) {
       lastSceneLoadRecoveredAutosave_ = true;
       LOG_PRINTLN("  - loadSceneFromStorage: recovered autosave");
-      PatternPagingService::loadPage(0, sceneManager_.currentScene());
       hydrateAcceptedMaterialAtBoot_();
       return;
     }
     if (sceneStorage_->readScene(sceneManager_)) {
-      PatternPagingService::loadPage(0, sceneManager_.currentScene());
       hydrateAcceptedMaterialAtBoot_();
       return;
     }

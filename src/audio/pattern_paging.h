@@ -52,7 +52,7 @@ public:
     // are transactional from the caller's perspective: a failed save keeps the
     // previous page file, and a failed load leaves Scene unchanged.
     static bool savePage(int pageIndex, const Scene& scene);
-    static bool loadPage(int pageIndex, Scene& scene);
+    static bool loadPage(int pageIndex, Scene& scene, bool publishPageIndex = true);
 
     // Atomically commit a page candidate (pattern or descriptor) to the inactive dual-generation slot,
     // readback-verify, write NVS publication record, and update scene RAM infallibly.

@@ -1,6 +1,8 @@
 #ifndef SCENES_H
 #define SCENES_H
 
+#include <functional>
+
 
 #include <stdint.h>
 #include <cstdio>
@@ -682,7 +684,8 @@ public:
   void setSynthStep(int synthIdx, int step, int note, bool slide, bool accent);
 
   std::string dumpCurrentScene() const;
-  bool loadScene(const std::string& json);
+  bool loadScene(const std::string& json, bool restoreResidentPage = false,
+                 const std::function<bool()>& acknowledge = {});
 
   void setDrumMute(int voiceIdx, bool mute);
   bool getDrumMute(int voiceIdx) const;
@@ -751,7 +754,8 @@ public:
   template <typename TReader>
   bool loadSceneJson(TReader&& reader);
   template <typename TReader>
-  bool loadSceneEvented(TReader&& reader);
+  bool loadSceneEvented(TReader&& reader, bool restoreResidentPage = false,
+                        const std::function<bool()>& acknowledge = {});
 
   // static constexpr size_t sceneJsonCapacity();
 
@@ -767,7 +771,8 @@ private:
   void clearSongData(Song& song) const;
   void buildSceneDocument(ArduinoJson::JsonDocument& doc) const;
   bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
-  bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar);
+  bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
+      bool restoreResidentPage, const std::function<bool()>& acknowledge);
 
   Scene* scene_;
   int drumPatternIndex_ = 0;
@@ -1370,10 +1375,11 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 }
 
 template <typename TReader>
-bool SceneManager::loadSceneEvented(TReader&& reader) {
+bool SceneManager::loadSceneEvented(TReader&& reader, bool restoreResidentPage,
+                                    const std::function<bool()>& acknowledge) {
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
     return reader.read();
   };
-  return loadSceneEventedWithReader(nextChar);
+  return loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge);
 }
 #endif // SCENES_H

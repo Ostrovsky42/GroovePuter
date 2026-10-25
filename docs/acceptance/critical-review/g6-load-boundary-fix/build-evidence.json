@@ -1,0 +1,19 @@
+{
+  "base_sha": "64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f",
+  "build_type": "product; uncommitted source pinned by hashes",
+  "bin_sha256": "61da7e65dfbd18b443d052f683be7e46cb64db487fe1aedd0a4766e6c991f812",
+  "data": 41996,
+  "bss": 142256,
+  "flash": 1592182,
+  "dram_limit": 191488,
+  "hardware": "NOT FLASHED / NOT TESTED",
+  "source_sha256": {
+    "scenes.h": "3a572a98beac7808ce498ab0c4fe7f6e328376c531d8e6c013b990ad0d6dbda9",
+    "scenes.cpp": "73aa9623453d43053ca660ffaa02bc4d874f8290833f890f462d1c3fa8306ea1",
+    "scene_storage_cardputer.cpp": "95a9e49130d9eeaafd95aaea27750d998318b1d1b1f28e4c4d6f0c6ecfadeeb0",
+    "platform_sdl/scene_storage_sdl.cpp": "d07b5a7f2b1bff604f6daab7a86b238704f91f6ea8d20e12c495634504ab875b",
+    "src/audio/pattern_paging.h": "f1fb6485d587d0f0ba2e2657e8ffcf9f5587f8ad73332b684540d3d29a8eb6b7",
+    "src/audio/pattern_paging.cpp": "2513dc0666eecf44cd74dc74ac77ecab879a6182c53ef832334c70cc3e60f54f",
+    "src/dsp/miniacid_engine.cpp": "71212d0cd9c6b4ce9ae8854baae4735ad3f2d4f610115b4249866f70111bfe09"
+  }
+}

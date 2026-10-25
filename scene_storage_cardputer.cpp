@@ -256,7 +256,7 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   File file = SD.open(path.c_str(), FILE_READ);
   if (file) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filtered(file);
-    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
+    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); });
     file.close();
     if (ok) return true;
     Serial.printf("Main scene is invalid, trying backup: %s\n", path.c_str());
@@ -266,8 +266,7 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   File backup = SD.open(backupPath.c_str(), FILE_READ);
   if (!backup) return false;
   GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(backup);
-  const bool recovered = manager.loadSceneEvented(filteredBackup) &&
-                         !filteredBackup.failed();
+  const bool recovered = manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); });
   backup.close();
   return recovered;
 }
@@ -337,7 +336,7 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   File autoFile = SD.open(autoPath.c_str(), FILE_READ);
   if (autoFile) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);
-    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
+    const bool ok = manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); });
     autoFile.close();
     if (ok) return true;
   }
@@ -347,8 +346,7 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   if (autoBackupFile) {
     GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(
         autoBackupFile);
-    const bool ok = manager.loadSceneEvented(filteredBackup) &&
-                    !filteredBackup.failed();
+    const bool ok = manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); });
     autoBackupFile.close();
     if (ok) return true;
   }

@@ -1041,7 +1041,7 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     return true;
 }
 
-bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
+bool PatternPagingService::loadPage(int pageIndex, Scene& scene, bool publishPageIndex) {
     if (!validPageIndex(pageIndex)) return false;
 
     const std::string& proj = activeProjectNameStorage();
@@ -1113,18 +1113,20 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
 
     if (!loaded) return false;
 
-    std::memcpy(scene.synthABanks, staging.synthABanks,
-                sizeof(scene.synthABanks));
-    std::memcpy(scene.synthBBanks, staging.synthBBanks,
-                sizeof(scene.synthBBanks));
-    std::memcpy(scene.drumBanks, staging.drumBanks,
-                sizeof(scene.drumBanks));
-    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
-        for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
-            scene.materialSlots[voice][slot] = staging.materialSlots[voice][slot];
-        }
+    if (&scene != &staging) {
+      std::memcpy(scene.synthABanks, staging.synthABanks,
+                  sizeof(scene.synthABanks));
+      std::memcpy(scene.synthBBanks, staging.synthBBanks,
+                  sizeof(scene.synthBBanks));
+      std::memcpy(scene.drumBanks, staging.drumBanks,
+                  sizeof(scene.drumBanks));
+      for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+          for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+              scene.materialSlots[voice][slot] = staging.materialSlots[voice][slot];
+          }
+      }
     }
-    activePageIndexStorage() = pageIndex;
+    if (publishPageIndex) activePageIndexStorage() = pageIndex;
     return true;
 }
 

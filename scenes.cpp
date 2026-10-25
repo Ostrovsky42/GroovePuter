@@ -3055,13 +3055,14 @@ std::string SceneManager::dumpCurrentScene() const {
   return serialized;
 }
 
-bool SceneManager::loadScene(const std::string& json) {
+bool SceneManager::loadScene(const std::string& json, bool restoreResidentPage,
+                             const std::function<bool()>& acknowledge) {
   size_t idx = 0;
   JsonVisitor::NextChar nextChar = [&json, &idx]() -> int {
     if (idx >= json.size()) return -1;
     return static_cast<unsigned char>(json[idx++]);
   };
-  if (loadSceneEventedWithReader(nextChar)) return true;
+  if (loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge)) return true;
   
   // DISABLED: ArduinoJson fallback causes abort() on ESP32 due to insufficient DRAM
   // return loadSceneJson(json);
@@ -3078,7 +3079,8 @@ Scene& sceneTransactionScratch() {
   return s_tempLoadScene;
 }
 
-bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
+    bool restoreResidentPage, const std::function<bool()>& acknowledge) {
 #ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
 #endif
@@ -3105,6 +3107,14 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   Serial.printf("  - loadSceneEventedWithReader: Parse done, result=%d, error=%d\n", (int)parsed, (int)observer.hadError());
 #endif
   if (!parsed || observer.hadError()) return false;
+
+  // JSON and the resident page form one candidate. Both readers use the same
+  // existing staging Scene; no canonical state or page index is published yet.
+  if (restoreResidentPage && PatternPagingService::pageExists(0) &&
+      !PatternPagingService::loadPage(0, *loaded, false)) return false;
+  // Streaming filters may reject the completed input after JSON parsing.
+  // Their final acknowledgement must precede canonical Scene publication.
+  if (acknowledge && !acknowledge()) return false;
 
   *scene_ = *loaded;
   currentPageIndex_ = 0;

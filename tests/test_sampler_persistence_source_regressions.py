@@ -30,7 +30,11 @@ assert "std::numeric_limits<uint32_t>::max()" in persist_cpp
 assert '#include "src/sampler/sample_scene_persistence.h"' in store_cpp
 assert store_cpp.count("SamplerSceneReadFilter<File>") >= 4
 assert store_cpp.count("SamplerSceneWriteFilter<File>") >= 2
-assert "manager.loadSceneEvented(filtered)" in store_cpp
+assert store_cpp.count("manager.loadSceneEvented(filtered, true, [&]() { return !filtered.failed(); })") == 2
+assert store_cpp.count("manager.loadSceneEvented(filteredBackup, true, [&]() { return !filteredBackup.failed(); })") == 2
+scene_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+load = scene_cpp[scene_cpp.index("bool SceneManager::loadSceneEventedWithReader"):]
+assert load.index("if (acknowledge && !acknowledge()) return false;") < load.index("*scene_ = *loaded;")
 assert "manager.writeSceneJson(filtered) && filtered.finish()" in store_cpp
 
 # Sample IDs use all 32 bits. A signed JSON conversion turns IDs above INT_MAX

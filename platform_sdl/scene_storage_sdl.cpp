@@ -210,8 +210,7 @@ bool SceneStorageSdl::readScene(SceneManager& manager) {
   if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
     return false;
   }
-  if (!manager.loadScene(serialized)) return false;
-  return outputModes.commit();
+  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); });
 }
 
 bool SceneStorageSdl::writeScene(const std::string& data) {
@@ -346,8 +345,7 @@ bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
   if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
     return false;
   }
-  if (!manager.loadScene(serialized)) return false;
-  return outputModes.commit();
+  return manager.loadScene(serialized, true, [&]() { return outputModes.commit(); });
 }
 
 bool SceneStorageSdl::hasSceneAuto() const {
