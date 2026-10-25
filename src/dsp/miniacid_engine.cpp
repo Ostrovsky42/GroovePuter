@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "sound_quality_presets.h"
 #include "p0_preservation_evaluator.h"
 #include "src/dsp/musical_development.h"
 #include "src/phrase/runtime_phrase_edit.h"
@@ -1388,6 +1389,68 @@ uint8_t MiniAcid::synthParameterCount(int voiceIndex) const {
   return 0;
 }
 
+namespace {
+bool soundPresetValues(const std::string& engine, int index, float (&values)[6]) {
+  if (index < 0 || index >= 3) return false;
+  if (engine == "TB303") {
+    const auto& p = SoundQualityPresets::tb303[index];
+    const float recipe[] = {p.cutoff, p.resonance, p.envelopeAmount, p.decayMs,
+                           float(p.oscillator), float(p.filter)};
+    std::copy(recipe, recipe + 6, values);
+    return true;
+  }
+  if (engine == "WAVEMORPH") {
+    const auto& p = SoundQualityPresets::waveMorph[index];
+    const float recipe[] = {float(p.wave), p.morph, p.sub, p.cutoff,
+                           p.resonance, p.decayMs};
+    std::copy(recipe, recipe + 6, values);
+    return true;
+  }
+  return false;
+}
+const TB303ParamId soundPresetTbIds[] = {
+    TB303ParamId::Cutoff, TB303ParamId::Resonance, TB303ParamId::EnvAmount,
+    TB303ParamId::EnvDecay, TB303ParamId::Oscillator, TB303ParamId::FilterType};
+}
+
+bool MiniAcid::applySoundQualityPreset(int voiceIndex, int presetIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const auto engine = currentSynthEngineName(voiceIndex);
+  float values[6];
+  if (!soundPresetValues(engine, presetIndex, values)) return false;
+  for (int i = 0; i < 6; ++i) {
+    if (engine == "TB303") {
+      set303Parameter(soundPresetTbIds[i], values[i], voiceIndex);
+    } else {
+      const auto& p = synthParameter(voiceIndex, i);
+      const float range = p.max() - p.min();
+      synthVoices_[voiceIndex]->setParameterNormalized(i,
+          range > 0 ? (values[i] - p.min()) / range : 0);
+    }
+  }
+  return true;
+}
+
+int MiniAcid::soundQualityPresetIndex(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return -1;
+  const auto engine = currentSynthEngineName(voiceIndex);
+  for (int index = 0; index < 3; ++index) {
+    float values[6];
+    if (!soundPresetValues(engine, index, values)) return -1;
+    bool matches = true;
+    for (int i = 0; i < 6; ++i) {
+      const auto& p = engine == "TB303"
+          ? parameter303(soundPresetTbIds[i], voiceIndex)
+          : synthParameter(voiceIndex, i);
+      if (std::fabs(p.value() - values[i]) > std::max(.0001f, (p.max()-p.min())*.00001f)) {
+        matches = false; break;
+      }
+    }
+    if (matches) return index;
+  }
+  return -1;
+}
+
 void MiniAcid::adjustSynthParameter(int voiceIndex, int knobIndex, int steps) {
   int idx = clamp303Voice(voiceIndex);
   if (synthVoices_[idx]) {
@@ -1422,6 +1485,12 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
 
   SynthEngineType target = SynthEngineType::TB303;
   const char* targetName = "TB303";
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  if (name.find("DUAL OSC") != std::string::npos) {
+    target = SynthEngineType::FELUCCA_ANALOG;
+    targetName = "DUAL OSC";
+  } else
+#endif
   if (name.find("WAVEMORPH") != std::string::npos ||
       name.find("WAVE MORPH") != std::string::npos) {
     target = SynthEngineType::WAVEMORPH;
@@ -1493,7 +1562,11 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH", "DUAL OSC"};
+#else
   return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH"};
+#endif
 }
 
 std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {

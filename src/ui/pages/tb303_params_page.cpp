@@ -7,6 +7,8 @@
 #include "../../../platform_sdl/arduino_compat.h"
 #endif
 #include "tb303_params_page.h"
+#include "src/dsp/sound_quality_presets.h"
+#include "src/dsp/dual_osc_presets.h"
 #include "../ui_common.h"
 #include "../ui_theme.h"
 #include "../phrase_source_toggle.h"
@@ -380,7 +382,7 @@ void TB303ParamsPage::initComponents() {
   filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
-  source_control_ = std::make_shared<LabelValueComponent>("SRC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  preset_control_ = std::make_shared<LabelValueComponent>("PRESET", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE MELODY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
@@ -392,7 +394,7 @@ void TB303ParamsPage::initComponents() {
   addChild(filter_control_);
   addChild(distortion_control_);
   addChild(delay_control_);
-  addChild(source_control_);
+  addChild(preset_control_);
   addChild(make_phrase_control_);
 
   initialized_ = true;
@@ -509,15 +511,15 @@ void TB303ParamsPage::layoutComponents() {
 
   // Both effects are per-voice post-engine stages in MiniAcid, so they are
   // available for every currently selectable synth engine.
-  // Engine truth, copied into the row rather than reconstructed from page
-  // state. One-way applies to the material, not to the voice: the Pattern
-  // survives conversion, so the source stays switchable and the row stays
-  // enabled. Only the first move to PHRASE creates material.
   const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
                         MiniAcid::SequencedSource::Phrase;
-  source_control_->setLabel("SRC");
-  source_control_->setValue(onPhrase ? "MELODY" : "STEPS");
-  source_control_->setEnabled(true);
+  preset_control_->setLabel("PRESET");
+  const int preset = currentPresetIndex();
+  preset_control_->setValue(!hasSoundPresets() ? "--" : preset < 0 ? "CUSTOM" :
+      isDualOsc() ? kDualOscPresetNames[preset] :
+      isTb303Engine() ? SoundQualityPresets::tb303[preset].name :
+                       SoundQualityPresets::waveMorph[preset].name);
+  preset_control_->setEnabled(hasSoundPresets());
   make_phrase_control_->setLabel("MAKE MELODY");
   make_phrase_control_->setValue(">");
   make_phrase_control_->setEnabled(!onPhrase);
@@ -555,7 +557,7 @@ void TB303ParamsPage::layoutComponents() {
         filter_control_.get(),
         distortion_control_.get(),
         delay_control_.get(),
-        source_control_.get(),
+        preset_control_.get(),
         make_phrase_control_.get(),
     };
     for (int i = 0; i < kMoreRowCount; ++i) {
@@ -595,7 +597,7 @@ void TB303ParamsPage::rememberFocusedSlot() {
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
-      source_control_.get(),
+      preset_control_.get(),
       make_phrase_control_.get(),
   };
 
@@ -630,7 +632,7 @@ void TB303ParamsPage::restoreFocusedSlot() {
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
-      source_control_.get(),
+      preset_control_.get(),
       make_phrase_control_.get(),
   };
 
@@ -669,7 +671,7 @@ void TB303ParamsPage::updateTabFocusability() {
   filter_control_->setFocusable(more_tab_ && filter_control_->enabled());
   distortion_control_->setFocusable(more_tab_ && distortion_control_->enabled());
   delay_control_->setFocusable(more_tab_ && delay_control_->enabled());
-  source_control_->setFocusable(more_tab_ && source_control_->enabled());
+  preset_control_->setFocusable(more_tab_ && preset_control_->enabled());
   make_phrase_control_->setFocusable(more_tab_ &&
                                      make_phrase_control_->enabled());
 }
@@ -748,7 +750,8 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   const int step = fine ? kKnobStepFine : kKnobStepCoarse;
 
   if (cutoff_knob_ && cutoff_knob_->isFocused()) {
-    cutoff_knob_->setValue(direction * step);
+    // DUAL OSC: this knob is its Preset (a list of 13): one preset per key, not a coarse step of 5
+    cutoff_knob_->setValue(direction * (isDualOsc() ? 1 : step));
     return;
   }
   if (resonance_knob_ && resonance_knob_->isFocused()) {
@@ -763,19 +766,10 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
     env_decay_knob_->setValue(direction * step);
     return;
   }
-  if (source_control_ && source_control_->isFocused()) {
-    // One owner for the switch: ALT+R on the editor reaches the same code.
-    const auto result = PhraseSourceToggle::toggle(
-        mini_acid_,
-        [&](const std::function<void()>& body) {
-          withAudioGuard(body);
-        },
-        voice_index_);
-    if (result == PhraseSourceToggle::Result::MadePhrase) {
-      UI::showToast("MELODY <- STEPS", 1200);
-    } else if (result == PhraseSourceToggle::Result::Rejected) {
-      UI::showToast("MELODY FAILED", 1500);
-    }
+  if (preset_control_ && preset_control_->isFocused()) {
+    const int current = currentPresetIndex();
+    const int n = presetCount();
+    applyPreset(current < 0 ? (direction > 0 ? 0 : n - 1) : (current + direction + n) % n);
     return;
   }
   if (make_phrase_control_ && make_phrase_control_->isFocused()) {
@@ -892,8 +886,13 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY SRC MAKE");
+                           "[ENTER]PRESET [ALT+R]SOURCE");
   }
+  const int n = presetCount();
+  const char* labels[kDualOscPresetCount];
+  for (int i = 0; i < n; ++i) labels[i] = isDualOsc() ? kDualOscPresetNames[i]
+      : isTb303Engine() ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
+  preset_popup_.draw(gfx, labels);
 }
 
 const std::string& TB303ParamsPage::getTitle() const {
@@ -903,6 +902,26 @@ const std::string& TB303ParamsPage::getTitle() const {
 bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return Container::handleEvent(ui_event);
+  }
+
+  if (preset_popup_.isOpen()) {
+    const auto result = preset_popup_.handleEvent(ui_event);
+    if (result == UI::SelectionPopupResult::Confirmed) applyPreset(preset_popup_.selectedIndex());
+    return true;
+  }
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'r' || ui_event.key == 'R' || ui_event.scancode == GROOVEPUTER_R)) {
+    const auto result = PhraseSourceToggle::toggle(mini_acid_,
+        [&](const std::function<void()>& body) { withAudioGuard(body); }, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected) UI::showToast("MELODY FAILED", 1200);
+    else if (result == PhraseSourceToggle::Result::MadePhrase) UI::showToast("MELODY <- STEPS", 1200);
+    return true;
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == '\n' || ui_event.key == '\r') &&
+      ((preset_control_ && preset_control_->isFocused()) ||
+       (isDualOsc() && cutoff_knob_ && cutoff_knob_->isFocused()))) {
+    openPresetPopup(); return true;
   }
 
   static UIInput::HoldAccelerator knobAccelerator;
@@ -1057,6 +1076,37 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   return Container::handleEvent(ui_event);
+}
+
+bool TB303ParamsPage::hasSoundPresets() const {
+  const auto name = mini_acid_.currentSynthEngineName(voice_index_);
+  return name == "TB303" || name == "WAVEMORPH" || name == "DUAL OSC";
+}
+bool TB303ParamsPage::isDualOsc() const {
+  return mini_acid_.currentSynthEngineName(voice_index_) == "DUAL OSC";
+}
+int TB303ParamsPage::presetCount() const {
+  return isDualOsc() ? kDualOscPresetCount : 3;
+}
+int TB303ParamsPage::currentPresetIndex() const {
+  // DUAL OSC: its Preset parameter (index 0) is always one of the 13, so there is no CUSTOM state
+  if (isDualOsc()) return mini_acid_.synthParameter(voice_index_, 0).optionIndex();
+  return mini_acid_.soundQualityPresetIndex(voice_index_);
+}
+void TB303ParamsPage::openPresetPopup() {
+  if (!hasSoundPresets()) return;
+  const int index = currentPresetIndex();
+  preset_popup_.open(isDualOsc() ? "DUAL OSC PRESET" : "SOUND PRESET", presetCount(), index < 0 ? 0 : index);
+}
+void TB303ParamsPage::applyPreset(int index) {
+  if (!hasSoundPresets()) return;
+  if (isDualOsc()) {
+    // the Preset parameter moves by steps of 1; the difference to the target index is the number of steps
+    const int steps = index - currentPresetIndex();
+    if (steps != 0) withAudioGuard([&]() { mini_acid_.adjustSynthParameter(voice_index_, 0, steps); });
+    return;
+  }
+  withAudioGuard([&]() { mini_acid_.applySoundQualityPreset(voice_index_, index); });
 }
 
 void TB303ParamsPage::loadModePreset(int index) {

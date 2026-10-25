@@ -3,6 +3,10 @@
 #include <cmath>
 #include <cctype>
 
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+#include "felucca_analog_voice.h"
+#endif
+
 namespace {
 float clamp01(float value) {
     if (value < 0.0f) return 0.0f;
@@ -20,6 +24,10 @@ SynthEngineType SwappableSynthVoice::normalizeEngineType(SynthEngineType type) {
         case SynthEngineType::SN76489:
         case SynthEngineType::WAVEMORPH:
             return type;
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+        case SynthEngineType::FELUCCA_ANALOG:
+            return type;
+#endif
         case SynthEngineType::OPL2:
         default:
             return SynthEngineType::TB303;
@@ -32,6 +40,9 @@ SynthEngineType SwappableSynthVoice::parseEngineName(const std::string& name) {
         character = static_cast<char>(
             std::toupper(static_cast<unsigned char>(character)));
     }
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+    if (upper.find("DUAL OSC") != std::string::npos) return SynthEngineType::FELUCCA_ANALOG;
+#endif
     if (upper.find("WAVEMORPH") != std::string::npos ||
         upper.find("WAVE MORPH") != std::string::npos) {
         return SynthEngineType::WAVEMORPH;
@@ -86,6 +97,10 @@ std::unique_ptr<IMonoSynthVoice> SwappableSynthVoice::createVoice(
             return std::make_unique<Sn76489SynthVoice>(sampleRate);
         case SynthEngineType::WAVEMORPH:
             return std::make_unique<WaveMorphSynthVoice>(sampleRate);
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+        case SynthEngineType::FELUCCA_ANALOG:
+            return std::make_unique<FeluccaAnalogVoice>(sampleRate);
+#endif
         case SynthEngineType::TB303:
         case SynthEngineType::OPL2:
         default:
@@ -142,6 +157,15 @@ SynthVoiceState SwappableSynthVoice::getState() const {
     for (uint8_t i = 0; i < count; ++i) {
         state.params[i] = voice->getParameterNormalized(i);
     }
+    if (state.engineType == SynthEngineType::TB303) {
+        // Append the two explicit TB tone controls to the six-value snapshot.
+        // UI/automation still expose the original four generic knobs, and old
+        // four-value projects retain exactly the same prefix/default behavior.
+        const auto* tb = static_cast<const TB303Voice*>(voice);
+        state.params[4] = tb->parameter(TB303ParamId::Oscillator).normalized();
+        state.params[5] = tb->parameter(TB303ParamId::FilterType).normalized();
+        state.paramCount = 6;
+    }
     return state;
 }
 
@@ -163,6 +187,11 @@ void SwappableSynthVoice::setState(const SynthVoiceState& state) {
         state.paramCount, current_->parameterCount());
     for (uint8_t i = 0; i < count; ++i) {
         current_->setParameterNormalized(i, clamp01(state.params[i]));
+    }
+    if (type_ == SynthEngineType::TB303) {
+        auto* tb = static_cast<TB303Voice*>(current_.get());
+        if (state.paramCount > 4) tb->setParameterNormalized(TB303ParamId::Oscillator, clamp01(state.params[4]));
+        if (state.paramCount > 5) tb->setParameterNormalized(TB303ParamId::FilterType, clamp01(state.params[5]));
     }
 }
 

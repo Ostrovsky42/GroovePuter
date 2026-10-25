@@ -25,6 +25,10 @@ enum class SynthEngineType : uint8_t {
     SH101     = 4,
     SN76489   = 5,
     WAVEMORPH = 6,
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+    // experimental image only: Felucca ANALOG (felucca_analog_voice.h); absent from the product engine list
+    FELUCCA_ANALOG = 7,
+#endif
 };
 
 struct SynthVoiceState {

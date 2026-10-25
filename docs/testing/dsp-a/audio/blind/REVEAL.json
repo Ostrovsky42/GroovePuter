@@ -1,0 +1,247 @@
+{
+  "protocol": "RMS-matched over full identical-duration render, peak <= .9, no limiter; labels randomized; do not open REVEAL until rating",
+  "pairs": [
+    {
+      "id": "01",
+      "case": "TB303-sequence",
+      "title": "Acid sequence",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "01-A.wav",
+          "version": "baseline",
+          "gain": 2.338929728463556,
+          "source_sha256": "0c52ec3bc01323f2c3c20a7af02798f4db4cfc07a7eaf9dc80dbe71e4dd59521",
+          "wav_sha256": "9d38ace6cf9938740b276d46af571c12731864e8a7754817f4b57423ff1b3469"
+        },
+        {
+          "file": "01-B.wav",
+          "version": "candidate",
+          "gain": 2.3020938450516084,
+          "source_sha256": "04b40e1cfa747a58c2e3ecf9ca13ef02e7b9afde54d3859ef79aed0aa3448920",
+          "wav_sha256": "48a769715ff293e8963d93678aab0e109b4d7355adb7c971299096c4ace94613"
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "case": "TB303-f0-accent-extreme",
+      "title": "Accented LP1 envelope",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "02-A.wav",
+          "version": "baseline",
+          "gain": 1.5165682530695244,
+          "source_sha256": "aa9d709444e0c99fc8aae3d109ea1eaab38525bc650e985961fb3b6b7d0495e0",
+          "wav_sha256": "a803e32058d0e9f734639b60903afeeacf6ca782ca3af1b1a73139812527b680"
+        },
+        {
+          "file": "02-B.wav",
+          "version": "candidate",
+          "gain": 2.600835067531676,
+          "source_sha256": "2552fc8d2f0b45e1d875a8d022c755e2e3106fc0d278b0b4f7fadd52a6b06a4d",
+          "wav_sha256": "be66dc3c201957e4455cef14ae79afa7c5401d799ef2502f56f2645ad4519ef6"
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "case": "WAVEMORPH-retrigger",
+      "title": "Repeated mono note",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "03-A.wav",
+          "version": "candidate",
+          "gain": 0.996030109943421,
+          "source_sha256": "00b4ff31b275965a98dca6634ea1874960d53e4a9d6176e82153429b01e9463e",
+          "wav_sha256": "3a983ac369cb41ca0fcb6dcb05b648de119beb63727cc4d881dec81f43990c7d"
+        },
+        {
+          "file": "03-B.wav",
+          "version": "baseline",
+          "gain": 0.9976998828038512,
+          "source_sha256": "d6d543a4dfabd4670a6e97f999138340f7cf232400b01c7d2a07e7d9e6c90138",
+          "wav_sha256": "87a2154038a893431d4cb5b32a4982942a27974956558881b09dcb9294add857"
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "case": "TB303-preset0",
+      "title": "Classic Acid",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "04-A.wav",
+          "version": "baseline",
+          "gain": 3.747061945329857,
+          "source_sha256": "e45994a9385e6cc39fa6054f4fd0bb084c7da274b01d7d28738deede8df077be",
+          "wav_sha256": "3042ec7910432a859b328babe6728fe4b71deb6048b92598a96c3dfb5964c347"
+        },
+        {
+          "file": "04-B.wav",
+          "version": "candidate",
+          "gain": 3.7451966272695945,
+          "source_sha256": "57445130715df7afa80a1d85b403796885a358a7b01336f8b4bd8d2cd4b56a12",
+          "wav_sha256": "817ef3cdae778a05a693023028d59985f1bce0a81f50914c72ddcba8dd8ce3af"
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "case": "TB303-preset1",
+      "title": "Deep Bass",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "05-A.wav",
+          "version": "candidate",
+          "gain": 2.0428130180760364,
+          "source_sha256": "5b47c6671ebee860ec5c0141adcdc147896c7fe29745e2a4b26b566794e82c49",
+          "wav_sha256": "4a03231c6257a59099304d3da5d1e65bf5513a92b717e38ec5246eccfc8979c6"
+        },
+        {
+          "file": "05-B.wav",
+          "version": "baseline",
+          "gain": 2.0445236475364394,
+          "source_sha256": "60b885386811f5f75c6b8648c0dd4e6ae70a784b8e22a6b1f3f9838d7c8adf2f",
+          "wav_sha256": "21f0efa40dc348343fae351eae28e4729b785faf3c88f28566ab27254bf76d64"
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "case": "TB303-preset2",
+      "title": "Aggressive Acid",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "06-A.wav",
+          "version": "baseline",
+          "gain": 4.508135716174441,
+          "source_sha256": "bee70a99970008e23409bf0dbb72a8121de9a1cd004aaa6380fa729ac7241ab1",
+          "wav_sha256": "0199537ba0fc20cc7bb7ae143748f44fb994020acfee99be846cdb016db5a7a9"
+        },
+        {
+          "file": "06-B.wav",
+          "version": "candidate",
+          "gain": 4.506141492858797,
+          "source_sha256": "1d073f650f67444107e1d7646c1bdfa6f7ca41708b9fa590fdbc58f3a61160e3",
+          "wav_sha256": "f3497795486b2d975c8b6d4cb56dd46234f2f36dbc1539c1fd0d80da18938c46"
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "case": "WAVEMORPH-preset0",
+      "title": "Warm Pad-like Lead",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "07-A.wav",
+          "version": "candidate",
+          "gain": 0.5483252019300098,
+          "source_sha256": "3e805a36f6d058ff2bd6e52e923e46221e345622d5690101e71f28131d9db824",
+          "wav_sha256": "8d97df689508984c5629fefde74be730dc9b1cb3a50fbf988224b2750fdf4c78"
+        },
+        {
+          "file": "07-B.wav",
+          "version": "baseline",
+          "gain": 0.5498673167534348,
+          "source_sha256": "2c62a4567920b20615a339a06f3d0e43dccf9000732daab634452b813ec4b8d6",
+          "wav_sha256": "f0904640c9d288235032dca73efd7badf06b777a5d26e2b5550167661cdba9ac"
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "case": "WAVEMORPH-preset1",
+      "title": "Digital Bass",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "08-A.wav",
+          "version": "baseline",
+          "gain": 0.8078998710095265,
+          "source_sha256": "7f46518c51341ece80829f7bacf6f5fbbcb2848d34d9eb5cb21a5dec138a2be7",
+          "wav_sha256": "9cb9328c91c591964c57c2185fd818763e012ec041c843190b2a2959fb6bd6c0"
+        },
+        {
+          "file": "08-B.wav",
+          "version": "candidate",
+          "gain": 0.806442603876525,
+          "source_sha256": "18666d14df505802604a96e5fc0c3ec8b751f1773d472dc35f36c0178dfb31f3",
+          "wav_sha256": "c1fb2407c0f7a0ce77a9521a70f2d4e3226bc46b6c725b6dbe0469cbe8109b5d"
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "case": "WAVEMORPH-preset2",
+      "title": "Bright Lead",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "09-A.wav",
+          "version": "candidate",
+          "gain": 0.5459051761394647,
+          "source_sha256": "8154a93d9d9a0b01fb0ac19aed2fefb52e168ffb0d39f36645149f7c0017279f",
+          "wav_sha256": "d4449c595f4cecae6e6848e21dcc1ec7e840f20196da2f3be1e231dc678f4c7a"
+        },
+        {
+          "file": "09-B.wav",
+          "version": "baseline",
+          "gain": 0.5472959028531631,
+          "source_sha256": "9ba686ac05642d0cec9bba959e9364a468a5954f0cfdddb659c50950fec106d2",
+          "wav_sha256": "638d7899f4eb30b402cc6995bd05316c92c566b973f79b2f289b9b8658188776"
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "case": "WAVEMORPH-t0-ramp",
+      "title": "Morph transition 0 (isolated experiment)",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "10-A.wav",
+          "version": "candidate",
+          "gain": 1.3630816052365609,
+          "source_sha256": "c289e983d26c13cfb748be5329549b5e9554a1b56038e0071a0e0ba8d63e0948",
+          "wav_sha256": "6b2d36f9b7289a3cb80713e243e735ff7b5d122eb3104cafb80190d87ccd6645"
+        },
+        {
+          "file": "10-B.wav",
+          "version": "phase_experiment",
+          "gain": 0.9076113743215138,
+          "source_sha256": "16c37e9f290b045d19f53adfcd3a86efcd707c67ab824ac82e00a466fe275f4a",
+          "wav_sha256": "c0b3b5d925bf0f2d78b4b10d2389783724d4191c26d367e71f709907cf9e46fd"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "case": "WAVEMORPH-t2-ramp",
+      "title": "Morph transition 2 (isolated experiment)",
+      "target_rms": 0.12,
+      "files": [
+        {
+          "file": "11-A.wav",
+          "version": "phase_experiment",
+          "gain": 0.8939915977721059,
+          "source_sha256": "f5572afd12bef54aff2f9fbcecd67a54c22db064a0f2a32848449b38b8802371",
+          "wav_sha256": "147cb080bdcb01b00e5fa695b99809b3247484a4aaa12f93cfca40e82f099e9e"
+        },
+        {
+          "file": "11-B.wav",
+          "version": "candidate",
+          "gain": 1.1960616887348519,
+          "source_sha256": "020556823ea94f238d4e7f08bca015da420ef56760327146620aec8fdea51e34",
+          "wav_sha256": "823f977a39a56d52c502ffd9afbc835029949ad7523e78d0d8f93fc9194d19bb"
+        }
+      ]
+    }
+  ]
+}

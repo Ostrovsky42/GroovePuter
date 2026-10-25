@@ -1,0 +1,17 @@
+{
+  "production_sha": "14bfee2256131aa87790c774d95ca0a149ad8398",
+  "data": 41996,
+  "bss": 142256,
+  "fixed_dram": 184252,
+  "dram_limit": 191488,
+  "flash": 1593994,
+  "bin_sha256": "fc074d356203470c076368ea741aff7d46617baa78ff86fcd6a56c33ba3be0e5",
+  "hardware": "OPEN: not flashed",
+  "provenance_note": "Built from precommit working tree; production file hashes below pin the compiled contents.",
+  "source_files": {
+    "src/dsp/miniacid_engine.cpp": "c15ba4ba21f571d58802940d7b6ebc6dd4b00641bb690d9b4e20b0829b576b9d",
+    "src/dsp/miniacid_engine.h": "7a1f7d404ace644c891699ab86e502b26b56c5b87a1ce23ef97e9bdcd794f25d",
+    "src/ui/pages/tb303_params_page.cpp": "79d4a12dd1358a316acbeecb7988601f6850d8cce56157970486d7e188aa5932",
+    "src/ui/pages/tb303_params_page.h": "28677e3ef221ff50b4592298dda2b7e02dce245bc87d2affe9023aa9d64c13e1"
+  }
+}
