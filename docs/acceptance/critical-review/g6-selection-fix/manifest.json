@@ -18,5 +18,14 @@
   "hardware_load_save_sd_failure_runtime_gates": "NOT_TESTED",
   "push": false,
   "merge": false,
-  "flash": false
+  "flash": false,
+  "hardware_monitor_path": "hardware-monitor.serial",
+  "hardware_monitor_sha256": "ba27955098c9a0da6fe246defd57ef3e98437eb3b8a9f29418821851f3a82274",
+  "hardware_monitor_duration_seconds": 60,
+  "hardware_perf_samples": 12,
+  "hardware_underruns": 0,
+  "hardware_free_internal_bytes": 19528,
+  "hardware_largest_block_bytes": 10740,
+  "save_reset_load": "PENDING_USER_CONFIRMATION",
+  "sd_failure_injection": "NOT_TESTED"
 }
