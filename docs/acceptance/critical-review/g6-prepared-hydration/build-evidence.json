@@ -21,5 +21,7 @@
     "src/dsp/miniacid_engine.h": "4e9bb9b8e613a1074923e2f2a47b8c5934ea923e062dba2c8cce2dffbbcbeb88",
     "src/dsp/miniacid_engine.cpp": "c9f5c6c74b5c39edaeb26eee20285807421f200904f1b9cf1f068ccc7a00bd0b"
   },
-  "hardware": "NOT FLASHED / NOT TESTED"
+  "hardware": "NOT FLASHED / NOT TESTED",
+  "production_sha": "7889339d057dd0db4253dc3f18d6c79eae55c010",
+  "build_note": "Built before commit; compiled source pinned by file hashes."
 }
