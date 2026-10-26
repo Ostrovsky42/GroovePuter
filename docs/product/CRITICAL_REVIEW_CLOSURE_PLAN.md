@@ -1,7 +1,9 @@
 # GroovePuter — Critical Review Closure Plan
 
-**Status: PRODUCT POLICY RATIFIED / ACCEPTANCE OPEN**  
-Дата проверки репозитория: 2026-10-25.  
+**Status: PRODUCT POLICY RATIFIED / ACCEPTANCE OPEN**
+
+Дата проверки репозитория: 2026-10-25.
+
 Тип изменений: дефекты, существующий UX, тесты, измерения и документация; без расширения функциональности.
 
 ## 0. Неизменяемые продуктовые решения

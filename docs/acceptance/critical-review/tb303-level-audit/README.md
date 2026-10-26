@@ -1,6 +1,6 @@
 # TB303 quiet Acid investigation — 2026-10-26
 
-Status: investigation, no DSP/gain/default change. The user reports TB303 Acid became quiet after DSP-A, but whether this means genre, Classic Acid preset or Acid filter remains unconfirmed. A clarification was requested; no matching hardware patch was captured yet.
+Status: investigation, no DSP/gain/default change. The user clarified that the Acid and Moog filters are quiet and sound normal only with DST enabled. Actual Cutoff/Res settings and speaker versus jack/headphone output were requested; no matching hardware patch was captured yet.
 
 ## Fresh deterministic comparison
 
@@ -32,3 +32,23 @@ g++ -std=c++17 -O2 -DGROOVEPUTER_FELUCCA_ANALOG=1 -I. docs/acceptance/critical-r
 Capture the actual quiet project/engine/oscillator/filter/cutoff/resonance/envelope/decay, velocity/accent, track/master levels, FX and output route. Compare with an explicit known Classic Acid preset at the same fixed note, first isolated and then in the mix, through jack/speaker. Save/Load should preserve those values; host roundtrip tests already pass but do not substitute for this device observation.
 
 G4 remains OPEN. No speculative patch was applied and no project/SD data was touched by this host-only analysis.
+
+## Acid/Moog clarification: filter and full-mixer measurements
+
+The user clarified this concerns Acid and Moog filters, with DST required for normal perceived level. A new840-case voice probe covers all7 filters, MIDI36/48/60, cutoff200/400/800/1600/4000 Hz, resonance0/.3/.6/.9, envelope0/400. Each case renders dry and default DST drive8 from the identical voice signal, including the mixer's0.5 per-synth factor. Results/source are `filter-levels.csv` / `filter_levels.cpp`.
+
+A second36-case real-MiniAcid probe includes the output chain, master0.6, track1.0, Acid mode, cutoff800, envelope400, no drums/other voice/delay, resonance0/.6, and DST off/on. Source/results are `mix_levels.cpp` / `mix-levels.csv`; this is a host test of real engine state, not hardware listening or timing. With resonance0.6:
+
+| Note | Filter | DST OFF dBFS RMS | DST ON dBFS RMS | Difference |
+| --- | --- | ---: | ---: | ---: |
+| C2 / MIDI36 | LP1 | -36.362 | -26.217 | +10.145 dB |
+| C2 / MIDI36 | Acid | -41.958 | -29.896 | +12.062 dB |
+| C2 / MIDI36 | Moog | -38.082 | -27.476 | +10.606 dB |
+| C3 / MIDI48 | LP1 | -36.404 | -26.377 | +10.027 dB |
+| C3 / MIDI48 | Acid | -43.064 | -30.781 | +12.283 dB |
+| C3 / MIDI48 | Moog | -37.572 | -26.790 | +10.782 dB |
+| C4 / MIDI60 | LP1 | -35.535 | -25.656 | +9.879 dB |
+| C4 / MIDI60 | Acid | -44.151 | -31.566 | +12.585 dB |
+| C4 / MIDI60 | Moog | -39.170 | -27.828 | +11.342 dB |
+
+This establishes substantial DST gain and a real filter-level difference under these settings. It does not identify the user's exact case, establish that the unchanged Diode/Ladder algorithms regressed at DSP-A, or select a safe compensation value. Cutoff/resonance, pitch and speaker bass response still matter. No DSP/gain or default was modified. Existing parameter values, output routing and the installed firmware are unchanged.

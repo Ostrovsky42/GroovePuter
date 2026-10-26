@@ -25,5 +25,9 @@
     "interpretation": "One matched-note held-window comparison, not a regression claim or a musical loudness target."
   },
   "production_changes": "NONE; no gain/default/DSP changes",
-  "status": "Reported device quietness NOT REPRODUCED with identical dry-voice inputs; exact user patch/context needed. Engine balance difference independently observed. No hardware listening or full mixer/codec qualification."
+  "status": "Reported device quietness NOT REPRODUCED with identical dry-voice inputs; exact user patch/context needed. Engine balance difference independently observed. No hardware listening or full mixer/codec qualification.",
+  "user_clarification": "Acid and Moog filters are quiet; DST makes them audible",
+  "filter_probe_cases": 840,
+  "full_mixer_probe_cases": 36,
+  "next_required": "Actual Cutoff/Res and speaker versus jack/headphone listening context"
 }
