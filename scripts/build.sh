@@ -51,8 +51,9 @@ rsync -a --delete \
 # Keep the staged page directory on the include search path so quoted
 # implementation fragments remain visible without compiling them separately.
 # Extra flags for diagnostic-only images (memory censuses, phase traces).
-# Empty by default, so the product build is byte-identical without it.
-GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-}"
+# Appended to the product defaults (DUAL OSC is always on).
+# DUAL OSC is part of the product build: the Felucca analog engine is enabled by default.
+GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="-DGROOVEPUTER_FELUCCA_ANALOG=1 ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-}"
 ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS}"
 
 "${ARDUINO_CLI}" compile \

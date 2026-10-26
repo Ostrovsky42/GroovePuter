@@ -15,7 +15,7 @@ cd "$ROOT/platform_sdl"
   -DUSE_RETRO_THEME -DUSE_AMBER_THEME -DGROOVEPUTER_ENABLE_SAMPLER=0 \
   -DGROOVEPUTER_ENABLE_TAPE=0 -DGROOVEPUTER_ENABLE_WAVEFORM=0 \
   -DGROOVEPUTER_FELUCCA_ANALOG=1 $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) \
-  $SOURCES ../src/dsp/felucca_analog_voice.cpp "$BUILD/felucca_analog_c.o" \
+  $SOURCES "$BUILD/felucca_analog_c.o" \
   ../src/sampler/sample_scene_persistence.cpp ../tests/test_dual_osc_preset_ui.cpp \
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "$BUILD/test"
 "$BUILD/test"

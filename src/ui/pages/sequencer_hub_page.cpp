@@ -912,6 +912,28 @@ bool SequencerHubPage::handleEvent(UIEvent& e) {
     if (UIInput::isGlobalNav(e)) return false;
 
     if (handleModeSwitch(e)) return true;
+    // B: switch the bank of the selected track (303 A/B or drums), from the hub.
+    if (!e.alt && !e.ctrl && !e.meta && !mini_acid_.songModeEnabled() &&
+        ((e.key == 'b' || e.key == 'B') || e.scancode == GROOVEPUTER_B)) {
+        if (isDrumTrack(selectedTrack_)) {
+            const int next = (mini_acid_.currentDrumBankIndex() + 1) % kBankCount;
+            withAudioGuard([&]() { mini_acid_.setDrumBankIndex(next); });
+            char msg[12];
+            std::snprintf(msg, sizeof(msg), "BANK %c", 'A' + next);
+            UI::showToast(msg, 800);
+        } else {
+            const int next = (mini_acid_.current303BankIndex(selectedTrack_) + 1) % kBankCount;
+            if (mini_acid_.hasUnsavedWorkingMelody(selectedTrack_)) {
+                UI::showToast("ALT+ENTER SAVE", 1200);
+            } else {
+                withAudioGuard([&]() { mini_acid_.tryManual303BankSwitch(selectedTrack_, next); });
+                char msg[12];
+                std::snprintf(msg, sizeof(msg), "BANK %c", 'A' + next);
+                UI::showToast(msg, 800);
+            }
+        }
+        return true;
+    }
     if (handleQuickKeys(e)) return true;
     if (handleVolumeInput(e)) return true;
     if (handleNavigation(e)) return true;

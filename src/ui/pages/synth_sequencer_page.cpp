@@ -1935,6 +1935,28 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (phraseNotes && handleMelodySlotKey(ui_event)) return true;
   if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;
 
+  // B switches the sound bank from the KNOBS and MORE tabs too; NOTES does it in the pattern page.
+  if (synth_tab_ != SynthTab::Notes && ui_event.event_type == GROOVEPUTER_KEY_DOWN &&
+      !ui_event.alt && !ui_event.ctrl && !ui_event.meta && !mini_acid_.songModeEnabled()) {
+    const char lowerKey = ui_event.key
+        ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+        : 0;
+    if (lowerKey == 'b' || ui_event.scancode == GROOVEPUTER_B) {
+      if (mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+        UI::showToast("ALT+ENTER SAVE", 1200);
+        return true;
+      }
+      const int next = (mini_acid_.current303BankIndex(voice_index_) + 1) % kBankCount;
+      auto switchBank = [&]() { mini_acid_.tryManual303BankSwitch(voice_index_, next); };
+      if (audio_guard_) audio_guard_(switchBank);
+      else switchBank();
+      char msg[12];
+      std::snprintf(msg, sizeof(msg), "BANK %c", 'A' + next);
+      UI::showToast(msg, 800);
+      return true;
+    }
+  }
+
   if (!phraseNotes && GroovePuterUndoUx::isUndoEvent(ui_event) &&
       synth_tab_ == SynthTab::Notes) {
     auto& owner = GroovePuterUndo::undoOwner();

@@ -1,5 +1,5 @@
 CXX ?= clang++
-CXXFLAGS ?= -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME
+CXXFLAGS ?= -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME -DGROOVEPUTER_FELUCCA_ANALOG=1
 
 # Depends on SDL2 and SDL2_gfx. Install via Homebrew with:
 # brew install sdl2 sdl2_gfx
@@ -145,6 +145,7 @@ SOURCES := \
 	../src/sampler/drum_sampler_track.cpp \
 	../cardputer_display.cpp \
 	../scenes.cpp \
+	../src/dsp/felucca_analog_voice.cpp \
 	../json_evented.cpp \
 	sdl_main.cpp \
 	sdl_display.cpp \
@@ -164,7 +165,10 @@ SDL2_GFX_DYLIB := /opt/homebrew/opt/sdl2_gfx/lib/libSDL2_gfx-1.0.0.dylib
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES)
+felucca_analog_c.o: ../src/dsp/felucca_analog_c.c
+	$(CC) -std=c11 -O1 -I.. -c $< -o $@
+
+$(TARGET): $(SOURCES) felucca_analog_c.o
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
 
 $(E1_LIVE_BRIDGE_TARGET): $(E1_LIVE_BRIDGE_SOURCES)
