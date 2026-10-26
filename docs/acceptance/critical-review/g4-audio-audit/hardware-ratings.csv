@@ -1,0 +1,7 @@
+participant,output,exact_SHA_BIN,bass_usable,lead_usable,mix_usable,TB_presets_distinguishable,WM_presets_distinguishable,evidence,status
+P01,speaker,,,,,,,,NOT RUN
+P01,jack,,,,,,,,NOT RUN
+P02,speaker,,,,,,,,NOT RUN
+P02,jack,,,,,,,,NOT RUN
+P03,speaker,,,,,,,,NOT RUN
+P03,jack,,,,,,,,NOT RUN

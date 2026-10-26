@@ -1,0 +1,375 @@
+{
+  "pairs": [
+    {
+      "pair": "01",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 6.777851131955177e-08,
+      "files": [
+        {
+          "file": "01-A.wav",
+          "sha256": "9d38ace6cf9938740b276d46af571c12731864e8a7754817f4b57423ff1b3469",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999637749797747,
+          "peak": 0.420867919921875
+        },
+        {
+          "file": "01-B.wav",
+          "sha256": "48a769715ff293e8963d93678aab0e109b4d7355adb7c971299096c4ace94613",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999637843434394,
+          "peak": 0.40777587890625
+        }
+      ]
+    },
+    {
+      "pair": "02",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 1.322830513293923e-07,
+      "files": [
+        {
+          "file": "02-A.wav",
+          "sha256": "a803e32058d0e9f734639b60903afeeacf6ca782ca3af1b1a73139812527b680",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999638370645394,
+          "peak": 0.446563720703125
+        },
+        {
+          "file": "02-B.wav",
+          "sha256": "be66dc3c201957e4455cef14ae79afa7c5401d799ef2502f56f2645ad4519ef6",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999638553395676,
+          "peak": 0.4736328125
+        }
+      ]
+    },
+    {
+      "pair": "03",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 6.715958938460028e-06,
+      "files": [
+        {
+          "file": "03-A.wav",
+          "sha256": "3a983ac369cb41ca0fcb6dcb05b648de119beb63727cc4d881dec81f43990c7d",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999632332396014,
+          "peak": 0.3394775390625
+        },
+        {
+          "file": "03-B.wav",
+          "sha256": "87a2154038a893431d4cb5b32a4982942a27974956558881b09dcb9294add857",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999641610555481,
+          "peak": 0.34002685546875
+        }
+      ]
+    },
+    {
+      "pair": "04",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 2.827303094326682e-06,
+      "files": [
+        {
+          "file": "04-A.wav",
+          "sha256": "3042ec7910432a859b328babe6728fe4b71deb6048b92598a96c3dfb5964c347",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999634985572516,
+          "peak": 0.35089111328125
+        },
+        {
+          "file": "04-B.wav",
+          "sha256": "817ef3cdae778a05a693023028d59985f1bce0a81f50914c72ddcba8dd8ce3af",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.1199963107962839,
+          "peak": 0.35076904296875
+        }
+      ]
+    },
+    {
+      "pair": "05",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 4.997969133575953e-07,
+      "files": [
+        {
+          "file": "05-A.wav",
+          "sha256": "4a03231c6257a59099304d3da5d1e65bf5513a92b717e38ec5246eccfc8979c6",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999634487437046,
+          "peak": 0.402923583984375
+        },
+        {
+          "file": "05-B.wav",
+          "sha256": "21f0efa40dc348343fae351eae28e4729b785faf3c88f28566ab27254bf76d64",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999633796963144,
+          "peak": 0.403228759765625
+        }
+      ]
+    },
+    {
+      "pair": "06",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 1.29014844861163e-06,
+      "files": [
+        {
+          "file": "06-A.wav",
+          "sha256": "0199537ba0fc20cc7bb7ae143748f44fb994020acfee99be846cdb016db5a7a9",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999630928644602,
+          "peak": 0.408355712890625
+        },
+        {
+          "file": "06-B.wav",
+          "sha256": "f3497795486b2d975c8b6d4cb56dd46234f2f36dbc1539c1fd0d80da18938c46",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999632710995865,
+          "peak": 0.408172607421875
+        }
+      ]
+    },
+    {
+      "pair": "07",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 8.966263283217428e-07,
+      "files": [
+        {
+          "file": "07-A.wav",
+          "sha256": "8d97df689508984c5629fefde74be730dc9b1cb3a50fbf988224b2750fdf4c78",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999632368162923,
+          "peak": 0.285980224609375
+        },
+        {
+          "file": "07-B.wav",
+          "sha256": "f0904640c9d288235032dca73efd7badf06b777a5d26e2b5550167661cdba9ac",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999631129465886,
+          "peak": 0.28631591796875
+        }
+      ]
+    },
+    {
+      "pair": "08",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 3.2302579811329204e-06,
+      "files": [
+        {
+          "file": "08-A.wav",
+          "sha256": "9cb9328c91c591964c57c2185fd818763e012ec041c843190b2a2959fb6bd6c0",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999629355319148,
+          "peak": 0.3299560546875
+        },
+        {
+          "file": "08-B.wav",
+          "sha256": "c1fb2407c0f7a0ce77a9521a70f2d4e3226bc46b6c725b6dbe0469cbe8109b5d",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.1199963381794846,
+          "peak": 0.329132080078125
+        }
+      ]
+    },
+    {
+      "pair": "09",
+      "scope": "DSP-A baseline/candidate",
+      "rms_delta_db": 1.9561087906664008e-06,
+      "files": [
+        {
+          "file": "09-A.wav",
+          "sha256": "d4449c595f4cecae6e6848e21dcc1ec7e840f20196da2f3be1e231dc678f4c7a",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999633447041265,
+          "peak": 0.280029296875
+        },
+        {
+          "file": "09-B.wav",
+          "sha256": "638d7899f4eb30b402cc6995bd05316c92c566b973f79b2f289b9b8658188776",
+          "format": [
+            1,
+            2,
+            22050,
+            110250
+          ],
+          "rms": 0.11999636149423185,
+          "peak": 0.27996826171875
+        }
+      ]
+    },
+    {
+      "pair": "10",
+      "scope": "isolated nonproduction morph experiment",
+      "rms_delta_db": 1.9413351748449758e-06,
+      "files": [
+        {
+          "file": "10-A.wav",
+          "sha256": "6b2d36f9b7289a3cb80713e243e735ff7b5d122eb3104cafb80190d87ccd6645",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999633601546626,
+          "peak": 0.561004638671875
+        },
+        {
+          "file": "10-B.wav",
+          "sha256": "c0b3b5d925bf0f2d78b4b10d2389783724d4191c26d367e71f709907cf9e46fd",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999636283518694,
+          "peak": 0.377777099609375
+        }
+      ]
+    },
+    {
+      "pair": "11",
+      "scope": "isolated nonproduction morph experiment",
+      "rms_delta_db": 3.3295636096365816e-06,
+      "files": [
+        {
+          "file": "11-A.wav",
+          "sha256": "147cb080bdcb01b00e5fa695b99809b3247484a4aaa12f93cfca40e82f099e9e",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.1199963116432644,
+          "peak": 0.4227294921875
+        },
+        {
+          "file": "11-B.wav",
+          "sha256": "823f977a39a56d52c502ffd9afbc835029949ad7523e78d0d8f93fc9194d19bb",
+          "format": [
+            1,
+            2,
+            22050,
+            44100
+          ],
+          "rms": 0.11999635764148056,
+          "peak": 0.563812255859375
+        }
+      ]
+    }
+  ],
+  "source_comparison": [
+    {
+      "path": "src/dsp/mini_tb303.cpp",
+      "matches_historical_dsp_source": true,
+      "current_sha256": "fcab741f1394941c803b0aa3d751af55caf387c496993d51dbbac40c55a8692a"
+    },
+    {
+      "path": "src/dsp/filter.cpp",
+      "matches_historical_dsp_source": true,
+      "current_sha256": "cb6dc3f84156bf3bc2a7a862fbe5d48f22bc72510f78f9dbdb72ff1d8b2449d0"
+    },
+    {
+      "path": "src/dsp/wave_morph_synth_voice.cpp",
+      "matches_historical_dsp_source": true,
+      "current_sha256": "7008283990249e579213ea945517ace6b2cf977a9ba26b6356726306d724ee67"
+    },
+    {
+      "path": "src/dsp/sound_quality_presets.cpp",
+      "matches_historical_dsp_source": true,
+      "current_sha256": "3740180ff8bbcd504d74f39218c99a392d2d7890c7d0443f6808e2de5af942be"
+    },
+    {
+      "path": "src/dsp/audio_wavetables.cpp",
+      "matches_historical_dsp_source": true,
+      "current_sha256": "173521942c22da5c5e0fc65425ec4b6d25c27dd1cf3090432caf08b2ec1096d8"
+    }
+  ],
+  "listeners": "NOT RUN",
+  "hardware": "NOT RUN",
+  "result": "22/22 hashes and formats match; 11/11 RMS differences <0.01 dB; 5/5 direct DSP inputs unchanged"
+}

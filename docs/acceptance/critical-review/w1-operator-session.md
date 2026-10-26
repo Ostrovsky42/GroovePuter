@@ -64,7 +64,7 @@ Power-cut atomicity stays UNVERIFIED unless deliberately tested and recorded. Do
 Capture free internal heap, minimum free heap if available, largest contiguous block, CPU/block-time, stack high-water, underruns, panic/reboot at cold start, generation, 16-bar play, Undo, Save and Load. Required 30-minute working run and paired #495 measurements are still separate acceptance conditions if this combined session is shorter or idle.
 ## Current conditions
 
-The current BIN is uploaded/hash verified, but its physical gate rows remain unfilled. A user-reported quiet TB303 Acid observation is under investigation; host identical-input comparisons did not reproduce a level loss in Classic Acid or the unchanged Acid filter. Do not freeze a final RC or mark G4 PASS until the actual hardware patch/context is resolved.
+The current BIN is uploaded/hash verified, but its physical gate rows remain unfilled. The operator clarified that Cutoff/Res were low and raising them made the sound clearer; host comparisons did not reproduce an Acid/Moog regression. No urgent DSP patch is justified. Speaker/jack matched listening and G4 acceptance remain OPEN.
 
 The operator has no card reader. A backup/hash acquisition route over the device is not implemented or verified yet. Negative SD cases therefore remain HOLD until the positive test project's files can be protected and compared. Do not require the user to overwrite older accepted work. Older test-save payload absence/recovery remains unresolved; the old same-project census had a filename-prefix filtering limitation, so its absence claims were not exhaustive.
 

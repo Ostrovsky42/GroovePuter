@@ -1,0 +1,7 @@
+{
+  "command": "bash tests/run_0_9_14_p0_cycle_tests.sh",
+  "exit_code": 0,
+  "source_commit": "b6c3daf9fa7a59abadbe3f0b259bea350f809675",
+  "log_sha256": "aa55ad277e2830e33740b9292f49328b8c7201d713ebd18d897d452879740032",
+  "scope": "SDL P0 MATERIAL develop/break/return, typed refusals, cancel gesture, Undo and Save keeps Undo; does not cover all G3 device hashes or standalone FORM edit"
+}
