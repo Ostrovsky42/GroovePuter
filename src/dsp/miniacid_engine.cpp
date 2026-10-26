@@ -3443,11 +3443,15 @@ bool MiniAcid::saveSceneAs(const std::string& name) {
   const std::string targetName = sceneStorage_->getCurrentSceneName();
   if (targetName != previousName &&
       !PatternPagingService::copyProjectPages(previousName, targetName)) {
-    sceneStorage_->setCurrentSceneName(previousName);
+    if (!sceneStorage_->setCurrentSceneName(previousName)) {
+      sceneStorage_->restoreSceneSelection(previousName);
+    }
     return false;
   }
   if (saveSceneToStorage()) return true;
-  sceneStorage_->setCurrentSceneName(previousName);
+  if (!sceneStorage_->setCurrentSceneName(previousName)) {
+    sceneStorage_->restoreSceneSelection(previousName);
+  }
   return false;
 }
 
