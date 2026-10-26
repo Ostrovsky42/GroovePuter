@@ -78,10 +78,10 @@ VisualStyle nextVisualStyle(VisualStyle style) {
 
 const char* visualStyleName(VisualStyle style) {
     switch (style) {
-        case VisualStyle::MINIMAL: return "CARBON";
+        case VisualStyle::MINIMAL: return "CLEAN";
         case VisualStyle::RETRO_CLASSIC: return "CYBER";
         case VisualStyle::AMBER: return "AMBER";
-        default: return "CARBON";
+        default: return "CLEAN";
     }
 }
 } // namespace

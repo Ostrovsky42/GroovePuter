@@ -235,7 +235,8 @@ void drawGeneratedBarStrip(
     int width,
     uint8_t bars,
     uint8_t selectedBar,
-    int currentBar,
+    int playingBar,
+    int positionBar,
     const PhrasePalette& palette) {
   bars = std::max<uint8_t>(1, std::min<uint8_t>(8, bars));
   constexpr int kGap = 3;
@@ -248,7 +249,8 @@ void drawGeneratedBarStrip(
   for (int bar = 0; bar < 8; ++bar) {
     const int bx = startX + bar * (cellW + kGap);
     const bool active = bar < bars;
-    const bool current = bar == currentBar;
+    const bool current = bar == playingBar;
+    const bool position = bar == positionBar;
     const bool selected = bar == selectedBar && active;
     if (current) {
       gfx.fillRect(bx, y, cellW, cellH, palette.accent);
@@ -258,7 +260,11 @@ void drawGeneratedBarStrip(
     }
     gfx.drawRect(bx, y, cellW, cellH,
                  selected ? palette.text :
-                 (active ? palette.border : palette.gridOff));
+                 (position && active ? palette.accent :
+                 (active ? palette.border : palette.gridOff)));
+    if (position && active && !current && !selected && cellW > 4 && cellH > 4) {
+      gfx.drawRect(bx + 1, y + 1, cellW - 2, cellH - 2, palette.accent);
+    }
     if (active) {
       char label[4];
       std::snprintf(label, sizeof(label), "%d", bar + 1);
@@ -736,10 +742,16 @@ void PhrasePage::drawProductView(IGfx& gfx) {
     }
 
     if (product_bar_cursor_ >= accepted.bars) product_bar_cursor_ = 0;
-    const int playingBar = currentGeneratedBar(mini_acid_, accepted);
+    // Fill = playing bar (transport running). Outline = song position while
+    // stopped. The two are separate channels so STOP never reads as PLAY.
+    const int songBar = currentGeneratedBar(mini_acid_, accepted);
+    const bool transportRunning = mini_acid_.isPlaying();
     drawGeneratedBarStrip(
         gfx, x, LayoutManager::lineY(4), width, accepted.bars,
-        product_bar_cursor_, playingBar, palette);
+        product_bar_cursor_,
+        transportRunning ? songBar : -1,
+        transportRunning ? -1 : songBar,
+        palette);
 
     const BarActivity activity = readAcceptedBarActivity(product_bar_cursor_);
     if (!activity.contentAvailable) {

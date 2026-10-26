@@ -109,18 +109,17 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard au
 
 void SequencerHubPage::draw(IGfx& gfx) {
     switch (hub_style_) {
-        case VisualStyle::RETRO_CLASSIC:
-            drawRetroClassicStyle(gfx);
-            break;
         case VisualStyle::AMBER:
             drawAmberStyle(gfx);
             break;
         case VisualStyle::MINIMAL_DARK:
             drawTEGridStyle(gfx);
             break;
+        case VisualStyle::RETRO_CLASSIC:
         case VisualStyle::MINIMAL:
         default:
-            drawMinimalStyle(gfx);
+            // CLEAN shares the CYBER hub structure; forms differ inside the shared draw.
+            drawRetroClassicStyle(gfx);
             break;
     }
 }
@@ -343,6 +342,8 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
 
 void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 #ifdef USE_RETRO_THEME
+    const UI::ThemePalette p = UI::themePalette();
+    const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
     const Rect& bounds = getBoundaries();
     int x = bounds.x;
     int y = bounds.y;
@@ -365,7 +366,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
     int contentY = y + 15 + kHubOverviewTopInset;
     int contentH = h - 15 - 12 - kHubOverviewTopInset;
-    gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
+    gfx.fillRect(x, contentY, w, contentH, p.background);
 
     if (mode_ == Mode::OVERVIEW) {
         syncOverviewScroll();
@@ -382,6 +383,8 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             uint32_t trackColor = NEON_ORANGE;
             if (i == 0) trackColor = NEON_CYAN;
             else if (i == 1) trackColor = NEON_MAGENTA;
+            // Track identity: CYBER hue per track; CLEAN uses text (identity by label and row).
+            const IGfxColor trackIG = clean ? p.text : (i == 0 ? p.accent : (i == 1 ? p.accent2 : p.danger));
 
             float vol = mini_acid_.getTrackVolume((VoiceId)i);
             float volNorm = vol / 1.2f;
@@ -391,31 +394,39 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             int fillW = (int)(rowW * volNorm + 0.5f);
 
             uint32_t dimTint = ((trackColor >> 3) & 0x1F1F1F);
-            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(BG_DEEP_BLACK));
+            gfx.fillRect(x + 2, ry, rowW, rowH, p.background);
             if (fillW > 0) {
-                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(dimTint));
+                gfx.fillRect(x + 2, ry, fillW, rowH, clean ? p.gridDim : IGfxColor(dimTint));
                 if (fillW < rowW - 1) {
-                    gfx.drawLine(x + 2 + fillW, ry, x + 2 + fillW, ry + rowH - 1, IGfxColor(GRID_MEDIUM));
+                    gfx.drawLine(x + 2 + fillW, ry, x + 2 + fillW, ry + rowH - 1, p.grid);
                 }
             }
-            if (selected) {
-                 drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(trackColor), 1);
+            if (selected && clean) {
+                gfx.drawRect(x + 2, ry, w - 4, rowH, p.text);
+            } else if (selected) {
+                 drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, trackIG, 1);
             }
 
             char volBuf[8];
             int volPct = (int)(vol * 100.0f + 0.5f);
             std::snprintf(volBuf, sizeof(volBuf), "%d%%", volPct);
             int volTextW = textWidth(gfx, volBuf);
-            gfx.setTextColor(selected ? IGfxColor(TEXT_PRIMARY) : IGfxColor(TEXT_DIM));
+            gfx.setTextColor(selected ? p.text : p.dim);
             gfx.drawText(x + w - volTextW - 6, ry + 1, volBuf);
 
             char name[16];
             buildHubTrackLabel(i, name, sizeof(name), isSp12Engine(mini_acid_));
 
-            if (selected) {
-                drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(FOCUS_GLOW), IGfxColor(TEXT_PRIMARY));
+            if (selected && clean) {
+                // Selected track: inverted label block.
+                const int labelW = textWidth(gfx, name) + 4;
+                gfx.fillRect(x + 4, ry + 1, labelW, rowH - 2, p.focus);
+                gfx.setTextColor(p.invert);
+                gfx.drawText(x + 6, ry + 1, name);
+            } else if (selected) {
+                drawGlowText(gfx, x + 6, ry + 1, name, p.glow, p.text);
             } else {
-                gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+                gfx.setTextColor(p.secondary);
                 gfx.drawText(x + 6, ry + 1, name);
             }
 
@@ -423,9 +434,9 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             int cellW = 10;
             for (int s = 0; s < 16; s++) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
-                IGfxColor color = hit ? (selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
+                IGfxColor color = hit ? (selected ? trackIG : p.grid) : p.inset;
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
-                IGfxColor border = (s % 4 == 0) ? IGfxColor(GRID_MEDIUM) : IGfxColor(GRID_DIM);
+                IGfxColor border = (s % 4 == 0) ? p.grid : p.gridDim;
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
 
@@ -433,7 +444,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             int volPixelW = (int)(vol * gridTotalW);
             if (volPixelW > gridTotalW) volPixelW = gridTotalW;
             if (volPixelW > 0) {
-                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM));
+                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? trackIG : p.grid);
             }
 
             if (selected) {
@@ -441,7 +452,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             }
 
             bool active = mini_acid_.isTrackActive(i);
-            RetroWidgets::drawLED(gfx, x + 42, ry + (rowH/2), 2, active && isPlaying, IGfxColor(trackColor));
+            RetroWidgets::drawLED(gfx, x + 42, ry + (rowH/2), 2, active && isPlaying, trackIG);
         }
         drawHubScrollbar(gfx,
                          x + w - 4,
@@ -450,8 +461,8 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                          kHubTrackCount,
                          kHubVisibleTracks,
                          firstTrack,
-                         IGfxColor(GRID_DIM),
-                         IGfxColor(SELECT_BRIGHT));
+                         p.gridDim,
+                         p.selectBright);
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
@@ -483,23 +494,30 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 const bool accent = working ? working->steps[s].accent : accents[s];
                 const bool slide = working ? working->steps[s].slide : slides[s];
 
-                IGfxColor bgColor = (s % 4 == 0) ? IGfxColor(BG_INSET) : IGfxColor(BG_PANEL);
+                IGfxColor bgColor = clean ? p.background : ((s % 4 == 0) ? p.inset : p.panel);
                 gfx.fillRect(cx, gridY, cellW - 1, cellH, bgColor);
-                gfx.drawRect(cx, gridY, cellW - 1, cellH, IGfxColor(GRID_MEDIUM));
+                gfx.drawRect(cx, gridY, cellW - 1, cellH, p.grid);
 
-                if (isCursor) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(SELECT_BRIGHT), 1);
-                if (isPlay) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(STATUS_PLAYING), 2);
+                if (clean) {
+                    // Focus: inverted cell. Playhead: accent bar in the gap above the cell.
+                    if (isCursor) gfx.fillRect(cx, gridY, cellW - 1, cellH, p.focus);
+                    if (isPlay) gfx.fillRect(cx, gridY - 2, cellW - 1, 2, p.active);
+                } else {
+                    if (isCursor) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, p.selectBright, 1);
+                    if (isPlay) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, p.active, 2);
+                }
 
                 if (note >= 0) {
                     char n[8]; formatNoteName(note, n, sizeof(n));
-                    IGfxColor noteColor = accent ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+                    IGfxColor noteColor = accent ? p.danger : p.accent;
+                    if (clean) noteColor = isCursor ? p.invert : (accent ? p.danger : p.text);
                     gfx.setTextColor(noteColor);
                     gfx.drawText(cx + (cellW - textWidth(gfx, n)) / 2, gridY + 10, n);
 
-                    if (slide) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_MAGENTA));
-                    if (accent) drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, IGfxColor(NEON_ORANGE));
+                    if (slide) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, clean ? p.text : p.accent2);
+                    if (accent) drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, p.danger);
                 } else {
-                    gfx.setTextColor(IGfxColor(TEXT_DIM));
+                    gfx.setTextColor(p.dim);
                     gfx.drawText(cx + (cellW - 4) / 2, gridY + 10, ".");
                 }
             }
@@ -812,6 +830,10 @@ void SequencerHubPage::drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, 
          AmberWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 2);
      } else if (UI::currentStyle == ::VisualStyle::RETRO_CLASSIC) {
          RetroWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(RetroTheme::SELECT_BRIGHT), 2);
+     } else if (UI::currentStyle == ::VisualStyle::MINIMAL) {
+         // CLEAN: 2 px text-colour frame; keeps the hit glyph readable inside the cell.
+         const UI::ThemePalette p = UI::themePalette();
+         gfx.drawRect(cx - 1, y - 1, cellW + 1, cellH + 2, p.text);
      } else {
          gfx.drawRect(cx, y, cellW - 1, cellH, COLOR_STEP_SELECTED);
      }

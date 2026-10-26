@@ -114,14 +114,13 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
   if (!computeLayout(layout)) return;
 
   switch (style_) {
-    case GrooveboxStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx, layout);
-      break;
     case GrooveboxStyle::AMBER:
       drawAmberStyle(gfx, layout);
       break;
+    case GrooveboxStyle::RETRO_CLASSIC:
+    case GrooveboxStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx, layout);
+      drawRetroClassicStyle(gfx, layout);
       break;
   }
 }
@@ -186,16 +185,20 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
 }
 
 void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
-      const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
-  const std::string engine = mini_acid_.currentDrumEngineName();
+    // CYBER and CLEAN share this grid. Palette roles carry the colour; the
+    // `clean` branch changes only the state forms (see docs/design/CLEAN_THEME_SPEC.md).
+    const UI::ThemePalette p = UI::themePalette();
+    const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
+    const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+    const std::string engine = mini_acid_.currentDrumEngineName();
     drawStepNumbers(gfx,
                     layout.grid_x,
                     layout.cell_w,
                     layout.bounds_y,
-                    IGfxColor(RetroTheme::TEXT_SECONDARY));
+                    p.secondary);
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
-        gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+        gfx.setTextColor(p.secondary);
         gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
     }
 
@@ -205,7 +208,9 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
     auto isSelected = [this](int step, int voice) {
       return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
     };
-    int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
+    // The playhead shows only while the transport runs; currentStep() is 0 when stopped.
+    const bool transportRunning = mini_acid_.isPlaying();
+    int highlight = (callbacks_.currentStep && transportRunning) ? callbacks_.currentStep() : -1;
 
     for (int i = 0; i < SEQ_STEPS; ++i) {
         int cx = layout.grid_x + i * layout.cell_w;
@@ -213,27 +218,56 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
             int cy = layout.grid_y + v * layout.stripe_h;
             const DrumStep& stepData = patternSet.voices[v].steps[i];
             bool hit = stepData.hit != 0;
-            IGfxColor fill = hit
-                                 ? scaleColor(IGfxColor(RetroTheme::NEON_CYAN),
-                                              velocityToBrightness(effectiveVelocity(stepData)))
-                                 : IGfxColor(RetroTheme::BG_PANEL);
-            if (!hit && (i % 4 == 0)) fill = IGfxColor(RetroTheme::BG_DARK_GRAY);
+            const int cellW = layout.cell_w - 1;
+            const int cellH = layout.stripe_h - 1;
+            const bool isCursorCell = gridFocus && i == cursorStep && v == cursorVoice;
 
-            gfx.fillRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, fill);
-            gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::GRID_DIM));
+            if (clean) {
+                // Focus: inverted cell. Hit: a glyph square. Accent flag: accent glyph.
+                if (isCursorCell) {
+                    gfx.fillRect(cx, cy, cellW, cellH, p.focus);
+                } else {
+                    gfx.drawRect(cx, cy, cellW, cellH, p.grid);
+                }
+                if (hit) {
+                    const int m = std::min(6, cellH - 4);
+                    const int mx = cx + (cellW - m) / 2;
+                    const int my = cy + (cellH - m) / 2;
+                    // Velocity keeps the same brightness mapping as CYBER.
+                    const int brightness = velocityToBrightness(effectiveVelocity(stepData));
+                    const IGfxColor mark = isCursorCell
+                        ? p.invert
+                        : scaleColor(stepData.accent ? p.danger : p.text, brightness);
+                    gfx.fillRect(mx, my, m, m, mark);
+                }
+                if (isSelected(i, v)) gfx.drawRect(cx, cy, cellW, cellH, p.text);
+                // Playhead: accent bar in the gap above the column, once per column.
+                if (highlight == i && v == 0) {
+                    gfx.fillRect(cx, layout.grid_y - 2, cellW, 2, p.active);
+                }
+                continue;
+            }
+
+            IGfxColor fill = hit
+                                 ? scaleColor(p.accent,
+                                              velocityToBrightness(effectiveVelocity(stepData)))
+                                 : p.panel;
+            if (!hit && (i % 4 == 0)) fill = p.fillAlt;
+
+            gfx.fillRect(cx, cy, cellW, cellH, fill);
+            gfx.drawRect(cx, cy, cellW, cellH, p.gridDim);
             if (hit && stepData.accent) {
-                drawAccentFrame(gfx, cx, cy, layout.cell_w - 1,
-                                layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_ACCENT));
+                drawAccentFrame(gfx, cx, cy, cellW, cellH, p.danger);
             }
 
             if (highlight == i) {
-                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
+                retro::drawGlowBorder(gfx, cx, cy, cellW, cellH, p.active, 1);
             }
             if (isSelected(i, v)) {
-                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_ACCENT), 1);
+                retro::drawGlowBorder(gfx, cx, cy, cellW, cellH, p.danger, 1);
             }
-            if (gridFocus && i == cursorStep && v == cursorVoice) {
-                gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::SELECT_BRIGHT));
+            if (isCursorCell) {
+                gfx.drawRect(cx, cy, cellW, cellH, p.selectBright);
             }
         }
     }

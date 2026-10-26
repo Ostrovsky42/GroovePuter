@@ -25,6 +25,26 @@ struct ThemePalette {
     IGfxColor warning;
     IGfxColor danger;
     IGfxColor invert;
+    // Grid lines and empty-cell outlines.
+    IGfxColor grid;
+    // Voice identity: CYBER uses hue; CLEAN uses text (identity by label and position).
+    IGfxColor voiceA;
+    IGfxColor voiceB;
+    // Shared widget surfaces (CYBER widgets read these; CLEAN maps them to plain black/rules).
+    IGfxColor glow;
+    IGfxColor gridDim;
+    IGfxColor fillAlt;
+    IGfxColor selectBg;
+    IGfxColor selectBright;
+    // Role tokens: what a colour means on screen, not which hue it is.
+    // CYBER maps them to its hues; CLEAN maps them to text, secondary or rule.
+    IGfxColor title;
+    IGfxColor value;
+    IGfxColor modeTag;
+    IGfxColor selection;
+    IGfxColor noteAccent;
+
+    IGfxColor voice(int voiceIndex) const { return voiceIndex == 0 ? voiceA : voiceB; }
 };
 
 inline ThemePalette themePalette(VisualStyle style) {
@@ -37,7 +57,10 @@ inline ThemePalette themePalette(VisualStyle style) {
                 IGfxColor(0xF7FAFC), IGfxColor(0xA7B0BB), IGfxColor(0x58616B),
                 IGfxColor(0xC7FF3D), IGfxColor(0x56D4FF), IGfxColor(0xC7FF3D),
                 IGfxColor(0x8BFFB0), IGfxColor(0xFFD166), IGfxColor(0xFF4D6D),
-                IGfxColor(0x020408)
+                IGfxColor(0x020408),
+                IGfxColor(0x1A2230), IGfxColor(0x56D4FF), IGfxColor(0xC7FF3D),
+                IGfxColor(0x0B1018), IGfxColor(0x0B1018), IGfxColor(0x0B1018), IGfxColor(0x132030), IGfxColor(0xE0E8F0),
+                IGfxColor(0x56D4FF), IGfxColor(0xC7FF3D), IGfxColor(0xA7B0BB), IGfxColor(0x56D4FF), IGfxColor(0xC7FF3D)
             };
         case VisualStyle::RETRO_CLASSIC:
             return {
@@ -53,7 +76,12 @@ inline ThemePalette themePalette(VisualStyle style) {
                 IGfxColor(RetroTheme::STATUS_ACTIVE),
                 IGfxColor(RetroTheme::NEON_YELLOW),
                 IGfxColor(RetroTheme::STATUS_ACCENT),
-                IGfxColor(RetroTheme::TEXT_INVERT)
+                IGfxColor(RetroTheme::TEXT_INVERT),
+                IGfxColor(RetroTheme::GRID_MEDIUM), IGfxColor(RetroTheme::NEON_CYAN), IGfxColor(RetroTheme::NEON_MAGENTA),
+                IGfxColor(RetroTheme::FOCUS_GLOW), IGfxColor(RetroTheme::GRID_DIM), IGfxColor(RetroTheme::BG_DARK_GRAY),
+                IGfxColor(RetroTheme::SELECT_BG), IGfxColor(RetroTheme::SELECT_BRIGHT),
+                IGfxColor(RetroTheme::NEON_CYAN), IGfxColor(RetroTheme::NEON_YELLOW), IGfxColor(RetroTheme::NEON_ORANGE),
+                IGfxColor(RetroTheme::NEON_CYAN), IGfxColor(RetroTheme::NEON_ORANGE)
             };
         case VisualStyle::AMBER:
             // Legacy enum value retained for compatibility with existing page
@@ -71,19 +99,29 @@ inline ThemePalette themePalette(VisualStyle style) {
                 IGfxColor(AmberTheme::STATUS_ACTIVE),
                 IGfxColor(AmberTheme::NEON_YELLOW),
                 IGfxColor(AmberTheme::NEON_ORANGE),
-                IGfxColor(AmberTheme::TEXT_INVERT)
+                IGfxColor(AmberTheme::TEXT_INVERT),
+                IGfxColor(AmberTheme::GRID_MEDIUM), IGfxColor(AmberTheme::NEON_CYAN), IGfxColor(AmberTheme::NEON_MAGENTA),
+                IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::GRID_DIM), IGfxColor(AmberTheme::BG_DARK_GRAY),
+                IGfxColor(AmberTheme::SELECT_BG), IGfxColor(AmberTheme::SELECT_BRIGHT),
+                IGfxColor(AmberTheme::NEON_CYAN), IGfxColor(AmberTheme::NEON_YELLOW), IGfxColor(AmberTheme::NEON_ORANGE),
+                IGfxColor(AmberTheme::NEON_CYAN), IGfxColor(AmberTheme::NEON_ORANGE)
             };
         case VisualStyle::MINIMAL:
         default:
-            // CARBON: the restrained, readability-first alternative to CYBER.
-            // Surfaces stay near-black; body text is deliberately light gray
-            // rather than white. Bright pixels are reserved for focus/activity.
+            // CLEAN (formerly CARBON), Warm palette (docs/design/CLEAN_THEME_SPEC.md).
+            // Monochrome on true black: warm white text, warm grey secondary and dim.
+            // One accent hue (orange) marks live state only; it is never the only cue.
+            // No separate panel colour: surfaces are separated by rules and spacing.
+            // Values are chosen on the RGB565 grid so warm greys do not drift.
             return {
-                IGfxColor(0x020406), IGfxColor(0x080D12), IGfxColor(0x05090D),
-                IGfxColor(0xC7D0D9), IGfxColor(0x82909C), IGfxColor(0x46515B),
-                IGfxColor(0x4AC3E8), IGfxColor(0x69D89A), IGfxColor(0x77DFFF),
-                IGfxColor(0x69D89A), IGfxColor(0xE6B85C), IGfxColor(0xE35D72),
-                IGfxColor(0x02070A)
+                IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x000000),
+                IGfxColor(0xE7E3DE), IGfxColor(0x9C9A94), IGfxColor(0x6B6963),
+                IGfxColor(0xFF7931), IGfxColor(0xFF7931), IGfxColor(0xE7E3DE),
+                IGfxColor(0xFF7931), IGfxColor(0xFF7931), IGfxColor(0xFF7931),
+                IGfxColor(0x000000),
+                IGfxColor(0x6B6963), IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE),
+                IGfxColor(0x000000), IGfxColor(0x393734), IGfxColor(0x000000), IGfxColor(0x1C1B19), IGfxColor(0xE7E3DE),
+                IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE), IGfxColor(0x9C9A94), IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE)
             };
     }
 }
@@ -94,12 +132,12 @@ inline ThemePalette themePalette() {
 
 inline const char* themeName(VisualStyle style) {
     switch (style) {
-        case VisualStyle::MINIMAL: return "CARBON";
+        case VisualStyle::MINIMAL: return "CLEAN";
         case VisualStyle::MINIMAL_DARK: return "STAGE";
         case VisualStyle::RETRO_CLASSIC: return "CYBER";
         case VisualStyle::AMBER: return "AMBER";
     }
-    return "CARBON";
+    return "CLEAN";
 }
 
 // Public selection is intentionally binary after hardware review:

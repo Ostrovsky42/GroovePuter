@@ -2,7 +2,7 @@
 
 #include "display.h"
 
-// CARBON base constants used by legacy/minimal pages that have not yet moved
+// CLEAN (formerly CARBON) base constants used by legacy/minimal pages that have not yet moved
 // to the semantic runtime palette. Keep these restrained: bright white is not
 // the default body color, and focus/activity own the brightest pixels.
 inline constexpr IGfxColor COLOR_BG = IGfxColor(0x020406);

@@ -834,14 +834,14 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   std::static_pointer_cast<DrumSequencerGridComponent>(grid_component_)->setStyle(style);
 
   switch (style) {
-    case GrooveboxStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx);
-      break;
     case GrooveboxStyle::AMBER:
       drawAmberStyle(gfx);
       break;
+    case GrooveboxStyle::RETRO_CLASSIC:
+    case GrooveboxStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx);
+      // CLEAN shares the CYBER drum structure; forms differ inside the shared draw.
+      drawRetroClassicStyle(gfx);
       break;
   }
 }

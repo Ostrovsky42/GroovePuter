@@ -340,7 +340,7 @@ namespace UI {
                     gfx.setTextColor(p.accent);
                     gfx.drawText(Layout::FOOTER.x + 4, y, "* MODIFIED");
                 }
-                gfx.setTextColor(p.dim);
+                gfx.setTextColor(p.secondary);
                 const char* hPrompt = "ALT+H HELP";  // plain H is page-local (Melody chord)
                 int tw = gfx.textWidth(hPrompt);
                 gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, hPrompt);

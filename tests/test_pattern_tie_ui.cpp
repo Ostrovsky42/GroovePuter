@@ -92,7 +92,7 @@ bool checkTheme(VisualStyle style, const char* name) {
 int main() {
   const bool retro = checkTheme(VisualStyle::RETRO_CLASSIC, "CYBER");
   const bool amber = checkTheme(VisualStyle::AMBER, "AMBER");
-  const bool minimal = checkTheme(VisualStyle::MINIMAL, "CARBON");
+  const bool minimal = checkTheme(VisualStyle::MINIMAL, "CLEAN");
   if (!retro || !amber || !minimal) return 1;
   std::puts("Pattern TIE input/rendering across all themes: PASS");
   return 0;

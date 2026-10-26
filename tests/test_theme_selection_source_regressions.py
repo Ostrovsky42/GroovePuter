@@ -21,9 +21,9 @@ def test_theme_selection() -> None:
     cycle = theme[cycle_start:cycle_end]
 
     require("case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;" in cycle,
-            "CARBON must switch directly to CYBER")
+            "MINIMAL must switch directly to CYBER")
     require("case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;" in cycle,
-            "CYBER must switch directly to CARBON")
+            "CYBER must switch directly to MINIMAL")
     require("return VisualStyle::AMBER" not in cycle,
             "AMBER must not re-enter the public theme cycle")
     require("return VisualStyle::MINIMAL_DARK" not in cycle,
@@ -35,13 +35,12 @@ def test_theme_selection() -> None:
     require("UI::nextThemeStyle(UI::currentStyle)" in launcher,
             "launcher preview must use the same binary selector")
 
-    require("IGfxColor(0x020406)" in theme and
-            "IGfxColor(0x080D12)" in theme,
-            "CARBON semantic surfaces must stay near-black")
-    require("IGfxColor(0xC7D0D9)" in theme,
-            "CARBON body text must be light gray rather than full white")
+    require("IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x000000)" in theme,
+            "MINIMAL (CLEAN) surfaces must be true black with no panel fill")
+    require("IGfxColor(0xE7E3DE)" in theme and "IGfxColor(0x9C9A94)" in theme,
+            "MINIMAL (CLEAN) Warm text and secondary must match docs/design/CLEAN_THEME_SPEC.md")
     require("COLOR_TEXT = IGfxColor(0xD2DAE2)" in colors,
-            "legacy CARBON pages must also avoid broad pure-white text")
+            "legacy MINIMAL pages must also avoid broad pure-white text")
 
     require('#include "../ui_theme.h"' in visuals and
             "UI::themePalette()" in visuals,

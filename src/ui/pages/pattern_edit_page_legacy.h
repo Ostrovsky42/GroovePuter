@@ -7,6 +7,7 @@
 #include "../ui_common.h"
 
 #include "../retro_ui_theme.h"
+#include "../ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
@@ -35,7 +36,7 @@ static_assert((SEQ_STEPS % kPatternStepColumns) == 0,
               "Pattern step count must fill complete eight-step rows");
 
 inline IGfxColor voiceColor(int voiceIndex) {
-  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+  return UI::themePalette().voice(voiceIndex);
 }
 
 inline IGfxColor retroVoiceColor(int voiceIndex) {
@@ -1054,14 +1055,14 @@ bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
 void PatternEditPage::draw(IGfx& gfx) {
   switch (UI::currentStyle) {
     case VisualStyle::RETRO_CLASSIC:
+    case VisualStyle::MINIMAL:
+    default:
+      // CLEAN shares the CYBER structure; its palette and state forms come from
+      // the shared draw (see `clean` in drawRetroClassicStyle).
       drawRetroClassicStyle(gfx);
       break;
     case VisualStyle::AMBER:
       drawAmberStyle(gfx);
-      break;
-    case VisualStyle::MINIMAL:
-    default:
-      drawMinimalStyle(gfx);
       break;
   }
   if (mini_acid_.songVoiceDisplayState(voice_index_) ==
@@ -1073,6 +1074,7 @@ void PatternEditPage::draw(IGfx& gfx) {
 }
 
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
+  const UI::ThemePalette p = UI::themePalette();
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
   if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
@@ -1093,6 +1095,10 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bool patternFocus = !songMode && patternRowFocused();
   bool bankFocus = !songMode && focus_ == Focus::BankRow;
   bool stepFocus = !patternFocus && !bankFocus;
+  // currentStep() reports 0 while stopped, so the playhead is shown only while
+  // transport runs and only on the pattern that is actually playing (as CYBER does).
+  const bool playingHere = mini_acid_.isPlaying() &&
+                           mini_acid_.current303PatternIndex(voice_index_) == activePatternCursor();
   int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
   int bankCursor = activeBankCursor();
 
@@ -1125,7 +1131,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   formatPatternMode(pageBuf, sizeof(pageBuf),
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(p.text);
   gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
   const int column_spacing = 4;
@@ -1158,36 +1164,43 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     int slide_x = cell_x + cell_w - indicator_w;
     int indicator_y = cell_y;
 
-    gfx.fillRect(cell_x, indicator_y, indicator_w, indicator_h, isSlide ? COLOR_SLIDE : COLOR_GRAY_DARKER);
-    gfx.drawRect(cell_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
-    gfx.fillRect(slide_x, indicator_y, indicator_w, indicator_h, isAccent ? COLOR_ACCENT : COLOR_GRAY_DARKER);
-    gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
+    // Flags as small rules: a set flag is filled, an unset one is an outline.
+    gfx.drawRect(cell_x, indicator_y, indicator_w, indicator_h, p.dim);
+    if (isSlide) gfx.fillRect(cell_x, indicator_y, indicator_w, indicator_h, p.text);
+    gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, p.dim);
+    if (isAccent) gfx.fillRect(slide_x, indicator_y, indicator_w, indicator_h, p.accent);
 
-    int note_box_y = indicator_y + indicator_h + indicator_gap;
-    IGfxColor noteColor = voiceColor(voice_index_);
-    IGfxColor fill = note >= 0 ? noteColor : COLOR_GRAY;
-    gfx.fillRect(cell_x, note_box_y, cell_w, note_box_h, fill);
-    gfx.drawRect(cell_x, note_box_y, cell_w, note_box_h, COLOR_WHITE);
+    const int note_box_y = indicator_y + indicator_h + indicator_gap;
+    const bool isCursor = stepFocus && stepCursor == i;
+    const bool isSelectedStep = stepFocus && isStepSelected(i);
+    const bool isPlayingStep = playingHere && playing == i;
 
-    if (playing == i) {
-      gfx.drawRect(cell_x - 1, note_box_y - 1, cell_w + 2, note_box_h + 2, COLOR_STEP_HILIGHT);
-      float prog = mini_acid_.getStepProgress();
-      int scanX = cell_x + (int)(prog * (float)(cell_w - 1));
-      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + note_box_h - 1, COLOR_WHITE);
+    // Focus is the only solid area: an inverted cell. Notes are glyphs, not blocks.
+    if (isCursor) {
+      gfx.fillRect(cell_x, note_box_y, cell_w, note_box_h, p.focus);
+    } else {
+      gfx.drawRect(cell_x, note_box_y, cell_w, note_box_h, p.dim);
     }
-    if (stepFocus && stepCursor == i) {
-      gfx.drawRect(cell_x - 2, note_box_y - 2, cell_w + 4, note_box_h + 4, COLOR_STEP_SELECTED);
+    // Playhead: accent bar in the gap above the cell, never over the flags.
+    if (isPlayingStep) {
+      gfx.fillRect(cell_x, cell_y - 2, cell_w, 2, p.accent);
+      const float prog = mini_acid_.getStepProgress();
+      const int scanX = cell_x + static_cast<int>(prog * static_cast<float>(cell_w - 1));
+      if (!isCursor) gfx.drawLine(scanX, note_box_y, scanX, note_box_y + note_box_h - 1, p.accent);
     }
-    if (stepFocus && isStepSelected(i)) {
-      gfx.drawRect(cell_x - 3, note_box_y - 3, cell_w + 6, note_box_h + 6, COLOR_ACCENT);
+    // Selected (not focused): 1 px rule in the gap below the cell.
+    if (isSelectedStep) {
+      gfx.fillRect(cell_x, note_box_y + note_box_h, cell_w, 1, p.text);
     }
 
     char note_label[8];
     formatNoteName(note, note_label, sizeof(note_label));
-    int tw = textWidth(gfx, note_label);
-    int tx = cell_x + (cell_w - tw) / 2;
-    int ty = note_box_y + note_box_h / 2 - gfx.fontHeight() / 2;
-    gfx.setTextColor(note >= 0 ? COLOR_BLACK : COLOR_WHITE);
+    const int tw = textWidth(gfx, note_label);
+    const int tx = cell_x + (cell_w - tw) / 2;
+    const int ty = note_box_y + note_box_h / 2 - gfx.fontHeight() / 2;
+    IGfxColor labelColor = note >= 0 ? p.text : p.dim;
+    if (isCursor) labelColor = p.invert;
+    gfx.setTextColor(labelColor);
     gfx.drawText(tx, ty, note_label);
   }
   UI::drawStandardFooter(gfx, "ARROWS Q-I:PAT F:RTG", "C1/2:BANK Alt[]:PAGE");
@@ -1195,6 +1208,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
 
 void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 #ifdef USE_RETRO_THEME
+  const UI::ThemePalette p = UI::themePalette();
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
   if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
@@ -1234,9 +1248,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   int contentY = y + 15;
   int contentH =
       std::min(y + h - 12, Layout::PERFORMANCE_HUD.y) - contentY;
-  gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
+  gfx.fillRect(x, contentY, w, contentH, p.background);
 
-  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 4, contentY + 2, "BK");
   for (int i = 0; i < kBankCount; i++) {
     int slotX = x + 22 + i * 18;
@@ -1244,22 +1258,22 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
 
-    IGfxColor bankColor = retroVoiceColor(voice_index_);
-    IGfxColor bgColor = sel ? bankColor : IGfxColor(BG_PANEL);
+    IGfxColor bankColor = p.voice(voice_index_);
+    IGfxColor bgColor = sel ? bankColor : p.panel;
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
 
     if (focused) {
       drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, bankColor, 1);
     } else if (cur) {
-      gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
+      gfx.drawRect(slotX, contentY + 1, 16, 10, p.grid);
     }
 
     char c[2] = {static_cast<char>('A' + i), 0};
-    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.setTextColor(sel ? p.background : p.secondary);
     gfx.drawText(slotX + 4, contentY + 2, c);
   }
 
-  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 72, contentY + 2, "PTRN");
   for (int i = 0; i < 8; i++) {
     int slotX = x + 106 + i * 10;
@@ -1267,18 +1281,18 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
 
-    IGfxColor selColor = retroVoiceColor(voice_index_);
-    IGfxColor bgColor = sel ? selColor : IGfxColor(BG_PANEL);
+    IGfxColor selColor = p.voice(voice_index_);
+    IGfxColor bgColor = sel ? selColor : p.panel;
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
 
     if (focused) {
       drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, selColor, 1);
     } else if (cur) {
-      gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
+      gfx.drawRect(slotX, contentY + 1, 9, 10, p.grid);
     }
 
     char c1[2] = {static_cast<char>('1' + i), 0};
-    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.setTextColor(sel ? p.background : p.secondary);
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
@@ -1291,6 +1305,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   if (cellH < 12) cellH = 12;
 
   const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
+  // CLEAN uses the same cells and logic as CYBER; only the state forms differ.
+  const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
     int row = i / kPatternStepColumns;
@@ -1307,56 +1323,73 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool sld = pattern.steps[i].slide;
     bool hasNote = (note >= 0);
 
-    IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(BG_INSET) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = clean ? p.background : ((col % 4 == 0) ? p.inset : p.panel);
+    if (!clean && isSelected) bgColor = p.selectBg;
     gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
 
-    if (isSelected) {
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(NEON_ORANGE), 1);
-    }
-    if (isCursor) {
-      IGfxColor cursorColor = retroVoiceColor(voice_index_);
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, cursorColor, 1);
-    } else if (!isSelected) {
-      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
+    if (clean) {
+      // Focus: inverted cell. Selected: 1 px rule in the gap below. Grid: rule.
+      if (isCursor) {
+        gfx.fillRect(cellX, cellRowY, cellW, cellH, p.focus);
+      } else {
+        gfx.drawRect(cellX, cellRowY, cellW, cellH, p.grid);
+      }
+      if (isSelected) gfx.fillRect(cellX, cellRowY + cellH, cellW, 1, p.text);
+    } else {
+      if (!isCursor && !isSelected) {
+        gfx.drawRect(cellX, cellRowY, cellW, cellH, p.grid);
+      }
     }
 
-    if (isCurrent) {
-      IGfxColor playColor = retroVoiceColor(voice_index_);
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
+    if (isCurrent && clean) {
+      // Playhead: accent bar in the gap above the cell, scan line in accent.
+      gfx.fillRect(cellX, cellRowY - 2, cellW, 2, p.accent);
       float prog = mini_acid_.getStepProgress();
       int scanX = cellX + (int)(prog * (float)(cellW - 1));
-      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(TEXT_PRIMARY));
+      if (!isCursor) gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, p.accent);
+    } else if (isCurrent) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, p.active, 2);
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, p.text);
+    }
+    // Focus is drawn last so it stays visible on the playing step.
+    if (!clean && isCursor) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, p.voice(voice_index_), 1);
     }
 
     if (hasNote || note == -2) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
-      IGfxColor baseColor = retroVoiceColor(voice_index_);
-      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : baseColor;
+      IGfxColor baseColor = p.voice(voice_index_);
+      IGfxColor noteColor = acc ? p.noteAccent : baseColor;
 
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
       int ty = cellRowY + 3;
 
-      if (isCursor) {
-        drawGlowText(gfx, tx, ty, note_label, noteColor, IGfxColor(TEXT_PRIMARY));
+      if (clean) {
+        gfx.setTextColor(isCursor ? p.invert : (acc ? p.noteAccent : p.text));
+        gfx.drawText(tx, ty, note_label);
+      } else if (isCursor) {
+        drawGlowText(gfx, tx, ty, note_label, noteColor, p.text);
       } else {
         gfx.setTextColor(noteColor);
         gfx.drawText(tx, ty, note_label);
       }
     } else {
-      gfx.setTextColor(IGfxColor(TEXT_DIM));
+      gfx.setTextColor(p.dim);
       gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
     }
 
     int dotY = cellRowY + cellH - 4;
-    RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
-    RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
+    RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, p.accent2);
+    RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, p.noteAccent);
 
     const uint8_t retrigCount =
         GroovePuterUndo::PatternEdit::effectiveRetrigCount(pattern.steps[i]);
     if (retrigCount != 0) {
-        gfx.setTextColor(IGfxColor(NEON_YELLOW));
+        gfx.setTextColor(p.warning);
         char buf[8];
         snprintf(buf, sizeof(buf), "R%u", static_cast<unsigned>(retrigCount));
         gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);

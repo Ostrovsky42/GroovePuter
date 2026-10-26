@@ -1708,18 +1708,17 @@ void SongPage::draw(IGfx& gfx) {
     return;
   }
   switch (visual_style_) {
-    case ::VisualStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx);
-      break;
     case ::VisualStyle::AMBER:
       drawAmberStyle(gfx);
       break;
     case ::VisualStyle::MINIMAL_DARK:
       drawTEGridStyle(gfx);
       break;
+    case ::VisualStyle::RETRO_CLASSIC:
     case ::VisualStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx);
+      // CLEAN shares the CYBER song structure (see `clean` in drawRetroClassicStyle).
+      drawRetroClassicStyle(gfx);
       break;
   }
   char materialStatus[48];
@@ -2320,6 +2319,9 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
 }
 
 void SongPage::drawRetroClassicStyle(IGfx &gfx) {
+  const UI::ThemePalette p = UI::themePalette();
+  // CLEAN shares this structure; palette roles and state forms differ.
+  const bool clean = UI::currentStyle == ::VisualStyle::MINIMAL;
   const Rect &bounds = getBoundaries();
   const int x = bounds.x;
   // The shell draws its header and bottom bars over the page: the 12 px
@@ -2352,18 +2354,18 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
   const int statusY = y + 14;
   const int statusH = 10;
-  gfx.fillRect(x, statusY, w, statusH, IGfxColor(RetroTheme::BG_PANEL));
+  gfx.fillRect(x, statusY, w, statusH, p.panel);
   gfx.drawLine(x, statusY + statusH, x + w - 1, statusY + statusH,
-               IGfxColor(RetroTheme::GRID_DIM));
+               p.gridDim);
   char statusBuf[48];
   std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c PLAY:%c PAT:%c%s %s",
                 'A' + activeSlot, 'A' + playSlot, 'A' + assignment_bank_index_,
                 liveMix ? " LM" : "", laneShortLabel());
-  gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 3, statusY + 1, statusBuf);
   if (liveMix) {
     drawLockIcon(gfx, x + w - 8, statusY + 2,
-                 IGfxColor(RetroTheme::SELECT_BRIGHT));
+                 p.selectBright);
   }
 
   const int footerY = y + h - 12;
@@ -2402,12 +2404,12 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     getSelectionBounds(minSelRow, maxSelRow, minSelTrack, maxSelTrack);
   }
 
-  auto themedTrackColor = [](SongTrack track) -> IGfxColor {
-    if (track == SongTrack::SynthA)
-      return IGfxColor(RetroTheme::NEON_CYAN);
-    if (track == SongTrack::SynthB)
-      return IGfxColor(RetroTheme::NEON_MAGENTA);
-    return IGfxColor(RetroTheme::NEON_YELLOW);
+  auto themedTrackColor = [&](SongTrack track) -> IGfxColor {
+    // CYBER: one hue per track. CLEAN: text for every track (identity by label and row).
+    if (clean) return p.text;
+    if (track == SongTrack::SynthA) return p.accent;
+    if (track == SongTrack::SynthB) return p.accent2;
+    return p.warning;
   };
 
   auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
@@ -2418,10 +2420,10 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     if (cellW < 12)
       cellW = 12;
 
-    const IGfxColor frameColor = editable ? IGfxColor(RetroTheme::SELECT_BRIGHT)
-                                          : IGfxColor(RetroTheme::GRID_DIM);
+    const IGfxColor frameColor = editable ? p.selectBright
+                                          : p.gridDim;
     gfx.fillRect(paneX, gridTop, usableW, paneHeaderH,
-                 IGfxColor(RetroTheme::BG_INSET));
+                 p.inset);
     gfx.drawRect(paneX, gridTop, usableW, footerY - gridTop, frameColor);
 
     char paneLabel[8];
@@ -2429,8 +2431,8 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       std::snprintf(paneLabel, sizeof(paneLabel), "%c", 'A' + paneSlot);
     else
       std::snprintf(paneLabel, sizeof(paneLabel), "BAR");
-    gfx.setTextColor(editable ? IGfxColor(RetroTheme::TEXT_PRIMARY)
-                              : IGfxColor(RetroTheme::TEXT_DIM));
+    gfx.setTextColor(editable ? p.text
+                              : p.dim);
     gfx.drawText(paneX + 2, gridTop + 1, paneLabel);
 
     for (int t = 0; t < trackCount; ++t) {
@@ -2440,14 +2442,14 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         continue;
       const int tx = paneX + barW + t * cellW;
       const IGfxColor color =
-          editable ? themedTrackColor(track) : IGfxColor(RetroTheme::TEXT_DIM);
+          editable ? themedTrackColor(track) : p.dim;
       gfx.fillRect(tx, gridTop, cellW - 1, 1, color);
       gfx.setTextColor(color);
       gfx.drawText(tx + 2, gridTop + 1, trackHeaderLabel(t));
     }
 
     if (mini_acid_.isWaitingForRehearsal()) {
-      gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
+      gfx.setTextColor(p.danger);
       gfx.drawText(paneX + usableW - 36, gridTop + 1, "PAUSE");
     }
 
@@ -2462,8 +2464,8 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
       char barBuf[8];
       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
-      gfx.setTextColor(((row + 1) % 8) == 0 ? IGfxColor(RetroTheme::NEON_YELLOW)
-                                            : IGfxColor(RetroTheme::TEXT_DIM));
+      gfx.setTextColor(((row + 1) % 8) == 0 ? p.warning
+                                            : p.dim);
       gfx.drawText(paneX + 2, ry + 1, barBuf);
 
       if (row == playhead) {
@@ -2471,18 +2473,18 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         if (activePlay) {
           gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, IGfxColor(0x13261E));
           gfx.drawLine(paneX + 1, ry, paneX + usableW - 2, ry,
-                       IGfxColor(RetroTheme::NEON_CYAN));
+                       p.accent);
           gfx.drawLine(paneX + 1, ry + rowH - 1, paneX + usableW - 2,
-                       ry + rowH - 1, IGfxColor(RetroTheme::NEON_CYAN));
+                       ry + rowH - 1, p.accent);
           char playRowBuf[8];
           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
-          gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+          gfx.setTextColor(p.accent);
           gfx.drawText(paneX + 2, ry + 1, playRowBuf);
         } else {
           gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
                        IGfxColor(0x11161B));
           gfx.fillRect(paneX + 1, ry, 2, rowH,
-                       IGfxColor(RetroTheme::TEXT_DIM));
+                       p.dim);
         }
       }
 
@@ -2506,7 +2508,7 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
         if (selected && has_selection_) {
           gfx.fillRect(tx, ry, cellW - 1, rowH,
-                       IGfxColor(RetroTheme::SELECT_BRIGHT));
+                       p.selectBright);
         } else if (pattern >= 0 || pattern == -2) {
           const uint32_t bg = track == SongTrack::SynthA   ? 0x071510
                               : track == SongTrack::SynthB ? 0x100718
@@ -2515,19 +2517,19 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         }
 
         if (pattern == -2) {
-          gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
+          gfx.setTextColor(p.danger);
           gfx.drawText(tx + 2, ry + 1, "WAIT");
         } else if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
                                  sizeof(patBuf));
           gfx.setTextColor(selected && has_selection_
-                               ? IGfxColor(RetroTheme::BG_DEEP_BLACK)
+                               ? p.background
                                : (editable ? themedTrackColor(track)
-                                           : IGfxColor(RetroTheme::TEXT_DIM)));
+                                           : p.dim));
           gfx.drawText(tx + 2, ry + 1, patBuf);
         } else if (!selected) {
-          gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
+          gfx.setTextColor(p.gridDim);
           gfx.drawText(tx + 2, ry + 1, "--");
         }
 
@@ -2539,19 +2541,19 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       // Final playhead overlay must remain visible above populated cells.
       if (row == playhead && playing && songMode && paneSlot == playSlot) {
         gfx.drawRect(paneX + 1, ry, usableW - 2, rowH,
-                     IGfxColor(RetroTheme::NEON_CYAN));
+                     p.accent);
         char playRowBuf[8];
         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
-        gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+        gfx.setTextColor(p.accent);
         gfx.drawText(paneX + 2, ry + 1, playRowBuf);
       }
     }
 
     drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop, visibleRows * rowH,
                      songQuarterFromRow(cursorRowValue),
-                     editable ? IGfxColor(RetroTheme::SELECT_BRIGHT)
-                              : IGfxColor(RetroTheme::TEXT_DIM),
-                     IGfxColor(RetroTheme::GRID_DIM));
+                     editable ? p.selectBright
+                              : p.dim,
+                     p.gridDim);
   };
 
   if (split_compare_) {
@@ -2571,12 +2573,13 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     const int boxX = x + (w - textW) / 2 - 6;
     const int boxY = y + (h - 18) / 2;
     gfx.fillRect(boxX, boxY, textW + 12, 16,
-                 IGfxColor(RetroTheme::BG_DEEP_BLACK));
+                 p.background);
     gfx.drawRect(boxX, boxY, textW + 12, 16,
-                 IGfxColor(RetroTheme::NEON_YELLOW));
-    gfx.setTextColor(IGfxColor(RetroTheme::NEON_YELLOW));
+                 p.warning);
+    gfx.setTextColor(p.warning);
     gfx.drawText(boxX + 6, boxY + 3, loadBuf);
   }
+  drawGeneratorHint(gfx);
 }
 
 void SongPage::drawAmberStyle(IGfx &gfx) {

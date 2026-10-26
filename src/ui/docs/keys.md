@@ -57,7 +57,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
-| `Alt+\` | `CARBON <-> CYBER` |
+| `Alt+\` | `CLEAN <-> CYBER` |
 
 Hard-global Alt shortcuts are handled before page-local input. Outside those reserved chords, the active page gets first refusal before late global fallbacks.
 

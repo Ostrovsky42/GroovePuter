@@ -14,7 +14,7 @@ Practical guardrails for contributors working in this repo.
 - Groove corridors: `src/dsp/groove_profile.*`
 
 ## Current UX Conventions
-- Global style: `Alt+\\` (`CARBON/CYBER/AMBER`)
+- Global style: `Alt+\\` (`CLEAN/CYBER/AMBER`)
 - Selection v2 (Pattern/Drum/Song):
   - `Ctrl + Arrows` expand selection
   - `Ctrl+C` copy and lock frame

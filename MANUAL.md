@@ -27,7 +27,7 @@ The main navigation model is:
 - `Alt+P`: MIDI Player;
 - `Alt+X`: LiveMix;
 - `Alt+M`: Song mode;
-- `Alt+\`: `CARBON <-> CYBER` theme cycle.
+- `Alt+\`: `CLEAN <-> CYBER` theme cycle.
 
 `Alt+V` opens GENRE directly. `Fn+M -> GENRE` is the discoverable launcher path to the same page.
 

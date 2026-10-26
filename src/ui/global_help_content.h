@@ -26,7 +26,7 @@ constexpr const char* kGlobalLines[] = {
     "Alt+Y       Tempo / MIDI clock",
     "Alt+V       GENRE",
     "Alt+W       Waveform except CORE",
-    "Alt+\\       Theme CARBON/CYBER",
+    "Alt+\\       Theme CLEAN/CYBER",
     "Alt+X       LiveMix ON/OFF",
     "Alt+M       Song mode ON/OFF",
     "1..0        Track mute fallback",

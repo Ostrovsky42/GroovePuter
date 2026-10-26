@@ -228,7 +228,12 @@ inline void drawPianoKeyRow(IGfx& gfx,
         const bool black = isBlackPianoPitch(note);
         const bool held = keyboard.isPhysicalKeyHeld(physical);
         const int keyX = startX + i * (keyW + kGap);
-        const IGfxColor fill = (!black && held) ? palette.active : palette.text;
+        // BLACK keeps idle white keys in the secondary tone so the held key
+        // is the brightest thing on the keyboard.
+        const IGfxColor idleWhite = (UI::currentStyle == VisualStyle::MINIMAL)
+                                        ? palette.secondary
+                                        : palette.text;
+        const IGfxColor fill = (!black && held) ? palette.active : idleWhite;
         const IGfxColor border = (!black && held) ? palette.focus : palette.inset;
         const IGfxColor labelColor = (!black && held) ? palette.invert : palette.inset;
 
