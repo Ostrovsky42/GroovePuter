@@ -13,9 +13,8 @@
     "static_dram_bytes": 184252,
     "dram_limit_bytes": 191488,
     "extra_cpp_flags": "-DGROOVEPUTER_FELUCCA_ANALOG=1",
-    "upload": "NOT UPLOADED"
+    "upload": "PASS; user explicitly requested latest firmware; esptool app hash verified; see flash-record.json"
   },
-  "currently_installed_prior_bin": "7b9a98a9123cef335e1014ab9e131335819fb68a61aaefca86ba4dfdd869d61b",
   "checks": {
     "red": "Expected SYNTH TYPE title absent before fix; exit134",
     "real_ui": "PASS exit0; A/B engine list7, preview/cancel/no dirty, confirmation, voice isolation, TYPE L/R wrap; existing preset13 MAIN/MORE/a-z/SaveLoad still PASS",
@@ -23,10 +22,12 @@
     "sdl_build": "PASS exit0 with experimental adapter",
     "cardputer_adv_build": "PASS exit0, DRAM gate unchanged",
     "interactive_type_modal": "NOT COMPLETED: SDL window exited0 before input was sent; follow-up Xvfb unavailable. No visual TYPE-modal claim. Functional real-UI draw/input regression passed.",
-    "physical_and_runtime_heap_largest": "OPEN, new image not flashed"
+    "physical_and_runtime_heap_largest": "OPEN; flashed/hash verified, app boot and device behavior not yet confirmed"
   },
   "production_files": {
     "src/ui/pages/tb303_params_page.cpp": "0ccff71ddc8a9bec3d03d14d848ae36fe811b5fcca35e8968a6e79d9d0577ef5",
     "src/ui/pages/tb303_params_page.h": "b5e2d35fe5fd1b39d498e9a74c5de8dbf45d8707855650d41d5a1a42199b8359"
-  }
+  },
+  "previously_installed_bin": "7b9a98a9123cef335e1014ab9e131335819fb68a61aaefca86ba4dfdd869d61b",
+  "currently_flashed_bin": "349b8ea4f6a273486d3a6cb8cebb51cbfa2efe3775cfbb53e6b03f0b286277c1"
 }

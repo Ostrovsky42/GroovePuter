@@ -1,0 +1,43 @@
+{
+  "status": "PREREGISTERED / NOT RUN",
+  "date": "2026-10-25",
+  "release_candidate_sha": null,
+  "release_candidate_bin_sha256": null,
+  "reference_source_sha": "de3cddccd76567d415f340a0585a5a3317fdde73",
+  "genres": [
+    {
+      "id": 10,
+      "label": "Techno",
+      "variant_index": 0,
+      "bpm": 124
+    },
+    {
+      "id": 5,
+      "label": "Dub/Reggae",
+      "variant_index": 0,
+      "bpm": 82
+    }
+  ],
+  "seeds": [
+    1369899009,
+    1369899010,
+    1369899011,
+    1369899012,
+    1369899013,
+    1369899014,
+    1369899015,
+    1369899016
+  ],
+  "sequence": "A 4B -> DEVELOP 4B -> BREAK 4B -> RETURN 4B via existing MATERIAL/Song/FORM",
+  "retake_policy": "No seed replacement or post-listening reroll. Record every refusal and manual operation.",
+  "pass_rule": "At least 6/8 in EACH genre, each passing related development, contrasting break and recognizable return under >=2/3 blind listener votes.",
+  "required_artifacts": [
+    "16 canonical event dumps and hashes",
+    "Song bar maps",
+    "level-matched and timbre-normalized audio",
+    "anonymous blind ratings",
+    "refusals and manual-operation counts"
+  ],
+  "listeners": "three independent blind listeners, not yet recruited",
+  "musical_result": "NOT TESTED"
+}

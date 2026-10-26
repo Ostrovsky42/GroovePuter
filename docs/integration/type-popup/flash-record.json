@@ -1,0 +1,12 @@
+{
+  "time": "2026-10-25T22:45:28.286694+01:00",
+  "head": "2568dfee72758b13172d26983b7047d17b4febb2",
+  "production_commit": "9e6c3ddf434267f91b4cfca2e1b9ea374f85976e",
+  "bin_sha256": "349b8ea4f6a273486d3a6cb8cebb51cbfa2efe3775cfbb53e6b03f0b286277c1",
+  "bytes": 1623392,
+  "port": "/dev/ttyACM0",
+  "result": "PASS; arduino-cli exit0; esptool Hash of data verified; hard reset via RTS",
+  "upload_log_sha256": "0a34161cef7b35bb106d470347f4bd48cf925e49999743f90f4ab49aca9c287a",
+  "app_boot": "NOT CONFIRMED in this flash turn",
+  "hardware_functional_acceptance": "OPEN"
+}

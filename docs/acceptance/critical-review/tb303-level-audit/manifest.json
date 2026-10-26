@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-26",
+  "baseline": "64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f",
+  "current_head": "2568dfee72758b13172d26983b7047d17b4febb2",
+  "current_production": "9e6c3ddf434267f91b4cfca2e1b9ea374f85976e",
+  "sample_rate": 22050,
+  "cases": 156,
+  "parameters_identical": 156,
+  "classic_acid_delta_db": 0.004324982835267961,
+  "classic_acid_rms_before": 0.03202509106,
+  "classic_acid_rms_current": 0.03204104135,
+  "unchanged_diode_ladder_held_note_cases_bit_exact": 20,
+  "other_four_engines_bit_exact": 40,
+  "candidate_clipped_samples": 0,
+  "cross_engine_probe": {
+    "note": 48,
+    "velocity": 100,
+    "sustain_window_seconds": [
+      0.15,
+      0.45
+    ],
+    "tb303_classic_acid_dbfs": -27.513,
+    "dual_osc_acid_dbfs": -12.953,
+    "dual_minus_tb_db": 14.560000000000002,
+    "interpretation": "One matched-note held-window comparison, not a regression claim or a musical loudness target."
+  },
+  "production_changes": "NONE; no gain/default/DSP changes",
+  "status": "Reported device quietness NOT REPRODUCED with identical dry-voice inputs; exact user patch/context needed. Engine balance difference independently observed. No hardware listening or full mixer/codec qualification."
+}

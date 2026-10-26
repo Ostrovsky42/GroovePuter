@@ -1,0 +1,6 @@
+source=2568dfee72758b13172d26983b7047d17b4febb2
+base=64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f
+sample_rate=22050
+compiler=g++
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Linux 7.0.0-38-generic x86_64

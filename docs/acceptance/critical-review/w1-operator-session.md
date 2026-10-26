@@ -1,10 +1,10 @@
 # W1 Cardputer acceptance session
 
-Status: NOT RUN. Target is the #495-derived G6 repair image, not a release candidate.
+Status: current-candidate session NOT RUN. Historical user persistence cycles are retained in the New/Clear follow-up; current target is an experimental test candidate, not an accepted release.
 
 - Source base: `64ae4b8bcf13fc165a04b2b79a80b7e8b3a1f71f` (#495)
-- Repair source: `a54d3e8e5d8a92ea5538e97a6d423e44b61ba725`
-- Required BIN SHA-256: `88f10f6f106ab63e4dd6be452b6be569cb435340b119fba88737ae30545e70e9`
+- Repair source: `9e6c3ddf434267f91b4cfca2e1b9ea374f85976e`
+- Required BIN SHA-256: `349b8ea4f6a273486d3a6cb8cebb51cbfa2efe3775cfbb53e6b03f0b286277c1`
 - Existing host fault-injection suite, SDL build, ADV build: PASS
 - Hardware evidence directory: [`g6-selection-fix`](g6-selection-fix/README.md)
 
@@ -62,3 +62,10 @@ Power-cut atomicity stays UNVERIFIED unless deliberately tested and recorded. Do
 ## E. Runtime observations during the same session
 
 Capture free internal heap, minimum free heap if available, largest contiguous block, CPU/block-time, stack high-water, underruns, panic/reboot at cold start, generation, 16-bar play, Undo, Save and Load. Required 30-minute working run and paired #495 measurements are still separate acceptance conditions if this combined session is shorter or idle.
+## Current conditions
+
+The current BIN is uploaded/hash verified, but its physical gate rows remain unfilled. A user-reported quiet TB303 Acid observation is under investigation; host identical-input comparisons did not reproduce a level loss in Classic Acid or the unchanged Acid filter. Do not freeze a final RC or mark G4 PASS until the actual hardware patch/context is resolved.
+
+The operator has no card reader. A backup/hash acquisition route over the device is not implemented or verified yet. Negative SD cases therefore remain HOLD until the positive test project's files can be protected and compared. Do not require the user to overwrite older accepted work. Older test-save payload absence/recovery remains unresolved; the old same-project census had a filename-prefix filtering limitation, so its absence claims were not exhaustive.
+
+This session is intended as one combined G1/G3/G6 and runtime recording. Keep all timing, hash and failure evidence; no score or gate is granted solely for successful boot or audible playback.
