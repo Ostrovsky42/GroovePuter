@@ -118,11 +118,11 @@ ownership; internal Synth A/B remain sequencer/pattern instruments.
 | `Left/Right` | Adjust selected field |
 | `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy |
 | `G` | Explicit full Stage 15 generation |
-| `P` | `P1 CANON -> P2 VAR -> P3 TRANS` |
+| `P` | Cycle `STYLE`: FAITHFUL -> VARIANT -> REWORK |
 | `Left/Right` on KEY | Choose the project tonic; affects the next generation |
 | `M` on KEY | Cycle the project scale; affects the next generation |
 | `H` on KEY | Open the `GENRE/AUTO/GRAPH` harmony strategy list |
-| `M` on other fields | Cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM` |
+| `M` on other fields | Cycle the `APPLY` mode: `STYLE ONLY`, `NEW TAKE`, `NEW TAKE + TEMPO` |
 
 During PLAY, accepted full generation publishes at the next real `BAR_START`; while
 stopped it commits immediately. Repeated accepted `G` rerolls the same selected
@@ -174,6 +174,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
+| `D` | Outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D |
 | `Alt+R` / `Opt` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first. `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |

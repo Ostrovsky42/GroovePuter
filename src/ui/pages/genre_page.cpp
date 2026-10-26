@@ -637,6 +637,7 @@ void GenrePage::draw(IGfx& gfx) {
   UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",
       focus_ == FocusRow::Key ? keyHint
       : focus_ == FocusRow::Variant ? "ENTER:LIST L/R:STEP"
+      : focus_ == FocusRow::Depth ? "L/R:STYLE P:STYLE"
                                     : "ENTER:APPLY G:TAKE");
   if (popupKind_ == PopupKind::Recipe) {
     selectionPopup_.draw(gfx, recipePopupLabels_);

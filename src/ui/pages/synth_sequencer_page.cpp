@@ -1856,7 +1856,15 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
     return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
   }
-  if (GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event)) {
+  // Plain D is a pitch while NOTE ENTRY is on for the STEPS (PatternEditPage
+  // already keeps the same rule); outside NOTE ENTRY it remains Develop.
+  const bool noteEntryOnSteps =
+      synth_tab_ == SynthTab::Notes && pattern_page_ &&
+      pattern_page_->noteEntryActive() &&
+      mini_acid_.currentSequencedSource(voice_index_) !=
+          MiniAcid::SequencedSource::Phrase;
+  if (!noteEntryOnSteps &&
+      GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event)) {
     return GroovePuterMaterialDevelopmentUx::handleDevelop(
         mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Revoice);
   }

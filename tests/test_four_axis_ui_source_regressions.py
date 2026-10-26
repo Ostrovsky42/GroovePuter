@@ -52,8 +52,8 @@ for needle in (
     '"GENRE 1/3"',
     '"WHAT G GENERATES"',
     "GenreCatalog::grooveboxModeForRecipe",
-    '"PROFILE ONLY"',
-    '"MATERIALIZE"',
+    '"STYLE ONLY"',
+    '"NEW TAKE"',
 ):
     require(GENRE, needle, f"GENRE contract missing: {needle}")
 
@@ -73,7 +73,7 @@ if not (
     "regenerateWithStrongRhythmMigration" in GENRE or
     "regenerateWithQuantizedCommit" in GENRE
 ):
-    raise AssertionError("GENRE MATERIALIZE has no generation boundary")
+    raise AssertionError("GENRE NEW TAKE has no generation boundary")
 forbid(
     GENRE,
     (

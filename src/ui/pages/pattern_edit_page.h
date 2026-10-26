@@ -21,6 +21,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  // NOTE ENTRY on: plain letters are pitches on the STEPS (they beat commands such as Develop).
+  bool noteEntryActive() const { return note_entry_mode_; }
   void tick() override;
   const std::string & getTitle() const override;
   void setContext(int context) override; // context = step index to focus
