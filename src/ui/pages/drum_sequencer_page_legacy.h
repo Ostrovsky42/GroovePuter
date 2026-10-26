@@ -485,6 +485,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           g_drum_area_clipboard.has_area = true;
           selection_locked_ = true;
           g_drum_pattern_clipboard.has_pattern = false;
+          {
+            char msg[32];
+            std::snprintf(msg, sizeof(msg), "COPIED %d CELLS",
+                          g_drum_area_clipboard.voice_count * g_drum_area_clipboard.step_count);
+            UI::showToast(msg, 800);
+          }
           return true;
         }
 
@@ -496,66 +502,33 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         }
         g_drum_pattern_clipboard.has_pattern = true;
         g_drum_area_clipboard.has_area = false;
+        UI::showToast("COPIED PATTERN", 800);
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {
         if (!g_drum_pattern_clipboard.has_pattern && !g_drum_area_clipboard.has_area) return false;
-        bool current_hits[NUM_DRUM_VOICES][SEQ_STEPS];
-        bool current_accents[NUM_DRUM_VOICES][SEQ_STEPS];
-        const bool* hits[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickSteps(),
-          mini_acid_.patternSnareSteps(),
-          mini_acid_.patternHatSteps(),
-          mini_acid_.patternOpenHatSteps(),
-          mini_acid_.patternMidTomSteps(),
-          mini_acid_.patternHighTomSteps(),
-          mini_acid_.patternRimSteps(),
-          mini_acid_.patternClapSteps()
-        };
-        const bool* accents[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickAccentSteps(),
-          mini_acid_.patternSnareAccentSteps(),
-          mini_acid_.patternHatAccentSteps(),
-          mini_acid_.patternOpenHatAccentSteps(),
-          mini_acid_.patternMidTomAccentSteps(),
-          mini_acid_.patternHighTomAccentSteps(),
-          mini_acid_.patternRimAccentSteps(),
-          mini_acid_.patternClapAccentSteps()
-        };
-        for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-          for (int i = 0; i < SEQ_STEPS; ++i) {
-            current_hits[v][i] = hits[v][i];
-            current_accents[v][i] = accents[v][i];
-          }
-        }
         const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;
-        withAudioGuard([&]() {
-          if (g_drum_area_clipboard.has_area) {
-            int start_step = activeDrumStep();
-            int start_voice = activeDrumVoice();
-            if (has_selection_) {
-              int min_voice, max_voice, min_step, max_step;
-              getSelectionBounds(min_voice, max_voice, min_step, max_step);
-              start_step = min_step;
-              start_voice = min_voice;
-            }
+        const bool areaPaste = g_drum_area_clipboard.has_area;
+        int start_step = activeDrumStep();
+        int start_voice = activeDrumVoice();
+        if (has_selection_) {
+          int min_voice, max_voice, min_step, max_step;
+          getSelectionBounds(min_voice, max_voice, min_step, max_step);
+          start_step = min_step;
+          start_voice = min_voice;
+        }
+        const bool changed = commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+          if (areaPaste) {
             int idx = 0;
             for (int v = 0; v < g_drum_area_clipboard.voice_count; ++v) {
               for (int i = 0; i < g_drum_area_clipboard.step_count; ++i) {
                 if (idx >= static_cast<int>(g_drum_area_clipboard.steps.size())) break;
-                int tv = start_voice + v;
-                int ts = start_step + i;
-                if (tv < 0 || tv >= NUM_DRUM_VOICES || ts < 0 || ts >= SEQ_STEPS) {
-                  ++idx;
-                  continue;
-                }
-                bool desiredHit = g_drum_area_clipboard.steps[idx].hit;
-                bool desiredAccent = g_drum_area_clipboard.steps[idx].accent && desiredHit;
-                if (current_hits[tv][ts] != desiredHit) {
-                  mini_acid_.toggleDrumStep(tv, ts);
-                }
-                if (current_accents[tv][ts] != desiredAccent) {
-                  mini_acid_.setDrumAccentStep(tv, ts, desiredAccent);
+                const int tv = start_voice + v;
+                const int ts = start_step + i;
+                if (tv >= 0 && tv < NUM_DRUM_VOICES && ts >= 0 && ts < SEQ_STEPS) {
+                  const DrumStep& d = g_drum_area_clipboard.steps[idx];
+                  pattern.voices[tv].steps[ts].hit = d.hit;
+                  pattern.voices[tv].steps[ts].accent = d.accent && d.hit;
                 }
                 ++idx;
               }
@@ -563,18 +536,13 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           } else {
             for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
               for (int i = 0; i < SEQ_STEPS; ++i) {
-                bool desiredHit = src.voices[v].steps[i].hit;
-                bool desiredAccent = src.voices[v].steps[i].accent && desiredHit;
-                if (current_hits[v][i] != desiredHit) {
-                  mini_acid_.toggleDrumStep(v, i);
-                }
-                if (current_accents[v][i] != desiredAccent) {
-                  mini_acid_.setDrumAccentStep(v, i, desiredAccent);
-                }
+                pattern.voices[v].steps[i].hit = src.voices[v].steps[i].hit;
+                pattern.voices[v].steps[i].accent = src.voices[v].steps[i].accent && src.voices[v].steps[i].hit;
               }
             }
           }
         });
+        UI::showToast(changed ? "PASTED" : "PASTE: NO CHANGE", 800);
         if (has_selection_) clearSelection();
         return true;
       }
@@ -744,6 +712,18 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
   bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
 
+  if (key_a && ui_event.ctrl && !ui_event.alt) {
+    // Ctrl+A: select every voice and step of the pattern.
+    focusGrid();
+    selection_start_step_ = 0;
+    selection_start_voice_ = 0;
+    drum_step_cursor_ = SEQ_STEPS - 1;
+    drum_voice_cursor_ = NUM_DRUM_VOICES - 1;
+    has_selection_ = true;
+    selection_locked_ = false;
+    UI::showToast("ALL STEPS SELECTED", 800);
+    return true;
+  }
   if (key_a) {
     focusGrid();
     const int step = activeDrumStep();
@@ -793,34 +773,39 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   if (key == '\b' || key == 0x7F) {
     if (ui_event.alt) {
-        // Alt+Backspace = Clear Pattern
-        withAudioGuard([&]() {
+        // Alt+Backspace = Clear Pattern (one undoable mutation)
+        commitDrumPatternMutation([&](DrumPatternSet& pattern) {
             for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
                 for (int i = 0; i < SEQ_STEPS; ++i) {
-                    mini_acid_.sceneManager().setDrumStep(v, i, false, false);
+                    pattern.voices[v].steps[i].hit = false;
+                    pattern.voices[v].steps[i].accent = false;
                 }
             }
         });
-        UI::showToast("Drums Cleared");
+        UI::showToast("Drums Cleared", 800);
         return true;
     } else if (has_selection_) {
         int min_v, max_v, min_s, max_s;
         getSelectionBounds(min_v, max_v, min_s, max_s);
-        withAudioGuard([&]() {
+        commitDrumPatternMutation([&](DrumPatternSet& pattern) {
             for (int v = min_v; v <= max_v; ++v) {
                 for (int s = min_s; s <= max_s; ++s) {
-                    mini_acid_.sceneManager().setDrumStep(v, s, false, false);
+                    pattern.voices[v].steps[s].hit = false;
+                    pattern.voices[v].steps[s].accent = false;
                 }
             }
         });
         clearSelection();
         return true;
     } else {
-        // Backspace = Clear current voice/step
+        // Backspace = clear the current voice/step (one undoable mutation)
         int voice = activeDrumVoice();
         int step = activeDrumStep();
         if (!patternRowFocused() && !bankRowFocused()) {
-            withAudioGuard([&]() { mini_acid_.sceneManager().setDrumStep(voice, step, false, false); });
+            commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+                pattern.voices[voice].steps[step].hit = false;
+                pattern.voices[voice].steps[step].accent = false;
+            });
             return true;
         }
     }

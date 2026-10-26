@@ -206,6 +206,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
     if (!g_pattern_step_clipboard.has_data && !g_pattern_clipboard.has_pattern) {
+      UI::showToast("CLIPBOARD EMPTY", 900);
       return handleEventLegacyUnowned(ui_event);
     }
 
@@ -213,6 +214,14 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
       if (g_pattern_step_clipboard.has_data) {
         int start_row = activePatternStep() / kPatternStepColumns;
         int start_col = activePatternStep() % kPatternStepColumns;
+        // A whole-pattern buffer without a selection goes to step 1, so a pattern
+        // copied to another cell lands intact instead of shifting from the cursor.
+        if (!has_selection_ &&
+            g_pattern_step_clipboard.rows == kPatternStepRows &&
+            g_pattern_step_clipboard.cols == kPatternStepColumns) {
+          start_row = 0;
+          start_col = 0;
+        }
         if (has_selection_) {
           int min_row, max_row, min_col, max_col;
           getSelectionBounds(min_row, max_row, min_col, max_col);
@@ -240,6 +249,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
         for (int i = 0; i < SEQ_STEPS; ++i) dst.steps[i] = src.steps[i];
       }
     });
+    UI::showToast("PASTED", 800);
     if (has_selection_) clearSelection();
     return true;
   }
@@ -366,7 +376,18 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   }
 
   if (keyA) {
-    if (ui_event.alt || ui_event.ctrl) {
+    if (ui_event.ctrl && !ui_event.alt) {
+      // Ctrl+A: select the whole pattern (Alt+A toggles accent).
+      if (patternRowFocused()) focusPatternSteps();
+      else ensureStepFocus();
+      selection_start_step_ = 0;
+      pattern_edit_cursor_ = SEQ_STEPS - 1;
+      has_selection_ = true;
+      selection_locked_ = false;
+      UI::showToast("ALL STEPS SELECTED", 800);
+      return true;
+    }
+    if (ui_event.alt) {
       if (patternRowFocused()) focusPatternSteps();
       else ensureStepFocus();
       if (has_selection_) {

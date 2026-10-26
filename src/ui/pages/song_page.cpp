@@ -1355,6 +1355,18 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return true;
   }
 
+  // Ctrl+A: select every row and track of the song editor (Alt+A is not used here).
+  if (ui_event.ctrl && !ui_event.alt && (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    selection_start_row_ = 0;
+    selection_start_track_ = 0;
+    cursor_row_ = std::max(0, mini_acid_.songLength() - 1);
+    cursor_track_ = maxEditableTrackColumn();
+    has_selection_ = true;
+    selection_locked_ = false;
+    showToast("ALL ROWS SELECTED", 800);
+    return true;
+  }
+
   // Local fallback for Ctrl+C / Ctrl+V, same pattern as Pattern/Drum pages.
   // Needed because some keyboard paths do not route app events globally.
   if (ui_event.ctrl && key_c) {

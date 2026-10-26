@@ -400,6 +400,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           for (int i = 0; i < SEQ_STEPS; ++i) g_pattern_clipboard.pattern.steps[i] = source.steps[i];
         }
         if (has_selection_) selection_locked_ = true;
+        {
+          char msg[32];
+          std::snprintf(msg, sizeof(msg), "COPIED %d STEPS",
+                        static_cast<int>(g_pattern_step_clipboard.steps.size()));
+          UI::showToast(msg, 800);
+        }
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {

@@ -263,8 +263,8 @@ Undo after activation require STOP (`UNDO/REDO: STOP OR WAIT`).
 | `N/M` | Distortion / Delay |
 | `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |
 
-`Ctrl+A` is context-sensitive: it accents the selected Pattern step in PATTERN
-and resets the selected TB303 synth's cutoff in SOUND. SOUND confirms the reset
+`Ctrl+A` selects every step of the pattern in PATTERN and DRUMS; `Alt+A` accents
+the selected step. In SOUND, `Ctrl+A` resets the selected TB303 synth's cutoff. SOUND confirms the reset
 with an `A FILTER 800Hz` or `B FILTER 800Hz` toast. Other synth engines show
 `FILTER RESET: TB303 ONLY` and keep their parameters.
 
