@@ -30,6 +30,6 @@ None of the nine risks has its full exit criteria closed. This does not mean sof
 3. Resolve G2 preregistration mismatch before any rerun; keep Dub NotAdmitted as a retained result and do not change genres/seeds post hoc.
 4. Collect G4 listening/hardware ratings and G7 three independent users; obtain independent release and R1/R7/R9 reviews.
 
-No risk score is reassigned. The standalone release decision remains STOP; G5 REAPER remains DEFERRED. This checkpoint will be committed and pushed to the integration branch at the user’s explicit request; it will not merge a release branch or flash hardware. The goal remains OPEN pending all named gates.
+No risk score is reassigned. The standalone release decision remains STOP; G5 REAPER remains DEFERRED. Acceptance checkpoint commit `e66d36dfa37473d57141641922a29f5912ec836c` is pushed to `origin/integration/20261025-g6-dsp-ab-presets` at the user’s explicit request. No release merge or firmware flash occurred. The goal remains OPEN pending all named gates.
 
 Evidence: [integration report](g6-dsp-ab-presets/README.md), [New/Clear hardware follow-up](../acceptance/critical-review/g6-new-clear-reset/hardware-follow-up.md), [TYPE tests/builds](type-popup/README.md). The current [acceptance matrix](../acceptance/critical-review/acceptance-matrix.md) supersedes obsolete installed-image statements; historical results remain archived. Fresh sound evidence is [here](../acceptance/critical-review/tb303-level-audit/README.md).

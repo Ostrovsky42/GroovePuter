@@ -2,7 +2,7 @@
 
 Updated 2026-10-26. Policy: [ratified closure plan](../../product/CRITICAL_REVIEW_CLOSURE_PLAN.md).
 
-Latest installed image: source `9e6c3ddf434267f91b4cfca2e1b9ea374f85976e`, BIN SHA-256 `349b8ea4f6a273486d3a6cb8cebb51cbfa2efe3775cfbb53e6b03f0b286277c1`. Latest local source commit `b6c3daf9fa7a59abadbe3f0b259bea350f809675` has an additional Save As rollback fix; its ADV BIN SHA-256 is `77b634b589c20cc5865eaf667134d58de36b05fd31c5180cb0cc3ed393f724f9`, built with unchanged DRAM 184252/191488 B, but NOT FLASHED. This report is a process checkpoint; no image is an accepted release candidate. [Installed-image upload provenance](../../integration/type-popup/flash-record.json), [current risk audit](../../integration/current-risk-status.md).
+Latest installed image: source `9e6c3ddf434267f91b4cfca2e1b9ea374f85976e`, BIN SHA-256 `349b8ea4f6a273486d3a6cb8cebb51cbfa2efe3775cfbb53e6b03f0b286277c1`. Latest local source commit `b6c3daf9fa7a59abadbe3f0b259bea350f809675` has an additional Save As rollback fix; its ADV BIN SHA-256 is `77b634b589c20cc5865eaf667134d58de36b05fd31c5180cb0cc3ed393f724f9`, built with unchanged DRAM 184252/191488 B, but NOT FLASHED. This report was committed and pushed with acceptance checkpoint `e66d36dfa37473d57141641922a29f5912ec836c`; no image is an accepted release candidate. [Installed-image upload provenance](../../integration/type-popup/flash-record.json), [current risk audit](../../integration/current-risk-status.md).
 
 | Gate | Evidence already retained | Current candidate remaining | Status |
 | --- | --- | --- | --- |
