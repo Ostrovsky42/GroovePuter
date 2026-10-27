@@ -725,6 +725,123 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
 // On MELODY, Q..I pick a slot of the current bank and B the same slot in the
 // other bank -- but only slots that hold an accepted Melody. Unsaved Working
 // edits block the move instead of being dropped.
+// One bar of melody copied with Ctrl+C (heap, ~1.3 KB while held; not in BSS).
+namespace {
+std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> g_melody_bar_clipboard;
+}
+
+// Ctrl+C copies the focused bar, Ctrl+V replaces the focused bar with it,
+// Ctrl+D copies the focused bar into the next bar when that bar is empty.
+// Every write goes through the undoable runtime phrase commit.
+bool SynthSequencerPage::handleMelodyBarKey(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN || !ui_event.ctrl ||
+      ui_event.alt || ui_event.meta) {
+    return false;
+  }
+  const char lower = ui_event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
+      : 0;
+  const bool isCopy = lower == 'c' || lower == 0x03 || ui_event.scancode == GROOVEPUTER_C;
+  const bool isPaste = lower == 'v' || lower == 0x16 || ui_event.scancode == GROOVEPUTER_V;
+  const bool isDup = lower == 'd' || lower == 0x04 || ui_event.scancode == GROOVEPUTER_D;
+  if (!isCopy && !isPaste && !isDup) return false;
+
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const int bar = PhraseNotesCursor::focusBar(phrase_cursor_);
+  const int bars = PhraseInstrumentControls::lengthBars(phrase.lengthTicks);
+  char msg[32];
+
+  if (isCopy) {
+    std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> slice(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+    if (!slice) {
+      UI::showToast("NO MEMORY", 900);
+      return true;
+    }
+    if (RuntimePhraseEdit::extractBarRange(phrase, static_cast<uint8_t>(bar), 1, *slice) !=
+        RuntimePhraseEdit::RangeExtractResult::Ready) {
+      UI::showToast("CANNOT COPY: CHORD OR NOTE ACROSS BAR", 1200);
+      return true;
+    }
+    g_melody_bar_clipboard = std::move(slice);
+    std::snprintf(msg, sizeof(msg), "COPIED BAR %d", bar + 1);
+    UI::showToast(msg, 800);
+    return true;
+  }
+
+  if (isPaste) {
+    if (!g_melody_bar_clipboard) {
+      UI::showToast("BAR CLIPBOARD EMPTY", 900);
+      return true;
+    }
+    std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+    if (!after) {
+      UI::showToast("NO MEMORY", 900);
+      return true;
+    }
+    *after = phrase;
+    if (RuntimePhraseEdit::replaceBarRange(*after, static_cast<uint8_t>(bar), 1,
+                                           *g_melody_bar_clipboard) !=
+        RuntimePhraseEdit::RangeEditResult::Changed) {
+      UI::showToast("PASTE BAR: NO CHANGE", 900);
+      return true;
+    }
+    if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_, phrase, *after)) {
+      UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
+      return true;
+    }
+    std::snprintf(msg, sizeof(msg), "PASTED BAR %d  CTRL+Z", bar + 1);
+    UI::showToast(msg, 1000);
+    return true;
+  }
+
+  // Ctrl+D: duplicate the focused bar into the next one.
+  const int target = bar + 1;
+  if (target >= bars) {
+    UI::showToast("NO NEXT BAR  L ADDS ONE", 1100);
+    return true;
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> source(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> after(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!source || !after) {
+    UI::showToast("NO MEMORY", 900);
+    return true;
+  }
+  if (RuntimePhraseEdit::extractBarRange(phrase, static_cast<uint8_t>(bar), 1, *source) !=
+      RuntimePhraseEdit::RangeExtractResult::Ready) {
+    UI::showToast("CANNOT COPY BAR", 1000);
+    return true;
+  }
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> next(
+      new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+  if (!next || RuntimePhraseEdit::extractBarRange(phrase, static_cast<uint8_t>(target), 1, *next) !=
+                   RuntimePhraseEdit::RangeExtractResult::Ready) {
+    UI::showToast("CANNOT READ NEXT BAR", 1000);
+    return true;
+  }
+  if (next->count != 0) {
+    std::snprintf(msg, sizeof(msg), "BAR %d NOT EMPTY", target + 1);
+    UI::showToast(msg, 1000);
+    return true;
+  }
+  *after = phrase;
+  if (RuntimePhraseEdit::replaceBarRange(*after, static_cast<uint8_t>(target), 1, *source) !=
+      RuntimePhraseEdit::RangeEditResult::Changed) {
+    UI::showToast("DUPLICATE: NO CHANGE", 900);
+    return true;
+  }
+  if (!commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_, phrase, *after)) {
+    UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
+    return true;
+  }
+  std::snprintf(msg, sizeof(msg), "BAR %d -> BAR %d  CTRL+Z", bar + 1, target + 1);
+  UI::showToast(msg, 1000);
+  return true;
+}
+
 bool SynthSequencerPage::handleMelodySlotKey(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN || ui_event.alt ||
       ui_event.ctrl || ui_event.meta) {
@@ -1285,10 +1402,7 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       UI::showToast(toast, 1400);
     } else if (outcome.result ==
                PhraseInstrumentControls::LengthChangeResult::Unchanged) {
-      std::snprintf(toast, sizeof(toast), "LENGTH ALREADY %uB",
-                    static_cast<unsigned>(
-                        PhraseInstrumentControls::lengthBars(after.lengthTicks)));
-      UI::showToast(toast, 1000);
+      UI::showToast(direction > 0 ? "MAX 8 BARS" : "MIN 1 BAR", 1000);
     } else {
       UI::showToast("LENGTH FAILED", 1000);
     }
@@ -1684,7 +1798,13 @@ bool SynthSequencerPage::generateMelodyFor(MiniAcid& mini_acid,
   }
   // Each press is a new phrase; the same count on the same settings repeats.
   static uint32_t presses[2] = {0, 0};
-  const uint8_t bars = GroovePuterState::requestedPhraseBars();
+  // G uses the melody's own length (set with L) once the melody has content or
+  // was resized; an untouched empty melody keeps the GENRE length.
+  const auto& current = mini_acid.currentPhraseBuffer(voice);
+  const bool sized = current.count > 0 ||
+                     PhraseInstrumentControls::lengthBars(current.lengthTicks) > 1;
+  const uint8_t bars = sized ? PhraseInstrumentControls::lengthBars(current.lengthTicks)
+                             : GroovePuterState::requestedPhraseBars();
   const auto status = GeneratedMelody::generate(mini_acid, voice, bars,
                                                 ++presses[voice], *after);
   if (status != GeneratedMelody::Status::Ready) {
@@ -1940,6 +2060,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  if (phraseNotes && handleMelodyBarKey(ui_event)) return true;
   if (phraseNotes && handleMelodySlotKey(ui_event)) return true;
   if (phraseNotes && handlePhraseNotesEvent(ui_event)) return true;
 

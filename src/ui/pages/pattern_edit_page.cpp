@@ -581,7 +581,26 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
   if (note < 0) return false;
 
   focus_ = Focus::Steps;
-  if (has_selection_) clearSelection();
+  if (has_selection_) {
+    // NOTE ENTRY over a selection fills every selected step with this note.
+    // One undoable edit; the selection stays so another note can follow.
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    commitPatternMutation([&](SynthPattern& pattern) {
+      for (int r = min_row; r <= max_row; ++r) {
+        for (int c = min_col; c <= max_col; ++c) {
+          SynthStep& step = pattern.steps[r * kPatternStepColumns + c];
+          step.note = static_cast<int8_t>(note);
+          step.slide = false;
+        }
+      }
+    });
+    char msg[24];
+    std::snprintf(msg, sizeof(msg), "FILLED %d STEPS",
+                  (max_row - min_row + 1) * (max_col - min_col + 1));
+    UI::showToast(msg, 800);
+    return true;
+  }
 
   const unsigned long now = millis();
   const char lower = static_cast<char>(

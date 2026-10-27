@@ -169,6 +169,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void drawForm(IGfx& gfx);
   void formSourceBlock(int& first, int& count) const;
   bool applyForm();
+  bool takeMaterialAtCursor();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -204,7 +205,6 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   LaneFocusMode lane_focus_mode_ = LaneFocusMode::AllTracks;
   int assignment_bank_index_ = 0;
   bool split_compare_ = true;
-  int row_markers_[4] = {-1, -1, -1, -1};
 
   SongPatternMaterializer::Result materializeSongTracks(int row, uint8_t trackMask);
   bool generateCurrentCellPattern(bool rememberForDoubleTap = false);

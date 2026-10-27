@@ -42,8 +42,9 @@ def main() -> None:
     adapter = function_body(
         song_page,
         "SongPatternMaterializer::Result SongPage::materializeSongTracks")
-    generated_action = function_body(
-        phrase_page, "bool PhrasePage::generatePhraseToSong()")
+    generated_action = (
+        function_body(phrase_page, "MaterialTakeOutcome generateMaterialTakeAtRow(") +
+        function_body(phrase_page, "bool PhrasePage::generatePhraseToSong()"))
 
     require("qwertyToPatternIndex(key)" in song_page,
             "Q..I assignment no longer uses the canonical pattern mapping")
@@ -139,7 +140,7 @@ def main() -> None:
             "Phrase G no longer starts at the visible TO destination")
     require("currentSongPosition()" not in generated_action,
             "Phrase G must not use a hidden Song playhead as its destination")
-    require("static_cast<int>(songStart) + phraseResult.bars" in generated_action,
+    require("static_cast<int>(songStart) + static_cast<uint8_t>(out.bars)" in generated_action,
             "successful Phrase G no longer advances the visible TO destination")
 
     # 0.9.9-D2 intentionally removes the old STOP-only Phrase guard. The UI now

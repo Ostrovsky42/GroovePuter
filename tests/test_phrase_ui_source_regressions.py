@@ -107,7 +107,7 @@ if '"STOP PLAYBACK FOR PHRASE"' in CPP:
     raise AssertionError("D2 Phrase G must not retain the old PLAY rejection")
 require(CPP, "!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g'",
         "only plain G may own generated Phrase materialization")
-require(CPP, "static_cast<int>(songStart) + phraseResult.bars",
+require(CPP, "static_cast<int>(songStart) + static_cast<uint8_t>(out.bars)",
         "successful generated Phrase must advance TO by generated length")
 if "mini_acid_.stop()" in CPP or "mini_acid_.start()" in CPP:
     raise AssertionError("Phrase G must not hide stop/generate/restart transport ownership")

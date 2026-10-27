@@ -39,8 +39,9 @@ inline uint8_t nextLengthBars(uint8_t current, int direction) {
     }
   }
   index += direction > 0 ? 1 : -1;
-  if (index < 0) index = 3;
-  if (index > 3) index = 0;
+  // Stop at the ends instead of wrapping: 8B -> 1B silently dropped notes.
+  if (index < 0) index = 0;
+  if (index > 3) index = 3;
   return kBars[index];
 }
 

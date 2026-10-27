@@ -98,7 +98,8 @@ constexpr const char* kSynthALines[] = {
     "Aa/Ctrl+G   Grid step",
     "K / M       Key tonic / scale",
     "Q..I / B    Melody slot, new if none",
-    "Ctrl+L/R    Prev/next bar",
+    "Ctrl+Left/Right Prev/next bar",
+    "L / Alt+L   Bars 1-8 (+ / -)",
     "Alt+N       New empty melody",
 };
 
@@ -141,7 +142,8 @@ constexpr const char* kSynthBLines[] = {
     "Aa/Ctrl+G   Grid step",
     "K / M       Key tonic / scale",
     "Q..I / B    Melody slot, new if none",
-    "Ctrl+L/R    Prev/next bar",
+    "Ctrl+Left/Right Prev/next bar",
+    "L / Alt+L   Bars 1-8 (+ / -)",
     "Alt+N       New empty melody",
 };
 
@@ -226,11 +228,13 @@ constexpr const char* kSongLines[] = {
     "Ctrl+1..8   Jump edit page 1..8",
     "P           Cursor to playhead",
     "Ctrl+W/S    Jump 8 rows",
-    "Ctrl+Alt+W/S Jump 32 rows",
     "Alt+Q/E/R/T Save markers 1..4",
     "Ctrl+Alt+Q/E/R/T Jump markers",
-    "Ctrl+Alt+U/D Song top/end",
-    "Bksp/Tab    Clear cell",
+    "Ctrl+Alt+Up/Dn Song top/end",
+    "F           Form: build from rows",
+    "In FORM: T take, P style",
+    "Alt+J       MATERIAL at this row",
+    "Bksp        Clear cell",
     "Alt+Bksp    Clear full Song",
 };
 

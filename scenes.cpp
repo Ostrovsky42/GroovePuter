@@ -124,6 +124,7 @@ void clearSceneData(Scene& scene) {
   scene.vocal = VocalSettings();
   scene.drumFX = DrumFX();
   scene.activeSongSlot = 0;
+  for (int16_t& mark : scene.songMarks) mark = -1;
   scene.mode = GrooveboxMode::Minimal;
   scene.grooveFlavor = 0;
 }
@@ -1239,6 +1240,11 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       drumBankIndex_ = intValue;
     } else if (lastKey_ == "synthPatternIndex") {
       synthPatternIndex_[0] = intValue;
+    } else if (lastKey_ == "songMark0" || lastKey_ == "songMark1" ||
+               lastKey_ == "songMark2" || lastKey_ == "songMark3") {
+      const int index = lastKey_[8] - '0';
+      target_.songMarks[index] = static_cast<int16_t>(
+          intValue < -1 ? -1 : (intValue > 127 ? 127 : intValue));
     } else if (lastKey_ == "activeSongSlot") {
       target_.activeSongSlot = intValue;
       if (target_.activeSongSlot < 0) target_.activeSongSlot = 0;
@@ -1645,6 +1651,7 @@ void SceneManager::loadDefaultScene() {
   scene_->grooveFlavor = 0;
   applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
+  for (int16_t& mark : scene_->songMarks) mark = -1;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
@@ -1872,6 +1879,7 @@ void SceneManager::wipeToZero() {
   scene_->grooveFlavor = 0;
   applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
+  for (int16_t& mark : scene_->songMarks) mark = -1;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
@@ -2521,6 +2529,11 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   synthDelay.add(synthDelay_[1]);
 
   state["masterVolume"] = scene_->masterVolume;
+  for (int i = 0; i < 4; ++i) {
+    char key[12];
+    std::snprintf(key, sizeof(key), "songMark%d", i);
+    state[key] = scene_->songMarks[i];
+  }
   ArduinoJson::JsonArray volumes = state["trackVolumes"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < (int)VoiceId::Count; ++i) {
     volumes.add(scene_->trackVolumes[i]);
@@ -2795,6 +2808,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopStartRow = valueToInt(state["loopStart"], loopStartRow);
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
     loaded->masterVolume = valueToFloat(state["masterVolume"], loaded->masterVolume);
+    for (int i = 0; i < 4; ++i) {
+      char key[12];
+      std::snprintf(key, sizeof(key), "songMark%d", i);
+      loaded->songMarks[i] = static_cast<int16_t>(valueToInt(state[key], -1));
+    }
   }
 
   ArduinoJson::JsonObjectConst feelObjRoot = obj["feel"].as<ArduinoJson::JsonObjectConst>();

@@ -10,6 +10,7 @@
 #include "../layout_manager.h"
 #include "../ui_colors.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
 #include "../ui_input.h"
 #include "../workflow_mode.h"
 #include "src/dsp/generated_phrase_song.h"
@@ -107,13 +108,17 @@ PhrasePalette paletteForStyle(VisualStyle style) {
           IGfxColor(0x6E4A18), IGfxColor(0x9E7136), IGfxColor(0xFFE7B0),
           IGfxColor(0x2C1E0C), IGfxColor(0x493114), IGfxColor(0xFFCA58),
           IGfxColor(0xE6A93E), IGfxColor(0xFF8A3D), IGfxColor(0xFFD166)};
-    case VisualStyle::MINIMAL_DARK:
     case VisualStyle::MINIMAL:
-    default:
+    case VisualStyle::MINIMAL_DARK:
+    default: {
+      // CLEAN: monochrome from the shared theme. Voices and drums are told
+      // apart by label and position; the accent stays on live state only.
+      const UI::ThemePalette t = UI::themePalette(VisualStyle::MINIMAL);
       return {
-          COLOR_BG, COLOR_PANEL, IGfxColor(0x101A23), COLOR_LIGHT_GRAY,
-          COLOR_MUTED, COLOR_TEXT, IGfxColor(0x18222B), IGfxColor(0x2B3945),
-          COLOR_SYNTH_A, COLOR_SYNTH_B, COLOR_WARN, COLOR_ACCENT};
+          t.background, t.panel, t.selectBg, t.gridDim,
+          t.dim, t.text, t.gridDim, t.gridDim,
+          t.voiceA, t.voiceB, t.secondary, t.accent};
+    }
   }
 }
 
@@ -386,11 +391,18 @@ void PhrasePage::onEnter(int context) {
   replace_confirming_ = false;
   replace_confirmed_ = false;
   if (context > 0) {
+    // Explicit placement only on a row with no material yet; a filled row keeps APPEND.
     const int row = context - 1;
     if (row >= 0 && row < Song::kMaxPositions) {
-      placement_mode_ = PlacementMode::Explicit;
-      explicit_row_ = static_cast<int16_t>(row);
-      return;
+      bool filled = false;
+      for (SongTrack track : {SongTrack::SynthA, SongTrack::SynthB, SongTrack::Drums}) {
+        if (mini_acid_.songPatternAt(row, track) >= 0) filled = true;
+      }
+      if (!filled) {
+        placement_mode_ = PlacementMode::Explicit;
+        explicit_row_ = static_cast<int16_t>(row);
+        return;
+      }
     }
   }
   placement_mode_ = PlacementMode::Append;
@@ -816,7 +828,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
     case S::NotAdmitted:
       // Another TAKE in the same genre is refused the same way; say what helps.
-      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: FN+M GENRE",
+      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: ALT+V GENRE",
                     GenreManager::generativeModeName(
                         mini_acid_.genreManager().generativeMode()));
       for (char* c = genreMessage; *c; ++c) *c = static_cast<char>(std::toupper(*c));
@@ -1379,16 +1391,16 @@ bool PhrasePage::captureCurrentRegion() {
   return true;
 }
 
-bool PhrasePage::generatePhraseToSong() {
-  const int songStart = core_mode_
-      ? static_cast<int>(destination_row_)
-      : resolvedToRow();
-  const uint8_t requestedBars = GroovePuterState::requestedPhraseBars();
+MaterialTakeOutcome generateMaterialTakeAtRow(MiniAcid& mini_acid,
+                                              const AudioGuard& audio_guard,
+                                              int songStart,
+                                              uint8_t requestedBars) {
+  MaterialTakeOutcome out;
   const GeneratedPhraseSong::Result result = GeneratedPhraseSong::generate(
-      mini_acid_, requestedBars, songStart,
+      mini_acid, requestedBars, songStart,
       [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
+        if (audio_guard) {
+          audio_guard(std::forward<decltype(operation)>(operation));
         } else {
           operation();
         }
@@ -1410,11 +1422,13 @@ bool PhrasePage::generatePhraseToSong() {
                 songStart + 1, GeneratedPhraseSong::statusText(result));
     // Lack of a consecutive run is the one refusal the musician can act on from here.
     if (result.phrase.error == PhraseGenerator::PhraseError::NoContiguousPatternSlots) {
-      UI::showToast("NO ROOM: R MAKES ROOM", 1800);
+      std::snprintf(out.message, sizeof(out.message), "NO ROOM: R MAKES ROOM");
+      out.toastMs = 1800;
     } else {
-      UI::showToast(GeneratedPhraseSong::statusText(result), 1600);
+      std::snprintf(out.message, sizeof(out.message), "%s", GeneratedPhraseSong::statusText(result));
+      out.toastMs = 1600;
     }
-    return true;
+    return out;
   }
 
   const PhraseGenerator::PhraseResult& phraseResult = result.phrase;
@@ -1425,7 +1439,7 @@ bool PhrasePage::generatePhraseToSong() {
             songPatternIndexInBank(firstGlobal)
       : -1;
   const int songSlot = std::clamp(
-      mini_acid_.sceneManager().currentScene().activeSongSlot, 0, 1);
+      mini_acid.sceneManager().currentScene().activeSongSlot, 0, 1);
   GroovePuterState::publishGeneratedPhraseAccepted(
       requestedBars,
       static_cast<uint8_t>(phraseResult.bars),
@@ -1438,6 +1452,32 @@ bool PhrasePage::generatePhraseToSong() {
       result.p1r.phraseGenerationIdentity,
       static_cast<uint8_t>(result.p1r.progression),
       result.p1r.harmonicEventPositions);
+  out.ok = true;
+  out.bars = static_cast<int>(phraseResult.bars);
+  out.songStart = phraseResult.songStart;
+  out.songSlot = songSlot;
+  out.pending = result.status == GeneratedPhraseSong::LifecycleStatus::PendingNextBar;
+  LOG_INFO_UI("Generated %dB phrase -> Song rows %d..%d page=%d firstPattern=%d status=%s",
+              phraseResult.bars,
+              phraseResult.songStart + 1,
+              phraseResult.songStart + phraseResult.bars,
+              mini_acid.currentPageIndex() + 1,
+              phraseResult.firstGlobalPattern,
+              GeneratedPhraseSong::statusText(result));
+  return out;
+}
+
+bool PhrasePage::generatePhraseToSong() {
+  const int songStart = core_mode_
+      ? static_cast<int>(destination_row_)
+      : resolvedToRow();
+  const uint8_t requestedBars = GroovePuterState::requestedPhraseBars();
+  const MaterialTakeOutcome out =
+      generateMaterialTakeAtRow(mini_acid_, audio_guard_, songStart, requestedBars);
+  if (!out.ok) {
+    UI::showToast(out.message, out.toastMs);
+    return true;
+  }
 
   product_bar_cursor_ = 0;
   preview_bar_ = 0;
@@ -1447,36 +1487,29 @@ bool PhrasePage::generatePhraseToSong() {
   if (core_mode_) {
     const int nextRow = std::min(
         Song::kMaxPositions - 1,
-        static_cast<int>(songStart) + phraseResult.bars);
+        static_cast<int>(songStart) + static_cast<uint8_t>(out.bars));
     destination_row_ = static_cast<uint8_t>(nextRow);
-    if (result.status == GeneratedPhraseSong::LifecycleStatus::PendingNextBar) {
+    if (out.pending) {
       std::snprintf(message, sizeof(message), "%dB NEW -> NEXT BAR %d-%d",
-                    phraseResult.bars,
-                    phraseResult.songStart + 1,
-                    phraseResult.songStart + phraseResult.bars);
+                    static_cast<uint8_t>(out.bars),
+                    out.songStart + 1,
+                    out.songStart + static_cast<uint8_t>(out.bars));
     } else {
       std::snprintf(message, sizeof(message), "%dB NEW -> SONG %d-%d",
-                    phraseResult.bars,
-                    phraseResult.songStart + 1,
-                    phraseResult.songStart + phraseResult.bars);
+                    static_cast<uint8_t>(out.bars),
+                    out.songStart + 1,
+                    out.songStart + static_cast<uint8_t>(out.bars));
     }
     UI::showToast(message, 1600);
   } else {
     placement_mode_ = PlacementMode::Append;
     explicit_row_ = 0;
     std::snprintf(message, sizeof(message), "NEW TAKE %dB -> %c%d-%d",
-                  phraseResult.bars, static_cast<char>('A' + songSlot),
-                  phraseResult.songStart + 1,
-                  phraseResult.songStart + phraseResult.bars);
+                  static_cast<uint8_t>(out.bars), static_cast<char>('A' + out.songSlot),
+                  out.songStart + 1,
+                  out.songStart + static_cast<uint8_t>(out.bars));
     UI::showToast(message, 1500);
   }
-  LOG_INFO_UI("Generated %dB phrase -> Song rows %d..%d page=%d firstPattern=%d status=%s",
-              phraseResult.bars,
-              phraseResult.songStart + 1,
-              phraseResult.songStart + phraseResult.bars,
-              mini_acid_.currentPageIndex() + 1,
-              phraseResult.firstGlobalPattern,
-              GeneratedPhraseSong::statusText(result));
   return true;
 }
 
@@ -1872,4 +1905,18 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
 
 const std::string& PhrasePage::getTitle() const {
   return title_;
+}
+
+GroovePuterUndo::UndoResult undoLastMaterialTake(MiniAcid& mini_acid,
+                                                 const AudioGuard& audio_guard) {
+  return GeneratedPhraseSong::undoLastGeneratedPhrase(
+      mini_acid,
+      [&](auto&& operation) {
+        if (audio_guard) audio_guard(std::forward<decltype(operation)>(operation));
+        else operation();
+      });
+}
+
+bool materialTakeUndoOwned() {
+  return GeneratedPhraseSong::ownsCurrentUndoReceipt();
 }

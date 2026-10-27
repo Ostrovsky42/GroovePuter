@@ -26,6 +26,16 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoKind;
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
+  if (owner.hasUndo() && owner.kind() == UndoKind::Generation && materialTakeUndoOwned()) {
+    // A take written from SONG FORM (T) is undone here, through the same owner MATERIAL uses.
+    const UndoResult result = undoLastMaterialTake(mini_acid_, audio_guard_);
+    if (result == UndoResult::Restored) {
+      showToast("UNDO: TAKE", 900);
+      return true;
+    }
+    showToast("UNDO: TAKE EXPIRED", 900);
+    return true;
+  }
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
 
   SongUndoPayload retained{};
@@ -249,14 +259,19 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
             }
           }
         });
+        showToast("PASTED AREA  CTRL+Z UNDO", 1000);
         if (has_selection_) clearSelection();
         return true;
       }
-      if (!g_song_pattern_clipboard.has_pattern) return false;
+      if (!g_song_pattern_clipboard.has_pattern) {
+        showToast("CLIPBOARD EMPTY", 900);
+        return true;
+      }
       const int pattern = g_song_pattern_clipboard.pattern_index;
       commitSongMutation([&](Song& song) {
         SongEdit::setPattern(song, cursorRow(), focusedTrack, pattern);
       });
+      showToast("PASTED CELL", 800);
       if (has_selection_) clearSelection();
       return true;
     }
@@ -270,8 +285,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     if (UIInput::isTab(ui_event)) {
-      const int row = cursorRow();
-      requestPageTransition(WorkflowPages::kPhrase, row + 1);
+      showToast("ALT+J: MATERIAL AT THIS ROW", 900);
       return true;
     }
     if (ui_event.key == '[' || ui_event.key == ']') return true;

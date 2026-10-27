@@ -142,7 +142,7 @@ def main() -> None:
                   "undoPreparedOwnedState"):
         require(token in phrase_cpp, f"Phrase page missing R4 route: {token}")
 
-    generated = between(phrase_cpp, "bool PhrasePage::generatePhraseToSong()",
+    generated = between(phrase_cpp, "MaterialTakeOutcome generateMaterialTakeAtRow(",
                         "bool PhrasePage::deriveFromParent()")
     require("GeneratedPhraseSong::generate" in generated and
             "commitPhraseMutation" not in generated and

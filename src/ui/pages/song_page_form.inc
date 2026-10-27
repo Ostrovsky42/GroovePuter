@@ -84,6 +84,29 @@ bool SongPage::applyForm() {
   return true;
 }
 
+// T: write one MATERIAL take into the empty row under the cursor (same as MATERIAL G).
+bool SongPage::takeMaterialAtCursor() {
+  const int row = cursorRow();
+  const Song& song = mini_acid_.sceneManager().currentScene().songs[
+      mini_acid_.activeSongSlot()];
+  if (formRowHasMaterial(song, row)) {
+    char msg[32];
+    std::snprintf(msg, sizeof(msg), "ROW %d HAS MATERIAL", row + 1);
+    showToast(msg, 1000);
+    return true;
+  }
+  const MaterialTakeOutcome out = generateMaterialTakeAtRow(
+      mini_acid_, audio_guard_, row, GroovePuterState::requestedPhraseBars());
+  if (!out.ok) {
+    showToast(out.message, out.toastMs);
+    return true;
+  }
+  char msg[40];
+  std::snprintf(msg, sizeof(msg), "TAKE %dB AT ROW %d  CTRL+Z", out.bars, row + 1);
+  showToast(msg, 1400);
+  return true;
+}
+
 bool SongPage::handleFormEvent(UIEvent& ui_event) {
   EnergyCurve::Curve& curve = form_curve_;
   if (curve.count == 0) curve = EnergyCurve::presetCurve(EnergyCurve::Preset::Wave);
@@ -143,6 +166,13 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
     return true;
   }
   if (key == 'g') return applyForm();
+  if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
+  if (key == 't') return takeMaterialAtCursor();
+  if (key == 'p') {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    showToast(GroovePuterState::generationStyleName(level), 700);
+    return true;
+  }
   // Space, page keys and the rest stay global.
   return false;
 }
@@ -165,7 +195,8 @@ void SongPage::drawForm(IGfx& gfx) {
                   first + 1, first + count, first + count + 1,
                   static_cast<unsigned>(EnergyCurve::totalBars(curve)));
   } else {
-    std::snprintf(line, sizeof(line), "SRC --  PUT CURSOR ON A TAKE");
+    std::snprintf(line, sizeof(line), "SRC --  T MAKES A %uB TAKE HERE",
+                  static_cast<unsigned>(GroovePuterState::requestedPhraseBars()));
   }
   gfx.setTextColor(anySource ? palette.secondary : palette.warning);
   gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
@@ -198,6 +229,26 @@ void SongPage::drawForm(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
                  formEnergyMeaning(curve.sections[form_section_].energy));
   }
-  UI::drawStandardFooter(gfx, "[UD]ENERGY [LR]SECT ENT:4/8 G:INSERT",
-                         "1-3:SHAPE N:ADD BS:DEL F:GRID");
+  // Summary: the applied genre and style (what new takes use now) and the tracks
+  // the source holds.
+  const GenerativeMode genre = mini_acid_.genreManager().generativeMode();
+  const char* style = GroovePuterState::generationStyleName(
+      GroovePuterState::currentGenerationLevel());
+  char tracks[8] = "";
+  static const char kTrackLetter[] = {'A', 'B', 'D', 'V'};
+  size_t used = 0;
+  for (int t = 0; t < SongPosition::kTrackCount && t < 4; ++t) {
+    bool present = false;
+    for (int r = first; r < first + count; ++r) present = present || song.positions[r].patterns[t] >= 0;
+    if (present && used + 1 < sizeof(tracks)) tracks[used++] = kTrackLetter[t];
+  }
+  tracks[used] = '\0';
+  std::snprintf(line, sizeof(line), "%s %s  SRC %s",
+                GenreManager::generativeModeName(genre), style,
+                used > 0 ? tracks : "--");
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
+
+  UI::drawStandardFooter(gfx, "[UD]ENERGY [LR]SECT G:INSERT",
+                         "T:TAKE P:STYLE 1-3 N BS F:GRID");
 }

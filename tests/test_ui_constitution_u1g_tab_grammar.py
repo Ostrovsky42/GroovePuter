@@ -41,8 +41,10 @@ def main() -> None:
             "requestPageTransition(WorkflowPages::kArrange)" in PHRASE,
             "PHRASE Tab must return to SONG/ARRANGE peer")
     require("UIInput::isTab(ui_event)" in SONG_OWNER and
-            "requestPageTransition(WorkflowPages::kPhrase, row + 1)" in SONG_OWNER,
-            "SONG Tab must enter PHRASE carrying the focused row")
+            "ALT+J: MATERIAL AT THIS ROW" in SONG_OWNER,
+            "SONG Tab must not jump to PHRASE")
+    require("requestPageTransition(WorkflowPages::kPhrase, row + 1)" in (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8"),
+            "Alt+J must carry the focused row into PHRASE")
 
     # Peer/local representation consumers are preservation targets.
     require("UIInput::isTab(ui_event)" in SYNTH and

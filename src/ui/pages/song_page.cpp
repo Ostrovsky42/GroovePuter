@@ -25,6 +25,8 @@ using UI::showToast;
 #include "../help_dialog_frames.h"
 #include "../components/mode_button.h"
 #include "../phrase_source_toggle.h"
+#include "material_take.h"
+#include "src/state/phrase_generation_request_state.h"
 
 namespace {
 inline IGfxColor song303Color(int synthIndex) {
@@ -382,7 +384,9 @@ void SongPage::onEnter(int context) {
 
 void SongPage::saveMarker(int marker_index) {
   if (marker_index < 0 || marker_index >= 4) return;
-  row_markers_[marker_index] = cursorRow();
+  mini_acid_.sceneManager().currentScene().songMarks[marker_index] =
+      static_cast<int16_t>(cursorRow());
+  GroovePuterState::markSceneMutated();
   char toast[32];
   std::snprintf(toast, sizeof(toast), "Mark %d: %d", marker_index + 1, cursorRow() + 1);
   showToast(toast, 900);
@@ -390,7 +394,7 @@ void SongPage::saveMarker(int marker_index) {
 
 bool SongPage::jumpToMarker(int marker_index) {
   if (marker_index < 0 || marker_index >= 4) return false;
-  int row = row_markers_[marker_index];
+  const int row = mini_acid_.sceneManager().currentScene().songMarks[marker_index];
   if (row < 0) {
     char toast[24];
     std::snprintf(toast, sizeof(toast), "Mark %d empty", marker_index + 1);
@@ -1011,12 +1015,14 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           g_song_area_clipboard.has_area = true;
           g_song_pattern_clipboard.has_pattern = false; // Clear single-cell clipboard
           selection_locked_ = true;
+          showToast("COPIED AREA", 800);
         } else {
           // Copy single cell
           int row = cursorRow();
           g_song_pattern_clipboard.pattern_index = mini_acid_.songPatternAt(row, track);
           g_song_pattern_clipboard.has_pattern = true;
           g_song_area_clipboard.has_area = false; // Clear area clipboard
+          showToast("COPIED CELL", 800);
         }
         return true;
       }
@@ -1336,24 +1342,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   }
   if (ui_event.ctrl && ui_event.alt && markerIdx >= 0) {
     return jumpToMarker(markerIdx);
-  }
-
-  // alt + 1-4: Jump + Lock (Loop current section)
-  if (ui_event.alt && !ui_event.ctrl && markerIdx >= 0 && markerIdx < 4) {
-    int target = row_markers_[markerIdx];
-    if (target >= 0) {
-      int sectionLen = 16; // Default 16 bar loop
-      withAudioGuard([&]() {
-        mini_acid_.setSongPosition(target);
-        mini_acid_.setLoopRange(target, std::min(Song::kMaxPositions - 1, target + sectionLen - 1));
-        mini_acid_.setLoopMode(true);
-      });
-      moveCursorToRow(target);
-      char buf[32];
-      snprintf(buf, sizeof(buf), "JUMP+LOCK: Mark %d", markerIdx + 1);
-      showToast(buf, 1000);
-      return true;
-    }
   }
 
   const int targetPage = UI::songPatternPageShortcut(
@@ -1749,7 +1737,10 @@ void SongPage::draw(IGfx& gfx) {
       materialStatus, sizeof(materialStatus), "A:%s B:%s  G:GEN C+N/M:ROW",
       songVoiceStateLabel(mini_acid_.songVoiceDisplayState(0)),
       songVoiceStateLabel(mini_acid_.songVoiceDisplayState(1)));
-  UI::drawStandardFooter(gfx, "[TAB]PHRASE [ARWS]MOVE Q-I:PAT", materialStatus);
+  // The normal footer shows only publishShellInfo text; the page footer is
+  // revealed by holding H. Publish F:FORM here so it is visible by default.
+  UI::publishShellInfo("[ARWS]MOVE  F:FORM", "ALT+H HELP");
+  UI::drawStandardFooter(gfx, "[ARWS]MOVE F:FORM Q-I:PAT", materialStatus);
 }
 
 void SongPage::drawMinimalStyle(IGfx &gfx) {
@@ -2481,20 +2472,22 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       if (row >= Song::kMaxPositions)
         break;
       const int ry = cellsTop + i * rowH;
-      const IGfxColor rowBg =
-          (i & 1) ? IGfxColor(0x0E1319) : IGfxColor(0x090D12);
+      // CLEAN: rows are separated by spacing and rules, not tinted bands.
+      const IGfxColor rowBg = clean ? p.background
+                              : (i & 1) ? IGfxColor(0x0E1319) : IGfxColor(0x090D12);
       gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, rowBg);
 
       char barBuf[8];
       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
-      gfx.setTextColor(((row + 1) % 8) == 0 ? p.warning
-                                            : p.dim);
+      gfx.setTextColor(((row + 1) % 8) == 0 && !clean ? p.warning
+                                                      : p.dim);
       gfx.drawText(paneX + 2, ry + 1, barBuf);
 
       if (row == playhead) {
         const bool activePlay = playing && songMode && paneSlot == playSlot;
         if (activePlay) {
-          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, IGfxColor(0x13261E));
+          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH,
+                       clean ? p.background : IGfxColor(0x13261E));
           gfx.drawLine(paneX + 1, ry, paneX + usableW - 2, ry,
                        p.accent);
           gfx.drawLine(paneX + 1, ry + rowH - 1, paneX + usableW - 2,
@@ -2505,7 +2498,7 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
           gfx.drawText(paneX + 2, ry + 1, playRowBuf);
         } else {
           gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
-                       IGfxColor(0x11161B));
+                       clean ? p.selectBg : IGfxColor(0x11161B));
           gfx.fillRect(paneX + 1, ry, 2, rowH,
                        p.dim);
         }
@@ -2532,7 +2525,8 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         if (selected && has_selection_) {
           gfx.fillRect(tx, ry, cellW - 1, rowH,
                        p.selectBright);
-        } else if (pattern >= 0 || pattern == -2) {
+        } else if (!clean && (pattern >= 0 || pattern == -2)) {
+          // CLEAN: a filled cell is its text alone, without a tinted block.
           const uint32_t bg = track == SongTrack::SynthA   ? 0x071510
                               : track == SongTrack::SynthB ? 0x100718
                                                            : 0x151007;

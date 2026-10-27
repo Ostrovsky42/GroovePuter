@@ -118,7 +118,7 @@ require('cancelPendingGenerationActivation' in stop and
 
 # Public Phrase G works while PLAYING and reports PendingNextBar rather than the
 # old hard stop. Generated Phrase Undo is routed through the same Ctrl+Z owner.
-phrase_g = between(PAGE, 'bool PhrasePage::generatePhraseToSong()', 'bool PhrasePage::deriveFromParent()')
+phrase_g = between(PAGE, 'MaterialTakeOutcome generateMaterialTakeAtRow(', 'bool PhrasePage::deriveFromParent()')
 require('STOP PLAYBACK FOR PHRASE' not in phrase_g,
         "D2 must remove the old PLAY rejection")
 require('GeneratedPhraseSong::Result' in phrase_g and

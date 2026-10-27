@@ -11,6 +11,8 @@
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 
+#include "material_take.h"
+
 class PhrasePage : public IPage {
  public:
   // `coreMode` selects which of the two independently-reachable pages this

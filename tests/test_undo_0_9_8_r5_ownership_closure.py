@@ -69,8 +69,10 @@ def main() -> None:
         require(forbidden not in workspace,
                 f"Phrase PREPARE layer leaked ownership/runtime state: {forbidden}")
 
-    generated = between(phrase_cpp, "bool PhrasePage::generatePhraseToSong()",
-                        "bool PhrasePage::deriveFromParent()")
+    # The generation call moved into the free generateMaterialTakeAtRow helper
+    # (shared with SONG FORM T); the PhrasePage wrapper only does bookkeeping.
+    generated = between(phrase_cpp, "MaterialTakeOutcome generateMaterialTakeAtRow(",
+                        "bool PhrasePage::generatePhraseToSong()")
     require("GeneratedPhraseSong::generate" in generated and
             "commitPhraseMutation" not in generated and
             "commitSongMutation" not in generated,

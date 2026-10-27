@@ -1,4 +1,6 @@
 #pragma once
+
+#include <cstdio>
 #ifndef GROOVEPUTER_UI_MATERIAL_DEVELOPMENT_UX_H
 #define GROOVEPUTER_UI_MATERIAL_DEVELOPMENT_UX_H
 
@@ -12,20 +14,21 @@ namespace GroovePuterMaterialDevelopmentUx {
 
 inline bool isDevelopEvent(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-  if (event.ctrl || event.meta) return false;
+  if (event.ctrl || event.meta || event.alt) return false;
   const char key = event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
   return key == 'd';
 }
 
+// Alt+D is CONNECT (Alt+V is global GENRE and cannot reach the page).
 inline bool isVaryEvent(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (event.ctrl || event.meta) return false;
   const char key = event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
-  return key == 'v' && event.alt;
+  return key == 'd' && event.alt;
 }
 
 inline bool isGoEvent(const UIEvent& event, const MiniAcid& engine, int voiceIndex) {
@@ -61,6 +64,12 @@ inline bool handleDevelop(
   req.transformation = transformation;
   req.genreId = static_cast<uint8_t>(engine.genreManager().generativeMode());
   req.rootKey = 0; // Default C root reference
+  // Repeated Revoice alternates octave up and down (existing octaveShift parameter).
+  static int8_t nextOctave[2] = {1, 1};
+  const int slot = voiceIndex == 0 ? 0 : 1;
+  const bool revoice =
+      transformation == GroovePuterDevelopment::TransformationKind::Revoice;
+  if (revoice) req.octaveShift = nextOctave[slot];
 
   GroovePuterDevelopment::DevelopmentResult result{};
   const auto prepareResult =
@@ -68,12 +77,18 @@ inline bool handleDevelop(
 
   if (prepareResult == MiniAcid::NextPrepareResult::Prepared ||
       prepareResult == MiniAcid::NextPrepareResult::Replaced) {
+    if (revoice) nextOctave[slot] = static_cast<int8_t>(-nextOctave[slot]);
     if (result.classification.idea ==
         GroovePuterMaterial::IdeaClassification::NewIdea) {
       UI::showToast("NEXT READY: NEW MATERIAL", 1400);
     } else if (result.classification.idea ==
                GroovePuterMaterial::IdeaClassification::Variation) {
-      UI::showToast("NEXT READY: VARIATION", 1400);
+      // Say what the next take does (the operation), not the classifier word.
+      char msg[40];
+      std::snprintf(msg, sizeof(msg), "NEXT: %s%s  ENTER GO",
+                    GroovePuterDevelopment::transformationName(transformation),
+                    revoice ? (req.octaveShift > 0 ? " UP" : " DOWN") : "");
+      UI::showToast(msg, 1400);
     } else if (result.classification.idea ==
                GroovePuterMaterial::IdeaClassification::Preserved) {
       UI::showToast("NEXT READY: REFINED", 1400);

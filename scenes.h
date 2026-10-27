@@ -407,6 +407,9 @@ struct Scene {
   Song songs[2];
   PhraseCore::PhraseBank phraseBank;
   int activeSongSlot = 0;
+  // Song row markers 1..4 (-1 = empty). Scene metadata: saved with the project,
+  // not captured by Song undo.
+  int16_t songMarks[4] = {-1, -1, -1, -1};
   GrooveboxMode mode = GrooveboxMode::Minimal;
   uint8_t grooveFlavor = 0;
   float masterVolume = 0.6f;  // Default volume
@@ -1101,6 +1104,12 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(clampSongPosition(songPosition_))) return false;
   if (!writeLiteral(",\"activeSongSlot\":")) return false;
   if (!writeInt(scene_->activeSongSlot)) return false;
+  static const char* const kSongMarkKeys[4] = {
+      ",\"songMark0\":", ",\"songMark1\":", ",\"songMark2\":", ",\"songMark3\":"};
+  for (int i = 0; i < 4; ++i) {
+    if (!writeLiteral(kSongMarkKeys[i])) return false;
+    if (!writeInt(scene_->songMarks[i])) return false;
+  }
   if (!writeLiteral(",\"loopMode\":")) return false;
   if (!writeBool(loopMode_)) return false;
   if (!writeLiteral(",\"loopStart\":")) return false;

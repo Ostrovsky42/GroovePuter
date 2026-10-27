@@ -134,6 +134,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   // Successive Alt+G presses give different phrases (deterministic per count).
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
+  bool handleMelodyBarKey(UIEvent& ui_event);
   bool newEmptyMelody();
   bool newMelodyInSlot(int bank, int pattern);
   bool toggleSource();
