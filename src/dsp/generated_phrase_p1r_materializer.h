@@ -117,21 +117,22 @@ inline bool probeGraphEventCount(
   return true;
 }
 
-inline bool prepareGraphRoute(
+// Keep the graph planner's large workspace off the call stack while the
+// preliminary phrase probe is running. Both stages are synchronous and this
+// preserves the same seed, inputs and output publication order.
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+inline bool buildGraphRouteAfterProbe(
     MiniAcid& engine, const Scene& scene, const GenreSettings& genre,
-    uint8_t bars, uint32_t generationAttemptOrdinal,
+    uint32_t generationAttemptOrdinal, uint8_t eventCount,
     const GroovePuterHarmony::HarmonicState* current,
     const GroovePuterHarmony::TonalContext* currentTonal,
     const GroovePuterHarmony::RecentHarmonyMemory* recent,
     GroovePuterHarmony::PreparedGraphHarmony& graphOut,
     GroovePuterHarmony::PreparedPhraseGraphMetadata& metadataOut,
     GroovePuterRhythm::PhraseExecutionStatus& failureStatus,
-    GroovePuterHarmony::SectionIntent section =
-        GroovePuterHarmony::SectionIntent::Develop) {
-  uint8_t eventCount = 0;
-  if (!probeGraphEventCount(scene, genre, bars, generationAttemptOrdinal,
-                            eventCount, failureStatus)) return false;
-
+    GroovePuterHarmony::SectionIntent section) {
   GraphRoutePlanningWorkspace workspace{};
   if (recent != nullptr) workspace.recent = *recent;
   const uint32_t projectSeed = stableProjectSeed(
@@ -163,6 +164,27 @@ inline bool prepareGraphRoute(
   graphOut = graph;
   metadataOut = metadata;
   return true;
+}
+
+inline bool prepareGraphRoute(
+    MiniAcid& engine, const Scene& scene, const GenreSettings& genre,
+    uint8_t bars, uint32_t generationAttemptOrdinal,
+    const GroovePuterHarmony::HarmonicState* current,
+    const GroovePuterHarmony::TonalContext* currentTonal,
+    const GroovePuterHarmony::RecentHarmonyMemory* recent,
+    GroovePuterHarmony::PreparedGraphHarmony& graphOut,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata& metadataOut,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus,
+    GroovePuterHarmony::SectionIntent section =
+        GroovePuterHarmony::SectionIntent::Develop) {
+  uint8_t eventCount = 0;
+  if (!probeGraphEventCount(scene, genre, bars, generationAttemptOrdinal,
+                            eventCount, failureStatus)) return false;
+
+  return buildGraphRouteAfterProbe(
+      engine, scene, genre, generationAttemptOrdinal, eventCount,
+      current, currentTonal, recent, graphOut, metadataOut, failureStatus,
+      section);
 }
 
 inline GenreBehavior synthBehaviorForVoice(GenreBehavior behavior,
