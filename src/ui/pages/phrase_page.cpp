@@ -1788,7 +1788,15 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
 
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     if (UIInput::isTab(ui_event)) {
-      requestPageTransition(WorkflowPages::kArrange);
+      // On a focused live bar, Tab opens SONG on that bar's row (context row+1).
+      const auto& accepted = GroovePuterState::generatedPhraseProductState().accepted;
+      if (product_focus_ == ProductFocus::Bar && accepted.valid &&
+          product_bar_cursor_ < accepted.bars) {
+        const int row = static_cast<int>(accepted.songStart) + product_bar_cursor_;
+        requestPageTransition(WorkflowPages::kArrange, row + 1);
+      } else {
+        requestPageTransition(WorkflowPages::kArrange);
+      }
       return true;
     }
     // [ / ] are left to the workflow page navigation (0.9.17): swallowing

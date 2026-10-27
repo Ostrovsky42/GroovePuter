@@ -31,6 +31,8 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  // Context row+1 from MATERIAL (Tab on a live bar): the cursor lands on that row.
+  void onEnter(int context) override;
   const std::string & getTitle() const override;
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;

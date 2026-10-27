@@ -376,6 +376,10 @@ void SongPage::moveCursorToRow(int row) {
   syncSongPositionToCursor();
 }
 
+void SongPage::onEnter(int context) {
+  if (context > 0) cursor_row_ = clampCursorRow(context - 1);
+}
+
 void SongPage::saveMarker(int marker_index) {
   if (marker_index < 0 || marker_index >= 4) return;
   row_markers_[marker_index] = cursorRow();
@@ -904,9 +908,13 @@ bool SongPage::toggleSongMode() {
 bool SongPage::toggleLoopMode() {
   if (mini_acid_.loopModeEnabled()) {
     withAudioGuard([&]() { mini_acid_.setLoopMode(false); });
+    showToast("LOOP OFF", 800);
     return true;
   }
-  if (!has_selection_) return false;
+  if (!has_selection_) {
+    showToast("LOOP: SELECT ROWS FIRST", 1100);
+    return true;
+  }
   int min_row, max_row, min_track, max_track;
   getSelectionBounds(min_row, max_row, min_track, max_track);
   (void)min_track;
@@ -915,6 +923,9 @@ bool SongPage::toggleLoopMode() {
     mini_acid_.setLoopRange(min_row, max_row);
     mini_acid_.setLoopMode(true);
   });
+  char msg[24];
+  std::snprintf(msg, sizeof(msg), "LOOP ROWS %d-%d", min_row + 1, max_row + 1);
+  showToast(msg, 1000);
   return true;
 }
 
