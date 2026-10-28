@@ -32,7 +32,7 @@ Flash the generated Cardputer ADV firmware with the normal project workflow.
 
 - `A/Z`, `S/X`, `D/C`, and `F/V` move the four visible knobs by the normal
   coarse step (5 internal parameter steps instead of 1);
-- hold Shift for the original fine one-step adjustment;
+- hold Ctrl for the fine one-step adjustment;
 - arrow-key focus adjustment remains unchanged.
 
 ### PERFORM
@@ -40,7 +40,7 @@ Flash the generated Cardputer ADV firmware with the normal project workflow.
 - plain `Tab` opens or closes **PERFORMANCE TOOLS**;
 - while open: `1` arp, `2` direction, `3` chord, `4` memory, `5` strum,
   `6` ratchet, `7` Euclidean pulses, `8` Euclidean rotation;
-- Shift reverses cyclic controls;
+- Cyclic controls step forward only;
 - playable note keys remain active, so a chord can be held and captured with `4`;
 - old Fn+A/C/K/S/R/E/V commands no longer consume global Fn shortcuts.
 
@@ -65,7 +65,7 @@ Flash the generated Cardputer ADV firmware with the normal project workflow.
 ## Acceptance checklist
 
 - [ ] A/Z, S/X, D/C, F/V reach useful knob ranges noticeably faster.
-- [ ] Shift still provides fine adjustment.
+- [ ] Ctrl still provides fine adjustment.
 - [ ] Tab opens a local 1-8 performance tool layer.
 - [ ] Fn+M, Fn+Tab, and Fn+[ / ] retain their global behavior.
 - [ ] Chord memory can be captured while notes are held.

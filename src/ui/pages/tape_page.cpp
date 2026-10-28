@@ -373,7 +373,7 @@ void TapePage::draw(IGfx& gfx) {
 bool TapePage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return Container::handleEvent(ui_event);
 
-  bool shift = ui_event.shift;
+  bool fast = ui_event.ctrl;
 
   switch (ui_event.scancode) {
     case GROOVEPUTER_UP: focusPrev(); return true;
@@ -382,12 +382,12 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     case GROOVEPUTER_RIGHT: {
       int dir = (ui_event.scancode == GROOVEPUTER_RIGHT) ? 1 : -1;
       // Adjust focused slider
-      if (wow_slider_->isFocused()) wow_slider_->adjust(dir, shift);
-      else if (age_slider_->isFocused()) age_slider_->adjust(dir, shift);
-      else if (sat_slider_->isFocused()) sat_slider_->adjust(dir, shift);
-      else if (tone_slider_->isFocused()) tone_slider_->adjust(dir, shift);
-      else if (crush_slider_->isFocused()) crush_slider_->adjust(dir, shift);
-      else if (looper_slider_->isFocused()) looper_slider_->adjust(dir, shift);
+      if (wow_slider_->isFocused()) wow_slider_->adjust(dir, fast);
+      else if (age_slider_->isFocused()) age_slider_->adjust(dir, fast);
+      else if (sat_slider_->isFocused()) sat_slider_->adjust(dir, fast);
+      else if (tone_slider_->isFocused()) tone_slider_->adjust(dir, fast);
+      else if (crush_slider_->isFocused()) crush_slider_->adjust(dir, fast);
+      else if (looper_slider_->isFocused()) looper_slider_->adjust(dir, fast);
       else if (mode_ctrl_->isFocused()) {
         std::static_pointer_cast<ModeComponent>(mode_ctrl_)->cycleMode();
       } else if (preset_ctrl_->isFocused()) {
@@ -414,7 +414,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   };
   
   // Q-I Pattern Selection (Standardized)
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
+  if (!ui_event.ctrl && !ui_event.meta) {
     const char* patternKeys = "qwertyui";
     const char* found = strchr(patternKeys, lowerKey);
     if (found) {
@@ -427,7 +427,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   }
 
   // Hotkeys
-  if (lowerKey == 'x' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+  if (lowerKey == 'x' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     audio_guard_([this]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       const bool hasLoop = mini_acid_.tapeLooper->hasLoop();
@@ -459,7 +459,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   }
 
   // Performance actions for small-screen live workflow.
-  if (lowerKey == 'a' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+  if (lowerKey == 'a' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     audio_guard_([this]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       mini_acid_.tapeLooper->clear();
@@ -472,7 +472,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     UI::showToast("CAPTURE: REC", 1000);
     return true;
   }
-  if (lowerKey == 's' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+  if (lowerKey == 's' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     audio_guard_([this]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       if (!mini_acid_.tapeLooper->hasLoop()) return;
@@ -487,7 +487,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     else UI::showToast("THICKEN: NO LOOP", 900);
     return true;
   }
-  if (lowerKey == 'd' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+  if (lowerKey == 'd' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     audio_guard_([this]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       if (!perf_wash_active_) {
@@ -512,7 +512,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     UI::showToast(perf_wash_active_ ? "WASH: ON" : "WASH: OFF", 900);
     return true;
   }
-  if (lowerKey == 'g' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+  if (lowerKey == 'g' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     audio_guard_([this]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       if (!perf_loop_muted_) {

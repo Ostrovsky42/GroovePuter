@@ -6,7 +6,7 @@ Current behavior in `src/ui/pages/song_page.cpp`.
 - `Left/Right`: move `Synth A -> Synth B -> Drums`; crossing the outer edge changes edit Song slot `A/B`
 - `Up/Down`: move Song row
 - `Enter`: **Quick Jump** to pattern editor for track at cursor
-- `Shift/Ctrl + Arrows`: rectangular selection inside the visible track grid; never crosses Song slot
+- `Ctrl + Arrows`: rectangular selection inside the visible track grid; never crosses Song slot
 - `Q..I`: assign pattern `1..8` from the visible `PAT:A/B` context
 - `B`: toggle visible `PAT:A/B` assignment context (no Song mutation)
 - `Alt+B`: flip pattern bank `A<->B` in current stored cell or selected area
@@ -14,7 +14,7 @@ Current behavior in `src/ui/pages/song_page.cpp`.
 - `Esc` / `` ` `` / `~`: clear selection
 
 ## Selection v2 (Lock + Paste Target)
-1. Create selection with `Shift/Ctrl + Arrows`
+1. Create selection with `Ctrl + Arrows`
 2. `Ctrl+C` copies and locks the frame
 3. Move locked frame with `Arrows` (target only)
 4. `Ctrl+V` pastes at target
@@ -51,7 +51,7 @@ Notes:
 - `Ctrl+G`: cycle generator mode
 
 ## Quick Checklist
-- [x] Selection expands with `Shift/Ctrl + Arrows`
+- [x] Selection expands with `Ctrl + Arrows`
 - [x] `Ctrl+C` locks frame and arrows move target
 - [x] `Ctrl+V` pastes and clears selection
 - [x] Outer Left/Right boundary changes edit Song slot; `Ctrl+B` changes play slot

@@ -107,7 +107,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = e.motion.state != 0 ? GROOVEPUTER_MOUSE_DRAG : GROOVEPUTER_MOUSE_MOVE;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       grooveputerEvent.x = scaleMouse(e.motion.x);
       grooveputerEvent.y = scaleMouse(e.motion.y);
@@ -126,7 +126,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = e.type == SDL_MOUSEBUTTONDOWN ? GROOVEPUTER_MOUSE_DOWN : GROOVEPUTER_MOUSE_UP;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       grooveputerEvent.x = scaleMouse(e.button.x);
       grooveputerEvent.y = scaleMouse(e.button.y);
@@ -150,7 +150,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = GROOVEPUTER_MOUSE_SCROLL;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       SDL_GetMouseState(&grooveputerEvent.x, &grooveputerEvent.y);
       grooveputerEvent.x = scaleMouse(grooveputerEvent.x);
@@ -169,7 +169,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = GROOVEPUTER_KEY_DOWN;
       grooveputerEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (e.key.keysym.mod & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (e.key.keysym.mod & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (e.key.keysym.mod & KMOD_GUI) != 0;
       switch(sc) {
         case SDL_SCANCODE_DOWN:
@@ -204,7 +204,7 @@ static void handleEvents(AppState& s) {
         grooveputerEvent.key = static_cast<char>(keycode);
       }
 
-      if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.shift && !grooveputerEvent.meta &&
+      if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.meta &&
           (keycode == SDLK_h || sc == SDL_SCANCODE_H)) {
         s_hKeyHeld = true;
       }

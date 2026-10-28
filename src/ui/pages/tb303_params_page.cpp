@@ -954,7 +954,7 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
 
   if (UIInput::isGlobalNav(ui_event)) return false;
   const int nav = UIInput::navCode(ui_event);
-  const bool fine = ui_event.shift || ui_event.ctrl;
+  const bool fine = ui_event.ctrl;
   if (more_tab_) {
     // MORE is a vertical list: Up/Down selects a row and Left/Right edits it.
     switch (nav) {

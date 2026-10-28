@@ -22,7 +22,7 @@ acceptance = read("docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md")
 
 # R8 supersedes only the public chord; R7 resource/release evidence remains enforced.
 require(undo_ux, "event.event_type != GROOVEPUTER_KEY_DOWN || !event.ctrl", "Ctrl+Z modifier contract")
-require(undo_ux, "event.alt || event.meta || event.shift", "Ctrl+Z modifier contract")
+require(undo_ux, "event.alt || event.meta)", "Ctrl+Z modifier contract")
 require(undo_ux, "event.scancode == GROOVEPUTER_Z", "Ctrl+Z key contract")
 require(help_content, '"Ctrl+Z      Undo last edit"', "global help")
 require(help_content, '"Ctrl+A/X/C/V Reset parameter"', "Synth Sound compatibility")

@@ -1200,7 +1200,7 @@ void loop() {
       UIEvent evt{};
       evt.alt = ks.alt;
       evt.ctrl = ks.ctrl;
-      evt.shift = ks.shift;
+      evt.shift = false;  // Shift is not a control modifier.
       evt.meta = ks.fn;
       bool shouldSend = false;
       auto mapFKey = [&](uint8_t h, KeyScanCode& sc) -> bool {
@@ -1307,7 +1307,7 @@ void loop() {
         UIEvent evt{};
         evt.alt = ks.alt;
         evt.ctrl = ks.ctrl;
-        evt.shift = ks.shift;
+        evt.shift = false;  // Shift is not a control modifier.
         evt.meta = ks.fn;
         evt.key = normalizeKeyChar(inputChar);
         evt.scancode = mapAsciiLetterScancode(evt.key);

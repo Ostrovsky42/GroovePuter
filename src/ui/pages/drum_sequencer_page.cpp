@@ -249,7 +249,7 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
       nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
   if (gridArrow && !ui_event.alt && !ui_event.meta) {
-    const bool extendSelection = ui_event.shift || ui_event.ctrl;
+    const bool extendSelection = ui_event.ctrl;
     if (extendSelection && page->selection_locked_) {
       page->selection_locked_ = false;
     }

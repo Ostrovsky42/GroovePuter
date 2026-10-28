@@ -44,7 +44,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+H` | Toggle page-aware help |
 | `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |
 | `Fn+M` | Workspace launcher |
-| `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
+| `Fn+Tab` | Next workflow |
 | `[` / `]` | Previous / next page inside workflow |
 | `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
@@ -180,12 +180,14 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
 | `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
+| `Ctrl+C` / `Ctrl+V` / `Ctrl+D` on MELODY | Copy the current bar / replace the target bar with it / duplicate into the next empty bar; one Undo. A note or chord crossing the bar edge is refused |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
 | `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
 | `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
+| `Ctrl+Backspace` on STEPS | Clear the whole pattern of the selected synth, one Undo; ignores the selection |
 | `Alt+Enter` / `Ctrl+Enter` | Accept working material |
 | `Alt+Backspace` | Discard working edits to accepted material |
 | `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
@@ -417,7 +419,7 @@ independent of the MATERIAL product request above.
 | `Left/Right` | Preview saved Phrase bar |
 | `Ctrl+Left/Right` | Move visible `TO:` +/-1 row |
 | `Ctrl+Up/Down` | Move visible `TO:` +/-8 rows |
-| `R` / `Shift+R` | Next / previous capture role |
+| `R` | Cycle capture role |
 | `P` | Cycle derive parent |
 | `Enter` | Capture current Song region |
 | `D` | Derive parent into selected slot |

@@ -573,7 +573,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   // Arrow-first: Cardputer may deliver arrows in scancode OR key.
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
-  bool extend_selection = ui_event.shift || ui_event.ctrl;
+  bool extend_selection = ui_event.ctrl;
   if (extend_selection && selection_locked_) selection_locked_ = false;
   if (selection_locked_ && has_selection_ && !extend_selection && !patternRowFocused() && !bankRowFocused()) {
     switch (nav) {

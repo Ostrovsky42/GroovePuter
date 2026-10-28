@@ -602,7 +602,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
-        !event.ctrl && !event.meta && !event.shift &&
+        !event.ctrl && !event.meta &&
         (event.key == 'y' || event.key == 'Y')) {
         workspace_launcher_.close();
         global_midi_sync_overlay_.open();
@@ -639,7 +639,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
-            switchWorkflow_(event.shift ? -1 : 1);
+            switchWorkflow_(1);
             return true;
         }
 
@@ -789,7 +789,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN &&
-        !event.alt && !event.ctrl && !event.shift && !event.meta &&
+        !event.alt && !event.ctrl && !event.meta &&
         WorkflowPages::allowsPerformanceKeyboard(page_index_) &&
         performance_keyboard_.keyDown(event.key)) {
         return true;

@@ -1243,7 +1243,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
 
   bool handled = false;
   // Cardputer keyboard may not have a practical Shift key, allow Ctrl as selection modifier too.
-  bool extend_selection = ui_event.shift || ui_event.ctrl;
+  bool extend_selection = ui_event.ctrl;
   if (extend_selection && selection_locked_) selection_locked_ = false;
   if (selection_locked_ && has_selection_ && !extend_selection) {
     switch (nav) {
@@ -1299,10 +1299,10 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
 
   // Log modifier+key combos for debugging song controls
   if (ui_event.ctrl || ui_event.alt) {
-    LOG_DEBUG_INPUT("SongPage key=%d(0x%02X)'%c' ctrl=%d alt=%d shift=%d",
+    LOG_DEBUG_INPUT("SongPage key=%d(0x%02X)'%c' ctrl=%d alt=%d",
                     (int)(unsigned char)key, (unsigned char)key,
                     (key >= 32 && key < 127) ? key : '?',
-                    ui_event.ctrl, ui_event.alt, ui_event.shift);
+                    ui_event.ctrl, ui_event.alt);
   }
 
   // Robust Ctrl-letter handling: some keyboard paths deliver control chars (0x01..0x1A)

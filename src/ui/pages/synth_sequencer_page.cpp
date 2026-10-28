@@ -1364,8 +1364,7 @@ bool SynthSequencerPage::clearMelody() {
 }
 
 bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
-      ui_event.ctrl || ui_event.meta) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN || ui_event.meta) {
     return false;
   }
 
@@ -1374,6 +1373,13 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
   const char lower = ui_event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)))
       : 0;
+  // Ctrl is reserved for bar navigation and copy/paste here; the only Ctrl
+  // key handled below is Ctrl+G, the grid-step cycle (see the G branch).
+  const bool ctrlGridStep =
+      ui_event.ctrl && !ui_event.alt && (lower == 'g' || ui_event.scancode == GROOVEPUTER_G);
+  if (ui_event.ctrl && !ctrlGridStep) {
+    return false;
+  }
 
   if (lower == 'l' || ui_event.scancode == GROOVEPUTER_L) {
     const int direction = ui_event.alt ? -1 : +1;

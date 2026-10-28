@@ -26,7 +26,7 @@ def main() -> None:
     # another page on behalf of the active page.
     require("event.ctrl" in ux and "GROOVEPUTER_Z" in ux and "key == 26" in ux,
             "current global Ctrl+Z recognition is incomplete")
-    require("event.alt || event.meta || event.shift" in ux,
+    require("event.alt || event.meta)" in ux,  # Shift is not a control modifier
             "Undo shortcut must reject modified Ctrl+Z variants")
     require("GROOVEPUTER_APP_EVENT_UNDO" in ux and
             "GROOVEPUTER_APPLICATION_EVENT" in ux,

@@ -19,7 +19,7 @@ SETTINGS: PROJECT / SETUP
 The main navigation model is:
 
 - `Fn+M`: workspace launcher;
-- `Fn+Tab` / `Fn+Shift+Tab`: next / previous workflow;
+- `Fn+Tab`: next workflow;
 - `[` / `]`: previous / next page inside the current workflow;
 - `Fn+[` / `Fn+]`: previous / next workflow;
 - `Alt+H`: page-aware on-device help;

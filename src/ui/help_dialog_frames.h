@@ -167,7 +167,7 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP/DOWN", "move", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend selection", IGfxColor::Cyan());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
   left_y += lh;
@@ -213,7 +213,7 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP / DOWN", "move", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend selection", IGfxColor::Cyan());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
   left_y += lh;
@@ -248,7 +248,7 @@ inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP/DOWN", "rows", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend selection", IGfxColor::Cyan());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
   left_y += lh;
@@ -374,7 +374,7 @@ inline void drawHelpPageSongSelectionLoop(IGfx& gfx, int x, int y, int w, int h)
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Selection");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+ARROWS", "extend range", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend range", COLOR_LABEL);
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend range", COLOR_LABEL);
   left_y += lh;

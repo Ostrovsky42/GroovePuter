@@ -315,7 +315,7 @@ bool FeelPage::handleEvent(UIEvent& event) {
   }
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
-    adjustFocused(delta, event.shift || event.ctrl || event.alt);
+    adjustFocused(delta, event.ctrl || event.alt);
     return true;
   }
 

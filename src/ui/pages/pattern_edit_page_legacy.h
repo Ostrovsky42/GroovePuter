@@ -343,7 +343,7 @@ void PatternEditPage::setContext(int context) {
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
-    if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
+    if (!ui_event.ctrl && !ui_event.meta &&
         ui_event.key >= '0' && ui_event.key <= '9') {
       return false;
     }
@@ -515,7 +515,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       });
       return true;
   }
-  bool extend_selection = (ui_event.shift || ui_event.ctrl) && !ui_event.alt;
+  bool extend_selection = ui_event.ctrl && !ui_event.alt;
   if (ui_event.meta) {
     auto applyMetaStep = [&](auto&& fn) {
       if (patternRowFocused()) {
@@ -835,7 +835,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return false;
   }
 
-  if (ui_event.alt && (key == '\b' || key == 0x7F)) {
+  if ((ui_event.ctrl || ui_event.alt) && (key == '\b' || key == 0x7F)) {
     GroovePuterUndo::SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
             mini_acid_.sceneManager(), voice_index_, before)) {
@@ -884,7 +884,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
         patternIdx = scancodeToPatternIndex(ui_event.scancode);

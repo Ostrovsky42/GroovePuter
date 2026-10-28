@@ -52,7 +52,7 @@ On the MIDI Player now-playing screen:
 J         previous SMF track
 L         next SMF track
 K         mute / unmute selected track
-Shift+K   clear all track mutes
+K         clear all track mutes
 ```
 
 Track numbers are one-based in the UI and zero-based internally.
@@ -94,7 +94,7 @@ Track names are not parsed in this stage. Use `J/L` while listening to identify 
 [ ] K marks selected track MUTE
 [ ] future NoteOn from muted track stops
 [ ] existing notes receive NoteOff
-[ ] Shift+K restores every track
+[ ] K restores every track
 [ ] loading another file clears mute mask
 [ ] RAW routing respects track mute
 [ ] SEQTRAK routing respects track mute

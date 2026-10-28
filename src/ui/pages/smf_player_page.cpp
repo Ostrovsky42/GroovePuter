@@ -499,11 +499,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
 
     if (event.scancode == GROOVEPUTER_LEFT) {
-        player_->seekBars(event.shift ? -4 : -1);
+        player_->seekBars(event.ctrl ? -4 : -1);
         return true;
     }
     if (event.scancode == GROOVEPUTER_RIGHT) {
-        player_->seekBars(event.shift ? 4 : 1);
+        player_->seekBars(event.ctrl ? 4 : 1);
         return true;
     }
     if (event.scancode == GROOVEPUTER_UP ||

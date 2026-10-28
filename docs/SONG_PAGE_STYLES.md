@@ -14,7 +14,7 @@ When split compare is enabled (`X`), SongPage forces `drawTEGridStyle` for reada
 - SongPage follows global style unless split compare is ON.
 
 ## Selection UX (all styles)
-- `Shift/Ctrl + Arrows`: extend selection
+- `Ctrl + Arrows`: extend selection
 - `Ctrl+C`: copy + lock frame
 - `Arrows`: move locked frame
 - `Ctrl+V`: paste + clear selection

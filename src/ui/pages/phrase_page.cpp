@@ -1894,8 +1894,8 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
   }
 
   switch (lower) {
-    case 'r': cycleRole(ui_event.shift ? -1 : 1); return true;
-    case 'p': cycleParent(ui_event.shift ? -1 : 1); return true;
+    case 'r': cycleRole(1); return true;
+    case 'p': cycleParent(1); return true;
     case 'd': return deriveFromParent();
     case 'w': return writeToCurrentRow(ui_event.alt);
     default: break;

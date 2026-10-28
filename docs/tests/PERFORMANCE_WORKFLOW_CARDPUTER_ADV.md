@@ -68,7 +68,6 @@ arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 
 - Startup: the original Genre/groovebox page.
 - `Fn + Tab`: cycle `PERFORM → PATTERN → ARRANGE`.
-- `Fn + Shift + Tab`: cycle backward.
 - On PERFORM: `1` = PERFORM, `2` = PATTERN, `3` = ARRANGE.
 
 ### NOTE mode

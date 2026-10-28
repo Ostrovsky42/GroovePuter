@@ -1154,7 +1154,7 @@ bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
 
     if (isVolUp || isVolDn) {
         float vol = mini_acid_.getTrackVolume((VoiceId)selectedTrack_);
-        float step = e.shift ? 0.10f : 0.05f;
+        float step = e.ctrl ? 0.10f : 0.05f;
         if (isVolDn) {
             vol -= step;
             if (vol < 0.0f) vol = 0.0f;

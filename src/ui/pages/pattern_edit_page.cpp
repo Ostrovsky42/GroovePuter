@@ -270,8 +270,9 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   const bool isBackspace = key == '\b' || key == 0x7F;
 
   // R2 owns Reset Pattern and the existing application Undo implementation.
-  // Keep that exact vertical slice in the retained handler.
-  if (ui_event.alt && isBackspace) {
+  // Ctrl+Backspace and Alt+Backspace both clear the whole pattern in one undo
+  // step, before any selection is considered.
+  if ((ui_event.ctrl || ui_event.alt) && isBackspace) {
     return handleEventLegacyUnowned(ui_event);
   }
 
@@ -420,7 +421,8 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  if (keyX) {
+  // X and F are plain keys here: Ctrl+X/Ctrl+F must not run the octave/retrig edit.
+  if (keyX && !ui_event.ctrl) {
     prepareSelectionOrCursor(
         [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, -1); });
     return true;
@@ -491,7 +493,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  if (keyF) {
+  if (keyF && !ui_event.ctrl) {
     ensureStepFocus();
     const int step = activePatternStep();
     uint8_t retrigCount = 0;
@@ -735,6 +737,22 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
   if (note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     const bool isBackspace = key == '\b' || key == 0x7F;
+    if (isBackspace && has_selection_) {
+      // A selection is cleared as a whole, matching Backspace outside NOTE ENTRY.
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      commitPatternMutation([&](SynthPattern& pattern) {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            GroovePuterUndo::PatternEdit::clearStep(pattern, r * kPatternStepColumns + c);
+          }
+        }
+      });
+      clearSelection();
+      UI::showToast("Selection Cleared");
+      resetNoteHoldTracking();
+      return true;
+    }
     if (isBackspace) {
       const int step = activePatternStep();
       commitPatternMutation([&](SynthPattern& pattern) {
@@ -879,7 +897,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (gridArrow && !ui_event.alt && !ui_event.meta) {
-    const bool extendSelection = ui_event.shift || ui_event.ctrl;
+    const bool extendSelection = ui_event.ctrl;
     if (extendSelection && selection_locked_) selection_locked_ = false;
 
     focus_ = Focus::Steps;

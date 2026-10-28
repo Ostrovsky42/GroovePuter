@@ -95,7 +95,7 @@ Open the Synth A or Synth B parameter page:
 - `[` / `]`: previous / next engine;
 - Left/Right: move focus;
 - Up/Down: adjust the focused control;
-- Ctrl or Shift: fine adjustment;
+- Ctrl: fine adjustment;
 - `A/Z`, `S/X`, `D/C`, `F/V`: adjust knobs 1-4;
 - `T/G`: adjust parameter 5;
 - `Y/H`: adjust parameter 6;

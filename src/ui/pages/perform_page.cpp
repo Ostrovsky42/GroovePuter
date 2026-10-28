@@ -848,7 +848,7 @@ bool PerformPage::handleEvent(UIEvent& event) {
         } else {
             // The Cardputer has no Shift key: Tab cycles forward, Backspace
             // steps back. Shift+Tab stays as a desktop-emulator alias only.
-            moveContext(event.shift ? -1 : 1);
+            moveContext(1);
         }
         return true;
     }
