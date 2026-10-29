@@ -2271,6 +2271,11 @@ void SynthSequencerPage::extendHeldNote() {
   phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, after->lengthTicks);
 }
 
+void SynthSequencerPage::onExit() {
+  MultiPage::onExit();
+  if (pattern_page_) pattern_page_->resetInputModes();
+}
+
 void SynthSequencerPage::tick() {
   extendHeldNote();
   if (synth_tab_ == SynthTab::Notes && pattern_page_ &&

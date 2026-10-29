@@ -20,6 +20,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  public:
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
+  // Leaving the STEPS page ends its input modes; they are not remembered.
+  void resetInputModes() {
+    note_entry_mode_ = false;
+    chaining_mode_ = false;
+  }
   bool handleEvent(UIEvent& ui_event) override;
   // NOTE ENTRY on: plain letters are pitches on the STEPS (they beat commands such as Develop).
   bool noteEntryActive() const { return note_entry_mode_; }

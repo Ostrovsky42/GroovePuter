@@ -1536,12 +1536,40 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
                                    sizeof(patLabel));
         }
 
-        if (trk == SongTrack::SynthA) {
-            targetPage = 1;
-            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(0, patIndex); });
-        } else if (trk == SongTrack::SynthB) {
-            targetPage = 2;
-            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(1, patIndex); });
+        if (trk == SongTrack::SynthA || trk == SongTrack::SynthB) {
+            targetPage = trk == SongTrack::SynthA ? 1 : 2;
+            if (patIndex >= 0) {
+                // The cell stores a global index: page * 16 + bank * 8 + pattern.
+                const int voice = trk == SongTrack::SynthA ? 0 : 1;
+                const int page = patIndex / kPatternsPerPage;
+                const int bank = (patIndex % kPatternsPerPage) / Bank<SynthPattern>::kPatterns;
+                const int local = patIndex % Bank<SynthPattern>::kPatterns;
+                if (page != mini_acid_.currentPageIndex()) {
+                    // A page switch loads from SD asynchronously, so it is allowed only while stopped.
+                    if (mini_acid_.isPlaying()) {
+                        UI::showToast("STOP TO OPEN THIS PAGE", 1000);
+                        return true;
+                    }
+                    if (!mini_acid_.tryManualPageSwitch(page)) {
+                        UI::showToast("SAVE STEPS FIRST", 1000);
+                        return true;
+                    }
+                    // Bank and pattern are applied by the next Enter, once this page is current.
+                    char pageToast[24];
+                    std::snprintf(pageToast, sizeof(pageToast), "PAGE %d  B%d", page + 1, bank + 1);
+                    showToast(pageToast, 1000);
+                    return true;
+                }
+                // Same page: the guarded switch refuses an unsaved melody or a modified pattern.
+                bool moved = false;
+                withAudioGuard([&]() { moved = mini_acid_.tryManual303TargetSwitch(voice, bank, local); });
+                if (!moved) {
+                    showToast(mini_acid_.hasUnsavedWorkingMelody(voice) ? "SAVE MELODY FIRST"
+                                                                        : "SAVE STEPS FIRST",
+                              1000);
+                    return true;
+                }
+            }
         } else if (trk == SongTrack::Drums) {
             targetPage = 5;
             if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(patIndex); });

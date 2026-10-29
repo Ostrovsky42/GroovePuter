@@ -44,6 +44,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
                                 int voice);
 
   void draw(IGfx& gfx) override;
+  void onExit() override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
   void setContext(int context) override;

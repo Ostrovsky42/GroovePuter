@@ -1055,7 +1055,7 @@ bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
   UI::drawStandardFooter(
       gfx, "MELODY ROLL = ACTIVE MATERIAL",
       state == MiniAcid::SongVoiceDisplayState::Held
-          ? "Alt+ENT:ACCEPT Alt+X:DISCARD"
+          ? "Alt+ENT:ACCEPT Alt+BKSP:DISCARD"
           : "PLAYHEAD = PHRASE PHASE");
   return true;
 }
