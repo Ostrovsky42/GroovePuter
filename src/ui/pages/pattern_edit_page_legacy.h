@@ -853,6 +853,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             for (int i = 0; i < SEQ_STEPS; ++i) {
               mini_acid_.clear303Step(i, voice_index_);
             }
+            // The audio engine plays the runtime event bank, not the scene:
+            // rebuild the cleared pattern's events, as every other STEPS edit does.
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                before.synthIndex, before.bankIndex, before.patternIndex);
           };
           if (audio_guard_) audio_guard_(clear_pattern);
           else clear_pattern();

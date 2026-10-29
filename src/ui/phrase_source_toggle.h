@@ -103,39 +103,22 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
                                                      : Result::Rejected;
   }
 
-  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
-  receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
-  receipt.source =
-      static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
-  const auto* retained = engine.retainedWorkingMelody(voiceIndex);
-  if (retained != nullptr) {
-    receipt.before = *retained;
-  }
-
+  // Switching what sounds (STEPS <-> MELODY) changes no stored material, so it
+  // writes no Undo entry: the single Undo slot keeps the last real edit.
   Result result = Result::Rejected;
   const auto apply = [&]() {
-    const bool committed =
-        GroovePuterUndo::undoOwner().commitRuntimePrepared(
-            GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
-              if (onPhrase) {
-                // Back to PATTERN. Phrase material is retained untouched.
-                engine.setSequencedSource(voiceIndex,
-                                          MiniAcid::SequencedSource::Pattern);
-                result = Result::SwitchedToPattern;
-              } else {
-                engine.setSequencedSource(voiceIndex,
-                                          MiniAcid::SequencedSource::Phrase);
-                if (engine.currentSequencedSource(voiceIndex) ==
-                    MiniAcid::SequencedSource::Phrase) {
-                  result = Result::SwitchedToPhrase;
-                } else {
-                  result = Result::Rejected;
-                }
-              }
-            });
-    if (!committed) result = Result::Rejected;
+    if (onPhrase) {
+      // Back to PATTERN. Phrase material is retained untouched.
+      engine.setSequencedSource(voiceIndex, MiniAcid::SequencedSource::Pattern);
+      result = Result::SwitchedToPattern;
+    } else {
+      engine.setSequencedSource(voiceIndex, MiniAcid::SequencedSource::Phrase);
+      result = engine.currentSequencedSource(voiceIndex) ==
+                       MiniAcid::SequencedSource::Phrase
+                   ? Result::SwitchedToPhrase
+                   : Result::Rejected;
+    }
   };
-
   if (audioGuard) audioGuard(apply);
   else apply();
   return result;

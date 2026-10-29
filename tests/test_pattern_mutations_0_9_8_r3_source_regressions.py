@@ -160,7 +160,7 @@ def main() -> None:
     generated_legacy = between(
         wrapper,
         "// C keeps B2's legacy/fallback musical generator",
-        "if (keyF)")
+        "if (keyF && !ui_event.ctrl)")
     require("preparePatternEditorGeneration" in generated_legacy and
             "undoOwner().commitPrepared" in generated_legacy and
             "UndoKind::Generation" in generated_legacy and

@@ -157,11 +157,13 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         const int slot = manager.activeSongSlot();
         const Song& source = manager.currentScene().songs[slot];
         if (wholeSongScope) {
-          g_song_slot_clipboard.song = source;
-          g_song_slot_clipboard.source_slot = slot;
-          g_song_slot_clipboard.has_song = true;
-          commitSongMutation([&](Song& song) { SongEdit::reset(song); });
-          showToast("Song cut", 900);
+          const Song copied = source;
+          if (commitSongMutation([&](Song& song) { SongEdit::reset(song); })) {
+            g_song_slot_clipboard.song = copied;
+            g_song_slot_clipboard.source_slot = slot;
+            g_song_slot_clipboard.has_song = true;
+            showToast("Song cut  CTRL+Z UNDO", 900);
+          }
           return true;
         }
         if (!trackValid) return false;
@@ -388,7 +390,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   if (ui_event.ctrl && !ui_event.alt && keyM) {
     const int row = cursorRow();
-    commitSongMutation([&](Song& song) { SongEdit::deleteRow(song, row); });
+    if (!commitSongMutation([&](Song& song) { SongEdit::deleteRow(song, row); })) {
+      return true;  // refusal already showed its toast (SONG BUSY) or nothing changed
+    }
     cursor_row_ = clampCursorRow(cursor_row_);
     char toast[32];
     std::snprintf(toast, sizeof(toast), "DEL row %d", row + 1);
@@ -454,8 +458,18 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   const bool backspace = ui_event.key == '\b' || ui_event.key == 0x7F;
   if (ui_event.alt && backspace) {
-    commitSongMutation([&](Song& song) { SongEdit::reset(song); });
-    showToast("Song Cleared", 900);
+    const Song& current = mini_acid_.sceneManager().currentScene().songs[
+        mini_acid_.sceneManager().activeSongSlot()];
+    Song cleared = current;
+    SongEdit::reset(cleared);
+    if (GroovePuterUndo::sameSong(current, cleared)) {
+      showToast("Song already empty", 900);
+      return true;
+    }
+    // A refusal (SONG BUSY) already showed its own toast; do not replace it.
+    if (commitSongMutation([&](Song& song) { SongEdit::reset(song); })) {
+      showToast("Song Cleared  CTRL+Z UNDO", 1000);
+    }
     return true;
   }
   if (!ui_event.alt && (backspace || ui_event.key == '\t')) {
