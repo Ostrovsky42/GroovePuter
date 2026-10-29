@@ -76,6 +76,8 @@ protected:
     bool handleVolumeInput(UIEvent& e);
     bool handleNavigation(UIEvent& e);
     bool handleGridEdit(UIEvent& e);
+    // D3: while MELODY is the sound source of the selected synth, its STEPS are read-only.
+    bool synthStepsReadOnly();
 
     // Helpers
     bool isDrumTrack(int trackIdx) { return trackIdx >= 2; }

@@ -934,6 +934,18 @@ bool SequencerHubPage::handleEvent(UIEvent& e) {
         }
         return true;
     }
+    if (synthStepsReadOnly()) {
+        const char k = e.key;
+        const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(k)));
+        const bool backspace = k == '\b' || k == 0x7F;
+        const bool detailEdit = mode_ == Mode::DETAIL && !e.ctrl && !e.meta &&
+            (lowerKey == 'a' || lowerKey == 'z' || lowerKey == 's' || lowerKey == 'x' ||
+             k == '\n' || k == '\r');
+        if (backspace || detailEdit) {
+            UI::showToast("MELODY PLAYS: STEPS READ-ONLY", 1000);
+            return true;
+        }
+    }
     if (handleQuickKeys(e)) return true;
     if (handleVolumeInput(e)) return true;
     if (handleNavigation(e)) return true;
@@ -1130,6 +1142,10 @@ bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
                 }
             });
         } else {
+            if (synthStepsReadOnly()) {
+                UI::showToast("MELODY PLAYS: STEPS READ-ONLY", 1000);
+                return true;
+            }
             if (!g_pattern_clipboard.has_pattern) return false;
             const SynthPattern& src = g_pattern_clipboard.pattern;
             withAudioGuard([&]() {
@@ -1241,6 +1257,12 @@ void SequencerHubPage::syncOverviewScroll() {
 
     if (overviewScroll_ < 0) overviewScroll_ = 0;
     if (overviewScroll_ > maxScroll) overviewScroll_ = maxScroll;
+}
+
+bool SequencerHubPage::synthStepsReadOnly() {
+    return !isDrumTrack(selectedTrack_) &&
+           mini_acid_.currentSequencedSource(selectedTrack_) ==
+               MiniAcid::SequencedSource::Phrase;
 }
 
 bool SequencerHubPage::handleGridEdit(UIEvent& e) {
