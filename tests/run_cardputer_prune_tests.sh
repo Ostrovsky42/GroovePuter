@@ -83,6 +83,7 @@ TESTS=(
   test_project_melody_copy
   test_project_melody_reload
   test_h5_sdl_process_restart
+  test_page_switch_rehydrate
 )
 
 for test_name in "${TESTS[@]}"; do

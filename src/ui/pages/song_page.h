@@ -48,13 +48,17 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool handleEventLegacyUnowned(UIEvent& ui_event);
   bool undoPreparedSongState();
 
+  // slot < 0 edits the active Song slot; a playing slot can be named explicitly.
   template <typename PrepareFn>
-  bool commitSongMutation(PrepareFn&& prepare) {
+  bool commitSongMutation(PrepareFn&& prepare, int slot = -1) {
     using GroovePuterUndo::SongUndoPayload;
     using GroovePuterUndo::UndoKind;
     SceneManager& manager = mini_acid_.sceneManager();
     SongUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSongUndo(manager, before)) return false;
+    const bool captured = slot < 0
+        ? GroovePuterUndo::captureCurrentSongUndo(manager, before)
+        : GroovePuterUndo::captureSongUndoForSlot(manager, slot, before);
+    if (!captured) return false;
     Song after = before.before;
     std::forward<PrepareFn>(prepare)(after);
     if (GroovePuterUndo::sameSong(before.before, after)) return false;

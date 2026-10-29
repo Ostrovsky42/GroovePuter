@@ -44,7 +44,7 @@ for forbidden in ('std::vector', 'std::deque', 'std::list', 'malloc(', 'new '):
             f'D3 pending payload must stay fixed/no-heap: {forbidden}')
 
 # Canonical Song persistent mutation still goes through the one-level R4 owner.
-commit = between(SONG_H, 'bool commitSongMutation(PrepareFn&& prepare)', 'void drawMinimalStyle')
+commit = between(SONG_H, 'bool commitSongMutation(PrepareFn&& prepare, int slot = -1)', 'void drawMinimalStyle')
 require(commit.count('GroovePuterUndo::undoOwner().commitPrepared') == 1,
         'one Song action must publish exactly one canonical UndoOwner COMMIT')
 require('prepareSongMutationActivation' in commit,

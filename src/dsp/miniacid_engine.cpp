@@ -1811,6 +1811,10 @@ void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
 }
 
+void MiniAcid::rehydrateAcceptedMaterialForPage() {
+  hydrateAcceptedMaterialAtBoot_();
+}
+
 void MiniAcid::setCurrentPage(int8_t page) {
   hardBarrierPatternPlayback_();
   if (page != currentPage_.load(std::memory_order_acquire)) clearReuseMarks();
@@ -3563,6 +3567,9 @@ void MiniAcid::hydrateAcceptedMaterialAtBoot_(
     const auto kind = sceneManager_.currentScene().materialSlots[idx][slot].kind;
     publishActiveMaterial(idx, static_cast<uint16_t>(globalSlot), kind);
     if (kind == GroovePuterMaterial::MaterialKind::Melody) {
+      // A page switch re-enters here with the previous page's Melody still held:
+      // drop it, so a missing file reads as no data, not as the old page's tune.
+      workingMaterial_[idx].clear();
       setSequencedSource(idx, SequencedSource::Phrase);
       if (prepared) {
         workingMaterial_[idx].storeMelody(prepared[idx]);

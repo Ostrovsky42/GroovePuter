@@ -1523,7 +1523,14 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     ctrl_r_long_fired_ = false;
 
     bool wasSongMode = mini_acid_.songModeEnabled();
-    bool newReverse = !mini_acid_.isSongReverse();
+    // While the Song plays, reverse changes the slot that plays (what is heard);
+    // when stopped it changes the slot being edited, as before.
+    const bool playingSong = mini_acid_.isPlaying() && mini_acid_.songModeEnabled();
+    const int reverseSlot = playingSong ? mini_acid_.songPlaybackSlot() : -1;
+    const bool currentReverse = playingSong
+        ? mini_acid_.sceneManager().isSongReverseAtSlot(reverseSlot)
+        : mini_acid_.isSongReverse();
+    bool newReverse = !currentReverse;
     int len = mini_acid_.songLength();
     LOG_INFO_UI("Song reverse: %s (songMode=%d len=%d pos=%d)",
                 newReverse ? "ON" : "OFF",
@@ -1535,7 +1542,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       });
     }
     const bool reverseCommitted = commitSongMutation(
-        [&](Song& song) { song.reverse = newReverse; });
+        [&](Song& song) { song.reverse = newReverse; }, reverseSlot);
     if (!reverseCommitted) return true;
     bool songModeNow = mini_acid_.songModeEnabled();
     if (len <= 1 && !mini_acid_.isPlaying()) {

@@ -133,6 +133,19 @@ inline bool songUndoTargetAvailable(const SceneManager& manager,
          manager.currentPageIndex() == receipt.pageIndex;
 }
 
+// Same receipt for an explicit slot (for example the slot that is playing).
+inline bool captureSongUndoForSlot(SceneManager& manager,
+                                   int slot,
+                                   SongUndoPayload& receipt) {
+  const int page = manager.currentPageIndex();
+  if (page < 0 || page >= kMaxPages || slot < 0 || slot > 1) return false;
+  receipt = SongUndoPayload{};
+  receipt.pageIndex = static_cast<uint8_t>(page);
+  receipt.songSlot = static_cast<uint8_t>(slot);
+  receipt.before = manager.currentScene().songs[slot];
+  return true;
+}
+
 inline void restoreSongUndo(SceneManager& manager,
                             const SongUndoPayload& receipt) {
   manager.currentScene().songs[receipt.songSlot] = receipt.before;

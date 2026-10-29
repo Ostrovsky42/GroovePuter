@@ -562,6 +562,8 @@ public:
   void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
   void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
   void setCurrentPage(int8_t page);
+  // After a page is loaded from SD, republish its accepted melodies for both voices.
+  void rehydrateAcceptedMaterialForPage();
   void barrierPatternRuntimeSourceTransition();
   bool rebuildPatternRuntimeEventBank();
   bool refreshPatternRuntimeEvents(int synthIndex, int bankIndex, int patternIndex);
@@ -1433,8 +1435,10 @@ inline bool MiniAcid::tryManual303BankSwitch(
 inline bool MiniAcid::tryManualPageSwitch(int pageIndex) {
   if (pageIndex < 0 || pageIndex >= kMaxPages) return false;
   if (pageIndex == currentPageIndex()) return true;
+  // An unsaved Working melody must not move to another page: the page switch
+  // would otherwise play it on the new page while the screen shows that page's steps.
   for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
-    if (hasModifiedWorking303Pattern(voice)) return false;
+    if (hasModifiedWorking303Pattern(voice) || hasUnsavedWorkingMelody(voice)) return false;
   }
   requestPageSwitch(pageIndex);
   return targetPageIndex() == pageIndex || currentPageIndex() == pageIndex;

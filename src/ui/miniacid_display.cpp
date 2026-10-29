@@ -662,15 +662,22 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
+        // A refused page switch says why instead of doing nothing.
+        const auto switchPageOrSay = [&](int page) {
+            if (mini_acid_.tryManualPageSwitch(page)) return;
+            const bool melody = mini_acid_.hasUnsavedWorkingMelody(0) ||
+                                mini_acid_.hasUnsavedWorkingMelody(1);
+            UI::showToast(melody ? "SAVE MELODY FIRST" : "SAVE STEPS FIRST", 1000);
+        };
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
             if (prev < 0) prev = kMaxPages - 1;
-            mini_acid_.tryManualPageSwitch(prev);
+            switchPageOrSay(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
             int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
-            mini_acid_.tryManualPageSwitch(next);
+            switchPageOrSay(next);
             return true;
         }
 
@@ -1050,7 +1057,11 @@ void MiniAcidDisplay::handlePaging_() {
         } else if (PatternPagingService::pageExists(target)) {
             if (PatternPagingService::loadPage(target, scene)) {
                 if (mini_acid_.rebuildPatternRuntimeEventBank()) {
+                    // Page first: rehydrate derives each voice's global slot (its SD
+                    // Melody address) from currentPageIndex().
                     mini_acid_.setCurrentPage(target);
+                    // Melodies of the new page must sound as its own, not the previous page's.
+                    mini_acid_.rehydrateAcceptedMaterialForPage();
                     result = PageSwitchResult::Switched;
                 } else if (PatternPagingService::loadPage(current, scene)) {
                     result = PageSwitchResult::LoadTargetFailed;
@@ -1065,6 +1076,8 @@ void MiniAcidDisplay::handlePaging_() {
             if (PatternPagingService::savePage(target, scene)) {
                 if (mini_acid_.rebuildPatternRuntimeEventBank()) {
                     mini_acid_.setCurrentPage(target);
+                    // An empty page holds only Patterns: leave no previous Melody playing.
+                    mini_acid_.rehydrateAcceptedMaterialForPage();
                     result = PageSwitchResult::Created;
                 } else if (PatternPagingService::loadPage(current, scene)) {
                     result = PageSwitchResult::CreateTargetFailed;

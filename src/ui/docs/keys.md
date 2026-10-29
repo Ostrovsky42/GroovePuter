@@ -297,7 +297,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 |---|---|
 | `Left/Right` | Move `Synth A -> Synth B -> Drums`; crossing the outer edge changes edit Song slot A/B |
 | `Up/Down` | Move Song row |
-| `Enter` | Jump to referenced pattern editor |
+| `Enter` | Open the cell's pattern in its synth editor. On another page the first Enter switches the page (`PAGE n  Bk`), the second opens the pattern. Refused while the working melody or steps are unsaved (`SAVE MELODY FIRST` / `SAVE STEPS FIRST`) |
 | `Q..I` | Assign existing slot from visible `PAT:A/B` context |
 | `G` | Generate safe material and assign selected cell; unique Song-generated material rerolls in place |
 | double `G` | Materialize Synth A + Synth B + Drums for current row |
@@ -307,10 +307,10 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Alt+B` | Flip stored-reference/selection bank |
 | `Opt` | (Cardputer) Synth A/B column: that voice's source STEPS <-> MELODY, as `Opt` on the synth page |
-| `Ctrl+B` | Play Song slot A/B |
+| `Ctrl+B` | Play Song slot A/B from the next row. Pressed again on the same row before the boundary it cancels the switch (`PLAY SWITCH CANCELLED`); a reverse on the same row can share the boundary |
 | `Alt+[` / `Alt+]` | Previous / next pattern page when the resident 16-slot page is full |
 | `Ctrl+N` / `Ctrl+M` | Insert / remove row |
-| `V` | Toggle DR/VO lane |
+| `V` | Cycle lanes ALL -> AB -> DR |
 | `X` | Split compare |
 | `L` | Loop-lock around playhead |
 | `Ctrl+L` | Loop mode |
