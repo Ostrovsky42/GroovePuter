@@ -255,9 +255,18 @@ const char* SongPage::trackHeaderLabel(int col) const {
   bool valid = false;
   SongTrack track = trackForColumn(col, valid);
   if (!valid) return "--";
+  // A:P = that voice plays STEPS, A:M = it plays MELODY; the source flips with Opt.
+  static char synthLabel[2][4];
   switch (track) {
-    case SongTrack::SynthA: return "A";
-    case SongTrack::SynthB: return "B";
+    case SongTrack::SynthA:
+    case SongTrack::SynthB: {
+      const int voice = track == SongTrack::SynthA ? 0 : 1;
+      const bool melody =
+          mini_acid_.currentSequencedSource(voice) == MiniAcid::SequencedSource::Phrase;
+      std::snprintf(synthLabel[voice], sizeof(synthLabel[voice]), "%c:%c",
+                    voice == 0 ? 'A' : 'B', melody ? 'M' : 'P');
+      return synthLabel[voice];
+    }
     case SongTrack::Drums: return "DR";
     //case SongTrack::Voice: return "VO";
     default: return "--";
@@ -376,6 +385,44 @@ void SongPage::cycleLaneFocusMode() {
 void SongPage::moveCursorToRow(int row) {
   cursor_row_ = clampCursorRow(row);
   syncSongPositionToCursor();
+}
+
+void SongPage::tick() {
+  applyPendingOpen();
+}
+
+void SongPage::onExit() {
+  // Leaving SONG ends a waiting open: it must not fire later against another cell.
+  pending_open_.active = false;
+}
+
+void SongPage::applyPendingOpen() {
+  if (!pending_open_.active) return;
+  if (mini_acid_.currentPageIndex() != pending_open_.page) {
+    // Still loading is fine only while that page is the target; anything else
+    // (another page requested, the load gave up) ends the open.
+    if (mini_acid_.targetPageIndex() != pending_open_.page) pending_open_.active = false;
+    return;
+  }
+  pending_open_.active = false;
+  // The cell must still hold the pattern that was asked for.
+  if (mini_acid_.songPatternAt(pending_open_.row, pending_open_.track) !=
+      pending_open_.globalPattern) {
+    return;
+  }
+  bool moved = false;
+  withAudioGuard([&]() {
+    moved = mini_acid_.tryManual303TargetSwitch(pending_open_.voice, pending_open_.bank,
+                                                pending_open_.pattern);
+  });
+  if (!moved) {
+    UI::showToast("SAVE MELODY FIRST", 1000);
+    return;
+  }
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "Edit: %s", pending_open_.label);
+  UI::showToast(toast, 800);
+  requestPageTransition(pending_open_.targetPage);
 }
 
 void SongPage::onEnter(int context) {
@@ -1413,13 +1460,20 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     if (!mini_acid_.liveMixModeEnabled()) {
       withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
     }
-    const int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
-    const auto status =
-        GroovePuterRhythm::LiveSongArrangementDetail::
-            requestSongPlaybackSwitch(mini_acid_, nextPlaySlot);
+    using GroovePuterRhythm::LiveSongArrangementDetail::pendingPlaybackSwitchTarget;
+    const int pendingTarget = pendingPlaybackSwitchTarget(mini_acid_);
+    const int from = pendingTarget >= 0 ? pendingTarget : mini_acid_.songPlaybackSlot();
+    const int nextPlaySlot = from == 0 ? 1 : 0;
+    GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus status{};
+    withRuntimeAudioGuard([&]() {
+      status = GroovePuterRhythm::LiveSongArrangementDetail::
+          requestSongPlaybackSwitch(mini_acid_, nextPlaySlot);
+    });
     using GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus;
     if (status == SongLiveStatus::Busy) {
       showToast("SONG BUSY", 900);
+    } else if (status == SongLiveStatus::NoChange && pendingTarget >= 0) {
+      showToast("PLAY SWITCH CANCELLED", 1000);
     } else if (status == SongLiveStatus::TargetChanged) {
       showToast("PLAY TARGET CHANGED", 1100);
     } else if (status == SongLiveStatus::PendingNextRow) {
@@ -1544,17 +1598,24 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
                 const int page = patIndex / kPatternsPerPage;
                 const int bank = (patIndex % kPatternsPerPage) / Bank<SynthPattern>::kPatterns;
                 const int local = patIndex % Bank<SynthPattern>::kPatterns;
+                pending_open_.active = false;  // a new Enter replaces any waiting open
                 if (page != mini_acid_.currentPageIndex()) {
-                    // A page switch loads from SD asynchronously, so it is allowed only while stopped.
-                    if (mini_acid_.isPlaying()) {
-                        UI::showToast("STOP TO OPEN THIS PAGE", 1000);
-                        return true;
-                    }
                     if (!mini_acid_.tryManualPageSwitch(page)) {
                         UI::showToast("SAVE STEPS FIRST", 1000);
                         return true;
                     }
-                    // Bank and pattern are applied by the next Enter, once this page is current.
+                    // The page loads asynchronously: remember the target and apply it when it is current.
+                    pending_open_.active = true;
+                    pending_open_.page = page;
+                    pending_open_.bank = bank;
+                    pending_open_.pattern = local;
+                    pending_open_.voice = voice;
+                    pending_open_.targetPage = targetPage;
+                    pending_open_.row = cursorRow();
+                    pending_open_.track = trk;
+                    pending_open_.globalPattern = patIndex;
+                    std::snprintf(pending_open_.label, sizeof(pending_open_.label),
+                                  "%s", patLabel);
                     char pageToast[24];
                     std::snprintf(pageToast, sizeof(pageToast), "PAGE %d  B%d", page + 1, bank + 1);
                     showToast(pageToast, 1000);

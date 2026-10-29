@@ -30,6 +30,8 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
 
   SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
+  void tick() override;
+  void onExit() override;
   bool handleEvent(UIEvent& ui_event) override;
   // Context row+1 from MATERIAL (Tab on a live bar): the cursor lands on that row.
   void onEnter(int context) override;
@@ -95,6 +97,9 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
       GroovePuterRhythm::LiveSongArrangementDetail::
           completeSongMutationActivation(
               lease.slot, GroovePuterUndo::undoOwner().committedRevision());
+    } else {
+      GroovePuterRhythm::LiveSongArrangementDetail::acknowledgeNonAudibleSongCommit(
+          mini_acid_, before.songSlot, GroovePuterUndo::undoOwner().committedRevision());
     }
     return true;
   }
@@ -175,6 +180,22 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int cursor_row_;
+  // Enter on a cell of another page: the page loads asynchronously, then the bank and
+  // pattern are applied and the synth page opens (see applyPendingOpen).
+  struct PendingOpen {
+    bool active = false;
+    int page = -1;
+    int bank = 0;
+    int pattern = 0;
+    int voice = 0;
+    int targetPage = 0;
+    int row = -1;
+    SongTrack track = SongTrack::SynthA;
+    int globalPattern = -1;  // the cell's index when Enter was pressed
+    char label[16] = {};
+  };
+  PendingOpen pending_open_;
+  void applyPendingOpen();
   int cursor_track_;
   int scroll_row_;
   bool has_selection_;
