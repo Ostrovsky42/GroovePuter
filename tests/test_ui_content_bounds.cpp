@@ -352,7 +352,7 @@ int main() {
     bool drewMelodyView = false;
     for (const auto& entry : gfx.texts) {
       if (entry.text == "NO MELODY" || entry.text == "MELODY UNREADABLE" ||
-          entry.text.find("GRID ") == 0 || entry.text == "NOTES") {
+          entry.text.find("SNAP ") == 0 || entry.text == "NOTES") {
         drewMelodyView = true;
       }
     }

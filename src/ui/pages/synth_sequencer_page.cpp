@@ -245,10 +245,10 @@ void formatPhraseLength(uint16_t ticks, char* buf, size_t bufSize) {
   }
 }
 
+// A ringing tail past the next note's start: one thin line at mid-height of
+// the note row, not a comb that reads as grey noise.
 void drawMutedTail(IGfx& gfx, int fromX, int toX, int y, int h, IGfxColor color) {
-  for (int x = fromX; x < toX; x += 2) {
-    gfx.fillRect(x, y, 1, h, color);
-  }
+  if (toX > fromX) gfx.fillRect(fromX, y + h / 2, toX - fromX, 1, color);
 }
 
 }  // namespace
@@ -344,7 +344,7 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(keyX, bounds.y, keyText);
   }
   char grid[16];
-  std::snprintf(grid, sizeof(grid), "GRID %s",
+  std::snprintf(grid, sizeof(grid), "SNAP %s",
                 PhraseNotesCursor::gridLabel(phrase_cursor_.grid));
   gfx.drawText(bounds.x + 4, bounds.y + 9, grid);
   // Which bar the roll shows, at the right end of the beat-number line.
@@ -421,19 +421,19 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     return value >= lowestNote && value < lowestNote + kVisibleNotes;
   };
 
-  // Row separators in the 1 px gap under each pitch row, so stacked chord
-  // notes a semitone apart read as separate rows. The project key's tonic row
-  // is dotted brighter as a landmark for the eye.
+  // Row separators only under C rows (light) and the project key's tonic row
+  // (dotted, brighter): landmarks for the eye, not a grid of grey strips.
   const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
   const int tonic = (key.scaleRoot % 12 + 12) % 12;
   for (int row = 0; row < kVisibleNotes; ++row) {
     const int note = lowestNote + kVisibleNotes - 1 - row;
     const int lineY = planeTop + row * kRowH + kRowH - 1;
-    if (((note % 12) + 12) % 12 == tonic) {
+    const int pitchClass = ((note % 12) + 12) % 12;
+    if (pitchClass == tonic) {
       for (int x = planeX; x < planeX + planeW; x += 2) {
         gfx.fillRect(x, lineY, 1, 1, COLOR_LABEL);
       }
-    } else {
+    } else if (pitchClass == 0) {
       gfx.fillRect(planeX, lineY, planeW, 1, COLOR_LIGHT_GRAY);
     }
   }
@@ -446,6 +446,12 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     // Beat 1 is the left edge, where GRID already sits.
     if (beat > 0) gfx.drawText(beatX + 2, bounds.y + 9, label);
     gfx.fillRect(beatX, planeTop, 1, kPlaneH, COLOR_LABEL);
+  }
+
+  // The dotted cursor goes under the notes so it never cuts a note.
+  const int cursorX = tickToX(cursorTick);
+  for (int y = planeTop; y < planeTop + kPlaneH; y += 2) {
+    gfx.fillRect(cursorX, y, 1, 1, COLOR_LABEL);
   }
 
   bool selectionTruncated = false;
@@ -478,18 +484,21 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     const int audibleX = tickToX(audibleEnd);
     const int endX = tickToX(span.endTick);
     const int y = noteToY(note);
-    const int h = kRowH - 1;
+    const int h = kRowH;
     // Accented notes are amber as a whole: a 1 px stripe went unnoticed.
     const bool accented = (phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0;
-    const IGfxColor fill = selected ? COLOR_WHITE : (accented ? COLOR_WARN : COLOR_LABEL);
+    const IGfxColor fill = selected ? COLOR_WHITE : (accented ? COLOR_WARN : voiceColor);
 
-    if (audibleX > x0) gfx.fillRect(x0, y, audibleX - x0, h, fill);
+    // One pixel short of the audible end so back-to-back notes stay apart.
+    if (audibleX > x0) {
+      gfx.fillRect(x0, y, audibleX - x0 - (audibleX - x0 > 3 ? 1 : 0), h, fill);
+    }
     drawMutedTail(gfx, audibleX, endX, y, h, fill);
     if (accented && selected) {
       gfx.fillRect(x0, y, std::max(1, endX - x0), 1, COLOR_WARN);
     }
-    gfx.fillRect(x0, y, 1, h, span.startTick < barStart ? voiceColor
-                                                        : IGfxColor::Black());
+    // A note carried in from the previous bar keeps a voice-coloured edge.
+    if (span.startTick < barStart) gfx.fillRect(x0, y, 1, h, voiceColor);
     if (selected) {
       gfx.drawRect(x0 - 1, y - 2, std::max(3, endX - x0 + 2), h + 4,
                    COLOR_WHITE);
@@ -509,10 +518,6 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop + kPlaneH - 6, more);
   }
 
-  const int cursorX = tickToX(cursorTick);
-  for (int y = planeTop; y < planeTop + kPlaneH; y += 2) {
-    gfx.fillRect(cursorX, y, 1, 1, COLOR_LABEL);
-  }
   gfx.fillRect(cursorX - 1, planeTop + kPlaneH + 1, 3, 3, COLOR_WHITE);
 
   if (mini_acid_.isPlaying()) {
