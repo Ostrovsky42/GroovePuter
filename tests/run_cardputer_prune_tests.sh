@@ -90,6 +90,8 @@ TESTS=(
   test_genre_preset_slots
   test_source_toggle_no_copy
   test_alt_n_undo_no_copy
+  test_alt_r_copy_from_steps
+  test_alt_r_copy_undo
   test_genre_presets
   test_legacy_role_mask_convention
   test_song_cell_source_persistence

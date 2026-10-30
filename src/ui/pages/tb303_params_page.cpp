@@ -940,7 +940,7 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     const auto result = PhraseSourceToggle::switchSource(mini_acid_,
         [&](const std::function<void()>& body) { withAudioGuard(body); }, voice_index_);
     if (result == PhraseSourceToggle::Result::Rejected) UI::showToast("MELODY FAILED", 1200);
-    else if (result == PhraseSourceToggle::Result::NoMelody) UI::showToast("MELODY EMPTY: ALT+N ON STEPS", 1500);
+    else if (result == PhraseSourceToggle::Result::MadePhrase) UI::showToast("MELODY <- STEPS", 1500);
     else UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
                                MiniAcid::SequencedSource::Phrase
                            ? "SOURCE: MELODY" : "SOURCE: STEPS", 1000);

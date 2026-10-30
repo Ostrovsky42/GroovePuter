@@ -1,5 +1,6 @@
-// A user-facing source switch (Alt+R, SONG Opt) only chooses which existing
-// material plays. It never creates, copies or converts a Melody.
+// A source switch only chooses which existing material plays and never
+// re-projects an existing Melody. With no Melody, synth/params Alt+R copies the
+// steps (test_alt_r_copy_from_steps); SONG Opt still refuses.
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -30,18 +31,9 @@ int main() {
   engine.editSynthPattern(kA).steps[0].note = 36;
   engine.editSynthPattern(kA).steps[4].note = 43;
 
-  // 1. STEPS only, no Melody: the switch is refused and nothing is created.
-  expect(PhraseSourceToggle::switchSource(engine, nullptr, kA) ==
-             PhraseSourceToggle::Result::NoMelody,
-         "switch with no Melody was not refused");
-  expect(engine.currentSequencedSource(kA) == MiniAcid::SequencedSource::Pattern,
-         "refused switch moved the source");
-  expect(engine.retainedWorkingMelody(kA) == nullptr,
-         "refused switch created a Melody");
-  expect(!engine.hasUnsavedWorkingMelody(kA), "refused switch marked a Melody modified");
-  expect(engine.editSynthPattern(kA).steps[0].note == 36 &&
-             engine.editSynthPattern(kA).steps[4].note == 43,
-         "refused switch changed the steps");
+  // 1. STEPS only, no Melody: SONG keeps refusing (checked in the toast
+  // section below); the synth/params switch now copies (test_alt_r_copy_*).
+  expect(engine.retainedWorkingMelody(kA) == nullptr, "precondition: no Melody");
 
   // 2. With a Melody (made explicitly), switching changes only the source.
   expect(PhraseSourceToggle::makePhrase(engine, nullptr, kA), "explicit make failed");
@@ -67,13 +59,9 @@ int main() {
          "switching altered the Melody material");
 
   // 3. The refusal toast names real gestures (G is not the make gesture).
-  const char* const toastFiles[] = {"../src/ui/pages/synth_sequencer_page.cpp",
-                                    "../src/ui/pages/tb303_params_page.cpp",
-                                    "../src/ui/pages/song_page_r4_owner.inc"};
-  const char* const toastTexts[] = {"MELODY EMPTY: ALT+N MAKES ONE",
-                                    "MELODY EMPTY: ALT+N ON STEPS",
-                                    "NO MELODY (ALT+N ON STEPS)"};
-  for (int i = 0; i < 3; ++i) {
+  const char* const toastFiles[] = {"../src/ui/pages/song_page_r4_owner.inc"};
+  const char* const toastTexts[] = {"NO MELODY (ALT+N ON STEPS)"};
+  for (int i = 0; i < 1; ++i) {
     std::ifstream in(toastFiles[i]);
     std::stringstream buf;
     buf << in.rdbuf();

@@ -1933,8 +1933,8 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 bool SynthSequencerPage::toggleSource() {
   if (synth_tab_ != SynthTab::Notes) setSynthTab(SynthTab::Notes);
   const auto result = PhraseSourceToggle::switchSource(mini_acid_, audio_guard_, voice_index_);
-  if (result == PhraseSourceToggle::Result::NoMelody) {
-    UI::showToast("MELODY EMPTY: ALT+N MAKES ONE", 1500);
+  if (result == PhraseSourceToggle::Result::MadePhrase) {
+    UI::showToast("MELODY <- STEPS", 1500);
   } else if (result == PhraseSourceToggle::Result::Rejected) {
     UI::showToast("MELODY FAILED", 1500);
   } else {

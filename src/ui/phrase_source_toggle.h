@@ -16,11 +16,12 @@
 //
 // SOURCE switches between existing materials and never re-projects a Melody
 // that already exists, so edits made on the Melody can not be overwritten by
-// the steps. With no Melody the user-facing switch (Alt+R) refuses with
-// "MELODY EMPTY: ALT+N MAKES ONE" and creates nothing; Alt+N builds an empty
-// Melody (newEmptyMelody). toggle() still materializes the steps through the
-// MAKE PHRASE owner (validated, one-way, undoable) for TAKE/G. All actions
-// retain the same bounded Runtime Phrase undo ownership and AudioGuard path.
+// the steps. With no Melody the synth/params switch (Alt+R, Opt) copies the
+// steps into a new Melody through the MAKE PHRASE owner (validated, one-way,
+// undoable; the callers toast "MELODY <- STEPS"); Ctrl+Z removes it again.
+// Alt+N builds an EMPTY Melody instead (newEmptyMelody). The SONG page does not
+// use this switch: Opt there refuses a cell with no Melody. All actions retain
+// the same bounded Runtime Phrase undo ownership and AudioGuard path.
 //
 // The receipt carries the source as well as the material, so Ctrl+Z restores
 // PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
@@ -34,7 +35,6 @@ enum class Result : uint8_t {
   MadePhrase,
   SwitchedToPhrase,
   SwitchedToPattern,
-  NoMelody,  // switchSource(): target Melody does not exist, nothing changed
 };
 
 // Explicit one-way musical gesture from Pattern. Unlike SOURCE, this command
@@ -140,20 +140,13 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   return result;
 }
 
-// User-facing STEPS <-> MELODY switch (Alt+R, SONG Opt). Chooses which existing
-// material plays and never creates, copies or converts any: with no Melody for
-// the voice it returns NoMelody and changes nothing. Creating a Melody stays
-// the explicit makePhrase()/G/TAKE path (toggle() below still serves those).
+// User-facing STEPS <-> MELODY switch (Alt+R, Opt on the synth and params
+// pages). Existing material is only selected, never re-projected. With no
+// Melody for the voice the steps are copied into a new one (MadePhrase); that
+// goes through makePhrase(), whose Undo receipt has the no-Melody state as
+// "before", so Ctrl+Z returns to STEPS with no Melody. SONG has its own refusal.
 inline Result switchSource(MiniAcid& engine, const AudioGuard& audioGuard,
                            int voiceIndex) {
-  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return Result::Rejected;
-  const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
-                        MiniAcid::SequencedSource::Phrase;
-  if (!onPhrase && engine.retainedWorkingMelody(voiceIndex) == nullptr &&
-      !engine.isMelodySlot(voiceIndex, engine.current303BankIndex(voiceIndex),
-                           engine.display303LocalPatternIndex(voiceIndex))) {
-    return Result::NoMelody;
-  }
   return toggle(engine, audioGuard, voiceIndex);
 }
 
