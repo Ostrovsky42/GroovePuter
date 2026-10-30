@@ -430,8 +430,9 @@ void MiniAcidDisplay::servicePersistence_() {
     if (revision.currentRevision != observed_scene_revision_) {
         observed_scene_revision_ = revision.currentRevision;
         recovery_save_pending_ = true;
-        // One recovery write per burst of edits: each write blocks the UI for up to ~3 s on SD.
-        recovery_save_due_ms_ = now + 12000;
+        // One recovery write per burst of edits: each write blocks the UI for up to ~3 s on SD,
+        // so wait 5 s of quiet before writing (was 12 s; 3 s was too soon).
+        recovery_save_due_ms_ = now + 5000;
     }
     if (!recovery_save_pending_ || mini_acid_.isPlaying() ||
         !due(recovery_save_due_ms_)) {
