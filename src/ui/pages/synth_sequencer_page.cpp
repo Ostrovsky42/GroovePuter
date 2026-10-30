@@ -1923,9 +1923,9 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 // Alt+R on NOTES, or the Cardputer Opt key from any tab: STEPS <-> MELODY.
 bool SynthSequencerPage::toggleSource() {
   if (synth_tab_ != SynthTab::Notes) setSynthTab(SynthTab::Notes);
-  const auto result = PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-  if (result == PhraseSourceToggle::Result::MadePhrase) {
-    UI::showToast("MELODY <- STEPS", 1200);
+  const auto result = PhraseSourceToggle::switchSource(mini_acid_, audio_guard_, voice_index_);
+  if (result == PhraseSourceToggle::Result::NoMelody) {
+    UI::showToast("MELODY EMPTY: G MAKES ONE", 1500);
   } else if (result == PhraseSourceToggle::Result::Rejected) {
     UI::showToast("MELODY FAILED", 1500);
   } else {

@@ -88,6 +88,7 @@ TESTS=(
   test_genre_reachability_matrix
   test_drum_genre_templates_coverage
   test_genre_preset_slots
+  test_source_toggle_no_copy
   test_genre_presets
   test_legacy_role_mask_convention
 )

@@ -33,6 +33,7 @@ enum class Result : uint8_t {
   MadePhrase,
   SwitchedToPhrase,
   SwitchedToPattern,
+  NoMelody,  // switchSource(): target Melody does not exist, nothing changed
 };
 
 // Explicit one-way musical gesture from Pattern. Unlike SOURCE, this command
@@ -122,6 +123,23 @@ inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,
   if (audioGuard) audioGuard(apply);
   else apply();
   return result;
+}
+
+// User-facing STEPS <-> MELODY switch (Alt+R, SONG Opt). Chooses which existing
+// material plays and never creates, copies or converts any: with no Melody for
+// the voice it returns NoMelody and changes nothing. Creating a Melody stays
+// the explicit makePhrase()/G/TAKE path (toggle() below still serves those).
+inline Result switchSource(MiniAcid& engine, const AudioGuard& audioGuard,
+                           int voiceIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return Result::Rejected;
+  const bool onPhrase = engine.currentSequencedSource(voiceIndex) ==
+                        MiniAcid::SequencedSource::Phrase;
+  if (!onPhrase && engine.retainedWorkingMelody(voiceIndex) == nullptr &&
+      !engine.isMelodySlot(voiceIndex, engine.current303BankIndex(voiceIndex),
+                           engine.display303LocalPatternIndex(voiceIndex))) {
+    return Result::NoMelody;
+  }
+  return toggle(engine, audioGuard, voiceIndex);
 }
 
 }  // namespace PhraseSourceToggle

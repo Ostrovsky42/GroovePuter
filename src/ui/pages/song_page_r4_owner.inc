@@ -119,7 +119,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         return true;
       }
       const int voice = track == SongTrack::SynthA ? 0 : 1;
-      const auto result = PhraseSourceToggle::toggle(
+      const auto result = PhraseSourceToggle::switchSource(
           mini_acid_,
           [&](const std::function<void()>& body) { withAudioGuard(body); },
           voice);
@@ -133,10 +133,10 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         std::snprintf(toast, sizeof(toast), melodySlot ? "%c %c%d MELODY: CAN'T LOAD"
                                                        : "%c %c%d: CAN'T MAKE MELODY",
                       label, static_cast<char>('A' + bank), pattern + 1);
-      } else if (result == PhraseSourceToggle::Result::MadePhrase) {
-        std::snprintf(toast, sizeof(toast), "%c: MELODY <- STEPS", label);
+      } else if (result == PhraseSourceToggle::Result::NoMelody) {
+        std::snprintf(toast, sizeof(toast), "%c MELODY EMPTY: G MAKES ONE", label);
       } else {
-        std::snprintf(toast, sizeof(toast), "%c: %s", label,
+        std::snprintf(toast, sizeof(toast), "SOURCE %c: %s", label,
                       mini_acid_.currentSequencedSource(voice) ==
                               MiniAcid::SequencedSource::Phrase
                           ? "MELODY"
