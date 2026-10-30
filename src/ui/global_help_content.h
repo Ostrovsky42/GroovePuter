@@ -47,6 +47,7 @@ constexpr const char* kGenreLines[] = {
     "Left/Right on KEY: tonic",
     "H on KEY: GENRE/AUTO/GRAPH list",
     "M KEY: scale; else: apply",
+    "N           Next preset, apply",
     "STYLE ONLY  Keep existing patterns",
     "NEW TAKE    Regenerate patterns",
     "RHYTHM AUTO or fixed identity",

@@ -331,6 +331,15 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
+void GenrePage::applyPreset(int index) {
+  if (index < 0 || index >= kGenrePresetCount) return;
+  const GenrePreset& preset = kGenrePresets[index];
+  genre_index_ = static_cast<int>(preset.generative);
+  recipeIndex_ = static_cast<int>(preset.recipe);
+  UI::showToast(preset.name, 900);
+  applyCurrent();
+}
+
 void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
@@ -766,6 +775,13 @@ bool GenrePage::handleEvent(UIEvent& event) {
   if (keyP && !event.ctrl && !event.alt && !event.meta) {
     const auto level = GroovePuterState::cycleGenerationLevel();
     UI::showToast(GroovePuterState::generationStyleName(level), 1200);
+    return true;
+  }
+
+  if (panel_ == Panel::Genre && !event.ctrl && !event.alt && !event.meta &&
+      key == 'n') {
+    presetCursor_ = (presetCursor_ + 1) % kGenrePresetCount;
+    applyPreset(presetCursor_);
     return true;
   }
 

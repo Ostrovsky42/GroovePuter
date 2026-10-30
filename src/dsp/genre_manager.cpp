@@ -253,15 +253,13 @@ const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
     kPresetBroken, kPresetBroken, kPresetTripHop,
 };
 
-const GenrePreset kGenrePresets[8] = {
-    {GenerativeMode::Acid, "Classic Acid"},
-    {GenerativeMode::Outrun, "Outrun Lead"},
-    {GenerativeMode::Darksynth, "Darksynth Bass"},
-    {GenerativeMode::Outrun, "Synthwave"},
-    {GenerativeMode::Electro, "EBM"},
-    {GenerativeMode::Rave, "Rave Acid"},
-    {GenerativeMode::Darksynth, "Hotline"},
-    {GenerativeMode::Electro, "Detroit"},
+const GenrePreset kGenrePresets[6] = {
+    {"Classic Acid", GenerativeMode::Acid, kBaseRecipeId},
+    {"Rave Acid", GenerativeMode::Rave, kBaseRecipeId},
+    {"Synthwave", GenerativeMode::Outrun, kBaseRecipeId},
+    {"EBM", GenerativeMode::Electro, kBaseRecipeId},
+    {"Detroit", GenerativeMode::Techno, kBaseRecipeId},
+    {"Darksynth", GenerativeMode::Darksynth, kBaseRecipeId},
 };
 
 namespace GenreCatalog {

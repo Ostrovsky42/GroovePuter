@@ -69,6 +69,7 @@ class GenrePage : public IPage {
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
   void applyCurrent(bool forceRegenerate = false);
+  void applyPreset(int index);
   void applyPendingProfile();
   bool generateFromG();
   void drawGenPanel(IGfx& gfx);
@@ -97,6 +98,7 @@ class GenrePage : public IPage {
   GenRow gen_focus_ = GenRow::Target;
   int genre_index_ = 0;
   int recipeIndex_ = 0;
+  int presetCursor_ = -1;
   GroovePuterRhythm::RhythmSelectionMode rhythmMode_ =
       GroovePuterRhythm::RhythmSelectionMode::Auto;
   GroovePuterRhythm::RhythmArchetypeId rhythmArchetypeId_ =

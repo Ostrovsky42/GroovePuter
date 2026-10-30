@@ -200,11 +200,12 @@ private:
 using GenreManager = GenreSceneView;
 
 struct GenrePreset {
-    GenerativeMode generative;
     const char* name;
+    GenerativeMode generative;
+    GenreRecipeId recipe;
 };
 
-extern const GenrePreset kGenrePresets[8];
-static constexpr int kGenrePresetCount = 8;
+extern const GenrePreset kGenrePresets[6];
+static constexpr int kGenrePresetCount = 6;
 
 #endif  // GENRE_MANAGER_H

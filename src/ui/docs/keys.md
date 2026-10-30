@@ -122,6 +122,7 @@ ownership; internal Synth A/B remain sequencer/pattern instruments.
 | `Left/Right` on KEY | Choose the project tonic; affects the next generation |
 | `M` on KEY | Cycle the project scale; affects the next generation |
 | `H` on KEY | Open the `GENRE/AUTO/GRAPH` harmony strategy list |
+| `N` | Apply the next named preset (Classic Acid, Rave Acid, Synthwave, EBM, Detroit, Darksynth); sets Genre and Variant, then applies per the `APPLY` mode |
 | `M` on other fields | Cycle the `APPLY` mode: `STYLE ONLY`, `NEW TAKE`, `NEW TAKE + TEMPO` |
 
 During PLAY, accepted full generation publishes at the next real `BAR_START`; while
