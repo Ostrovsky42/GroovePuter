@@ -556,7 +556,7 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   }
 
   // Separator: the former gap row, so the strip reads as its own element.
-  gfx.fillRect(planeX, planeTop + kPlaneH, planeW, 1, COLOR_WHITE);
+  gfx.fillRect(planeX, planeTop + kPlaneH, planeW, 1, COLOR_LABEL);
 
   gfx.fillRect(cursorX - 1, planeTop + kCursorMarkerDy, 3, 3, COLOR_WHITE);
 
