@@ -781,7 +781,8 @@ public:
   // voice's active Pattern into bounded Phrase material and moves the source,
   // or changes nothing at all. A voice already on Phrase is left untouched:
   // re-projecting would silently discard edits made since the conversion.
-  bool makePhrase(int voiceIndex);
+  // emptyMelody: same validated entry, but the new Melody holds no events.
+  bool makePhrase(int voiceIndex, bool emptyMelody = false);
   bool setPhraseLength(int voiceIndex, uint8_t barCount);
   PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
   const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(

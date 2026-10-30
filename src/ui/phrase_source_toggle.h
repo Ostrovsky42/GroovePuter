@@ -16,10 +16,11 @@
 //
 // SOURCE switches between existing materials and never re-projects a Melody
 // that already exists, so edits made on the Melody can not be overwritten by
-// the steps. When the voice has no Melody yet, SOURCE is also the entry
-// gesture: it materializes the current steps through the MAKE PHRASE owner
-// (validated, one-way, undoable) and lands on MELODY. Both actions retain the
-// same bounded Runtime Phrase undo ownership and AudioGuard path.
+// the steps. With no Melody the user-facing switch (Alt+R) refuses with
+// "MELODY EMPTY: ALT+N MAKES ONE" and creates nothing; Alt+N builds an empty
+// Melody (newEmptyMelody). toggle() still materializes the steps through the
+// MAKE PHRASE owner (validated, one-way, undoable) for TAKE/G. All actions
+// retain the same bounded Runtime Phrase undo ownership and AudioGuard path.
 //
 // The receipt carries the source as well as the material, so Ctrl+Z restores
 // PATTERN/PHRASE truth and the buffer together rather than leaving the voice on
@@ -40,7 +41,7 @@ enum class Result : uint8_t {
 // owns materialization. A voice already on Phrase is left untouched so edited
 // material cannot be silently re-projected.
 inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
-                       int voiceIndex) {
+                       int voiceIndex, bool emptyMelody = false) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   if (engine.currentSequencedSource(voiceIndex) ==
       MiniAcid::SequencedSource::Phrase) {
@@ -51,14 +52,20 @@ inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
   receipt.voiceIndex = static_cast<uint8_t>(voiceIndex);
   receipt.source =
       static_cast<uint8_t>(engine.currentSequencedSource(voiceIndex));
-  receipt.before = engine.currentPhraseBuffer(voiceIndex);
+  // With no Melody held, currentPhraseBuffer() aliases other storage (it can
+  // read as the steps). Undo's "before" for that state is a clean empty buffer.
+  if (engine.retainedWorkingMelody(voiceIndex) == nullptr) {
+    receipt.before = PhraseRuntime::RuntimeSynthEventBuffer{};
+  } else {
+    receipt.before = engine.currentPhraseBuffer(voiceIndex);
+  }
 
   bool made = false;
   const auto apply = [&]() {
     const bool committed =
         GroovePuterUndo::undoOwner().commitRuntimePrepared(
             GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
-              made = engine.makePhrase(voiceIndex);
+              made = engine.makePhrase(voiceIndex, emptyMelody);
             });
     if (!committed) made = false;
   };
@@ -66,6 +73,14 @@ inline bool makePhrase(MiniAcid& engine, const AudioGuard& audioGuard,
   if (audioGuard) audioGuard(apply);
   else apply();
   return made;
+}
+
+// Alt+N entry from STEPS with no Melody: builds the EMPTY Melody directly. The
+// Undo receipt's "before" is the state with no Melody, so Ctrl+Z gives back
+// STEPS and never a Melody copied from the steps.
+inline bool newEmptyMelody(MiniAcid& engine, const AudioGuard& audioGuard,
+                           int voiceIndex) {
+  return makePhrase(engine, audioGuard, voiceIndex, true);
 }
 
 inline Result toggle(MiniAcid& engine, const AudioGuard& audioGuard,

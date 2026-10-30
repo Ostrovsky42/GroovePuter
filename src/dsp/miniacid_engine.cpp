@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <string>
@@ -6335,7 +6336,7 @@ uint16_t MiniAcid::currentPhrasePlayTick(int voiceIndex) const {
   return phraseRelativeTick_(voiceIndex, currentTick_);
 }
 
-bool MiniAcid::makePhrase(int voiceIndex) {
+bool MiniAcid::makePhrase(int voiceIndex, bool emptyMelody) {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
   // One-way. A voice already on Phrase keeps what it has; re-projecting would
   // silently discard every edit made since the conversion.
@@ -6413,6 +6414,11 @@ bool MiniAcid::makePhrase(int voiceIndex) {
     if (event.durationSubticks > maxDuration) {
       event.durationSubticks = static_cast<uint16_t>(maxDuration);
     }
+  }
+  if (emptyMelody) {
+    // Alt+N: an empty Melody of the same extent; the steps are not copied.
+    std::memset(candidate.events, 0, sizeof(candidate.events));
+    candidate.count = 0;
   }
   if (!RuntimePhraseEdit::validate(candidate)) return false;
 

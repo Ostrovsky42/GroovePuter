@@ -66,7 +66,7 @@ inline IGfxColor synthTabColor(int voiceIndex) {
 }
 
 // ALT+R switches between the two retained representations of one material.
-// With no Melody yet it first makes one from the steps (MELODY <- STEPS).
+// With no Melody yet it refuses (ALT+N makes an empty one; nothing is copied).
 // The runtime still owns Pattern/Phrase internally; the UI exposes only the
 // musical source truth: STEPS or MELODY.
 uint32_t audibleEndTick(
@@ -1158,9 +1158,18 @@ bool SynthSequencerPage::newEmptyMelody() {
     return true;
   }
   if (!onMelody) {
-    const auto result =
-        PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_);
-    if (result == PhraseSourceToggle::Result::Rejected ||
+    const bool hasMelody =
+        mini_acid_.retainedWorkingMelody(voice_index_) != nullptr ||
+        mini_acid_.isMelodySlot(voice_index_,
+                                mini_acid_.current303BankIndex(voice_index_),
+                                mini_acid_.display303LocalPatternIndex(voice_index_));
+    // No Melody: build the empty one directly so Undo's "before" is no Melody,
+    // not a copy of the steps. An existing Melody is only switched to.
+    const bool failed = hasMelody
+        ? PhraseSourceToggle::toggle(mini_acid_, audio_guard_, voice_index_) ==
+              PhraseSourceToggle::Result::Rejected
+        : !PhraseSourceToggle::newEmptyMelody(mini_acid_, audio_guard_, voice_index_);
+    if (failed ||
         mini_acid_.currentSequencedSource(voice_index_) !=
             MiniAcid::SequencedSource::Phrase) {
       UI::showToast("MELODY FAILED", 1500);
@@ -1925,7 +1934,7 @@ bool SynthSequencerPage::toggleSource() {
   if (synth_tab_ != SynthTab::Notes) setSynthTab(SynthTab::Notes);
   const auto result = PhraseSourceToggle::switchSource(mini_acid_, audio_guard_, voice_index_);
   if (result == PhraseSourceToggle::Result::NoMelody) {
-    UI::showToast("MELODY EMPTY: G MAKES ONE", 1500);
+    UI::showToast("MELODY EMPTY: ALT+N MAKES ONE", 1500);
   } else if (result == PhraseSourceToggle::Result::Rejected) {
     UI::showToast("MELODY FAILED", 1500);
   } else {

@@ -134,7 +134,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
                                                        : "%c %c%d: CAN'T MAKE MELODY",
                       label, static_cast<char>('A' + bank), pattern + 1);
       } else if (result == PhraseSourceToggle::Result::NoMelody) {
-        std::snprintf(toast, sizeof(toast), "%c MELODY EMPTY: G MAKES ONE", label);
+        std::snprintf(toast, sizeof(toast), "%c MELODY EMPTY: ALT+N ON STEPS", label);
       } else {
         std::snprintf(toast, sizeof(toast), "SOURCE %c: %s", label,
                       mini_acid_.currentSequencedSource(voice) ==

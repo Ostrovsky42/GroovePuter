@@ -2,6 +2,9 @@
 // material plays. It never creates, copies or converts a Melody.
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
@@ -62,6 +65,23 @@ int main() {
              std::memcmp(after.events, before.events,
                          sizeof(after.events[0]) * before.count) == 0,
          "switching altered the Melody material");
+
+  // 3. The refusal toast names real gestures (G is not the make gesture).
+  const char* const toastFiles[] = {"../src/ui/pages/synth_sequencer_page.cpp",
+                                    "../src/ui/pages/tb303_params_page.cpp",
+                                    "../src/ui/pages/song_page_r4_owner.inc"};
+  const char* const toastTexts[] = {"MELODY EMPTY: ALT+N MAKES ONE",
+                                    "MELODY EMPTY: ALT+N ON STEPS",
+                                    "MELODY EMPTY: ALT+N ON STEPS"};
+  for (int i = 0; i < 3; ++i) {
+    std::ifstream in(toastFiles[i]);
+    std::stringstream buf;
+    buf << in.rdbuf();
+    const std::string src = buf.str();
+    expect(!src.empty(), "toast source file unreadable");
+    expect(src.find(toastTexts[i]) != std::string::npos, "new refusal toast missing");
+    expect(src.find("G MAKES ONE") == std::string::npos, "old refusal toast remains");
+  }
 
   if (g_failures == 0) {
     std::printf("source toggle no-copy: PASS\n");
