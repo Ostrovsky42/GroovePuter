@@ -14,7 +14,6 @@ constexpr const char* kGlobalLines[] = {
     "Left/Right  Help top/end",
     "Fn+M        Workspace launcher",
     "Fn+Tab      Next workflow",
-    "Fn+Sh+Tab   Previous workflow",
     "[ / ]       Prev/next page",
     "Fn+[ / ]    Prev/next workflow",
     "Alt+[ / ]   Prev/next pattern page",
@@ -31,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
     "Alt+M       Song mode ON/OFF",
     "1..0        Track mute fallback",
     "Esc/Bksp/`  Back / previous page",
-    "Ctrl+Alt+Bksp Project reset",
+    "Ctrl+Alt+Bksp x2 Reset project",
     "",
 };
 
@@ -88,6 +87,7 @@ constexpr const char* kSynthALines[] = {
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
     "--- MELODY (Alt+R / Opt) ---",
+    "Alt+R       Copy steps to Melody",
     "Up/Dn A/Z   Note along the key",
     "Ctrl+Up/Dn  Semitone",
     "S/X         Octave +/-",
@@ -141,6 +141,7 @@ constexpr const char* kSynthBLines[] = {
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
     "--- MELODY (Alt+R / Opt) ---",
+    "Alt+R       Copy steps to Melody",
     "Up/Dn A/Z   Note along the key",
     "Ctrl+Up/Dn  Semitone",
     "S/X         Octave +/-",
@@ -156,6 +157,14 @@ constexpr const char* kSynthBLines[] = {
     "Ctrl+Left/Right Prev/next bar",
     "L / Alt+L   Bars 1-8 (+ / -)",
     "Alt+N       New empty melody",
+    "Enter       Insert note at cursor",
+    "Bksp        Delete note",
+    "Ctrl+Bksp   Clear whole melody",
+    "Alt+Left/Right Note length",
+    "Alt+Up/Dn   Scroll pitch window",
+    "J           Join with next note",
+    "V           Roll / List view",
+    "Ctrl+C/V/D  Copy/paste/dup bar",
 };
 
 constexpr const char* kSynthASoundLines[] = {
@@ -244,6 +253,7 @@ constexpr const char* kSongLines[] = {
     "Ctrl+Alt+Up/Dn Song top/end",
     "F           Form: build from rows",
     "In FORM: T take, P style",
+    "Opt         Cell source STEP/MEL",
     "Alt+J       MATERIAL at this row",
     "Bksp        Clear cell",
     "Alt+Bksp    Clear full Song",
@@ -324,7 +334,9 @@ constexpr const char* kProjectLines[] = {
     "Enter       Open or activate",
     "G           Jump to Genre",
     "Esc/Bksp    Close dialog/go up",
-    "X           Delete selected scene",
+    "X           Delete scene (Load list)",
+    "A           Save As (Save row)",
+    "R           Rename (Load list)",
     "Import: Tab Open MIDI matrix",
 };
 

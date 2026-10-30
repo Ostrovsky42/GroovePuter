@@ -640,7 +640,17 @@ void GenrePage::draw(IGfx& gfx) {
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
-  UI::publishShellInfo(value, UI::genreProfile(selectedGenre).tag);
+  // The status line carries the key hint while the selection is already the
+  // active one and nothing is queued; otherwise the status (warning colour
+  // elsewhere) is the more urgent text.
+  const bool statusIsNews = pendingSuffix[0] != '\0' ||
+                            activeGenre != selectedGenre ||
+                            activeRecipe != selectedRecipe;
+  UI::publishShellInfo(
+      statusIsNews ? value
+      : focus_ == FocusRow::Key ? "L/R ROOT  ENT SCALE  H HARM  N PRESET"
+                                : "N PRESET  G TAKE  ENT APPLY  P STYLE",
+      statusIsNews ? UI::genreProfile(selectedGenre).tag : nullptr);
   char keyHint[40];
   std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");
   UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",

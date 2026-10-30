@@ -605,20 +605,25 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(bounds.x + 4, bounds.y + 84,
                  "GO QUEUED: AT BOUNDARY  ESC: CANCEL");
     UI::drawStandardFooter(gfx,
-                           "GO QUEUED: ACTIVATES AT NEXT BAR BOUNDARY",
+                           "GO QUEUED: AT NEXT BAR",
                            "ESC TO CANCEL QUEUED GO");
   } else if (hasPending) {
     gfx.drawText(bounds.x + 4, bounds.y + 84,
                  "ENTER: GO  ESC: CANCEL  ^Z: UNDO");
     UI::drawStandardFooter(gfx,
-                           "NEXT READY: ENTER TO QUEUE GO AT BOUNDARY",
+                           "NEXT READY: ENTER = GO AT BAR",
                            "ESC TO CANCEL CANDIDATE");
   } else {
     gfx.drawText(bounds.x + 4, bounds.y + 84,
-                 "D DEVELOP  ENTER ADD  BS DEL  ^Z UNDO");
+                 selection.active
+                     ? "D VARY  ALT+L/R LEN  BS DEL  V LIST"
+                     : "ENTER ADD  D VARY  V LIST  ^Z UNDO");
+    if (mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+      UI::publishShellInfo("ALT+ENT SAVE  ALT+BS DISCARD");
+    }
     UI::drawStandardFooter(gfx,
                            "SPACE LISTEN/STOP  U/D HIGHER LOWER",
-                           "L/R PICK NOTE  ALT+L/R SHORTER LONGER");
+                           "L/R GRID  ALT+L/R SHORTER LONGER");
   }
 }
 
@@ -760,7 +765,7 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
   gfx.drawText(bounds.x + 4, bounds.y + 72, status);
 
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(bounds.x + 4, bounds.y + 82, "ENTER ADD  J JOIN  BS DEL");
+  gfx.drawText(bounds.x + 4, bounds.y + 82, "U/D NOTE  L/R PITCH  ENT ADD  V ROLL");
 
   UI::drawStandardFooter(gfx,
                          "SPACE LISTEN/STOP  L/R HIGHER LOWER",

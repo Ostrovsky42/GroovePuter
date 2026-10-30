@@ -1842,7 +1842,21 @@ void SongPage::draw(IGfx& gfx) {
       songVoiceStateLabel(mini_acid_.songVoiceDisplayState(1)));
   // The normal footer shows only publishShellInfo text; the page footer is
   // revealed by holding H. Publish F:FORM here so it is visible by default.
-  UI::publishShellInfo("[ARWS]MOVE  F:FORM", "ALT+H HELP");
+  {
+    bool trackValid = false;
+    const SongTrack cellTrack = trackForColumn(cursorTrack(), trackValid);
+    const char* songHint = "[ARWS]MOVE  F:FORM";
+    if (GroovePuterRhythm::LiveSongArrangementDetail::pendingPlaybackSwitchTarget(
+            mini_acid_) >= 0) {
+      songHint = "CTRL+B AGAIN: CANCEL SWITCH";
+    } else if (trackValid &&
+               (cellTrack == SongTrack::SynthA || cellTrack == SongTrack::SynthB)) {
+      songHint = "ENT OPEN  OPT SRC  CTRL+B PLAY  F FORM";
+    } else if (trackValid && cellTrack == SongTrack::Drums) {
+      songHint = "ENT OPEN  Q-I PAT  G GEN  F FORM";
+    }
+    UI::publishShellInfo(songHint);
+  }
   UI::drawStandardFooter(gfx, "[ARWS]MOVE F:FORM Q-I:PAT", materialStatus);
 }
 

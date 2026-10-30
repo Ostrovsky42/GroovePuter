@@ -1725,6 +1725,9 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawRect(dialogX, dialogY, dialogW, dialogH, COLOR_ACCENT);
 
     if (dialog_type_ == DialogType::Load) {
+      if (!delete_pending_) {
+        UI::publishShellInfo("ENT LOAD  R RENAME  X DELETE  ESC");
+      }
       const int headerH = line_h + 4;
       const int cancelH = line_h + 8;
       const int listY = dialogY + headerH + 2;
@@ -1783,6 +1786,7 @@ void ProjectPage::draw(IGfx& gfx) {
       return;
     }
 
+    UI::publishShellInfo("L/R CARET  ENT OK  ESC CANCEL");
     gfx.setTextColor(COLOR_WHITE);
     gfx.drawText(dialogX + 4, dialogY + 2,
                  dialog_type_ == DialogType::Rename ? "Rename Project" : "Save Scene");
@@ -1977,7 +1981,9 @@ void ProjectPage::draw(IGfx& gfx) {
     }
   }
   char hint[64] = "[ENTER] SELECT";
-  if (section_ == ProjectSection::Midi) {
+  if (section_ == ProjectSection::Scenes && main_focus_ == MainFocus::SaveAs) {
+    std::snprintf(hint, sizeof(hint), "ENT SAVE  A SAVE AS  TAB SECT");
+  } else if (section_ == ProjectSection::Midi) {
     if (main_focus_ == MainFocus::UsbRole) {
       const auto pending = CardputerUsbRoleRuntime::pendingRole();
       const auto selected = usbRoleFromPreview(usb_role_preview_, pending);
