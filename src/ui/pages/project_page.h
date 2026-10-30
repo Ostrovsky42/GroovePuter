@@ -32,7 +32,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
+  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear, Rename };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
@@ -69,6 +69,9 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void drawConfirmClearDialog(IGfx& gfx);
   bool clearProject();
   bool deleteSelectionInDialog();
+  void openRenameDialog();
+  bool renameSelectedScene();
+  bool saveOwnName();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
@@ -124,6 +127,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int scroll_offset_;
   int main_scroll_ = 0;
   bool loadError_;
+  bool delete_pending_ = false;  // X pressed in Load: waiting for Enter
+  uint8_t name_caret_ = 0;       // caret inside save_name_ (0..32)
   std::vector<std::string> scenes_;
   std::string midi_selected_path_;
   int midi_import_start_pattern_ = 0;

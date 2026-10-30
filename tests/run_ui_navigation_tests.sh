@@ -19,6 +19,11 @@ echo "Melody chord focus PASS"
   "$ROOT/tests/test_melody_roll_playhead.cpp" -o "$BUILD/test_melody_roll_playhead"
 "$BUILD/test_melody_roll_playhead"
 
+# PROJECT page list wrap, name caret and duplicate-name check: pure, no SDL.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -I"$ROOT" \
+  "$ROOT/tests/test_project_page_ux.cpp" -o "$BUILD/test_project_page_ux"
+"$BUILD/test_project_page_ux"
+
 cd "$ROOT/platform_sdl"
 mapfile -t SRCS < <(
   awk '/^SOURCES :=/ { c = 1; next } c && /^[^[:space:]]/ { c = 0 }

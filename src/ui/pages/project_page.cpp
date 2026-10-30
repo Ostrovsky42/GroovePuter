@@ -29,6 +29,7 @@
 #include "src/platform/battery_status.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/ui/save_probe.h"
+#include "../project_page_ux.h"
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
@@ -180,6 +181,87 @@ void ProjectPage::openSaveDialog() {
   save_dialog_focus_ = SaveDialogFocus::Input;
   save_name_ = mini_acid_.currentSceneName();
   if (save_name_.empty()) save_name_ = generateMemorableName();
+  name_caret_ = static_cast<uint8_t>(save_name_.size());
+}
+
+// Enter on the Save row: save under the current name; only an unnamed
+// project falls through to the name prompt.
+bool ProjectPage::saveOwnName() {
+  const std::string current = mini_acid_.currentSceneName();
+  if (current.empty()) {
+    openSaveDialog();
+    return true;
+  }
+  save_name_ = current;
+  return saveCurrentScene();
+}
+
+void ProjectPage::openRenameDialog() {
+  if (scenes_.empty() || selection_index_ < 0 ||
+      selection_index_ >= static_cast<int>(scenes_.size())) return;
+  dialog_type_ = DialogType::Rename;
+  save_dialog_focus_ = SaveDialogFocus::Input;
+  save_name_ = scenes_[selection_index_];
+  name_caret_ = static_cast<uint8_t>(save_name_.size());
+}
+
+// Rename the project at selection_index_ to save_name_. The scene file, its
+// autosave and its pattern pages move; nothing about the formats changes.
+bool ProjectPage::renameSelectedScene() {
+  if (selection_index_ < 0 || selection_index_ >= static_cast<int>(scenes_.size())) {
+    dialog_type_ = DialogType::Load;
+    return true;
+  }
+  const std::string oldName = scenes_[selection_index_];
+  const std::string newName = save_name_;
+  if (newName.empty()) { UI::showToast("Name is empty", 1200); return true; }
+  if (ProjectUx::nameUsedByOther(scenes_, newName, selection_index_)) {
+    UI::showToast("Name already used", 1200);
+    return true;
+  }
+  if (newName == oldName) { dialog_type_ = DialogType::Load; return true; }
+
+  const std::string oldPath = "/scenes/" + oldName + ".json";
+  const std::string oldAuto = "/scenes/" + oldName + ".auto.json";
+  const std::string newPath = "/scenes/" + newName + ".json";
+  const std::string newAuto = "/scenes/" + newName + ".auto.json";
+  bool ok = false;
+  if (oldName == mini_acid_.currentSceneName()) {
+    // The open project: Save As writes the new scene and copies pages and
+    // makes it current; the old files are then removed.
+    bool saved = false;
+    const auto saveUnderGuard = [&]() { saved = mini_acid_.saveSceneAs(newName); };
+    if (audio_guard_) audio_guard_(saveUnderGuard);
+    else saveUnderGuard();
+    if (saved) {
+      SD.remove(oldPath.c_str());
+      SD.remove(oldAuto.c_str());
+      PatternPagingService::clearProjectPages(oldName);
+      ok = true;
+    }
+  } else if (SD.rename(oldPath.c_str(), newPath.c_str())) {
+    if (SD.exists(oldAuto.c_str())) SD.rename(oldAuto.c_str(), newAuto.c_str());
+    if (PatternPagingService::copyProjectPages(oldName, newName)) {
+      PatternPagingService::clearProjectPages(oldName);
+      ok = true;
+    } else {
+      SD.rename(newPath.c_str(), oldPath.c_str());
+      if (SD.exists(newAuto.c_str())) SD.rename(newAuto.c_str(), oldAuto.c_str());
+    }
+  }
+  dialog_type_ = DialogType::Load;
+  save_dialog_focus_ = SaveDialogFocus::Input;
+  if (!ok) {
+    UI::showToast("Rename failed", 1400);
+    return true;
+  }
+  refreshScenes();
+  for (size_t i = 0; i < scenes_.size(); ++i) {
+    if (scenes_[i] == newName) { selection_index_ = static_cast<int>(i); break; }
+  }
+  ensureSelectionVisible(10);
+  UI::showToast("Project renamed", 1000);
+  return true;
 }
 
 void ProjectPage::openImportMidiDialog() {
@@ -585,6 +667,7 @@ bool ProjectPage::importMidiAtSelection() {
 }
 
 bool ProjectPage::deleteSelectionInDialog() {
+  delete_pending_ = false;
   if (dialog_focus_ != DialogFocus::List || dialog_type_ != DialogType::Load) {
     return true;
   }
@@ -616,16 +699,14 @@ void ProjectPage::closeDialog() {
   dialog_type_ = DialogType::None;
   dialog_focus_ = DialogFocus::List;
   save_dialog_focus_ = SaveDialogFocus::Input;
+  delete_pending_ = false;
 }
 
 
 void ProjectPage::moveSelection(int delta) {
   loadError_ = false; // Clear error on move
-  selection_index_ += delta;
-  if (selection_index_ < 0) selection_index_ = 0;
-  if (!scenes_.empty() && selection_index_ >= static_cast<int>(scenes_.size())) {
-    selection_index_ = static_cast<int>(scenes_.size()) - 1;
-  }
+  selection_index_ = ProjectUx::wrapIndex(
+      selection_index_, delta, static_cast<int>(scenes_.size()));
   ensureSelectionVisible(10); // Assuming 10 rows visible
 }
 
@@ -639,12 +720,8 @@ void ProjectPage::ensureSelectionVisible(int visibleRows) {
   }
   const int maxIdx = listCount - 1;
   selection_index_ = std::max(0, std::min(selection_index_, maxIdx));
-  if (scroll_offset_ > selection_index_) scroll_offset_ = selection_index_;
-  if (selection_index_ >= scroll_offset_ + visibleRows) {
-    scroll_offset_ = selection_index_ - visibleRows + 1;
-  }
-  const int maxScroll = std::max(0, maxIdx - visibleRows + 1);
-  scroll_offset_ = std::max(0, std::min(scroll_offset_, maxScroll));
+  scroll_offset_ = ProjectUx::windowStart(selection_index_, listCount,
+                                          visibleRows, scroll_offset_);
 }
 
 void ProjectPage::ensureMainFocusVisible(int visibleRows) {
@@ -760,19 +837,17 @@ bool ProjectPage::createNewScene() {
 }
 
 bool ProjectPage::handleSaveDialogInput(char key) {
+  std::size_t caret = name_caret_;
+  bool handled = false;
   if (key == '\b') {
-    if (!save_name_.empty()) save_name_.pop_back();
-    return true;
+    ProjectUx::backspaceAtCaret(save_name_, caret);
+    handled = true;
+  } else if (key >= 32 && key < 127 && ProjectUx::nameCharAllowed(key)) {
+    ProjectUx::insertAtCaret(save_name_, caret, key);
+    handled = true;
   }
-  if (key >= 32 && key < 127) {
-    char c = key;
-    bool allowed = std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
-    if (allowed) {
-      if (save_name_.size() < 32) save_name_.push_back(c);
-      return true;
-    }
-  }
-  return false;
+  name_caret_ = static_cast<uint8_t>(caret);
+  return handled;
 }
 
 namespace {
@@ -1039,6 +1114,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (dialog_type_ == DialogType::Load) {
+        if (delete_pending_) {
+            // Only Enter confirms; any other key (Esc included) cancels.
+            if (ui_event.key == '\n' || ui_event.key == '\r') {
+                return deleteSelectionInDialog();
+            }
+            delete_pending_ = false;
+            return true;
+        }
         if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
             closeDialog();
             return true;
@@ -1060,7 +1143,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (ui_event.key == 'x' || ui_event.key == 'X') {
-            return deleteSelectionInDialog();
+            if (dialog_focus_ == DialogFocus::List && !scenes_.empty()) {
+                delete_pending_ = true;
+            }
+            return true;
+        }
+        if (ui_event.key == 'r' || ui_event.key == 'R') {
+            if (dialog_focus_ == DialogFocus::List) openRenameDialog();
+            return true;
         }
         if (ui_event.key == '\n' || ui_event.key == '\r') {
             if (dialog_focus_ == DialogFocus::Cancel) {
@@ -1254,7 +1344,27 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         return true;
     }
 
-    if (dialog_type_ == DialogType::SaveAs) {
+    if (dialog_type_ == DialogType::SaveAs || dialog_type_ == DialogType::Rename) {
+        const bool renaming = dialog_type_ == DialogType::Rename;
+        const auto leaveDialog = [&]() {
+            if (renaming) { dialog_type_ = DialogType::Load; save_dialog_focus_ = SaveDialogFocus::Input; }
+            else closeDialog();
+        };
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE) { leaveDialog(); return true; }
+        if (save_dialog_focus_ == SaveDialogFocus::Input) {
+            std::size_t caret = name_caret_;
+            if (ui_event.scancode == GROOVEPUTER_LEFT) {
+                ProjectUx::caretLeft(save_name_, caret);
+                name_caret_ = static_cast<uint8_t>(caret);
+                return true;
+            }
+            if (ui_event.scancode == GROOVEPUTER_RIGHT &&
+                ProjectUx::caretRight(save_name_, caret)) {
+                name_caret_ = static_cast<uint8_t>(caret);
+                return true;
+            }
+            // Caret already at the end: Right moves on to the buttons below.
+        }
         switch (ui_event.scancode) {
             case GROOVEPUTER_LEFT:
                 if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
@@ -1281,13 +1391,15 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         }
         if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) return true;
         if (key == '\n' || key == '\r') {
-            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); return true; }
-            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) return saveCurrentScene();
-            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { closeDialog(); return true; }
+            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); name_caret_ = static_cast<uint8_t>(save_name_.size()); return true; }
+            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) {
+                return renaming ? renameSelectedScene() : saveCurrentScene();
+            }
+            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { leaveDialog(); return true; }
         }
         if (key == '\b') {
             if (save_dialog_focus_ == SaveDialogFocus::Input) return handleSaveDialogInput(key);
-            closeDialog(); return true;
+            leaveDialog(); return true;
         }
         return false;
     }
@@ -1438,6 +1550,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         default: break;
     }
 
+    if ((key == 'a' || key == 'A') && main_focus_ == MainFocus::SaveAs) {
+        openSaveDialog();  // Save As: a new name
+        return true;
+    }
+
     if (key == 'g' || key == 'G') {
         requestPageTransition(0); // Genre Page
         return true;
@@ -1474,7 +1591,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
-        if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
+        if (main_focus_ == MainFocus::SaveAs) return saveOwnName();
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
         if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
@@ -1592,7 +1709,8 @@ void ProjectPage::draw(IGfx& gfx) {
     return;
   }
 
-  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::SaveAs) {
+  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::SaveAs ||
+      dialog_type_ == DialogType::Rename) {
     const int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
     const int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
     const int yStart = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
@@ -1640,6 +1758,21 @@ void ProjectPage::draw(IGfx& gfx) {
       const int buttonWidth = 60;
       const int buttonX = dialogX + (dialogW - buttonWidth) / 2;
       const int buttonY = dialogY + dialogH - cancelH - 4;
+      if (delete_pending_ && !scenes_.empty()) {
+        // Confirmation replaces the Cancel button; the name is shortened to fit.
+        std::string shown = scenes_[selection_index_];
+        char msg[96];
+        for (;;) {
+          std::snprintf(msg, sizeof(msg), "DELETE %s? ENTER=YES ESC=NO", shown.c_str());
+          if (gfx.measureText(msg) <= dialogW - 8 || shown.size() <= 1) break;
+          shown.pop_back();
+        }
+        gfx.fillRect(dialogX + 2, buttonY, dialogW - 4, cancelH, COLOR_PANEL);
+        gfx.drawRect(dialogX + 2, buttonY, dialogW - 4, cancelH, COLOR_DANGER);
+        gfx.setTextColor(COLOR_WHITE);
+        gfx.drawText(dialogX + 5, buttonY + (cancelH - line_h) / 2, msg);
+        return;
+      }
       const bool focused = dialog_focus_ == DialogFocus::Cancel;
       gfx.fillRect(buttonX, buttonY, buttonWidth, cancelH, COLOR_PANEL);
       gfx.drawRect(buttonX, buttonY, buttonWidth, cancelH,
@@ -1651,7 +1784,8 @@ void ProjectPage::draw(IGfx& gfx) {
     }
 
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(dialogX + 4, dialogY + 2, "Save Scene");
+    gfx.drawText(dialogX + 4, dialogY + 2,
+                 dialog_type_ == DialogType::Rename ? "Rename Project" : "Save Scene");
     const int inputH = line_h + 8;
     const int inputY = dialogY + line_h + 6;
     gfx.fillRect(dialogX + 4, inputY, dialogW - 8, inputH, COLOR_PANEL);
@@ -1661,6 +1795,17 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.setTextColor(COLOR_WHITE);
     gfx.drawText(dialogX + 8, inputY + (inputH - line_h) / 2,
                  save_name_.c_str());
+    if (inputFocused) {
+      // Caret: a 2px underline under the character at the caret (or a cell
+      // past the end), so it stays readable on the 240x135 screen.
+      const std::size_t caret = std::min<std::size_t>(name_caret_, save_name_.size());
+      const std::string before = save_name_.substr(0, caret);
+      const int caretX = dialogX + 8 + (before.empty() ? 0 : gfx.measureText(before.c_str()));
+      char at[2] = {caret < save_name_.size() ? save_name_[caret] : '_', 0};
+      const int cellW = std::max(4, gfx.measureText(at));
+      const int baseY = inputY + (inputH - line_h) / 2 + line_h;
+      gfx.fillRect(caretX, baseY, cellW, 2, COLOR_ACCENT);
+    }
 
     const char* buttons[] = {"RND", "SAVE", "ESC"};
     const SaveDialogFocus focuses[] = {
@@ -1705,7 +1850,7 @@ void ProjectPage::draw(IGfx& gfx) {
     const char* label = "";
     switch (focus) {
       case MainFocus::Load: label = "Load Scene"; break;
-      case MainFocus::SaveAs: label = "Save As"; break;
+      case MainFocus::SaveAs: label = "Save"; break;
       case MainFocus::New: label = "New"; break;
       case MainFocus::ImportMidi: label = "Import MIDI"; break;
       case MainFocus::ClearProject: label = "Clear Project"; break;
@@ -1726,7 +1871,7 @@ void ProjectPage::draw(IGfx& gfx) {
     char line[48];
     switch (focus) {
       case MainFocus::Load: std::snprintf(line, sizeof(line), ""); break;
-      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "A=SAVE AS"); break;
       case MainFocus::New: std::snprintf(line, sizeof(line), ""); break;
       case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), ""); break;
       case MainFocus::ClearProject: std::snprintf(line, sizeof(line), ""); break;

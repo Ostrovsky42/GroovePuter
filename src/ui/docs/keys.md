@@ -506,6 +506,15 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `Enter` | Open/activate |
 | `G` | Jump to GENRE |
 | `Esc` / `Backspace` | Close dialog/go up directory |
+| `Enter` on Save | Save under the current name (unnamed project: asks for a name) |
+| `A` on Save | Save As: type a new name |
+
+Load list: `Up` on the first item goes to the last and `Down` on the last goes
+to the first. `Enter` loads. `R` renames the selected project (name editor,
+`Enter` confirms, `Esc` cancels; an empty or already used name is refused).
+`X` asks `DELETE <name>? ENTER=YES ESC=NO`; only `Enter` deletes, any other key cancels.
+In the name editor `Left/Right` move the caret (an underline); typing and
+`Backspace` act at the caret. There are no Home/End keys on this keyboard.
 
 ## TEMPO panel
 
