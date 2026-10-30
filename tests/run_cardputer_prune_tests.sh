@@ -88,6 +88,7 @@ TESTS=(
   test_genre_reachability_matrix
   test_drum_genre_templates_coverage
   test_genre_preset_slots
+  test_legacy_role_mask_convention
 )
 
 for test_name in "${TESTS[@]}"; do

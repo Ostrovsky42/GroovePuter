@@ -280,7 +280,9 @@ inline void applyLegacyRoleSplit(
   bassBehavior.avoidClusters = true;
   bassBehavior.forceOctaveJump = false;
 
-  leadBehavior.stepMask = 0xAAAA;
+  // stepMask is bit = step (stepAllowed in mode_manager.cpp), unlike drum
+  // templates where bit 15 = step 0. 0x4444 = steps 2/6/10/14 (offbeat 8ths).
+  leadBehavior.stepMask = 0x4444;
   leadBehavior.motifLength = 4;
   leadBehavior.avoidClusters = false;
   leadBehavior.forceOctaveJump = false;

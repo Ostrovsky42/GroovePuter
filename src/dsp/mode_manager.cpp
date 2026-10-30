@@ -320,6 +320,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
 // GENRE-BASED GENERATION (with structural behavior)
 // ============================================================================
 
+// Convention: bit = step (bit 0 = step 0). Drum templates use bit 15 = step 0.
 static inline bool stepAllowed(uint16_t mask, int step) {
     return (mask & (1u << step)) != 0;
 }
@@ -437,7 +438,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         if (stepAllowed(behavior.stepMask, 0)) {
             pattern.steps[0].note = baseRoot;
             pattern.steps[0].velocity = 127;
-            pattern.steps[0].accent = true;
+            pattern.steps[0].accent = !params.noAccents;
             placed++;
             lastStep = 0;
         }
@@ -445,7 +446,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         if (stepAllowed(behavior.stepMask, 8) && targetNotes >= 2) {
             pattern.steps[8].note = baseRoot;
             pattern.steps[8].velocity = 120;
-            pattern.steps[8].accent = true;
+            pattern.steps[8].accent = !params.noAccents;
             placed++;
         }
     }
