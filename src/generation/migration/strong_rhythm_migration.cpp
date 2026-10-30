@@ -386,6 +386,15 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
       if (mode == GenerativeMode::HipHop)
         return StrongRhythmRoute::Stage7Composition;
       break;
+    case kDnbAtmosRecipeId:
+    case kDnbFunkRecipeId:
+    case kDnbDanceRecipeId:
+    case kDnbNeuroRecipeId:
+      // P02: the DnB poles run the Stage-7 composition route so the DnB idiom
+      // (bass, lead and drum grammar) is reached in migrateStrongRhythmMaterial.
+      if (mode == GenerativeMode::DrumAndBass)
+        return StrongRhythmRoute::Stage7Composition;
+      break;
     case kBaseRecipeId: break;
     default: return StrongRhythmRoute::Legacy;
   }

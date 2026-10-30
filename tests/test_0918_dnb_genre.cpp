@@ -13,6 +13,7 @@
 #include "../src/dsp/genre_manager.h"
 #include "../src/generation/composition/generation_profile.h"
 #include "../src/generation/idiom/genre_idiom.h"
+#include "../src/generation/migration/strong_rhythm_migration.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -220,6 +221,38 @@ void testDeterministic() {
   }
 }
 
+// P02: the poles must reach the idiom through the real migration entry point,
+// not only through GenreIdiom::apply. A zero template stays zero on the Legacy
+// route, so any drum hit proves the idiom (or composition) route ran.
+void testPolesThroughMigration() {
+  for (uint8_t recipe : kPoles) {
+    GenreSettings settings{};
+    settings.generativeMode = kDnb;
+    settings.recipe = recipe;
+    settings.morphTarget = recipe;
+    GroovePuterRhythm::StrongRhythmMigrationContext context{};
+    context.patternAddress = 0;
+    context.level = GroovePuterRhythm::RealizationLevel::P2Variation;
+    context.tonalMaterializationEnabled = true;
+    context.scaleTypeValue = GroovePuterRhythm::kScaleDorian;
+    context.ideaPress = 3;
+    context.ideaPhraseBars = 4;
+    context.phraseBarOrdinal = 0;
+    DrumPatternSet drums{};
+    SynthPattern synthA{};
+    SynthPattern synthB{};
+    const auto result = GroovePuterRhythm::migrateStrongRhythmMaterial(
+        settings, context, drums, synthA, synthB);
+    assert(result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied);
+    uint16_t any = 0;
+    for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+      any |= hits(drums, voice, false);
+    }
+    assert(any != 0);
+    std::printf("DnB recipe %u via migration: drum mask %04x\n", recipe, any);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -230,6 +263,7 @@ int main() {
   testDanceAndNeuroAreDifferentMusic();
   testTempoCorridor();
   testDeterministic();
+  testPolesThroughMigration();
   std::printf("0.9.18 DnB genre: OK\n");
   return 0;
 }

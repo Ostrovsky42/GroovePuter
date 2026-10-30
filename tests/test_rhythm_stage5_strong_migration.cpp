@@ -152,6 +152,16 @@ void testAllowList() {
             "valid recipe did not reach Stage 7 composition routing");
   }
 
+  // P02: the DnB poles must reach the Stage-7 route so the DnB idiom runs.
+  const uint8_t dnbPoles[] = {kDnbAtmosRecipeId, kDnbFunkRecipeId,
+                              kDnbDanceRecipeId, kDnbNeuroRecipeId};
+  for (uint8_t recipe : dnbPoles) {
+    require(selectStrongRhythmRoute(
+                modeRecipeSettings(GenerativeMode::DrumAndBass, recipe)) !=
+                StrongRhythmRoute::Legacy,
+            "DnB pole recipe must not fall to the legacy route");
+  }
+
   // F-02: persisted MORPH is decode-only compatibility data. Even historical
   // cross-recipe values must not change the strong route selected by mode+recipe.
   GenreSettings crossMorph = recipeSettings(5);
