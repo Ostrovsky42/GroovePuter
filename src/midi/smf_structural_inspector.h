@@ -99,6 +99,9 @@ public:
             for (uint8_t word = 0; word < kPublishedWordsPerLayer; ++word) {
                 publishedWords_[i][word].store(0u, std::memory_order_relaxed);
             }
+            for (std::size_t b = 0; b < kOccupancyBytesPerLayer; ++b) {
+                barOccupancy_[i][b].store(0u, std::memory_order_relaxed);
+            }
         }
         publishedMeta_.store(0u, std::memory_order_relaxed);
         endPublish();
@@ -211,7 +214,19 @@ public:
 
         assignRolesAndOverlap(result);
         publish(result);
+        publishOccupancy();
         smfTrackInspectorState().freeze();
+    }
+
+    // True when snapshot layer `layer` has at least one note start in `bar`
+    // (0-based). Out-of-range arguments and unfinalized state return false.
+    bool layerHasNotesInBar(uint8_t layer, uint16_t bar) const {
+        if (layer >= kSmfStructuralMaxLayers || bar >= kSmfStructuralBarLimit) {
+            return false;
+        }
+        const uint8_t bits =
+            barOccupancy_[layer][bar >> 3u].load(std::memory_order_relaxed);
+        return ((bits >> (bar & 7u)) & 1u) != 0u;
     }
 
     SmfStructuralInspectorSnapshot snapshot() const {
@@ -249,6 +264,8 @@ private:
     static constexpr uint8_t kGridCount = 3u;
     static constexpr uint8_t kHashBars = 8u;
     static constexpr uint8_t kPublishedWordsPerLayer = 6u;
+    static constexpr std::size_t kOccupancyBytesPerLayer =
+        kSmfStructuralBarLimit / 8u;
 
     struct LayerAccumulator {
         uint32_t lastTick{0};
@@ -626,6 +643,21 @@ private:
         endPublish();
     }
 
+    // Copies "bar has a note start" out of the existing per-bar counters; no
+    // extra pass over the file.
+    void publishOccupancy() {
+        for (uint8_t i = 0u; i < layerCount_; ++i) {
+            for (uint16_t bar = 0u; bar < kSmfStructuralBarLimit; ++bar) {
+                if (barNoteCount(accum_[i], bar) == 0u) continue;
+                std::atomic<uint8_t>& byte = barOccupancy_[i][bar >> 3u];
+                byte.store(static_cast<uint8_t>(
+                               byte.load(std::memory_order_relaxed) |
+                               (1u << (bar & 7u))),
+                           std::memory_order_relaxed);
+            }
+        }
+    }
+
     void packLayer(uint8_t index, const SmfStructuralLayerSnapshot& layer) {
         const uint32_t word0 =
             (static_cast<uint32_t>(layer.trackIndex) & 0x3Fu) |
@@ -706,6 +738,8 @@ private:
     std::atomic<uint32_t> publishedMeta_{0};
     std::atomic<uint32_t>
         publishedWords_[kSmfStructuralMaxLayers][kPublishedWordsPerLayer]{};
+    std::atomic<uint8_t>
+        barOccupancy_[kSmfStructuralMaxLayers][kOccupancyBytesPerLayer]{};
 };
 
 inline SmfStructuralInspectorState& smfStructuralInspectorState() {
@@ -713,7 +747,7 @@ inline SmfStructuralInspectorState& smfStructuralInspectorState() {
     return state;
 }
 
-static_assert(sizeof(SmfStructuralInspectorState) <= 2048,
+static_assert(sizeof(SmfStructuralInspectorState) <= 2176,
               "SMF structural analysis state must remain bounded");
 
 }  // namespace GroovePuterMidi

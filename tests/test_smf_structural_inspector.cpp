@@ -241,9 +241,38 @@ int main() {
         assert(snapshot.analyzedBars == 256u);
     }
 
+    {
+        // Per-bar occupancy: layer 0 bars 0 and 2, layer 1 bar 1 only,
+        // layer 2 (higher track index) bar 3 only.
+        SmfStructuralInspectorState state;
+        state.reset(96, 3);
+        state.observe(1, note(0, SmfEventKind::NoteOn, 0, 60));
+        state.observe(1, note(10, SmfEventKind::NoteOff, 0, 60, 0));
+        state.observe(2, note(384, SmfEventKind::NoteOn, 1, 40));
+        state.observe(2, note(394, SmfEventKind::NoteOff, 1, 40, 0));
+        state.observe(1, note(768, SmfEventKind::NoteOn, 0, 62));
+        state.observe(1, note(778, SmfEventKind::NoteOff, 0, 62, 0));
+        state.observe(3, note(1152, SmfEventKind::NoteOn, 2, 72));
+        state.observe(3, note(1162, SmfEventKind::NoteOff, 2, 72, 0));
+        state.finalize();
+        const auto snapshot = state.snapshot();
+        assert(snapshot.layerCount == 3);
+        assert(snapshot.layers[0].trackIndex == 1);
+        assert(snapshot.layers[1].trackIndex == 2);
+        const bool expect[3][4] = {{1, 0, 1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}};
+        for (uint8_t layer = 0; layer < 3; ++layer) {
+            for (uint16_t bar = 0; bar < 4; ++bar) {
+                assert(state.layerHasNotesInBar(layer, bar) == expect[layer][bar]);
+            }
+        }
+        assert(!state.layerHasNotesInBar(0, 255));
+        assert(!state.layerHasNotesInBar(0, 256));
+        assert(!state.layerHasNotesInBar(9, 0));
+    }
+
     static_assert(sizeof(SmfTrackInspectorState) <= 136,
                   "track metadata must fit the fixed-DRAM budget");
-    static_assert(sizeof(SmfStructuralInspectorState) <= 2048,
+    static_assert(sizeof(SmfStructuralInspectorState) <= 2176,
                   "structural state must fit the bounded arrangement budget");
     return 0;
 }
