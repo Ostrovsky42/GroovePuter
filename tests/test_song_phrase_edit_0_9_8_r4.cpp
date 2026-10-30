@@ -76,7 +76,7 @@ void testResetAndReceiptBudgets() {
   Song canonical{};
   assert(sameSong(song, canonical));
 
-  static_assert(sizeof(SongUndoPayload) <= 1040,
+  static_assert(sizeof(SongUndoPayload) <= 1080,
                 "Song receipt exceeds R4 budget");
   static_assert(sizeof(PhraseUndoPayload) <= 248,
                 "Phrase receipt exceeds R4 budget");

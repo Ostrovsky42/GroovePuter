@@ -170,6 +170,40 @@ struct Song {
   SongPosition positions[kMaxPositions];
   int length = 1;
   bool reverse = false;
+  // Per-cell voice-source override (voice A/B, one bit per row). 0 = follow the
+  // slot type; 1 = play STEPS even when the slot is a Melody. Sparse in JSON.
+  uint8_t stepsOverride[2][Song::kMaxPositions / 8] = {};
+
+  bool stepsOverrideAt(int voice, int row) const {
+    if (voice < 0 || voice > 1 || row < 0 || row >= kMaxPositions) return false;
+    return (stepsOverride[voice][row >> 3] >> (row & 7)) & 1;
+  }
+  void setStepsOverride(int voice, int row, bool on) {
+    if (voice < 0 || voice > 1 || row < 0 || row >= kMaxPositions) return;
+    const uint8_t mask = static_cast<uint8_t>(1u << (row & 7));
+    if (on) stepsOverride[voice][row >> 3] |= mask;
+    else stepsOverride[voice][row >> 3] &= static_cast<uint8_t>(~mask);
+  }
+  bool anyStepsOverride() const {
+    for (int v = 0; v < 2; ++v)
+      for (int i = 0; i < kMaxPositions / 8; ++i)
+        if (stepsOverride[v][i]) return true;
+    return false;
+  }
+  // Rows [from, kMaxPositions-1] move down by one; the freed row `at` is clear.
+  void insertOverrideRow(int at) {
+    for (int v = 0; v < 2; ++v) {
+      for (int r = kMaxPositions - 1; r > at; --r) setStepsOverride(v, r, stepsOverrideAt(v, r - 1));
+      setStepsOverride(v, at, false);
+    }
+  }
+  // Rows above `at` move up by one; the last row is clear.
+  void deleteOverrideRow(int at) {
+    for (int v = 0; v < 2; ++v) {
+      for (int r = at; r < kMaxPositions - 1; ++r) setStepsOverride(v, r, stepsOverrideAt(v, r + 1));
+      setStepsOverride(v, kMaxPositions - 1, false);
+    }
+  }
 };
 
 #include "src/state/material_slot.h"
@@ -725,6 +759,7 @@ public:
   void clearSongPattern(int position, SongTrack track);
   int songPattern(int position, SongTrack track) const;
   int songPatternAtSlot(int slot, int position, SongTrack track) const;
+  bool songCellStepsOverrideAtSlot(int slot, int position, int voice) const;
   int songLengthAtSlot(int slot) const;
   void setSongLength(int length);
   int songLength() const;
@@ -1077,6 +1112,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeInt(s.positions[i].patterns[2])) return false;
       if (!writeLiteral(",\"voice\":")) return false;
       if (!writeInt(s.positions[i].patterns[3])) return false;
+      // Per-cell STEPS override: written only when set (older files lack them).
+      if (s.stepsOverrideAt(0, i) && !writeLiteral(",\"as\":1")) return false;
+      if (s.stepsOverrideAt(1, i) && !writeLiteral(",\"bs\":1")) return false;
       if (!writeChar('}')) return false;
     }
     if (!writeChar(']')) return false;

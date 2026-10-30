@@ -63,16 +63,24 @@ inline Result insertIntoSong(const PhraseBank& bank,
   if (shiftsRows) {
     for (int row = logicalLength - 1; row >= insertRow; --row) {
       destination.positions[row + phraseBars] = destination.positions[row];
+      for (int v = 0; v < 2; ++v) {
+        destination.setStepsOverride(v, row + phraseBars,
+                                     destination.stepsOverrideAt(v, row));
+      }
     }
   } else {
     for (int row = logicalLength; row < insertRow; ++row) {
       clearSongPosition(destination.positions[row]);
+      destination.setStepsOverride(0, row, false);
+      destination.setStepsOverride(1, row, false);
     }
   }
 
   for (int bar = 0; bar < phraseBars; ++bar) {
     SongPosition& position = destination.positions[insertRow + bar];
     clearSongPosition(position);
+    destination.setStepsOverride(0, insertRow + bar, false);
+    destination.setStepsOverride(1, insertRow + bar, false);
     for (int track = 0; track < kTrackCount; ++track) {
       if ((phrase->metadata.trackMask & maskForTrackIndex(track)) == 0) {
         continue;

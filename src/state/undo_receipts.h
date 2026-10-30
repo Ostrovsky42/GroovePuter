@@ -98,13 +98,17 @@ struct SongUndoPayload {
 
 static_assert(std::is_trivially_copyable<SongUndoPayload>::value,
               "Song Undo receipt must remain a fixed value");
-static_assert(sizeof(SongUndoPayload) <= 1040,
+static_assert(sizeof(SongUndoPayload) <= 1080,
               "R4 Song Undo receipt exceeded the measured ~1 KiB budget");
 static_assert(sizeof(SongUndoPayload) <= kUndoPayloadBytes,
               "Song Undo receipt exceeds canonical owner capacity");
 
 inline bool sameSong(const Song& lhs, const Song& rhs) {
   if (lhs.length != rhs.length || lhs.reverse != rhs.reverse) return false;
+  if (std::memcmp(lhs.stepsOverride, rhs.stepsOverride,
+                  sizeof(lhs.stepsOverride)) != 0) {
+    return false;
+  }
   for (int row = 0; row < Song::kMaxPositions; ++row) {
     for (int track = 0; track < SongPosition::kTrackCount; ++track) {
       if (lhs.positions[row].patterns[track] != rhs.positions[row].patterns[track]) {

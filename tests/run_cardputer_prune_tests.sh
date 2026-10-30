@@ -92,6 +92,11 @@ TESTS=(
   test_alt_n_undo_no_copy
   test_genre_presets
   test_legacy_role_mask_convention
+  test_song_cell_source_persistence
+  test_song_cell_source_playback
+  test_song_cell_source_no_melody
+  test_song_cell_source_row_ops
+  test_song_cell_source_opt
 )
 
 for test_name in "${TESTS[@]}"; do

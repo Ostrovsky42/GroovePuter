@@ -109,8 +109,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       return undoPreparedSongState();
     }
 
-    // Opt on a Synth A/B cell: that voice's STEPS <-> MELODY, the same owner
-    // as Opt on the synth page (the source belongs to the voice, not the cell).
+    // Opt on a Synth A/B cell: flip that cell's persistent source override
+    // (MELODY <-> STEPS) through the Song undo receipt. It never touches the
+    // live voice source; the synth page owns the temporary switch.
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
       bool valid = false;
       const SongTrack track = trackForColumn(cursorTrack(), valid);
@@ -119,29 +120,39 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         return true;
       }
       const int voice = track == SongTrack::SynthA ? 0 : 1;
-      const auto result = PhraseSourceToggle::switchSource(
-          mini_acid_,
-          [&](const std::function<void()>& body) { withAudioGuard(body); },
-          voice);
       const char label = voice == 0 ? 'A' : 'B';
-      char toast[32];
-      if (result == PhraseSourceToggle::Result::Rejected) {
-        // Name the slot and which path refused, so a device report is exact.
-        const int bank = mini_acid_.current303BankIndex(voice);
-        const int pattern = mini_acid_.display303LocalPatternIndex(voice);
-        const bool melodySlot = mini_acid_.isMelodySlot(voice, bank, pattern);
-        std::snprintf(toast, sizeof(toast), melodySlot ? "%c %c%d MELODY: CAN'T LOAD"
-                                                       : "%c %c%d: CAN'T MAKE MELODY",
-                      label, static_cast<char>('A' + bank), pattern + 1);
-      } else if (result == PhraseSourceToggle::Result::NoMelody) {
-        std::snprintf(toast, sizeof(toast), "%c MELODY EMPTY: ALT+N ON STEPS", label);
-      } else {
-        std::snprintf(toast, sizeof(toast), "SOURCE %c: %s", label,
-                      mini_acid_.currentSequencedSource(voice) ==
-                              MiniAcid::SequencedSource::Phrase
-                          ? "MELODY"
-                          : "STEPS");
+      const int row = cursorRow();
+      const SceneManager& manager = mini_acid_.sceneManager();
+      const Song& source = manager.currentScene().songs[manager.activeSongSlot()];
+      const int pattern = SongEdit::patternAt(source, row, track);
+      char toast[40];
+      if (pattern < 0) {
+        std::snprintf(toast, sizeof(toast), "%c: EMPTY CELL", label);
+        showToast(toast, 900);
+        return true;
       }
+      const auto kind =
+          mini_acid_.songCellMaterialKind(voice, static_cast<int16_t>(pattern));
+      if (kind == MiniAcid::SongCellMaterialKind::Unknown) {
+        std::snprintf(toast, sizeof(toast), "%c: CELL ON OTHER PAGE", label);
+        showToast(toast, 900);
+        return true;
+      }
+      if (kind != MiniAcid::SongCellMaterialKind::Melody) {
+        std::snprintf(toast, sizeof(toast), "%c %c%d: NO MELODY (ALT+N ON STEPS)",
+                      label, static_cast<char>('A' + songPatternBank(pattern)),
+                      songPatternIndexInBank(pattern) + 1);
+        showToast(toast, 1200);
+        return true;
+      }
+      const bool nowSteps = !SongEdit::stepsOverrideAt(source, row, track);
+      if (!commitSongMutation([&](Song& song) {
+            SongEdit::setStepsOverride(song, row, track, nowSteps);
+          })) {
+        return true;  // busy or unchanged: commitSongMutation already toasted
+      }
+      std::snprintf(toast, sizeof(toast), "ROW %02d %c: %s", row + 1, label,
+                    nowSteps ? "STEPS" : "MELODY");
       showToast(toast, 1000);
       return true;
     }

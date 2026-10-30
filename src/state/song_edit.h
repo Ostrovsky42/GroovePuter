@@ -34,12 +34,27 @@ inline void setPattern(Song& song, int row, SongTrack track, int pattern) {
   }
   if (pattern < 0) {
     song.positions[row].patterns[ti] = -1;
+    if (ti < 2) song.setStepsOverride(ti, row, false);
     return;
   }
-  song.positions[row].patterns[ti] =
-      static_cast<int16_t>(clampSongPatternIndex(pattern));
+  const int16_t next = static_cast<int16_t>(clampSongPatternIndex(pattern));
+  // A new slot in a cell starts following its own type again.
+  if (ti < 2 && song.positions[row].patterns[ti] != next) {
+    song.setStepsOverride(ti, row, false);
+  }
+  song.positions[row].patterns[ti] = next;
   if (row >= song.length) song.length = row + 1;
   if (song.length > Song::kMaxPositions) song.length = Song::kMaxPositions;
+}
+
+inline bool stepsOverrideAt(const Song& song, int row, SongTrack track) {
+  const int ti = trackIndex(track);
+  return ti >= 0 && ti < 2 && song.stepsOverrideAt(ti, row);
+}
+
+inline void setStepsOverride(Song& song, int row, SongTrack track, bool on) {
+  const int ti = trackIndex(track);
+  if (ti >= 0 && ti < 2) song.setStepsOverride(ti, row, on);
 }
 
 inline void clearPattern(Song& song, int row, SongTrack track) {
@@ -70,6 +85,7 @@ inline void insertRow(Song& song, int position) {
   for (int track = 0; track < SongPosition::kTrackCount; ++track) {
     song.positions[position].patterns[track] = -1;
   }
+  song.insertOverrideRow(position);
   if (len < Song::kMaxPositions) song.length = len + 1;
 }
 
@@ -85,6 +101,7 @@ inline void deleteRow(Song& song, int position) {
   for (int track = 0; track < SongPosition::kTrackCount; ++track) {
     song.positions[last].patterns[track] = -1;
   }
+  song.deleteOverrideRow(position);
   if (len > 1) song.length = len - 1;
 }
 

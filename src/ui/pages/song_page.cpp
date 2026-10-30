@@ -38,7 +38,8 @@ inline void formatSongPatternLabel(const MiniAcid& engine,
                                    SongTrack track,
                                    int pattern,
                                    char* out,
-                                   int outSize) {
+                                   int outSize,
+                                   int row = -1) {
   if (!out || outSize <= 0) return;
   if (pattern < 0) {
     std::snprintf(out, outSize, "---");
@@ -61,7 +62,7 @@ inline void formatSongPatternLabel(const MiniAcid& engine,
   }
 
   char kind = '?';
-  switch (engine.songCellMaterialKind(voice, static_cast<int16_t>(pattern))) {
+  switch (engine.songCellMaterialKind(voice, static_cast<int16_t>(pattern), row)) {
     case MiniAcid::SongCellMaterialKind::Pattern: kind = 'P'; break;
     case MiniAcid::SongCellMaterialKind::Melody: kind = 'M'; break;
     case MiniAcid::SongCellMaterialKind::Unknown: kind = '?'; break;
@@ -1596,7 +1597,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         
         if (patIndex >= 0) {
             formatSongPatternLabel(mini_acid_, trk, patIndex, patLabel,
-                                   sizeof(patLabel));
+                                   sizeof(patLabel), cursorRow());
         }
 
         if (trk == SongTrack::SynthA || trk == SongTrack::SynthB) {
@@ -2051,7 +2052,7 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
         } else if (pattern >= 0) {
           char patternBuf[10];
           formatSongPatternLabel(mini_acid_, track, pattern, patternBuf,
-                                 sizeof(patternBuf));
+                                 sizeof(patternBuf), row);
           gfx.setTextColor(selected && has_selection_
                                ? palette.invert
                                : (editable ? trackColor(track) : palette.dim));
@@ -2361,7 +2362,7 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
         if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
-                                 sizeof(patBuf));
+                                 sizeof(patBuf), row_idx);
           IGfxColor patColor = colorForSongTrack(track);
           gfx.setTextColor(patColor.color16());
           gfx.drawText(tx + 1, ry + 1, patBuf);
@@ -2641,7 +2642,7 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         } else if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
-                                 sizeof(patBuf));
+                                 sizeof(patBuf), row);
           gfx.setTextColor(selected && has_selection_
                                ? p.background
                                : (editable ? themedTrackColor(track)
@@ -2899,7 +2900,7 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
         } else if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
-                                 sizeof(patBuf));
+                                 sizeof(patBuf), row);
           gfx.setTextColor(selected && has_selection_
                                ? IGfxColor(AmberTheme::BG_DEEP_BLACK)
                                : (editable ? themedTrackColor(track)

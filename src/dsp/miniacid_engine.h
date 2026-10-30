@@ -289,8 +289,10 @@ public:
     Awaiting,
     LoadFailed,
   };
+  // row >= 0 applies that cell's STEPS override: a Melody slot reads as Pattern.
   SongCellMaterialKind songCellMaterialKind(int voiceIndex,
-                                            int16_t globalSlot) const;
+                                            int16_t globalSlot,
+                                            int row = -1) const;
   SongVoiceDisplayState songVoiceDisplayState(int voiceIndex) const;
   const PhraseRuntime::RuntimeSynthEventBuffer* activeMelodyForDisplay(
       int voiceIndex) const;
@@ -1036,8 +1038,10 @@ private:
   uint32_t melodyPhaseOriginTick_[NUM_303_VOICES]{0, 0};
   bool songPhaseResetPending_[NUM_303_VOICES]{false, false};
   uint32_t songRowStartTick_ = 0;
-  void applySongSynthRow_(int voiceIndex, int16_t globalSlot);
-  bool songVoiceInSync_(int voiceIndex, int16_t globalSlot) const;
+  void applySongSynthRow_(int voiceIndex, int16_t globalSlot, int row);
+  bool songVoiceInSync_(int voiceIndex, int16_t globalSlot, int row) const;
+  // The one place that decides Melody vs steps for a Song cell.
+  bool songCellWantsMelody_(int voiceIndex, int row, int16_t globalSlot) const;
   bool activateSongMelody_(int voiceIndex, int16_t globalSlot);
   bool loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSlot);
   int peekNextSongRow_() const;

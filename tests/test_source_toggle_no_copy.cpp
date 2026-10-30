@@ -72,7 +72,7 @@ int main() {
                                     "../src/ui/pages/song_page_r4_owner.inc"};
   const char* const toastTexts[] = {"MELODY EMPTY: ALT+N MAKES ONE",
                                     "MELODY EMPTY: ALT+N ON STEPS",
-                                    "MELODY EMPTY: ALT+N ON STEPS"};
+                                    "NO MELODY (ALT+N ON STEPS)"};
   for (int i = 0; i < 3; ++i) {
     std::ifstream in(toastFiles[i]);
     std::stringstream buf;

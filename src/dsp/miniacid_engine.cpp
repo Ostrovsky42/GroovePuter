@@ -2123,8 +2123,8 @@ void MiniAcid::applySongPositionSelection() {
     }
   }
 
-  applySongSynthRow_(0, static_cast<int16_t>(patA));
-  applySongSynthRow_(1, static_cast<int16_t>(patB));
+  applySongSynthRow_(0, static_cast<int16_t>(patA), pos);
+  applySongSynthRow_(1, static_cast<int16_t>(patB), pos);
 
   if (patD < 0) {
     sceneManager_.setCurrentBankIndex(0, patternModeDrumBankIndex_);
@@ -6510,17 +6510,26 @@ bool MiniAcid::workingMelodyUnsaved_(int voiceIndex) const {
          GroovePuterMaterial::versionForMelody(*melody) != savedMelodyVersion_[idx];
 }
 
-bool MiniAcid::songVoiceInSync_(int voiceIndex, int16_t globalSlot) const {
+bool MiniAcid::songCellWantsMelody_(int voiceIndex, int row,
+                                    int16_t globalSlot) const {
+  if (globalSlot < 0) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
+                                        globalSlot % kPatternsPerPage) !=
+      GroovePuterMaterial::MaterialKind::Melody) {
+    return false;  // a Pattern slot always plays steps
+  }
+  return !sceneManager_.songCellStepsOverrideAtSlot(songPlaybackSlot_, row, idx);
+}
+
+bool MiniAcid::songVoiceInSync_(int voiceIndex, int16_t globalSlot, int row) const {
   const int idx = clamp303Voice(voiceIndex);
   if (globalSlot < 0) return !workingMaterial_[idx].holdsMelody();
   if (songPatternPage(globalSlot) != currentPageIndex() ||
       current303GlobalSlot_(idx) != globalSlot) {
     return false;
   }
-  const int residentSlot = globalSlot % kPatternsPerPage;
-  if (GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                        residentSlot) !=
-      GroovePuterMaterial::MaterialKind::Melody) {
+  if (!songCellWantsMelody_(idx, row, globalSlot)) {
     return activeMaterial_[idx].kind == GroovePuterMaterial::MaterialKind::Pattern &&
            !workingMaterial_[idx].holdsMelody();
   }
@@ -6551,14 +6560,14 @@ bool MiniAcid::activateSongMelody_(int voiceIndex, int16_t globalSlot) {
 // Runs wherever the Song row is applied, including the audio thread at the row
 // boundary, so it never touches storage: a Melody that is not already in NEXT
 // leaves the voice Awaiting for serviceSongMaterial().
-void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot) {
+void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot, int row) {
   const int idx = clamp303Voice(voiceIndex);
   if (workingMelodyUnsaved_(idx)) {
     songVoiceState_[idx] = SongVoiceState::Held;
     return;
   }
 
-  if (songVoiceInSync_(idx, globalSlot)) {
+  if (songVoiceInSync_(idx, globalSlot, row)) {
     // Keep the Song read-model anchored to the CURRENT identity even when no
     // material activation is needed. A later WAIT (for example an armed user
     // GO followed by a Song seek) must display the retained CURRENT slot, not
@@ -6595,11 +6604,7 @@ void MiniAcid::applySongSynthRow_(int voiceIndex, int16_t globalSlot) {
     return;
   }
 
-  const int residentSlot = globalSlot % kPatternsPerPage;
-  const bool wantsMelody =
-      GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                        residentSlot) ==
-      GroovePuterMaterial::MaterialKind::Melody;
+  const bool wantsMelody = songCellWantsMelody_(idx, row, globalSlot);
   if (wantsMelody && userOwnsNext_(idx)) {
     songVoiceState_[idx] = SongVoiceState::Awaiting;
     silenceAwaitingSongVoice_(idx);
@@ -6716,10 +6721,10 @@ void MiniAcid::serviceSongMaterial() {
     // 1. Catch up a voice that is not playing what the current row names: its
     //    Melody was not ready at the boundary, it was held and has since been
     //    saved or discarded, or the Song was positioned while stopped.
-    if (songVoiceInSync_(idx, slot)) {
+    if (songVoiceInSync_(idx, slot, row)) {
       songVoiceState_[idx] = SongVoiceState::InSync;
     } else {
-      applySongSynthRow_(idx, slot);
+      applySongSynthRow_(idx, slot, row);
       if (songVoiceState_[idx] == SongVoiceState::Awaiting &&
           loadSongMelodyIntoNext_(idx, row, slot) &&
           activateSongMelody_(idx, slot)) {
@@ -6746,11 +6751,12 @@ void MiniAcid::serviceSongMaterial() {
     if (!playing || songVoiceState_[idx] == SongVoiceState::Held) continue;
     const int nextRow = peekNextSongRow_();
     const int16_t nextSlot = songSynthSlotAt_(idx, nextRow);
-    if (nextSlot < 0 || nextSlot == slot ||
+    if (nextSlot < 0 ||
+        (nextSlot == slot &&
+         songCellWantsMelody_(idx, nextRow, nextSlot) ==
+             songCellWantsMelody_(idx, row, slot)) ||
         songPatternPage(nextSlot) != currentPageIndex() ||
-        GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                          nextSlot % kPatternsPerPage) !=
-            GroovePuterMaterial::MaterialKind::Melody) {
+        !songCellWantsMelody_(idx, nextRow, nextSlot)) {
       continue;
     }
     (void)loadSongMelodyIntoNext_(idx, nextRow, nextSlot);
@@ -6762,13 +6768,15 @@ bool MiniAcid::songNeedsNext_(int voiceIndex) const {
   const int idx = clamp303Voice(voiceIndex);
   const int row = clampSongPosition(sceneManager_.getSongPosition());
   const int16_t nextSlot = songSynthSlotAt_(idx, peekNextSongRow_());
-  if (nextSlot < 0 || nextSlot == songSynthSlotAt_(idx, row) ||
+  const int16_t curSlot = songSynthSlotAt_(idx, row);
+  if (nextSlot < 0 ||
+      (nextSlot == curSlot &&
+       songCellWantsMelody_(idx, peekNextSongRow_(), nextSlot) ==
+           songCellWantsMelody_(idx, row, curSlot)) ||
       songPatternPage(nextSlot) != currentPageIndex()) {
     return false;
   }
-  return GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                           nextSlot % kPatternsPerPage) ==
-         GroovePuterMaterial::MaterialKind::Melody;
+  return songCellWantsMelody_(idx, peekNextSongRow_(), nextSlot);
 }
 
 bool MiniAcid::songMaterialServiceDue() const {
@@ -6787,7 +6795,7 @@ bool MiniAcid::songMaterialServiceDue() const {
     }
     if (songLoadFailedSlot_[idx] == slot && slot >= 0) continue;
     if (songVoiceState_[idx] != SongVoiceState::InSync ||
-        !songVoiceInSync_(idx, slot)) {
+        !songVoiceInSync_(idx, slot, row)) {
       return true;
     }
   }
@@ -6795,13 +6803,15 @@ bool MiniAcid::songMaterialServiceDue() const {
   const int nextRow = peekNextSongRow_();
   for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
     const int16_t nextSlot = songSynthSlotAt_(idx, nextRow);
-    if (nextSlot < 0 || nextSlot == songSynthSlotAt_(idx, row) ||
+    const int16_t slot = songSynthSlotAt_(idx, row);
+    if (nextSlot < 0 ||
+        (nextSlot == slot &&
+         songCellWantsMelody_(idx, nextRow, nextSlot) ==
+             songCellWantsMelody_(idx, row, slot)) ||
         songPatternPage(nextSlot) != currentPageIndex()) {
       continue;
     }
-    if (GroovePuterMaterial::residentKind(sceneManager_.currentScene(), idx,
-                                          nextSlot % kPatternsPerPage) !=
-        GroovePuterMaterial::MaterialKind::Melody) {
+    if (!songCellWantsMelody_(idx, nextRow, nextSlot)) {
       continue;
     }
     const PendingMaterial& pending = pendingMaterial_[idx];
@@ -6821,7 +6831,7 @@ bool MiniAcid::songVoiceHeld(int voiceIndex) const {
 }
 
 MiniAcid::SongCellMaterialKind MiniAcid::songCellMaterialKind(
-    int voiceIndex, int16_t globalSlot) const {
+    int voiceIndex, int16_t globalSlot, int row) const {
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES || globalSlot < 0) {
     return SongCellMaterialKind::Empty;
   }
@@ -6831,7 +6841,9 @@ MiniAcid::SongCellMaterialKind MiniAcid::songCellMaterialKind(
   const int residentSlot = globalSlot % kPatternsPerPage;
   const auto kind = GroovePuterMaterial::residentKind(
       sceneManager_.currentScene(), voiceIndex, residentSlot);
-  return kind == GroovePuterMaterial::MaterialKind::Melody
+  const bool overridden = row >= 0 && sceneManager_.songCellStepsOverrideAtSlot(
+      sceneManager_.activeSongSlot(), row, voiceIndex);
+  return (kind == GroovePuterMaterial::MaterialKind::Melody && !overridden)
       ? SongCellMaterialKind::Melody
       : SongCellMaterialKind::Pattern;
 }

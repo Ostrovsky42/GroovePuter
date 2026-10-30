@@ -83,6 +83,7 @@ void clearSong(Song& song) {
   }
   song.length = 1;
   song.reverse = false;
+  std::memset(song.stepsOverride, 0, sizeof(song.stepsOverride));
 }
 
 void clearCustomPhrases(Scene& scene) {
@@ -986,6 +987,19 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     else if (lastKey_ == "b") trackIdx = 1;
     else if (lastKey_ == "drums") trackIdx = 2;
     else if (lastKey_ == "voice") trackIdx = 3;
+    int overrideVoice = -1;
+    if (lastKey_ == "as") overrideVoice = 0;
+    else if (lastKey_ == "bs") overrideVoice = 1;
+    if (overrideVoice >= 0) {
+      int songIdx = 0;
+      for (int i = stackSize_ - 1; i >= 0; --i) {
+        if (stack_[i].path == Path::Songs) { songIdx = stack_[i].index; break; }
+      }
+      if (songIdx < 0) songIdx = 0;
+      if (songIdx > 1) songIdx = 1;
+      target_.songs[songIdx].setStepsOverride(overrideVoice, posIdx, value != 0);
+      return;
+    }
     if (trackIdx >= 0 && trackIdx < SongPosition::kTrackCount) {
       int songIdx = 0;
       // stack: ..., Songs(Array), Song(Object), SongPositions(Array), SongPosition(Object)
@@ -2179,7 +2193,11 @@ void SceneManager::setSongPattern(int position, SongTrack track, int patternInde
     s.length = clampSongLength(pos + 1);
   }
 
-  s.positions[pos].patterns[trackIdx] = clampSongPatternIndex(patternIndex);
+  const int16_t newPattern = clampSongPatternIndex(patternIndex);
+  if (trackIdx < 2 && s.positions[pos].patterns[trackIdx] != newPattern) {
+    s.setStepsOverride(trackIdx, pos, false);  // a new slot starts following its type
+  }
+  s.positions[pos].patterns[trackIdx] = newPattern;
   // NOTE: Do NOT clamp `position` by current song length here.
   // It breaks multi-row write/fill when length==1 by collapsing writes to row 0.
   // Also do NOT call trimSongLength() here.
@@ -2194,6 +2212,7 @@ void SceneManager::clearSongPattern(int position, SongTrack track) {
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
   scene_->songs[scene_->activeSongSlot].positions[pos].patterns[trackIdx] = -1;
+  if (trackIdx < 2) scene_->songs[scene_->activeSongSlot].setStepsOverride(trackIdx, pos, false);
   // Trim length only when saving, not on every edit
 }
 
@@ -2213,6 +2232,12 @@ int SceneManager::songPatternAtSlot(int slot, int position, SongTrack track) con
   const Song& s = scene_->songs[slot];
   if (position >= s.length) return -1;
   return clampSongPatternIndex(s.positions[position].patterns[trackIdx]);
+}
+
+bool SceneManager::songCellStepsOverrideAtSlot(int slot, int position, int voice) const {
+  if (slot < 0 || slot > 1) return false;
+  if (position < 0 || position >= scene_->songs[slot].length) return false;
+  return scene_->songs[slot].stepsOverrideAt(voice, position);
 }
 
 int SceneManager::songLengthAtSlot(int slot) const {
@@ -2314,6 +2339,7 @@ void SceneManager::mergeSongs() {
       // Only write B's track data when A genuinely has nothing there.
       if (a.positions[i].patterns[t] < 0 && i < b.length) {
         a.positions[i].patterns[t] = b.positions[i].patterns[t];
+        if (t < 2) a.setStepsOverride(t, i, b.stepsOverrideAt(t, i));
       }
     }
   }
@@ -2354,6 +2380,14 @@ void SceneManager::alternateSongs() {
     }
   }
 
+  for (int v = 0; v < 2; ++v) {
+    for (int i = 0; i < steps; ++i) {
+      if (i * 2 < Song::kMaxPositions)
+        target.setStepsOverride(v, i * 2, i < a.length && a.stepsOverrideAt(v, i));
+      if (i * 2 + 1 < Song::kMaxPositions)
+        target.setStepsOverride(v, i * 2 + 1, i < b.length && b.stepsOverrideAt(v, i));
+    }
+  }
   target.length = newLen;
   trimSongLength();
 }
@@ -2375,6 +2409,7 @@ void SceneManager::insertSongRow(int position) {
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
         song.positions[position].patterns[t] = -1;
     }
+    song.insertOverrideRow(position);
 
     if (len < Song::kMaxPositions) {
         song.length = len + 1;
@@ -2398,6 +2433,7 @@ void SceneManager::deleteSongRow(int position) {
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
         song.positions[last].patterns[t] = -1;
     }
+    song.deleteOverrideRow(position);
 
     if (len > 1) {
         song.length = len - 1;
@@ -2467,6 +2503,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
         pos["b"] = s.positions[i].patterns[1];
         pos["drums"] = s.positions[i].patterns[2];
         pos["voice"] = s.positions[i].patterns[3];
+        if (s.stepsOverrideAt(0, i)) pos["as"] = 1;
+        if (s.stepsOverrideAt(1, i)) pos["bs"] = 1;
       }
   }
   
@@ -2686,6 +2724,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
                          if (posObj["b"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[1] = clampSongPatternIndex(posObj["b"].as<int>());
                          if (posObj["drums"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
                          if (posObj["voice"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
+                         if (posObj["as"].is<int>() && posObj["as"].as<int>() != 0) loadedSongs[sIdx].setStepsOverride(0, posIdx, true);
+                         if (posObj["bs"].is<int>() && posObj["bs"].as<int>() != 0) loadedSongs[sIdx].setStepsOverride(1, posIdx, true);
                      }
                      if (posIdx + 1 > loadedSongs[sIdx].length) loadedSongs[sIdx].length = posIdx + 1;
                      ++posIdx;
