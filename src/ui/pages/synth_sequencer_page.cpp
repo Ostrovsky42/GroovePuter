@@ -421,8 +421,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     return value >= lowestNote && value < lowestNote + kVisibleNotes;
   };
 
-  // Row separators only under C rows (light) and the project key's tonic row
-  // (dotted, brighter): landmarks for the eye, not a grid of grey strips.
+  // Every pitch row gets a dim dotted guide (one step darker than the old
+  // separators); C rows and the project key's tonic row keep a stronger
+  // dotted line. Beat lines are thin and dim, bar lines solid and a little
+  // brighter, so a bar reads at a glance.
   const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
   const int tonic = (key.scaleRoot % 12 + 12) % 12;
   for (int row = 0; row < kVisibleNotes; ++row) {
@@ -435,6 +437,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
       }
     } else if (pitchClass == 0) {
       gfx.fillRect(planeX, lineY, planeW, 1, COLOR_LIGHT_GRAY);
+    } else {
+      for (int x = planeX; x < planeX + planeW; x += 3) {
+        gfx.fillRect(x, lineY, 1, 1, COLOR_GRAY);
+      }
     }
   }
 
@@ -445,8 +451,11 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.setTextColor(COLOR_LABEL);
     // Beat 1 is the left edge, where GRID already sits.
     if (beat > 0) gfx.drawText(beatX + 2, bounds.y + 9, label);
-    gfx.fillRect(beatX, planeTop, 1, kPlaneH, COLOR_LABEL);
+    gfx.fillRect(beatX, planeTop, 1, kPlaneH,
+                 beat == 0 ? COLOR_LIGHT_GRAY : COLOR_GRAY);
   }
+  // Bar lines: the left edge and the right end of this bar's plane.
+  gfx.fillRect(planeX + planeW - 1, planeTop, 1, kPlaneH, COLOR_LIGHT_GRAY);
 
   // The dotted cursor goes under the notes so it never cuts a note.
   const int cursorX = tickToX(cursorTick);
@@ -1204,6 +1213,14 @@ bool SynthSequencerPage::newEmptyMelody() {
 
 int SynthSequencerPage::chordFocusInCell() const {
   const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  // List view: the selected row is the authority. A cell cannot tell apart
+  // two notes starting on the same tick, a row can; every edit (Backspace,
+  // Alt+Left/Right, pitch, Alt+A, C, H) then acts on exactly the chosen note.
+  if (phrase_view_ == PhraseView::List) {
+    const PhraseSelectionState::State listed =
+        PhraseSelectionState::resolve(phrase, phrase_selection_);
+    return listed.active ? static_cast<int>(listed.eventIndex) : -1;
+  }
   const uint16_t cell = PhraseNotesCursor::tick(phrase_cursor_);
   const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
   return PhraseChordFocus::valid(phrase, cell, cellTicks, chord_focus_event_)
@@ -1578,6 +1595,17 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
       (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
     phrase_selection_ = PhraseSelectionState::step(
         phrase, phrase_selection_, nav == GROOVEPUTER_DOWN ? 1 : -1);
+    // Link the roll cursor to the selected note's start cell, so Enter adds
+    // after it and switching to the roll (V) lands on it.
+    chord_focus_event_ = -1;
+    if (phrase_selection_.active && phrase_selection_.eventIndex < phrase.count) {
+      const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
+      if (cellTicks > 0) {
+        phrase_cursor_.cell = static_cast<uint8_t>(
+            phrase.events[phrase_selection_.eventIndex].startTick / cellTicks);
+        phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
+      }
+    }
     return true;
   }
 
