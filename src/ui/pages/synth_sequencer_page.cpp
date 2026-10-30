@@ -365,9 +365,10 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   constexpr int kRowH = 5;
   constexpr int kVisibleNotes = 10;
   constexpr int kPlaneH = kRowH * kVisibleNotes;
-  // Timeline strip: 1 px black gap under the plane, then 4 px of segments.
+  // Timeline strip: a 1 px WHITE separator row under the plane, then 2 px of
+  // segments (half the 4 px note height).
   constexpr int kStripGap = 1;
-  constexpr int kStripH = 4;
+  constexpr int kStripH = 2;
   // The cursor marker keeps its old place (below the former 11-row plane).
   constexpr int kCursorMarkerDy = kRowH * 11 + 1;
 
@@ -553,6 +554,9 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.setTextColor(voiceColor);
     gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop + kPlaneH - 6, more);
   }
+
+  // Separator: the former gap row, so the strip reads as its own element.
+  gfx.fillRect(planeX, planeTop + kPlaneH, planeW, 1, COLOR_WHITE);
 
   gfx.fillRect(cursorX - 1, planeTop + kCursorMarkerDy, 3, 3, COLOR_WHITE);
 
