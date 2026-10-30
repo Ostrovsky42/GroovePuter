@@ -86,6 +86,7 @@ TESTS=(
   test_page_switch_rehydrate
   test_global_nav_reserved_keys
   test_genre_reachability_matrix
+  test_drum_genre_templates_coverage
 )
 
 for test_name in "${TESTS[@]}"; do
