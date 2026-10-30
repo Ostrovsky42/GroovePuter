@@ -174,7 +174,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
-| `D` | Outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D |
+| `D` | On NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
 | `Alt+R` / `Opt` | Source STEPS <-> MELODY; with no Melody yet, makes one from the steps first. `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |
@@ -297,7 +297,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 |---|---|
 | `Left/Right` | Move `Synth A -> Synth B -> Drums`; crossing the outer edge changes edit Song slot A/B |
 | `Up/Down` | Move Song row |
-| `Enter` | Open the cell's pattern in its synth editor. On another page the first Enter switches the page (`PAGE n  Bk`), the second opens the pattern. Refused while the working melody or steps are unsaved (`SAVE MELODY FIRST` / `SAVE STEPS FIRST`) |
+| `Enter` | Open the cell's pattern in its synth editor. On another page one Enter switches the page (`PAGE n  Bk`) and then opens the pattern automatically once the page has loaded. Refused while the working melody or steps are unsaved (`SAVE MELODY FIRST` / `SAVE STEPS FIRST`) |
 | `Q..I` | Assign existing slot from visible `PAT:A/B` context |
 | `G` | Generate safe material and assign selected cell; unique Song-generated material rerolls in place |
 | double `G` | Materialize Synth A + Synth B + Drums for current row |

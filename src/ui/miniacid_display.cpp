@@ -523,6 +523,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     }
 
     if (page_index_ == index && context == 0) return;
+    reset_pending_until_ms_ = 0;
 
     Serial.printf("[UI] transitionToPage: %d -> %d (ctx=%d)\n", page_index_, index, context);
 
@@ -583,6 +584,16 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    if (reset_pending_until_ms_ != 0) {
+        // Modifier-only events (no key) must not cancel: Ctrl and Alt arrive before Backspace.
+        const bool modifierOnly = event.key == 0;
+        const bool resetCombo = event.ctrl && event.alt &&
+                                (event.key == '\b' || event.key == 0x7F);
+        if (!modifierOnly && (!resetCombo || millis() > reset_pending_until_ms_)) {
+            reset_pending_until_ms_ = 0;
+            showToast("RESET CANCELLED", 800);
+        }
+    }
     if (global_midi_sync_overlay_.isVisible()) {
         global_midi_sync_overlay_.handleEvent(event);
         const int tempoDelta = global_midi_sync_overlay_.takeTempoDelta();
@@ -738,6 +749,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.ctrl && event.alt && (event.key == '\b' || event.key == 0x7F)) {
+            if (reset_pending_until_ms_ == 0) {
+                reset_pending_until_ms_ = millis() + 3000;
+                showToast("PRESS AGAIN TO RESET", 3000);
+                return true;
+            }
+            reset_pending_until_ms_ = 0;
             performance_keyboard_.panic();
             withAudioGuard([&]() {
                 mini_acid_.sceneManager().loadDefaultScene();

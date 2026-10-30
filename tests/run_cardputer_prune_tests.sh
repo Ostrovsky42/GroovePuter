@@ -84,6 +84,7 @@ TESTS=(
   test_project_melody_reload
   test_h5_sdl_process_restart
   test_page_switch_rehydrate
+  test_global_nav_reserved_keys
 )
 
 for test_name in "${TESTS[@]}"; do

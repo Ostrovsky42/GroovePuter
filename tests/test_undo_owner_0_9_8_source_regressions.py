@@ -73,12 +73,12 @@ def main() -> None:
     # explanatory comment. The public wrapper delegates the destructive chord to
     # the retained owner path; that owner path must still implement the complete
     # capture -> no-op check -> commit -> audio-guarded clear transaction.
-    require("if ((ui_event.ctrl || ui_event.alt) && isBackspace)" in PATTERN_CPP and
+    require("if (ui_event.ctrl && isBackspace)" in PATTERN_CPP and
             "return handleEventLegacyUnowned(ui_event);" in PATTERN_CPP,
-            "public Pattern wrapper must keep Alt+Backspace delegated to the retained owner")
+            "public Pattern wrapper must keep Ctrl+Backspace delegated to the retained owner")
     reset_block = between(
         PATTERN,
-        "if ((ui_event.ctrl || ui_event.alt) && (key == '\\b' || key == 0x7F)) {",
+        "if (ui_event.ctrl && (key == '\\b' || key == 0x7F)) {",
         "if (is_backspace && has_selection_)")
     require("captureCurrentSynthPatternUndo" in reset_block,
             "Pattern reset must PREPARE a stable before-state receipt")

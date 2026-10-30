@@ -112,7 +112,7 @@ def main() -> None:
     # one-shot restore to one-slot exchange; this is the cumulative R3->R9 contract.
     reset_block = between(
         LEGACY,
-        "if ((ui_event.ctrl || ui_event.alt) && (key == '\\b' || key == 0x7F)) {",
+        "if (ui_event.ctrl && (key == '\\b' || key == 0x7F)) {",
         "if (is_backspace && has_selection_)")
     require("captureCurrentSynthPatternUndo" in reset_block and
             "isCanonicalClearedSynthPattern" in reset_block and
@@ -124,9 +124,9 @@ def main() -> None:
             "undoOwner().togglePrepared<SynthPatternUndoPayload>" in LEGACY and
             "exchangeSynthPatternUndo" in LEGACY,
             "R3 ownership must remain authoritative after the R9 one-slot toggle upgrade")
-    require("if ((ui_event.ctrl || ui_event.alt) && isBackspace)" in wrapper and
+    require("if (ui_event.ctrl && isBackspace)" in wrapper and
             "handleEventLegacyUnowned(ui_event)" in wrapper,
-            "R3 wrapper must delegate Alt+Backspace to the R2 owner path")
+            "R3 wrapper must delegate Ctrl+Backspace to the R2 owner path")
 
     # Direct note entry is also persistent Pattern editing and may not bypass R3.
     note_write = between(

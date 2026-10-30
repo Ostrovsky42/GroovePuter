@@ -123,6 +123,7 @@ private:
   void drawToast();
   uint32_t last_cycle_pulse_counter_ = 0;
   unsigned long cycle_pulse_until_ms_ = 0;
+  unsigned long reset_pending_until_ms_ = 0;  // Ctrl+Alt+Bksp confirm window
   VisualStyle applied_visual_style_ = VisualStyle::MINIMAL;
   bool visual_style_initialized_ = false;
   GroovePuterState::UiSessionState ui_session_{};

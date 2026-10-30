@@ -270,9 +270,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   const bool isBackspace = key == '\b' || key == 0x7F;
 
   // R2 owns Reset Pattern and the existing application Undo implementation.
-  // Ctrl+Backspace and Alt+Backspace both clear the whole pattern in one undo
-  // step, before any selection is considered.
-  if ((ui_event.ctrl || ui_event.alt) && isBackspace) {
+  // Ctrl+Backspace clears the whole pattern in one undo step, before any
+  // selection is considered. Alt+Backspace is DISCARD and is consumed in
+  // handleEvent() before this point.
+  if (ui_event.ctrl && isBackspace) {
     return handleEventLegacyUnowned(ui_event);
   }
 

@@ -747,7 +747,9 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     setBankIndex(nextBank);
     return true;
   }
-  if (key_g) {
+  // Fn+G is no longer reserved by isGlobalNav; it must not fall into the
+  // unmodified legacy whole-pattern randomizer.
+  if (key_g && !ui_event.meta) {
     if (ui_event.ctrl) {
       int voice = activeDrumVoice();
       withAudioGuard([&]() { mini_acid_.randomizeDrumVoice(voice); });

@@ -416,7 +416,9 @@ void SongPage::applyPendingOpen() {
                                                 pending_open_.pattern);
   });
   if (!moved) {
-    UI::showToast("SAVE MELODY FIRST", 1000);
+    UI::showToast(mini_acid_.hasUnsavedWorkingMelody(pending_open_.voice) ? "SAVE MELODY FIRST"
+                                                                          : "SAVE STEPS FIRST",
+                  1000);
     return;
   }
   char toast[32];
@@ -1608,7 +1610,11 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
                 pending_open_.active = false;  // a new Enter replaces any waiting open
                 if (page != mini_acid_.currentPageIndex()) {
                     if (!mini_acid_.tryManualPageSwitch(page)) {
-                        UI::showToast("SAVE STEPS FIRST", 1000);
+                        UI::showToast(mini_acid_.hasUnsavedWorkingMelody(0) ||
+                                              mini_acid_.hasUnsavedWorkingMelody(1)
+                                          ? "SAVE MELODY FIRST"
+                                          : "SAVE STEPS FIRST",
+                                      1000);
                         return true;
                     }
                     // The page loads asynchronously: remember the target and apply it when it is current.

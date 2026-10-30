@@ -835,7 +835,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return false;
   }
 
-  if ((ui_event.ctrl || ui_event.alt) && (key == '\b' || key == 0x7F)) {
+  if (ui_event.ctrl && (key == '\b' || key == 0x7F)) {
     GroovePuterUndo::SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
             mini_acid_.sceneManager(), voice_index_, before)) {
