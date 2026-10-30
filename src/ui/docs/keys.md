@@ -197,8 +197,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 
 `Alt+X` is reserved globally for LiveMix and therefore is not a Synth DISCARD chord. Likewise, the current hard-global `Alt+V` route is not a reachable Synth CONNECT shortcut.
 
-On the Melody editor (`SOURCE: MELODY`), `Left/Right` jump from note to note (a note off the grid too; the grid
-move applies when no note lies that way) and `Up/Down`
+On the Melody editor (`SOURCE: MELODY`), `Left/Right` move along time and `Up/Down`
 move the note to the next note of the project key shown as `KEY C DOR` in the
 header (a note outside the key goes to the nearest key note); `Ctrl+Up/Down`
 move it by exactly one semitone. `K` raises the key's tonic a semitone and `M`

@@ -14,6 +14,11 @@ CXX="${CXX:-g++}"
 "$BUILD/test_phrase_chord_focus"
 echo "Melody chord focus PASS"
 
+# The Melody roll's playback strip uses the overview's mapping: pure, no SDL.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -I"$ROOT" \
+  "$ROOT/tests/test_melody_roll_playhead.cpp" -o "$BUILD/test_melody_roll_playhead"
+"$BUILD/test_melody_roll_playhead"
+
 cd "$ROOT/platform_sdl"
 mapfile -t SRCS < <(
   awk '/^SOURCES :=/ { c = 1; next } c && /^[^[:space:]]/ { c = 0 }
@@ -26,7 +31,7 @@ if (( ${#SRCS[@]} == 0 )); then
   exit 3
 fi
 
-for test in test_tempo_sync_ui test_melody_new_empty_ui test_melody_chord_playback test_melody_list_edit_target test_melody_note_step test_melody_vary_bar; do
+for test in test_tempo_sync_ui test_melody_new_empty_ui test_melody_chord_playback test_melody_list_edit_target test_melody_vary_bar; do
   "$CXX" -std=c++17 -Wall -Wextra -Wno-c++20-extensions \
     -I.. -I. -include arduino_compat.h \
     $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
@@ -46,5 +51,4 @@ tail -1 "$BUILD/test_tempo_sync_ui.out"
 echo "UI navigation: Alt+N new empty Melody, chord edit and recording PASS"
 "$BUILD/test_melody_chord_playback"
 "$BUILD/test_melody_list_edit_target"
-"$BUILD/test_melody_note_step"
 "$BUILD/test_melody_vary_bar"

@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 #include "../ui_common.h"
+#include "../melody_playhead.h"
 
 #include "../retro_ui_theme.h"
 #include "../ui_theme.h"
@@ -1038,11 +1039,7 @@ bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
     gfx.fillRect(ex, ey, ew, 3, voiceColor(voiceIndex));
   }
 
-  const uint16_t phaseInBar =
-      static_cast<uint16_t>(phase % PhraseRuntime::kTicksPerBar);
-  const int playX = rollX + static_cast<int>(
-      static_cast<uint32_t>(phaseInBar) * static_cast<uint32_t>(rollW - 1) /
-      PhraseRuntime::kTicksPerBar);
+  const int playX = MelodyPlayhead::x(phase, rollX, rollW);
   gfx.drawLine(playX, rollY, playX, rollY + rollH - 1, COLOR_WHITE);
 
   char phaseText[48];

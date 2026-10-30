@@ -15,6 +15,7 @@
 
 #include "pattern_edit_page.h"
 #include "tb303_params_page.h"
+#include "../melody_playhead.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
 #include "../phrase_chord_focus.h"
@@ -534,11 +535,11 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   if (mini_acid_.isPlaying()) {
     const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
     if (playTick >= barStart && playTick < barEnd) {
-      const int playX = tickToX(playTick);
-      // A solid line in the synth colour through the whole roll (the cursor
-      // is the dotted grey one). It replaces the 5x3 marker under the roll,
-      // which was hard to see and sat in the SELECTED line.
-      gfx.fillRect(playX, planeTop, 1, kPlaneH, voiceColor);
+      // The same white strip, at the same place, as the Melody overview
+      // (MelodyPlayhead::x). It was in the voice colour, which the solid
+      // notes share, so it vanished over them.
+      const int playX = MelodyPlayhead::x(playTick, planeX, planeW);
+      gfx.fillRect(playX, planeTop, 1, kPlaneH, COLOR_WHITE);
     }
   }
 
@@ -1660,26 +1661,6 @@ bool SynthSequencerPage::handlePhraseNotesEvent(UIEvent& ui_event) {
 
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     chord_focus_event_ = -1;
-    if (phrase_view_ == PhraseView::Roll) {
-      // Note to note first, so a note off the grid is reachable as it is.
-      phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
-      const uint16_t cellTicks = PhraseNotesCursor::quantumTicks(phrase_cursor_.grid);
-      const int target = cellTicks == 0 ? -1 : PhraseSelectionState::neighbour(
-          phrase, phrase_selection_, PhraseNotesCursor::tick(phrase_cursor_),
-          cellTicks, nav == GROOVEPUTER_RIGHT ? 1 : -1);
-      if (target >= 0) {
-        phrase_cursor_.cell = static_cast<uint8_t>(
-            phrase.events[target].startTick / cellTicks);
-        phrase_cursor_ = PhraseNotesCursor::clamp(phrase_cursor_, phrase.lengthTicks);
-        phrase_selection_ = PhraseSelectionState::at(
-            phrase, static_cast<uint16_t>(target));
-        phrase_selection_.insertTick = PhraseNotesCursor::tick(phrase_cursor_);
-        // Edits find the note by cell; this keeps them on the one chosen when
-        // another note shares its cell (ignored when it is alone).
-        chord_focus_event_ = static_cast<int16_t>(target);
-        return true;
-      }
-    }
     phrase_cursor_ = PhraseNotesCursor::move(
         phrase_cursor_, nav == GROOVEPUTER_RIGHT ? 1 : -1, phrase.lengthTicks);
     const uint16_t insertTick = PhraseNotesCursor::tick(phrase_cursor_);
