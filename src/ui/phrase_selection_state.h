@@ -137,6 +137,41 @@ inline State step(const Buffer& phrase, const State& state, int direction) {
   return out;
 }
 
+// Roll LEFT/RIGHT: the next sound in `direction` from the cursor, by start tick
+// (ties in array order), so a sound off the grid is reachable without changing
+// the grid. -1 when nothing lies that way. A selection that starts inside the
+// cursor cell is the reference; otherwise the cursor tick itself is.
+inline int neighbour(const Buffer& phrase, const State& state,
+                     uint16_t cursorTick, uint16_t cellTicks, int direction) {
+  if (direction != -1 && direction != 1) return -1;
+  const State current = resolve(phrase, state);
+  const bool anchored = current.active && current.startTick >= cursorTick &&
+                        static_cast<uint32_t>(current.startTick) <
+                            static_cast<uint32_t>(cursorTick) + cellTicks;
+  int best = -1;
+  for (uint16_t i = 0; i < phrase.count; ++i) {
+    bool ahead;
+    if (anchored) {
+      if (i == current.eventIndex) continue;
+      ahead = direction > 0 ? precedes(phrase, current.eventIndex, i)
+                            : precedes(phrase, i, current.eventIndex);
+    } else {
+      const uint16_t start = phrase.events[i].startTick;
+      ahead = direction > 0 ? start > cursorTick : start < cursorTick;
+    }
+    if (!ahead) continue;
+    if (best < 0) {
+      best = static_cast<int>(i);
+      continue;
+    }
+    const bool closer = direction > 0
+        ? precedes(phrase, i, static_cast<uint16_t>(best))
+        : precedes(phrase, static_cast<uint16_t>(best), i);
+    if (closer) best = static_cast<int>(i);
+  }
+  return best;
+}
+
 inline State withInsertTick(const State& state, uint16_t insertTick) {
   State out = state;
   out.insertTick = insertTick;
