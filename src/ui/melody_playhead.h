@@ -17,4 +17,9 @@ inline int x(uint16_t phraseTick, int left, int width) {
                                  PhraseRuntime::kTicksPerBar);
 }
 
+// A note sounds from its start up to (not including) its audible end.
+inline bool isSounding(uint32_t playTick, uint32_t start, uint32_t audibleEnd) {
+  return start <= playTick && playTick < audibleEnd;
+}
+
 }  // namespace MelodyPlayhead

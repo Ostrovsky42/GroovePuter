@@ -363,8 +363,13 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
   const int planeW = std::max(32, bounds.w - 8 - kPitchGutterW);
   const int planeTop = bounds.y + 17;
   constexpr int kRowH = 5;
-  constexpr int kVisibleNotes = 11;
+  constexpr int kVisibleNotes = 10;
   constexpr int kPlaneH = kRowH * kVisibleNotes;
+  // Timeline strip: 1 px black gap under the plane, then 4 px of segments.
+  constexpr int kStripGap = 1;
+  constexpr int kStripH = 4;
+  // The cursor marker keeps its old place (below the former 11-row plane).
+  constexpr int kCursorMarkerDy = kRowH * 11 + 1;
 
   const uint32_t barStart =
       static_cast<uint32_t>(viewport.focusBar) * PhraseRuntime::kTicksPerBar;
@@ -466,6 +471,12 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.fillRect(cursorX, y, 1, 1, COLOR_LABEL);
   }
 
+  // Read once per frame; nothing is cached. -1 = nothing sounding to show.
+  const int stripTop = planeTop + kPlaneH + kStripGap;
+  const bool playing = mini_acid_.isPlaying();
+  const uint16_t playTick = playing ? mini_acid_.currentPhrasePlayTick(voice_index_) : 0;
+  const bool playInBar = playing && playTick >= barStart && playTick < barEnd;
+
   bool selectionTruncated = false;
   int aboveWindow = 0;
   int belowWindow = 0;
@@ -484,6 +495,19 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     }
     const bool selected = selection.active && selection.eventIndex == i;
     if (selected) selectionTruncated = audibleEnd < span.endTick;
+
+    {
+      // Strip segment: drawn for every note of the bar, in or out of the window.
+      const bool stripAccent =
+          (phrase.events[i].flags & PhraseRuntime::kEventAccent) != 0;
+      const bool sounding = playInBar && MelodyPlayhead::isSounding(
+          playTick, span.startTick, audibleEnd);
+      const int sx0 = tickToX(span.startTick);
+      const int sx1 = tickToX(audibleEnd);
+      gfx.fillRect(sx0, stripTop, std::max(1, sx1 - sx0), kStripH,
+                   sounding ? COLOR_WHITE
+                            : (stripAccent ? COLOR_WARN : voiceColor));
+    }
 
     const uint8_t note = phrase.events[i].note;
     if (!noteVisible(note)) {
@@ -530,16 +554,16 @@ void SynthSequencerPage::drawPhraseRoll(IGfx& gfx) {
     gfx.drawText(planeX + planeW - textWidth(gfx, more), planeTop + kPlaneH - 6, more);
   }
 
-  gfx.fillRect(cursorX - 1, planeTop + kPlaneH + 1, 3, 3, COLOR_WHITE);
+  gfx.fillRect(cursorX - 1, planeTop + kCursorMarkerDy, 3, 3, COLOR_WHITE);
 
-  if (mini_acid_.isPlaying()) {
-    const uint16_t playTick = mini_acid_.currentPhrasePlayTick(voice_index_);
-    if (playTick >= barStart && playTick < barEnd) {
+  if (playing) {
+    if (playInBar) {
       // The same white strip, at the same place, as the Melody overview
       // (MelodyPlayhead::x). It was in the voice colour, which the solid
       // notes share, so it vanished over them.
       const int playX = MelodyPlayhead::x(playTick, planeX, planeW);
       gfx.fillRect(playX, planeTop, 1, kPlaneH, COLOR_WHITE);
+      gfx.fillRect(playX, stripTop, 1, kStripH, COLOR_WHITE);
     }
   }
 
