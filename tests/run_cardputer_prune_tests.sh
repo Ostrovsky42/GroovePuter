@@ -87,6 +87,7 @@ TESTS=(
   test_global_nav_reserved_keys
   test_genre_reachability_matrix
   test_drum_genre_templates_coverage
+  test_genre_preset_slots
 )
 
 for test_name in "${TESTS[@]}"; do
