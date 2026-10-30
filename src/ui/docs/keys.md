@@ -175,7 +175,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
-| `D` | On NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
+| `D` | On MELODY: vary the focused bar in place (1 ANSWER, 2 PUSH, 3 MIRROR, 4 the ORIGINAL bar again); each press is one `Ctrl+Z` step. On STEPS NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
 | `Alt+R` / `Opt` | Source STEPS <-> MELODY. With no Melody yet, `Alt+R` (or `Opt`) copies the steps into a new Melody (toast `MELODY <- STEPS`); `Ctrl+Z` removes it and returns to STEPS. On SONG, `Opt` on a cell with no Melody refuses (`NO MELODY (ALT+N ON STEPS)`). `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |

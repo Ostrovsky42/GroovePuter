@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <new>
 
@@ -18,6 +19,7 @@
 #include "../key_normalize.h"
 #include "../phrase_chord_focus.h"
 #include "../project_key.h"
+#include "src/phrase/melody_bar_vary.h"
 #include "src/dsp/generated_melody.h"
 #include "src/state/generation_shape_state.h"
 #include "src/state/phrase_generation_request_state.h"
@@ -852,6 +854,100 @@ bool SynthSequencerPage::handleMelodyBarKey(UIEvent& ui_event) {
     return true;
   }
   std::snprintf(msg, sizeof(msg), "BAR %d -> BAR %d  CTRL+Z", bar + 1, target + 1);
+  UI::showToast(msg, 1000);
+  return true;
+}
+
+// D on MELODY: ANSWER, PUSH, MIRROR, then the ORIGINAL bar again. Each press
+// derives the next variant from the bar's original (kept while the focus stays
+// on the bar) and commits it in place as one undo step. Ctrl+Z needs no
+// bookkeeping here: the stage is re-read from the live bar on every press.
+bool SynthSequencerPage::varyMelodyBar() {
+  using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
+  const auto& phrase = mini_acid_.currentPhraseBuffer(voice_index_);
+  const int bar = PhraseNotesCursor::focusBar(phrase_cursor_);
+  char msg[32];
+  if (!MelodyBarVary::barHasEvents(phrase, static_cast<uint8_t>(bar))) {
+    std::snprintf(msg, sizeof(msg), "BAR %d EMPTY", bar + 1);
+    UI::showToast(msg, 900);
+    return true;
+  }
+  const auto& key = mini_acid_.sceneManager().currentScene().generatorParams;
+  const uint8_t root = ProjectKey::pitchClass(key.scaleRoot);
+  const auto scale = static_cast<ProjectKey::ScaleTypeValue>(key.scale);
+  const uint32_t lo = static_cast<uint32_t>(bar) * PhraseRuntime::kTicksPerBar;
+  const uint32_t hi = lo + PhraseRuntime::kTicksPerBar;
+  const auto sameBar = [&](const Buffer& a, const Buffer& b) {
+    uint16_t i = 0, j = 0;
+    for (;;) {
+      while (i < a.count && !(a.events[i].startTick >= lo && a.events[i].startTick < hi)) ++i;
+      while (j < b.count && !(b.events[j].startTick >= lo && b.events[j].startTick < hi)) ++j;
+      if (i >= a.count || j >= b.count) return i >= a.count && j >= b.count;
+      if (std::memcmp(&a.events[i], &b.events[j], sizeof(a.events[i])) != 0) return false;
+      ++i;
+      ++j;
+    }
+  };
+
+  std::unique_ptr<Buffer> variant(new (std::nothrow) Buffer());
+  std::unique_ptr<Buffer> after(new (std::nothrow) Buffer());
+  if (!variant || !after) {
+    UI::showToast("NO MEMORY", 900);
+    return true;
+  }
+  bool known = vary_original_ && vary_bar_ == bar;
+  if (known) {
+    // Which variant is on screen now (hint first, then 0..3).
+    int found = -1;
+    for (int n = 0; n < MelodyBarVary::kVariants && found < 0; ++n) {
+      const int k = (vary_stage_ + n) % MelodyBarVary::kVariants;
+      *variant = MelodyBarVary::varyBar(*vary_original_, static_cast<uint8_t>(bar),
+                                        static_cast<uint8_t>(k), root, scale);
+      if (sameBar(phrase, *variant)) found = k;
+    }
+    if (found < 0) known = false;  // the bar was edited by hand: new original
+    else vary_stage_ = static_cast<uint8_t>(found);
+  }
+  if (!known) {
+    vary_original_.reset(new (std::nothrow) Buffer(phrase));
+    if (!vary_original_) {
+      UI::showToast("NO MEMORY", 900);
+      return true;
+    }
+    vary_bar_ = bar;
+    vary_stage_ = 0;
+  }
+
+  const uint8_t next = static_cast<uint8_t>((vary_stage_ + 1) % MelodyBarVary::kVariants);
+  *variant = MelodyBarVary::varyBar(*vary_original_, static_cast<uint8_t>(bar), next, root, scale);
+  // Live buffer with only this bar's events replaced (same slots, same order).
+  *after = phrase;
+  uint16_t j = 0;
+  for (uint16_t i = 0; i < after->count; ++i) {
+    if (!(after->events[i].startTick >= lo && after->events[i].startTick < hi)) continue;
+    while (j < variant->count &&
+           !(variant->events[j].startTick >= lo && variant->events[j].startTick < hi)) {
+      ++j;
+    }
+    if (j >= variant->count) break;
+    after->events[i] = variant->events[j++];
+  }
+  vary_stage_ = next;
+  if (next == MelodyBarVary::Original) {
+    std::snprintf(msg, sizeof(msg), "BAR %d VARY ORIGINAL", bar + 1);
+  } else {
+    std::snprintf(msg, sizeof(msg), "BAR %d VARY %d/3 %s", bar + 1, next,
+                  MelodyBarVary::name(next));
+  }
+  if (RuntimePhraseEdit::same(phrase, *after)) {
+    UI::showToast(msg, 900);  // this variant equals the bar: nothing to undo
+    return true;
+  }
+  if (!RuntimePhraseEdit::validate(*after) ||
+      !commitRuntimePhraseEditWithUndo(mini_acid_, audio_guard_, voice_index_, phrase, *after)) {
+    UI::showToast("CHANGED MEANWHILE, TRY AGAIN", 1000);
+    return true;
+  }
   UI::showToast(msg, 1000);
   return true;
 }
@@ -2054,6 +2150,14 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
           MiniAcid::SequencedSource::Phrase;
   const bool developOwnsPlainD =
       synth_tab_ == SynthTab::Notes && !noteEntryOnSteps;
+  // On MELODY plain D varies the focused bar in place (the octave move of the
+  // whole melody stays on STEPS only).
+  if (developOwnsPlainD &&
+      mini_acid_.currentSequencedSource(voice_index_) ==
+          MiniAcid::SequencedSource::Phrase &&
+      GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event)) {
+    return varyMelodyBar();
+  }
   if (developOwnsPlainD &&
       GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event)) {
     return GroovePuterMaterialDevelopmentUx::handleDevelop(

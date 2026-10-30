@@ -136,6 +136,11 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool changeProjectKey(bool tonic);
   bool handleMelodySlotKey(UIEvent& ui_event);
   bool handleMelodyBarKey(UIEvent& ui_event);
+  // D on MELODY: next variant of the focused bar, in place, one undo step.
+  bool varyMelodyBar();
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> vary_original_;
+  int vary_bar_ = -1;
+  uint8_t vary_stage_ = 0;
   bool newEmptyMelody();
   bool newMelodyInSlot(int bank, int pattern);
   bool toggleSource();

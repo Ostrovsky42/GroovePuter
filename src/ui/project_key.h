@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_UI_PROJECT_KEY_H
+#define GROOVEPUTER_SRC_UI_PROJECT_KEY_H
 
 #include <cstdint>
 #include <cstdio>
@@ -105,3 +107,5 @@ inline ScaleTypeValue fromPerformanceScale(PerformanceScale scale) {
 }
 
 }  // namespace ProjectKey
+
+#endif
