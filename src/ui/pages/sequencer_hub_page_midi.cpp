@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "../components/music_visuals.h"
+#include "../hub_midi_bar_strip.h"
 #include "../player_hub_navigation.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
@@ -331,14 +332,6 @@ IGfxColor rowBackground(bool isMuted, bool isSelected) {
     return isSelected ? kSelectedRowBackground : kRowBackground;
 }
 
-IGfxColor activityColor(uint8_t level, bool isMuted) {
-    if (level == 0u) {
-        return isMuted ? kMutedRowBackground : kRowBackground;
-    }
-    const uint8_t index = static_cast<uint8_t>(std::min<uint8_t>(level, 8u) - 1u);
-    return isMuted ? kMutedActivityRamp[index] : kActivityRamp[index];
-}
-
 // Unmuted tracks per SEQTRAK output, to flag two parts on one melodic voice.
 struct HubOutputLoad {
     uint8_t unmuted[kSmfSeqtrakOutputChannelCount]{};
@@ -370,15 +363,20 @@ HubOutputLoad hubOutputLoad(const HubMidiProjection& projection, bool rawRouting
     return load;
 }
 
+bool hubRouteWarns(const SmfEffectiveRoute& route,
+                   const HubOutputLoad& load,
+                   bool isMuted) {
+    if (isMuted) return false;
+    if (route.kind == SmfEffectiveRouteKind::Off) return true;
+    return route.kind == SmfEffectiveRouteKind::Output &&
+           smfOutputIsMelodic(route.output) && load.unmuted[route.output] > 1u;
+}
+
 IGfxColor hubRouteColor(const SmfEffectiveRoute& route,
                         const HubOutputLoad& load,
                         bool isMuted) {
     if (isMuted) return kMutedText;
-    if (route.kind == SmfEffectiveRouteKind::Off) return kRouteWarn;
-    if (route.kind == SmfEffectiveRouteKind::Output &&
-        smfOutputIsMelodic(route.output) && load.unmuted[route.output] > 1u) {
-        return kRouteWarn;
-    }
+    if (hubRouteWarns(route, load, false)) return kRouteWarn;
     return route.overridden ? kRouteManual : kBodyText;
 }
 
@@ -394,6 +392,69 @@ void formatHubTrackName(const SmfTrackInfoSnapshot* info,
     }
 }
 
+constexpr int kRulerHeight = 7;
+constexpr int kStripX = 12;
+constexpr int kStripRight = 3;
+
+struct HubStripGeometry {
+    int x{0};
+    int width{0};
+    uint8_t cells{0};
+    uint8_t knownBars{0};
+};
+
+HubStripGeometry hubStripGeometry(int screenWidth, uint32_t fileBars) {
+    HubStripGeometry g{};
+    g.x = std::min(kStripX, screenWidth);
+    g.width = std::max(0, screenWidth - g.x - kStripRight);
+    g.knownBars = HubMidiBarStrip::knownBars(fileBars);
+    g.cells = HubMidiBarStrip::cellCount(
+        fileBars, static_cast<uint8_t>(std::min(g.width, 32)));
+    return g;
+}
+
+// Ruler above the strips: bar numbers at a few cells, A/B over the loop.
+void drawBarRuler(IGfx& gfx,
+                  int y,
+                  const HubStripGeometry& g,
+                  const SmfPlayerSnapshot& player) {
+    if (g.cells == 0u) return;
+    gfx.setTextColor(kMutedText);
+    int lastEnd = -100;
+    const uint8_t step = g.cells >= 24u ? 8u : (g.cells >= 8u ? 4u : 2u);
+    for (uint8_t cell = 0u; cell < g.cells; cell += step) {
+        const int x = g.x + (cell * g.width) / g.cells;
+        const uint8_t bar = static_cast<uint8_t>(
+            HubMidiBarStrip::cellFirstBar(cell, g.cells, g.knownBars) + 1u);
+        char num[4]{};
+        std::snprintf(num, sizeof(num), "%u", static_cast<unsigned>(bar));
+        if (x < lastEnd + 3) continue;
+        gfx.drawText(x, y, num);
+        lastEnd = x + gfx.textWidth(num);
+    }
+    if (player.loopMode != SmfLoopMode::Section || player.loopStartBar == 0u ||
+        player.loopEndBar < player.loopStartBar) {
+        return;
+    }
+    auto cellOf = [&](uint32_t bar1) {
+        if (bar1 < 1u || bar1 > g.knownBars) return -1;
+        return static_cast<int>(((bar1 - 1u) * g.cells) / g.knownBars);
+    };
+    const int a = cellOf(player.loopStartBar);
+    const int b = cellOf(player.loopEndBar);
+    gfx.setTextColor(kAccent);
+    if (a >= 0) {
+        const int x = g.x + (a * g.width) / g.cells;
+        gfx.fillRect(x, y, 6, 7, kScreenBackground);
+        gfx.drawText(x, y, "A");
+    }
+    if (b >= 0) {
+        const int x = g.x + (b * g.width) / g.cells;
+        gfx.fillRect(x, y, 6, 7, kScreenBackground);
+        gfx.drawText(x, y, "B");
+    }
+}
+
 void drawArrangementRow(IGfx& gfx,
                         int screenWidth,
                         int contentTop,
@@ -404,17 +465,16 @@ void drawArrangementRow(IGfx& gfx,
                         const SmfTrackInfoSnapshot* info,
                         bool isMuted,
                         bool isSelected,
-                        const char* routeLabel,
-                        IGfxColor routeColor) {
+                        bool routeConflict,
+                        const HubStripGeometry& strip,
+                        uint32_t occupancy) {
     const int y0 = contentTop +
                    (static_cast<int>(row) * contentHeight) / kVisibleMidiRows;
     const int y1 = contentTop +
                    (static_cast<int>(row + 1u) * contentHeight) /
                        kVisibleMidiRows;
     const int rowHeight = std::max(1, y1 - y0);
-    const int textY = y0 + std::max(0, (rowHeight - 7) / 2);
-    const int gridX = std::min(kLayerLabelWidth, screenWidth);
-    const int gridWidth = std::max(0, screenWidth - gridX);
+    const int textY = y0 + 1;
     const IGfxColor background = rowBackground(isMuted, isSelected);
 
     gfx.fillRect(0, y0, screenWidth, rowHeight, background);
@@ -431,26 +491,33 @@ void drawArrangementRow(IGfx& gfx,
     std::snprintf(clippedLabel, sizeof(clippedLabel), "%.6s", label);
     gfx.setTextColor(isMuted ? kMutedText : kBodyText);
     gfx.drawText(12, textY, clippedLabel);
-    // Where this track sounds right now: read here instead of by ear.
-    gfx.setTextColor(routeColor);
-    gfx.drawText(52, textY, routeLabel ? routeLabel : "");
 
-    for (uint8_t segment = 0u; segment < kArrangementSegments; ++segment) {
-        const int x0 = gridX +
-            (static_cast<int>(segment) * gridWidth) / kArrangementSegments;
-        const int x1 = gridX +
-            (static_cast<int>(segment + 1u) * gridWidth) / kArrangementSegments;
-        const int columnWidth = std::max(1, x1 - x0);
-        const int maxCellWidth = std::max(1, columnWidth - kCellGap);
-        const int maxCellHeight = std::max(1, rowHeight - 4);
-        const int cellSize = std::min(maxCellWidth, maxCellHeight);
-        const int cellX = x0 + std::max(0, (columnWidth - cellSize) / 2);
-        const int cellY = y0 + std::max(0, (rowHeight - cellSize) / 2);
-        gfx.fillRect(cellX,
-                     cellY,
-                     cellSize,
-                     cellSize,
-                     activityColor(layer.form[segment], isMuted));
+    char channel[8]{};
+    formatTrackChannel(info, channel, sizeof(channel));
+    gfx.drawText(52, textY, channel);
+    char notes[8]{};
+    std::snprintf(notes, sizeof(notes), "N%u",
+                  static_cast<unsigned>(layer.noteCount));
+    gfx.drawText(88, textY, notes);
+    char range[12]{};
+    formatPitchRange(layer, range, sizeof(range));
+    gfx.drawText(124, textY, range);
+    if (routeConflict) {
+        gfx.fillRect(screenWidth - 8, textY + 1, 4, 4, kRouteWarn);
+    }
+
+    uint8_t states[32]{};
+    const uint8_t cells = HubMidiBarStrip::fill(
+        occupancy, strip.knownBars, strip.cells, states, sizeof(states));
+    const int stripY = y0 + 9;
+    const int stripH = std::max(1, std::min(4, y1 - stripY - 1));
+    for (uint8_t cell = 0u; cell < cells; ++cell) {
+        const int x0 = strip.x + (cell * strip.width) / cells;
+        const int x1 = strip.x + ((cell + 1) * strip.width) / cells;
+        const int w = std::max(1, x1 - x0 - (x1 - x0 > 2 ? 1 : 0));
+        const uint8_t level = states[cell] == HubMidiBarStrip::kCellNotes ? 6u : 0u;
+        const IGfxColor* ramp = isMuted ? kMutedActivityRamp : kActivityRamp;
+        gfx.fillRect(x0, stripY, w, stripH, ramp[level]);
     }
 }
 
@@ -471,10 +538,11 @@ int arrangementPlayheadX(const SmfPlayerSnapshot& player,
 
 void drawOverlayBands(IGfx& gfx,
                       const SmfPlayerSnapshot& player,
-                      const SmfStructuralLayerSnapshot& selectedLayer,
+                      const SmfStructuralLayerSnapshot& /*selectedLayer*/,
                       const SmfTrackInfoSnapshot* selectedInfo,
                       const SmfEffectiveRoute& route,
                       uint8_t trackLevel,
+                      IGfxColor routeColor,
                       bool soloActive,
                       bool partial) {
     const int width = gfx.width();
@@ -498,32 +566,20 @@ void drawOverlayBands(IGfx& gfx,
                   static_cast<unsigned long>(std::max<uint32_t>(player.totalBars, 1u)));
     gfx.drawText(std::max(3, width - gfx.textWidth(line) - 3), 2, line);
 
+    // The route of the selected row only; rows no longer carry it.
     char channel[8]{};
     char destination[8]{};
-    char range[12]{};
     formatTrackChannel(selectedInfo, channel, sizeof(channel));
     formatEffectiveSmfRoute(route, destination, sizeof(destination));
-    formatPitchRange(selectedLayer, range, sizeof(range));
     if (player.rawRouting) {
-        std::snprintf(line,
-                      sizeof(line),
-                      "RAW %s V%u N%u %s",
-                      channel,
-                      static_cast<unsigned>(trackLevel),
-                      static_cast<unsigned>(selectedLayer.noteCount),
-                      range);
+        std::snprintf(line, sizeof(line), "RAW %s V%u", channel,
+                      static_cast<unsigned>(trackLevel));
     } else {
-        std::snprintf(line,
-                      sizeof(line),
-                      "%s>%s V%u N%u %s",
-                      channel,
-                      destination,
-                      static_cast<unsigned>(trackLevel),
-                      static_cast<unsigned>(selectedLayer.noteCount),
-                      range);
+        std::snprintf(line, sizeof(line), "%s>%s V%u", channel, destination,
+                      static_cast<unsigned>(trackLevel));
     }
     const char* hints = soloActive ? "S:OFF <>RTE" : "S:SOLO <>RTE";
-    gfx.setTextColor(kBodyText);
+    gfx.setTextColor(routeColor);
     gfx.drawText(3, bottomY + 2, line);
 
     gfx.setTextColor(kMutedText);
@@ -1133,7 +1189,8 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         midiSelected_, projection.layers.layerCount - 1u);
     const int screenWidth = gfx.width();
     const int screenHeight = gfx.height();
-    const int rowsTop = std::min(kOverlayBandHeight, screenHeight);
+    const int rulerTop = std::min(kOverlayBandHeight, screenHeight);
+    const int rowsTop = std::min(rulerTop + kRulerHeight, screenHeight);
     const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);
     const int rowsHeight = std::max(0, rowsBottom - rowsTop);
     if (midiOutputsView_) {
@@ -1142,6 +1199,9 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
     }
     gfx.fillRect(0, 0, screenWidth, screenHeight, kScreenBackground);
     const HubOutputLoad load = hubOutputLoad(projection, player.rawRouting);
+    const auto& layers = smfStructuralInspectorState();
+    const HubStripGeometry strip =
+        hubStripGeometry(screenWidth, projection.layers.analyzedBars);
 
     for (uint8_t row = 0u; row < kVisibleMidiRows; ++row) {
         const uint8_t index = static_cast<uint8_t>(midiScroll_ + row);
@@ -1164,8 +1224,10 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         const bool rowMuted = muted(projection.mute, layer.trackIndex);
         const SmfEffectiveRoute rowRoute =
             hubTrackRoute(projection, player.rawRouting, layer.trackIndex);
-        char routeLabel[8]{};
-        formatEffectiveSmfRoute(rowRoute, routeLabel, sizeof(routeLabel));
+        uint32_t occupancy = 0u;
+        for (uint8_t bar = 0u; bar < strip.knownBars; ++bar) {
+            if (layers.layerHasNotesInBar(index, bar)) occupancy |= 1u << bar;
+        }
         drawArrangementRow(
             gfx,
             screenWidth,
@@ -1177,13 +1239,21 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
             info,
             rowMuted,
             index == selected,
-            routeLabel,
-            hubRouteColor(rowRoute, load, rowMuted));
+            hubRouteWarns(rowRoute, load, rowMuted),
+            strip,
+            occupancy);
     }
 
-    const int gridX = std::min(kLayerLabelWidth, screenWidth);
-    const int gridWidth = std::max(0, screenWidth - gridX);
-    const int playheadX = arrangementPlayheadX(player, gridX, gridWidth);
+    drawBarRuler(gfx, rulerTop, strip, player);
+    const uint32_t totalBars = std::max<uint32_t>(player.totalBars, 1u);
+    int playheadX = arrangementPlayheadX(player, strip.x, strip.width);
+    if (strip.knownBars != 0u && totalBars > strip.knownBars) {
+        // The strip shows only the stored bars: scale and stop at its end.
+        playheadX = strip.x + static_cast<int>(
+            (static_cast<int64_t>(playheadX - strip.x) * totalBars) /
+            strip.knownBars);
+        playheadX = std::min(playheadX, strip.x + strip.width - 1);
+    }
     gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);
 
     const auto& selectedLayer = projection.layers.layers[selected];
@@ -1191,13 +1261,18 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         selectedLayer.trackIndex < projection.tracks.trackCount
             ? &projection.tracks.tracks[selectedLayer.trackIndex]
             : nullptr;
+    const SmfEffectiveRoute selectedRoute =
+        hubTrackRoute(projection, player.rawRouting, selectedLayer.trackIndex);
+    const IGfxColor selectedRouteColor = hubRouteColor(
+        selectedRoute, load,
+        muted(projection.mute, selectedLayer.trackIndex));
     drawOverlayBands(gfx,
                      player,
                      selectedLayer,
                      selectedInfo,
-                     hubTrackRoute(projection, player.rawRouting,
-                                   selectedLayer.trackIndex),
+                     selectedRoute,
                      smfTrackLevelState().levelFor(selectedLayer.trackIndex),
+                     selectedRouteColor,
                      selectedTrackIsSolo(projection.generation,
                                          selectedLayer.trackIndex),
                      projection.layers.partial);

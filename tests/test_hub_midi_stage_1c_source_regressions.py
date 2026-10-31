@@ -128,13 +128,11 @@ def main() -> None:
 
     require(
         "constexpr uint8_t kVisibleMidiRows = 7u;" in page
-        and "constexpr uint8_t kArrangementSegments = kSmfStructuralFormSegments;" in page
         and "drawArrangementRow(" in page
-        and "layer.form[segment]" in page
-        and "const int cellSize = std::min(maxCellWidth, maxCellHeight);" in page
-        and "gfx.fillRect(cellX," in page
-        and "cellSize,\n                     cellSize," in page,
-        "HUB MIDI must render seven rows with sixteen compact square arrangement cells",
+        and "HubMidiBarStrip::fill(" in page
+        and "layerHasNotesInBar(index, bar)" in page
+        and "drawBarRuler(" in page,
+        "HUB MIDI must render seven rows, each with a per-bar strip and a ruler",
     )
     require(
         "kSmfStructuralFormSegments = 16" in structural
@@ -149,7 +147,8 @@ def main() -> None:
         "arrangementPlayheadX(" in page
         and "player.currentTick" in page
         and "player.endTick" in page
-        and "const int rowsTop = std::min(kOverlayBandHeight, screenHeight);" in page
+        and "const int rulerTop = std::min(kOverlayBandHeight, screenHeight);" in page
+        and "const int rowsTop = std::min(rulerTop + kRulerHeight, screenHeight);" in page
         and "const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);" in page
         and "gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);" in page,
         "all rows and the shared playhead must stay between the overlay bands",
@@ -160,7 +159,7 @@ def main() -> None:
         and "player.filename" in page
         and "player.totalBars" in page
         and "formatPitchRange(" in page
-        and "selectedLayer.noteCount" in page,
+        and "layer.noteCount" in page,
         "filename/bar and selected routing/note/range text must use dark bands",
     )
     require(
@@ -173,8 +172,8 @@ def main() -> None:
     require(
         "kActivityRamp[8]" in page
         and "kMutedActivityRamp[8]" in page
-        and page.count("kAccent") == 3,
-        "the grid must use one density hue ramp and reserve the accent for selection/playhead",
+        and page.count("kAccent") <= 6,
+        "the strip must use the density hue ramp and reserve the accent for selection/playhead/loop A-B",
     )
     require(
         "dirty_tiles_.scan(frame_.data(), w_" in cardputer_display
@@ -194,7 +193,7 @@ def main() -> None:
         "formatTrackChannel(" in page
         and "formatRouteDestination(" in page
         and "formatPitchRange(" in page
-        and "%s>%s V%u N%u %s" in page
+        and "%s>%s V%u" in page
         and 'hints = soloActive ? "S:OFF <>RTE" : "S:SOLO <>RTE";' in page,
         "selected-layer footer must expose level, Solo and direct route arrows",
     )
