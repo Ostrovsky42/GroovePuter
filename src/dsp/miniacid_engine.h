@@ -605,6 +605,14 @@ public:
   void setSongPosition(int position);
   void setSongPattern(int position, SongTrack track, int16_t patternIndex);
   void clearSongPattern(int position, SongTrack track);
+  // After MidiImporter wrote scene patterns: make them audible at once.
+  // Cancels pending generation activation, writes the Song rows (routed
+  // tracks get the imported slots, unrouted A/B/Drums rows are cleared),
+  // aligns the Song playback slot with the written slot, selects the
+  // imported slot of every routed target when it is on the resident page,
+  // and republishes the runtime event bank. Returns the bank rebuild result.
+  bool publishMidiImport(int startPattern, int importedBars, bool toA,
+                         bool toB, bool toD, bool appendToSong);
   int16_t songPatternAt(int position, SongTrack track) const;
   int16_t songPatternAtSlot(int slot, int position, SongTrack track) const;
   const Song& song() const;

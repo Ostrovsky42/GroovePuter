@@ -392,6 +392,12 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
                         if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note;
 
+                        // Monophonic synth: a chord keeps only its top note.
+                        if (pat.steps[stepInPattern].note >= 0 &&
+                            safeNote <= pat.steps[stepInPattern].note) {
+                            return true;
+                        }
+
                         uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
                         pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
                         pat.steps[stepInPattern].accent = false;

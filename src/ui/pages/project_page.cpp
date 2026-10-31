@@ -616,40 +616,14 @@ bool ProjectPage::importMidiAtSelection() {
           ? lastPattern - startPattern + 1
           : 0;
 
-      int songPosition = sm.getSongPosition();
-      if (midi_import_append_) {
-        songPosition = sm.songLength();
-        const bool firstRowEmpty =
-            sm.songLength() == 1 &&
-            sm.songPattern(0, SongTrack::SynthA) < 0 &&
-            sm.songPattern(0, SongTrack::SynthB) < 0 &&
-            sm.songPattern(0, SongTrack::Drums) < 0 &&
-            sm.songPattern(0, SongTrack::Voice) < 0;
-        if (firstRowEmpty) songPosition = 0;
-      }
-
-      for (int i = 0; i < importedBars; ++i) {
-        const int targetPosition = songPosition + i;
-        const int patternIndex = startPattern + i;
-        if (targetPosition >= Song::kMaxPositions ||
-            patternIndex >= kMaxPatterns) {
-          break;
-        }
-        if (midi_mask_a_) {
-          sm.setSongPattern(targetPosition, SongTrack::SynthA, patternIndex);
-        }
-        if (midi_mask_b_) {
-          sm.setSongPattern(targetPosition, SongTrack::SynthB, patternIndex);
-        }
-        if (midi_mask_d_) {
-          sm.setSongPattern(targetPosition, SongTrack::Drums, patternIndex);
-        }
-      }
-
       // The importer writes the scene (and pages) directly, bypassing the
-      // per-slot event cache that the audio reads. Republish every resident
-      // slot, as scene load does, so the imported bars sound without an edit.
-      if (!mini_acid_.rebuildPatternRuntimeEventBank()) {
+      // per-slot event cache and the selection the audio reads. Make the
+      // imported bars audible at once: Song rows, slot selection, pending
+      // activation and the runtime event bank (as scene load does).
+      if (!mini_acid_.publishMidiImport(startPattern, importedBars,
+                                        midi_mask_a_ != 0, midi_mask_b_ != 0,
+                                        midi_mask_d_ != 0,
+                                        midi_import_append_)) {
         Serial.println("[ProjectPage] MIDI import: runtime bank rebuild failed");
       }
 

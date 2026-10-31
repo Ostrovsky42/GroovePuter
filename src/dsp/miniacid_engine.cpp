@@ -1325,6 +1325,66 @@ void MiniAcid::clearSongPattern(int position, SongTrack track) {
   }
 }
 
+bool MiniAcid::publishMidiImport(int startPattern, int importedBars, bool toA,
+                                 bool toB, bool toD, bool appendToSong) {
+  // Pending audible sets outrank the scene: drop them first.
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
+
+  // Song rows are written to the active slot; playback reads
+  // songPlaybackSlot_. Make them the same slot (existing accessor).
+  if (songPlaybackSlot_ != sceneManager_.activeSongSlot()) {
+    setSongPlaybackSlot(sceneManager_.activeSongSlot());
+  }
+
+  int songPosition = sceneManager_.getSongPosition();
+  if (appendToSong) {
+    songPosition = sceneManager_.songLength();
+    const bool firstRowEmpty =
+        sceneManager_.songLength() == 1 &&
+        sceneManager_.songPattern(0, SongTrack::SynthA) < 0 &&
+        sceneManager_.songPattern(0, SongTrack::SynthB) < 0 &&
+        sceneManager_.songPattern(0, SongTrack::Drums) < 0 &&
+        sceneManager_.songPattern(0, SongTrack::Voice) < 0;
+    if (firstRowEmpty) songPosition = 0;
+  }
+
+  for (int i = 0; i < importedBars; ++i) {
+    const int targetPosition = songPosition + i;
+    const int patternIndex = startPattern + i;
+    if (targetPosition >= Song::kMaxPositions || patternIndex >= kMaxPatterns) {
+      break;
+    }
+    if (toA) setSongPattern(targetPosition, SongTrack::SynthA, patternIndex);
+    else clearSongPattern(targetPosition, SongTrack::SynthA);
+    if (toB) setSongPattern(targetPosition, SongTrack::SynthB, patternIndex);
+    else clearSongPattern(targetPosition, SongTrack::SynthB);
+    if (toD) setSongPattern(targetPosition, SongTrack::Drums, patternIndex);
+    else clearSongPattern(targetPosition, SongTrack::Drums);
+  }
+
+  // Pattern mode plays the selected slot: select the imported one. The
+  // selection is per resident page, so only a slot on this page can be set.
+  if (startPattern >= 0 && startPattern < kMaxPatterns &&
+      songPatternPage(startPattern) == currentPageIndex()) {
+    const int bank = songPatternBank(startPattern);
+    const int slot = songPatternIndexInBank(startPattern);
+    if (toA) {
+      set303BankIndex(0, bank);
+      set303PatternIndex(0, static_cast<int16_t>(slot));
+    }
+    if (toB) {
+      set303BankIndex(1, bank);
+      set303PatternIndex(1, static_cast<int16_t>(slot));
+    }
+    if (toD) {
+      setDrumBankIndex(bank);
+      setDrumPatternIndex(static_cast<int16_t>(slot));
+    }
+  }
+
+  return rebuildPatternRuntimeEventBank();
+}
+
 int16_t MiniAcid::songPatternAt(int position, SongTrack track) const {
   return sceneManager_.songPattern(position, track);
 }
