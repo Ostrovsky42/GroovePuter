@@ -644,7 +644,7 @@ void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
 }
 
 void MiniAcid::stop() {
-  cancelAllPairPlay();
+  cancelAllPairPlay("stop");
   const uint8_t patternAuthorityAtEntry =
       patternOwnedMask_.load(std::memory_order_acquire);
   // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
@@ -1087,7 +1087,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
-  cancelAllPairPlay();
+  cancelAllPairPlay("song");
   songBarIndex_ = -1;
   hardBarrierPatternPlayback_();
   if (enabled) {
@@ -1180,28 +1180,38 @@ void MiniAcid::restoreSlotMaterialAfterSong_(int voiceIndex) {
 MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
   const int idx = clamp303Voice(voiceIndex);
   if (pairPlay_[idx].active) {
-    cancelPairPlay(idx);
+    cancelPairPlay(idx, "toggle");
     return PairPlayResult::Stopped;
   }
-  if (songMode_) return PairPlayResult::SongOn;
+  if (songMode_) {
+    LOG_PRINTF("[PAIR] refuse voice=%d reason=song\n", idx);
+    return PairPlayResult::SongOn;
+  }
   const int bank = current303BankIndex(idx);
   const int slot = sceneManager_.getCurrentSynthPatternIndex(idx);
   if (slot < 0 || slot + 1 >= Bank<SynthPattern>::kPatterns) {
+    LOG_PRINTF("[PAIR] refuse voice=%d reason=noslot\n", idx);
     return PairPlayResult::NoNextSlot;
   }
   if (isMelodySlot(idx, bank, slot) || isMelodySlot(idx, bank, slot + 1)) {
+    LOG_PRINTF("[PAIR] refuse voice=%d reason=melody\n", idx);
     return PairPlayResult::NotSteps;
   }
   if (hasModifiedWorking303Pattern(idx) || hasUnsavedWorkingMelody(idx)) {
+    LOG_PRINTF("[PAIR] refuse voice=%d reason=save\n", idx);
     return PairPlayResult::SaveFirst;
   }
-  if (goQueued_[idx]) return PairPlayResult::GoQueued;
+  if (goQueued_[idx]) {
+    LOG_PRINTF("[PAIR] refuse voice=%d reason=goqueued\n", idx);
+    return PairPlayResult::GoQueued;
+  }
   // Slot N+1 may have been written by a path that bypasses the event cache
   // (Song cell, phrase generator, slot reuse): publish both slots first.
   for (int offset = 0; offset < 2; ++offset) {
     if (!refreshPatternRuntimeEvents(idx, bank, slot + offset)) {
       LOG_WARN_UI("Pair play refresh failed: voice=%d bank=%d slot=%d",
                   idx, bank, slot + offset);
+      LOG_PRINTF("[PAIR] refuse voice=%d reason=refresh\n", idx);
       return PairPlayResult::RefreshFailed;
     }
   }
@@ -1209,18 +1219,21 @@ MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
   pairPlay_[idx].skipFlip = !playing;
   pairPlay_[idx].base = static_cast<uint8_t>(slot);
   pairPlay_[idx].phase = 0;
+  LOG_PRINTF("[PAIR] start voice=%d base=%d playing=%d\n", idx, slot,
+             playing ? 1 : 0);
   return PairPlayResult::Started;
 }
 
-void MiniAcid::cancelPairPlay(int voiceIndex) {
+void MiniAcid::cancelPairPlay(int voiceIndex, const char* reason) {
   const int idx = clamp303Voice(voiceIndex);
   if (!pairPlay_[idx].active) return;
+  LOG_PRINTF("[PAIR] stop voice=%d reason=%s\n", idx, reason);
   pairPlay_[idx] = PairPlayState{};
   hardBarrierPatternPlayback_(idx);
 }
 
-void MiniAcid::cancelAllPairPlay() {
-  for (int idx = 0; idx < NUM_303_VOICES; ++idx) cancelPairPlay(idx);
+void MiniAcid::cancelAllPairPlay(const char* reason) {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) cancelPairPlay(idx, reason);
 }
 
 bool MiniAcid::pairPlayActive(int voiceIndex) const {
@@ -1856,13 +1869,13 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx);
+  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx);
+  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
@@ -1873,7 +1886,7 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx);
+  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
 }
@@ -2687,6 +2700,9 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       }
       pair.phase ^= 1;
       hardBarrierPatternPlayback_(synth);
+      LOG_PRINTF("[PAIR] flip voice=%d phase=%d slot=%d events=%d\n", synth,
+                 pair.phase, pair.base + pair.phase,
+                 static_cast<int>(activePatternRuntimeEvents(synth).count));
     }
     // Musical bar boundary: activate queued GO requests
     for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
@@ -5293,7 +5309,7 @@ MiniAcid::GoRequestResult MiniAcid::requestGoNextMaterial(int voiceIndex) {
         ? GoRequestResult::ActivatedImmediately
         : GoRequestResult::Failed;
   }
-  cancelPairPlay(idx);
+  cancelPairPlay(idx, "goqueued");
   goQueued_[idx] = true;
   goQueuedGeneration_[idx] = pendingGeneration_[idx];
   return GoRequestResult::Queued;

@@ -249,8 +249,8 @@ public:
     Started, Stopped, SongOn, NotSteps, SaveFirst, GoQueued, NoNextSlot, RefreshFailed,
   };
   PairPlayResult togglePairPlay(int voiceIndex);
-  void cancelPairPlay(int voiceIndex);
-  void cancelAllPairPlay();
+  void cancelPairPlay(int voiceIndex, const char* reason = "other");
+  void cancelAllPairPlay(const char* reason = "other");
   bool pairPlayActive(int voiceIndex) const;
   int pairPlayBaseSlot(int voiceIndex) const;
   // 0 while slot N sounds, 1 while N+1 sounds, -1 when pair play is off.
