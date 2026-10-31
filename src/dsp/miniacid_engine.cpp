@@ -643,6 +643,7 @@ void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
 }
 
 void MiniAcid::stop() {
+  cancelAllPairPlay();
   const uint8_t patternAuthorityAtEntry =
       patternOwnedMask_.load(std::memory_order_acquire);
   // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
@@ -1085,6 +1086,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
+  cancelAllPairPlay();
   songBarIndex_ = -1;
   hardBarrierPatternPlayback_();
   if (enabled) {
@@ -1172,6 +1174,52 @@ void MiniAcid::restoreSlotMaterialAfterSong_(int voiceIndex) {
                         GroovePuterMaterial::MaterialKind::Melody);
   setSequencedSource(idx, SequencedSource::Phrase);
   recordSavedMelody_(idx, globalSlot, *melody);
+}
+
+MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  if (pairPlay_[idx].active) {
+    cancelPairPlay(idx);
+    return PairPlayResult::Stopped;
+  }
+  if (songMode_) return PairPlayResult::SongOn;
+  const int bank = current303BankIndex(idx);
+  const int slot = sceneManager_.getCurrentSynthPatternIndex(idx);
+  if (slot < 0 || slot + 1 >= Bank<SynthPattern>::kPatterns) {
+    return PairPlayResult::NoNextSlot;
+  }
+  if (isMelodySlot(idx, bank, slot) || isMelodySlot(idx, bank, slot + 1)) {
+    return PairPlayResult::NotSteps;
+  }
+  if (hasModifiedWorking303Pattern(idx) || hasUnsavedWorkingMelody(idx)) {
+    return PairPlayResult::SaveFirst;
+  }
+  if (goQueued_[idx]) return PairPlayResult::GoQueued;
+  pairPlay_[idx].active = true;
+  pairPlay_[idx].skipFlip = !playing;
+  pairPlay_[idx].base = static_cast<uint8_t>(slot);
+  pairPlay_[idx].phase = 0;
+  return PairPlayResult::Started;
+}
+
+void MiniAcid::cancelPairPlay(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  if (!pairPlay_[idx].active) return;
+  pairPlay_[idx] = PairPlayState{};
+  hardBarrierPatternPlayback_(idx);
+}
+
+void MiniAcid::cancelAllPairPlay() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) cancelPairPlay(idx);
+}
+
+bool MiniAcid::pairPlayActive(int voiceIndex) const {
+  return pairPlay_[clamp303Voice(voiceIndex)].active;
+}
+
+int MiniAcid::pairPlayBaseSlot(int voiceIndex) const {
+  const auto& st = pairPlay_[clamp303Voice(voiceIndex)];
+  return st.active ? st.base : -1;
 }
 
 void MiniAcid::toggleSongMode() { setSongMode(!songMode_); }
@@ -1793,11 +1841,13 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
+  cancelPairPlay(idx);
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
+  cancelPairPlay(idx);
   hardBarrierPatternPlayback_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
@@ -1808,6 +1858,7 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
+  cancelPairPlay(idx);
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
 }
@@ -2041,8 +2092,10 @@ int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
   if (!songMode_) {
     switch (track) {
     case SongTrack::SynthA:
+      if (pairPlay_[0].active) return pairPlay_[0].base + pairPlay_[0].phase;
       return sceneManager_.getCurrentSynthPatternIndex(0);
     case SongTrack::SynthB:
+      if (pairPlay_[1].active) return pairPlay_[1].base + pairPlay_[1].phase;
       return sceneManager_.getCurrentSynthPatternIndex(1);
     case SongTrack::Drums:
       return sceneManager_.getCurrentDrumPatternIndex();
@@ -2608,6 +2661,18 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
+    // PAIR PLAY: flip N <-> N+1 on the bar line. The hard barrier is the same
+    // guard a Song row change uses, so tied or sliding notes never stick.
+    for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
+      PairPlayState& pair = pairPlay_[synth];
+      if (!pair.active) continue;
+      if (pair.skipFlip) {
+        pair.skipFlip = false;
+        continue;
+      }
+      pair.phase ^= 1;
+      hardBarrierPatternPlayback_(synth);
+    }
     // Musical bar boundary: activate queued GO requests
     for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
       if (goQueued_[synth]) {
@@ -5213,6 +5278,7 @@ MiniAcid::GoRequestResult MiniAcid::requestGoNextMaterial(int voiceIndex) {
         ? GoRequestResult::ActivatedImmediately
         : GoRequestResult::Failed;
   }
+  cancelPairPlay(idx);
   goQueued_[idx] = true;
   goQueuedGeneration_[idx] = pendingGeneration_[idx];
   return GoRequestResult::Queued;

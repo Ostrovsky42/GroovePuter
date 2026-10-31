@@ -35,6 +35,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool cursorOnNextSlot() const { return pair_view_ && cursor_next_ && nextSlotAvailable(); }
   int editPatternIndex() const;
   bool togglePairView();
+  // Ctrl+L: PAIR PLAY loops slot N, N+1 on the bar line (Song off, STEPS only).
+  bool togglePairPlay();
   bool moveGridRow(int delta, bool extendSelection);
   bool handleEvent(UIEvent& ui_event) override;
   // NOTE ENTRY on: plain letters are pitches on the STEPS (they beat commands such as Develop).

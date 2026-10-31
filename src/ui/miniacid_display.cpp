@@ -797,6 +797,34 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
 
+    // Direct BPM: Ctrl+= / Ctrl+- by 1, Alt+= / Alt+- by 5 (10-250). Pages get
+    // first refusal; Alt+Y and the TEMPO panel are unchanged.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && !event.meta &&
+        (event.ctrl != event.alt)) {
+        int bpmDelta = 0;
+        if (event.key == '=' || event.key == '+') bpmDelta = 1;
+        else if (event.key == '-' || event.key == '_') bpmDelta = -1;
+        if (bpmDelta != 0) {
+            if (event.alt) bpmDelta *= 5;
+            const auto& clock = GroovePuterMidi::transportClockRuntime();
+            const bool followsMidiClock = clock.source() ==
+                GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
+                clock.externalFollowEnabled();
+            if (followsMidiClock) {
+                showToast("SEQ MASTER BPM", 700);
+                return true;
+            }
+            const float before = mini_acid_.projectBpm();
+            withAudioGuard([&]() { mini_acid_.setBpm(before + bpmDelta); });
+            if (mini_acid_.projectBpm() != before) GroovePuterState::markSceneMutated();
+            char toast[24];
+            std::snprintf(toast, sizeof(toast), "BPM %d",
+                          static_cast<int>(mini_acid_.projectBpm() + 0.5f));
+            showToast(toast, 700);
+            return true;
+        }
+    }
+
     // Pages get first refusal on Space. This lets MIDI Player own its transport
     // without also toggling the global GroovePuter transport.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {

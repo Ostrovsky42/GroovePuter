@@ -52,6 +52,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Space` | Active transport unless the page consumes it; while following MIDI IN, mute/unmute GroovePuter |
 | `Alt+P` | MIDI Player |
 | `Alt+Y` | TEMPO: project BPM and MIDI clock source; also Fn+M -> TEMPO |
+| `Ctrl+=` / `Ctrl+-` | BPM +1 / -1 (`Alt+=` / `Alt+-` by 5), toast `BPM 128`; a page that owns the key keeps it (HUB volume, PERFORM octave) |
 | `Alt+K` | SAMPLER |
 | `Alt+V` | GENRE |
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
@@ -175,7 +176,8 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
-| `L` on STEPS | PAIR VIEW (outside NOTE ENTRY, where `L` is a pitch): rows 1-2 are slot N as now, rows 3-4 are slot N+1 of the same synth, header `A 1+2`, footer `L:1 SLOT` (`L:PAIR` when off). The cursor and every edit (note, accent, slide, clear, paste) follow the row and act on that slot with their own Undo. Slot 8 has no N+1: rows 3-4 are empty and not editable. `G`, `Alt+G`, `Ctrl+Backspace` act on slot N only (refused on rows 3-4). Slot N+1 plays only in Song mode; it is shown, not heard, in PATTERN mode. Leaving the page turns it off |
+| `L` on STEPS | PAIR VIEW (outside NOTE ENTRY, where `L` is a pitch): rows 1-2 are slot N as now, rows 3-4 are slot N+1 of the same synth, header `A 1+2`, footer `L:1 SLOT` (`L:PAIR` when off). The cursor and every edit (note, accent, slide, clear, paste) follow the row and act on that slot with their own Undo. Slot 8 has no N+1: rows 3-4 are empty and not editable. `G`, `Alt+G`, `Ctrl+Backspace` act on slot N only (refused on rows 3-4). Slot N+1 is shown, not heard, unless `Ctrl+L` PAIR PLAY is on. Leaving the page turns it off |
+| `Ctrl+L` on STEPS | PAIR PLAY: this voice plays slot N, then N+1 at the next bar line, and back, as a loop. Pattern mode only; refused with Song on (`SONG OFF FIRST`), a Melody slot (`STEPS ONLY`), unsaved edits (`SAVE FIRST`) or a queued GO. Stops on `Ctrl+L`, Stop, leaving the page, changing slot, Song on. Footer shows `PAIR PLAY 1+2`; the selected slot does not move |
 | `D` | On MELODY: vary the focused bar in place (1 ANSWER, 2 PUSH, 3 MIRROR, 4 the ORIGINAL bar again); each press is one `Ctrl+Z` step. On STEPS NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
 | `Alt+R` / `Opt` | Source STEPS <-> MELODY. With no Melody yet, `Alt+R` (or `Opt`) copies the steps into a new Melody (toast `MELODY <- STEPS`); `Ctrl+Z` removes it and returns to STEPS. On SONG, `Opt` on a cell with no Melody refuses (`NO MELODY (ALT+N ON STEPS)`). `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
@@ -521,6 +523,7 @@ In the name editor `Left/Right` move the caret (an underline); typing and
 
 Open with `Alt+Y` or `Fn+M -> TEMPO`. BPM is focused on open:
 `Left/Right` changes it by 1, `Alt+Left/Right` by 5 (10–250 BPM).
+Outside the panel `Ctrl+=` / `Ctrl+-` do the same by 1 (`Alt+=` / `Alt+-` by 5).
 
 Holding Left/Right speeds up (1 -> 4 BPM per repeat).
 

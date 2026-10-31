@@ -119,6 +119,41 @@ bool PatternEditPage::togglePairView() {
   return true;
 }
 
+bool PatternEditPage::togglePairPlay() {
+  MiniAcid::PairPlayResult result = MiniAcid::PairPlayResult::Stopped;
+  const auto toggle = [&]() { result = mini_acid_.togglePairPlay(voice_index_); };
+  if (audio_guard_) audio_guard_(toggle);
+  else toggle();
+  switch (result) {
+    case MiniAcid::PairPlayResult::Started: {
+      char toast[40];
+      const int n = mini_acid_.pairPlayBaseSlot(voice_index_) + 1;
+      std::snprintf(toast, sizeof(toast), "PAIR PLAY %d+%d", n, n + 1);
+      UI::showToast(toast, 900);
+      break;
+    }
+    case MiniAcid::PairPlayResult::Stopped:
+      UI::showToast("PAIR PLAY: OFF", 900);
+      break;
+    case MiniAcid::PairPlayResult::SongOn:
+      UI::showToast("PAIR PLAY: SONG OFF FIRST", 1200);
+      break;
+    case MiniAcid::PairPlayResult::NotSteps:
+      UI::showToast("PAIR PLAY: STEPS ONLY", 1200);
+      break;
+    case MiniAcid::PairPlayResult::SaveFirst:
+      UI::showToast("PAIR PLAY: SAVE FIRST", 1200);
+      break;
+    case MiniAcid::PairPlayResult::GoQueued:
+      UI::showToast("PAIR PLAY: GO QUEUED", 1200);
+      break;
+    case MiniAcid::PairPlayResult::NoNextSlot:
+      UI::showToast("PAIR PLAY: NO NEXT SLOT", 1200);
+      break;
+  }
+  return true;
+}
+
 // Up/Down over the visible rows. Rows 3-4 are slot N+1 and do not exist for
 // slot 8. Crossing from one slot to the other ends a selection; extending a
 // selection never crosses, so a selection always belongs to one slot.
@@ -838,6 +873,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     // mistaken for a held-key repeat. The last entered pitch is intentionally
     // retained so C can still recall it after navigation.
     resetNoteHoldTracking();
+  }
+
+  // Ctrl+L: PAIR PLAY (outside NOTE ENTRY). Plain L stays the view toggle.
+  if (!note_entry_mode_ && lowerKey == 'l' &&
+      ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    return togglePairPlay();
   }
 
   // L: PAIR VIEW. In NOTE ENTRY L is a pitch, so this is outside it only.

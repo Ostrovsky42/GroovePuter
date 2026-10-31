@@ -242,6 +242,17 @@ public:
   };
   bool isMelodySlot(int voiceIndex, int bankIndex, int patternIndex) const;
   bool hasUnsavedWorkingMelody(int voiceIndex) const;
+  // PAIR PLAY: a control-side override that plays slot N, then N+1 at the next
+  // bar boundary, and back. Pattern mode (Song off) only; it never writes the
+  // selected slot, the Song or the Scene.
+  enum class PairPlayResult : uint8_t {
+    Started, Stopped, SongOn, NotSteps, SaveFirst, GoQueued, NoNextSlot,
+  };
+  PairPlayResult togglePairPlay(int voiceIndex);
+  void cancelPairPlay(int voiceIndex);
+  void cancelAllPairPlay();
+  bool pairPlayActive(int voiceIndex) const;
+  int pairPlayBaseSlot(int voiceIndex) const;
   MelodySlotResult prepareMelodySlot(
       int voiceIndex, int bankIndex, int patternIndex,
       PhraseRuntime::RuntimeSynthEventBuffer& out) const;
@@ -1063,6 +1074,12 @@ private:
   GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
 
   bool goQueued_[NUM_303_VOICES]{false, false};
+  struct PairPlayState {
+    bool active = false;
+    bool skipFlip = false;  // started while stopped: bar 1 plays N, no flip
+    uint8_t base = 0;
+    uint8_t phase = 0;
+  } pairPlay_[NUM_303_VOICES]{};
   uint32_t goQueuedGeneration_[NUM_303_VOICES]{0, 0};
   uint32_t pendingGeneration_[NUM_303_VOICES]{0, 0};
   // Source anchors are session history, not firmware-resident state. Keep the

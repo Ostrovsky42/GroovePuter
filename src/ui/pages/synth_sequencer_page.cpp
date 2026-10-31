@@ -2457,6 +2457,9 @@ void SynthSequencerPage::extendHeldNote() {
 void SynthSequencerPage::onExit() {
   MultiPage::onExit();
   if (pattern_page_) pattern_page_->resetInputModes();
+  const auto cancelPair = [&]() { mini_acid_.cancelPairPlay(voice_index_); };
+  if (audio_guard_) audio_guard_(cancelPair);
+  else cancelPair();
 }
 
 void SynthSequencerPage::tick() {

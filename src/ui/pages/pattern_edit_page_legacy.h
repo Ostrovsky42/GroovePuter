@@ -1096,11 +1096,19 @@ void PatternEditPage::draw(IGfx& gfx) {
   }
   if (mini_acid_.songVoiceDisplayState(voice_index_) ==
       MiniAcid::SongVoiceDisplayState::Pattern) {
+    char pairPlayBuf[24];
+    const bool pairPlaying = mini_acid_.pairPlayActive(voice_index_);
+    if (pairPlaying) {
+      const int n = mini_acid_.pairPlayBaseSlot(voice_index_) + 1;
+      std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY %d+%d", n, n + 1);
+    }
     UI::drawStandardFooter(gfx,
-        note_entry_mode_ ? "G/P:NOTES N:EXIT"
+        pairPlaying ? pairPlayBuf
+            : note_entry_mode_ ? "G/P:NOTES N:EXIT"
             : (pair_view_ ? "L:1 SLOT P:STYLE G:GEN AltG:LEGACY"
                           : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
-        "C1/2:BANK Alt[]:PAGE");
+        pairPlaying ? "CTRL+L:STOP"
+            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "CTRL+L PAIR PLAY");
   }
 }
 
