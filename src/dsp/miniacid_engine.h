@@ -251,7 +251,9 @@ public:
   PairPlayResult togglePairPlay(int voiceIndex);
   void cancelPairPlay(int voiceIndex, const char* reason = "other");
   void cancelAllPairPlay(const char* reason = "other");
+  // Active covers armed (waiting for the bar line) and sounding.
   bool pairPlayActive(int voiceIndex) const;
+  bool pairPlayArmed(int voiceIndex) const;
   int pairPlayBaseSlot(int voiceIndex) const;
   // 0 while slot N sounds, 1 while N+1 sounds, -1 when pair play is off.
   int pairPlayPhase(int voiceIndex) const;
@@ -1079,6 +1081,7 @@ private:
   struct PairPlayState {
     bool active = false;
     bool skipFlip = false;  // started while stopped: bar 1 plays N, no flip
+    bool armed = false;     // started while playing: waits for the next bar line
     uint8_t base = 0;
     uint8_t phase = 0;
   } pairPlay_[NUM_303_VOICES]{};

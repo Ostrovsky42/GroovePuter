@@ -1219,6 +1219,7 @@ MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
   }
   pairPlay_[idx].active = true;
   pairPlay_[idx].skipFlip = !playing;
+  pairPlay_[idx].armed = playing;
   pairPlay_[idx].base = static_cast<uint8_t>(slot);
   pairPlay_[idx].phase = 0;
   LOG_PRINTF("[PAIR] start voice=%d base=%d playing=%d\n", idx, slot,
@@ -1240,6 +1241,11 @@ void MiniAcid::cancelAllPairPlay(const char* reason) {
 
 bool MiniAcid::pairPlayActive(int voiceIndex) const {
   return pairPlay_[clamp303Voice(voiceIndex)].active;
+}
+
+bool MiniAcid::pairPlayArmed(int voiceIndex) const {
+  const auto& st = pairPlay_[clamp303Voice(voiceIndex)];
+  return st.active && st.armed;
 }
 
 int MiniAcid::pairPlayBaseSlot(int voiceIndex) const {
@@ -2696,6 +2702,13 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
       PairPlayState& pair = pairPlay_[synth];
       if (!pair.active) continue;
+      if (pair.armed) {
+        // Armed start: this bar line is the pair's first bar (slot N), no flip.
+        pair.armed = false;
+        pair.skipFlip = false;
+        LOG_PRINTF("[PAIR] sound voice=%d slot=%d\n", synth, pair.base);
+        continue;
+      }
       if (pair.skipFlip) {
         pair.skipFlip = false;
         continue;

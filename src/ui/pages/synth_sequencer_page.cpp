@@ -2456,10 +2456,14 @@ void SynthSequencerPage::extendHeldNote() {
 
 void SynthSequencerPage::onExit() {
   MultiPage::onExit();
+  // The pair is sticky per synth: leaving the page does not stop it.
   if (pattern_page_) pattern_page_->resetInputModes();
-  const auto cancelPair = [&]() { mini_acid_.cancelPairPlay(voice_index_, "page"); };
-  if (audio_guard_) audio_guard_(cancelPair);
-  else cancelPair();
+}
+
+void SynthSequencerPage::onEnter(int context) {
+  MultiPage::onEnter(context);
+  // The pair view follows the engine: on when this synth's pair plays.
+  if (pattern_page_) pattern_page_->syncPairViewFromEngine();
 }
 
 void SynthSequencerPage::tick() {

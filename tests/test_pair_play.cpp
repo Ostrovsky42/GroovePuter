@@ -119,7 +119,11 @@ int main() {
     plainL(page);
     expect(engine.pairPlayActive(0), "restart before leaving");
     page.onExit();
-    expect(!engine.pairPlayActive(0), "leaving the page cancels");
+    expect(engine.pairPlayActive(0), "leaving the page keeps the pair (sticky)");
+    page.onEnter(0);
+    expect(page.patternPage()->pairView(), "re-entering shows the pair view");
+    plainL(page);
+    expect(!engine.pairPlayActive(0), "L stops the sticky pair");
 
     // Song on cancels and refuses.
     plainL(page);
@@ -130,6 +134,49 @@ int main() {
     expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::SongOn,
            "Song on reports SongOn");
     engine.setSongMode(false);
+  }
+
+  // 1d. Sticky per synth, armed start at the bar line, Stop cancels both.
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 2);
+    engine.set303PatternIndex(1, 5);
+    NullGfx gfx;
+    SynthSequencerPage pageA(gfx, engine, AudioGuard{}, 0);
+    SynthSequencerPage pageB(gfx, engine, AudioGuard{}, 1);
+    pageA.setBoundaries(Rect{0, 16, 240, 93});
+    pageB.setBoundaries(Rect{0, 16, 240, 93});
+    pageA.onEnter(0);
+    engine.start();
+    engine.processSequencerEvents(0u);
+    plainL(pageA);
+    expect(engine.pairPlayActive(0) && engine.pairPlayArmed(0), "playing: armed");
+    expect(engine.pairPlayPhase(0) == 0 && patA(engine) == 2, "armed: not flipped, slot N");
+    // Switch to B.
+    pageA.onExit();
+    pageB.onEnter(0);
+    expect(engine.pairPlayActive(0), "A pair survives the switch to B");
+    expect(!pageB.patternPage()->pairView(), "B pair view is not forced on");
+    engine.processSequencerEvents(384u);
+    expect(!engine.pairPlayArmed(0) && engine.pairPlayPhase(0) == 0 && patA(engine) == 2,
+           "bar line: sounding, phase 0, slot N");
+    engine.processSequencerEvents(768u);
+    expect(engine.pairPlayPhase(0) == 1 && patA(engine) == 3, "next bar flips to N+1");
+    pageB.onExit();
+    pageA.onEnter(0);
+    expect(pageA.patternPage()->pairView(), "A page entry: pair view on");
+    plainL(pageA);
+    pageA.onExit();
+    pageB.onEnter(0);
+    plainL(pageB);
+    pageB.onExit();
+    pageA.onEnter(0);
+    plainL(pageA);
+    expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "both pairs run");
+    engine.stop();
+    expect(!engine.pairPlayActive(0) && !engine.pairPlayActive(1), "Stop cancels both");
   }
 
   // 1c. Plain L is view + play in one key; Ctrl+L does nothing.

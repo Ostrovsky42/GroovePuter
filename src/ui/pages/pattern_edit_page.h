@@ -24,8 +24,13 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void resetInputModes() {
     note_entry_mode_ = false;
     chaining_mode_ = false;
-    pair_view_ = false;
     cursor_next_ = false;
+  }
+  // The pair view is not an input mode: it outlives the page while the pair
+  // plays. Page entry sets it from the engine.
+  void syncPairViewFromEngine() {
+    pair_view_ = mini_acid_.pairPlayActive(voice_index_);
+    if (!pair_view_) cursor_next_ = false;
   }
   // PAIR VIEW (L): rows 3-4 show slot N+1 of the same synth. The cursor and
   // every edit follow the row; slot N+1 plays only in Song mode.

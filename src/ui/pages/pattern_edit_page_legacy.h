@@ -1096,18 +1096,26 @@ void PatternEditPage::draw(IGfx& gfx) {
   }
   if (mini_acid_.songVoiceDisplayState(voice_index_) ==
       MiniAcid::SongVoiceDisplayState::Pattern) {
-    char pairPlayBuf[24];
+    char pairPlayBuf[32];
     const bool pairPlaying = mini_acid_.pairPlayActive(voice_index_);
     if (pairPlaying) {
       const int n = mini_acid_.pairPlayBaseSlot(voice_index_) + 1;
-      std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY %d+%d", n, n + 1);
+      if (mini_acid_.pairPlayArmed(voice_index_)) {
+        std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY: WAIT NEXT BAR");
+      } else {
+        std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY %d+%d", n, n + 1);
+      }
     }
+    // Badge: the other synth's pair plays while this page shows none.
+    const int otherVoice = voice_index_ == 0 ? 1 : 0;
+    const bool otherPair = !pairPlaying && mini_acid_.pairPlayActive(otherVoice);
     UI::drawStandardFooter(gfx,
         pairPlaying ? pairPlayBuf
             : note_entry_mode_ ? "G/P:NOTES N:EXIT"
             : (pair_view_ ? "L:1 SLOT P:STYLE G:GEN AltG:LEGACY"
                           : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
         pairPlaying ? "L:STOP"
+            : otherPair ? (voice_index_ == 0 ? "B:PAIR" : "A:PAIR")
             : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L PAIR PLAY");
   }
 }
