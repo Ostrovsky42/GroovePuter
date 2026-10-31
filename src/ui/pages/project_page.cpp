@@ -646,6 +646,13 @@ bool ProjectPage::importMidiAtSelection() {
         }
       }
 
+      // The importer writes the scene (and pages) directly, bypassing the
+      // per-slot event cache that the audio reads. Republish every resident
+      // slot, as scene load does, so the imported bars sound without an edit.
+      if (!mini_acid_.rebuildPatternRuntimeEventBank()) {
+        Serial.println("[ProjectPage] MIDI import: runtime bank rebuild failed");
+      }
+
       persisted = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
     }
 
