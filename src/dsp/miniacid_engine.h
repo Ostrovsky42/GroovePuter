@@ -253,6 +253,8 @@ public:
   void cancelAllPairPlay();
   bool pairPlayActive(int voiceIndex) const;
   int pairPlayBaseSlot(int voiceIndex) const;
+  // 0 while slot N sounds, 1 while N+1 sounds, -1 when pair play is off.
+  int pairPlayPhase(int voiceIndex) const;
   MelodySlotResult prepareMelodySlot(
       int voiceIndex, int bankIndex, int patternIndex,
       PhraseRuntime::RuntimeSynthEventBuffer& out) const;

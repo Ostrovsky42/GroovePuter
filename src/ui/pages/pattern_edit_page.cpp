@@ -102,6 +102,11 @@ bool PatternEditPage::nextSlotAvailable() const {
          Bank<SynthPattern>::kPatterns;
 }
 
+int PatternEditPage::playheadPair() const {
+  if (!pair_view_ || !nextSlotAvailable()) return 0;
+  return mini_acid_.pairPlayPhase(voice_index_) == 1 ? 1 : 0;
+}
+
 // The pattern slot that edits, copy and the cursor act on: N, or N+1 while the
 // cursor is on rows 3-4 of the pair view.
 int PatternEditPage::editPatternIndex() const {

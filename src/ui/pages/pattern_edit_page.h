@@ -32,6 +32,9 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool pairView() const { return pair_view_; }
   int pairRowCount() const { return pair_view_ ? 4 : 2; }
   bool nextSlotAvailable() const;
+  // Pair row group (0 = rows 1-2, 1 = rows 3-4) that holds the playhead. It
+  // follows the sounding slot only while pair play runs in the pair view.
+  int playheadPair() const;
   bool cursorOnNextSlot() const { return pair_view_ && cursor_next_ && nextSlotAvailable(); }
   int editPatternIndex() const;
   bool togglePairView();

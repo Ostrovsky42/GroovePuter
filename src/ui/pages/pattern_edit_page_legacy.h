@@ -1379,9 +1379,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, p.dim);
       continue;
     }
-    // The playhead belongs to slot N: N+1 sounds only in Song mode.
+    // The playhead sits in slot N, or in N+1 while pair play sounds it.
     const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
-    bool isCurrent = (slot == 0 && isPlayingPattern && playing == i);
+    bool isCurrent = (slot == playheadPair() && isPlayingPattern && playing == i);
     bool isCursor = (slotCursor && stepCursor == i);
     bool isSelected = slotCursor && isStepSelected(i);
 
@@ -1610,9 +1610,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
       continue;
     }
-    // The playhead belongs to slot N: N+1 sounds only in Song mode.
+    // The playhead sits in slot N, or in N+1 while pair play sounds it.
     const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
-    bool isCurrent = (slot == 0 && isPlayingPattern && playing == i);
+    bool isCurrent = (slot == playheadPair() && isPlayingPattern && playing == i);
     bool isCursor = (slotCursor && stepCursor == i);
     bool isSelected = slotCursor && isStepSelected(i);
 

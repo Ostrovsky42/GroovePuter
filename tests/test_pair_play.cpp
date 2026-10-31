@@ -10,6 +10,7 @@
 #include "src/dsp/miniacid_engine.h"
 #undef private
 #include "src/state/material_slot_access.h"
+#include "src/ui/pages/pattern_edit_page.h"
 #include "src/ui/pages/synth_sequencer_page.h"
 #include "src/ui/ui_common.h"
 
@@ -127,6 +128,41 @@ int main() {
     expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::SongOn,
            "Song on reports SongOn");
     engine.setSongMode(false);
+  }
+
+  // 1b. The playhead follows the sounding slot: rows 3-4 in phase 1.
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 2);
+    NullGfx gfx;
+    PatternEditPage steps(gfx, engine, AudioGuard{}, 0);
+    expect(steps.playheadPair() == 0, "pair view off: normal playhead");
+    steps.togglePairView();
+    expect(steps.playheadPair() == 0, "pair play off: normal playhead");
+    expect(engine.pairPlayPhase(0) == -1, "phase is -1 when pair play is off");
+    SynthSequencerPage host(gfx, engine, AudioGuard{}, 0);
+    host.setBoundaries(Rect{0, 16, 240, 93});
+    host.onEnter(0);
+    ctrlL(host);
+    expect(engine.pairPlayActive(0), "pair play starts");
+    engine.start();
+    engine.processSequencerEvents(0u);
+    expect(engine.pairPlayPhase(0) == 0 && steps.playheadPair() == 0,
+           "phase 0: playhead in rows 1-2");
+    engine.processSequencerEvents(384u);
+    expect(engine.pairPlayPhase(0) == 1 && steps.playheadPair() == 1,
+           "phase 1: playhead in rows 3-4");
+    engine.processSequencerEvents(384u + 5u * 24u);
+    expect(engine.currentStep() >= 0 && engine.currentStep() < 16 &&
+               steps.playheadPair() == 1,
+           "phase 1 holds across the bar, step index unchanged");
+    steps.togglePairView();
+    expect(steps.playheadPair() == 0, "single view: playhead stays in rows 1-2");
+    steps.togglePairView();
+    engine.cancelPairPlay(0);
+    expect(steps.playheadPair() == 0, "pair play stopped: normal playhead");
   }
 
   // 2. A Melody slot in the pair refuses.

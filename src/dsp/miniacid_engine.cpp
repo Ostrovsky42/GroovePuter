@@ -1222,6 +1222,11 @@ int MiniAcid::pairPlayBaseSlot(int voiceIndex) const {
   return st.active ? st.base : -1;
 }
 
+int MiniAcid::pairPlayPhase(int voiceIndex) const {
+  const auto& st = pairPlay_[clamp303Voice(voiceIndex)];
+  return st.active ? st.phase : -1;
+}
+
 void MiniAcid::toggleSongMode() { setSongMode(!songMode_); }
 
 bool MiniAcid::loopModeEnabled() const { return sceneManager_.loopMode(); }
