@@ -1,4 +1,4 @@
-// STEPS PAIR PLAY (Ctrl+L): one voice loops slot N, N+1 on the bar line. It is
+// STEPS PAIR PLAY (plain L, with the pair view): one voice loops slot N, N+1 on the bar line. It is
 // a control-side override: the selected slot, the other voice and the drums
 // never move, and Song / Melody / unsaved edits refuse it.
 #include <cstdio>
@@ -53,14 +53,16 @@ void expect(bool cond, const char* what) {
   }
 }
 
-void ctrlL(SynthSequencerPage& page) {
+void keyL(SynthSequencerPage& page, bool ctrl) {
   UIEvent e{};
   e.event_type = GROOVEPUTER_KEY_DOWN;
   e.key = 'l';
   e.scancode = GROOVEPUTER_L;
-  e.ctrl = true;
+  e.ctrl = ctrl;
   (void)page.handleEvent(e);
 }
+void plainL(SynthSequencerPage& page) { keyL(page, false); }
+void ctrlL(SynthSequencerPage& page) { keyL(page, true); }
 
 int patA(MiniAcid& e) { return e.songPatternIndexForTrack(SongTrack::SynthA); }
 int patB(MiniAcid& e) { return e.songPatternIndexForTrack(SongTrack::SynthB); }
@@ -82,8 +84,8 @@ int main() {
     page.setBoundaries(Rect{0, 16, 240, 93});
     page.onEnter(0);
 
-    ctrlL(page);
-    expect(engine.pairPlayActive(0), "Ctrl+L starts pair play");
+    plainL(page);
+    expect(engine.pairPlayActive(0), "L starts pair play");
     expect(!engine.pairPlayActive(1), "voice B is not in pair play");
     engine.start();
     int seenA[4], seenB[4];
@@ -99,34 +101,67 @@ int main() {
            "voice A plays 2, 3, 2, 3");
     for (int bar = 0; bar < 4; ++bar) expect(seenB[bar] == 5, "voice B stays on 5");
 
-    ctrlL(page);
-    expect(!engine.pairPlayActive(0), "Ctrl+L again stops the pair");
+    plainL(page);
+    expect(!engine.pairPlayActive(0), "L again stops the pair");
     expect(patA(engine) == 2, "stopped pair returns to the selected slot");
 
     // Cancel on Stop.
-    ctrlL(page);
+    plainL(page);
     expect(engine.pairPlayActive(0), "restart");
     engine.stop();
     expect(!engine.pairPlayActive(0), "transport Stop cancels");
 
     // Cancel on slot change and on leaving the page.
-    ctrlL(page);
+    plainL(page);
     engine.set303PatternIndex(0, 4);
     expect(!engine.pairPlayActive(0), "changing slot cancels");
     engine.set303PatternIndex(0, 2);
-    ctrlL(page);
+    plainL(page);
     expect(engine.pairPlayActive(0), "restart before leaving");
     page.onExit();
     expect(!engine.pairPlayActive(0), "leaving the page cancels");
 
     // Song on cancels and refuses.
-    ctrlL(page);
+    plainL(page);
     engine.setSongMode(true);
     expect(!engine.pairPlayActive(0), "Song on cancels");
-    ctrlL(page);
+    plainL(page);
     expect(!engine.pairPlayActive(0), "Song on refuses");
     expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::SongOn,
            "Song on reports SongOn");
+    engine.setSongMode(false);
+  }
+
+  // 1c. Plain L is view + play in one key; Ctrl+L does nothing.
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 2);
+    NullGfx gfx;
+    PatternEditPage steps(gfx, engine, AudioGuard{}, 0);
+    const auto key = [&](bool ctrl) {
+      UIEvent e{};
+      e.event_type = GROOVEPUTER_KEY_DOWN;
+      e.key = 'l';
+      e.scancode = GROOVEPUTER_L;
+      e.ctrl = ctrl;
+      (void)steps.handleEvent(e);
+    };
+    key(true);
+    expect(!engine.pairPlayActive(0) && !steps.pairView(), "Ctrl+L does nothing when off");
+    key(false);
+    expect(engine.pairPlayActive(0) && steps.pairView(), "L: view on and play on");
+    key(true);
+    expect(engine.pairPlayActive(0) && steps.pairView(), "Ctrl+L does not stop");
+    key(false);
+    expect(!engine.pairPlayActive(0) && !steps.pairView(), "L again: play off and view off");
+    // Refusal keeps the view on.
+    engine.setSongMode(true);
+    key(false);
+    expect(!engine.pairPlayActive(0) && steps.pairView(), "refused play keeps the view on");
+    key(false);
+    expect(!steps.pairView(), "L turns the kept view off");
     engine.setSongMode(false);
   }
 
@@ -145,7 +180,7 @@ int main() {
     SynthSequencerPage host(gfx, engine, AudioGuard{}, 0);
     host.setBoundaries(Rect{0, 16, 240, 93});
     host.onEnter(0);
-    ctrlL(host);
+    plainL(host);
     expect(engine.pairPlayActive(0), "pair play starts");
     engine.start();
     engine.processSequencerEvents(0u);
@@ -238,7 +273,7 @@ int main() {
     SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
     page.setBoundaries(Rect{0, 16, 240, 93});
     page.onEnter(0);
-    ctrlL(page);
+    plainL(page);
     expect(engine.pairPlayActive(0), "pair play starts with an unrefreshed N+1");
     engine.start();
     engine.processSequencerEvents(0u);

@@ -1107,8 +1107,8 @@ void PatternEditPage::draw(IGfx& gfx) {
             : note_entry_mode_ ? "G/P:NOTES N:EXIT"
             : (pair_view_ ? "L:1 SLOT P:STYLE G:GEN AltG:LEGACY"
                           : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
-        pairPlaying ? "CTRL+L:STOP"
-            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "CTRL+L PAIR PLAY");
+        pairPlaying ? "L:STOP"
+            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L PAIR PLAY");
   }
 }
 

@@ -172,6 +172,18 @@ bool PatternEditPage::togglePairPlay() {
   return true;
 }
 
+// Plain L: off -> view on, then play (a refusal keeps the view and its toast
+// is the last one shown). On -> view off, then stop play if it runs.
+bool PatternEditPage::togglePairViewAndPlay() {
+  if (pair_view_) {
+    togglePairView();
+    if (mini_acid_.pairPlayActive(voice_index_)) togglePairPlay();
+    return true;
+  }
+  togglePairView();
+  return togglePairPlay();
+}
+
 // Up/Down over the visible rows. Rows 3-4 are slot N+1 and do not exist for
 // slot 8. Crossing from one slot to the other ends a selection; extending a
 // selection never crosses, so a selection always belongs to one slot.
@@ -893,16 +905,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     resetNoteHoldTracking();
   }
 
-  // Ctrl+L: PAIR PLAY (outside NOTE ENTRY). Plain L stays the view toggle.
-  if (!note_entry_mode_ && lowerKey == 'l' &&
-      ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
-    return togglePairPlay();
-  }
-
-  // L: PAIR VIEW. In NOTE ENTRY L is a pitch, so this is outside it only.
+  // L: pair view AND pair play as one toggle (outside NOTE ENTRY, where L is
+  // a pitch). Ctrl+L does nothing here.
   if (!note_entry_mode_ && lowerKey == 'l' &&
       !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
-    return togglePairView();
+    return togglePairViewAndPlay();
+  }
+  if (!note_entry_mode_ && lowerKey == 'l' && ui_event.ctrl) {
+    return true;
   }
 
   if (!note_entry_mode_ && lowerKey == 'p' &&
