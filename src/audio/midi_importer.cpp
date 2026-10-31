@@ -133,6 +133,11 @@ MidiImporter::ScanResult MidiImporter::scanFile(const std::string& path) {
                     ci.noteCount++;
                     if (note < ci.minNote) ci.minNote = note;
                     if (note > ci.maxNote) ci.maxNote = note;
+                    {
+                        const uint32_t barIdx =
+                            absoluteTicks / (static_cast<uint32_t>(result.division) * 4u);
+                        if (barIdx < 32u) ci.barMask |= (1u << barIdx);
+                    }
                     result.totalNotes++;
                     if (absoluteTicks > maxAbsoluteTicks) maxAbsoluteTicks = absoluteTicks;
                     if (currentTrackChannel < 0) currentTrackChannel = channel;

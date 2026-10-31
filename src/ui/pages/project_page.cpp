@@ -30,6 +30,8 @@
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/ui/save_probe.h"
 #include "../project_page_ux.h"
+#include "../hub_midi_bar_strip.h"
+#include "../ui_utils.h"
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
@@ -289,7 +291,6 @@ void ProjectPage::openMidiAdvanceDialog() {
   }
 
   midi_selected_path_ = selectedPath;
-  dialog_type_ = DialogType::MidiAdvance;
   midi_advance_focus_ = MidiAdvanceFocus::Mode;
   midi_adv_scroll_ = 0;
 
@@ -298,15 +299,189 @@ void ProjectPage::openMidiAdvanceDialog() {
   MidiImporter::ScanResult& midiScan =
       GroovePuterUi::midiFileManager().beginImportScan();
   midiScan = importer.scanFile(midi_selected_path_);
-  if (midiScan.valid) {
-    autoRouteMidi();
-    if (midiScan.estimatedBars > 0) {
-      midi_import_length_bars_ = midiScan.estimatedBars;
-    }
+  if (!midiScan.valid) {
+    returnToMidiBrowser();
+    UI::showToast("IMPORT: NO NOTES IN FILE", 1200);
+    return;
   }
+  midi_import_length_bars_ = midiScan.estimatedBars > 0 ? midiScan.estimatedBars : 16;
+  midi_import_screen_.reset(new (std::nothrow) MidiImportScreen::State());
+  if (!midi_import_screen_) {
+    returnToMidiBrowser();
+    UI::showToast("IMPORT: OUT OF MEMORY", 1200);
+    return;
+  }
+  MidiImportScreen::reset(*midi_import_screen_, midiScan.estimatedBars);
+  for (int i = 0; i < 16; ++i) {
+    const auto& ci = midiScan.channels[i];
+    if (!ci.used()) continue;
+    MidiImportScreen::addRow(*midi_import_screen_, static_cast<uint8_t>(i + 1),
+                             ci.noteCount, ci.minNote, ci.maxNote,
+                             ci.trackName, ci.barMask);
+  }
+  MidiImportScreen::assignInitialTargets(*midi_import_screen_);
+  dialog_type_ = DialogType::MidiImportTracks;
+}
+
+// Targets -> channel masks and the bar range -> importer settings.
+void ProjectPage::applyMidiImportScreen() {
+  const MidiImportScreen::Masks m = MidiImportScreen::buildMasks(*midi_import_screen_);
+  midi_mask_a_ = m.a;
+  midi_mask_b_ = m.b;
+  midi_mask_d_ = m.d;
+  MidiImportScreen::rangeToSettings(*midi_import_screen_, midi_import_from_bar_,
+                                    midi_import_length_bars_);
+}
+
+bool ProjectPage::handleMidiImportTracks(UIEvent& ui_event) {
+  if (!midi_import_screen_) { returnToMidiBrowser(); return true; }
+  MidiImportScreen::State& st = *midi_import_screen_;
+  constexpr uint8_t kVisible = 7;
+  if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
+    returnToMidiBrowser();
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_UP) { MidiImportScreen::moveRow(st, -1, kVisible); return true; }
+  if (ui_event.scancode == GROOVEPUTER_DOWN) { MidiImportScreen::moveRow(st, 1, kVisible); return true; }
+  if (ui_event.scancode == GROOVEPUTER_LEFT) { MidiImportScreen::moveBar(st, -1); return true; }
+  if (ui_event.scancode == GROOVEPUTER_RIGHT) { MidiImportScreen::moveBar(st, 1); return true; }
+  const char key = ui_event.key;
+  if (key == 't' || key == 'T') { MidiImportScreen::cycleTarget(st); return true; }
+  if (key == 's' || key == 'S') { MidiImportScreen::setRangeStart(st); return true; }
+  if (key == 'e' || key == 'E') { MidiImportScreen::setRangeEnd(st); return true; }
+  if (key == '\t') {
+    // Old settings dialog (profile, target pattern, APPEND), seeded from here.
+    applyMidiImportScreen();
+    midi_import_screen_.reset();
+    dialog_type_ = DialogType::MidiAdvance;
+    return true;
+  }
+  if (key == '\n' || key == '\r') {
+    const char clash = MidiImportScreen::clashSynth(st);
+    if (clash == 'A') { UI::showToast("IMPORT: TWO TRACKS ON A", 1200); return true; }
+    if (clash == 'B') { UI::showToast("IMPORT: TWO TRACKS ON B", 1200); return true; }
+    if (!MidiImportScreen::buildMasks(st).any()) {
+      UI::showToast("IMPORT: NO TRACK SELECTED", 1200);
+      return true;
+    }
+    applyMidiImportScreen();
+    return importMidiAtSelection();
+  }
+  return true;
+}
+
+void ProjectPage::drawMidiImportTracks(IGfx& gfx) {
+  using namespace MidiImportScreen;
+  if (!midi_import_screen_) return;
+  const State& st = *midi_import_screen_;
+  UI::publishShellInfo("T TARGET  S/E BARS  ENT IMPORT  ESC");
+
+  const int fh = gfx.fontHeight();
+  const int cw = gfx.textWidth("0");
+  const int rowH = fh + 2;
+  const int top = Layout::CONTENT.y;
+  const int xNum = 2;
+  const int xName = xNum + 3 * cw;
+  const int xCh = xName + 7 * cw;
+  const int xN = xCh + 3 * cw;
+  const int xRange = xN + 4 * cw;
+  const int xStrip = xRange + 8 * cw;
+  const int xTarget = Layout::SCREEN_W - 4 - 5 * cw;
+  const int stripW = xTarget - 4 - xStrip;
+  const int bars = st.fileBars;
+  const int cellW = std::max(1, stripW / std::max(1, bars));
+  char buf[24];
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(xNum, top, "#");
+  gfx.drawText(xName, top, "NAME");
+  gfx.drawText(xCh, top, "CH");
+  gfx.drawText(xN, top, "N");
+  gfx.drawText(xRange, top, "RANGE");
+  std::snprintf(buf, sizeof(buf), "B%d %d-%d", st.barCursor + 1, st.rangeStart + 1, st.rangeEnd + 1);
+  gfx.drawText(xStrip, top, buf);
+  gfx.drawText(xTarget, top, "TARGET");
+
+  const int rowsTop = top + fh + 1;
+  const int visible = 7;
+  uint8_t cells[kMaxBars];
+  for (int v = 0; v < visible; ++v) {
+    const int i = st.scroll + v;
+    if (i >= st.count) break;
+    const Row& r = st.rows[i];
+    const int y = rowsTop + v * rowH;
+    if (i == st.cursor) gfx.fillRect(0, y - 1, Layout::SCREEN_W - 3, rowH, COLOR_PANEL);
+
+    IGfxColor tc = COLOR_MUTED;
+    if (r.target == Target::A) tc = COLOR_SYNTH_A;
+    else if (r.target == Target::B) tc = COLOR_SYNTH_B;
+    else if (r.target == Target::Drums) tc = COLOR_WARN;
+    const bool clash = rowClashes(st, static_cast<uint8_t>(i));
+
+    gfx.setTextColor(COLOR_TEXT);
+    std::snprintf(buf, sizeof(buf), "%d", i + 1);
+    gfx.drawText(xNum, y, buf);
+    if (clash) {
+      gfx.setTextColor(COLOR_RED);
+      gfx.drawText(0, y, "!");
+    }
+    gfx.setTextColor(COLOR_TEXT);
+    gfx.drawText(xName, y, r.name[0] ? r.name : "-");
+    std::snprintf(buf, sizeof(buf), "%d", r.channel);
+    gfx.drawText(xCh, y, buf);
+    if (r.noteCount < 1000) std::snprintf(buf, sizeof(buf), "%d", r.noteCount);
+    else std::snprintf(buf, sizeof(buf), "%dk", std::min(r.noteCount / 1000, 99));
+    gfx.drawText(xN, y, buf);
+    char n1[8], n2[8];
+    formatNoteName(r.minNote, n1, sizeof(n1));
+    formatNoteName(r.maxNote, n2, sizeof(n2));
+    std::snprintf(buf, sizeof(buf), "%s-%s", n1, n2);
+    gfx.drawText(xRange, y, buf);
+
+    const uint8_t n = HubMidiBarStrip::fill(r.barMask, bars, static_cast<uint8_t>(bars), cells, sizeof(cells));
+    for (uint8_t c = 0; c < n; ++c) {
+      const bool inRange = c >= st.rangeStart && c <= st.rangeEnd;
+      IGfxColor col = COLOR_GRAY;
+      if (cells[c] == HubMidiBarStrip::kCellNotes) col = inRange ? tc : COLOR_LIGHT_GRAY;
+      gfx.fillRect(xStrip + c * cellW, y, std::max(1, cellW - (cellW > 2 ? 1 : 0)), fh, col);
+    }
+    gfx.setTextColor(clash ? COLOR_RED : tc);
+    gfx.drawText(xTarget, y, targetLabel(r.target));
+  }
+  if (st.count == 0) {
+    gfx.setTextColor(COLOR_MUTED);
+    gfx.drawText(xNum, rowsTop, "NO TRACKS");
+  }
+  // Bar cursor: a hollow column over all rows.
+  const int shown = std::min<int>(st.count - st.scroll, visible);
+  if (shown > 0) {
+    gfx.drawRect(xStrip + st.barCursor * cellW - 1, rowsTop - 1, cellW + 1,
+                 shown * rowH, COLOR_TEXT);
+  }
+  if (st.count > visible) {
+    const int sbH = visible * rowH;
+    const int knobH = std::max(3, sbH * visible / st.count);
+    const int knobY = rowsTop + (sbH - knobH) * st.scroll / (st.count - visible);
+    gfx.fillRect(Layout::SCREEN_W - 2, rowsTop, 2, sbH, COLOR_PANEL);
+    gfx.fillRect(Layout::SCREEN_W - 2, knobY, 2, knobH, COLOR_ACCENT);
+  }
+
+  // Legend.
+  const int ly = rowsTop + visible * rowH + 1;
+  int lx = xNum;
+  auto seg = [&](IGfxColor c, const char* t) {
+    gfx.setTextColor(c);
+    gfx.drawText(lx, ly, t);
+    lx += gfx.textWidth(t) + cw;
+  };
+  seg(COLOR_SYNTH_A, "A=SYNTH A");
+  seg(COLOR_SYNTH_B, "B=SYNTH B");
+  seg(COLOR_WARN, "DRUMS");
+  seg(COLOR_MUTED, "SKIP");
 }
 
 void ProjectPage::returnToMidiBrowser() {
+  midi_import_screen_.reset();
   GroovePuterUi::midiFileManager().open();
   dialog_type_ = DialogType::ImportMidi;
 }
@@ -515,6 +690,7 @@ bool ProjectPage::activateUsbRole() {
 }
 
 void ProjectPage::onEnter(int context) {
+  midi_import_screen_.reset();
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
@@ -677,6 +853,7 @@ bool ProjectPage::deleteSelectionInDialog() {
 }
 
 void ProjectPage::closeDialog() {
+  midi_import_screen_.reset();
   dialog_type_ = DialogType::None;
   dialog_focus_ = DialogFocus::List;
   save_dialog_focus_ = SaveDialogFocus::Input;
@@ -1141,6 +1318,10 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return loadSceneAtSelection();
         }
         return true;
+    }
+
+    if (dialog_type_ == DialogType::MidiImportTracks) {
+        return handleMidiImportTracks(ui_event);
     }
 
     if (dialog_type_ == DialogType::MidiAdvance) {
@@ -1662,6 +1843,10 @@ void ProjectPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
 
 void ProjectPage::draw(IGfx& gfx) {
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
+  if (dialog_type_ == DialogType::MidiImportTracks) {
+    drawMidiImportTracks(gfx);
+    return;
+  }
   if (dialog_type_ == DialogType::MidiAdvance) {
     drawMidiAdvanceDialog(gfx);
     return;

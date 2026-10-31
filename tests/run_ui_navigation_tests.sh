@@ -27,6 +27,11 @@ echo "Melody chord focus PASS"
 # PROJECT page list wrap, name caret and duplicate-name check: pure, no SDL.
 "${CXX:-g++}" -std=c++17 -Wall -Wextra -I"$ROOT" \
   "$ROOT/tests/test_project_page_ux.cpp" -o "$BUILD/test_project_page_ux"
+
+# PROJECT MIDI IMPORT track list: targets, clash rule, masks, range: pure.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -I"$ROOT" \
+  "$ROOT/tests/test_import_screen.cpp" -o "$BUILD/test_import_screen"
+"$BUILD/test_import_screen"
 "$BUILD/test_project_page_ux"
 
 cd "$ROOT/platform_sdl"

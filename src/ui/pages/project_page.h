@@ -6,6 +6,8 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../midi_file_manager.h"
+#include "../midi_import_screen.h"
+#include <memory>
 #include "help_dialog.h"
 #include "src/audio/pattern_paging.h"
 #include "src/state/scene_revision.h"
@@ -32,7 +34,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear, Rename };
+  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiImportTracks, MidiAdvance, ConfirmClear, Rename };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
@@ -65,6 +67,9 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void returnToMidiBrowser();
   bool importMidiAtSelection();
   void drawMidiAdvanceDialog(IGfx& gfx);
+  void drawMidiImportTracks(IGfx& gfx);
+  bool handleMidiImportTracks(UIEvent& ui_event);
+  void applyMidiImportScreen();
   void openConfirmClearDialog();
   void drawConfirmClearDialog(IGfx& gfx);
   bool clearProject();
@@ -137,6 +142,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
 
   // Matrix Routing Masks
+  // Heap while the IMPORT track list is open (page must stay <= 256 bytes).
+  std::unique_ptr<MidiImportScreen::State> midi_import_screen_;
   uint16_t midi_mask_a_ = 0;
   uint16_t midi_mask_b_ = 0;
   uint16_t midi_mask_d_ = 0;

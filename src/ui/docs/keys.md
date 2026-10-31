@@ -512,6 +512,13 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `Enter` on Save | Save under the current name (unnamed project: asks for a name) |
 | `A` on Save | Save As: type a new name |
 
+MIDI import (PROJECT > Import MIDI, pick a file): the IMPORT track list shows one row
+per channel (#, NAME, CH, N notes, RANGE, per-bar strip, TARGET).
+`Up/Down` track, `T` target (A, B, DRUMS, SKIP), `Left/Right` bar cursor,
+`S`/`E` range start/end at the bar cursor, `Enter` import, `Esc` back,
+`Tab` old settings dialog (profile, start pattern, APPEND). Two tracks on A (or B)
+refuse the import.
+
 Load list: `Up` on the first item goes to the last and `Down` on the last goes
 to the first. `Enter` loads. `R` renames the selected project (name editor,
 `Enter` confirms, `Esc` cancels; an empty or already used name is refused).

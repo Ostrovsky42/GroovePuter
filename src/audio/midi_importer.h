@@ -45,6 +45,7 @@ public:
         uint8_t maxNote = 0;     ///< Highest note seen
         uint8_t program = 255;   ///< Program Change number (255=unset)
         char trackName[16] = {}; ///< First track name for this channel (truncated)
+        uint32_t barMask = 0;    ///< Bit n = bar n (from tick 0, 4/4) has note starts; first 32 bars
         bool used() const { return noteCount > 0; }
     };
 
