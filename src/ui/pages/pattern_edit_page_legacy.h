@@ -1342,7 +1342,12 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - (pair_view_ ? 17 : 20) - spacing * (gridRows - 1)) /
+  // Leftover width (7 px in the pair view) becomes extra 1 px gaps so the last
+  // column ends at the same 5 px side margin the first one starts at.
+  const int gridW = w - 10;
+  const int cellRem = gridW - cellW * kPatternStepColumns -
+                      spacing * (kPatternStepColumns - 1);
+  int cellH = (contentH - (pair_view_ ? 15 : 20) - spacing * (gridRows - 1)) /
               gridRows;
   const int minCellH = pair_view_ ? 10 : 12;
   if (cellH < minCellH) cellH = minCellH;
@@ -1365,7 +1370,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
     int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
-    int cellX = x + 5 + col * (cellW + spacing);
+    int cellX = x + 5 + col * (cellW + spacing) +
+                (col < cellRem ? col : cellRem);
     int cellRowY = gridY + row * (cellH + spacing);
 
     // Slot 8 has no N+1: its rows are empty and never take the cursor.
@@ -1569,7 +1575,12 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - (pair_view_ ? 17 : 20) - spacing * (gridRows - 1)) /
+  // Leftover width (7 px in the pair view) becomes extra 1 px gaps so the last
+  // column ends at the same 5 px side margin the first one starts at.
+  const int gridW = w - 10;
+  const int cellRem = gridW - cellW * kPatternStepColumns -
+                      spacing * (kPatternStepColumns - 1);
+  int cellH = (contentH - (pair_view_ ? 15 : 20) - spacing * (gridRows - 1)) /
               gridRows;
   const int minCellH = pair_view_ ? 10 : 12;
   if (cellH < minCellH) cellH = minCellH;
@@ -1590,7 +1601,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
     int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
-    int cellX = x + 5 + col * (cellW + spacing);
+    int cellX = x + 5 + col * (cellW + spacing) +
+                (col < cellRem ? col : cellRem);
     int cellRowY = gridY + row * (cellH + spacing);
 
     // Slot 8 has no N+1: its rows are empty and never take the cursor.
