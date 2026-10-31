@@ -1,3 +1,4 @@
+#include "src/debug_log.h"
 #include "miniacid_engine.h"
 #include "sound_quality_presets.h"
 #include "p0_preservation_evaluator.h"
@@ -1195,6 +1196,15 @@ MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
     return PairPlayResult::SaveFirst;
   }
   if (goQueued_[idx]) return PairPlayResult::GoQueued;
+  // Slot N+1 may have been written by a path that bypasses the event cache
+  // (Song cell, phrase generator, slot reuse): publish both slots first.
+  for (int offset = 0; offset < 2; ++offset) {
+    if (!refreshPatternRuntimeEvents(idx, bank, slot + offset)) {
+      LOG_WARN_UI("Pair play refresh failed: voice=%d bank=%d slot=%d",
+                  idx, bank, slot + offset);
+      return PairPlayResult::RefreshFailed;
+    }
+  }
   pairPlay_[idx].active = true;
   pairPlay_[idx].skipFlip = !playing;
   pairPlay_[idx].base = static_cast<uint8_t>(slot);

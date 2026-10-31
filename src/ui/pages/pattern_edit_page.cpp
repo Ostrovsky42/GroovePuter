@@ -155,6 +155,9 @@ bool PatternEditPage::togglePairPlay() {
     case MiniAcid::PairPlayResult::NoNextSlot:
       UI::showToast("PAIR PLAY: NO NEXT SLOT", 1200);
       break;
+    case MiniAcid::PairPlayResult::RefreshFailed:
+      UI::showToast("PAIR PLAY: REFRESH FAILED", 1200);
+      break;
   }
   return true;
 }

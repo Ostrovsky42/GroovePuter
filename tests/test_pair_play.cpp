@@ -196,6 +196,53 @@ int main() {
            "queued GO refuses");
   }
 
+  // 4. Pair play plays scene content of the next slot: notes written into
+  // slot N+1 behind the event cache are published when pair play starts.
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    engine.set303PatternIndex(0, 2);
+    const int bank = engine.current303BankIndex(0);
+    // Block 2 marked slot 3 as Melody on shared resident state: undo it.
+    (void)GroovePuterMaterial::setResidentKind(
+        engine.sceneManager_.currentScene(), 0,
+        bank * Bank<SynthPattern>::kPatterns + 3,
+        GroovePuterMaterial::MaterialKind::Pattern);
+    engine.sceneManager().currentScene().synthABanks[bank].patterns[3].steps[6].note = 52;
+    NullGfx gfx;
+    SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
+    page.setBoundaries(Rect{0, 16, 240, 93});
+    page.onEnter(0);
+    ctrlL(page);
+    expect(engine.pairPlayActive(0), "pair play starts with an unrefreshed N+1");
+    engine.start();
+    engine.processSequencerEvents(0u);
+    engine.processSequencerEvents(384u);
+    expect(engine.pairPlayPhase(0) == 1, "phase flips to N+1 after one bar");
+    const auto& ev = engine.activePatternRuntimeEvents(0);
+    expect(ev.eventForSourceStep(6) != nullptr &&
+               ev.eventForSourceStep(6)->note == 52,
+           "slot N+1 plays its scene note at step 6");
+  }
+
+  // 5. The refresh behind a Song cell commit (same call the commit lambda
+  // makes; SongPage itself cannot be driven from this host test).
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    const int bank = engine.current303BankIndex(0);
+    engine.sceneManager().currentScene().synthABanks[bank].patterns[5].steps[2].note = 47;
+    engine.rebuildPatternRuntimeEventBank();
+    engine.sceneManager().currentScene().synthABanks[bank].patterns[6].steps[4].note = 49;
+    expect(engine.patternRuntimeBank_.select(0, bank, 6).count == 0,
+           "written slot is stale before refresh");
+    expect(engine.refreshPatternRuntimeEvents(0, bank, 6),
+           "refresh of a written slot succeeds");
+    expect(engine.patternRuntimeBank_.select(0, bank, 6).count == 1, "refreshed slot has its event");
+  }
+
   if (!g_ok) return 1;
   std::puts("PAIR PLAY PASS");
   return 0;

@@ -488,6 +488,7 @@ Result generate(
                 prepared);
         }
         song.length = std::max(song.length, request.row + 1);
+        return static_cast<const PreparedMaterial&>(prepared);
     });
 
     GroovePuterState::markSceneMutated();

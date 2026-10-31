@@ -3118,7 +3118,20 @@ SongPatternMaterializer::Result SongPage::materializeSongTracks(
 
     auto commit = [&](auto&& applyPrepared) {
         withRuntimeAudioGuard([&]() {
-            applyPrepared();
+            const auto& written = applyPrepared();
+            // Song playback and the pair view read Synth events from the
+            // derived runtime bank: publish each written synth slot.
+            for (int synthIndex = 0; synthIndex < 2; ++synthIndex) {
+                const int localSlot = written.localSlot[synthIndex];
+                if (localSlot < 0) continue;
+                const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+                const int index = localSlot % Bank<SynthPattern>::kPatterns;
+                if (!mini_acid_.refreshPatternRuntimeEvents(
+                        synthIndex, bank, index)) {
+                    LOG_WARN_UI("Pattern event refresh failed: synth=%d bank=%d slot=%d",
+                                synthIndex, bank, index);
+                }
+            }
             if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
                 mini_acid_.setSongPosition(row);
             }

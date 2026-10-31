@@ -246,7 +246,7 @@ public:
   // bar boundary, and back. Pattern mode (Song off) only; it never writes the
   // selected slot, the Song or the Scene.
   enum class PairPlayResult : uint8_t {
-    Started, Stopped, SongOn, NotSteps, SaveFirst, GoQueued, NoNextSlot,
+    Started, Stopped, SongOn, NotSteps, SaveFirst, GoQueued, NoNextSlot, RefreshFailed,
   };
   PairPlayResult togglePairPlay(int voiceIndex);
   void cancelPairPlay(int voiceIndex);
