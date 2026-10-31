@@ -1193,7 +1193,9 @@ MiniAcid::PairPlayResult MiniAcid::togglePairPlay(int voiceIndex) {
     LOG_PRINTF("[PAIR] refuse voice=%d reason=noslot\n", idx);
     return PairPlayResult::NoNextSlot;
   }
-  if (isMelodySlot(idx, bank, slot) || isMelodySlot(idx, bank, slot + 1)) {
+  // Refuse by what SOUNDS, not by slot history: a slot that once held a saved
+  // Melody keeps that stored kind while the voice plays STEPS.
+  if (currentSequencedSource(idx) == SequencedSource::Phrase) {
     LOG_PRINTF("[PAIR] refuse voice=%d reason=melody\n", idx);
     return PairPlayResult::NotSteps;
   }

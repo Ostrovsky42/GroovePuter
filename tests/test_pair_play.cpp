@@ -174,7 +174,7 @@ int main() {
     expect(steps.playheadPair() == 0, "pair play stopped: normal playhead");
   }
 
-  // 2. A Melody slot in the pair refuses.
+  // 2. Refusal follows the sounding source, not the stored slot kind.
   {
     MiniAcid engine(44100.0f, nullptr);
     engine.init();
@@ -186,8 +186,23 @@ int main() {
         bank * Bank<SynthPattern>::kPatterns + 3,
         GroovePuterMaterial::MaterialKind::Melody);
     expect(set, "mark slot 3 as Melody");
+    // Stored kind Melody in N+1 and N, but STEPS sounds: pair play starts.
+    GroovePuterMaterial::setResidentKind(
+        engine.sceneManager_.currentScene(), 0,
+        bank * Bank<SynthPattern>::kPatterns + 2,
+        GroovePuterMaterial::MaterialKind::Melody);
+    engine.sceneManager().currentScene().synthABanks[bank].patterns[2].steps[0].note = 40;
+    expect(engine.currentSequencedSource(0) == MiniAcid::SequencedSource::Pattern,
+           "source is Pattern");
+    expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::Started,
+           "stored Melody kind does not refuse while Pattern sounds");
+    expect(engine.pairPlayActive(0) && engine.pairPlayPhase(0) == 0,
+           "started at phase 0");
+    engine.cancelPairPlay(0);
+    // A Melody that sounds (source Phrase) refuses.
+    engine.activeMaterial_[0].kind = GroovePuterMaterial::MaterialKind::Melody;
     expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::NotSteps,
-           "Melody in N+1 refuses");
+           "sounding Melody refuses");
     expect(!engine.pairPlayActive(0), "no state after refusal");
   }
 
