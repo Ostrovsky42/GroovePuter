@@ -260,6 +260,16 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
     if (ticksPerStep < 1.0) ticksPerStep = 1.0;
 
     int tracksParsed = 0;
+    // Pass 0 finds the global first routed step over all tracks (tracks are
+    // not bar-aligned); pass 1 imports with that start floored to a bar.
+    const uint32_t firstTrackPos = file.position();
+    for (int pass = 0; pass < 2; ++pass) {
+    if (pass == 1) {
+        if (firstRoutedStep < 0) return Error::NoNotesFound;
+        firstRoutedStep -= firstRoutedStep % 16;
+        file.seek(firstTrackPos);
+        tracksParsed = 0;
+    }
     while (file.position() + 8 <= fileSize) {
         if (file.readBytes(magic, 4) != 4) return Error::ReadError;
 
@@ -324,8 +334,11 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
 
                     if (!toA && !toB && !toD) continue; // Skip if not routed
 
-                    if (firstRoutedStep < 0) {
-                        firstRoutedStep = stepIdx;
+                    if (pass == 0) {
+                        if (firstRoutedStep < 0 || stepIdx < firstRoutedStep) {
+                            firstRoutedStep = stepIdx;
+                        }
+                        continue;
                     }
 
                     int adjustedStep = stepIdx - firstRoutedStep - settings.startStepOffset - sourceStartSteps;
@@ -495,6 +508,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
         if (file.position() != trackEnd) {
             file.seek(trackEnd);
         }
+    }
     }
     if (tracksParsed == 0) return Error::InvalidFormat;
 

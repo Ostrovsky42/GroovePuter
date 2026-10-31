@@ -57,6 +57,27 @@ static MidiImporter::Error importWith(MiniAcid& engine, uint16_t a, uint16_t b,
   return err;
 }
 
+// Two tracks, 96 ppq (24 ticks/step), 384 ticks/bar. Track 1 starts at
+// step 20 (bar 1, step 4); track 2 starts one step earlier (step 19). The
+// global start floors to bar 1 (step 16): both land on the same bar grid.
+static void writeTwoTrackSmf(const char* path) {
+  auto track = [](std::vector<unsigned char> body) {
+    body.insert(body.end(), {0x00, 0xFF, 0x2F, 0x00});
+    std::vector<unsigned char> t = {'M', 'T', 'r', 'k', 0, 0, 0,
+                                    static_cast<unsigned char>(body.size())};
+    t.insert(t.end(), body.begin(), body.end());
+    return t;
+  };
+  // step 20 = tick 480 = 0x83 0x60 ; step 19 = tick 456 = 0x83 0x48
+  auto t1 = track({0x83, 0x60, 0x90, 60, 100, 0x18, 0x90, 62, 100});
+  auto t2 = track({0x83, 0x48, 0x91, 72, 100, 0x18, 0x91, 74, 100});
+  std::vector<unsigned char> f = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 2, 0, 96};
+  f.insert(f.end(), t1.begin(), t1.end());
+  f.insert(f.end(), t2.begin(), t2.end());
+  std::ofstream o(path, std::ios::binary | std::ios::trunc);
+  o.write(reinterpret_cast<const char*>(f.data()), f.size());
+}
+
 int main() {
   MiniAcid engine(44100.0f, nullptr);
   engine.init();
@@ -136,6 +157,31 @@ int main() {
     expect(&engine.sceneManager().getCurrentDrumPattern() == imported,
            "drum trigger source is the imported slot");
     expect(imported->voices[0].steps[0].hit, "imported kick at step 0");
+  }
+
+  // (e) Later track starting earlier, off the bar line: nothing dropped.
+  {
+    writeTwoTrackSmf("imp_two.mid");
+    MidiImporter::ImportSettings st;
+    st.targetPatternIndex = 0;
+    st.overwrite = true;
+    st.synthAMask = 0x1;   // ch1 -> A
+    st.synthBMask = 0x2;   // ch2 -> B
+    MidiImporter imp(engine);
+    expect(imp.importFile("imp_two.mid", st) == MidiImporter::Error::None,
+           "two-track import succeeds");
+    auto& sc = engine.sceneManager().currentScene();
+    auto& A = sc.synthABanks[0].patterns[0];
+    auto& B = sc.synthBBanks[0].patterns[0];
+    // Start floored to bar 1: track 1 steps 4,5; track 2 steps 3,4.
+    expect(A.steps[4].note >= 0 && A.steps[5].note >= 0, "track 1 on bar grid (steps 4,5)");
+    expect(B.steps[3].note >= 0 && B.steps[4].note >= 0, "track 2 not cut (steps 3,4)");
+    int na = 0, nb = 0;
+    for (int i = 0; i < SynthPattern::kSteps; ++i) {
+      na += A.steps[i].note >= 0;
+      nb += B.steps[i].note >= 0;
+    }
+    expect(na == 2 && nb == 2, "no note of either track dropped");
   }
 
   if (g_ok) std::puts("midi import audible: PASS");
