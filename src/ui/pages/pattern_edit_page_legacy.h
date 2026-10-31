@@ -1126,7 +1126,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int body_h = h - 2;
   if (body_h <= 0) return;
 
-  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
@@ -1256,7 +1256,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
@@ -1354,7 +1354,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   const SynthPattern* nextPattern = nullptr;
   if (pair_view_ && nextSlotAvailable()) {
     nextPattern = &mini_acid_.sceneManager().getSynthPattern(
-        voice_index_, mini_acid_.current303PatternIndex(voice_index_) + 1);
+        voice_index_,
+        gridSourceSlot(1, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
   }
   const bool cursorNext = cursorOnNextSlot();
   const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;
@@ -1488,7 +1490,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
@@ -1587,7 +1589,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   const SynthPattern* nextPattern = nullptr;
   if (pair_view_ && nextSlotAvailable()) {
     nextPattern = &mini_acid_.sceneManager().getSynthPattern(
-        voice_index_, mini_acid_.current303PatternIndex(voice_index_) + 1);
+        voice_index_,
+        gridSourceSlot(1, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
   }
   const bool cursorNext = cursorOnNextSlot();
   const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;

@@ -35,6 +35,16 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   // Pair row group (0 = rows 1-2, 1 = rows 3-4) that holds the playhead. It
   // follows the sounding slot only while pair play runs in the pair view.
   int playheadPair() const;
+  // Source slot of a pair row group (0 = rows 1-2, 1 = rows 3-4): N for the
+  // first, N+1 for the second. The pair play phase moves only the playhead,
+  // never the content, so `phase` is deliberately not used.
+  static int gridSourceSlot(int rowGroup, bool pairOn, int phase, int base) {
+    (void)phase;
+    return (pairOn && rowGroup == 1) ? base + 1 : base;
+  }
+  // Slot N as the grid draws it. During pair play the engine's audible pattern
+  // follows the phase (N, then N+1), so slot N is read from the scene instead.
+  const SynthPattern& slotNPattern() const;
   bool cursorOnNextSlot() const { return pair_view_ && cursor_next_ && nextSlotAvailable(); }
   int editPatternIndex() const;
   bool togglePairView();

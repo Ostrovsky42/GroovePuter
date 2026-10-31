@@ -158,6 +158,15 @@ int main() {
     expect(engine.currentStep() >= 0 && engine.currentStep() < 16 &&
                steps.playheadPair() == 1,
            "phase 1 holds across the bar, step index unchanged");
+    // Content never follows the phase: rows 1-2 are slot N, rows 3-4 slot N+1.
+    expect(PatternEditPage::gridSourceSlot(0, true, 1, 2) == 2, "phase 1: rows 1-2 source is slot N");
+    expect(PatternEditPage::gridSourceSlot(1, true, 1, 2) == 3, "phase 1: rows 3-4 source is slot N+1");
+    expect(PatternEditPage::gridSourceSlot(0, true, 0, 2) == 2, "phase 0: rows 1-2 source is slot N");
+    expect(PatternEditPage::gridSourceSlot(0, false, -1, 2) == 2, "pair off: source is the selected slot");
+    expect(&steps.slotNPattern() == &engine.sceneManager().getSynthPattern(0, 2),
+           "phase 1: slotNPattern is slot 2, not the sounding slot 3");
+    expect(&engine.activeSynthPattern(0) == &engine.sceneManager().getSynthPattern(0, 3),
+           "engine still sounds slot N+1 in phase 1");
     steps.togglePairView();
     expect(steps.playheadPair() == 0, "single view: playhead stays in rows 1-2");
     steps.togglePairView();

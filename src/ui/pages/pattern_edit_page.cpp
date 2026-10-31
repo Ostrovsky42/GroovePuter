@@ -107,6 +107,16 @@ int PatternEditPage::playheadPair() const {
   return mini_acid_.pairPlayPhase(voice_index_) == 1 ? 1 : 0;
 }
 
+const SynthPattern& PatternEditPage::slotNPattern() const {
+  if (pair_view_ && mini_acid_.pairPlayActive(voice_index_)) {
+    return mini_acid_.sceneManager().getSynthPattern(
+        voice_index_,
+        gridSourceSlot(0, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
+  }
+  return mini_acid_.synthPatternForDisplay(voice_index_);
+}
+
 // The pattern slot that edits, copy and the cursor act on: N, or N+1 while the
 // cursor is on rows 3-4 of the pair view.
 int PatternEditPage::editPatternIndex() const {
