@@ -26,8 +26,8 @@ require("bool handleEventLegacy(UIEvent& ui_event);" in SYNTH_HEADER,
         "synth legacy handler must be declared explicitly")
 require("gridArrow && !ui_event.alt && !ui_event.meta" in SYNTH,
         "plain and selection arrows must be owned by the synth grid")
-require("row = std::max(0, row - 1)" in SYNTH and
-        "row = std::min(kPatternStepRows - 1, row + 1)" in SYNTH,
+require("row = std::max(0, std::min(rows - 1, row))" in SYNTH and
+        "return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, extendSelection)" in SYNTH,
         "synth vertical arrows must clamp at the note-grid boundaries")
 require("focus_ = Focus::Steps" in SYNTH,
         "synth pattern and bank shortcuts must restore step focus")

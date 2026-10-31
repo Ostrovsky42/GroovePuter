@@ -74,6 +74,24 @@ inline std::string makePatternPageTitle(MiniAcid& mini_acid, int voiceIndex, int
   return std::string(buf);
 }
 
+// Header title of the STEPS page. The title field of the header bar is 41 px
+// (about 6 characters), so the pair view shows "A 1+2" instead of "303 A".
+inline void formatPatternTitle(char* dst, size_t dstSize, int voiceIndex,
+                               bool chaining, bool pairView, int slotNumber,
+                               bool hasNext) {
+  if (!dst || dstSize == 0) return;
+  const char voice = voiceIndex == 0 ? 'A' : 'B';
+  if (pairView) {
+    if (hasNext) {
+      std::snprintf(dst, dstSize, "%c %d+%d", voice, slotNumber, slotNumber + 1);
+    } else {
+      std::snprintf(dst, dstSize, "%c %d+-", voice, slotNumber);
+    }
+    return;
+  }
+  std::snprintf(dst, dstSize, "303 %c%s", voice, chaining ? " [CHAIN]" : "");
+}
+
 inline void formatPatternMode(char* dst, size_t dstSize,
                               int pageIndex, int bankIndex, int patternIndex,
                               const std::string& engine) {
@@ -355,7 +373,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
       case GROOVEPUTER_APP_EVENT_COPY: {
-        int patIdx = activePatternCursor();
+        int patIdx = activePatternCursor() + (cursorOnNextSlot() ? 1 : 0);
         const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
         g_pattern_step_clipboard.has_data = true;
         g_pattern_step_clipboard.steps.clear();
@@ -808,6 +826,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
   if (key_g) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
     return true;
   }
@@ -1075,7 +1097,9 @@ void PatternEditPage::draw(IGfx& gfx) {
   if (mini_acid_.songVoiceDisplayState(voice_index_) ==
       MiniAcid::SongVoiceDisplayState::Pattern) {
     UI::drawStandardFooter(gfx,
-        note_entry_mode_ ? "G/P:NOTES N:EXIT" : "P:STYLE G:GEN AltG:LEGACY",
+        note_entry_mode_ ? "G/P:NOTES N:EXIT"
+            : (pair_view_ ? "L:1 SLOT P:STYLE G:GEN AltG:LEGACY"
+                          : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
         "C1/2:BANK Alt[]:PAGE");
   }
 }
@@ -1241,9 +1265,10 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
   char titleBuf[32];
-  snprintf(titleBuf, sizeof(titleBuf), "%s%s",
-           voice_index_ == 0 ? "303 A" : "303 B",
-           chaining_mode_ ? " [CHAIN]" : "");
+  formatPatternTitle(titleBuf, sizeof(titleBuf), voice_index_, chaining_mode_,
+                     pair_view_,
+                     mini_acid_.current303PatternIndex(voice_index_) + 1,
+                     nextSlotAvailable());
 
   drawHeaderBar(gfx, x, y, w, 14,
                 titleBuf,
@@ -1303,31 +1328,52 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
-  int gridY = contentY + 16;
-  const int spacing = 2;
+  // PAIR VIEW: rows 3-4 are slot N+1, so the four rows are lower and tighter.
+  const int gridRows = pair_view_ ? 2 * kPatternStepRows : kPatternStepRows;
+  int gridY = contentY + (pair_view_ ? 13 : 16);
+  const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
-              kPatternStepRows;
-  if (cellH < 12) cellH = 12;
+  int cellH = (contentH - (pair_view_ ? 17 : 20) - spacing * (gridRows - 1)) /
+              gridRows;
+  const int minCellH = pair_view_ ? 10 : 12;
+  if (cellH < minCellH) cellH = minCellH;
+  const SynthPattern* nextPattern = nullptr;
+  if (pair_view_ && nextSlotAvailable()) {
+    nextPattern = &mini_acid_.sceneManager().getSynthPattern(
+        voice_index_, mini_acid_.current303PatternIndex(voice_index_) + 1);
+  }
+  const bool cursorNext = cursorOnNextSlot();
+  const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;
+  const int textDy = pair_view_ ? 2 : 3;
 
   const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
   // CLEAN uses the same cells and logic as CYBER; only the state forms differ.
   const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
 
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / kPatternStepColumns;
+  for (int vi = 0; vi < shownSteps; ++vi) {
+    const int slot = vi / SEQ_STEPS;
+    const int i = vi % SEQ_STEPS;
+    const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
+    int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
     int cellX = x + 5 + col * (cellW + spacing);
     int cellRowY = gridY + row * (cellH + spacing);
 
-    bool isCurrent = (isPlayingPattern && playing == i);
-    bool isCursor = (stepFocus && stepCursor == i);
-    bool isSelected = stepFocus && isStepSelected(i);
+    // Slot 8 has no N+1: its rows are empty and never take the cursor.
+    if (!shown) {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, p.dim);
+      continue;
+    }
+    // The playhead belongs to slot N: N+1 sounds only in Song mode.
+    const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
+    bool isCurrent = (slot == 0 && isPlayingPattern && playing == i);
+    bool isCursor = (slotCursor && stepCursor == i);
+    bool isSelected = slotCursor && isStepSelected(i);
 
-    int8_t note = pattern.steps[i].note;
-    bool acc = pattern.steps[i].accent;
-    bool sld = pattern.steps[i].slide;
+    int8_t note = shown->steps[i].note;
+    bool acc = shown->steps[i].accent;
+    bool sld = shown->steps[i].slide;
     bool hasNote = (note >= 0);
 
     IGfxColor bgColor = clean ? p.background : ((col % 4 == 0) ? p.inset : p.panel);
@@ -1373,7 +1419,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
-      int ty = cellRowY + 3;
+      int ty = cellRowY + textDy;
 
       if (clean) {
         gfx.setTextColor(isCursor ? p.invert : (acc ? p.noteAccent : p.text));
@@ -1386,16 +1432,18 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       }
     } else {
       gfx.setTextColor(p.dim);
-      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
     }
 
-    int dotY = cellRowY + cellH - 4;
-    RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, p.accent2);
-    RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, p.noteAccent);
+    // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.
+    const int dotY = pair_view_ ? cellRowY + cellH / 2 : cellRowY + cellH - 4;
+    const int ledInset = pair_view_ ? 2 : 4;
+    RetroWidgets::drawLED(gfx, cellX + ledInset, dotY, 1, sld, p.accent2);
+    RetroWidgets::drawLED(gfx, cellX + cellW - ledInset, dotY, 1, acc, p.noteAccent);
 
     const uint8_t retrigCount =
-        GroovePuterUndo::PatternEdit::effectiveRetrigCount(pattern.steps[i]);
-    if (retrigCount != 0) {
+        GroovePuterUndo::PatternEdit::effectiveRetrigCount(shown->steps[i]);
+    if (retrigCount != 0 && !pair_view_) {
         gfx.setTextColor(p.warning);
         char buf[8];
         snprintf(buf, sizeof(buf), "R%u", static_cast<unsigned>(retrigCount));
@@ -1443,9 +1491,10 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
   char titleBuf[32];
-  snprintf(titleBuf, sizeof(titleBuf), "%s%s",
-           voice_index_ == 0 ? "303 A" : "303 B",
-           chaining_mode_ ? " [CHAIN]" : "");
+  formatPatternTitle(titleBuf, sizeof(titleBuf), voice_index_, chaining_mode_,
+                     pair_view_,
+                     mini_acid_.current303PatternIndex(voice_index_) + 1,
+                     nextSlotAvailable());
 
   AmberWidgets::drawHeaderBar(
       gfx, x, y, w, 14,
@@ -1506,29 +1555,50 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
-  int gridY = contentY + 16;
-  const int spacing = 2;
+  // PAIR VIEW: rows 3-4 are slot N+1, so the four rows are lower and tighter.
+  const int gridRows = pair_view_ ? 2 * kPatternStepRows : kPatternStepRows;
+  int gridY = contentY + (pair_view_ ? 13 : 16);
+  const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
-              kPatternStepRows;
-  if (cellH < 12) cellH = 12;
+  int cellH = (contentH - (pair_view_ ? 17 : 20) - spacing * (gridRows - 1)) /
+              gridRows;
+  const int minCellH = pair_view_ ? 10 : 12;
+  if (cellH < minCellH) cellH = minCellH;
+  const SynthPattern* nextPattern = nullptr;
+  if (pair_view_ && nextSlotAvailable()) {
+    nextPattern = &mini_acid_.sceneManager().getSynthPattern(
+        voice_index_, mini_acid_.current303PatternIndex(voice_index_) + 1);
+  }
+  const bool cursorNext = cursorOnNextSlot();
+  const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;
+  const int textDy = pair_view_ ? 2 : 3;
 
   const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
 
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / kPatternStepColumns;
+  for (int vi = 0; vi < shownSteps; ++vi) {
+    const int slot = vi / SEQ_STEPS;
+    const int i = vi % SEQ_STEPS;
+    const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
+    int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
     int cellX = x + 5 + col * (cellW + spacing);
     int cellRowY = gridY + row * (cellH + spacing);
 
-    bool isCurrent = (isPlayingPattern && playing == i);
-    bool isCursor = (stepFocus && stepCursor == i);
-    bool isSelected = stepFocus && isStepSelected(i);
+    // Slot 8 has no N+1: its rows are empty and never take the cursor.
+    if (!shown) {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
+      continue;
+    }
+    // The playhead belongs to slot N: N+1 sounds only in Song mode.
+    const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
+    bool isCurrent = (slot == 0 && isPlayingPattern && playing == i);
+    bool isCursor = (slotCursor && stepCursor == i);
+    bool isSelected = slotCursor && isStepSelected(i);
 
-    int8_t note = pattern.steps[i].note;
-    bool acc = pattern.steps[i].accent;
-    bool sld = pattern.steps[i].slide;
+    int8_t note = shown->steps[i].note;
+    bool acc = shown->steps[i].accent;
+    bool sld = shown->steps[i].slide;
     bool hasNote = (note >= 0);
 
     IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(AmberTheme::BG_PANEL);
@@ -1558,7 +1628,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
-      int ty = cellRowY + 3;
+      int ty = cellRowY + textDy;
 
       if (isCursor) {
         AmberWidgets::drawGlowText(gfx, tx, ty, note_label, IGfxColor(AmberTheme::FOCUS_GLOW), noteColor);
@@ -1568,12 +1638,14 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       }
     } else {
       gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
-      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
     }
 
-    int dotY = cellRowY + cellH - 4;
-    AmberWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(AmberTheme::NEON_MAGENTA));
-    AmberWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
+    // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.
+    const int dotY = pair_view_ ? cellRowY + cellH / 2 : cellRowY + cellH - 4;
+    const int ledInset = pair_view_ ? 2 : 4;
+    AmberWidgets::drawLED(gfx, cellX + ledInset, dotY, 1, sld, IGfxColor(AmberTheme::NEON_MAGENTA));
+    AmberWidgets::drawLED(gfx, cellX + cellW - ledInset, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
   }
 
   // Scanlines disabled: caused flicker on small TFT

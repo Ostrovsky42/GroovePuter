@@ -24,7 +24,18 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void resetInputModes() {
     note_entry_mode_ = false;
     chaining_mode_ = false;
+    pair_view_ = false;
+    cursor_next_ = false;
   }
+  // PAIR VIEW (L): rows 3-4 show slot N+1 of the same synth. The cursor and
+  // every edit follow the row; slot N+1 plays only in Song mode.
+  bool pairView() const { return pair_view_; }
+  int pairRowCount() const { return pair_view_ ? 4 : 2; }
+  bool nextSlotAvailable() const;
+  bool cursorOnNextSlot() const { return pair_view_ && cursor_next_ && nextSlotAvailable(); }
+  int editPatternIndex() const;
+  bool togglePairView();
+  bool moveGridRow(int delta, bool extendSelection);
   bool handleEvent(UIEvent& ui_event) override;
   // NOTE ENTRY on: plain letters are pitches on the STEPS (they beat commands such as Develop).
   bool noteEntryActive() const { return note_entry_mode_; }
@@ -97,8 +108,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
 
     SceneManager& manager = mini_acid_.sceneManager();
     SynthPatternUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
-            manager, voice_index_, before)) {
+    if (!GroovePuterUndo::captureSynthPatternUndoAt(
+            manager, voice_index_, editPatternIndex(), before)) {
       return PatternMutationResult::Invalid;
     }
 
@@ -186,4 +197,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int last_entered_step_ = -1;
   unsigned long last_note_key_ms_ = 0;
   bool note_hold_active_ = false;
+
+  bool pair_view_ = false;
+  bool cursor_next_ = false;  // cursor is on rows 3-4 (slot N+1)
 };

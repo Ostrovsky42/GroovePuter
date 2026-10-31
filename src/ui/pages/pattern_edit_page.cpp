@@ -97,6 +97,51 @@ void preparePatternEditorGeneration(MiniAcid& engine,
 #undef handleEvent
 #undef drawStandardFooter
 
+bool PatternEditPage::nextSlotAvailable() const {
+  return mini_acid_.current303PatternIndex(voice_index_) + 1 <
+         Bank<SynthPattern>::kPatterns;
+}
+
+// The pattern slot that edits, copy and the cursor act on: N, or N+1 while the
+// cursor is on rows 3-4 of the pair view.
+int PatternEditPage::editPatternIndex() const {
+  const int current = mini_acid_.current303PatternIndex(voice_index_);
+  return cursorOnNextSlot() ? current + 1 : current;
+}
+
+bool PatternEditPage::togglePairView() {
+  pair_view_ = !pair_view_;
+  cursor_next_ = false;
+  focus_ = Focus::Steps;
+  if (has_selection_) clearSelection();
+  resetNoteHoldTracking();
+  UI::showToast(pair_view_ ? "PAIR VIEW: ON" : "PAIR VIEW: OFF", 900);
+  return true;
+}
+
+// Up/Down over the visible rows. Rows 3-4 are slot N+1 and do not exist for
+// slot 8. Crossing from one slot to the other ends a selection; extending a
+// selection never crosses, so a selection always belongs to one slot.
+bool PatternEditPage::moveGridRow(int delta, bool extendSelection) {
+  const int step = activePatternStep();
+  const int slotRow = step / kPatternStepColumns;
+  const int col = step % kPatternStepColumns;
+  const bool onNext = cursorOnNextSlot();
+  const int rows = pair_view_ && nextSlotAvailable() ? 2 * kPatternStepRows
+                                                     : kPatternStepRows;
+  int row = (onNext ? kPatternStepRows : 0) + slotRow + delta;
+  row = std::max(0, std::min(rows - 1, row));
+  const bool toNext = row >= kPatternStepRows;
+  if (toNext != onNext) {
+    if (extendSelection) return true;
+    if (has_selection_) clearSelection();
+  }
+  cursor_next_ = toNext;
+  pattern_edit_cursor_ =
+      (row % kPatternStepRows) * kPatternStepColumns + col;
+  return true;
+}
+
 bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   // B2 generation receipts use the same bounded Synth Pattern before-
   // image as R3 manual edits, but a distinct Generation kind. Handle
@@ -274,6 +319,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   // selection is considered. Alt+Backspace is DISCARD and is consumed in
   // handleEvent() before this point.
   if (ui_event.ctrl && isBackspace) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("CLEAR: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     return handleEventLegacyUnowned(ui_event);
   }
 
@@ -434,6 +483,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   // PLAY arms the old Pattern as audible truth, commits the new Pattern now,
   // then releases that overlay only at BAR_START.
   if (keyG) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     using GroovePuterUndo::SynthPatternUndoPayload;
     using GroovePuterUndo::UndoKind;
 
@@ -681,8 +734,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // These letters also arrive as scancode-only UI events. NOTE ENTRY must
   // consume them as pitches before the command/legacy generation paths.
   if (key == 0 && (ui_event.scancode == GROOVEPUTER_G ||
-                   ui_event.scancode == GROOVEPUTER_P)) {
-    key = ui_event.scancode == GROOVEPUTER_G ? 'g' : 'p';
+                   ui_event.scancode == GROOVEPUTER_P ||
+                   ui_event.scancode == GROOVEPUTER_L)) {
+    key = ui_event.scancode == GROOVEPUTER_G ? 'g'
+        : ui_event.scancode == GROOVEPUTER_P ? 'p' : 'l';
   }
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
@@ -713,25 +768,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     if (has_selection_) clearSelection();
     resetNoteHoldTracking();
 
+    if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+      return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, false);
+    }
     const int step = activePatternStep();
     int row = step / kPatternStepColumns;
     int col = step % kPatternStepColumns;
-    switch (nav) {
-      case GROOVEPUTER_LEFT:
-        col = (col + kPatternStepColumns - 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_RIGHT:
-        col = (col + 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_UP:
-        row = std::max(0, row - 1);
-        break;
-      case GROOVEPUTER_DOWN:
-        row = std::min(kPatternStepRows - 1, row + 1);
-        break;
-      default:
-        break;
-    }
+    col = nav == GROOVEPUTER_LEFT
+        ? (col + kPatternStepColumns - 1) % kPatternStepColumns
+        : (col + 1) % kPatternStepColumns;
     pattern_edit_cursor_ = row * kPatternStepColumns + col;
     return true;
   }
@@ -795,6 +840,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     resetNoteHoldTracking();
   }
 
+  // L: PAIR VIEW. In NOTE ENTRY L is a pitch, so this is outside it only.
+  if (!note_entry_mode_ && lowerKey == 'l' &&
+      !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    return togglePairView();
+  }
+
   if (!note_entry_mode_ && lowerKey == 'p' &&
       !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     const auto level = GroovePuterState::cycleGenerationLevel();
@@ -808,6 +859,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // the retained legacy handler.
   if (!note_entry_mode_ && keyG &&
       !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     // GEN panel TARGET MELODY: the phrase goes into this synth's Melody.
     if (GroovePuterState::generationTarget() ==
         GroovePuterState::GenerationTarget::Melody) {
@@ -915,25 +970,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
     if (extendSelection) updateSelection();
 
+    if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+      return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, extendSelection);
+    }
     const int step = activePatternStep();
     int row = step / kPatternStepColumns;
     int col = step % kPatternStepColumns;
-    switch (nav) {
-      case GROOVEPUTER_LEFT:
-        col = (col + kPatternStepColumns - 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_RIGHT:
-        col = (col + 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_UP:
-        row = std::max(0, row - 1);
-        break;
-      case GROOVEPUTER_DOWN:
-        row = std::min(kPatternStepRows - 1, row + 1);
-        break;
-      default:
-        break;
-    }
+    col = nav == GROOVEPUTER_LEFT
+        ? (col + kPatternStepColumns - 1) % kPatternStepColumns
+        : (col + 1) % kPatternStepColumns;
     pattern_edit_cursor_ = row * kPatternStepColumns + col;
     return true;
   }

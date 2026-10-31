@@ -38,13 +38,15 @@ inline bool validSynthPatternAddress(const SynthPatternUndoPayload& receipt) {
          receipt.patternIndex < Bank<SynthPattern>::kPatterns;
 }
 
-inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
-                                           int synthIndex,
-                                           SynthPatternUndoPayload& receipt) {
+// Before-image of one named slot of the synth's current bank. The pair view
+// of STEPS edits slot N+1 through this, with its own receipt.
+inline bool captureSynthPatternUndoAt(SceneManager& manager,
+                                      int synthIndex,
+                                      int pattern,
+                                      SynthPatternUndoPayload& receipt) {
   if (synthIndex < 0 || synthIndex >= 2) return false;
   const int page = manager.currentPageIndex();
   const int bank = manager.getCurrentBankIndex(synthIndex + 1);
-  const int pattern = manager.getCurrentSynthPatternIndex(synthIndex);
   if (page < 0 || page >= kMaxPages ||
       bank < 0 || bank >= kBankCount ||
       pattern < 0 || pattern >= Bank<SynthPattern>::kPatterns) {
@@ -55,8 +57,17 @@ inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
   receipt.synthIndex = static_cast<uint8_t>(synthIndex);
   receipt.bankIndex = static_cast<uint8_t>(bank);
   receipt.patternIndex = static_cast<uint8_t>(pattern);
-  receipt.before = manager.getCurrentSynthPattern(synthIndex);
+  receipt.before = manager.getSynthPattern(synthIndex, pattern);
   return true;
+}
+
+inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
+                                           int synthIndex,
+                                           SynthPatternUndoPayload& receipt) {
+  if (synthIndex < 0 || synthIndex >= 2) return false;
+  return captureSynthPatternUndoAt(
+      manager, synthIndex, manager.getCurrentSynthPatternIndex(synthIndex),
+      receipt);
 }
 
 inline bool synthPatternUndoTargetAvailable(

@@ -42,7 +42,7 @@ def main() -> None:
     # One canonical page helper must perform capture -> prepare -> full no-op ->
     # bounded commit. The owner, not the page, advances Scene revision.
     helper = between(HEADER, "template <typename PrepareFn>", "template <typename F>")
-    require("captureCurrentSynthPatternUndo" in helper,
+    require("captureSynthPatternUndoAt" in helper,
             "Pattern mutation helper must capture a stable before receipt")
     require("SynthPattern after = before.before" in helper,
             "Pattern mutation helper must build a detached after-state")
