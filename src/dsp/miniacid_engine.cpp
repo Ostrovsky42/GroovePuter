@@ -1935,28 +1935,58 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
       synthVoices_[idx]->setParameterNormalized(static_cast<uint8_t>(id), norm);
   }
 }
+// A slot or bank switch re-bases an active pair on the new slot N (N+1 pairs
+// with it); on the last slot there is no N+1, so the pair stops with a notice.
+void MiniAcid::rebasePairPlayOnSwitch_(int idx) {
+  if (!pairPlay_[idx].active) return;
+  const int bank = current303BankIndex(idx);
+  const int slot = sceneManager_.getCurrentSynthPatternIndex(idx);
+  if (slot < 0 || slot + 1 >= Bank<SynthPattern>::kPatterns) {
+    pairNoNextNotice_[idx] = true;
+    cancelPairPlay(idx, "setpattern");
+    return;
+  }
+  for (int offset = 0; offset < 2; ++offset) {
+    if (!refreshPatternRuntimeEvents(idx, bank, slot + offset)) {
+      LOG_PRINTF("[PAIR] refuse voice=%d reason=refresh\n", idx);
+      cancelPairPlay(idx, "setpattern");
+      return;
+    }
+  }
+  pairPlay_[idx].base = static_cast<uint8_t>(slot);
+  pairPlay_[idx].phase = 0;
+  LOG_PRINTF("[PAIR] rebase voice=%d base=%d\n", idx, slot);
+}
+
+bool MiniAcid::consumePairNoNextNotice(int voiceIndex) {
+  const int idx = clamp303Voice(voiceIndex);
+  const bool had = pairNoNextNotice_[idx];
+  pairNoNextNotice_[idx] = false;
+  return had;
+}
+
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
+  rebasePairPlayOnSwitch_(idx);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
   if (next < 0) next = Bank<SynthPattern>::kPatterns - 1;
   if (next >= Bank<SynthPattern>::kPatterns) next = 0;
   sceneManager_.setCurrentSynthPatternIndex(idx, next);
+  rebasePairPlayOnSwitch_(idx);
 }
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
-  cancelPairPlay(idx, "setpattern");
   hardBarrierPatternPlayback_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
+  rebasePairPlayOnSwitch_(idx);
 }
 
 void MiniAcid::rehydrateAcceptedMaterialForPage() {

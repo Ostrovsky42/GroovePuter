@@ -947,6 +947,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 }
 
 void PatternEditPage::tick() {
+    if (mini_acid_.consumePairNoNextNotice(voice_index_))
+        UI::showToast("PAIR PLAY: NO NEXT SLOT", 1200);
     int actualPage = mini_acid_.currentPageIndex();
     const std::string freshTitle = makePatternPageTitle(mini_acid_, voice_index_, actualPage);
     if (actualPage != last_page_ || title_ != freshTitle) {

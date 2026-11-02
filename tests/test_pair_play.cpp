@@ -112,11 +112,12 @@ int main() {
     expect(!engine.pairPlayActive(0), "transport Stop cancels");
 
     // Cancel on slot change and on leaving the page.
-    plainL(page);
+    plainL(page);  // Stop left the view on: this turns it off
+    plainL(page);  // view on and play on
     engine.set303PatternIndex(0, 4);
-    expect(!engine.pairPlayActive(0), "changing slot cancels");
+    expect(engine.pairPlayActive(0) && engine.pairPlayBaseSlot(0) == 4,
+           "changing slot re-bases the pair");
     engine.set303PatternIndex(0, 2);
-    plainL(page);
     expect(engine.pairPlayActive(0), "restart before leaving");
     page.onExit();
     expect(engine.pairPlayActive(0), "leaving the page keeps the pair (sticky)");
@@ -347,6 +348,56 @@ int main() {
     expect(engine.refreshPatternRuntimeEvents(0, bank, 6),
            "refresh of a written slot succeeds");
     expect(engine.patternRuntimeBank_.select(0, bank, 6).count == 1, "refreshed slot has its event");
+  }
+
+  // 5. Slot switch with the pair on re-bases it (decision: pair stays on).
+  {
+    MiniAcid engine(44100.0f, nullptr);
+    engine.init();
+    engine.setSongMode(false);
+    NullGfx gfx;
+    SynthSequencerPage page(gfx, engine, AudioGuard{}, 0);
+    page.setBoundaries(Rect{0, 16, 240, 93});
+    page.onEnter(0);
+    engine.set303PatternIndex(0, 2);
+    plainL(page);
+    expect(engine.pairPlayActive(0) && page.patternPage()->pairView(), "5a start");
+    engine.set303PatternIndex(0, 5);
+    expect(engine.pairPlayActive(0), "5a pair survives the switch");
+    expect(engine.pairPlayBaseSlot(0) == 5 && engine.pairPlayPhase(0) == 0,
+           "5a base 5, phase 0");
+    expect(page.patternPage()->pairView(), "5a view stays on");
+    expect(PatternEditPage::gridSourceSlot(0, true, 0, 5) == 5 &&
+               PatternEditPage::gridSourceSlot(1, true, 0, 5) == 6,
+           "5a rows 1-2 show 5, rows 3-4 show 6");
+    engine.shift303PatternIndex(0, 1);
+    expect(engine.pairPlayActive(0) && engine.pairPlayBaseSlot(0) == 6, "5a shift re-bases");
+
+    // 5b. Slot 7 -> last slot 8: the pair stops, the view stays on, NO NEXT SLOT.
+    engine.set303PatternIndex(0, 6);
+    expect(engine.pairPlayActive(0) && engine.pairPlayBaseSlot(0) == 6, "5b pair on slot 7");
+    engine.set303PatternIndex(0, 7);
+    expect(!engine.pairPlayActive(0), "5b pair stops on the last slot");
+    expect(page.patternPage()->pairView(), "5b view stays on");
+    expect(engine.consumePairNoNextNotice(0), "5b NO NEXT SLOT notice");
+    expect(!engine.consumePairNoNextNotice(0), "5b notice is one-shot");
+    expect(engine.togglePairPlay(0) == MiniAcid::PairPlayResult::NoNextSlot,
+           "5b last slot refuses with NoNextSlot");
+
+    // 5c. Pair off: a switch is unchanged.
+    engine.set303PatternIndex(0, 3);
+    expect(!engine.pairPlayActive(0) && !engine.consumePairNoNextNotice(0),
+           "5c pair off stays off, no notice");
+    expect(engine.current303PatternIndex(0) == 3, "5c slot switched");
+
+    // 5d. Stop cancels all.
+    engine.togglePairPlay(0);
+    engine.togglePairPlay(1);
+    engine.start();
+    engine.set303PatternIndex(0, 1);
+    expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "5d both on");
+    engine.stop();
+    expect(!engine.pairPlayActive(0) && !engine.pairPlayActive(1), "5d Stop cancels all");
   }
 
   if (!g_ok) return 1;

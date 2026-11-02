@@ -251,6 +251,8 @@ public:
   PairPlayResult togglePairPlay(int voiceIndex);
   void cancelPairPlay(int voiceIndex, const char* reason = "other");
   void cancelAllPairPlay(const char* reason = "other");
+  // True once after a slot switch stopped a pair on the last slot (no N+1).
+  bool consumePairNoNextNotice(int voiceIndex);
   // Active covers armed (waiting for the bar line) and sounding.
   bool pairPlayActive(int voiceIndex) const;
   bool pairPlayArmed(int voiceIndex) const;
@@ -1093,6 +1095,8 @@ private:
     uint8_t base = 0;
     uint8_t phase = 0;
   } pairPlay_[NUM_303_VOICES]{};
+  bool pairNoNextNotice_[NUM_303_VOICES]{false, false};
+  void rebasePairPlayOnSwitch_(int idx);
   uint32_t goQueuedGeneration_[NUM_303_VOICES]{0, 0};
   uint32_t pendingGeneration_[NUM_303_VOICES]{0, 0};
   // Source anchors are session history, not firmware-resident state. Keep the
