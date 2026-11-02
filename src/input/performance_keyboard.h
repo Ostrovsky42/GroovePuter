@@ -7,6 +7,7 @@
 
 #include "musical_event_router.h"
 #include "performance_chord_detector.h"
+#include "performance_input_observer.h"
 #include "performance_instrument_types.h"
 #include "performance_intent.h"
 #include "performance_keyboard_config.h"
@@ -67,6 +68,11 @@ public:
     std::size_t externalHeldCount() const;
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
     void service(uint32_t nowMicros);
+    // Read-only tap on accepted melodic input notes (CALL/RESPONSE capture).
+    // Never changes output; nullptr detaches.
+    void setInputObserver(PerformanceInputObserver* observer) { inputObserver_ = observer; }
+    // Interval table of the current PERFORM scale (semitones from the root).
+    bool scaleIntervals(const int8_t*& intervals, uint8_t& count) const;
     void setTempoBpm(float bpm);
     float tempoBpm() const { return tempoBpm_; }
 
@@ -379,7 +385,12 @@ private:
                                const PerformanceClockedConfig& newConfig);
     std::size_t collectInputPool(LatchedNote* out, std::size_t capacity) const;
 
+    void notifyInput(bool on, uint16_t tag, uint8_t note, uint8_t velocity) {
+        if (inputObserver_) inputObserver_->onPerformanceInputNote(on, tag, note, velocity);
+    }
+
     MusicalEventRouter& router_;
+    PerformanceInputObserver* inputObserver_{nullptr};
     static constexpr std::size_t kMaxExternalInputOwners = 32;
     ExternalInputOwner externalInputOwners_[kMaxExternalInputOwners]{};
     ExternalSustainOwner externalSustainOwners_[kMaxExternalInputOwners]{};
@@ -443,6 +454,7 @@ private:
     uint16_t harmonyRolePitchMasks_[3]{};
     bool hasHarmonyRolePitchMasks_{false};
     uint8_t previousLiveLeadNote_{60};
+    uint8_t previousLiveLeadInput_{60};
     bool hasPreviousLiveLeadNote_{false};
     GroovePuterPerformance::ArpPitchSource arpPitchSource_{
         GroovePuterPerformance::ArpPitchSource::Held};

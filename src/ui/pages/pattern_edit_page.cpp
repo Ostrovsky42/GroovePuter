@@ -49,8 +49,37 @@ namespace {
 constexpr unsigned long kFirstHoldRepeatMinMs = 250;
 constexpr unsigned long kFirstHoldRepeatMaxMs = 500;
 constexpr unsigned long kHoldRepeatMaxGapMs = 180;
-constexpr int kEntryLowerBaseNote = 48;  // C3
-constexpr int kEntryUpperBaseNote = 60;  // C4
+constexpr int kEntryBaseNote = 48;      // C3: lower row at the default octave
+constexpr int kEntryOctaveSpan = 12;    // upper row sits one octave above lower
+// Three octave ranges: 1-2 (C1 reaches the Synth A bass corridor), 2-3, 3-4.
+// There is no shift above 3-4: its upper row would start at 72, past the
+// engine range, and every key of that row would be refused.
+constexpr int kEntryOctaveShiftMin = -2;
+constexpr int kEntryOctaveShiftMax = 0;
+// Engine 303 range (kMin303Note..kMax303Note). Notes outside it are refused:
+// the synth clips anything above 71 to a different pitch.
+constexpr int kEntryNoteMin = 24;
+constexpr int kEntryNoteMax = 71;
+
+// STEP SETTINGS (Alt+E) limits and steps. Timing matches the validated atlas
+// range of +-23 ticks; velocity 0 would be a silent step, so it starts at 1.
+constexpr int kStepSettingsFields = 4;  // PROB, TIMING, VEL, GHOST
+constexpr int kStepProbMin = 0;
+constexpr int kStepProbMax = 100;
+constexpr int kStepProbStep = 5;
+constexpr int kStepTimingMin = -23;
+constexpr int kStepTimingMax = 23;
+constexpr int kStepVelocityMin = 1;
+constexpr int kStepVelocityMax = 127;
+constexpr int kStepVelocityStep = 5;
+
+bool isStepSettingsChord(const UIEvent& ev) {
+  if (ev.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (!ev.alt || ev.ctrl || ev.meta) return false;
+  return ev.key == 'e' || ev.key == 'E' || ev.scancode == GROOVEPUTER_E;
+}
+
+int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 int indexInKeyRow(char key, const char* row) {
   if (!row) return -1;
@@ -663,14 +692,35 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   return handleEventLegacyUnowned(ui_event);
 }
 
+int PatternEditPage::entryBaseNote() const {
+  const int voice = voice_index_ == 0 ? 0 : 1;
+  return kEntryBaseNote + kEntryOctaveSpan * entry_octave_shift_[voice];
+}
+
 int PatternEditPage::noteForEntryKey(char key) const {
   const char lower = static_cast<char>(
       std::tolower(static_cast<unsigned char>(key)));
   const int lowerIndex = indexInKeyRow(lower, "asdfghjkl");
-  if (lowerIndex >= 0) return kEntryLowerBaseNote + lowerIndex;
+  if (lowerIndex >= 0) return entryBaseNote() + lowerIndex;
   const int upperIndex = indexInKeyRow(lower, "qwertyuiop");
-  if (upperIndex >= 0) return kEntryUpperBaseNote + upperIndex;
+  if (upperIndex >= 0) return entryBaseNote() + kEntryOctaveSpan + upperIndex;
   return -1;
+}
+
+void PatternEditPage::shiftEntryOctave(int delta) {
+  const int voice = voice_index_ == 0 ? 0 : 1;
+  const int shift = entry_octave_shift_[voice] + delta;
+  if (shift < kEntryOctaveShiftMin || shift > kEntryOctaveShiftMax) {
+    UI::showToast(delta < 0 ? "ENTRY: LOWEST OCTAVE" : "ENTRY: HIGHEST OCTAVE",
+                  700);
+    return;
+  }
+  entry_octave_shift_[voice] = shift;
+  // The lower row's octave and the upper row's (one octave higher).
+  const int low = entryBaseNote() / 12 - 1;
+  char msg[24];
+  std::snprintf(msg, sizeof(msg), "ENTRY OCT %d-%d", low, low + 1);
+  UI::showToast(msg, 700);
 }
 
 void PatternEditPage::resetNoteHoldTracking() {
@@ -700,6 +750,10 @@ void PatternEditPage::writeNoteEntryStep(int step, int note, bool continuation) 
 bool PatternEditPage::handleNoteEntryKey(char key) {
   const int note = noteForEntryKey(key);
   if (note < 0) return false;
+  if (note < kEntryNoteMin || note > kEntryNoteMax) {
+    UI::showToast("NOTE OUT OF RANGE", 800);
+    return true;
+  }
 
   focus_ = Focus::Steps;
   if (has_selection_) {
@@ -762,7 +816,100 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
   return true;
 }
 
+void PatternEditPage::openStepSettings() {
+  if (mini_acid_.songVoiceDisplayState(voice_index_) !=
+      MiniAcid::SongVoiceDisplayState::Pattern) {
+    UI::showToast("STEP SETTINGS: STEPS ONLY", 1000);
+    return;
+  }
+  if (patternRowFocused()) focusPatternSteps();
+  else ensureStepFocus();
+  step_settings_open_ = true;
+  step_settings_field_ = 0;
+  resetNoteHoldTracking();
+}
+
+void PatternEditPage::adjustStepSetting(int field, int direction) {
+  if (field < 0 || field >= kStepSettingsFields) return;
+  int first = activePatternStep();
+  int min_row = 0, max_row = 0, min_col = 0, max_col = 0;
+  const bool area = has_selection_;
+  if (area) {
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    first = min_row * kPatternStepColumns + min_col;
+  }
+  const PatternMutationResult result = commitPatternMutation(
+      [&](SynthPattern& pattern) {
+        // The first step of the area decides the new value, so an area ends
+        // up uniform (same rule as Alt+A / Alt+S).
+        const SynthStep anchor = pattern.steps[first];
+        for (int r = area ? min_row : first / kPatternStepColumns;
+             r <= (area ? max_row : first / kPatternStepColumns); ++r) {
+          for (int c = area ? min_col : first % kPatternStepColumns;
+               c <= (area ? max_col : first % kPatternStepColumns); ++c) {
+            SynthStep& st = pattern.steps[r * kPatternStepColumns + c];
+            switch (field) {
+              case 0:
+                st.probability = static_cast<uint8_t>(clampInt(
+                    anchor.probability + direction * kStepProbStep,
+                    kStepProbMin, kStepProbMax));
+                break;
+              case 1:
+                st.timing = static_cast<int8_t>(clampInt(
+                    anchor.timing + direction, kStepTimingMin,
+                    kStepTimingMax));
+                break;
+              case 2:
+                st.velocity = static_cast<uint8_t>(clampInt(
+                    anchor.velocity + direction * kStepVelocityStep,
+                    kStepVelocityMin, kStepVelocityMax));
+                break;
+              default:
+                st.ghost = !anchor.ghost;
+                break;
+            }
+          }
+        }
+      });
+  if (result == PatternMutationResult::Invalid) {
+    UI::showToast("STEP EDIT FAILED", 800);
+  }
+}
+
+bool PatternEditPage::handleStepSettingsKey(const UIEvent& ui_event) {
+  const bool esc = ui_event.key == 0x1B ||
+                   ui_event.scancode == GROOVEPUTER_ESCAPE;
+  if (esc || isStepSettingsChord(ui_event)) {
+    step_settings_open_ = false;
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  if (nav == GROOVEPUTER_UP) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + kStepSettingsFields - 1) % kStepSettingsFields);
+  } else if (nav == GROOVEPUTER_DOWN) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + 1) % kStepSettingsFields);
+  } else if (nav == GROOVEPUTER_LEFT || ui_event.key == '-') {
+    adjustStepSetting(step_settings_field_, -1);
+  } else if (nav == GROOVEPUTER_RIGHT || ui_event.key == '=' ||
+             ui_event.key == '+') {
+    adjustStepSetting(step_settings_field_, 1);
+  }
+  // Modal: every other key is swallowed so a stray press cannot edit the grid.
+  return true;
+}
+
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  // STEP SETTINGS is modal for keys. Application events (Ctrl+Z Undo, Paste)
+  // are not keys and still reach their handlers below.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    if (step_settings_open_) return handleStepSettingsKey(ui_event);
+    if (isStepSettingsChord(ui_event)) {
+      openStepSettings();
+      return true;
+    }
+  }
   // Resolve modified commands before their unmodified base key. This keeps
   // Alt/Ctrl/Meta+Enter from falling through to GO while NEXT is available.
   if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
@@ -894,6 +1041,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         return true;
       }
       UI::showToast("NO LAST NOTE", 700);
+      return true;
+    }
+
+    // -/= move the entry row one octave, as they do for PERFORM. Only inside
+    // NOTE ENTRY: outside it these keys keep their own meaning.
+    if (key == '-' || key == '=') {
+      shiftEntryOctave(key == '-' ? -1 : 1);
+      resetNoteHoldTracking();
       return true;
     }
 

@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings]" >&2
 }
 
 compile_run() {
@@ -113,9 +113,70 @@ run_external() {
     "${ROOT_DIR}/src/input/performance_keyboard.cpp"
 }
 
+# CALL/RESPONSE phase 0: capture + descriptor + PERFORM input tap (no sound).
+run_cr_capture() {
+  compile_run cr_phrase_capture "${ROOT_DIR}/tests/test_cr_phrase_capture.cpp"
+}
+
+run_cr_motif() {
+  compile_run cr_motif_descriptor "${ROOT_DIR}/tests/test_cr_motif_descriptor.cpp"
+}
+
+run_cr_tap() {
+  compile_run cr_keyboard_tap \
+    "${ROOT_DIR}/tests/test_cr_keyboard_tap.cpp" \
+    "${ROOT_DIR}/src/input/performance_keyboard.cpp"
+}
+
+# CALL/RESPONSE phase 1: template answer (planner, cancel/turn-taking, timing).
+run_cr_planner() {
+  compile_run cr_response_planner "${ROOT_DIR}/tests/test_cr_response_planner.cpp"
+}
+
+run_cr_cancel() {
+  compile_run cr_response_cancel \
+    "${ROOT_DIR}/tests/test_cr_response_cancel.cpp" \
+    "${ROOT_DIR}/src/input/performance_keyboard.cpp"
+}
+
+run_cr_timing() {
+  compile_run cr_answer_timing "${ROOT_DIR}/tests/test_cr_answer_timing.cpp"
+}
+
+# CALL/RESPONSE phase 2: next-bar harmony lookahead + genre weights.
+run_cr_lookahead() {
+  compile_run cr_harmony_lookahead \
+    "${ROOT_DIR}/tests/test_cr_harmony_lookahead.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp"
+}
+
+run_cr_genre() {
+  compile_run cr_genre_weights "${ROOT_DIR}/tests/test_cr_genre_weights.cpp"
+}
+
+# CALL/RESPONSE phase 3: one-note answer fix, answer channel lane, PARTNER settings.
+run_cr_single_note() {
+  compile_run cr_single_note "${ROOT_DIR}/tests/test_cr_single_note.cpp"
+}
+
+run_cr_channel() {
+  compile_run cr_answer_channel \
+    "${ROOT_DIR}/tests/test_cr_answer_channel.cpp" \
+    "${ROOT_DIR}/src/midi/usb_midi_output.cpp"
+}
+
+run_cr_development() {
+  compile_run cr_development "${ROOT_DIR}/tests/test_cr_development.cpp"
+}
+
+run_cr_settings() {
+  compile_run cr_partner_settings "${ROOT_DIR}/tests/test_cr_partner_settings.cpp"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external)
+  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development)
 fi
 
 for target in "${targets[@]}"; do
@@ -136,6 +197,18 @@ for target in "${targets[@]}"; do
     arp) run_arp ;;
     keyboard) run_keyboard ;;
     external) run_external ;;
+    cr_capture) run_cr_capture ;;
+    cr_motif) run_cr_motif ;;
+    cr_tap) run_cr_tap ;;
+    cr_planner) run_cr_planner ;;
+    cr_cancel) run_cr_cancel ;;
+    cr_timing) run_cr_timing ;;
+    cr_lookahead) run_cr_lookahead ;;
+    cr_genre) run_cr_genre ;;
+    cr_single_note) run_cr_single_note ;;
+    cr_channel) run_cr_channel ;;
+    cr_settings) run_cr_settings ;;
+    cr_development) run_cr_development ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

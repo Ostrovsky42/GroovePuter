@@ -188,6 +188,16 @@ void UsbMidiOutput::configureLanes() {
             false,
         };
     }
+    answerLane_ = MidiVoiceLane{
+        MusicalEventSource::Arpeggiator,
+        MusicalEventTarget::Dx,
+        0,
+        clampChannel(config_.performanceDxChannel),
+        -1,
+        0,
+        config_.performanceKeyboardEnabled,
+        false,
+    };
 }
 
 uint8_t UsbMidiOutput::clampChannel(uint8_t channel) {
@@ -410,7 +420,10 @@ bool UsbMidiOutput::begin() {
 
 void UsbMidiOutput::pollConnection() {
     const bool nextMounted = begun_ && transport_.mounted();
-    if (nextMounted == mounted_) return;
+    if (nextMounted == mounted_) {
+        if (mounted_ && answerLane_.pendingRelease) releaseAnswerLane();
+        return;
+    }
 
     if (mounted_ && !nextMounted) {
         abandonAllSmfNotes();
@@ -860,6 +873,9 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
     if (target != MusicalEventTarget::Drums &&
         isSynthPerformanceSource(source)) {
+        // A Dx panic (also the control-queue overflow fallback for a dropped
+        // answer NoteOff) closes the CALL/RESPONSE answer lane too.
+        if (target == MusicalEventTarget::Dx) releaseAnswerLane();
         requestChannelPanic(generatedChannel(target));
         releaseGeneratedTarget(target);
         releasePendingChannelPanics();
@@ -901,7 +917,39 @@ void UsbMidiOutput::releaseAllActiveNotes() {
     releaseGeneratedTarget(MusicalEventTarget::SynthA);
     releaseGeneratedTarget(MusicalEventTarget::SynthB);
     releaseGeneratedTarget(MusicalEventTarget::Dx);
+    releaseAnswerLane();
     releasePendingChannelPanics();
+}
+
+bool UsbMidiOutput::releaseAnswerLane() {
+    return releaseActiveNote(answerLane_);
+}
+
+void UsbMidiOutput::handleAnswerLaneEvent(const MusicalEvent& event) {
+    if (!accepts(&answerLane_)) return;
+    // A NoteOff that did not reach the wire is retried before anything else.
+    if (answerLane_.pendingRelease && !releaseActiveNote(answerLane_)) return;
+    const uint8_t channel = (event.flags & kMusicalEventAnswerFollowDx)
+        ? generatedChannel(MusicalEventTarget::Dx) : clampChannel(event.channel);
+    const uint8_t note = clampDataByte(event.note);
+    switch (event.type) {
+        case MusicalEventType::NoteOn:
+            // One note at a time: the previous answer note (any channel) ends
+            // on its own channel before the lane moves to the new one.
+            if (answerLane_.activeNote >= 0 && !releaseActiveNote(answerLane_)) return;
+            answerLane_.channel = channel;
+            acquireActiveNote(answerLane_, note, event.velocity);
+            break;
+        case MusicalEventType::NoteOff:
+            if (answerLane_.activeNote == static_cast<int16_t>(note) &&
+                answerLane_.channel == channel) {
+                releaseActiveNote(answerLane_, event.velocity);
+            }
+            break;
+        case MusicalEventType::AllNotesOff:
+        case MusicalEventType::PitchBend:
+            break;
+    }
 }
 
 int UsbMidiOutput::patternChordIndex(MusicalEventTarget target) {
@@ -1160,10 +1208,10 @@ bool UsbMidiOutput::releasePendingChannelPanics() {
         const uint16_t mask = static_cast<uint16_t>(1u << channel);
         if ((pendingChannelPanics_ & mask) == 0) continue;
 
-        if (owners_.channelHasWireOwner(static_cast<uint8_t>(channel))) {
-            allReleased = false;
-            continue;
-        }
+        // Another live owner (PERFORM, pattern) keeps this channel. Its own
+        // NoteOff clears the wait and the next release pass sends CC123. The
+        // wait is not a failed write, so it must not fail the SMF cleanup.
+        if (owners_.channelHasWireOwner(static_cast<uint8_t>(channel))) continue;
         if (!transport_.sendControlChange(static_cast<uint8_t>(channel),
                                           123,
                                           0)) {
@@ -1192,6 +1240,9 @@ void UsbMidiOutput::clearActiveState() {
         lanes_[i].activeCount = 0;
         lanes_[i].pendingRelease = false;
     }
+    answerLane_.activeNote = -1;
+    answerLane_.activeCount = 0;
+    answerLane_.pendingRelease = false;
     for (std::size_t target = 0; target < kGeneratedTargetCount; ++target) {
         performanceReceiverMode_[target] = PerformanceReceiverMode::Unknown;
         for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
@@ -1235,6 +1286,14 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         }
         return;
     }
+
+    if ((event.flags & (kMusicalEventWireChannel | kMusicalEventAnswerFollowDx)) != 0 &&
+        event.target != MusicalEventTarget::Drums) {
+        handleAnswerLaneEvent(event);
+        releasePendingChannelPanics();
+        return;
+    }
+    if (answerLane_.pendingRelease) releaseActiveNote(answerLane_);
 
     if (event.target != MusicalEventTarget::Drums &&
         isSynthPerformanceSource(event.source)) {

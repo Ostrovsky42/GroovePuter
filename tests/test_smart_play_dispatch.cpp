@@ -122,7 +122,7 @@ int main() {
     voiceKeyboard.setPerformanceContext(nextVoice);
     auto nextVoiceOwner = midi(72, 2);
     assert(voiceKeyboard.externalNoteOn(72, 90, nextVoiceOwner));
-    assert(voiceSink.count(MusicalEventType::NoteOn, 66) == 1); // nearest common voice: F#.
+    assert(voiceSink.count(MusicalEventType::NoteOn, 71) == 1); // upward gesture follows B in Gmaj7.
 
     // Cardputer and external MIDI use the same interpreter: 'a' maps to C2,
     // while BASS expresses the current C root at the register chosen by context.

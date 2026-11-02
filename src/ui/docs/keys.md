@@ -188,6 +188,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
+| `Alt+E` on STEPS | STEP SETTINGS window for the cursor step (all selected steps when an area is selected), works with NOTE ENTRY on. `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or GHOST (on/off); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Esc` or `Alt+E` closes; other keys are ignored while it is open. Not offered on a Melody |
 | `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
 | `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |

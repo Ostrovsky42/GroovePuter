@@ -88,6 +88,13 @@ constexpr uint32_t kSmfStallProbeDelayMs = 1000;
 // A 16-packet TinyUSB FIFO can reject a short chord while the receiver catches
 // up. This threshold classifies only sustained backpressure for diagnostics.
 constexpr uint32_t kUsbEndpointStallThresholdMs = 50;
+// BLOCKED on screen needs rejects within this window; older stalls are sticky
+// labels waiting for a write that may never come (quiet host or idle player).
+constexpr uint32_t kUsbBlockedFreshMs = 1000;
+// Start, Continue and Stop are state, not timing: a host that misses one keeps
+// playing or stays stopped. A rejected one is retried this many times (one
+// pacer slot each, like the SMF send limit) before it is given up.
+constexpr uint8_t kTransportSendAttemptLimit = 24;
 constexpr std::size_t kControlDrainBudget = 8;
 // Upper bound on how long the dispatcher may stay runnable without blocking.
 // The task watchdog window is seconds; 10 ms keeps sample-accurate dispatch
@@ -187,6 +194,7 @@ struct MidiDispatchDiagnostics {
     uint32_t continueSent{0};
     uint32_t stopSent{0};
     uint32_t transportSendFailures{0};
+    uint32_t transportSendRetries{0};
     uint32_t smfSent{0};
     uint32_t smfStaleGenerationDrops{0};
     uint32_t smfPanics{0};
@@ -835,7 +843,7 @@ void logDiagnosticsIfDue() {
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
         "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
-        "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
+        "transportFail=%u tsRetry=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
         "liveDrop=%u/%u suppressed=%u panic=%u/%u "
         // DIN endpoint. dinDropOn is the visible cost of a 1040 msg/s wire;
@@ -875,6 +883,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.continueSent),
         static_cast<unsigned>(g_diagnostics.stopSent),
         static_cast<unsigned>(g_diagnostics.transportSendFailures),
+        static_cast<unsigned>(g_diagnostics.transportSendRetries),
         static_cast<unsigned>(g_diagnostics.lateEvents),
         static_cast<unsigned>(g_diagnostics.maximumLatenessUs),
         static_cast<unsigned>(g_diagnostics.staleGenerationDrops),
@@ -992,6 +1001,7 @@ void midiDispatchTask(void*) {
     ScheduledSmfMidiEvent pendingSmf{};
     bool hasPendingMusical = false;
     bool hasPendingTransport = false;
+    uint8_t transportSendAttempts = 0;
     bool hasPendingSmf = false;
     uint8_t smfFailedAttempts = 0;
     uint32_t lastFairnessYieldMs = millis();
@@ -1291,10 +1301,17 @@ void midiDispatchTask(void*) {
                     pendingTransport,
                     g_patternQueue->transportQueue().generation())) {
                 ++g_diagnostics.clockStaleGenerationDrops;
-            } else {
-                dispatchTransportEvent(pendingTransport);
+            } else if (!dispatchTransportEvent(pendingTransport) &&
+                       pendingTransport.type != MidiTransportEventType::Clock &&
+                       transportSendAttempts < kTransportSendAttemptLimit) {
+                // Keep the event pending: the next pass retries it after the
+                // pacer slot. Clock stays drop-on-failure, it goes stale fast.
+                ++transportSendAttempts;
+                ++g_diagnostics.transportSendRetries;
+                continue;
             }
             hasPendingTransport = false;
+            transportSendAttempts = 0;
         } else if (kind == PendingKind::Pattern) {
             if (scheduledMusicalEventGenerationIsCurrent(
                     pendingMusical,
@@ -1774,7 +1791,7 @@ bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
 
 CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
     const CardputerUsbMidiTransportDiagnostics usb = g_transport.diagnostics();
-    const UsbEndpointHealthSnapshot endpoint = g_endpointHealth.snapshot(millis());
+    const uint32_t nowMs = millis();
     CardputerUsbMidiStatusSnapshot snapshot{};
     snapshot.registered = g_registered;
     snapshot.started = g_transport.started();
@@ -1783,7 +1800,7 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
 #endif
     snapshot.mounted = g_transport.mounted();
     snapshot.suspended = g_transport.suspended();
-    snapshot.stalled = endpoint.state == UsbEndpointHealthState::Stalled;
+    snapshot.stalled = g_endpointHealth.isFreshlyStalled(nowMs, kUsbBlockedFreshMs);
     snapshot.txAccepted = usb.txAccepted;
     snapshot.txRejected = usb.txRejected;
     snapshot.txRejectedEndpointBusy = usb.txRejectedEndpointBusy;

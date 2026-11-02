@@ -143,15 +143,28 @@ int main() {
     assert(output.wireOwnerCount(7, 69) == 0);
 
     // CC123 recovery must wait while another known owner uses that channel.
+    // The wait is not a failed write: the SMF cleanup still completes, and the
+    // CC123 is sent later by the release pass that follows the owner's NoteOff.
     output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOn, 71));
     assert(output.handleSmfNoteOn(7, 74, 95));
     transport.sendOk = false;
     output.abandonAllSmfNotes();
     transport.sendOk = true;
     const std::size_t beforeDeferredRecovery = transport.packets.size();
-    assert(!output.releaseAllSmfNotes());
+    assert(output.releaseAllSmfNotes());
     assert(transport.packets.size() == beforeDeferredRecovery);
     output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOff, 71));
+    assert(output.releaseAllSmfNotes());
+    assert(transport.packets.back().kind == Kind::Control);
+    assert(transport.packets.back().channel == 7);
+
+    // A rejected CC123 with no other owner is a real write failure and must
+    // still fail the cleanup, so the player pauses instead of pretending success.
+    assert(output.handleSmfNoteOn(7, 80, 90));
+    output.abandonAllSmfNotes();
+    transport.sendOk = false;
+    assert(!output.releaseAllSmfNotes());
+    transport.sendOk = true;
     assert(output.releaseAllSmfNotes());
     assert(transport.packets.back().kind == Kind::Control);
     assert(transport.packets.back().channel == 7);

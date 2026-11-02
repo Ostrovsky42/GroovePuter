@@ -223,10 +223,13 @@ inline bool bassFunctionForInputNote(const PerformanceContext& context,
     return false;
 }
 
+struct LeadGestureHistory { uint8_t previousInput; uint8_t previousOutput; };
+
 inline NotePlan interpretNote(PerformanceRole role,
                               LeadMode leadMode,
                               const PerformanceContext& context,
-                              const PerformanceGesture& gesture) {
+                              const PerformanceGesture& gesture,
+                              const LeadGestureHistory* history = nullptr) {
     NotePlan plan{};
     if (role >= PerformanceRole::Count || leadMode >= LeadMode::Count ||
         gesture.note > 127u || gesture.velocity > 127u ||
@@ -383,8 +386,34 @@ inline NotePlan interpretNote(PerformanceRole role,
             plan.status = NotePlanStatus::InvalidContext;
             return plan;
         }
-        if (!voiceLeadNote(reference, allowed, context.minNote, context.maxNote,
-                           VoiceLeadingDirection::Nearest, interpreted)) {
+        bool selected = false;
+        if (leadMode == LeadMode::VoiceLead && history) {
+            int desired = static_cast<int>(history->previousOutput) +
+                          static_cast<int>(gesture.note) - history->previousInput;
+            if (desired < context.minNote) desired = context.minNote;
+            if (desired > context.maxNote) desired = context.maxNote;
+            const int direction = static_cast<int>(gesture.note) - history->previousInput;
+            int bestDistance = 256;
+            for (int pass = 0; pass < 2 && !selected; ++pass) {
+                for (int n = context.minNote; n <= context.maxNote; ++n) {
+                    if ((allowed & (1u << (n % 12))) == 0) continue;
+                    if (pass == 0 && direction > 0 && n <= history->previousOutput) continue;
+                    if (pass == 0 && direction < 0 && n >= history->previousOutput) continue;
+                    const int distance = n > desired ? n - desired : desired - n;
+                    const int movement = n > history->previousOutput ? n - history->previousOutput : history->previousOutput - n;
+                    const int previousMovement = interpreted > history->previousOutput ? interpreted - history->previousOutput : history->previousOutput - interpreted;
+                    if (!selected || distance < bestDistance || (distance == bestDistance && movement < previousMovement)) {
+                        selected = true;
+                        bestDistance = distance;
+                        interpreted = static_cast<uint8_t>(n);
+                    }
+                }
+            }
+        } else {
+            selected = voiceLeadNote(reference, allowed, context.minNote, context.maxNote,
+                                     VoiceLeadingDirection::Nearest, interpreted);
+        }
+        if (!selected) {
             plan.status = NotePlanStatus::InvalidContext;
             return plan;
         }

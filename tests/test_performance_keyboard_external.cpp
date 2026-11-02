@@ -29,6 +29,57 @@ int main() {
     RecordingSink sink;
     assert(router.addSink(sink));
 
+    // VoiceLead must follow the performer's rising gesture on a stable chord.
+    {
+        PerformanceKeyboard kb(router);
+        GroovePuterPerformance::PerformanceContext context{};
+        context.hasHarmony = true;
+        context.harmonyPitchClasses = (1u << 0) | (1u << 4) | (1u << 7);
+        kb.setPerformanceContext(context);
+        kb.setPerformanceRole(GroovePuterPerformance::PerformanceRole::Lead);
+        kb.setLeadMode(GroovePuterPerformance::LeadMode::VoiceLead);
+        sink.clear();
+        assert(kb.externalNoteOn(60, 100));
+        assert(kb.externalNoteOff(60));
+        assert(kb.externalNoteOn(62, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 64));
+        assert(kb.externalNoteOff(62));
+        assert(sink.has(MusicalEventType::NoteOff, 64));
+        sink.clear();
+        assert(kb.externalNoteOn(64, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 67));
+        assert(kb.externalNoteOff(64));
+        sink.clear();
+        assert(kb.externalNoteOn(62, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 64));
+        assert(kb.externalNoteOff(62));
+        sink.clear();
+        assert(kb.externalNoteOn(62, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 64));
+        assert(kb.externalNoteOff(62));
+        kb.panic();
+        sink.clear();
+        assert(kb.externalNoteOn(60, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 60));
+        assert(kb.externalNoteOff(60));
+    }
+    // Rejected input while note mode is disabled must not seed VoiceLead history.
+    {
+        PerformanceKeyboard kb(router);
+        GroovePuterPerformance::PerformanceContext context{};
+        context.hasHarmony = true;
+        context.harmonyPitchClasses = (1u << 0) | (1u << 4) | (1u << 7);
+        kb.setPerformanceContext(context);
+        kb.setPerformanceRole(GroovePuterPerformance::PerformanceRole::Lead);
+        kb.setLeadMode(GroovePuterPerformance::LeadMode::VoiceLead);
+        kb.setNoteModeEnabled(false);
+        assert(!kb.externalNoteOn(61, 100));
+        kb.setNoteModeEnabled(true);
+        sink.clear();
+        assert(kb.externalNoteOn(60, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 60));
+        assert(kb.externalNoteOff(60));
+    }
     // 1. absolute pitch, velocity kept, source is the PERFORM keyboard (same owner as the built-in keys)
     {
         PerformanceKeyboard kb(router);

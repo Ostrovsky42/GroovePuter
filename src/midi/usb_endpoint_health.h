@@ -42,6 +42,7 @@ public:
         }
 
         ++writeRejected_;
+        lastRejectMs_ = nowMs;
         if (!blocked_) {
             blocked_ = true;
             blockedSinceMs_ = nowMs;
@@ -56,6 +57,14 @@ public:
             state_ = UsbEndpointHealthState::Stalled;
             ++stalledTransitions_;
         }
+    }
+
+    // Stalled is a sticky label until a write succeeds. It counts as a live
+    // block only while rejects are still arriving, so a quiet device (no notes,
+    // SMF paused, host reconnected) does not show BLOCKED indefinitely.
+    bool isFreshlyStalled(uint32_t nowMs, uint32_t freshWindowMs) const {
+        return state_ == UsbEndpointHealthState::Stalled &&
+               nowMs - lastRejectMs_ <= freshWindowMs;
     }
 
     UsbEndpointHealthSnapshot snapshot(uint32_t nowMs) const {
@@ -83,6 +92,7 @@ private:
 
     uint32_t stallThresholdMs_{0};
     uint32_t blockedSinceMs_{0};
+    uint32_t lastRejectMs_{0};
     uint32_t writeAccepted_{0};
     uint32_t writeRejected_{0};
     uint32_t stalledTransitions_{0};

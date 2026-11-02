@@ -191,3 +191,12 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_panic_cancels_partner_queue():
+    page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
+    panic = page.split("case 'x':", 1)[1].split("default:", 1)[0]
+    assert "callResponseListener().setMode(" in panic
+
+if __name__ == "__main__":
+    test_panic_cancels_partner_queue()

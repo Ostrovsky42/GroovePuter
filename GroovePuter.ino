@@ -49,6 +49,11 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/input/performance_control.h"
 #include "src/input/performance_harmony_bridge.h"
 #include "src/input/performance_harmony_route_cache.h"
+#include "src/input/call_response_listener.h"
+#include "src/input/call_response_harmony.h"
+#include "src/input/performance_harmony_lookahead.h"
+#include "src/input/call_response_motif.h"
+#include "src/input/call_response_planner.h"
 #include "src/audio/pattern_paging.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
@@ -645,6 +650,9 @@ void setup() {
   }
   GroovePuterPlatform::initializeCardputerPerformanceConfig(
       g_performanceKeyboard);
+  GroovePuterCallResponse::callResponseListener().setNowFunction(callResponseNowMicros);
+  GroovePuterCallResponse::callResponseListener().setOutputRouter(&g_musicalEventRouter);
+  g_performanceKeyboard.setInputObserver(&GroovePuterCallResponse::callResponseListener());
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
@@ -824,6 +832,209 @@ static void updatePerformanceHarmonyContext() {
   g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
 }
 
+static uint32_t callResponseNowMicros() { return micros(); }
+
+// CALL/RESPONSE phase 2: the chord of every strong beat of the answer (answer
+// steps 0, 4, ..., 28), looked ahead from the published playback position with
+// in-memory data only (origin/recipe, Song participants from the Song table, the
+// Graph state already in the route cache; never loadSongHarmonicState). A beat
+// without a lookahead snapshot falls back to the current PERFORM harmony, then
+// to none (phase 1). answerStartStep is in transport steps (the CALL clock).
+static void collectCallResponseHarmony(
+    int32_t answerStartStep,
+    const GroovePuterPerformance::PerformanceContext& context,
+    GroovePuterCallResponse::ResponseHarmony& harmony) {
+  using GroovePuterCallResponse::ResponseHarmony;
+  using GroovePuterCallResponse::kStrongBeatSteps;
+  harmony = ResponseHarmony{};
+  uint16_t ahead[ResponseHarmony::kBeats]{};
+  bool aheadOk[ResponseHarmony::kBeats]{};
+  if (g_miniAcid && g_miniAcid->isPlaying()) {
+    GroovePuterHarmony::HarmonySnapshot snapshot{};
+    GroovePuterPerformance::HarmonyPlaybackPosition position{};
+    const auto* origin = g_miniAcid->generatedSynthAOrigin();
+    const auto* recipe = g_miniAcid->generatedPhraseRecipe();
+    if (origin && recipe && g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      const bool haveParticipants =
+          recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          g_miniAcid->tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars, participants,
+              GroovePuterHarmony::kMaxSongHarmonyParticipants, participantCount);
+      // Rows reachable by plain +1 steps: not in reverse, not past the loop end
+      // or the Song end (the next row would jump elsewhere).
+      int16_t lastSequentialRow = position.songRow;
+      if (!g_miniAcid->isSongReverse()) {
+        int last = g_miniAcid->songLength() - 1;
+        if (g_miniAcid->loopModeEnabled() && position.songRow >= g_miniAcid->loopStartRow() &&
+            position.songRow <= g_miniAcid->loopEndRow()) {
+          last = g_miniAcid->loopEndRow();
+        }
+        if (last > position.songRow) lastSequentialRow = static_cast<int16_t>(last);
+      }
+      const GroovePuterHarmony::SongHarmonicState* state = nullptr;
+      const bool graph = origin->common.harmonicAuthority ==
+                         GroovePuterHarmony::HarmonicAuthority::Graph;
+      if (graph && haveParticipants) {
+        state = g_performanceHarmonyRouteCache.stateFor(
+            PatternPagingService::currentProjectName(),
+            static_cast<uint8_t>(recipe->songSlot),
+            static_cast<uint8_t>(recipe->songStart), participants, participantCount);
+      }
+      for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+        const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
+        const int64_t offset = target - static_cast<int64_t>(position.absoluteStep);
+        if (offset < -16 || offset > 48) continue;
+        bool ok = false;
+        if (graph) {
+          ok = state && GroovePuterPerformance::graphHarmonyAhead(
+              *state, participants, participantCount, *origin, *recipe, position,
+              static_cast<int32_t>(offset), lastSequentialRow, snapshot);
+        } else {
+          ok = GroovePuterPerformance::legacyHarmonyAhead(
+              *origin, *recipe, haveParticipants ? participants : nullptr,
+              participantCount, position, static_cast<int32_t>(offset),
+              lastSequentialRow, snapshot);
+        }
+        if (ok) { ahead[beat] = snapshot.base.pitchMask; aheadOk[beat] = true; }
+      }
+    } else if (!g_miniAcid->songModeEnabled()) {
+      const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
+      GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+      if (patternOrigin &&
+          g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition)) {
+        for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+          const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
+          const int64_t offset = target - static_cast<int64_t>(patternPosition.absoluteStep);
+          if (offset < 0 || offset > 48) continue;
+          if (GroovePuterPerformance::patternHarmonyAhead(
+                  *patternOrigin, patternPosition, static_cast<int32_t>(offset), snapshot)) {
+            ahead[beat] = snapshot.base.pitchMask;
+            aheadOk[beat] = true;
+          }
+        }
+      }
+    }
+  }
+  for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+    GroovePuterCallResponse::ChordSource source = GroovePuterCallResponse::ChordSource::None;
+    const uint16_t chord = GroovePuterCallResponse::chooseAnswerChord(
+        aheadOk[beat], ahead[beat], context.hasHarmony, context.harmonyPitchClasses, &source);
+    harmony.set(beat, chord, source);
+  }
+}
+
+// CALL/RESPONSE: phase 0 capture + [CR] log; phase 1 (PARTNER ANSWER) plays a
+// template answer on the PERFORM DX MIDI route and logs it as [CR-A]. Off by
+// default (PERFORMANCE TOOLS > INPUT > PARTNER). Main loop only.
+static void logCallResponseCancel() {
+  static uint32_t s_seenCancels = 0;
+  const auto& responder = GroovePuterCallResponse::callResponseListener().responder();
+  if (responder.answersCancelled() == s_seenCancels) return;
+  s_seenCancels = responder.answersCancelled();
+  Serial.printf("[CR-A] cancel played=%u human=%lu\n",
+                static_cast<unsigned>(responder.lastCancelPlayed()),
+                static_cast<unsigned long>(
+                    GroovePuterCallResponse::callResponseListener().humanCancels()));
+}
+
+static void serviceCallResponseLog() {
+  auto& listener = GroovePuterCallResponse::callResponseListener();
+  logCallResponseCancel();
+  if (!listener.enabled()) return;
+  GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
+  GroovePuterCallResponse::TransportView transport{};
+  if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+    // Writer mid-update (seqlock retries exhausted): not "PLAY stopped". Keep
+    // the previous view so the CALL clock is not reset for one loop pass.
+    transport = listener.lastTransport();
+  } else if (snapshot.valid && snapshot.playing && snapshot.bpmQ16 != 0) {
+    transport.playing = true;
+    transport.epoch = snapshot.transportEpoch;
+    transport.blockSequence = snapshot.blockSequence;
+    transport.steps = snapshot.absoluteSteps();
+    transport.bpm = snapshot.bpm();
+  }
+  GroovePuterCallResponse::PhraseCapture::Phrase phrase;  // 72 bytes, loop stack
+  if (listener.service(micros(), transport, g_performanceKeyboard.tempoBpm(), phrase) !=
+      GroovePuterCallResponse::PhraseCapture::CloseResult::Phrase) {
+    return;
+  }
+  const int8_t* intervals = nullptr;
+  uint8_t intervalCount = 0;
+  if (!g_performanceKeyboard.scaleIntervals(intervals, intervalCount)) return;
+  GroovePuterCallResponse::MotifDescriptor motif{};
+  if (!GroovePuterCallResponse::describe(phrase, g_performanceKeyboard.rootPitchClass(),
+                                         intervals, intervalCount, motif)) {
+    return;
+  }
+  char line[160];
+  GroovePuterCallResponse::formatMotifLog(
+      line, sizeof(line), static_cast<uint32_t>(phrase.firstBar() + 1), motif,
+      listener.clockName(), phrase.dropped);
+  Serial.println(line);
+
+  // Answer key: the Smart Play harmony key when the project provides one, else the PERFORM key.
+  const GroovePuterPerformance::PerformanceContext context =
+      g_performanceKeyboard.performanceContextSnapshot();
+  const GroovePuterCallResponse::ResponseKey key = context.hasHarmony
+      ? GroovePuterCallResponse::responseKeyFromPitchClasses(context.rootMidi,
+                                                             context.scalePitchClasses)
+      : GroovePuterCallResponse::responseKeyFromIntervals(
+            g_performanceKeyboard.rootPitchClass(), intervals, intervalCount);
+  if (!listener.canAnswer(phrase)) return;
+  // Phase 2: chord per strong beat (next bar = +16, fallback current, then none)
+  // and the genre's ending from the idiom dictionary (no generator call).
+  GroovePuterCallResponse::ResponseHarmony harmony;  // 18 bytes, loop stack
+  collectCallResponseHarmony(
+      phrase.windowStartStep + phrase.windowSteps + listener.answerDelaySteps(),
+      context, harmony);
+  // PARTNER GENRE: AUTO = project genre (phase 2), NONE = phase-1 ending.
+  const uint8_t genre = listener.answerGenre(g_miniAcid
+      ? static_cast<uint8_t>(g_miniAcid->genreManager().generativeMode())
+      : GroovePuterCallResponse::kNoGenre);
+  const GroovePuterCallResponse::ResponseStyle style =
+      GroovePuterCallResponse::pickResponseStyle(genre,
+                                                 GroovePuterCallResponse::responseSeed(phrase));
+  using namespace GroovePuterCallResponse;
+  const uint32_t callSignatureValue = callSignature(phrase, motif);
+  ReplyStrategy replyStrategy{};
+  ResponsePlan plan;
+  ResponseHarmonyReport report;
+  if (!planPerformanceReply(phrase, motif, key, harmony, style, listener.replyMemory(),
+      listener.mode() == CallResponseListener::Mode::Loop,
+      listener.mode() == CallResponseListener::Mode::Duet,
+      listener.loopEvolve(), listener.answerDelaySteps(), plan, replyStrategy, report)) return;
+  if (!listener.startAnswer(phrase, plan, micros())) return;
+  listener.rememberStartedReply(callSignatureValue, replyStrategy);
+  Serial.printf("[CR-A] strategy=%u evolve=%u hold=%u\n", static_cast<unsigned>(replyStrategy), listener.loopEvolve(), listener.loopHold());
+  char answer[320];
+  const int used = GroovePuterCallResponse::formatResponseLog(
+      answer, sizeof(answer),
+      static_cast<uint32_t>(phrase.firstBar() + 1 +
+                            phrase.windowSteps /
+                                GroovePuterCallResponse::PhraseCapture::kStepsPerBar),
+      plan);
+  if (used > 0 && static_cast<size_t>(used) < sizeof(answer)) {
+    GroovePuterCallResponse::formatHarmonyLog(answer + used, sizeof(answer) - used, harmony,
+                                              performanceReplyStyle(style, listener.mode() == CallResponseListener::Mode::Loop, listener.loopEvolve()), report);
+  }
+  // Phase 3: where the answer goes (0 = PERFORM DX route) and the CALL length.
+  const size_t logged = strnlen(answer, sizeof(answer));
+  if (logged + 1 < sizeof(answer)) {
+    snprintf(answer + logged, sizeof(answer) - logged, " ch=%u bars=%u",
+             static_cast<unsigned>(listener.answerChannel()),
+             static_cast<unsigned>(listener.answerBars()));
+  }
+  Serial.println(answer);
+}
+
 void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
@@ -965,8 +1176,10 @@ void loop() {
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {
       g_performanceKeyboard.panic();
+      GroovePuterCallResponse::callResponseListener().cancelAnswer();
       g_lastLiveInputEpoch = epoch;
     }
+    serviceCallResponseLog();
   }
 
   if (g_encoder8) g_encoder8->update();

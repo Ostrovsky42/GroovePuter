@@ -276,6 +276,15 @@ void PerformanceKeyboard::serviceHardwareClock() {
 #endif
 }
 
+bool PerformanceKeyboard::scaleIntervals(const int8_t*& intervals, uint8_t& count) const {
+    const ScaleDefinitionView definition =
+        GroovePuterRhythm::scaleDefinitionFor(catalogScaleFor(scale_));
+    if (definition.intervals == nullptr || definition.count == 0) return false;
+    intervals = definition.intervals;
+    count = definition.count;
+    return true;
+}
+
 void PerformanceKeyboard::setTempoBpm(float bpm) {
     if (bpm < 30.0f) bpm = 30.0f;
     if (bpm > 300.0f) bpm = 300.0f;
@@ -953,6 +962,7 @@ void PerformanceKeyboard::clearPerformanceHarmonyContext() {
 
 bool PerformanceKeyboard::setPerformanceRole(GroovePuterPerformance::PerformanceRole role) {
     if (role >= GroovePuterPerformance::PerformanceRole::Count) return false;
+    if (performanceRole_ != role) hasPreviousLiveLeadNote_ = false;
     performanceRole_ = role;
     if (role == GroovePuterPerformance::PerformanceRole::Raw &&
         requestedStepEngineEnabled()) {
@@ -966,6 +976,7 @@ bool PerformanceKeyboard::setPerformanceRole(GroovePuterPerformance::Performance
 
 bool PerformanceKeyboard::setLeadMode(GroovePuterPerformance::LeadMode mode) {
     if (mode >= GroovePuterPerformance::LeadMode::Count) return false;
+    if (leadMode_ != mode) hasPreviousLiveLeadNote_ = false;
     leadMode_ = mode;
     return true;
 }
@@ -999,8 +1010,11 @@ bool PerformanceKeyboard::interpretLiveInput(uint8_t inputNote,
         lastNotePlanStatus_ = GroovePuterPerformance::NotePlanStatus::InvalidGesture;
         return false;
     }
+    const GroovePuterPerformance::LeadGestureHistory history{previousLiveLeadInput_, previousLiveLeadNote_};
+    const bool useHistory = performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead &&
+        leadMode_ == GroovePuterPerformance::LeadMode::VoiceLead && hasPreviousLiveLeadNote_;
     const GroovePuterPerformance::NotePlan plan = GroovePuterPerformance::interpretNote(
-        performanceRole_, leadMode_, context, gesture);
+        performanceRole_, leadMode_, context, gesture, useHistory ? &history : nullptr);
     lastNotePlanStatus_ = plan.status;
     if ((plan.status != GroovePuterPerformance::NotePlanStatus::Ok &&
          plan.status != GroovePuterPerformance::NotePlanStatus::FallbackNoHarmony) ||
@@ -1009,6 +1023,7 @@ bool PerformanceKeyboard::interpretLiveInput(uint8_t inputNote,
     outputNote = plan.notes[0].note;
     outputVelocity = plan.notes[0].velocity;
     if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Lead) {
+        previousLiveLeadInput_ = inputNote;
         previousLiveLeadNote_ = outputNote;
         hasPreviousLiveLeadNote_ = true;
     }
@@ -1513,11 +1528,14 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
 
     uint8_t note = 0;
     if (!noteForKey(physicalKey, note)) return true;
+    const uint8_t inputNote = note;
+    const uint8_t inputVelocity = velocity;
     uint8_t interpretedVelocity = velocity;
     if (!interpretLiveInput(note, velocity, note, interpretedVelocity)) return true;
     velocity = interpretedVelocity;
     const std::size_t priorHeld = heldCount_;
     held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0};
+    notifyInput(true, static_cast<uint8_t>(physicalKey), inputNote, inputVelocity);
 
     if (activeClocked_.latchEnabled || pendingClocked_.latchEnabled) {
         if (!pendingLatchCapture_) {
@@ -1572,6 +1590,7 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
             emitNoteOff(released.note, released.channel);
         return true;
     }
+    notifyInput(false, static_cast<uint8_t>(physicalKey), released.note, 0);
     if (activeStepEngineEnabled()) {
         if (heldCount_ == 0 && !(activeClocked_.latchEnabled && latchedCount_ > 0)) {
             stopGeneratedOutput();
@@ -1783,6 +1802,10 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note,
     }
     if (free == kMaxExternalInputOwners) return false;
 
+    const uint8_t inputVelocity = velocity;
+    const uint8_t savedLeadInput = previousLiveLeadInput_;
+    const uint8_t savedLeadNote = previousLiveLeadNote_;
+    const bool savedLeadValid = hasPreviousLiveLeadNote_;
     uint8_t semanticNote = note;
     uint8_t semanticChannel = 0;
     if (target_ == MusicalEventTarget::Drums) {
@@ -1795,9 +1818,18 @@ bool PerformanceKeyboard::externalNoteOn(uint8_t note,
     }
     const bool alreadyOwned = hasExternalSemanticOwner(semanticNote, semanticChannel);
     const uint8_t attackNote = target_ == MusicalEventTarget::Drums ? note : semanticNote;
-    if (!alreadyOwned && !externalNoteOnUntracked(attackNote, velocity)) return false;
+    if (!alreadyOwned && !externalNoteOnUntracked(attackNote, velocity)) {
+        previousLiveLeadInput_ = savedLeadInput;
+        previousLiveLeadNote_ = savedLeadNote;
+        hasPreviousLiveLeadNote_ = savedLeadValid;
+        return false;
+    }
     externalInputOwners_[free] = ExternalInputOwner{true, input, note,
                                                      semanticNote, semanticChannel};
+    if (target_ != MusicalEventTarget::Drums) {
+        notifyInput(true, performanceExternalInputTag(input.source, input.channel, note),
+                    note, inputVelocity);
+    }
     return true;
 }
 
@@ -1809,6 +1841,8 @@ bool PerformanceKeyboard::externalNoteOff(uint8_t note,
     if (found < 0) return false;
     const ExternalInputOwner owner = externalInputOwners_[static_cast<std::size_t>(found)];
     externalInputOwners_[static_cast<std::size_t>(found)] = ExternalInputOwner{};
+    if (target_ != MusicalEventTarget::Drums)
+        notifyInput(false, performanceExternalInputTag(input.source, input.channel, note), note, 0);
     if (hasExternalSemanticOwner(owner.semanticNote, owner.semanticChannel)) return true;
     return externalNoteOffUntracked(
         target_ == MusicalEventTarget::Drums ? owner.inputNote : owner.semanticNote);
@@ -2339,6 +2373,7 @@ const char* PerformanceKeyboard::voiceLeadingName() const {
     return voiceLeading_ == PerformanceVoiceLeading::Nearest ? "NEAR" : "OFF";
 }
 void PerformanceKeyboard::resetVoiceLeading() {
+    hasPreviousLiveLeadNote_ = false;
     previousVoicingCount_ = 0;
     for (uint8_t& note : previousVoicing_) note = 0;
 }

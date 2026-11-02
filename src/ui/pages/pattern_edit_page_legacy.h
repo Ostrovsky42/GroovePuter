@@ -1118,8 +1118,64 @@ void PatternEditPage::draw(IGfx& gfx) {
                           : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
         pairPlaying ? "L:STOP"
             : otherPair ? (voice_index_ == 0 ? "B:PAIR" : "A:PAIR")
-            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L PAIR PLAY");
+            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L:PLAY AltE:STEP");
   }
+  if (step_settings_open_) {
+    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ESC/AltE:CLOSE");
+  }
+  drawStepSettings(gfx);
+}
+
+void PatternEditPage::drawStepSettings(IGfx& gfx) const {
+  if (!step_settings_open_) return;
+  const UI::ThemePalette p = UI::themePalette();
+  const Rect& b = getBoundaries();
+  const int lineH = gfx.fontHeight() + 3;
+  const int w = std::min(b.w - 8, 150);
+  const int h = lineH * (kStepSettingsFields + 2) + 6;
+  const int x = b.x + (b.w - w) / 2;
+  const int y = b.y + std::max(0, (b.h - h) / 2);
+
+  int first = activePatternStep();
+  int count = 1;
+  if (has_selection_) {
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    first = min_row * kPatternStepColumns + min_col;
+    count = (max_row - min_row + 1) * (max_col - min_col + 1);
+  }
+  const SynthPattern& pattern =
+      cursorOnNextSlot()
+          ? mini_acid_.sceneManager().getSynthPattern(voice_index_,
+                                                      editPatternIndex())
+          : slotNPattern();
+  const SynthStep& st = pattern.steps[first < 0 ? 0 : first % SEQ_STEPS];
+
+  gfx.fillRect(x, y, w, h, p.panel);
+  gfx.drawRect(x, y, w, h, p.accent);
+  char line[32];
+  if (count > 1) std::snprintf(line, sizeof(line), "STEP SETTINGS  SEL %d", count);
+  else std::snprintf(line, sizeof(line), "STEP SETTINGS  STEP %d", first + 1);
+  gfx.setTextColor(p.accent);
+  gfx.drawText(x + 4, y + 3, line);
+
+  char values[kStepSettingsFields][12];
+  std::snprintf(values[0], sizeof(values[0]), "%d%%", static_cast<int>(st.probability));
+  std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
+  std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
+  std::snprintf(values[3], sizeof(values[3]), "%s", st.ghost ? "ON" : "OFF");
+  static const char* const kLabels[kStepSettingsFields] = {"PROB", "TIMING", "VEL", "GHOST"};
+  for (int i = 0; i < kStepSettingsFields; ++i) {
+    const int ry = y + 3 + lineH * (i + 1);
+    const bool sel = i == step_settings_field_;
+    if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    gfx.setTextColor(sel ? p.invert : p.text);
+    gfx.drawText(x + 6, ry, kLabels[i]);
+    gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
+  }
+  gfx.setTextColor(p.dim);
+  gfx.drawText(x + 4, y + 3 + lineH * (kStepSettingsFields + 1),
+               "UP/DN  L/R  ESC:CLOSE");
 }
 
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {

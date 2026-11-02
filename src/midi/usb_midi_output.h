@@ -194,10 +194,18 @@ private:
     void requestChannelPanic(uint8_t channel);
     bool releasePendingChannelPanics();
     void clearActiveState();
+    // CALL/RESPONSE answer lane (kMusicalEventWireChannel): one note at a time
+    // on the wire channel the event names, owned through owners_ like the other
+    // lanes, so it shares a channel/note with PERFORM or Pattern safely.
+    void handleAnswerLaneEvent(const MusicalEvent& event);
+    bool releaseAnswerLane();
 
     IUsbMidiTransport& transport_;
     UsbMidiRouteConfig config_;
     MidiVoiceLane lanes_[kLaneCount];
+    // Kept out of lanes_ so laneFor() never resolves a (source, target) to it.
+    // Set up in configureLanes(); its channel follows the event at NoteOn.
+    MidiVoiceLane answerLane_;
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];

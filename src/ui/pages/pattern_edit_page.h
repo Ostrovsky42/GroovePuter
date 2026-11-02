@@ -25,6 +25,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
     note_entry_mode_ = false;
     chaining_mode_ = false;
     cursor_next_ = false;
+    step_settings_open_ = false;
   }
   // The pair view is not an input mode: it outlives the page while the pair
   // plays. Page entry sets it from the engine.
@@ -117,11 +118,20 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   void ensureStepFocus();
+  int entryBaseNote() const;
   int noteForEntryKey(char key) const;
+  void shiftEntryOctave(int delta);
   void resetNoteHoldTracking();
   void advanceNoteEntryCursor();
   void writeNoteEntryStep(int step, int note, bool continuation);
   bool handleNoteEntryKey(char key);
+  // STEP SETTINGS window (Alt+E): PROB / TIMING / VEL / GHOST of the cursor
+  // step or the selected area. State is page-local; every change is one
+  // commitPatternMutation (one Undo step).
+  void openStepSettings();
+  bool handleStepSettingsKey(const UIEvent& ui_event);
+  void adjustStepSetting(int field, int direction);
+  void drawStepSettings(IGfx& gfx) const;
 
   template <typename PrepareFn>
   PatternMutationResult commitPatternMutation(PrepareFn&& prepare) {
@@ -219,6 +229,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int last_entered_step_ = -1;
   unsigned long last_note_key_ms_ = 0;
   bool note_hold_active_ = false;
+  // NOTE ENTRY octave shift per voice (Synth A, Synth B), in octaves from the
+  // default. Session-only: leaving the page does not persist it.
+  int entry_octave_shift_[2] = {0, 0};
+  bool step_settings_open_ = false;
+  uint8_t step_settings_field_ = 0;
 
   bool pair_view_ = false;
   bool cursor_next_ = false;  // cursor is on rows 3-4 (slot N+1)
