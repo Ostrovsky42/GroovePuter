@@ -2791,7 +2791,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     // guard a Song row change uses, so tied or sliding notes never stick.
     for (int synth = 0; synth < NUM_303_VOICES; ++synth) {
       PairPlayState& pair = pairPlay_[synth];
-      if (!pair.active) continue;
+      if (!pair.active || pair.paused) continue;
       if (pair.armed) {
         // Armed start: this bar line is the pair's first bar (slot N), no flip.
         pair.armed = false;
@@ -5090,6 +5090,16 @@ void MiniAcid::setSequencedSource(int voiceIndex, SequencedSource source) {
   if (activeMaterial_[voice].kind == nextKind) return;
   hardBarrierPatternPlayback_(voice);
   activeMaterial_[voice].kind = nextKind;
+  PairPlayState& pair = pairPlay_[voice];
+  if (nextKind == GroovePuterMaterial::MaterialKind::Pattern && pair.paused) {
+    // Back on STEPS: the pair resumes from slot N, with the same start rules
+    // as togglePairPlay (bar line armed while playing, no flip while stopped).
+    pair.paused = false;
+    pair.phase = 0;
+    pair.skipFlip = !playing;
+    pair.armed = playing;
+    LOG_PRINTF("[PAIR] resume voice=%d slot=%d\n", voice, pair.base);
+  }
 }
 
 MiniAcid::SequencedSource MiniAcid::currentSequencedSource(int voiceIndex) const {
@@ -6592,11 +6602,37 @@ bool MiniAcid::makePhrase(int voiceIndex, bool emptyMelody) {
 
   // Project into a candidate first. A failed projection must leave the voice
   // exactly as it was, with neither half of the conversion committed.
+  // Pair play N:N+1 makes a two-bar melody: bar 1 is slot N and bar 2 is slot
+  // N+1, both read from the scene. Reading the scene rather than the sounding
+  // pattern keeps the result the same whichever half of the pair is playing.
+  const bool pairMelody = pairPlay_[voiceIndex].active;
+  const int pairBase = pairPlay_[voiceIndex].base;
   PhraseRuntime::RuntimeSynthEventBuffer candidate{};
   if (PhraseRuntime::projectPatternToRuntimeEvents(
-          activeSynthPattern(voiceIndex), settings, candidate) !=
+          pairMelody ? sceneManager_.getSynthPattern(voiceIndex, pairBase)
+                     : activeSynthPattern(voiceIndex),
+          settings, candidate) !=
       PhraseRuntime::PatternProjectionStatus::Ready) {
     return false;
+  }
+  if (pairMelody) {
+    PhraseRuntime::RuntimeSynthEventBuffer second{};
+    if (PhraseRuntime::projectPatternToRuntimeEvents(
+            sceneManager_.getSynthPattern(voiceIndex, pairBase + 1), settings,
+            second) != PhraseRuntime::PatternProjectionStatus::Ready) {
+      return false;
+    }
+    if (static_cast<uint32_t>(candidate.count) + second.count >
+        PhraseRuntime::kMaxSynthEvents) {
+      return false;
+    }
+    for (uint16_t i = 0; i < second.count; ++i) {
+      auto event = second.events[i];
+      event.startTick = static_cast<uint16_t>(event.startTick +
+                                              PhraseRuntime::kTicksPerBar);
+      candidate.events[candidate.count++] = event;
+    }
+    candidate.lengthTicks = RuntimePhraseEdit::lengthTicksForBars(2);
   }
 
   // Pattern lifetime is cyclic: a late onset may legitimately sustain through
@@ -6627,6 +6663,16 @@ bool MiniAcid::makePhrase(int voiceIndex, bool emptyMelody) {
   workingMaterial_[voiceIndex].storeMelody(candidate);
   makePhraseSourceBasis_[voiceIndex] = source;
   setSequencedSource(voiceIndex, SequencedSource::Phrase);
+  if (pairMelody) {
+    // The melody now carries both bars, so the pair stops flipping. It is
+    // kept (paused) and resumes when the voice goes back to STEPS.
+    PairPlayState& pair = pairPlay_[voiceIndex];
+    pair.paused = true;
+    pair.armed = false;
+    pair.skipFlip = false;
+    pair.phase = 0;
+    LOG_PRINTF("[PAIR] pause voice=%d reason=melody\n", voiceIndex);
+  }
   return true;
 }
 

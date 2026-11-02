@@ -1092,6 +1092,9 @@ private:
     bool active = false;
     bool skipFlip = false;  // started while stopped: bar 1 plays N, no flip
     bool armed = false;     // started while playing: waits for the next bar line
+    // A melody was made from this pair: flips stop while the voice is on
+    // Phrase, and resume from slot N when it returns to STEPS.
+    bool paused = false;
     uint8_t base = 0;
     uint8_t phase = 0;
   } pairPlay_[NUM_303_VOICES]{};
