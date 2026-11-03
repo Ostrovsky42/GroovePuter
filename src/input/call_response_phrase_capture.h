@@ -22,24 +22,30 @@
 //   - length = quantized NoteOff - onset (min 1), clamped to the window end;
 //     a note still held when the window closes is clamped the same way, its
 //     later NoteOff is ignored (no state is left behind);
-//   - more than kCapacity pending notes: the new note is dropped and counted.
+//   - more than capacity() pending notes: the new note is dropped and counted
+//     (16 for a 1- or 2-bar window, 32 for a 4-bar window = 8 notes per bar).
 namespace GroovePuterCallResponse {
 
 struct CapturedNote {
-    uint8_t onset{0};     // 0..kWindowSteps-1, sixteenths from the window start
-    uint8_t length{0};    // 1..kWindowSteps, sixteenths, clamped to the window
+    uint8_t onset{0};     // 0..windowSteps-1, sixteenths from the window start
+    uint8_t length{0};    // 1..windowSteps, sixteenths, clamped to the window
     uint8_t note{0};      // input MIDI pitch (what the person pressed)
     uint8_t velocity{0};  // input velocity
 };
 
 class PhraseCapture {
 public:
+    // Capacity of a 1- or 2-bar window (phases 0-3, unchanged).
     static constexpr uint8_t kCapacity = 16;
     static constexpr int32_t kStepsPerBar = 16;
-    // Default and maximum window (2 bars). The PARTNER BARS setting may make
-    // the window 1 bar (setWindowBars); every buffer stays sized for 2 bars.
+    // Default window (2 bars). The PARTNER BARS setting may make the window
+    // 1 or 4 bars (setWindowBars). Phase 4: every buffer is sized for 4 bars;
+    // a 4-bar window may hold kMaxCapacity notes (same 8 notes per bar).
     static constexpr int32_t kBarsPerWindow = 2;
     static constexpr int32_t kWindowSteps = kStepsPerBar * kBarsPerWindow;
+    static constexpr int32_t kMaxBarsPerWindow = 4;
+    static constexpr int32_t kMaxWindowSteps = kStepsPerBar * kMaxBarsPerWindow;
+    static constexpr uint8_t kMaxCapacity = 32;
     static constexpr double kPickupFraction = 0.3;
 
     enum class CloseResult : uint8_t { None = 0, Empty, Phrase };
@@ -49,20 +55,24 @@ public:
         uint8_t count{0};
         uint8_t dropped{0};          // notes dropped (overflow) since the previous close
         uint8_t windowSteps{static_cast<uint8_t>(kWindowSteps)};  // length of this window
-        CapturedNote notes[kCapacity]{};
+        CapturedNote notes[kMaxCapacity]{};
 
         int32_t firstBar() const { return windowStartStep / kStepsPerBar; }
     };
 
-    // 1 or 2 bars (anything else = 2). A new length is a new grid: pending
+    // 1, 2 or 4 bars (anything else = 2). A new length is a new grid: pending
     // notes are discarded (the caller treats it as a new epoch).
     void setWindowBars(uint8_t bars) {
-        const uint8_t steps = static_cast<uint8_t>((bars == 1 ? 1 : 2) * kStepsPerBar);
+        if (bars != 1 && bars != 4) bars = 2;
+        const uint8_t steps = static_cast<uint8_t>(bars * kStepsPerBar);
         if (steps == windowSteps_) return;
         windowSteps_ = steps;
         reset();
     }
     int32_t windowSteps() const { return windowSteps_; }
+    // Pending-note limit of the current window: 16 up to 2 bars (phases 0-3
+    // overflow behaviour unchanged), 32 for 4 bars.
+    uint8_t capacity() const { return windowSteps_ > kWindowSteps ? kMaxCapacity : kCapacity; }
 
     void reset() {
         count_ = 0;
@@ -90,17 +100,17 @@ public:
             existing.velocity = velocity;
             existing.tag = tag;
             existing.open = true;
-            existing.offStep = onset;
+            existing.offDelta = 0;
             return true;
         }
-        if (count_ >= kCapacity) {
+        if (count_ >= capacity()) {
             ++overflowCount_;
             if (droppedSinceClose_ < 255u) ++droppedSinceClose_;
             return false;
         }
         Event& slot = events_[count_++];
         slot.onset = onset;
-        slot.offStep = onset;
+        slot.offDelta = 0;
         slot.tag = tag;
         slot.note = note;
         slot.velocity = velocity;
@@ -140,7 +150,7 @@ public:
                 continue;
             }
             if (event.onset < windowStart_) continue;  // stale (cannot happen; defensive)
-            int32_t end = event.open ? windowEnd : event.offStep;
+            int32_t end = event.open ? windowEnd : event.offStep();
             if (end > windowEnd) end = windowEnd;
             int32_t length = end - event.onset;
             if (length < 1) length = 1;
@@ -189,13 +199,16 @@ public:
     }
 
 private:
+    // 12 bytes (phase 4: was 16 with an int32 offStep; the NoteOff is kept as
+    // a delta from the onset so that 32 events cost 384 B instead of 512 B).
     struct Event {
         int32_t onset{0};
-        int32_t offStep{0};
+        uint16_t offDelta{0};  // offStep - onset; any value past the window is clamped anyway
         uint16_t tag{0};
         uint8_t note{0};
         uint8_t velocity{0};
         bool open{false};
+        int32_t offStep() const { return onset + offDelta; }
     };
 
     void ensureWindow(double posSteps) {
@@ -214,11 +227,12 @@ private:
     void closeAt(std::size_t index, int32_t offStep) {
         Event& event = events_[index];
         event.open = false;
-        event.offStep = offStep > event.onset ? offStep : event.onset + 1;
+        const int32_t delta = offStep > event.onset ? offStep - event.onset : 1;
+        event.offDelta = static_cast<uint16_t>(delta > 0xFFFF ? 0xFFFF : delta);
     }
 
     static void insertSorted(Phrase& out, const CapturedNote& note) {
-        if (out.count >= kCapacity) return;
+        if (out.count >= kMaxCapacity) return;
         uint8_t at = out.count;
         while (at > 0 && out.notes[at - 1].onset > note.onset) {
             out.notes[at] = out.notes[at - 1];
@@ -228,7 +242,7 @@ private:
         ++out.count;
     }
 
-    Event events_[kCapacity]{};
+    Event events_[kMaxCapacity]{};
     uint8_t count_{0};
     bool windowValid_{false};
     uint8_t droppedSinceClose_{0};

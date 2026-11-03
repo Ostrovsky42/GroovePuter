@@ -29,8 +29,12 @@ uint32_t callMask(const PhraseCapture::Phrase& phrase) {
     return mask;
 }
 
+// Phase 6: callVelocity (the CALL mean) is no longer what every note gets;
+// each answer note carries its own CALL note's velocity at the answer level.
+// The argument stays as a range sanity check of the mean.
 void checkInvariants(const PhraseCapture::Phrase& phrase, const ResponseKey& key,
                      const ResponsePlan& plan, uint8_t callVelocity) {
+    assert(callVelocity >= 1);
     assert(plan.count > 0 && plan.count <= ResponsePlan::kCapacity);
     assert(plan.delaySteps == kAnswerDelaySteps);
     assert(plan.windowSteps == PhraseCapture::kWindowSteps - kAnswerDelaySteps);
@@ -44,7 +48,7 @@ void checkInvariants(const PhraseCapture::Phrase& phrase, const ResponseKey& key
         assert(n.length >= 1);
         assert(n.step + n.length <= plan.windowSteps);  // never past the ANSWER window
         if (i + 1 < plan.count) assert(n.step + n.length <= plan.notes[i + 1].step);  // mono line
-        assert(n.velocity == answerVelocityFor(callVelocity));
+        assert(n.velocity == answerVelocityFor(phrase.notes[i].velocity));
     }
     // The ending differs from the CALL ending.
     const uint8_t callLast = phrase.notes[plan.count - 1].note;

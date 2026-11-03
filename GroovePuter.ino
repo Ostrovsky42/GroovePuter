@@ -840,13 +840,20 @@ static uint32_t callResponseNowMicros() { return micros(); }
 // Graph state already in the route cache; never loadSongHarmonicState). A beat
 // without a lookahead snapshot falls back to the current PERFORM harmony, then
 // to none (phase 1). answerStartStep is in transport steps (the CALL clock).
+// Phase 4: windowSteps 64 (BARS 4) looks 16 beats ahead (offset <= 80 steps,
+// up to 4 Song rows); 16 and 32 keep the phase-2 span (8 beats, <= 48, 2 rows).
 static void collectCallResponseHarmony(
-    int32_t answerStartStep,
+    int32_t answerStartStep, int32_t windowSteps,
     const GroovePuterPerformance::PerformanceContext& context,
     GroovePuterCallResponse::ResponseHarmony& harmony) {
   using GroovePuterCallResponse::ResponseHarmony;
   using GroovePuterCallResponse::kStrongBeatSteps;
   harmony = ResponseHarmony{};
+  const bool longWindow =
+      windowSteps > GroovePuterCallResponse::PhraseCapture::kWindowSteps;
+  const uint8_t beats = longWindow ? ResponseHarmony::kBeats : ResponseHarmony::kDefaultBeats;
+  const int64_t maxOffset = longWindow ? 80 : 48;
+  const int32_t maxRows = longWindow ? 4 : 2;
   uint16_t ahead[ResponseHarmony::kBeats]{};
   bool aheadOk[ResponseHarmony::kBeats]{};
   if (g_miniAcid && g_miniAcid->isPlaying()) {
@@ -887,20 +894,20 @@ static void collectCallResponseHarmony(
             static_cast<uint8_t>(recipe->songSlot),
             static_cast<uint8_t>(recipe->songStart), participants, participantCount);
       }
-      for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+      for (uint8_t beat = 0; beat < beats; ++beat) {
         const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
         const int64_t offset = target - static_cast<int64_t>(position.absoluteStep);
-        if (offset < -16 || offset > 48) continue;
+        if (offset < -16 || offset > maxOffset) continue;
         bool ok = false;
         if (graph) {
           ok = state && GroovePuterPerformance::graphHarmonyAhead(
               *state, participants, participantCount, *origin, *recipe, position,
-              static_cast<int32_t>(offset), lastSequentialRow, snapshot);
+              static_cast<int32_t>(offset), lastSequentialRow, snapshot, maxRows);
         } else {
           ok = GroovePuterPerformance::legacyHarmonyAhead(
               *origin, *recipe, haveParticipants ? participants : nullptr,
               participantCount, position, static_cast<int32_t>(offset),
-              lastSequentialRow, snapshot);
+              lastSequentialRow, snapshot, maxRows);
         }
         if (ok) { ahead[beat] = snapshot.base.pitchMask; aheadOk[beat] = true; }
       }
@@ -909,12 +916,13 @@ static void collectCallResponseHarmony(
       GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
       if (patternOrigin &&
           g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition)) {
-        for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+        for (uint8_t beat = 0; beat < beats; ++beat) {
           const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
           const int64_t offset = target - static_cast<int64_t>(patternPosition.absoluteStep);
-          if (offset < 0 || offset > 48) continue;
+          if (offset < 0 || offset > maxOffset) continue;
           if (GroovePuterPerformance::patternHarmonyAhead(
-                  *patternOrigin, patternPosition, static_cast<int32_t>(offset), snapshot)) {
+                  *patternOrigin, patternPosition, static_cast<int32_t>(offset), snapshot,
+                  static_cast<int32_t>(maxOffset))) {
             ahead[beat] = snapshot.base.pitchMask;
             aheadOk[beat] = true;
           }
@@ -922,7 +930,7 @@ static void collectCallResponseHarmony(
       }
     }
   }
-  for (uint8_t beat = 0; beat < ResponseHarmony::kBeats; ++beat) {
+  for (uint8_t beat = 0; beat < beats; ++beat) {
     GroovePuterCallResponse::ChordSource source = GroovePuterCallResponse::ChordSource::None;
     const uint16_t chord = GroovePuterCallResponse::chooseAnswerChord(
         aheadOk[beat], ahead[beat], context.hasHarmony, context.harmonyPitchClasses, &source);
@@ -961,9 +969,11 @@ static void serviceCallResponseLog() {
     transport.steps = snapshot.absoluteSteps();
     transport.bpm = snapshot.bpm();
   }
-  GroovePuterCallResponse::PhraseCapture::Phrase phrase;  // 72 bytes, loop stack
-  if (listener.service(micros(), transport, g_performanceKeyboard.tempoBpm(), phrase) !=
-      GroovePuterCallResponse::PhraseCapture::CloseResult::Phrase) {
+  GroovePuterCallResponse::PhraseCapture::Phrase phrase;  // 136 bytes, loop stack
+  // LOOP: human notes of a window too thin to replace the loop (phase 5).
+  GroovePuterCallResponse::PhraseCapture::Phrase heard;  // 136 bytes, loop stack
+  if (listener.service(micros(), transport, g_performanceKeyboard.tempoBpm(), phrase,
+                       &heard) != GroovePuterCallResponse::PhraseCapture::CloseResult::Phrase) {
     return;
   }
   const int8_t* intervals = nullptr;
@@ -974,10 +984,16 @@ static void serviceCallResponseLog() {
                                          intervals, intervalCount, motif)) {
     return;
   }
-  char line[160];
+  char line[224];  // 4 bars: 64-bit mask
+  // [CR] shows what the person played: the thin window when the loop was kept.
+  GroovePuterCallResponse::MotifDescriptor heardMotif{};
+  const bool logHeard = heard.count > 0 &&
+      GroovePuterCallResponse::describe(heard, g_performanceKeyboard.rootPitchClass(),
+                                        intervals, intervalCount, heardMotif);
   GroovePuterCallResponse::formatMotifLog(
-      line, sizeof(line), static_cast<uint32_t>(phrase.firstBar() + 1), motif,
-      listener.clockName(), phrase.dropped);
+      line, sizeof(line), static_cast<uint32_t>(phrase.firstBar() + 1),
+      logHeard ? heardMotif : motif, listener.clockName(),
+      logHeard ? heard.dropped : phrase.dropped);
   Serial.println(line);
 
   // Answer key: the Smart Play harmony key when the project provides one, else the PERFORM key.
@@ -991,10 +1007,10 @@ static void serviceCallResponseLog() {
   if (!listener.canAnswer(phrase)) return;
   // Phase 2: chord per strong beat (next bar = +16, fallback current, then none)
   // and the genre's ending from the idiom dictionary (no generator call).
-  GroovePuterCallResponse::ResponseHarmony harmony;  // 18 bytes, loop stack
+  GroovePuterCallResponse::ResponseHarmony harmony;  // 36 bytes, loop stack
   collectCallResponseHarmony(
-      phrase.windowStartStep + phrase.windowSteps + listener.answerDelaySteps(),
-      context, harmony);
+      phrase.windowStartStep + phrase.windowSteps + listener.replyDelaySteps(),
+      phrase.windowSteps, context, harmony);
   // PARTNER GENRE: AUTO = project genre (phase 2), NONE = phase-1 ending.
   const uint8_t genre = listener.answerGenre(g_miniAcid
       ? static_cast<uint8_t>(g_miniAcid->genreManager().generativeMode())
@@ -1010,11 +1026,22 @@ static void serviceCallResponseLog() {
   if (!planPerformanceReply(phrase, motif, key, harmony, style, listener.replyMemory(),
       listener.mode() == CallResponseListener::Mode::Loop,
       listener.mode() == CallResponseListener::Mode::Duet,
-      listener.loopEvolve(), listener.answerDelaySteps(), plan, replyStrategy, report)) return;
-  if (!listener.startAnswer(phrase, plan, micros())) return;
+      listener.loopEvolve(), listener.replyDelaySteps(), plan, replyStrategy, report,
+      listener.answerCadence())) return;
+  const uint32_t startMicros = micros();
+  if (!listener.startAnswer(phrase, plan, startMicros)) return;
   listener.rememberStartedReply(callSignatureValue, replyStrategy);
-  Serial.printf("[CR-A] strategy=%u evolve=%u hold=%u\n", static_cast<unsigned>(replyStrategy), listener.loopEvolve(), listener.loopHold());
-  char answer[320];
+  // loop=0: new loop phrase, loop=n: n-th replay (LOOP: always on the grid);
+  // skip=k: human notes that did not replace the loop (PARTNER REPLACE).
+  // Phase 7: late=us how long after the window downbeat the reply was started
+  // (its first NoteOn waits for that; > one 1/16 drops a 1-step note), stale=
+  // answer notes dropped as too late since boot (ResponsePlayer::staleDrops).
+  Serial.printf("[CR-A] strategy=%u evolve=%u hold=%u loop=%u skip=%u late=%ld stale=%lu\n",
+                static_cast<unsigned>(replyStrategy), listener.loopEvolve(), listener.loopHold(),
+                static_cast<unsigned>(listener.loopCycle()), static_cast<unsigned>(heard.count),
+                static_cast<long>(static_cast<int32_t>(startMicros - listener.lastReplyGridMicros())),
+                static_cast<unsigned long>(listener.responder().staleDrops()));
+  char answer[576];  // 4 bars: up to 32 notes of "ss:nn:vvv:ll,"
   const int used = GroovePuterCallResponse::formatResponseLog(
       answer, sizeof(answer),
       static_cast<uint32_t>(phrase.firstBar() + 1 +

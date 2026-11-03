@@ -13,7 +13,8 @@
 // bars it sounds in and the genre's ending vocabulary.
 //
 // Harmony: one chord (absolute pitch-class mask) per strong beat of the answer
-// (answer steps 0, 4, ..., 28 = 8 beats over the two answer bars). The caller
+// (answer steps 0, 4, ..., 28 = 8 beats over the two answer bars; phase 4:
+// up to 16 beats, steps 0..60, for a 4-bar answer). The caller
 // fills it from the snapshot at the step where that beat sounds (bar 2 of the
 // answer = absoluteStep + 16 and later), falls back to the current harmony and
 // leaves the beat empty (phase-1 behaviour) when neither exists.
@@ -21,9 +22,10 @@
 // Genre: the existing idiom dictionary (GenreIdiom::ideaWeight, the Idea ->
 // Ending mapping of ideaPlanFor and interactionShapeForIdea) chooses one
 // answer strategy by weight with a deterministic seed. The generator itself
-// is not called. The pitch of the ending always obeys the phase-1 rule
-// (tonic after an open CALL, fifth after a closed one); the genre chooses how
-// the answer gets there: Tonic (plain resolve), RunUp, Late or Minimal.
+// is not called. The pitch of the ending obeys the phase-1 rule (tonic after
+// an open CALL, fifth after a closed one) - or, since phase 6, the half/full
+// cadence over the ending's chord (AnswerCadence); the genre chooses how the
+// answer gets there: Tonic (plain resolve), RunUp, Late or Minimal.
 namespace GroovePuterCallResponse {
 
 constexpr uint8_t kNoGenre = 0xFF;
@@ -53,18 +55,21 @@ inline uint16_t chooseAnswerChord(bool haveAhead, uint16_t aheadPcs,
 }
 
 struct ResponseHarmony {
-    static constexpr uint8_t kBeats =
+    // Beats of the default 2-bar answer (the 1- and 2-bar lookahead span).
+    static constexpr uint8_t kDefaultBeats =
         static_cast<uint8_t>(PhraseCapture::kWindowSteps / kStrongBeatSteps);
+    static constexpr uint8_t kBeats =
+        static_cast<uint8_t>(PhraseCapture::kMaxWindowSteps / kStrongBeatSteps);
     uint16_t chordPcs[kBeats]{};  // absolute pitch classes (bit n = pc n); 0 = unknown
-    uint8_t aheadMask{0};         // beats from a lookahead snapshot
-    uint8_t currentMask{0};       // beats from the current-harmony fallback
+    uint16_t aheadMask{0};        // beats from a lookahead snapshot
+    uint16_t currentMask{0};      // beats from the current-harmony fallback
 
     void set(uint8_t beat, uint16_t pcs, ChordSource source) {
         if (beat >= kBeats) return;
         chordPcs[beat] = static_cast<uint16_t>(pcs & 0x0fffu);
-        const uint8_t bit = static_cast<uint8_t>(1u << beat);
-        aheadMask = static_cast<uint8_t>(aheadMask & ~bit);
-        currentMask = static_cast<uint8_t>(currentMask & ~bit);
+        const uint16_t bit = static_cast<uint16_t>(1u << beat);
+        aheadMask = static_cast<uint16_t>(aheadMask & ~bit);
+        currentMask = static_cast<uint16_t>(currentMask & ~bit);
         if (source == ChordSource::Ahead) aheadMask |= bit;
         if (source == ChordSource::Current) currentMask |= bit;
     }
@@ -144,6 +149,8 @@ inline void responseEndingWeights(uint8_t genre, uint8_t (&weights)[kEndingCount
     }
 }
 
+// Phase 4: onsets of bars 3-4 fold onto bars 1-2 in the mask (& 31) so that
+// the 1- and 2-bar seeds (and with them the genre ending) stay unchanged.
 inline uint32_t responseSeed(const PhraseCapture::Phrase& phrase) {
     uint32_t mask = 0;
     uint32_t pitches = 0;
@@ -191,6 +198,48 @@ inline const char* responseEndingName(GenreIdiom::Ending ending) {
     return "?";
 }
 
+// ---- Ending: chord and place in the form (phase 6) ---------------------------
+//
+// ByCall is the phase-1 rule (tonic after a CALL that ends away from the
+// tonic, fifth after one that ends on it). Half / Full are the form-aware
+// endings of phase 6, chosen by the answer number: the 1st, 3rd, ... answer is
+// a half cadence (Half), the 2nd, 4th, ... a full one (Full). They apply only
+// when the chord under the ending is known and shares a tone with the key;
+// otherwise the ending stays ByCall (nothing to clash with, phase-1 result).
+enum class AnswerCadence : uint8_t { ByCall = 0, Half, Full };
+
+// 0-based answer index -> cadence: index 0 (the first answer) is Half.
+inline AnswerCadence answerCadenceFor(uint16_t answerIndex) {
+    return (answerIndex & 1u) ? AnswerCadence::Full : AnswerCadence::Half;
+}
+
+// The ending note (unfolded; placeInRange folds by octaves, the pitch class
+// stays). chord = absolute pitch classes under the ending, 0 = unknown.
+//   Full: the tonic nearest the CALL's last note; when the chord has no tonic,
+//         the chord tone in the key nearest to that tonic (tie goes down).
+//   Half: the key's fifth (b5 etc. when the scale has none) when the chord has
+//         it, else the nearest chord tone in the key other than the tonic, so
+//         the half cadence never lands on the tonic over V (tonic only when it
+//         is the chord's sole tone in the key).
+inline int cadenceEndingNote(const ResponseKey& key, int callLast, uint16_t chord,
+                             AnswerCadence cadence, AnswerCadence* applied = nullptr) {
+    const uint8_t root = static_cast<uint8_t>(key.rootPitchClass % 12u);
+    const uint16_t allowed = static_cast<uint16_t>(chord & 0x0fffu & absoluteKeyPcs(key));
+    if (cadence == AnswerCadence::ByCall || allowed == 0) {
+        if (applied) *applied = AnswerCadence::ByCall;
+        return nearestOfPitchClass(callLast, root, detail::echoEndingRel(key, callLast));
+    }
+    if (applied) *applied = cadence;
+    if (cadence == AnswerCadence::Full) {
+        const int tonic = nearestOfPitchClass(callLast, root, 0);
+        return pcIn(allowed, tonic) ? tonic : nearestInSet(tonic, allowed);
+    }
+    const int fifth = nearestOfPitchClass(callLast, root, detail::echoEndingRel(key, root));
+    if (pcIn(allowed, fifth)) return fifth;
+    const uint16_t open = static_cast<uint16_t>(allowed & ~(1u << root));
+    return nearestInSet(fifth, open ? open : allowed);
+}
+
 // ---- Planner -----------------------------------------------------------------
 
 struct ResponseHarmonyReport {
@@ -199,26 +248,29 @@ struct ResponseHarmonyReport {
     uint8_t movedToChord{0};    // notes moved to a chord tone
     bool endingChordTone{false};
     bool endingHasChord{false};
+    AnswerCadence cadence{AnswerCadence::ByCall};  // the ending rule actually applied
 };
 
 // Phase 2 ECHO_VARIANT. With an empty harmony and an inactive style the result
-// equals planEchoVariant() exactly.
+// equals planEchoVariant() exactly (any cadence: Half/Full need a chord).
 inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
                              const MotifDescriptor& motif, const ResponseKey& key,
                              const ResponseHarmony& harmony, const ResponseStyle& style,
                              ResponsePlan& out, ResponseHarmonyReport* report = nullptr,
-                             uint8_t delaySteps = kAnswerDelaySteps) {
+                             uint8_t delaySteps = kAnswerDelaySteps,
+                             AnswerCadence cadence = AnswerCadence::ByCall) {
+    (void)motif;  // phase 6: velocity comes per note from the phrase
     if (report) *report = ResponseHarmonyReport{};
     int notes[ResponsePlan::kCapacity]{};
     if (!detail::echoLine(phrase, key, out, notes, delaySteps)) return false;
     const int32_t usable = out.windowSteps;
     uint8_t last = out.count - 1u;
     const int callLast = notes[last];
-    const uint8_t endingRel = detail::echoEndingRel(key, callLast);
 
     // Genre shape (rhythm only; the ending pitch rule is untouched).
     if (style.active() && style.ending == GenreIdiom::Ending::Minimal) {
-        // ShortCall: the second answer bar keeps only its strong beats and the ending.
+        // ShortCall: the second answer bar (and bars 3-4 of a 4-bar answer)
+        // keeps only its strong beats and the ending.
         uint8_t kept = 0;
         for (uint8_t i = 0; i < out.count; ++i) {
             const bool drop = i != last && out.notes[i].step >= PhraseCapture::kStepsPerBar &&
@@ -253,8 +305,11 @@ inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
         if (report) ++report->movedToChord;
     }
 
-    // Ending: the phase-1 rule, nearest to the CALL's last note.
-    notes[last] = nearestOfPitchClass(callLast, key.rootPitchClass % 12u, endingRel);
+    // Ending: nearest to the CALL's last note; the phase-1 rule, or (phase 6)
+    // the half/full cadence over the chord under the (possibly late) ending.
+    AnswerCadence applied = AnswerCadence::ByCall;
+    notes[last] = cadenceEndingNote(key, callLast, harmony.chordAtStep(out.notes[last].step),
+                                    cadence, &applied);
 
     // RunUp: approach the ending by step from below (only off the strong beats,
     // which belong to the chord).
@@ -263,9 +318,10 @@ inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
         notes[last - 1] = scaleToneBelow(key, notes[last]);
     }
 
-    detail::placeInRange(out, notes, answerVelocityFor(motif.averageVelocity));
+    detail::placeInRange(out, notes);
 
     if (report) {
+        report->cadence = applied;
         for (uint8_t i = 0; i < out.count; ++i) {
             const uint16_t chord = harmony.chordAtStep(out.notes[i].step);
             if (i == last) {
@@ -280,17 +336,20 @@ inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
     return true;
 }
 
-// " chord=A2C6 end=RESOLVE ct=3/4 endct=1" appended to the [CR-A] line.
+// " chord=A2C6 end=RESOLVE ct=3/4 endct=1 fin=H" appended to the [CR-A] line.
+// fin: C = phase-1 rule (by the CALL), H = half cadence, F = full (phase 6).
 inline int formatHarmonyLog(char* out, std::size_t capacity, const ResponseHarmony& harmony,
                             const ResponseStyle& style, const ResponseHarmonyReport& report) {
     if (!out || capacity == 0) return 0;
-    return std::snprintf(out, capacity, " chord=A%uC%u end=%s ct=%u/%u endct=%u",
+    return std::snprintf(out, capacity, " chord=A%uC%u end=%s ct=%u/%u endct=%u fin=%c",
                          static_cast<unsigned>(__builtin_popcount(harmony.aheadMask)),
                          static_cast<unsigned>(__builtin_popcount(harmony.currentMask)),
                          style.active() ? responseEndingName(style.ending) : "P1",
                          static_cast<unsigned>(report.strongChordTones),
                          static_cast<unsigned>(report.strongNotes),
-                         report.endingHasChord ? (report.endingChordTone ? 1u : 0u) : 2u);
+                         report.endingHasChord ? (report.endingChordTone ? 1u : 0u) : 2u,
+                         report.cadence == AnswerCadence::Half ? 'H'
+                             : report.cadence == AnswerCadence::Full ? 'F' : 'C');
 }
 
 }  // namespace GroovePuterCallResponse

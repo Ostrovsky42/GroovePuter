@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings] [cr_development] [cr_four_bars] [cr_loop_grid] [cr_phase6] [cr_loop_gaps]" >&2
 }
 
 compile_run() {
@@ -174,9 +174,30 @@ run_cr_settings() {
   compile_run cr_partner_settings "${ROOT_DIR}/tests/test_cr_partner_settings.cpp"
 }
 
+# CALL/RESPONSE phase 4: PARTNER BARS = 4 (capture, 64-bit mask, planner, setting, lookahead).
+run_cr_loop_grid() {
+  compile_run cr_loop_grid "${ROOT_DIR}/tests/test_cr_loop_grid.cpp"
+}
+
+run_cr_four_bars() {
+  compile_run cr_four_bars \
+    "${ROOT_DIR}/tests/test_cr_four_bars.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp"
+}
+
+# CALL/RESPONSE phase 6: per-note answer velocity, chord/form-aware ending.
+run_cr_phase6() {
+  compile_run cr_phase6_music "${ROOT_DIR}/tests/test_cr_phase6_music.cpp"
+}
+
+run_cr_loop_gaps() {
+  compile_run cr_loop_gaps "${ROOT_DIR}/tests/test_cr_loop_gaps.cpp"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development)
+  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps)
 fi
 
 for target in "${targets[@]}"; do
@@ -209,6 +230,10 @@ for target in "${targets[@]}"; do
     cr_channel) run_cr_channel ;;
     cr_settings) run_cr_settings ;;
     cr_development) run_cr_development ;;
+    cr_four_bars) run_cr_four_bars ;;
+    cr_loop_grid) run_cr_loop_grid ;;
+    cr_phase6) run_cr_phase6 ;;
+    cr_loop_gaps) run_cr_loop_gaps ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

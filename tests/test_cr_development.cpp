@@ -61,7 +61,12 @@ int main() {
     ReplyMemory shortMemory{};
     rememberReply(shortMemory, callSignature(call, motif), ReplyStrategy::Develop);
     assert(planPerformanceReply(call, motif, ResponseKey{}, ResponseHarmony{}, late, shortMemory, true, false, 3, 0, plan, actual, report));
-    assert(plan.count == 2 && plan.notes[0].step == call.notes[0].onset && plan.notes[1].step == call.notes[1].onset);
+    // Phase 7: LOOP never plays SHORT REPLY (it left half the loop silent);
+    // the turn after DEVELOP is ECHO with every note (EVOLVE 3 may move the
+    // tail by one step).
+    assert(actual == ReplyStrategy::Echo && plan.count == call.count);
+    for (uint8_t i = 0; i < plan.count; ++i)
+        assert(plan.notes[i].step == call.notes[i].onset || (i >= 3 && plan.notes[i].step == call.notes[i].onset + 1));
     call.count = 8;
     for (uint8_t i = 0; i < 8; ++i) call.notes[i] = CapturedNote{static_cast<uint8_t>(i * 2), 1, 60, 100};
     assert(planPerformanceReply(call, motif, ResponseKey{}, ResponseHarmony{}, ResponseStyle{}, memory, false, true, 1, 1, plan, actual, report));
@@ -70,7 +75,8 @@ int main() {
     for (uint8_t i = 0; i < 8; ++i) call.notes[i] = CapturedNote{static_cast<uint8_t>(i * 3), 1, 60, 100};
     ReplyMemory evolving{};
     const uint32_t evolvingSignature = callSignature(call, motif);
-    const ReplyStrategy expected[] = {ReplyStrategy::Develop, ReplyStrategy::ShortReply, ReplyStrategy::Echo};
+    // Phase 7: LOOP alternates DEVELOP <-> ECHO (SHORT REPLY -> ECHO).
+    const ReplyStrategy expected[] = {ReplyStrategy::Develop, ReplyStrategy::Echo, ReplyStrategy::Develop};
     for (ReplyStrategy next : expected) {
         assert(planPerformanceReply(call, motif, ResponseKey{}, ResponseHarmony{}, ResponseStyle{}, evolving, true, false, 3, 0, plan, actual, report));
         assert(actual == next);

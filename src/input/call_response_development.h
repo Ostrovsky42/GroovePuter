@@ -19,7 +19,7 @@ inline uint32_t callSignature(const PhraseCapture::Phrase& phrase, const MotifDe
     const auto add = [&](uint8_t value) { hash = (hash ^ value) * 16777619u; };
     add(phrase.windowSteps);
     add(phrase.count);
-    for (uint8_t i = 0; i < phrase.count && i < PhraseCapture::kCapacity; ++i) {
+    for (uint8_t i = 0; i < phrase.count && i < PhraseCapture::kMaxCapacity; ++i) {
         add(phrase.notes[i].onset);
         add(static_cast<uint8_t>(static_cast<int>(phrase.notes[i].note) - phrase.notes[0].note));
     }
@@ -53,8 +53,8 @@ inline bool transformCall(const PhraseCapture::Phrase& input, ReplyStrategy stra
                           uint8_t delaySteps, PhraseCapture::Phrase& output) {
     output = input;
     if (strategy == ReplyStrategy::Echo || input.count == 0 ||
-        input.count > PhraseCapture::kCapacity || input.windowSteps == 0 ||
-        input.windowSteps > PhraseCapture::kWindowSteps || delaySteps >= input.windowSteps)
+        input.count > PhraseCapture::kMaxCapacity || input.windowSteps == 0 ||
+        input.windowSteps > PhraseCapture::kMaxWindowSteps || delaySteps >= input.windowSteps)
         return false;
     const int usable = input.windowSteps - delaySteps;
     bool changed = false;

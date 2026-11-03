@@ -155,8 +155,9 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Chord: return 6;
         case PerformanceToolContext::Arp: return 6;
         case PerformanceToolContext::Rhythm: return 6;
-        // 9..12: PARTNER settings (BARS, GENRE, CHANNEL, DELAY) under PARTNER.
-        case PerformanceToolContext::Input: return 15;
+        // 9..15: PARTNER settings (BARS, GENRE, CHANNEL, DELAY, HOLD, EVOLVE,
+        // REPLACE) under PARTNER.
+        case PerformanceToolContext::Input: return 16;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -347,7 +348,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case 8:
                     GroovePuterCallResponse::callResponseListener().cycleMode(direction);
                     break;
-                case 9: case 10: case 11: case 12: case 13: case 14:
+                case 9: case 10: case 11: case 12: case 13: case 14: case 15:
                     cyclePartnerSetting(row, direction);
                     break;
                 default: break;
@@ -437,7 +438,7 @@ void PerformPage::toggleSelectedValue() {
                         (static_cast<uint8_t>(keyboard_.leadMode()) + 1u) % 4u));
             } else if (row == 8) {
                 GroovePuterCallResponse::callResponseListener().cycleMode(1);
-            } else if (row >= 9 && row <= 14) {
+            } else if (row >= 9 && row <= 15) {
                 cyclePartnerSetting(row, 1);
             } else {
                 adjustInput(1);
@@ -455,7 +456,10 @@ void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
         case 9: partner.cycleAnswerBars(direction); break;
         case 10: partner.cycleAnswerGenre(direction); break;
         case 11: partner.cycleAnswerChannel(direction); break;
-        case 12: partner.cycleAnswerDelay(direction); break;
+        case 12:
+            if (partner.mode() != GroovePuterCallResponse::CallResponseListener::Mode::Loop)
+                partner.cycleAnswerDelay(direction);
+            break;
         case 13:
             if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
                 partner.setLoopHold(!partner.loopHold());
@@ -463,6 +467,10 @@ void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
         case 14:
             if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
                 partner.cycleLoopEvolve(direction);
+            break;
+        case 15:
+            if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
+                partner.cycleLoopReplace(direction);
             break;
         default: break;
     }
@@ -559,12 +567,17 @@ const char* PerformPage::selectedRowHint() const {
                 case 6: return "</> INTERNAL / MIDI / LAYER";
                 case 7: return "USB ROLE: CHANGE IN PROJECT > MIDI";
                 case 8: return "OFF/ANSWER/DUET/LOOP: MIDI REPLY";
-                case 9: return "</> CALL AND REPLY LENGTH: 1 OR 2 BARS";
+                case 9: return "</> CALL AND REPLY LENGTH: 1/2/4 BARS";
                 case 10: return "</> AUTO=PROJECT  NONE=PLAIN  OR GENRE";
                 case 11: return "</> DX=PERFORM DX ROUTE OR CH1..16";
-                case 12: return "</> 0=ON THE GRID  1=SAFE (1/16 LATE)";
+                case 12:
+                    return GroovePuterCallResponse::callResponseListener().mode() ==
+                                   GroovePuterCallResponse::CallResponseListener::Mode::Loop
+                        ? "N/A: LOOP ALWAYS PLAYS ON THE GRID"
+                        : "</> 0=ON THE GRID  1=SAFE (1/16 LATE)";
                 case 13: return "LOOP: HOLD MOTIF / RELEASE NEXT BAR";
                 case 14: return "0 EXACT  1 ENDING  2 DEVELOP  3 FREE";
+                case 15: return "</> NEW LOOP NEEDS: ANY/3+ NOTES/HALF";
                 default: return "";
             }
         }
@@ -867,13 +880,15 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                               static_cast<unsigned>(partner.answerChannel()));
             }
             drawRow(11, " CHANNEL", value, partnerOn);
-            std::snprintf(value, sizeof(value), "%s",
-                          partner.answerDelaySteps() == 0 ? "0 GRID" : "1/16");
-            drawRow(12, " DELAY", value, partnerOn);
             const bool loop = partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop;
+            // Phase 7: LOOP always plays on the grid; DELAY is for ANSWER/DUET.
+            std::snprintf(value, sizeof(value), "%s",
+                          loop ? "N/A" : partner.answerDelaySteps() == 0 ? "0 GRID" : "1/16");
+            drawRow(12, " DELAY", value, partnerOn && !loop);
             drawRow(13, " HOLD", !loop ? "N/A" : (!partner.hasLoopPhrase() ? "WAIT" : (partner.loopHold() ? "ON" : "OFF")), loop && partner.hasLoopPhrase());
             std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(partner.loopEvolve()));
             drawRow(14, " EVOLVE", loop ? value : "N/A", loop);
+            drawRow(15, " REPLACE", loop ? partner.loopReplaceName() : "N/A", loop);
             break;
         }
 

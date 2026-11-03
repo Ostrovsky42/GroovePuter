@@ -44,7 +44,7 @@ private:
         uint8_t context = state.performContext;
         if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
         selectedContext_ = static_cast<PerformanceToolContext>(context);
-        constexpr uint8_t kMaxRowByContext[5] = {5, 5, 5, 5, 12};
+        constexpr uint8_t kMaxRowByContext[5] = {5, 5, 5, 5, 15};
         for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
                 ? state.performRows[i]

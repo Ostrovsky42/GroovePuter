@@ -21,6 +21,10 @@ namespace GroovePuterPerformance {
 // current row (end of Song, loop end, reverse playback): no lookahead there.
 // The caller derives it from the engine: reverse -> current row; loop mode with
 // the row inside the loop -> loop end; otherwise Song length - 1.
+//
+// maxRowsAhead: 2 for the 1- and 2-bar answer (phases 2-3); a 4-bar answer
+// passes 4 (CALL/RESPONSE phase 4). The same participant check applies to
+// every row, so a Song row edited to other material is still refused.
 inline bool shiftHarmonyPosition(
     const GroovePuterMaterial::GeneratedSynthAOrigin& origin,
     const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
@@ -29,7 +33,8 @@ inline bool shiftHarmonyPosition(
     const HarmonyPlaybackPosition& now,
     int32_t offsetSteps,
     int16_t lastSequentialRow,
-    HarmonyPlaybackPosition& out) {
+    HarmonyPlaybackPosition& out,
+    int32_t maxRowsAhead = 2) {
   out = now;
   if (!origin.valid() || !recipe.valid || recipe.songStart < 0 ||
       now.songRow < recipe.songStart || now.songRow >= recipe.songStart + recipe.bars)
@@ -38,7 +43,7 @@ inline bool shiftHarmonyPosition(
   if (target < 0) return false;
   const int64_t nowBar = static_cast<int64_t>(now.absoluteStep / 16u);
   const int64_t rows = target / 16 - nowBar;
-  if (rows < 0 || rows > 2) return false;  // never behind the published row
+  if (rows < 0 || rows > maxRowsAhead) return false;  // never behind the published row
   out.absoluteStep = static_cast<uint64_t>(target);
   if (rows == 0) return true;
 
@@ -71,11 +76,11 @@ inline bool legacyHarmonyAhead(
     const GroovePuterHarmony::SongHarmonicParticipant* participants,
     uint8_t participantCount, const HarmonyPlaybackPosition& now,
     int32_t offsetSteps, int16_t lastSequentialRow,
-    GroovePuterHarmony::HarmonySnapshot& out) {
+    GroovePuterHarmony::HarmonySnapshot& out, int32_t maxRowsAhead = 2) {
   out = GroovePuterHarmony::HarmonySnapshot{};
   HarmonyPlaybackPosition shifted{};
   if (!shiftHarmonyPosition(origin, recipe, participants, participantCount, now,
-                            offsetSteps, lastSequentialRow, shifted)) return false;
+                            offsetSteps, lastSequentialRow, shifted, maxRowsAhead)) return false;
   return makeLegacyHarmonySnapshot(origin, recipe, shifted, out);
 }
 
@@ -86,25 +91,27 @@ inline bool graphHarmonyAhead(
     const GroovePuterMaterial::GeneratedSynthAOrigin& origin,
     const GroovePuterMaterial::GeneratedPhraseRecipe& recipe,
     const HarmonyPlaybackPosition& now, int32_t offsetSteps,
-    int16_t lastSequentialRow, GroovePuterHarmony::HarmonySnapshot& out) {
+    int16_t lastSequentialRow, GroovePuterHarmony::HarmonySnapshot& out,
+    int32_t maxRowsAhead = 2) {
   out = GroovePuterHarmony::HarmonySnapshot{};
   HarmonyPlaybackPosition shifted{};
   if (!shiftHarmonyPosition(origin, recipe, participants, participantCount, now,
-                            offsetSteps, lastSequentialRow, shifted)) return false;
+                            offsetSteps, lastSequentialRow, shifted, maxRowsAhead)) return false;
   return makeGraphHarmonySnapshot(state, participants, participantCount, origin,
                                   recipe, shifted, out);
 }
 
 // Pattern mode: the generated pattern loops every bar, so a step ahead is the
 // same pattern at a later absolute step (a queued pattern change is already
-// refused by tryCapturePatternHarmonyPlaybackPosition).
+// refused by tryCapturePatternHarmonyPlaybackPosition). maxOffsetSteps: 48 for
+// the 1- and 2-bar answer, 80 for a 4-bar answer (CALL/RESPONSE phase 4).
 inline bool patternHarmonyAhead(
     const GroovePuterMaterial::GeneratedPatternHarmonyOrigin& origin,
     const PatternHarmonyPlaybackPosition& now, int32_t offsetSteps,
-    GroovePuterHarmony::HarmonySnapshot& out) {
+    GroovePuterHarmony::HarmonySnapshot& out, int32_t maxOffsetSteps = 48) {
   out = GroovePuterHarmony::HarmonySnapshot{};
   const int64_t target = static_cast<int64_t>(now.absoluteStep) + offsetSteps;
-  if (target < 0 || offsetSteps < 0 || offsetSteps > 48) return false;
+  if (target < 0 || offsetSteps < 0 || offsetSteps > maxOffsetSteps) return false;
   PatternHarmonyPlaybackPosition shifted = now;
   shifted.absoluteStep = static_cast<uint64_t>(target);
   return makePatternHarmonySnapshot(origin, shifted, out);

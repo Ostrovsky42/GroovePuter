@@ -64,7 +64,8 @@ public:
     void setMode(Mode mode) {
         if (mode == mode_) return;
         const bool wasEnabled = enabled();
-        if (mode_ == Mode::Loop && mode != Mode::Loop) { loopValid_ = false; loopHold_ = false; captureResumeStep_ = 0; }
+        if (mode_ == Mode::Loop && mode != Mode::Loop) { loopValid_ = false; loopHold_ = false; captureResumeStep_ = 0; loopCycle_ = 0; }
+        answersStarted_ = 0;
         mode_ = mode;
         if (wasEnabled != enabled()) stopClock();
         else if (mode_ != Mode::Answer && mode_ != Mode::Duet && mode_ != Mode::Loop) responder_.cancel();
@@ -97,6 +98,49 @@ public:
         capture_.discardPending();
         captureResumeStep_ = hold ? 0 : capture_.windowStartStep() + capture_.windowSteps();
     }
+    // Phase 5: LOOP repeats. 0 = the reply to a window that has just become
+    // the loop (the first answer after a new question); n >= 1 = the n-th
+    // replay of the saved loop (a window without enough human notes).
+    uint16_t loopCycle() const { return loopCycle_; }
+    bool loopRepeat() const { return mode_ == Mode::Loop && loopCycle_ != 0; }
+    // Delay for the reply that service() has just returned: PARTNER DELAY in
+    // ANSWER/DUET, 0 (exactly on the grid) for every LOOP reply. Phase 7: also
+    // the first reply after a new loop phrase (loop=0). The safety sixteenth
+    // exists so that a person playing on, on the downbeat, is heard before the
+    // answer and cancels it (ANSWER); LOOP never cancels on human input, so
+    // there it only shifted the first pass by a 1/16 (a rest between the
+    // question and the loop), cut its last-step note and made the second pass
+    // jump back onto the grid.
+    uint8_t replyDelaySteps() const { return mode_ == Mode::Loop ? 0 : answerDelaySteps_; }
+
+    // Phase 6: place of the next answer in the form. LOOP counts its cycles
+    // (cycle 0 = the reply to a new question = the 1st answer); ANSWER/DUET
+    // count the answers started in this epoch (any BARS/PLAY/clock/mode
+    // change starts again from the 1st). 1st, 3rd, ... = half cadence, 2nd,
+    // 4th, ... = full. A uint8 wrap keeps the alternation (256 is even).
+    AnswerCadence answerCadence() const {
+        return answerCadenceFor(mode_ == Mode::Loop ? loopCycle_ : answersStarted_);
+    }
+
+    // Phase 5: how many human notes a closed window needs to replace the saved
+    // loop (LOOP only, ignored while no loop is saved). A window below the
+    // threshold replays the loop; its notes are reported via service(heard).
+    enum class LoopReplace : uint8_t { Any = 0, ThreePlus, Half };
+    void setLoopReplace(LoopReplace rule) { loopReplace_ = rule <= LoopReplace::Half ? rule : LoopReplace::ThreePlus; }
+    LoopReplace loopReplace() const { return loopReplace_; }
+    void cycleLoopReplace(int direction) {
+        setLoopReplace(static_cast<LoopReplace>((static_cast<uint8_t>(loopReplace_) + (direction >= 0 ? 1 : 2)) % 3));
+    }
+    const char* loopReplaceName() const {
+        return loopReplace_ == LoopReplace::Any ? "ANY" : loopReplace_ == LoopReplace::Half ? "HALF" : "3+";
+    }
+    // Notes a window needs to replace a loop of loopCount notes.
+    static uint8_t loopReplaceMinNotes(LoopReplace rule, uint8_t loopCount) {
+        if (rule == LoopReplace::Any) return 1;
+        if (rule == LoopReplace::Half) return loopCount < 2 ? 1 : static_cast<uint8_t>((loopCount + 1u) / 2u);
+        return 3;
+    }
+
     uint8_t loopEvolve() const { return loopEvolve_; }
     void setLoopEvolve(uint8_t level) { loopEvolve_ = level > 3 ? 3 : level; }
     void cycleLoopEvolve(int direction) { setLoopEvolve((loopEvolve_ + (direction >= 0 ? 1 : 3)) % 4); }
@@ -138,10 +182,15 @@ public:
 
     // Once per main-loop pass, after PerformanceKeyboard::service().
     // Returns Phrase when a non-empty two-bar CALL window has just closed.
+    // heard (optional, phase 5): in LOOP, a window whose notes were too few to
+    // replace the loop is copied there (count 0 otherwise) while out carries
+    // the loop replay - the notes stay visible to the log, not to the loop.
     PhraseCapture::CloseResult service(uint32_t nowMicros,
                                        const TransportView& transport,
                                        float performBpm,
-                                       PhraseCapture::Phrase& out) {
+                                       PhraseCapture::Phrase& out,
+                                       PhraseCapture::Phrase* heard = nullptr) {
+        if (heard) heard->count = 0;
         lastServiceMicros_ = nowMicros;
         lastTransport_ = transport;
         if (!enabled()) return PhraseCapture::CloseResult::None;
@@ -182,15 +231,20 @@ public:
         responder_.service(nowMicros);
 
         PhraseCapture::CloseResult result =
-            capture_.closeDueWindow(positionAt(nowMicros), out);
-        if (mode_ == Mode::Loop && result == PhraseCapture::CloseResult::Phrase) {
+            capture_.closeDueWindow(closePosition(nowMicros), out);
+        if (mode_ == Mode::Loop && result == PhraseCapture::CloseResult::Phrase &&
+            (!loopValid_ || out.count >= loopReplaceMinNotes(loopReplace_, loopPhrase_.count))) {
             loopPhrase_ = out;
             loopValid_ = true;
-        } else if (mode_ == Mode::Loop && result == PhraseCapture::CloseResult::Empty && loopValid_) {
+            loopCycle_ = 0;
+        } else if (mode_ == Mode::Loop && result != PhraseCapture::CloseResult::None && loopValid_) {
+            // Empty window, or too few notes to replace the loop: replay it.
+            if (heard && result == PhraseCapture::CloseResult::Phrase) *heard = out;
             const int32_t windowStart = out.windowStartStep;
             out = loopPhrase_;
             out.windowStartStep = windowStart;
             result = PhraseCapture::CloseResult::Phrase;
+            if (loopCycle_ < 0xFFFFu) ++loopCycle_;
         }
         if (result == PhraseCapture::CloseResult::Phrase) {
             idleWindows_ = 0;
@@ -223,6 +277,8 @@ public:
         return anchorMicros_ + static_cast<uint32_t>(rounded);
     }
     uint32_t sixteenthMicros() const { return sixteenthMicros_; }
+    // Downbeat (micros, before the delay) of the last started reply window.
+    uint32_t lastReplyGridMicros() const { return gridMicros_; }
 
     // After service() returned Phrase: true when, in ANSWER mode, the window
     // right after phrase is free for an answer (the person has not already
@@ -240,8 +296,28 @@ public:
                      uint32_t nowMicros) {
         if (!canAnswer(phrase) || plan.count == 0) return false;
         const int32_t answerWindow = phrase.windowStartStep + phrase.windowSteps;
-        const uint32_t origin = microsAtStep(static_cast<double>(answerWindow + plan.delaySteps));
+        uint32_t grid = microsAtStep(static_cast<double>(answerWindow));
+        // Phase 7: in LOOP a reply right after the previous one continues its
+        // grid (previous window start + one window) instead of a fresh clock
+        // estimate. Under PLAY the estimate is re-anchored on every audio
+        // block, so it jitters by up to a block (more when the audio task
+        // renders in bursts): every loop boundary got a micro gap or overlap.
+        // Re-synced when the two differ by more than half a sixteenth (tempo
+        // change, drift) and after any break (stopClock, skipped window).
+        if (mode_ == Mode::Loop && gridValid_ &&
+            answerWindow == gridWindow_ + phrase.windowSteps) {
+            const uint32_t chained = gridMicros_ +
+                static_cast<uint32_t>(phrase.windowSteps) * sixteenthMicros_;
+            const int32_t diff = static_cast<int32_t>(chained - grid);
+            const int32_t limit = static_cast<int32_t>(sixteenthMicros_ / 2u);
+            if (diff <= limit && diff >= -limit) grid = chained;
+        }
+        const uint32_t origin = grid + static_cast<uint32_t>(plan.delaySteps) * sixteenthMicros_;
         if (!responder_.start(plan, origin, sixteenthMicros_)) return false;
+        gridMicros_ = grid;
+        gridWindow_ = answerWindow;
+        gridValid_ = true;
+        ++answersStarted_;
         responder_.service(nowMicros);
         return true;
     }
@@ -257,8 +333,8 @@ public:
             ResponseHarmonyReport report{};
             if (!planPerformanceReply(phrase, motif, key, ResponseHarmony{}, ResponseStyle{},
                 replyMemory_, mode_ == Mode::Loop, mode_ == Mode::Duet, loopEvolve_,
-                answerDelaySteps_, plan, actual, report)) return false;
-        } else if (!planEchoVariant(phrase, motif, key, plan, answerDelaySteps_)) return false;
+                replyDelaySteps(), plan, actual, report, answerCadence())) return false;
+        } else if (!planEchoVariant(phrase, motif, key, plan, replyDelaySteps())) return false;
         return startAnswer(phrase, plan, nowMicros);
     }
 
@@ -277,10 +353,12 @@ public:
         setAnswerChannel(static_cast<uint8_t>(next));
     }
 
-    // CALL (and ANSWER) length in bars: 1 or 2. A change is a new epoch (the
-    // window grid changes): capture and a running answer are dropped.
+    // CALL (and ANSWER) length in bars: 1, 2 or 4 (phase 4; anything else = 2).
+    // A change is a new epoch (the window grid changes): capture and a running
+    // answer are dropped (stopClock -> responder cancel sends the NoteOff of a
+    // sounding answer note at once).
     void setAnswerBars(uint8_t bars) {
-        bars = bars == 1 ? 1 : 2;
+        if (bars != 1 && bars != 4) bars = 2;
         if (bars == answerBars()) return;
         stopClock();
         capture_.setWindowBars(bars);
@@ -288,7 +366,13 @@ public:
     uint8_t answerBars() const {
         return static_cast<uint8_t>(capture_.windowSteps() / PhraseCapture::kStepsPerBar);
     }
-    void cycleAnswerBars(int) { setAnswerBars(answerBars() == 1 ? 2 : 1); }
+    // Order 2 -> 1 -> 4 -> 2 (forward), reverse backwards; 2 -> 1 stays the
+    // phase-3 forward step.
+    void cycleAnswerBars(int direction) {
+        const uint8_t bars = answerBars();
+        if (direction >= 0) setAnswerBars(bars == 2 ? 1 : bars == 1 ? 4 : 2);
+        else setAnswerBars(bars == 2 ? 4 : bars == 4 ? 1 : 2);
+    }
 
     // Answer delay after the ANSWER window boundary, in sixteenths: 0 or 1.
     void setAnswerDelaySteps(uint8_t steps) { answerDelaySteps_ = clampAnswerDelay(steps); }
@@ -335,13 +419,34 @@ private:
         replyMemory_ = ReplyMemory{};
         loopValid_ = false;
         loopHold_ = false;
+        loopCycle_ = 0;
+        answersStarted_ = 0;
         captureResumeStep_ = 0;
+        gridValid_ = false;
         (void)responder_.cancel();
         source_ = ClockSource::None;
         capture_.reset();
         idleWindows_ = 0;
         anchorSteps_ = 0.0;
         lastPosition_ = 0.0;
+    }
+
+    // Position used to close windows. Phase 7: LOOP under PLAY closes the
+    // window by the grid of the reply that is playing (its downbeat + elapsed
+    // time at the current tempo) while that grid agrees with the PLAY estimate
+    // within half a sixteenth. The PLAY estimate is re-anchored on audio
+    // blocks and jitters by a block or more: closing by it, the next pass
+    // started late by a different amount every time, or early - cutting the
+    // previous pass's last note before its end. Outside that band (tempo
+    // change, anything unexpected) the PLAY estimate decides, as before.
+    double closePosition(uint32_t nowMicros) {
+        const double position = positionAt(nowMicros);
+        if (mode_ != Mode::Loop || !gridValid_ || source_ != ClockSource::Transport ||
+            sixteenthMicros_ == 0) return position;
+        const double since = static_cast<double>(static_cast<int32_t>(nowMicros - gridMicros_));
+        const double chained = static_cast<double>(gridWindow_) + since / sixteenthMicros_;
+        const double diff = chained - position;
+        return diff <= 0.5 && diff >= -0.5 ? chained : position;
     }
 
     void startFreeClock(uint32_t nowMicros) {
@@ -356,6 +461,7 @@ private:
     bool loopValid_{false};
     bool loopHold_{false};
     uint8_t loopEvolve_{1};
+    LoopReplace loopReplace_{LoopReplace::ThreePlus};  // phase 5 default, see PHASE5 doc
     int32_t captureResumeStep_{0};
     ReplyMemory replyMemory_{};
     PhraseCapture capture_{};
@@ -377,6 +483,11 @@ private:
     bool freeClockDisabled_{false};  // PERFORM free clock without PLAY: on by default
     uint8_t answerDelaySteps_{kAnswerDelaySteps};
     uint8_t answerGenre_{kGenreAuto};
+    uint16_t loopCycle_{0};
+    uint8_t answersStarted_{0};  // phase 6: answers started this epoch (parity = cadence)
+    bool gridValid_{false};      // phase 7: gridMicros_/gridWindow_ hold the last started reply
+    int32_t gridWindow_{0};      // epoch step of the last started reply window
+    uint32_t gridMicros_{0};     // its downbeat (micros, before the delay)
 };
 
 inline CallResponseListener& callResponseListener() {

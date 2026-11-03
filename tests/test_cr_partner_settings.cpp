@@ -188,6 +188,9 @@ void testLoopHoldAndRelease() {
     Rig rig;
     rig.listener.setAnswerBars(bars);
     rig.listener.setMode(Listener::Mode::Loop);
+    // HOLD is tested with one-note phrases: pin the phase-4 replace rule (ANY);
+    // the phase-5 default 3+ is covered by test_cr_loop_grid.cpp.
+    rig.listener.setLoopReplace(Listener::LoopReplace::Any);
     rig.note(0.0, 2.0, 60);
     rig.runTo(32.0);
     assert(rig.listener.hasLoopPhrase());

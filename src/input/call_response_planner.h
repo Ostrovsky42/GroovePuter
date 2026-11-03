@@ -90,22 +90,22 @@ inline int foldIntoAnswerRange(int note) {
 
 struct ResponseNote {
     uint8_t step{0};      // sixteenths from the answer start (window start + delay)
-    uint8_t length{0};    // sixteenths, step + length <= windowSteps
+    uint8_t length{0};    // sixteenths, step + length <= windowSteps (<= 64)
     uint8_t note{0};
     uint8_t velocity{0};
 };
 
 struct ResponsePlan {
-    static constexpr uint8_t kCapacity = PhraseCapture::kCapacity;
+    static constexpr uint8_t kCapacity = PhraseCapture::kMaxCapacity;  // 32 (4 bars)
     uint8_t count{0};
     uint8_t delaySteps{kAnswerDelaySteps};
     uint8_t windowSteps{0};   // usable steps after the delay
     uint8_t droppedTail{0};   // CALL notes that do not fit after the delay
     ResponseNote notes[kCapacity]{};
 
-    uint32_t onsetMask() const {
-        uint32_t mask = 0;
-        for (uint8_t i = 0; i < count; ++i) mask |= 1u << notes[i].step;
+    uint64_t onsetMask() const {
+        uint64_t mask = 0;
+        for (uint8_t i = 0; i < count; ++i) mask |= uint64_t{1} << (notes[i].step & 63u);
         return mask;
     }
 };
@@ -114,7 +114,7 @@ namespace detail {
 
 inline int32_t phraseWindowSteps(const PhraseCapture::Phrase& phrase) {
     const int32_t steps = phrase.windowSteps;
-    return steps > 0 && steps <= PhraseCapture::kWindowSteps ? steps : PhraseCapture::kWindowSteps;
+    return steps > 0 && steps <= PhraseCapture::kMaxWindowSteps ? steps : PhraseCapture::kWindowSteps;
 }
 
 // Stage 1: the CALL rhythm after the delay, pitches snapped down to the key,
@@ -126,7 +126,8 @@ inline int32_t phraseWindowSteps(const PhraseCapture::Phrase& phrase) {
 // the last sixteenth, i.e. a downbeat played 0.3..1.5 steps early (the pickup
 // rule only takes the last 30 % of the step). Phase 1 silently answered
 // nothing there; now the note is answered on the last usable step, which is
-// within one step of where a pickup would have put it.
+// within one step of where a pickup would have put it (30 for 2 bars, 14 for
+// 1 bar, 62 for 4 bars with the default 1/16 delay).
 inline bool echoLine(const PhraseCapture::Phrase& phrase, const ResponseKey& key,
                      ResponsePlan& out, int (&notes)[ResponsePlan::kCapacity],
                      uint8_t delaySteps = kAnswerDelaySteps) {
@@ -148,6 +149,7 @@ inline bool echoLine(const PhraseCapture::Phrase& phrase, const ResponseKey& key
         ResponseNote& target = out.notes[out.count];
         target.step = source.onset;
         target.length = source.length;
+        target.velocity = source.velocity;  // raw; placeInRange() applies the answer level
         notes[out.count] = snapDownToKey(key, source.note);
         ++out.count;
     }
@@ -155,6 +157,7 @@ inline bool echoLine(const PhraseCapture::Phrase& phrase, const ResponseKey& key
         const CapturedNote& source = phrase.notes[lastDropped];
         out.notes[0].step = static_cast<uint8_t>(usable - 1);
         out.notes[0].length = 1;
+        out.notes[0].velocity = source.velocity;
         notes[0] = snapDownToKey(key, source.note);
         out.count = 1;
         --out.droppedTail;
@@ -194,8 +197,13 @@ inline uint8_t echoEndingRel(const ResponseKey& key, int callLast) {
 // Stage 3: register and velocity. Keep the CALL register; move the whole line
 // by octaves into the answer range when possible, then fold any note still
 // outside it.
-inline void placeInRange(ResponsePlan& out, const int (&notes)[ResponsePlan::kCapacity],
-                         uint8_t velocity) {
+//
+// Phase 6: every answer note keeps the velocity of the CALL note it comes
+// from (echoLine() copied it), scaled by the answer level
+// (answerVelocityFor, kAnswerVelocityPercent). The scale is a ratio, so each
+// note keeps its place relative to the CALL mean - an accent stays an accent -
+// and the answer mean is the level times the CALL mean. Always 1..127.
+inline void placeInRange(ResponsePlan& out, const int (&notes)[ResponsePlan::kCapacity]) {
     int low = 127, high = 0;
     for (uint8_t i = 0; i < out.count; ++i) {
         if (notes[i] < low) low = notes[i];
@@ -206,7 +214,7 @@ inline void placeInRange(ResponsePlan& out, const int (&notes)[ResponsePlan::kCa
     while (low + shift < kAnswerMinNote && high + shift + 12 <= kAnswerMaxNote) shift += 12;
     for (uint8_t i = 0; i < out.count; ++i) {
         out.notes[i].note = static_cast<uint8_t>(foldIntoAnswerRange(notes[i] + shift));
-        out.notes[i].velocity = velocity;
+        out.notes[i].velocity = answerVelocityFor(out.notes[i].velocity);
     }
 }
 
@@ -225,7 +233,8 @@ inline bool planEchoVariant(const PhraseCapture::Phrase& phrase,
     const int callLast = notes[last];
     notes[last] = nearestOfPitchClass(callLast, key.rootPitchClass % 12u,
                                       detail::echoEndingRel(key, callLast));
-    detail::placeInRange(out, notes, answerVelocityFor(motif.averageVelocity));
+    detail::placeInRange(out, notes);
+    (void)motif;  // phase 6: velocity comes per note from the phrase, not the mean
     return true;
 }
 
