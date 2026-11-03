@@ -73,8 +73,7 @@ PhraseCapture::Phrase randomCall(Lcg& rng, uint8_t lowNote, bool flatVelocity = 
 }
 
 bool samePlan(const ResponsePlan& a, const ResponsePlan& b) {
-    if (a.count != b.count || a.droppedTail != b.droppedTail || a.windowSteps != b.windowSteps ||
-        a.delaySteps != b.delaySteps)
+    if (a.count != b.count || a.droppedTail != b.droppedTail || a.windowSteps != b.windowSteps)
         return false;
     for (uint8_t i = 0; i < a.count; ++i) {
         if (a.notes[i].step != b.notes[i].step || a.notes[i].length != b.notes[i].length ||
@@ -107,7 +106,7 @@ void testAccentSurvives() {
         } else {
             ResponseHarmonyReport report;
             assert(planHarmonicEcho(call, motif, key, progression(kC_I, kC_IV, kC_V, kC_I),
-                                    ResponseStyle{}, plan, &report, 1, AnswerCadence::Half));
+                                    ResponseStyle{}, plan, &report, AnswerCadence::Half));
         }
         assert(plan.count == 6);
         uint32_t sum = 0;
@@ -146,12 +145,12 @@ void testVelocityRangeAllModes() {
             const bool loop = mode >= 2;
             const bool duet = mode == 1;
             const uint8_t evolve = static_cast<uint8_t>(loop ? mode - 2 : 1);
-            for (uint8_t delay = 0; delay < 2; ++delay) {
+            {  // phase 9: no DELAY axis (every answer on the grid)
                 ResponsePlan plan;
                 ReplyStrategy actual{};
                 ResponseHarmonyReport report;
                 if (!planPerformanceReply(call, motif, key, harmony, ResponseStyle{}, ReplyMemory{},
-                                          loop, duet, evolve, delay, plan, actual, report,
+                                          loop, duet, evolve, plan, actual, report,
                                           answerCadenceFor(static_cast<uint16_t>(i))))
                     continue;
                 for (uint8_t n = 0; n < plan.count; ++n) {
@@ -186,7 +185,7 @@ void testShortReplyAndDevelopKeepTheirNotesVelocity() {
     const ResponseKey key = responseKeyFromIntervals(0, kMajor, 7);
     for (ReplyStrategy strategy : {ReplyStrategy::ShortReply, ReplyStrategy::Develop}) {
         PhraseCapture::Phrase transformed;
-        assert(transformCall(call, strategy, 1, transformed));
+        assert(transformCall(call, strategy, transformed));
         ResponsePlan plan;
         assert(planHarmonicEcho(transformed, motif, key, ResponseHarmony{}, ResponseStyle{}, plan));
         // Same note order: note i of the answer is note i of the CALL.
@@ -211,7 +210,7 @@ void testEvolveZeroUnchanged() {
         ReplyStrategy actual{};
         ResponseHarmonyReport report;
         assert(planPerformanceReply(call, motif, key, progression(kC_V, kC_V, kC_V, kC_V),
-                                    ResponseStyle{}, ReplyMemory{}, true, false, 0, 0, plan, actual,
+                                    ResponseStyle{}, ReplyMemory{}, true, false, 0, plan, actual,
                                     report, cadence));
         assert(plan.count == call.count);
         for (uint8_t i = 0; i < plan.count; ++i) {
@@ -269,7 +268,7 @@ void testFinalOverProgressions() {
                     assert(cadence == ((number & 1) ? AnswerCadence::Half : AnswerCadence::Full));
                     ResponsePlan plan;
                     ResponseHarmonyReport report;
-                    assert(planHarmonicEcho(call, motif, c.key, harmony, style, plan, &report, 1, cadence));
+                    assert(planHarmonicEcho(call, motif, c.key, harmony, style, plan, &report, cadence));
                     assert(report.cadence == cadence);
                     for (uint8_t n = 0; n < plan.count; ++n) {
                         assert(inKey(c.key, plan.notes[n].note));
@@ -324,27 +323,27 @@ void testFinalExamples() {
     ResponsePlan plan;
     ResponseHarmonyReport report;
     // Before phase 6 (ByCall): D -> C, the tonic over G B D.
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::ByCall));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::ByCall));
     assert(plan.notes[5].note == 60 && report.endingHasChord && !report.endingChordTone);
     // 1st answer: half cadence on G (the fifth, in V), nearest to D62: G67 (5 up) not G55 (7 down).
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Half));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Half));
     assert(plan.notes[5].note == 67 && report.endingChordTone && report.cadence == AnswerCadence::Half);
     // 2nd answer: full - no tonic in V, the nearest chord tone in the key to C60 is B59.
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Full));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Full));
     assert(plan.notes[5].note == 59 && report.endingChordTone);
     // The same CALL ending on onset 24 (over I): full = C, half = G.
     call.notes[5].onset = 24;
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Full));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Full));
     assert(plan.notes[5].note == 60);
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Half));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Half));
     assert(plan.notes[5].note == 67);
     // Over IV (F A C) the half cadence avoids the tonic: G is not in IV -> F (tie with A goes down).
     call.notes[5].onset = 10;
     call.count = 6;
     call.notes[4].onset = 9; call.notes[3].onset = 8; call.notes[2].onset = 6;
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Half));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Half));
     assert(pc(plan.notes[5].note) == 5);
-    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, 1, AnswerCadence::Full));
+    assert(planHarmonicEcho(call, motif, c, pop, ResponseStyle{}, plan, &report, AnswerCadence::Full));
     assert(pc(plan.notes[5].note) == 0);  // C is in IV
 
     // A minor over v (E G B): half = E (fifth), full = G (A absent; G and B tie, down).
@@ -356,11 +355,11 @@ void testFinalExamples() {
     m.count = 4;
     for (uint8_t i = 0; i < 4; ++i) m.notes[i] = mn[i];
     assert(describe(m, 9, kMinor, 7, motif));
-    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, 1, AnswerCadence::Half));
+    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, AnswerCadence::Half));
     assert(pc(plan.notes[3].note) == 4);
-    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, 1, AnswerCadence::Full));
+    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, AnswerCadence::Full));
     assert(pc(plan.notes[3].note) == 7);
-    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, 1, AnswerCadence::ByCall));
+    assert(planHarmonicEcho(m, motif, a, minor, ResponseStyle{}, plan, &report, AnswerCadence::ByCall));
     assert(pc(plan.notes[3].note) == 9);  // before: the tonic A over E G B
     std::printf("examples: C over V: before C60, odd G67, even B59; Am over v: before A, odd E, even G\n");
 }
@@ -377,8 +376,8 @@ void testChordOutsideKeyFallsBack() {
         assert(describe(call, 0, kMajor, 7, motif));
         ResponsePlan before, after;
         ResponseHarmonyReport report;
-        assert(planHarmonicEcho(call, motif, c, odd, ResponseStyle{}, before, nullptr, 1, AnswerCadence::ByCall));
-        assert(planHarmonicEcho(call, motif, c, odd, ResponseStyle{}, after, &report, 1, AnswerCadence::Half));
+        assert(planHarmonicEcho(call, motif, c, odd, ResponseStyle{}, before, nullptr, AnswerCadence::ByCall));
+        assert(planHarmonicEcho(call, motif, c, odd, ResponseStyle{}, after, &report, AnswerCadence::Half));
         assert(samePlan(before, after) && report.cadence == AnswerCadence::ByCall);
     }
 }
@@ -410,12 +409,12 @@ void testNoChordUnchanged() {
             ReplyStrategy actual{};
             ResponseHarmonyReport report;
             const bool ok = planPerformanceReply(call, motif, key, ResponseHarmony{}, style, ReplyMemory{},
-                                                 loop, duet, evolve, 1, base, actual, report,
+                                                 loop, duet, evolve, base, actual, report,
                                                  AnswerCadence::ByCall);
             for (AnswerCadence cadence : {AnswerCadence::Half, AnswerCadence::Full}) {
                 ResponsePlan plan;
                 assert(planPerformanceReply(call, motif, key, ResponseHarmony{}, style, ReplyMemory{},
-                                            loop, duet, evolve, 1, plan, actual, report, cadence) == ok);
+                                            loop, duet, evolve, plan, actual, report, cadence) == ok);
                 if (!ok) continue;
                 assert(samePlan(base, plan));
                 assert(report.cadence == AnswerCadence::ByCall);

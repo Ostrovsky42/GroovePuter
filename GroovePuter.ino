@@ -854,8 +854,12 @@ static void collectCallResponseHarmony(
   const uint8_t beats = longWindow ? ResponseHarmony::kBeats : ResponseHarmony::kDefaultBeats;
   const int64_t maxOffset = longWindow ? 80 : 48;
   const int32_t maxRows = longWindow ? 4 : 2;
+  // Bits 0..11 chord pcs, bits 12..15 root pc + 1 (phase 8; 0 = unknown).
   uint16_t ahead[ResponseHarmony::kBeats]{};
   bool aheadOk[ResponseHarmony::kBeats]{};
+  auto packed = [](uint16_t pcs, uint8_t rootPc) -> uint16_t {
+    return static_cast<uint16_t>((pcs & 0x0fffu) | (rootPc < 12 ? (rootPc + 1u) << 12 : 0u));
+  };
   if (g_miniAcid && g_miniAcid->isPlaying()) {
     GroovePuterHarmony::HarmonySnapshot snapshot{};
     GroovePuterPerformance::HarmonyPlaybackPosition position{};
@@ -888,6 +892,10 @@ static void collectCallResponseHarmony(
       const GroovePuterHarmony::SongHarmonicState* state = nullptr;
       const bool graph = origin->common.harmonicAuthority ==
                          GroovePuterHarmony::HarmonicAuthority::Graph;
+      // Phase 8: a genre template (Idiom authority) has no snapshot; its
+      // chord comes from the template's stabs (flash tables, no generator).
+      const bool idiom = origin->common.harmonicAuthority ==
+                         GroovePuterHarmony::HarmonicAuthority::Idiom;
       if (graph && haveParticipants) {
         state = g_performanceHarmonyRouteCache.stateFor(
             PatternPagingService::currentProjectName(),
@@ -899,6 +907,18 @@ static void collectCallResponseHarmony(
         const int64_t offset = target - static_cast<int64_t>(position.absoluteStep);
         if (offset < -16 || offset > maxOffset) continue;
         bool ok = false;
+        if (idiom) {
+          uint16_t pcs = 0;
+          uint8_t rootPc = 0xFF;
+          if (GroovePuterPerformance::idiomChordAhead(
+                  *origin, *recipe, haveParticipants ? participants : nullptr,
+                  participantCount, position, static_cast<int32_t>(offset),
+                  lastSequentialRow, pcs, rootPc, maxRows)) {
+            ahead[beat] = packed(pcs, rootPc);
+            aheadOk[beat] = true;
+          }
+          continue;
+        }
         if (graph) {
           ok = state && GroovePuterPerformance::graphHarmonyAhead(
               *state, participants, participantCount, *origin, *recipe, position,
@@ -909,7 +929,7 @@ static void collectCallResponseHarmony(
               participantCount, position, static_cast<int32_t>(offset),
               lastSequentialRow, snapshot, maxRows);
         }
-        if (ok) { ahead[beat] = snapshot.base.pitchMask; aheadOk[beat] = true; }
+        if (ok) { ahead[beat] = packed(snapshot.base.pitchMask, snapshot.base.rootPc); aheadOk[beat] = true; }
       }
     } else if (!g_miniAcid->songModeEnabled()) {
       const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
@@ -920,10 +940,21 @@ static void collectCallResponseHarmony(
           const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
           const int64_t offset = target - static_cast<int64_t>(patternPosition.absoluteStep);
           if (offset < 0 || offset > maxOffset) continue;
+          if (patternOrigin->authority == GroovePuterHarmony::HarmonicAuthority::Idiom) {
+            uint16_t pcs = 0;
+            uint8_t rootPc = 0xFF;
+            if (GroovePuterPerformance::idiomPatternChordAhead(
+                    *patternOrigin, patternPosition, static_cast<int32_t>(offset), pcs, rootPc,
+                    static_cast<int32_t>(maxOffset))) {
+              ahead[beat] = packed(pcs, rootPc);
+              aheadOk[beat] = true;
+            }
+            continue;
+          }
           if (GroovePuterPerformance::patternHarmonyAhead(
                   *patternOrigin, patternPosition, static_cast<int32_t>(offset), snapshot,
                   static_cast<int32_t>(maxOffset))) {
-            ahead[beat] = snapshot.base.pitchMask;
+            ahead[beat] = packed(snapshot.base.pitchMask, snapshot.base.rootPc);
             aheadOk[beat] = true;
           }
         }
@@ -934,7 +965,13 @@ static void collectCallResponseHarmony(
     GroovePuterCallResponse::ChordSource source = GroovePuterCallResponse::ChordSource::None;
     const uint16_t chord = GroovePuterCallResponse::chooseAnswerChord(
         aheadOk[beat], ahead[beat], context.hasHarmony, context.harmonyPitchClasses, &source);
-    harmony.set(beat, chord, source);
+    // Phase 8: the chord root (genre ending colour): the snapshot / template
+    // root, or the current PERFORM chord root (rootMidi is the chord root).
+    const uint8_t rootPc = source == GroovePuterCallResponse::ChordSource::Ahead
+        ? ((ahead[beat] >> 12) ? static_cast<uint8_t>((ahead[beat] >> 12) - 1u) : 0xFF)
+        : source == GroovePuterCallResponse::ChordSource::Current
+        ? static_cast<uint8_t>(context.rootMidi % 12u) : 0xFF;
+    harmony.set(beat, chord, source, rootPc);
   }
 }
 
@@ -997,11 +1034,12 @@ static void serviceCallResponseLog() {
   Serial.println(line);
 
   // Answer key: the Smart Play harmony key when the project provides one, else the PERFORM key.
+  // Phase 8: its tonic is the key's tonic (snapshot tonal.tonicPc), not the chord root.
   const GroovePuterPerformance::PerformanceContext context =
       g_performanceKeyboard.performanceContextSnapshot();
   const GroovePuterCallResponse::ResponseKey key = context.hasHarmony
-      ? GroovePuterCallResponse::responseKeyFromPitchClasses(context.rootMidi,
-                                                             context.scalePitchClasses)
+      ? GroovePuterCallResponse::responseKeyFromHarmony(context.tonicPc, context.rootMidi,
+                                                        context.scalePitchClasses)
       : GroovePuterCallResponse::responseKeyFromIntervals(
             g_performanceKeyboard.rootPitchClass(), intervals, intervalCount);
   if (!listener.canAnswer(phrase)) return;
@@ -1009,7 +1047,7 @@ static void serviceCallResponseLog() {
   // and the genre's ending from the idiom dictionary (no generator call).
   GroovePuterCallResponse::ResponseHarmony harmony;  // 36 bytes, loop stack
   collectCallResponseHarmony(
-      phrase.windowStartStep + phrase.windowSteps + listener.replyDelaySteps(),
+      phrase.windowStartStep + phrase.windowSteps,
       phrase.windowSteps, context, harmony);
   // PARTNER GENRE: AUTO = project genre (phase 2), NONE = phase-1 ending.
   const uint8_t genre = listener.answerGenre(g_miniAcid
@@ -1026,8 +1064,8 @@ static void serviceCallResponseLog() {
   if (!planPerformanceReply(phrase, motif, key, harmony, style, listener.replyMemory(),
       listener.mode() == CallResponseListener::Mode::Loop,
       listener.mode() == CallResponseListener::Mode::Duet,
-      listener.loopEvolve(), listener.replyDelaySteps(), plan, replyStrategy, report,
-      listener.answerCadence())) return;
+      listener.loopEvolve(), plan, replyStrategy, report,
+      listener.answerCadence(), listener.loopCycle())) return;
   const uint32_t startMicros = micros();
   if (!listener.startAnswer(phrase, plan, startMicros)) return;
   listener.rememberStartedReply(callSignatureValue, replyStrategy);
@@ -1052,12 +1090,14 @@ static void serviceCallResponseLog() {
     GroovePuterCallResponse::formatHarmonyLog(answer + used, sizeof(answer) - used, harmony,
                                               performanceReplyStyle(style, listener.mode() == CallResponseListener::Mode::Loop, listener.loopEvolve()), report);
   }
-  // Phase 3: where the answer goes (0 = PERFORM DX route) and the CALL length.
+  // Phase 3: where the answer goes (0 = PERFORM DX route) and the CALL length;
+  // phase 9: len= PARTNER LENGTH in % (already applied to the logged lengths).
   const size_t logged = strnlen(answer, sizeof(answer));
   if (logged + 1 < sizeof(answer)) {
-    snprintf(answer + logged, sizeof(answer) - logged, " ch=%u bars=%u",
+    snprintf(answer + logged, sizeof(answer) - logged, " ch=%u bars=%u len=%u",
              static_cast<unsigned>(listener.answerChannel()),
-             static_cast<unsigned>(listener.answerBars()));
+             static_cast<unsigned>(listener.answerBars()),
+             static_cast<unsigned>(listener.answerLengthPercent()));
   }
   Serial.println(answer);
 }

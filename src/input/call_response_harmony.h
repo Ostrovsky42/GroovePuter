@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 
 #include "call_response_planner.h"
 #include "../generation/idiom/genre_idiom.h"
@@ -60,13 +61,19 @@ struct ResponseHarmony {
         static_cast<uint8_t>(PhraseCapture::kWindowSteps / kStrongBeatSteps);
     static constexpr uint8_t kBeats =
         static_cast<uint8_t>(PhraseCapture::kMaxWindowSteps / kStrongBeatSteps);
-    uint16_t chordPcs[kBeats]{};  // absolute pitch classes (bit n = pc n); 0 = unknown
+    // Bits 0..11: absolute pitch classes (bit n = pc n); 0 = unknown.
+    // Bits 12..15 (phase 8): chord root pc + 1; 0 = root unknown. The root
+    // rides in the unused top nibble, so the struct (loop stack) does not grow.
+    uint16_t chordPcs[kBeats]{};
     uint16_t aheadMask{0};        // beats from a lookahead snapshot
     uint16_t currentMask{0};      // beats from the current-harmony fallback
 
-    void set(uint8_t beat, uint16_t pcs, ChordSource source) {
+    void set(uint8_t beat, uint16_t pcs, ChordSource source, uint8_t rootPc = 0xFF) {
         if (beat >= kBeats) return;
-        chordPcs[beat] = static_cast<uint16_t>(pcs & 0x0fffu);
+        pcs = static_cast<uint16_t>(pcs & 0x0fffu);
+        const uint16_t root = pcs != 0 && rootPc < 12 && (pcs & (1u << rootPc))
+            ? static_cast<uint16_t>((rootPc + 1u) << 12) : 0u;
+        chordPcs[beat] = static_cast<uint16_t>(pcs | root);
         const uint16_t bit = static_cast<uint16_t>(1u << beat);
         aheadMask = static_cast<uint16_t>(aheadMask & ~bit);
         currentMask = static_cast<uint16_t>(currentMask & ~bit);
@@ -75,7 +82,13 @@ struct ResponseHarmony {
     }
     uint16_t chordAtStep(uint8_t answerStep) const {
         const uint8_t beat = static_cast<uint8_t>(answerStep / kStrongBeatSteps);
-        return beat < kBeats ? chordPcs[beat] : 0;
+        return beat < kBeats ? static_cast<uint16_t>(chordPcs[beat] & 0x0fffu) : 0;
+    }
+    // Phase 8: root pc of the chord at that step; 0xFF = unknown.
+    uint8_t rootAtStep(uint8_t answerStep) const {
+        const uint8_t beat = static_cast<uint8_t>(answerStep / kStrongBeatSteps);
+        if (beat >= kBeats || (chordPcs[beat] >> 12) == 0) return 0xFF;
+        return static_cast<uint8_t>((chordPcs[beat] >> 12) - 1u);
     }
     bool any() const { return (aheadMask | currentMask) != 0; }
 };
@@ -221,8 +234,66 @@ inline AnswerCadence answerCadenceFor(uint16_t answerIndex) {
 //         it, else the nearest chord tone in the key other than the tonic, so
 //         the half cadence never lands on the tonic over V (tonic only when it
 //         is the chord's sole tone in the key).
+//
+// Phase 8: the genre colours the ending (ending colour table below) when the
+// chord's root is known. The colour never overrides the form: the full
+// cadence still lands on the tonic whenever the chord has it, and the half
+// cadence never lands on the tonic. Colour tones are relative to the chord
+// root and must be in the chord and in the key.
+//   Plain    (Acid, Techno): root or fifth of the chord, no extensions. Half:
+//            the key's fifth if the chord has it, else the chord's root/fifth
+//            nearest to it; Full without the tonic: the chord's root/fifth
+//            nearest to the tonic (over V in C: D, not the leading tone B).
+//   Extended (House, LoFi, Dub = Reggae): the chord's 7th (b7/7) or 9th
+//            preferred when the chord has one (Half: nearest to the key's
+//            fifth; Full without the tonic: root/fifth/7th/9th nearest the
+//            tonic); a plain triad ends as before.
+//   Blue     (UK garage): the chord's b3 or b7 preferred when the chord has
+//            one (Half: nearest to the key's fifth; Full without the tonic:
+//            b3/b7 nearest the tonic); otherwise as before.
+//   Default  (every other genre, no genre, unknown root): phase 6 unchanged.
+enum class EndingColor : uint8_t { Default = 0, Plain, Extended, Blue };
+
+// GenerativeMode index -> colour. Constant table (flash), 0 bytes DRAM.
+inline EndingColor endingColorForGenre(uint8_t genre) {
+    static constexpr EndingColor kColors[kGenreCount] = {
+        EndingColor::Plain,     // 0 Acid
+        EndingColor::Default,   // 1 Outrun
+        EndingColor::Default,   // 2 Darksynth
+        EndingColor::Default,   // 3 Electro
+        EndingColor::Default,   // 4 Rave
+        EndingColor::Extended,  // 5 Reggae (dub)
+        EndingColor::Default,   // 6 TripHop
+        EndingColor::Default,   // 7 Broken
+        EndingColor::Default,   // 8 Chip
+        EndingColor::Extended,  // 9 House
+        EndingColor::Plain,     // 10 Techno
+        EndingColor::Default,   // 11 HipHop
+        EndingColor::Default,   // 12 FunkSoul
+        EndingColor::Blue,      // 13 UK garage
+        EndingColor::Default,   // 14 DnB
+        EndingColor::Extended,  // 15 LoFi
+    };
+    return genre < kGenreCount ? kColors[genre] : EndingColor::Default;
+}
+
+namespace detail {
+
+// Chord tones (absolute pcs) at the given intervals above the chord root.
+inline uint16_t chordTonesAt(uint16_t chord, uint8_t chordRoot, std::initializer_list<uint8_t> intervals) {
+    uint16_t out = 0;
+    for (uint8_t interval : intervals) {
+        const uint8_t pc = static_cast<uint8_t>((chordRoot + interval) % 12u);
+        if (chord & (1u << pc)) out = static_cast<uint16_t>(out | (1u << pc));
+    }
+    return out;
+}
+
+}  // namespace detail
+
 inline int cadenceEndingNote(const ResponseKey& key, int callLast, uint16_t chord,
-                             AnswerCadence cadence, AnswerCadence* applied = nullptr) {
+                             AnswerCadence cadence, AnswerCadence* applied = nullptr,
+                             uint8_t chordRoot = 0xFF, uint8_t genre = kNoGenre) {
     const uint8_t root = static_cast<uint8_t>(key.rootPitchClass % 12u);
     const uint16_t allowed = static_cast<uint16_t>(chord & 0x0fffu & absoluteKeyPcs(key));
     if (cadence == AnswerCadence::ByCall || allowed == 0) {
@@ -230,13 +301,37 @@ inline int cadenceEndingNote(const ResponseKey& key, int callLast, uint16_t chor
         return nearestOfPitchClass(callLast, root, detail::echoEndingRel(key, callLast));
     }
     if (applied) *applied = cadence;
+    const EndingColor color = chordRoot < 12 && (chord & (1u << chordRoot))
+        ? endingColorForGenre(genre) : EndingColor::Default;
+    // Colour tones of this chord, in the key (empty for Default).
+    uint16_t colour = 0;   // preferred colour tones
+    uint16_t plain = 0;    // root / fifth of the chord
+    if (color != EndingColor::Default) {
+        plain = static_cast<uint16_t>(detail::chordTonesAt(chord, chordRoot, {0, 6, 7}) & allowed);
+        if (color == EndingColor::Extended)
+            colour = static_cast<uint16_t>(detail::chordTonesAt(chord, chordRoot, {10, 11, 2}) & allowed);
+        else if (color == EndingColor::Blue)
+            colour = static_cast<uint16_t>(detail::chordTonesAt(chord, chordRoot, {3, 10}) & allowed);
+    }
     if (cadence == AnswerCadence::Full) {
         const int tonic = nearestOfPitchClass(callLast, root, 0);
-        return pcIn(allowed, tonic) ? tonic : nearestInSet(tonic, allowed);
+        if (pcIn(allowed, tonic)) return tonic;
+        const uint16_t set = color == EndingColor::Extended ? static_cast<uint16_t>(plain | colour)
+                           : color == EndingColor::Blue ? (colour ? colour : plain)
+                           : plain;
+        return nearestInSet(tonic, set ? set : allowed);
     }
+    const uint16_t noTonic = static_cast<uint16_t>(~(1u << root));
     const int fifth = nearestOfPitchClass(callLast, root, detail::echoEndingRel(key, root));
-    if (pcIn(allowed, fifth)) return fifth;
-    const uint16_t open = static_cast<uint16_t>(allowed & ~(1u << root));
+    if ((color == EndingColor::Extended || color == EndingColor::Blue) && (colour & noTonic))
+        return nearestInSet(fifth, static_cast<uint16_t>(colour & noTonic));
+    // Plain: the key's fifth only when it is not the chord's 7th/9th.
+    const uint16_t fifthOk = color == EndingColor::Plain
+        ? static_cast<uint16_t>(allowed & ~detail::chordTonesAt(chord, chordRoot, {2, 10, 11}))
+        : allowed;
+    if (pcIn(fifthOk, fifth)) return fifth;
+    if (plain & noTonic) return nearestInSet(fifth, static_cast<uint16_t>(plain & noTonic));
+    const uint16_t open = static_cast<uint16_t>(allowed & noTonic);
     return nearestInSet(fifth, open ? open : allowed);
 }
 
@@ -257,12 +352,11 @@ inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
                              const MotifDescriptor& motif, const ResponseKey& key,
                              const ResponseHarmony& harmony, const ResponseStyle& style,
                              ResponsePlan& out, ResponseHarmonyReport* report = nullptr,
-                             uint8_t delaySteps = kAnswerDelaySteps,
                              AnswerCadence cadence = AnswerCadence::ByCall) {
     (void)motif;  // phase 6: velocity comes per note from the phrase
     if (report) *report = ResponseHarmonyReport{};
     int notes[ResponsePlan::kCapacity]{};
-    if (!detail::echoLine(phrase, key, out, notes, delaySteps)) return false;
+    if (!detail::echoLine(phrase, key, out, notes)) return false;
     const int32_t usable = out.windowSteps;
     uint8_t last = out.count - 1u;
     const int callLast = notes[last];
@@ -309,7 +403,8 @@ inline bool planHarmonicEcho(const PhraseCapture::Phrase& phrase,
     // the half/full cadence over the chord under the (possibly late) ending.
     AnswerCadence applied = AnswerCadence::ByCall;
     notes[last] = cadenceEndingNote(key, callLast, harmony.chordAtStep(out.notes[last].step),
-                                    cadence, &applied);
+                                    cadence, &applied, harmony.rootAtStep(out.notes[last].step),
+                                    style.active() ? style.genre : kNoGenre);
 
     // RunUp: approach the ending by step from below (only off the strong beats,
     // which belong to the chord).

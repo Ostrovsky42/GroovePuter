@@ -36,10 +36,10 @@ void checkInvariants(const PhraseCapture::Phrase& phrase, const ResponseKey& key
                      const ResponsePlan& plan, uint8_t callVelocity) {
     assert(callVelocity >= 1);
     assert(plan.count > 0 && plan.count <= ResponsePlan::kCapacity);
-    assert(plan.delaySteps == kAnswerDelaySteps);
-    assert(plan.windowSteps == PhraseCapture::kWindowSteps - kAnswerDelaySteps);
-    // Answer rhythm = CALL rhythm (notes that fit after the delay).
-    uint32_t expected = callMask(phrase) & ((1u << plan.windowSteps) - 1u);
+    assert(plan.windowSteps == PhraseCapture::kWindowSteps);  // phase 9: on the grid, no delay
+    // Answer rhythm = CALL rhythm.
+    const uint64_t window = plan.windowSteps >= 64 ? ~uint64_t{0} : (uint64_t{1} << plan.windowSteps) - 1u;
+    const uint64_t expected = uint64_t{callMask(phrase)} & window;
     assert(plan.onsetMask() == expected);
     for (uint8_t i = 0; i < plan.count; ++i) {
         const ResponseNote& n = plan.notes[i];
@@ -69,7 +69,7 @@ void testEndingToTonic() {
     assert(plan.count == 6);
     for (uint8_t i = 0; i + 1 < plan.count; ++i) assert(plan.notes[i].note == notes[i].note);
     assert(plan.notes[5].note == 60);           // D -> nearest C (tie goes down)
-    assert(plan.notes[5].length == 7);          // 24 + 8 clamped to 31
+    assert(plan.notes[5].length == 8);          // 24 + 8 = 32, the window end (phase 9: was 7, clamped to 31)
     assert(plan.notes[0].velocity == 100);
 }
 
@@ -111,8 +111,9 @@ void testChromaticSnappedAndRange() {
     checkInvariants(lowPhrase, key, plan, 100);
 }
 
-void testLastStepDroppedAfterDelay() {
-    // A note on the last sixteenth (31) cannot be answered after a 1-step delay.
+// Phase 9 (was "dropped after the delay"): a note on the last sixteenth (31)
+// is answered on its own step - the answer is on the grid.
+void testLastStepAnsweredOnGrid() {
     const CapturedNote notes[] = {{0, 4, 62, 100}, {8, 4, 64, 100}, {31, 1, 65, 100}};
     const PhraseCapture::Phrase phrase = phraseOf(notes, 3);
     MotifDescriptor motif;
@@ -120,19 +121,26 @@ void testLastStepDroppedAfterDelay() {
     const ResponseKey key = responseKeyFromIntervals(0, kMajor, 7);
     ResponsePlan plan;
     assert(planEchoVariant(phrase, motif, key, plan));
-    assert(plan.count == 2 && plan.droppedTail == 1);
-    assert(plan.notes[1].note == 60);  // E -> C ending on the last kept note
-    assert(plan.notes[1].step + plan.notes[1].length <= plan.windowSteps);
+    assert(plan.count == 3 && plan.droppedTail == 0);
+    assert(plan.notes[2].step == 31 && plan.notes[2].length == 1);
+    assert(plan.notes[2].note == 60);  // F -> C ending on the last-step note
 
     const CapturedNote only[] = {{31, 1, 65, 100}};
     const PhraseCapture::Phrase onlyLast = phraseOf(only, 1);
     assert(describe(onlyLast, 0, kMajor, 7, motif));
-    // Phase 3 (bug "one note, one answer"): phase 1 returned no answer here.
-    // A one-note CALL on the last step is answered on the last usable step.
     assert(planEchoVariant(onlyLast, motif, key, plan));
     assert(plan.count == 1 && plan.droppedTail == 0);
-    assert(plan.notes[0].step == 30 && plan.notes[0].length == 1);
+    assert(plan.notes[0].step == 31 && plan.notes[0].length == 1);
     assert(plan.notes[0].note == 60);  // F (not the tonic) is answered with C
+
+    // The phase-3 guard stays for a phrase outside the capture contract: a
+    // lone note past the window is answered on the last step, not dropped.
+    PhraseCapture::Phrase outside = onlyLast;
+    outside.windowSteps = 16;
+    outside.notes[0].onset = 20;
+    assert(planEchoVariant(outside, motif, key, plan));
+    assert(plan.count == 1 && plan.droppedTail == 0 && plan.windowSteps == 16);
+    assert(plan.notes[0].step == 15 && plan.notes[0].length == 1);
 }
 
 void testSixteenNotesAndScaleWithoutFifth() {
@@ -173,7 +181,7 @@ void testLogFormat() {
     char line[288];
     formatResponseLog(line, sizeof(line), 5, plan);
     std::puts(line);
-    assert(std::strcmp(line, "[CR-A] bar=5 at=+1 n=2 cut=0 notes=0:60:100:2,4:60:100:2") == 0);
+    assert(std::strcmp(line, "[CR-A] bar=5 n=2 cut=0 notes=0:60:100:2,4:60:100:2") == 0);
 
     // 16 notes fit the glue buffer.
     CapturedNote many[16];
@@ -357,7 +365,7 @@ int main() {
     testEndingToTonic();
     testTonicEndingGoesToFifth();
     testChromaticSnappedAndRange();
-    testLastStepDroppedAfterDelay();
+    testLastStepAnsweredOnGrid();
     testSixteenNotesAndScaleWithoutFifth();
     testKeyFromContextPitchClasses();
     testLogFormat();

@@ -188,6 +188,8 @@ Important controls:
 
 Inside NOTE ENTRY, pitch keys retain their note-input meaning. A repeated/held pitch may continue into the next step as a `TI` continuation rather than a new attack.
 
+NOTE ENTRY rows: `A..L` is the lower octave, `Q..P` the one above; `-`/`=` move them through octaves 1-2 .. 5-6 (default 3-4). A step holds C1..C7 (24..96): `S`/`X` and `A`/`Z` stop at C7. MIDI out sends the note as written (C#5 = 73: `=` once, then `W`; E5 = 76: `=` once, then `T`); the internal synth plays notes above B4 one or more octaves lower, same pitch class.
+
 ### Pattern and Melody source
 
 A Pattern address is:

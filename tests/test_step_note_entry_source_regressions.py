@@ -22,9 +22,9 @@ require("kEntryBaseNote = 48" in CPP and "kEntryOctaveSpan = 12" in CPP,
         "direct note rows must keep the C3 default with the upper row one octave up")
 require("entryBaseNote() + kEntryOctaveSpan + upperIndex" in CPP,
         "upper row must sit exactly one octave above the lower row")
-require("kEntryNoteMin = 24" in CPP and "kEntryNoteMax = 71" in CPP and
+require("kEntryNoteMin = 24" in CPP and "kEntryNoteMax = 96" in CPP and
         "NOTE OUT OF RANGE" in CPP,
-        "entry must refuse notes outside the engine 303 range instead of clipping")
+        "entry must refuse notes outside the Pattern range (C1..C7) instead of clipping")
 require("if (key == '-' || key == '=')" in CPP and
         "shiftEntryOctave(key == '-' ? -1 : 1);" in CPP,
         "-/= must move the NOTE ENTRY octave")

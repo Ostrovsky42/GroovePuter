@@ -17,18 +17,11 @@
 // from the tonic is answered with the tonic, a CALL that ends on the tonic is
 // answered with the fifth (an open ending). The answer is one monophonic line.
 //
-// Timing: the ANSWER window is the two bars right after the CALL window. The
-// answer starts kAnswerDelaySteps after that boundary, so a person who goes on
-// playing on the downbeat (up to half a step late still quantizes to onset 0)
-// is heard before the first answer note sounds.
+// Timing: the ANSWER window is the window right after the CALL window, and
+// the answer starts exactly on its downbeat (phase 9: the PARTNER DELAY
+// safety sixteenth is gone, every reply is on the grid).
 namespace GroovePuterCallResponse {
 
-constexpr uint8_t kAnswerDelaySteps = 1;     // default (PARTNER DELAY)
-constexpr uint8_t kAnswerMaxDelaySteps = 1;  // PARTNER DELAY offers 0 or 1
-
-inline uint8_t clampAnswerDelay(uint8_t delaySteps) {
-    return delaySteps > kAnswerMaxDelaySteps ? kAnswerMaxDelaySteps : delaySteps;
-}
 constexpr uint8_t kAnswerMinNote = 24;   // internal 303 range, also the MIDI answer range
 constexpr uint8_t kAnswerMaxNote = 71;
 
@@ -60,6 +53,17 @@ inline ResponseKey responseKeyFromPitchClasses(uint8_t rootMidi, uint16_t absolu
     return key;
 }
 
+// Phase 8: the answer key from a harmony context. The tonic is the key's tonic
+// (HarmonySnapshot::tonal.tonicPc via PerformanceContext::tonicPc), not the
+// root of the chord sounding when the CALL closes: a CALL closed over iv (Fm
+// in C minor) used to get the key "F + the C-minor pitch classes", so the full
+// cadence and the fifth were counted from F. chordRootMidi (the old source) is
+// only the fallback when the context has no tonic (tonicPc >= 12).
+inline ResponseKey responseKeyFromHarmony(uint8_t tonicPc, uint8_t chordRootMidi,
+                                          uint16_t absolutePitchClasses) {
+    return responseKeyFromPitchClasses(tonicPc < 12 ? tonicPc : chordRootMidi, absolutePitchClasses);
+}
+
 inline bool inKey(const ResponseKey& key, uint8_t note) {
     const uint8_t rel = static_cast<uint8_t>((note + 12u - key.rootPitchClass % 12u) % 12u);
     return (key.scaleMask & (1u << rel)) != 0;
@@ -89,7 +93,7 @@ inline int foldIntoAnswerRange(int note) {
 }
 
 struct ResponseNote {
-    uint8_t step{0};      // sixteenths from the answer start (window start + delay)
+    uint8_t step{0};      // sixteenths from the answer start (the window downbeat)
     uint8_t length{0};    // sixteenths, step + length <= windowSteps (<= 64)
     uint8_t note{0};
     uint8_t velocity{0};
@@ -98,9 +102,8 @@ struct ResponseNote {
 struct ResponsePlan {
     static constexpr uint8_t kCapacity = PhraseCapture::kMaxCapacity;  // 32 (4 bars)
     uint8_t count{0};
-    uint8_t delaySteps{kAnswerDelaySteps};
-    uint8_t windowSteps{0};   // usable steps after the delay
-    uint8_t droppedTail{0};   // CALL notes that do not fit after the delay
+    uint8_t windowSteps{0};   // usable steps: the whole answer window
+    uint8_t droppedTail{0};   // CALL notes outside the window (guard; 0 for a captured phrase)
     ResponseNote notes[kCapacity]{};
 
     uint64_t onsetMask() const {
@@ -110,6 +113,24 @@ struct ResponsePlan {
     }
 };
 
+// Phase 9: PARTNER LENGTH. Every answer note is played at a fraction of its
+// planned length, rounded up to a whole step (never below one step). Onsets
+// and pitches never change, and a shorter note cannot overlap the next one,
+// so the line stays monophonic. FULL (100 %) is the phase-8 answer exactly.
+enum class AnswerLength : uint8_t { Full = 0, ThreeQuarters, Half, Quarter };
+constexpr uint8_t kAnswerLengthCount = 4;
+
+constexpr uint8_t answerLengthPercent(AnswerLength length) {
+    return length == AnswerLength::ThreeQuarters ? 75
+         : length == AnswerLength::Half ? 50
+         : length == AnswerLength::Quarter ? 25 : 100;
+}
+
+// ceil(steps * percent / 100), at least one step (percent <= 100).
+constexpr uint8_t scaledAnswerNoteLength(uint8_t steps, uint8_t percent) {
+    return steps * percent < 100 ? 1 : static_cast<uint8_t>((steps * percent + 99) / 100);
+}
+
 namespace detail {
 
 inline int32_t phraseWindowSteps(const PhraseCapture::Phrase& phrase) {
@@ -117,24 +138,17 @@ inline int32_t phraseWindowSteps(const PhraseCapture::Phrase& phrase) {
     return steps > 0 && steps <= PhraseCapture::kMaxWindowSteps ? steps : PhraseCapture::kWindowSteps;
 }
 
-// Stage 1: the CALL rhythm after the delay, pitches snapped down to the key,
-// one monophonic line. notes[] receives the (unshifted) pitches.
+// Stage 1: the CALL rhythm from the answer downbeat, pitches snapped down to
+// the key, one monophonic line. notes[] receives the (unshifted) pitches.
 //
-// Phase 3 fix ("one note, one answer"): a CALL note on the last step(s) that
-// the delay pushes past the window is dropped (cut=), as in phase 1 - except
-// when that would leave NO answer at all. That is exactly a one-note CALL on
-// the last sixteenth, i.e. a downbeat played 0.3..1.5 steps early (the pickup
-// rule only takes the last 30 % of the step). Phase 1 silently answered
-// nothing there; now the note is answered on the last usable step, which is
-// within one step of where a pickup would have put it (30 for 2 bars, 14 for
-// 1 bar, 62 for 4 bars with the default 1/16 delay).
+// A note outside the window (only possible for a phrase that breaks the
+// capture contract) is dropped (cut=); if that would leave no answer at all,
+// the last such note is answered on the last step (the phase-3 "one note,
+// one answer" guard). Phase 9: with no delay a captured phrase always fits.
 inline bool echoLine(const PhraseCapture::Phrase& phrase, const ResponseKey& key,
-                     ResponsePlan& out, int (&notes)[ResponsePlan::kCapacity],
-                     uint8_t delaySteps = kAnswerDelaySteps) {
+                     ResponsePlan& out, int (&notes)[ResponsePlan::kCapacity]) {
     out = ResponsePlan{};
-    delaySteps = clampAnswerDelay(delaySteps);
-    const int32_t usable = phraseWindowSteps(phrase) - delaySteps;
-    out.delaySteps = delaySteps;
+    const int32_t usable = phraseWindowSteps(phrase);
     out.windowSteps = static_cast<uint8_t>(usable);
     if (phrase.count == 0) return false;
 
@@ -225,10 +239,9 @@ inline void placeInRange(ResponsePlan& out, const int (&notes)[ResponsePlan::kCa
 inline bool planEchoVariant(const PhraseCapture::Phrase& phrase,
                             const MotifDescriptor& motif,
                             const ResponseKey& key,
-                            ResponsePlan& out,
-                            uint8_t delaySteps = kAnswerDelaySteps) {
+                            ResponsePlan& out) {
     int notes[ResponsePlan::kCapacity]{};
-    if (!detail::echoLine(phrase, key, out, notes, delaySteps)) return false;
+    if (!detail::echoLine(phrase, key, out, notes)) return false;
     const uint8_t last = out.count - 1u;
     const int callLast = notes[last];
     notes[last] = nearestOfPitchClass(callLast, key.rootPitchClass % 12u,
@@ -238,14 +251,20 @@ inline bool planEchoVariant(const PhraseCapture::Phrase& phrase,
     return true;
 }
 
-// "[CR-A] bar=3 at=+1 n=4 notes=0:62:77:2,4:64:77:2,..." (step:note:vel:len,
-// step from the answer start). bar is the 1-based first bar of the ANSWER window.
+inline void applyAnswerLength(ResponsePlan& plan, AnswerLength length) {
+    const uint8_t percent = answerLengthPercent(length);
+    for (uint8_t i = 0; i < plan.count && i < ResponsePlan::kCapacity; ++i)
+        plan.notes[i].length = scaledAnswerNoteLength(plan.notes[i].length, percent);
+}
+
+// "[CR-A] bar=3 n=4 cut=0 notes=0:62:77:2,4:64:77:2,..." (step:note:vel:len,
+// step from the answer downbeat, len after PARTNER LENGTH). bar is the 1-based
+// first bar of the ANSWER window.
 inline int formatResponseLog(char* out, std::size_t capacity, uint32_t bar1Based,
                              const ResponsePlan& plan) {
     if (!out || capacity == 0) return 0;
-    int written = std::snprintf(out, capacity, "[CR-A] bar=%lu at=+%u n=%u cut=%u notes=",
+    int written = std::snprintf(out, capacity, "[CR-A] bar=%lu n=%u cut=%u notes=",
                                 static_cast<unsigned long>(bar1Based),
-                                static_cast<unsigned>(plan.delaySteps),
                                 static_cast<unsigned>(plan.count),
                                 static_cast<unsigned>(plan.droppedTail));
     if (written < 0) return written;

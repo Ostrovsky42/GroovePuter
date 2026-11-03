@@ -10,6 +10,8 @@
 // played. On the free clock the very first note anchors the grid (onset 0
 // exactly) and is answered; every later one-note call aimed at a window
 // downbeat and played a touch early is not: one answer, then silence.
+// Phase 9: the 1/16 delay is gone, so the onset-31 note always fits; the
+// scenarios stay as regressions.
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -82,8 +84,7 @@ struct Rig {
         const ResponseStyle style = pickResponseStyle(genre, responseSeed(phrase));
         ResponsePlan plan;
         if (!planHarmonicEcho(phrase, motif, responseKeyFromIntervals(0, kMajor, 7),
-                              ResponseHarmony{}, style, plan, nullptr,
-                              listener.answerDelaySteps())) {
+                              ResponseHarmony{}, style, plan, nullptr)) {
             return;
         }
         if (listener.startAnswer(phrase, plan, gNow)) ++answersStarted;
@@ -165,8 +166,9 @@ void testEveryOnsetEveryGenreAnswersOneNote() {
     }
 }
 
-// A multi-note CALL keeps the phase-1 rule: the onset-31 note is cut, the rest answers.
-void testMultiNoteTailStillCut() {
+// Phase 9 (was "the onset-31 note is cut"): with the answer on the grid the
+// last-step note of a multi-note CALL is answered on its own step.
+void testMultiNoteTailKept() {
     PhraseCapture::Phrase phrase{};
     phrase.count = 2;
     phrase.notes[0] = CapturedNote{4, 2, 62, 100};
@@ -175,7 +177,8 @@ void testMultiNoteTailStillCut() {
     assert(describe(phrase, 0, kMajor, 7, motif));
     ResponsePlan plan;
     assert(planEchoVariant(phrase, motif, responseKeyFromIntervals(0, kMajor, 7), plan));
-    assert(plan.count == 1 && plan.droppedTail == 1 && plan.notes[0].step == 4);
+    assert(plan.count == 2 && plan.droppedTail == 0 && plan.notes[0].step == 4);
+    assert(plan.notes[1].step == 31 && plan.notes[1].length == 1);
 }
 
 }  // namespace
@@ -184,7 +187,7 @@ int main() {
     testFreeClockEarlyDownbeatsAreAnswered();
     testPlayEarlyDownbeatsAreAnswered();
     testEveryOnsetEveryGenreAnswersOneNote();
-    testMultiNoteTailStillCut();
+    testMultiNoteTailKept();
     std::puts("cr single note tests passed");
     return 0;
 }

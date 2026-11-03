@@ -51,15 +51,16 @@ constexpr unsigned long kFirstHoldRepeatMaxMs = 500;
 constexpr unsigned long kHoldRepeatMaxGapMs = 180;
 constexpr int kEntryBaseNote = 48;      // C3: lower row at the default octave
 constexpr int kEntryOctaveSpan = 12;    // upper row sits one octave above lower
-// Three octave ranges: 1-2 (C1 reaches the Synth A bass corridor), 2-3, 3-4.
-// There is no shift above 3-4: its upper row would start at 72, past the
-// engine range, and every key of that row would be refused.
+// Five octave ranges: 1-2 (C1 reaches the Synth A bass corridor), 2-3, 3-4,
+// 4-5 (upper row C5..A5: C#5 is W, E5 is T) and 5-6 (upper row C6..A6). They
+// reach the Pattern range for external MIDI; the internal voice folds notes
+// above B4 down by octaves (MiniAcid::internalVoiceNote).
 constexpr int kEntryOctaveShiftMin = -2;
-constexpr int kEntryOctaveShiftMax = 0;
-// Engine 303 range (kMin303Note..kMax303Note). Notes outside it are refused:
-// the synth clips anything above 71 to a different pitch.
+constexpr int kEntryOctaveShiftMax = 2;
+// Pattern step range (kMin303Note..kMaxPatternNote, C1..C7). Notes outside it
+// are refused instead of clipped to a different pitch.
 constexpr int kEntryNoteMin = 24;
-constexpr int kEntryNoteMax = 71;
+constexpr int kEntryNoteMax = 96;
 
 // STEP SETTINGS (Alt+E) limits and steps. Timing matches the validated atlas
 // range of +-23 ticks; velocity 0 would be a silent step, so it starts at 1.
@@ -879,7 +880,8 @@ void PatternEditPage::adjustStepSetting(int field, int direction) {
 bool PatternEditPage::handleStepSettingsKey(const UIEvent& ui_event) {
   const bool esc = ui_event.key == 0x1B ||
                    ui_event.scancode == GROOVEPUTER_ESCAPE;
-  if (esc || isStepSettingsChord(ui_event)) {
+  const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
+  if (esc || enter) {
     step_settings_open_ = false;
     return true;
   }

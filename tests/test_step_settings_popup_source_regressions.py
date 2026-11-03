@@ -56,7 +56,8 @@ require("AltE:STEP" in LEGACY, "footer must name the combination")
 require("drawStepSettings(gfx)" in LEGACY, "draw() must paint the window")
 
 # Help: both synth sections, 38 characters at most; keys.md documents it.
-lines = re.findall(r'"(Alt\+E[^"]*)"', HELP)
+# DRUMS has its own Alt+E line (tests/test_drum_step_settings_source_regressions.py).
+lines = re.findall(r'"(Alt\+E[^"]*)"', HELP[:HELP.index("kDrumLines")])
 require(len(lines) == 2, "Alt+E needs one help line in Synth A and one in Synth B")
 for line in lines:
     require(len(line) <= 38, "help line too long: %r" % line)

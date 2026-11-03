@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings] [cr_development] [cr_four_bars] [cr_loop_grid] [cr_phase6] [cr_loop_gaps]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings] [cr_development] [cr_four_bars] [cr_loop_grid] [cr_phase6] [cr_loop_gaps] [cr_phase8] [cr_phase9] [cr_phase10] [pattern_range_wire] [pattern_range_engine]" >&2
 }
 
 compile_run() {
@@ -195,9 +195,97 @@ run_cr_loop_gaps() {
   compile_run cr_loop_gaps "${ROOT_DIR}/tests/test_cr_loop_gaps.cpp"
 }
 
+# CALL/RESPONSE phase 8: tonic from the snapshot, template chords, genre ending
+# colour, LOOP pass form.
+run_cr_phase8() {
+  compile_run cr_phase8_variety \
+    "${ROOT_DIR}/tests/test_cr_phase8_variety.cpp" \
+    "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+    "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+    "${ROOT_DIR}/src/generation/generation_context.cpp"
+}
+
+# CALL/RESPONSE phase 9: PARTNER LENGTH (DELAY removed, answers on the grid).
+run_cr_phase9() {
+  compile_run cr_phase9_length "${ROOT_DIR}/tests/test_cr_phase9_length.cpp"
+}
+
+# CALL/RESPONSE phase 10: PERFORM > INPUT hides PARTNER GENRE and LENGTH.
+# The page needs the SDL host source set (same build as
+# run_perform_page_arrows_tests.sh); no -Werror over the whole UI tree.
+run_cr_phase10() {
+  local build="${BUILD_DIR}/cr_phase10"
+  mkdir -p "${build}"
+  pushd "${ROOT_DIR}/platform_sdl" >/dev/null
+  local sources
+  mapfile -t sources < <(
+    awk '/^SOURCES :=/ { capture = 1; next }
+         capture && /^[^[:space:]]/ { capture = 0 }
+         capture { line = $0; sub(/^[[:space:]]+/, "", line);
+                   sub(/[[:space:]]*\\[[:space:]]*$/, "", line);
+                   n = split(line, parts, /[[:space:]]+/);
+                   for (i = 1; i <= n; i++)
+                     if (parts[i] != "" && parts[i] != "sdl_main.cpp") print parts[i] }' Makefile
+  )
+  if [[ "${#sources[@]}" -eq 0 ]]; then
+    echo 'failed to resolve SDL source set' >&2
+    exit 2
+  fi
+  # shellcheck disable=SC2046
+  "${CXX}" -std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h \
+    $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
+    "${sources[@]}" ../tests/test_cr_phase10_menu.cpp \
+    $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "${build}/test"
+  popd >/dev/null
+  "${build}/test"
+}
+
+# PATTERN_RANGE_MIDI: steps hold C1..C7; MIDI gets the note as written.
+# Wire + editor clamp: pure, -Werror. Old 0.9.8-R3 mutation contract and the
+# NOTE ENTRY source contract follow the new ceiling.
+run_pattern_range_wire() {
+  compile_run pattern_range_wire \
+    "${ROOT_DIR}/tests/test_pattern_range_wire.cpp" \
+    "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+    "${ROOT_DIR}/src/midi/midi_companion_settings.cpp"
+  compile_run pattern_mutations_0_9_8_r3 \
+    "${ROOT_DIR}/tests/test_pattern_mutations_0_9_8_r3.cpp"
+  python3 "${ROOT_DIR}/tests/test_step_note_entry_source_regressions.py"
+}
+
+# PATTERN_RANGE_MIDI on the real engine and STEPS page: NOTE ENTRY E5/C#5,
+# S/X to C7, Pattern NoteOn = step note, internal voice folded, save/load.
+# SDL host source set, as run_cr_phase10.
+run_pattern_range_engine() {
+  local build="${BUILD_DIR}/pattern_range_engine"
+  mkdir -p "${build}"
+  pushd "${ROOT_DIR}/platform_sdl" >/dev/null
+  local sources
+  mapfile -t sources < <(
+    awk '/^SOURCES :=/ { capture = 1; next }
+         capture && /^[^[:space:]]/ { capture = 0 }
+         capture { line = $0; sub(/^[[:space:]]+/, "", line);
+                   sub(/[[:space:]]*\\[[:space:]]*$/, "", line);
+                   n = split(line, parts, /[[:space:]]+/);
+                   for (i = 1; i <= n; i++)
+                     if (parts[i] != "" && parts[i] != "sdl_main.cpp") print parts[i] }' Makefile
+  )
+  if [[ "${#sources[@]}" -eq 0 ]]; then
+    echo 'failed to resolve SDL source set' >&2
+    exit 2
+  fi
+  # shellcheck disable=SC2046
+  "${CXX}" -std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h \
+    $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
+    "${sources[@]}" ../tests/test_pattern_range_engine.cpp \
+    $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "${build}/test"
+  popd >/dev/null
+  "${build}/test"
+}
+
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps)
+  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps cr_phase8 cr_phase9 cr_phase10 pattern_range_wire pattern_range_engine)
 fi
 
 for target in "${targets[@]}"; do
@@ -234,6 +322,11 @@ for target in "${targets[@]}"; do
     cr_loop_grid) run_cr_loop_grid ;;
     cr_phase6) run_cr_phase6 ;;
     cr_loop_gaps) run_cr_loop_gaps ;;
+    cr_phase8) run_cr_phase8 ;;
+    cr_phase9) run_cr_phase9 ;;
+    cr_phase10) run_cr_phase10 ;;
+    pattern_range_wire) run_pattern_range_wire ;;
+    pattern_range_engine) run_pattern_range_engine ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;
   esac
 done

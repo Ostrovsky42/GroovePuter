@@ -155,9 +155,10 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Chord: return 6;
         case PerformanceToolContext::Arp: return 6;
         case PerformanceToolContext::Rhythm: return 6;
-        // 9..15: PARTNER settings (BARS, GENRE, CHANNEL, DELAY, HOLD, EVOLVE,
-        // REPLACE) under PARTNER.
-        case PerformanceToolContext::Input: return 16;
+        // 9..13: PARTNER settings (BARS, CHANNEL, HOLD, EVOLVE, REPLACE) under
+        // PARTNER. Phase 10: GENRE and LENGTH are hidden (they stay AUTO and
+        // 100 %); see docs/design/CALL_RESPONSE_PHASE10_MENU.md.
+        case PerformanceToolContext::Input: return 14;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -348,7 +349,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case 8:
                     GroovePuterCallResponse::callResponseListener().cycleMode(direction);
                     break;
-                case 9: case 10: case 11: case 12: case 13: case 14: case 15:
+                case 9: case 10: case 11: case 12: case 13:
                     cyclePartnerSetting(row, direction);
                     break;
                 default: break;
@@ -438,7 +439,7 @@ void PerformPage::toggleSelectedValue() {
                         (static_cast<uint8_t>(keyboard_.leadMode()) + 1u) % 4u));
             } else if (row == 8) {
                 GroovePuterCallResponse::callResponseListener().cycleMode(1);
-            } else if (row >= 9 && row <= 15) {
+            } else if (row >= 9 && row <= 13) {
                 cyclePartnerSetting(row, 1);
             } else {
                 adjustInput(1);
@@ -450,25 +451,21 @@ void PerformPage::toggleSelectedValue() {
 }
 
 // PARTNER settings rows (session only, not saved). </> and ENTER both cycle.
+// Phase 10: GENRE and LENGTH have no row; the listener keeps AUTO and 100 %.
 void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
     auto& partner = GroovePuterCallResponse::callResponseListener();
     switch (row) {
         case 9: partner.cycleAnswerBars(direction); break;
-        case 10: partner.cycleAnswerGenre(direction); break;
-        case 11: partner.cycleAnswerChannel(direction); break;
-        case 12:
-            if (partner.mode() != GroovePuterCallResponse::CallResponseListener::Mode::Loop)
-                partner.cycleAnswerDelay(direction);
-            break;
-        case 13:
+        case 10: partner.cycleAnswerChannel(direction); break;
+        case 11:
             if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
                 partner.setLoopHold(!partner.loopHold());
             break;
-        case 14:
+        case 12:
             if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
                 partner.cycleLoopEvolve(direction);
             break;
-        case 15:
+        case 13:
             if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
                 partner.cycleLoopReplace(direction);
             break;
@@ -568,16 +565,10 @@ const char* PerformPage::selectedRowHint() const {
                 case 7: return "USB ROLE: CHANGE IN PROJECT > MIDI";
                 case 8: return "OFF/ANSWER/DUET/LOOP: MIDI REPLY";
                 case 9: return "</> CALL AND REPLY LENGTH: 1/2/4 BARS";
-                case 10: return "</> AUTO=PROJECT  NONE=PLAIN  OR GENRE";
-                case 11: return "</> DX=PERFORM DX ROUTE OR CH1..16";
-                case 12:
-                    return GroovePuterCallResponse::callResponseListener().mode() ==
-                                   GroovePuterCallResponse::CallResponseListener::Mode::Loop
-                        ? "N/A: LOOP ALWAYS PLAYS ON THE GRID"
-                        : "</> 0=ON THE GRID  1=SAFE (1/16 LATE)";
-                case 13: return "LOOP: HOLD MOTIF / RELEASE NEXT BAR";
-                case 14: return "0 EXACT  1 ENDING  2 DEVELOP  3 FREE";
-                case 15: return "</> NEW LOOP NEEDS: ANY/3+ NOTES/HALF";
+                case 10: return "</> DX=PERFORM DX ROUTE OR CH1..16";
+                case 11: return "LOOP: HOLD MOTIF / RELEASE NEXT BAR";
+                case 12: return "0 EXACT  1 ENDING  2 DEVELOP  3 FREE";
+                case 13: return "</> NEW LOOP NEEDS: ANY/3+ NOTES/HALF";
                 default: return "";
             }
         }
@@ -860,35 +851,20 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                           static_cast<unsigned>(partner.answerBars()),
                           partner.answerBars() == 1 ? "" : "S");
             drawRow(9, " BARS", value, partnerOn);
-            const uint8_t genre = partner.answerGenreSetting();
-            if (genre == GroovePuterCallResponse::CallResponseListener::kGenreAuto) {
-                std::snprintf(value, sizeof(value), "AUTO %s",
-                              GenreManager::generativeModeName(
-                                  miniAcid_.genreManager().generativeMode()));
-            } else if (genre == GroovePuterCallResponse::CallResponseListener::kGenreNone) {
-                std::snprintf(value, sizeof(value), "NONE");
-            } else {
-                std::snprintf(value, sizeof(value), "%s",
-                              GenreManager::generativeModeName(static_cast<GenerativeMode>(
-                                  genre - GroovePuterCallResponse::CallResponseListener::kGenreFirst)));
-            }
-            drawRow(10, " GENRE", value, partnerOn);
+            // Phase 10: no GENRE row (AUTO = project genre) and no LENGTH row
+            // (100 %); the listener setters stay for tests and a later return.
             if (partner.answerChannel() == 0) {
                 std::snprintf(value, sizeof(value), "DX ROUTE");
             } else {
                 std::snprintf(value, sizeof(value), "CH%u",
                               static_cast<unsigned>(partner.answerChannel()));
             }
-            drawRow(11, " CHANNEL", value, partnerOn);
+            drawRow(10, " CHANNEL", value, partnerOn);
             const bool loop = partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop;
-            // Phase 7: LOOP always plays on the grid; DELAY is for ANSWER/DUET.
-            std::snprintf(value, sizeof(value), "%s",
-                          loop ? "N/A" : partner.answerDelaySteps() == 0 ? "0 GRID" : "1/16");
-            drawRow(12, " DELAY", value, partnerOn && !loop);
-            drawRow(13, " HOLD", !loop ? "N/A" : (!partner.hasLoopPhrase() ? "WAIT" : (partner.loopHold() ? "ON" : "OFF")), loop && partner.hasLoopPhrase());
+            drawRow(11, " HOLD", !loop ? "N/A" : (!partner.hasLoopPhrase() ? "WAIT" : (partner.loopHold() ? "ON" : "OFF")), loop && partner.hasLoopPhrase());
             std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(partner.loopEvolve()));
-            drawRow(14, " EVOLVE", loop ? value : "N/A", loop);
-            drawRow(15, " REPLACE", loop ? partner.loopReplaceName() : "N/A", loop);
+            drawRow(12, " EVOLVE", loop ? value : "N/A", loop);
+            drawRow(13, " REPLACE", loop ? partner.loopReplaceName() : "N/A", loop);
             break;
         }
 
@@ -1017,11 +993,10 @@ bool PerformPage::handleEvent(UIEvent& event) {
             return true;
         case 'x':
         case 'X': {
-            GroovePuterCallResponse::callResponseListener().setMode(
-                GroovePuterCallResponse::CallResponseListener::Mode::Off);
+            GroovePuterCallResponse::callResponseListener().silence();
             keyboard_.panic();
             char toast[40];
-            std::snprintf(toast, sizeof(toast), "PANIC: LIVE + PARTNER OFF");
+            std::snprintf(toast, sizeof(toast), "PANIC: LIVE + PARTNER SILENT");
             UI::showToast(toast, 1000);
             return true;
         }

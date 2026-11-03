@@ -1,7 +1,7 @@
 // CALL/RESPONSE phase 5: LOOP on the grid and the REPLACE threshold.
-//  - every LOOP reply is planned with delay 0 (phase 5: replays; phase 7:
-//    also the first reply after a new loop phrase), so it starts on the
-//    window downbeat and keeps its last-step note. PARTNER DELAY is ANSWER/DUET.
+//  - every LOOP reply starts on the window downbeat and keeps its last-step
+//    note (phase 5: replays; phase 7: also the first reply after a new loop
+//    phrase; phase 9: PARTNER DELAY removed, every mode is on the grid).
 //  - A closed window replaces the saved loop only with enough notes
 //    (REPLACE ANY / 3+ / HALF); fewer notes replay the loop and are reported
 //    through service(heard).
@@ -124,22 +124,21 @@ void testLoopRepeatsOnTheGrid() {
     for (uint8_t evolve = 0; evolve <= 3; ++evolve) {
         Rig rig(Listener::Mode::Loop);
         rig.listener.setLoopEvolve(evolve);
-        assert(rig.listener.answerDelaySteps() == 1);  // default DELAY 1/16
         playGridCall(rig);
         rig.runTo(127.0);
         if (rig.replies.size() != 3) std::printf("evolve=%u replies=%zu\n", evolve, rig.replies.size());
         assert(rig.replies.size() == 3);
-        // First reply after the question: phase 7 - on the grid as well
-        // (DELAY 1/16 applies to ANSWER/DUET only), the onset-31 note kept.
+        // First reply after the question: on the grid as well, the onset-31
+        // note kept.
         const Reply& first = rig.replies[0];
-        assert(first.windowStart == 0 && first.cycle == 0 && first.plan.delaySteps == 0);
+        assert(first.windowStart == 0 && first.cycle == 0 && first.plan.windowSteps == 32);
         assert(first.plan.droppedTail == 0 && first.plan.count == 3);
-        // Two replays in a row: delay 0, all three notes, the last on step 31.
+        // Two replays in a row: on the grid, all three notes, the last on step 31.
         for (int r = 1; r <= 2; ++r) {
             const Reply& replay = rig.replies[r];
             assert(replay.cycle == r && replay.heardCount == 0);
             assert(replay.windowStart == 32 * r);
-            assert(replay.plan.delaySteps == 0 && replay.plan.windowSteps == 32);
+            assert(replay.plan.windowSteps == 32);
             assert(replay.plan.droppedTail == 0 && replay.plan.count == 3);
             assert(replay.plan.notes[2].step == 31 && replay.plan.notes[2].length == 1);
         }
@@ -160,18 +159,6 @@ void testLoopRepeatsOnTheGrid() {
         rig.listener.setMode(Listener::Mode::Off);
         assertBalanced(rig.sink.events);
     }
-}
-
-// DELAY 0 already played the loop on the grid; nothing changes there.
-void testLoopDelayZeroUnchanged() {
-    Rig rig(Listener::Mode::Loop);
-    rig.listener.setAnswerDelaySteps(0);
-    playGridCall(rig);
-    rig.runTo(96.0);
-    assert(rig.replies.size() == 3);
-    for (const Reply& r : rig.replies) assert(r.plan.delaySteps == 0 && r.plan.count == 3);
-    const auto ons = rig.noteOnSteps(32.0, 64.0);
-    assert(ons.size() == 3 && ons[0] == 32.0 && ons[2] == 63.0);
 }
 
 // A 4-note loop: C D E F on 0/4/8/12.
@@ -195,7 +182,7 @@ void testReplaceThreePlusDefault() {
     assert(rig.replies.size() == 2);
     const Reply& kept = rig.replies[1];
     assert(kept.phrase.count == 4 && kept.phrase.notes[0].note == 60 && kept.phrase.windowStartStep == 32);
-    assert(kept.cycle == 1 && kept.plan.delaySteps == 0);
+    assert(kept.cycle == 1 && kept.plan.windowSteps == 32);
     assert(kept.heardCount == 1 && rig.heardLog[1].notes[0].note == 72 &&
            rig.heardLog[1].notes[0].onset == 8);
     // Two notes: still kept.
@@ -204,7 +191,7 @@ void testReplaceThreePlusDefault() {
     rig.runTo(96.0);
     assert(rig.replies.size() == 3 && rig.replies[2].phrase.notes[0].note == 60);
     assert(rig.replies[2].cycle == 2 && rig.replies[2].heardCount == 2);
-    // Three notes: the new loop, first reply with DELAY again.
+    // Three notes: the new loop, its first reply (on the grid).
     rig.note(96.0, 97.0, 67);
     rig.note(100.0, 101.0, 69);
     rig.note(104.0, 105.0, 71);
@@ -212,7 +199,7 @@ void testReplaceThreePlusDefault() {
     assert(rig.replies.size() == 4);
     const Reply& replaced = rig.replies[3];
     assert(replaced.phrase.count == 3 && replaced.phrase.notes[0].note == 67);
-    assert(replaced.cycle == 0 && replaced.plan.delaySteps == 0 && replaced.heardCount == 0);  // phase 7
+    assert(replaced.cycle == 0 && replaced.plan.windowSteps == 32 && replaced.heardCount == 0);  // phase 7
     // ...and that is what repeats afterwards.
     rig.runTo(160.0);
     assert(rig.replies.size() == 5 && rig.replies[4].phrase.notes[0].note == 67 &&
@@ -273,9 +260,9 @@ void testReplaceAnyAsBefore() {
     rig.runTo(64.0);
     assert(rig.replies.size() == 2);
     assert(rig.replies[1].phrase.count == 1 && rig.replies[1].phrase.notes[0].note == 72);
-    assert(rig.replies[1].cycle == 0 && rig.replies[1].heardCount == 0 && rig.replies[1].plan.delaySteps == 0);  // phase 7
+    assert(rig.replies[1].cycle == 0 && rig.replies[1].heardCount == 0 && rig.replies[1].plan.windowSteps == 32);  // phase 7
     rig.runTo(96.0);
-    assert(rig.replies[2].cycle == 1 && rig.replies[2].plan.delaySteps == 0);
+    assert(rig.replies[2].cycle == 1 && rig.replies[2].plan.windowSteps == 32);
 }
 
 void testReplaceCycle() {
@@ -291,20 +278,18 @@ void testReplaceCycle() {
     assert(listener.loopReplace() == Listener::LoopReplace::Any);
     listener.setLoopReplace(static_cast<Listener::LoopReplace>(9));
     assert(listener.loopReplace() == Listener::LoopReplace::ThreePlus);
-    // Not a loop: replyDelaySteps is PARTNER DELAY.
-    assert(!listener.loopRepeat() && listener.replyDelaySteps() == listener.answerDelaySteps());
+    assert(!listener.loopRepeat());
 }
 
 // ANSWER / DUET: REPLACE changes nothing (same events at the same times).
 void testAnswerAndDuetIgnoreReplace() {
     for (Listener::Mode mode : {Listener::Mode::Answer, Listener::Mode::Duet}) {
-        for (uint8_t delay = 0; delay <= 1; ++delay) {
+        {
             std::vector<MusicalEvent> reference;
             std::vector<uint32_t> referenceTimes;
             for (Listener::LoopReplace rule : {Listener::LoopReplace::Any, Listener::LoopReplace::ThreePlus,
                                                Listener::LoopReplace::Half}) {
                 Rig rig(mode);
-                rig.listener.setAnswerDelaySteps(delay);
                 rig.listener.setLoopReplace(rule);
                 rig.note(0.0, 2.0, 60);   // one-note CALL
                 rig.runTo(70.0);
@@ -312,7 +297,7 @@ void testAnswerAndDuetIgnoreReplace() {
                 rig.runTo(140.0);
                 assert(rig.replies.size() >= 2);
                 for (const Reply& r : rig.replies) {
-                    assert(r.cycle == 0 && r.heardCount == 0 && r.plan.delaySteps == delay);
+                    assert(r.cycle == 0 && r.heardCount == 0 && r.plan.windowSteps == 32);
                 }
                 if (reference.empty()) {
                     reference = rig.sink.events;
@@ -387,7 +372,6 @@ void testReplayCancelAndBalance() {
 
 int main() {
     testLoopRepeatsOnTheGrid();
-    testLoopDelayZeroUnchanged();
     testReplaceThreePlusDefault();
     testFirstLoopNeedsOneNote();
     testReplaceHalf();

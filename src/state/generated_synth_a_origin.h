@@ -53,6 +53,11 @@ struct GeneratedSynthAOriginCommon {
   GroovePuterRhythm::ChordProgressionSource progressionSource{};
   GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
       GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // CALL/RESPONSE phase 8: with harmonicAuthority Idiom, the template that
+  // wrote every bar and its level (GenreIdiom::packIdiomTemplate; 0xFF =
+  // unknown or mixed) - enough to read the chord of a step from the
+  // template's stabs without the file system or the generator.
+  uint8_t idiomTemplate = 0xFF;
 };
 
 struct GeneratedSynthAOrigin {

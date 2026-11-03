@@ -28,6 +28,7 @@ class DrumSequencerPage : public DrumSequencerLegacyMultiPage,
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   void setContext(int context) override; // context: (voice << 8) | step
+  void onExit() override;
 
  private:
   bool handleEventLegacy(UIEvent& ui_event);

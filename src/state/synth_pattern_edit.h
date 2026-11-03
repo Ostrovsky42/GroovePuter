@@ -9,6 +9,10 @@ namespace PatternEdit {
 
 constexpr int kMin303Note = 24;
 constexpr int kMax303Note = 71;
+// A step may hold a pitch above the internal 303 range (up to C7) so external
+// MIDI synths get it as written; the engine folds it down by octaves for the
+// internal voice only. C1..C7, 24..96.
+constexpr int kMaxPatternNote = 96;
 
 inline int clampStep(int step) {
   if (step < 0) return 0;
@@ -66,7 +70,7 @@ inline void adjustNote(SynthPattern& pattern, int stepIndex, int semitoneDelta) 
     step.note = -1;
     return;
   }
-  if (note > kMax303Note) note = kMax303Note;
+  if (note > kMaxPatternNote) note = kMaxPatternNote;
   step.note = static_cast<int8_t>(note);
 }
 

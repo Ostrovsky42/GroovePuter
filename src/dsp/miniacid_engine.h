@@ -137,7 +137,19 @@ class AudioMutationGate;
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
-  static constexpr int kMax303Note = 71; // B4
+  static constexpr int kMax303Note = 71; // B4: top of the internal voice
+  // A Pattern step may hold up to C7. MIDI gets the note as written; the
+  // internal voice plays it folded into its range (internalVoiceNote).
+  static constexpr int kMaxPatternNote = 96;
+
+  // Pitch the internal synth voice plays for a sequenced note: above B4 the
+  // naive 22.05 kHz oscillators alias and the untracked filter mutes the
+  // fundamental, so the note drops whole octaves until it is <= kMax303Note.
+  // Same pitch class, a pure integer fold: no allocation, no lock.
+  static constexpr int internalVoiceNote(int note) {
+    while (note > kMax303Note) note -= 12;
+    return note;
+  }
 
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
@@ -1402,8 +1414,8 @@ inline bool MiniAcid::adjustWorking303StepNote(
     nextNote = oldNote + semitoneDelta;
     if (nextNote < kMin303Note) {
       nextNote = -1;
-    } else {
-      nextNote = clamp303Note(nextNote);
+    } else if (nextNote > kMaxPatternNote) {
+      nextNote = kMaxPatternNote;
     }
   }
   if (nextNote == oldNote) return false;

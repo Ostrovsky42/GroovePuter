@@ -357,6 +357,8 @@ struct MaterializedSynthABarEvidence {
   GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
   GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
       GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // CALL/RESPONSE phase 8: template/level of an Idiom bar (0xFF = none).
+  uint8_t idiomTemplate = 0xFF;
 };
 
 static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
@@ -397,6 +399,7 @@ inline bool materializeOneBar(
     evidence.bassRhythm = result.bassRhythmPlan;
     evidence.bassPitchClasses = result.bassPitchClassWitness;
     evidence.harmonicAuthority = result.harmonicAuthority;
+    evidence.idiomTemplate = result.idiomTemplate;
   }
   return applied;
 }

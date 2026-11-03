@@ -70,16 +70,27 @@ void testNoteStateMachineAndNoOps() {
   adjustNote(pattern, 0, -1);
   assert(pattern.steps[0].note == -2);
 
+  // Steps hold C1..C7 (kMaxPatternNote): B4 is no longer a ceiling, so
+  // C#5/E5 reach external MIDI as written.
   pattern.steps[1].note = 70;
   adjustNote(pattern, 1, 5);
-  assert(pattern.steps[1].note == kMax303Note);
+  assert(pattern.steps[1].note == 75);
+  pattern.steps[1].note = 94;
+  adjustNote(pattern, 1, 5);
+  assert(pattern.steps[1].note == kMaxPatternNote);
   const SynthPattern saturated = pattern;
   adjustNote(pattern, 1, 1);
   assert(samePattern(pattern, saturated));
 
-  pattern.steps[2].note = 60;
+  pattern.steps[2].note = 64;
   adjustOctave(pattern, 2, 1);
-  assert(pattern.steps[2].note == kMax303Note);
+  assert(pattern.steps[2].note == 76);  // E4 -> E5
+  pattern.steps[2].note = 61;
+  adjustOctave(pattern, 2, 1);
+  assert(pattern.steps[2].note == 73);  // C#4 -> C#5
+  pattern.steps[2].note = 90;
+  adjustOctave(pattern, 2, 1);
+  assert(pattern.steps[2].note == kMaxPatternNote);
 }
 
 void testArticulationAndFx() {

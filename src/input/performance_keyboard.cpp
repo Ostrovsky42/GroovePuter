@@ -916,6 +916,7 @@ bool PerformanceKeyboard::setHarmonySnapshot(
     context.harmonyTriadPitchClasses = GroovePuterHarmony::transposePitchSet(
         definition->triadicSkeleton, snapshot.base.rootPc);
     context.rootMidi = static_cast<uint8_t>(60u + snapshot.base.rootPc);
+    context.tonicPc = static_cast<uint8_t>(snapshot.tonal.tonicPc % 12u);
     context.minNote = kMinNote;
     context.maxNote = kMaxNote;
     context.sourceOrdinal = snapshot.key.eventOrdinal;

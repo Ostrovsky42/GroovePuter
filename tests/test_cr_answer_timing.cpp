@@ -44,8 +44,10 @@ void testSixteenthAndStepConversion() {
     assert(answerStepDueMicros(origin, 125000, 1) == static_cast<uint32_t>(origin + 125000u));
 }
 
-// Free clock: the first NoteOn of the answer is due at CALL start + 33 steps
-// (two bars + kAnswerDelaySteps) and the following ones on their own steps.
+// Free clock: the first NoteOn of the answer is due at CALL start + 32 steps
+// (two bars, on the grid - phase 9 removed the 1/16 DELAY) and the following
+// ones on their own steps. The loop sees the boundary 3 ms late, so the first
+// NoteOn goes out at once on that pass (3 ms late; the delay used to hide it).
 void runFreeClock(double bpm, uint32_t t0) {
     MusicalEventRouter router;
     TimedSink sink;
@@ -75,25 +77,25 @@ void runFreeClock(double bpm, uint32_t t0) {
     assert(describe(phrase, 0, kMajor, 7, motif));
     ResponsePlan plan;
     assert(listener.answerPhrase(phrase, motif, responseKeyFromIntervals(0, kMajor, 7), gNow, plan));
-    assert(listener.microsAtStep(33.0) == stepTime(33));
-    assert(sink.events.empty());
-
-    gNow = stepTime(33) - 1;
-    (void)listener.service(gNow, stopped, static_cast<float>(bpm), phrase);
-    assert(sink.events.empty());
-    for (uint32_t t = stepTime(33); static_cast<int32_t>(stepTime(64) - t) > 0; t += 500) {
+    assert(listener.microsAtStep(32.0) == stepTime(32));
+    assert(listener.lastReplyGridMicros() == stepTime(32));
+    assert(sink.events.size() == 1 && sink.events[0].type == MusicalEventType::NoteOn);
+    assert(sink.times[0] == stepTime(32) + 3000);
+    for (uint32_t t = gNow + 500; static_cast<int32_t>(stepTime(64) - t) > 0; t += 500) {
         gNow = t;
         (void)listener.service(gNow, stopped, static_cast<float>(bpm), phrase);
     }
     assert(sink.events.size() == 4);
-    const uint32_t expectedOn[] = {stepTime(33), stepTime(33 + 6)};
-    const uint32_t expectedOff[] = {stepTime(33 + 2), stepTime(33 + 6 + 4)};
+    const uint32_t expectedOn[] = {stepTime(32), stepTime(32 + 6)};
+    const uint32_t expectedOff[] = {stepTime(32 + 2), stepTime(32 + 6 + 4)};
     int on = 0, off = 0;
     for (std::size_t i = 0; i < sink.events.size(); ++i) {
         const uint32_t expected = sink.events[i].type == MusicalEventType::NoteOn
             ? expectedOn[on++] : expectedOff[off++];
         const int32_t late = static_cast<int32_t>(sink.times[i] - expected);
-        assert(late >= 0 && late < 500);  // emitted on the first service pass at or after due
+        // Emitted on the first service pass at or after due (the first NoteOn
+        // on the late boundary pass itself).
+        assert(late >= 0 && late < (i == 0 ? 3001 : 500));
     }
     assert(on == 2 && off == 2);
 }
@@ -129,9 +131,10 @@ void testTransportClock() {
     assert(describe(phrase, 0, kMajor, 7, motif));
     ResponsePlan plan;
     assert(listener.answerPhrase(phrase, motif, responseKeyFromIntervals(0, kMajor, 7), gNow, plan));
-    // Answer onset 16 (bar 2 of the ANSWER window) = project step 64 + 1 + 16.
-    const uint32_t due = listener.microsAtStep(81.0);
-    assert(std::abs(static_cast<int32_t>(due - timeOf(81.0))) <= 1);
+    // Answer onset 16 (bar 2 of the ANSWER window) = project step 64 + 16
+    // (phase 9: on the grid, no +1 delay).
+    const uint32_t due = listener.microsAtStep(80.0);
+    assert(std::abs(static_cast<int32_t>(due - timeOf(80.0))) <= 1);
     gNow = due - 1;
     (void)listener.service(gNow, play, 120.0f, phrase);
     assert(sink.events.empty());

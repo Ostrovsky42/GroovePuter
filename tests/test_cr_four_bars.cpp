@@ -157,10 +157,9 @@ PhraseCapture::Phrase randomFourBarCall(const int8_t* scale, uint8_t root) {
     return phrase;
 }
 
-void checkPlan(const PhraseCapture::Phrase& call, const ResponsePlan& plan, const ResponseKey& key,
-               uint8_t delay) {
-    const int usable = 64 - delay;
-    assert(plan.windowSteps == usable && plan.delaySteps == delay);
+void checkPlan(const PhraseCapture::Phrase& call, const ResponsePlan& plan, const ResponseKey& key) {
+    const int usable = 64;  // phase 9: the whole window (no DELAY)
+    assert(plan.windowSteps == usable);
     assert(plan.count >= 1 && plan.count <= 32 && plan.count <= call.count);
     for (uint8_t i = 0; i < plan.count; ++i) {
         const ResponseNote& note = plan.notes[i];
@@ -194,16 +193,16 @@ void testPlannerFourBarSweep() {
         }
         const uint8_t genre = static_cast<uint8_t>(rnd() % 17);  // 16 = none
         const ResponseStyle style = pickResponseStyle(genre < 16 ? genre : kNoGenre, responseSeed(call));
-        for (uint8_t delay = 0; delay < 2; ++delay) {
+        {  // phase 9: no DELAY axis
             ResponsePlan plan;
-            assert(planEchoVariant(call, motif, key, plan, delay));
-            checkPlan(call, plan, key, delay);
+            assert(planEchoVariant(call, motif, key, plan));
+            checkPlan(call, plan, key);
             ResponseHarmonyReport report;
-            assert(planHarmonicEcho(call, motif, key, harmony, style, plan, &report, delay));
-            checkPlan(call, plan, key, delay);
+            assert(planHarmonicEcho(call, motif, key, harmony, style, plan, &report));
+            checkPlan(call, plan, key);
             ++plans;
             const ResponseNote& last = plan.notes[plan.count - 1];
-            if (call.notes[call.count - 1].onset >= 32 && call.notes[call.count - 1].onset < 64 - delay) {
+            if (call.notes[call.count - 1].onset >= 32 && call.notes[call.count - 1].onset < 64) {
                 assert(last.step >= 32);  // a CALL into bar 3-4 is answered there
                 ++reachedBar3;
             }
@@ -211,14 +210,15 @@ void testPlannerFourBarSweep() {
                 for (uint8_t evolve = 0; evolve < 4; ++evolve) {
                     ReplyStrategy actual{};
                     if (!planPerformanceReply(call, motif, key, harmony, style, ReplyMemory{},
-                                              mode == 0, mode == 1, evolve, delay, plan, actual, report))
+                                              mode == 0, mode == 1, evolve, plan, actual, report))
                         continue;
-                    checkPlan(call, plan, key, delay);
+                    checkPlan(call, plan, key);
                 }
             }
         }
     }
-    // A one-note CALL on the very last step (63) is still answered (step 62).
+    // A one-note CALL on the very last step (63) is answered on step 63
+    // (phase 9: was 62, moved back by the removed 1/16 delay).
     PhraseCapture::Phrase one{};
     one.windowSteps = 64;
     one.notes[0] = CapturedNote{63, 1, 64, 100};
@@ -226,9 +226,9 @@ void testPlannerFourBarSweep() {
     MotifDescriptor motif;
     assert(describe(one, 0, kMajor, 7, motif));
     ResponsePlan plan;
-    assert(planEchoVariant(one, motif, responseKeyFromIntervals(0, kMajor, 7), plan, 1));
-    assert(plan.count == 1 && plan.notes[0].step == 62 && plan.droppedTail == 0);
-    assert(plan.onsetMask() == (uint64_t{1} << 62));
+    assert(planEchoVariant(one, motif, responseKeyFromIntervals(0, kMajor, 7), plan));
+    assert(plan.count == 1 && plan.notes[0].step == 63 && plan.droppedTail == 0);
+    assert(plan.onsetMask() == (uint64_t{1} << 63));
     std::printf("phase4 planner: %d plans in key/range/window, %d answered into bars 3-4\n",
                 plans, reachedBar3);
     assert(reachedBar3 > 100);
@@ -253,7 +253,7 @@ void testFourBarStrongBeats() {
     assert(harmony.chordAtStep(60) == 0);  // beat 15: unknown
     ResponsePlan plan;
     ResponseHarmonyReport report;
-    assert(planHarmonicEcho(call, motif, key, harmony, ResponseStyle{}, plan, &report, 1));
+    assert(planHarmonicEcho(call, motif, key, harmony, ResponseStyle{}, plan, &report));
     assert(plan.count == 4);
     assert(pcIn(harmony.chordAtStep(32), plan.notes[1].note));
     assert(pcIn(harmony.chordAtStep(48), plan.notes[2].note));
@@ -363,17 +363,18 @@ void testFourBarAnswer() {
     rig.runTo(140.0);
     assert(rig.answers == 1);
     assert(rig.lastPhrase.windowSteps == 64 && rig.lastPhrase.windowStartStep == 0);
-    assert(rig.lastPlan.windowSteps == 63 && rig.lastPlan.count == 2);
+    assert(rig.lastPlan.windowSteps == 64 && rig.lastPlan.count == 2);
     assert(rig.lastPlan.notes[1].step == 40);
     assert(!rig.sink.events.empty() && rig.sink.events.front().type == MusicalEventType::NoteOn);
-    assert(rig.stepOf(0) == 65.0);  // 4 bars + 1/16
+    assert(rig.stepOf(0) == 64.0);  // 4 bars, on the grid (phase 9)
     for (std::size_t i = 0; i < rig.sink.events.size(); ++i) {
-        assert(rig.stepOf(i) >= 65.0 && rig.stepOf(i) <= 128.0);  // inside the ANSWER window
+        assert(rig.stepOf(i) >= 64.0 && rig.stepOf(i) <= 128.0);  // inside the ANSWER window
     }
     assert(rig.count(MusicalEventType::NoteOn) == 2 && rig.count(MusicalEventType::NoteOff) == 2);
 }
 
-// A one-note CALL on the last step of 4 bars is answered on step 62.
+// A one-note CALL on the last step of 4 bars is answered on its step 63
+// (phase 9: was 62 with the removed 1/16 delay).
 void testFourBarOneNoteLast() {
     Rig last(4);
     last.note(0.0, 1.0, 60);
@@ -383,9 +384,9 @@ void testFourBarOneNoteLast() {
     last.runTo(64.0 * 5);
     assert(last.answers == 2);
     assert(last.lastPhrase.count == 1 && last.lastPhrase.notes[0].onset == 63);
-    assert(last.lastPlan.notes[0].step == 62);
+    assert(last.lastPlan.notes[0].step == 63);
     assert(last.sink.events.size() == before + 2);
-    assert(last.stepOf(before) == 64.0 * 3 + 1 + 62);
+    assert(last.stepOf(before) == 64.0 * 3 + 63);
 }
 
 // Changing BARS while a 4-bar answer sounds releases the note at once.

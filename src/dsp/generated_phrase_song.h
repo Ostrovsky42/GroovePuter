@@ -592,8 +592,14 @@ inline void applyPreparedPersistent(
       } else {
         if (candidate->filledBars == 0) {
           candidate->origin.common.harmonicAuthority = barEvidence.harmonicAuthority;
-        } else if (candidate->origin.common.harmonicAuthority !=
-                   barEvidence.harmonicAuthority) {
+          candidate->origin.common.idiomTemplate = barEvidence.idiomTemplate;
+        } else if (candidate->origin.common.idiomTemplate != barEvidence.idiomTemplate) {
+          // Phase 8: bars from different templates/levels have no single
+          // template chord table; the partner falls back (no idiom chord).
+          candidate->origin.common.idiomTemplate = 0xFF;
+        }
+        if (candidate->filledBars != 0 &&
+            candidate->origin.common.harmonicAuthority != barEvidence.harmonicAuthority) {
           // A phrase whose bars were resolved by different owners has no
           // single truthful phrase-level harmonic authority.
           candidate->failed = true;

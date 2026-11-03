@@ -1,4 +1,7 @@
-// CALL/RESPONSE phase 3: PARTNER settings (BARS, GENRE, CHANNEL, DELAY).
+// CALL/RESPONSE phase 3: PARTNER settings (BARS, GENRE, CHANNEL).
+// Phase 9: DELAY removed (every answer starts on the grid); LENGTH is in
+// test_cr_phase9_length.cpp. Phase 10: GENRE and LENGTH have no PERFORM > INPUT
+// row any more (test_cr_phase10_menu.cpp); the listener setters tested here stay.
 // Defaults are the phase-2 behaviour; each setting changes only what it names.
 #include <cassert>
 #include <cstdio>
@@ -85,7 +88,7 @@ struct Rig {
 void testDefaultsArePhaseTwo() {
     Listener listener;
     assert(listener.answerBars() == 2);
-    assert(listener.answerDelaySteps() == kAnswerDelaySteps && kAnswerDelaySteps == 1);
+    assert(listener.answerLength() == AnswerLength::Full && listener.answerLengthPercent() == 100);
     assert(listener.answerGenreSetting() == Listener::kGenreAuto);
     assert(listener.answerChannel() == Listener::kAnswerChannelFollowDx);
     assert(listener.answerGenre(9) == 9);  // AUTO = project genre (House)
@@ -112,7 +115,8 @@ void testGenreSetting() {
     assert(listener.answerGenreSetting() == Listener::kGenreAuto);
 }
 
-// Default rig: CALL at 0..4 and 4..8, answer one step after the 2-bar boundary.
+// Default rig: CALL at 0..4 and 4..8, answer on the 2-bar boundary (phase 9:
+// was one step after it with the removed DELAY 1/16 default).
 void testTwoBarDefaultTiming() {
     Rig rig;
     rig.note(0.0, 4.0, 62);
@@ -120,7 +124,7 @@ void testTwoBarDefaultTiming() {
     rig.runTo(70.0);
     assert(rig.answers == 1);
     assert(rig.lastPhrase.windowSteps == 32);
-    assert(rig.firstOnStep() == 33.0);
+    assert(rig.firstOnStep() == 32.0);
 }
 
 // BARS 1: the CALL closes after one bar and the answer fills the next bar.
@@ -133,36 +137,34 @@ void testOneBar() {
     rig.runTo(40.0);
     assert(rig.answers == 1);
     assert(rig.lastPhrase.windowStartStep == 0 && rig.lastPhrase.windowSteps == 16);
-    assert(rig.firstOnStep() == 17.0);  // 1 bar + 1/16
-    assert(rig.lastPlan.windowSteps == 15);
+    assert(rig.firstOnStep() == 16.0);  // 1 bar, on the grid (phase 9)
+    assert(rig.lastPlan.windowSteps == 16);
     for (std::size_t i = 0; i < rig.sink.events.size(); ++i) {
         const double step = static_cast<double>(rig.sink.times[i] - kT0) / kSixteenth;
-        assert(step >= 17.0 && step <= 32.0);  // inside the ANSWER bar
+        assert(step >= 16.0 && step <= 32.0);  // inside the ANSWER bar
     }
     // A one-note CALL on the last sixteenth of a 1-bar window is answered too.
     Rig last;
     last.listener.setAnswerBars(1);
-    last.note(0.0, 0.5, 60);   // anchors the free clock (answered on step 17)
+    last.note(0.0, 0.5, 60);   // anchors the free clock (answered on step 16)
     last.note(31.0, 31.5, 62); // onset 15 of window 16..32
     last.runTo(60.0);
     assert(last.answers == 2);
-    assert(last.lastPlan.count == 1 && last.lastPlan.notes[0].step == 14);
+    // Phase 9: on its own step (was moved to 14 by the 1/16 delay).
+    assert(last.lastPlan.count == 1 && last.lastPlan.notes[0].step == 15);
 }
 
-// DELAY 0: the answer starts on the boundary; onset 31 is no longer cut.
-void testDelayZero() {
+// Phase 9 (was "DELAY 0", now the only behaviour): the answer starts on the
+// boundary and a CALL note on the last step (onset 31) is not cut.
+void testAnswerOnGrid() {
     Rig rig;
-    rig.listener.setAnswerDelaySteps(0);
     rig.note(0.0, 4.0, 62);
     rig.note(31.0, 31.6, 64);
     rig.runTo(70.0);
     assert(rig.answers == 1);
     assert(rig.firstOnStep() == 32.0);
-    assert(rig.lastPlan.delaySteps == 0 && rig.lastPlan.droppedTail == 0 && rig.lastPlan.count == 2);
-    rig.listener.cycleAnswerDelay(1);
-    assert(rig.listener.answerDelaySteps() == 1);
-    rig.listener.setAnswerDelaySteps(9);  // clamped to the offered range
-    assert(rig.listener.answerDelaySteps() == kAnswerMaxDelaySteps);
+    assert(rig.lastPlan.windowSteps == 32 && rig.lastPlan.droppedTail == 0 && rig.lastPlan.count == 2);
+    assert(rig.lastPlan.notes[1].step == 31);
 }
 
 // Changing BARS while an answer sounds is a new epoch: the answer note is
@@ -223,7 +225,7 @@ int main() {
     testGenreSetting();
     testTwoBarDefaultTiming();
     testOneBar();
-    testDelayZero();
+    testAnswerOnGrid();
     testBarsChangeCancels();
     std::puts("cr partner settings tests passed");
     return 0;

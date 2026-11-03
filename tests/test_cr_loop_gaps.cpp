@@ -4,17 +4,17 @@
 // the main-loop path of GroovePuter.ino (serviceCallResponseLog): describe,
 // harmony per strong beat (optional), genre style, reply memory, cadence,
 // planPerformanceReply, startAnswer, rememberStartedReply. For EVOLVE 0..3,
-// DELAY 0/1, BARS 1/2, with and without harmony, every genre (and none) and
-// several loop shapes it checks that
+// BARS 1/2, with and without harmony, every genre (and none) and several
+// loop shapes it checks that (phase 9: the DELAY 0/1 axis is gone - LOOP was
+// on the grid for both since phase 7, and the setting no longer exists)
 //   - every window after the question gets its reply (loop=0,1,2,...);
 //   - the first NoteOn of each window is exactly on the grid (window start +
-//     first loop onset + the delay of that reply: DELAY for loop=0, 0 after);
-//   - no loop note is lost: NoteOns per window = loop notes (cycle 0 with
-//     DELAY 1 minus a last-step note, phase 5);
+//     first loop onset);
+//   - no loop note is lost: NoteOns per window = loop notes;
 //   - every bar that holds a loop note sounds in every window;
 //   - the longest silence between two answer notes over the whole run is
 //     never longer than the loop's own longest rest (+ the 2-step LATE
-//     ending, + the 1-step DELAY of the first reply);
+//     ending);
 //   - NoteOn/NoteOff stay balanced and OFF leaves nothing sounding.
 // Also: free clock and PLAY clock, coarse main-loop passes (one pass late,
 // staleDrops == 0, NoteOn within one pass of the grid), and the REPLACE 3+
@@ -61,13 +61,11 @@ public:
 struct Started {
     int32_t answerWindow;  // epoch step of the reply window
     uint16_t cycle;
-    uint8_t delay;
     uint8_t strategy;
 };
 
 struct Config {
     uint8_t evolve{1};
-    uint8_t delay{1};
     uint8_t bars{2};
     bool harmony{false};
     uint8_t genre{kNoGenre};
@@ -91,7 +89,6 @@ struct Rig {
         listener.setOutputRouter(&router);
         listener.setMode(Listener::Mode::Loop);
         listener.setLoopEvolve(c.evolve);
-        listener.setAnswerDelaySteps(c.delay);
         listener.setAnswerBars(c.bars);
         gNow = kT0;
         if (c.transport) pass(kT0);  // PLAY: the clock exists before the first note
@@ -144,7 +141,7 @@ struct Rig {
         if (!listener.canAnswer(phrase)) return;
         ResponseHarmony harmony{};
         if (config.harmony) {
-            const int32_t start = phrase.windowStartStep + phrase.windowSteps + listener.replyDelaySteps();
+            const int32_t start = phrase.windowStartStep + phrase.windowSteps;
             for (uint8_t beat = 0; beat < phrase.windowSteps / kStrongBeatSteps; ++beat) {
                 const int32_t step = start + beat * kStrongBeatSteps;
                 harmony.set(beat, kChords[(step / PhraseCapture::kStepsPerBar) % 4], ChordSource::Ahead);
@@ -156,12 +153,12 @@ struct Rig {
         ResponsePlan plan;
         ResponseHarmonyReport report;
         if (!planPerformanceReply(phrase, motif, key, harmony, style, listener.replyMemory(), true, false,
-                                  listener.loopEvolve(), listener.replyDelaySteps(), plan, strategy, report,
-                                  listener.answerCadence())) return;
+                                  listener.loopEvolve(), plan, strategy, report,
+                                  listener.answerCadence(), listener.loopCycle())) return;  // phase 8: pass form
         if (!listener.startAnswer(phrase, plan, now)) return;
         listener.rememberStartedReply(signature, strategy);
         started.push_back(Started{phrase.windowStartStep + phrase.windowSteps, listener.loopCycle(),
-                                  plan.delaySteps, static_cast<uint8_t>(strategy)});
+                                  static_cast<uint8_t>(strategy)});
     }
 
     void runTo(uint32_t until) {
@@ -288,8 +285,8 @@ void runOne(const Config& config, int shapeKind, long& windowsChecked) {
     rig.runTo(at(lastWindowEnd) + 3 * kBlockMicros + config.passMicros);  // window 6 fully played (its tail NoteOff on the boundary)
 
     char tag[160];
-    std::snprintf(tag, sizeof(tag), "evolve=%u delay=%u bars=%u harmony=%d genre=%u shape=%s clock=%s pass=%u",
-                  config.evolve, config.delay, config.bars, config.harmony ? 1 : 0, config.genre, shape.name,
+    std::snprintf(tag, sizeof(tag), "evolve=%u bars=%u harmony=%d genre=%u shape=%s clock=%s pass=%u",
+                  config.evolve, config.bars, config.harmony ? 1 : 0, config.genre, shape.name,
                   config.transport ? "PLAY" : "FREE", static_cast<unsigned>(config.passMicros));
 
     // A reply was started for every window, cycles 0..5, on the grid.
@@ -301,9 +298,8 @@ void runOne(const Config& config, int shapeKind, long& windowsChecked) {
     double firstOnPrev = -1.0;
     for (std::size_t r = 0; r < rig.started.size() && r < static_cast<std::size_t>(kReplayWindows); ++r) {
         const Started& s = rig.started[r];
-        const int expectedDelay = 0;  // LOOP plays on the grid from the first reply on
-        CHECK(s.answerWindow == window * static_cast<int>(r + 1) && s.cycle == r && s.delay == expectedDelay,
-              "%s reply %zu window=%d cycle=%u delay=%u", tag, r, s.answerWindow, s.cycle, s.delay);
+        CHECK(s.answerWindow == window * static_cast<int>(r + 1) && s.cycle == r,
+              "%s reply %zu window=%d cycle=%u", tag, r, s.answerWindow, s.cycle);
         // The notes of this window: NoteOn time and length (to its NoteOff).
         const double from = window * static_cast<double>(r + 1);
         std::vector<double> ons;
@@ -425,20 +421,17 @@ void testLoopWithoutGaps() {
     long windows = 0;
     long runs = 0;
     for (uint8_t evolve = 0; evolve <= 3; ++evolve) {
-        for (uint8_t delay = 0; delay <= 1; ++delay) {
-            for (uint8_t bars : {1, 2}) {
-                for (bool harmony : {false, true}) {
-                    for (int genre = -1; genre < static_cast<int>(kGenreCount); ++genre) {
-                        for (int shape = 0; shape < 6; ++shape) {
-                            Config config;
-                            config.evolve = evolve;
-                            config.delay = delay;
-                            config.bars = bars;
-                            config.harmony = harmony;
-                            config.genre = genre < 0 ? kNoGenre : static_cast<uint8_t>(genre);
-                            runOne(config, shape, windows);
-                            ++runs;
-                        }
+        for (uint8_t bars : {1, 2}) {
+            for (bool harmony : {false, true}) {
+                for (int genre = -1; genre < static_cast<int>(kGenreCount); ++genre) {
+                    for (int shape = 0; shape < 6; ++shape) {
+                        Config config;
+                        config.evolve = evolve;
+                        config.bars = bars;
+                        config.harmony = harmony;
+                        config.genre = genre < 0 ? kNoGenre : static_cast<uint8_t>(genre);
+                        runOne(config, shape, windows);
+                        ++runs;
                     }
                 }
             }
@@ -455,19 +448,16 @@ void testClocksAndPasses() {
     for (bool transport : {false, true}) {
         for (uint32_t pass : {1000u, 5000u, 20000u, 60000u}) {
             for (uint8_t evolve = 0; evolve <= 3; ++evolve) {
-                for (uint8_t delay = 0; delay <= 1; ++delay) {
-                    for (uint8_t bars : {1, 2}) {
-                        for (int shape = 0; shape < 6; ++shape) {
-                            Config config;
-                            config.evolve = evolve;
-                            config.delay = delay;
-                            config.bars = bars;
-                            config.harmony = true;
-                            config.genre = 3;
-                            config.transport = transport;
-                            config.passMicros = pass;
-                            runOne(config, shape, windows);
-                        }
+                for (uint8_t bars : {1, 2}) {
+                    for (int shape = 0; shape < 6; ++shape) {
+                        Config config;
+                        config.evolve = evolve;
+                        config.bars = bars;
+                        config.harmony = true;
+                        config.genre = 3;
+                        config.transport = transport;
+                        config.passMicros = pass;
+                        runOne(config, shape, windows);
                     }
                 }
             }
@@ -536,7 +526,7 @@ void testThinWindowStillReplays() {
         rig.runTo(at(128.0) - 1);
         CHECK(rig.started.size() == 3, "thin evolve=%u replies=%zu", evolve, rig.started.size());
         for (std::size_t r = 1; r < rig.started.size(); ++r) {
-            CHECK(rig.started[r].cycle == r && rig.started[r].delay == 0, "thin evolve=%u reply %zu cycle=%u",
+            CHECK(rig.started[r].cycle == r, "thin evolve=%u reply %zu cycle=%u",
                   evolve, r, rig.started[r].cycle);
             // The replay's first NoteOn sits on the window downbeat.
             const uint32_t downbeat = at(32.0 * (r + 1));

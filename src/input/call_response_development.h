@@ -50,13 +50,13 @@ inline void rememberReply(ReplyMemory& memory, uint32_t signature, ReplyStrategy
 
 // Transform a copy of the CALL; preserve the original when a change cannot fit.
 inline bool transformCall(const PhraseCapture::Phrase& input, ReplyStrategy strategy,
-                          uint8_t delaySteps, PhraseCapture::Phrase& output) {
+                          PhraseCapture::Phrase& output) {
     output = input;
     if (strategy == ReplyStrategy::Echo || input.count == 0 ||
         input.count > PhraseCapture::kMaxCapacity || input.windowSteps == 0 ||
-        input.windowSteps > PhraseCapture::kMaxWindowSteps || delaySteps >= input.windowSteps)
+        input.windowSteps > PhraseCapture::kMaxWindowSteps)
         return false;
-    const int usable = input.windowSteps - delaySteps;
+    const int usable = input.windowSteps;
     bool changed = false;
     if (strategy == ReplyStrategy::ShortReply && input.count >= 2) {
         output.count = (input.count + 1u) / 2u;

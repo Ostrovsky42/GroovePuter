@@ -99,13 +99,13 @@ void testHumanNoteCancelsAnswer() {
 
     assert(playCallAndAnswer(listener));
     assert(listener.answering());
-    assert(sink.events.empty());                   // answer starts one step after the boundary
-    serviceUntil(listener, 32.9);
-    assert(sink.events.empty());
-    serviceUntil(listener, 33.0);                  // step 0 of the answer: C
+    // Phase 9: the answer starts on the boundary (was one step after it), so
+    // step 0 (C) sounds on the very pass that closed the CALL.
     assert(count(sink.events, MusicalEventType::NoteOn) == 1 && sink.events[0].note == 60);
     assert(sink.events[0].velocity == 100);
-    serviceUntil(listener, 37.0);                  // C off, D on
+    serviceUntil(listener, 35.9);
+    assert(sink.events.size() == 1);
+    serviceUntil(listener, 36.0);                  // C off, D on
     assert(count(sink.events, MusicalEventType::NoteOn) == 2);
     assert(count(sink.events, MusicalEventType::NoteOff) == 1);
     assert(listener.responder().soundingCount() == 1);

@@ -2034,7 +2034,7 @@ void MiniAcid::adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelt
     pattern.steps[step].note = -1;
     return;
   }
-  note = clamp303Note(note);
+  if (note > kMaxPatternNote) note = kMaxPatternNote;
   pattern.steps[step].note = static_cast<int8_t>(note);
 }
 void MiniAcid::adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta) {
@@ -4712,7 +4712,8 @@ void MiniAcid::consumePatternPlaybackActions_(
       case PhraseRuntime::RuntimeSynthPlaybackActionType::Start:
         if (synthVoices_[idx]) {
           synthVoices_[idx]->startNote(
-              noteToFreq(event.note), accent, slide, event.velocity);
+              noteToFreq(internalVoiceNote(event.note)), accent, slide,
+              event.velocity);
         }
         publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
@@ -4725,7 +4726,8 @@ void MiniAcid::consumePatternPlaybackActions_(
         publishPatternNoteOff_(idx);
         if (synthVoices_[idx]) {
           synthVoices_[idx]->startNote(
-              noteToFreq(event.note), accent, slide, event.velocity);
+              noteToFreq(internalVoiceNote(event.note)), accent, slide,
+              event.velocity);
         }
         publishPatternNoteOn_(idx, event.note, event.velocity, accent, slide);
         LedManager::instance().onVoiceTriggered(
@@ -4788,7 +4790,7 @@ void MiniAcid::followChordWithInternalVoice_(int synthIdx, bool topRestarted) {
     if (static_cast<int>(voice.note) != top) continue;
     if (synthVoices_[idx]) {
       synthVoices_[idx]->startNote(
-          noteToFreq(voice.note),
+          noteToFreq(internalVoiceNote(voice.note)),
           (voice.flags & PhraseRuntime::kEventAccent) != 0, false,
           voice.velocity);
     }

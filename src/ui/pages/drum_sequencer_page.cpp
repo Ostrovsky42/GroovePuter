@@ -65,6 +65,14 @@ bool isDrumOutputCycleKey(const UIEvent& event) {
       : 0;
   return key == 'o' || event.scancode == GROOVEPUTER_O;
 }
+
+// Alt+E (no Ctrl/Meta) opens DRUMS STEP SETTINGS on the grid tab.
+bool isDrumStepSettingsChord(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (!event.alt || event.ctrl || event.meta) return false;
+  return event.key == 'e' || event.key == 'E' ||
+         event.scancode == GROOVEPUTER_E;
+}
 }
 
 class DrumSequencerMainPage;
@@ -100,6 +108,12 @@ class PatternLockedDrumContainer : public Container {
 #undef Container
 #undef drawStandardFooter
 
+void DrumSequencerPage::onExit() {
+  // STEP SETTINGS is an input mode of the grid; leaving DRUMS ends it.
+  std::shared_ptr<Container> main = getPagePtr(0);
+  if (main) static_cast<DrumSequencerMainPage*>(main.get())->step_settings_open_ = false;
+}
+
 void DrumSequencerPage::draw(IGfx& gfx) {
   // The retained Minimal draw path renders grid_component_ explicitly and then
   // calls Container::draw(), which would render the same child a second time.
@@ -125,6 +139,22 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   }
 
 #endif
+  // STEP SETTINGS is modal for keys and owns them before every other DRUMS
+  // binding (Alt+O, G, Q-I, arrows). Undo/Paste are application events, not
+  // keys, and still reach their handlers below.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && activePageIndex() == 0) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    auto* mainPage =
+        main ? static_cast<DrumSequencerMainPage*>(main.get()) : nullptr;
+    if (mainPage && mainPage->step_settings_open_) {
+      return mainPage->handleStepSettingsKey(ui_event);
+    }
+    if (mainPage && isDrumStepSettingsChord(ui_event)) {
+      mainPage->openStepSettings();
+      return true;
+    }
+  }
+
   // Output ownership belongs to the logical DRUMS track, not to one sub-page.
   // Alt+O therefore works from GRID/FEEL/AUTO/SAMPLES. A legacy project has no
   // fourth visible mode: the first explicit press canonicalizes it to LAYER.

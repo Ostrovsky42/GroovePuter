@@ -111,6 +111,7 @@ inline bool performanceContextAtGeneratedPhrase(
     out.harmony = selected.event;
     out.scalePitchClasses = scalePitchClasses;
     out.rootMidi = static_cast<uint8_t>(rootMidi);
+    out.tonicPc = static_cast<uint8_t>(origin.common.rootPitchClass % 12u);
     out.minNote = 12;
     out.maxNote = 95;
     out.sourceOrdinal = static_cast<uint8_t>(globalOrdinal);

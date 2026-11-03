@@ -90,6 +90,16 @@ public:
         rememberReply(replyMemory_, signature, strategy);
     }
     void cancelAnswer() { (void)responder_.cancel(); }
+    // X on PERFORM: silence the partner but keep its mode. Sounding answer
+    // notes end at once, and the loop is forgotten so nothing replays until
+    // the player plays a new phrase.
+    void silence() {
+        (void)responder_.cancel();
+        loopValid_ = false;
+        loopHold_ = false;
+        captureResumeStep_ = 0;
+        loopCycle_ = 0;
+    }
     bool hasLoopPhrase() const { return loopValid_; }
     bool loopHold() const { return loopHold_; }
     void setLoopHold(bool hold) {
@@ -103,16 +113,6 @@ public:
     // replay of the saved loop (a window without enough human notes).
     uint16_t loopCycle() const { return loopCycle_; }
     bool loopRepeat() const { return mode_ == Mode::Loop && loopCycle_ != 0; }
-    // Delay for the reply that service() has just returned: PARTNER DELAY in
-    // ANSWER/DUET, 0 (exactly on the grid) for every LOOP reply. Phase 7: also
-    // the first reply after a new loop phrase (loop=0). The safety sixteenth
-    // exists so that a person playing on, on the downbeat, is heard before the
-    // answer and cancels it (ANSWER); LOOP never cancels on human input, so
-    // there it only shifted the first pass by a 1/16 (a rest between the
-    // question and the loop), cut its last-step note and made the second pass
-    // jump back onto the grid.
-    uint8_t replyDelaySteps() const { return mode_ == Mode::Loop ? 0 : answerDelaySteps_; }
-
     // Phase 6: place of the next answer in the form. LOOP counts its cycles
     // (cycle 0 = the reply to a new question = the 1st answer); ANSWER/DUET
     // count the answers started in this epoch (any BARS/PLAY/clock/mode
@@ -277,7 +277,7 @@ public:
         return anchorMicros_ + static_cast<uint32_t>(rounded);
     }
     uint32_t sixteenthMicros() const { return sixteenthMicros_; }
-    // Downbeat (micros, before the delay) of the last started reply window.
+    // Downbeat (micros) of the last started reply window.
     uint32_t lastReplyGridMicros() const { return gridMicros_; }
 
     // After service() returned Phrase: true when, in ANSWER mode, the window
@@ -291,10 +291,13 @@ public:
         return mode_ != Mode::Answer || capture_.pendingCount() == 0;
     }
 
-    // Starts an already planned answer in the window right after phrase.
-    bool startAnswer(const PhraseCapture::Phrase& phrase, const ResponsePlan& plan,
+    // Starts an already planned answer in the window right after phrase, on
+    // its downbeat. Phase 9: PARTNER LENGTH is applied here, to plan itself
+    // (so the caller logs what sounds), for every mode and every LOOP pass.
+    bool startAnswer(const PhraseCapture::Phrase& phrase, ResponsePlan& plan,
                      uint32_t nowMicros) {
         if (!canAnswer(phrase) || plan.count == 0) return false;
+        applyAnswerLength(plan, answerLength_);
         const int32_t answerWindow = phrase.windowStartStep + phrase.windowSteps;
         uint32_t grid = microsAtStep(static_cast<double>(answerWindow));
         // Phase 7: in LOOP a reply right after the previous one continues its
@@ -312,8 +315,7 @@ public:
             const int32_t limit = static_cast<int32_t>(sixteenthMicros_ / 2u);
             if (diff <= limit && diff >= -limit) grid = chained;
         }
-        const uint32_t origin = grid + static_cast<uint32_t>(plan.delaySteps) * sixteenthMicros_;
-        if (!responder_.start(plan, origin, sixteenthMicros_)) return false;
+        if (!responder_.start(plan, grid, sixteenthMicros_)) return false;
         gridMicros_ = grid;
         gridWindow_ = answerWindow;
         gridValid_ = true;
@@ -333,14 +335,14 @@ public:
             ResponseHarmonyReport report{};
             if (!planPerformanceReply(phrase, motif, key, ResponseHarmony{}, ResponseStyle{},
                 replyMemory_, mode_ == Mode::Loop, mode_ == Mode::Duet, loopEvolve_,
-                replyDelaySteps(), plan, actual, report, answerCadence())) return false;
-        } else if (!planEchoVariant(phrase, motif, key, plan, replyDelaySteps())) return false;
+                plan, actual, report, answerCadence(), loopCycle_)) return false;
+        } else if (!planEchoVariant(phrase, motif, key, plan)) return false;
         return startAnswer(phrase, plan, nowMicros);
     }
 
     // ---- PARTNER settings (phase 3). Session only, never persisted; the
-    // defaults are the phase-2 behaviour: 2 bars, follow DX, project genre,
-    // 1/16 delay.
+    // defaults are the phase-2 behaviour: 2 bars, follow DX, project genre;
+    // phase 9: full note length (the 1/16 DELAY setting is gone).
 
     // Answer MIDI channel, 1..16; 0 = follow the PERFORM DX route (default).
     // An explicit channel plays on UsbMidiOutput's answer lane (USB + DIN).
@@ -374,10 +376,19 @@ public:
         else setAnswerBars(bars == 2 ? 4 : bars == 4 ? 1 : 2);
     }
 
-    // Answer delay after the ANSWER window boundary, in sixteenths: 0 or 1.
-    void setAnswerDelaySteps(uint8_t steps) { answerDelaySteps_ = clampAnswerDelay(steps); }
-    uint8_t answerDelaySteps() const { return answerDelaySteps_; }
-    void cycleAnswerDelay(int) { setAnswerDelaySteps(answerDelaySteps_ == 0 ? 1 : 0); }
+    // Phase 9: PARTNER LENGTH, the answer note length 100/75/50/25 % (see
+    // applyAnswerLength). Takes effect from the next started reply; a
+    // sounding reply keeps its lengths (its NoteOffs are already timed).
+    void setAnswerLength(AnswerLength length) {
+        answerLength_ = static_cast<uint8_t>(length) < kAnswerLengthCount ? length : AnswerLength::Full;
+    }
+    AnswerLength answerLength() const { return answerLength_; }
+    uint8_t answerLengthPercent() const { return GroovePuterCallResponse::answerLengthPercent(answerLength_); }
+    void cycleAnswerLength(int direction) {
+        setAnswerLength(static_cast<AnswerLength>(
+            (static_cast<uint8_t>(answerLength_) + (direction >= 0 ? 1u : kAnswerLengthCount - 1u)) %
+            kAnswerLengthCount));
+    }
 
     // Answer genre: AUTO = the project genre (phase 2), NONE = no genre ending
     // (phase-1 answer), otherwise one GenreIdiom genre (0..kGenreCount-1).
@@ -481,13 +492,13 @@ private:
     uint8_t idleWindows_{0};
     Mode mode_{Mode::Off};
     bool freeClockDisabled_{false};  // PERFORM free clock without PLAY: on by default
-    uint8_t answerDelaySteps_{kAnswerDelaySteps};
+    AnswerLength answerLength_{AnswerLength::Full};
     uint8_t answerGenre_{kGenreAuto};
     uint16_t loopCycle_{0};
     uint8_t answersStarted_{0};  // phase 6: answers started this epoch (parity = cadence)
     bool gridValid_{false};      // phase 7: gridMicros_/gridWindow_ hold the last started reply
     int32_t gridWindow_{0};      // epoch step of the last started reply window
-    uint32_t gridMicros_{0};     // its downbeat (micros, before the delay)
+    uint32_t gridMicros_{0};     // its downbeat (micros)
 };
 
 inline CallResponseListener& callResponseListener() {

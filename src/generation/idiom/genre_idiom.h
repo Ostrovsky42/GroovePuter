@@ -546,6 +546,20 @@ inline void applyTwoStepBreakDrums(const Request& request, const IdeaPlan& plan,
 
 // Writes Synth A (bass) and Synth B (lead) for one bar of the phrase. False
 // (and nothing written) when the genre has no idiom.
+// A bar's chord as a scale-degree shift of the template (variant progression
+// by the bar's phrase role, folded to at most three degrees either way). A
+// single looping bar has no phrase and keeps the template's own degrees.
+inline int barDegreeShift(const IdiomVariant& variant, uint8_t barOrdinal, uint8_t phraseBars) {
+  if (barOrdinal == kNoBarOrdinal) return 0;
+  int role = barOrdinal % 4;
+  // A two-bar phrase is statement and answer: A B.
+  if (phraseBars == 2) role = (barOrdinal % 2) ? 3 : 0;
+  int degreeShift = variant.progression[role];
+  if (degreeShift > 3) degreeShift -= 7;
+  if (degreeShift < -3) degreeShift += 7;
+  return degreeShift;
+}
+
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
                   IdeaPlan* planOut = nullptr, DrumPatternSet* drums = nullptr) {
   const IdiomVariant* variant =
@@ -578,9 +592,7 @@ inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead
   const int leadBase = 60 + shift;
   // This bar's chord: a degree shift from the variant's progression, folded so
   // the line moves at most three degrees either way.
-  int degreeShift = singleBar ? 0 : variant->progression[role];
-  if (degreeShift > 3) degreeShift -= 7;
-  if (degreeShift < -3) degreeShift += 7;
+  const int degreeShift = barDegreeShift(*variant, request.barOrdinal, request.phraseBars);
   auto map = [&](int semi) {
     return detail::mapSemi(detail::transposeDegrees(semi, degreeShift), request.scale);
   };
@@ -866,6 +878,116 @@ inline void applyTwoStepBreakDrums(const Request& request, const IdeaPlan& plan,
   } else if (atmos) {
     hit(kRim, 7, 36, 40);
   }
+}
+
+// ---- CALL/RESPONSE phase 8: the template's chord at a step (read only) -----
+//
+// Every template, in a fixed order, so an origin can name the template that
+// wrote its bars in one byte. Flash only (constexpr pointers to constexpr data).
+inline constexpr const IdiomVariant* kIdiomVariants[] = {
+    &k_acid_chicago_jack, &k_acid_rolling, &k_lofi_classic_chill, &k_lofi_drunken,
+    &k_boombap_golden_era, &k_boombap_dusty_jazz, &k_ukg_classic_2step, &k_ukg_dark_skippy,
+    &k_dub_deep_chord, &k_dub_minimal_space, &k_jungle_classic_amen, &k_jungle_atmospheric,
+    &k_house_deep_offbeat, &k_outrun_drive, &k_darksynth_drive, &k_funk_pocket,
+    &k_electro_machine, &k_broken_bruk, &k_dnb_dance, &k_dnb_neuro,
+    &k_dnb_funk, &k_dnb_atmos, &k_chip_arp,
+};
+constexpr uint8_t kIdiomVariantCount =
+    static_cast<uint8_t>(sizeof(kIdiomVariants) / sizeof(kIdiomVariants[0]));
+constexpr uint8_t kNoIdiomVariant = 0xFF;
+
+inline uint8_t idiomVariantIndex(const IdiomVariant* variant) {
+  for (uint8_t i = 0; variant != nullptr && i < kIdiomVariantCount; ++i)
+    if (kIdiomVariants[i] == variant) return i;
+  return kNoIdiomVariant;
+}
+
+inline const IdiomVariant* idiomVariantAt(uint8_t index) {
+  return index < kIdiomVariantCount ? kIdiomVariants[index] : nullptr;
+}
+
+// Template + level in one byte for the origins: bits 0..4 the variant index,
+// bits 5..6 the level 0..2; 0xFF = none.
+constexpr uint8_t kNoIdiomTemplate = 0xFF;
+inline uint8_t packIdiomTemplate(uint8_t variantIndex, uint8_t level) {
+  if (variantIndex >= kIdiomVariantCount) return kNoIdiomTemplate;
+  return static_cast<uint8_t>(variantIndex | ((level > 2 ? 2 : level) << 5));
+}
+inline const IdiomVariant* idiomTemplateVariant(uint8_t packed, uint8_t& level) {
+  level = static_cast<uint8_t>((packed >> 5) & 3u);
+  if (packed == kNoIdiomTemplate || level > 2) return nullptr;
+  return idiomVariantAt(static_cast<uint8_t>(packed & 31u));
+}
+static_assert(kIdiomVariantCount <= 31, "idiom template index must fit 5 bits");
+
+// The template apply() uses for this request (the same selection).
+inline const IdiomVariant* variantForRequest(const Request& request) {
+  return variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
+}
+
+namespace detail {
+
+// One stab as absolute pitch classes over the project key: the same degree
+// mapping apply() uses for Synth B (template degree + bar shift, then the
+// project scale, then the project root). rootPc = the stab's mapped root.
+inline void stabPitchClasses(const IdiomStab& stab, int degreeShift, uint8_t scale,
+                             uint8_t rootPitchClass, uint16_t& pcs, uint8_t& rootPc) {
+  const int root = rootPitchClass % 12;
+  auto absolutePc = [&](int semi) {
+    const int mapped = mapSemi(transposeDegrees(semi, degreeShift), scale) + root;
+    return static_cast<uint8_t>(((mapped % 12) + 12) % 12);
+  };
+  pcs = 0;
+  for (int interval = 0; interval < 24; ++interval) {
+    if ((stab.intervalMask & (1u << interval)) == 0) continue;
+    pcs = static_cast<uint16_t>(pcs | (1u << absolutePc(stab.root + interval)));
+  }
+  rootPc = absolutePc(stab.root);
+}
+
+// A template level without stabs (lead-line templates: Outrun, Darksynth,
+// Electro, Chip, DnB dance) implies the bar's triad from the bass degree: a
+// minor triad on the template tonic, moved by the bar's degree shift (so it
+// becomes the diatonic triad of that degree in the project scale).
+inline constexpr IdiomStab kImpliedTriad = {0, 0, 0x89u, 16, 0};
+
+// Last stab at or before step in this level; nullptr when none.
+inline const IdiomStab* lastStabAtOrBefore(const IdiomLevel& level, uint8_t step) {
+  if (level.stabCount == 0 || level.stabs == nullptr) return step < 16 ? &kImpliedTriad : nullptr;
+  const IdiomStab* found = nullptr;
+  for (uint8_t i = 0; i < level.stabCount; ++i)
+    if (level.stabs[i].step <= step) found = &level.stabs[i];
+  return found;
+}
+
+}  // namespace detail
+
+// The chord (absolute pitch-class mask, bit n = pc n) that the template's
+// stabs give at step (0..15) of a bar, and its root pc. The chord of a step is
+// the last stab at or before it; before the bar's first stab it is the last
+// stab of the previous bar (bar ordinal - 1; ordinal 0 wraps to the phrase's
+// last bar, a single looping bar to itself). barOrdinal = kNoBarOrdinal for a
+// single looping bar (Pattern mode), phraseBars as in Request, barCount = bars
+// in the phrase (0/1 = no previous bar). Pure: no file system, no allocation.
+inline bool idiomChordAt(const IdiomVariant& variant, uint8_t level, uint8_t rootPitchClass,
+                         uint8_t scale, uint8_t barOrdinal, uint8_t phraseBars,
+                         uint8_t barCount, uint8_t step, uint16_t& pcs, uint8_t& rootPc) {
+  pcs = 0;
+  rootPc = 0xFF;
+  if (step >= 16) return false;
+  const IdiomLevel& bar = variant.levels[level > 2 ? 2 : level];
+  uint8_t ordinal = barOrdinal;
+  const IdiomStab* stab = detail::lastStabAtOrBefore(bar, step);
+  if (stab == nullptr) {
+    // Carried over the bar line: the previous bar's last stab.
+    stab = detail::lastStabAtOrBefore(bar, 15);
+    if (barOrdinal != kNoBarOrdinal && barCount > 1)
+      ordinal = static_cast<uint8_t>(barOrdinal % barCount == 0 ? barCount - 1 : barOrdinal - 1);
+  }
+  if (stab == nullptr) return false;
+  detail::stabPitchClasses(*stab, barDegreeShift(variant, ordinal, phraseBars), scale,
+                           rootPitchClass, pcs, rootPc);
+  return pcs != 0;
 }
 
 }  // namespace GenreIdiom

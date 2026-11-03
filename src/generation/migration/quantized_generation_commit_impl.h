@@ -140,6 +140,7 @@ patternHarmonyFromMigration(const PatternTarget& target,
       songPatternFromPageBankIndex(target.page, target.synthBank[0],
                                    target.synthSlot[0]))};
   origin.authority = migration.harmonicAuthority;
+  origin.idiomTemplate = migration.idiomTemplate;
   origin.rootPitchClass = migration.harmonicRootPitchClass;
   origin.scaleTypeValue = migration.harmonicScaleTypeValue;
   origin.onsets = migration.harmonicPlan.onsets;

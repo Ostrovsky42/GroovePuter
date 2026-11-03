@@ -1307,6 +1307,12 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     // DnB writes its drum grammar too, but only when this G replaces drums.
     idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
                                      replaceDrums ? &nextDrums : nullptr);
+    // CALL/RESPONSE phase 8: which template and level wrote this bar, so the
+    // partner can read the chord of a step from the template's stabs.
+    if (idiomApplied) {
+      result.idiomTemplate = GenreIdiom::packIdiomTemplate(
+          GenreIdiom::idiomVariantIndex(GenreIdiom::variantForRequest(idiom)), idiom.level);
+    }
   }
 
   if (replaceDrums) {

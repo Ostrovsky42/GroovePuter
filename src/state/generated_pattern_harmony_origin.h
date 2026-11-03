@@ -28,6 +28,10 @@ struct GeneratedPatternHarmonyOrigin {
   uint8_t eventCount = 0;
   GroovePuterHarmony::HarmonicAuthority authority =
       GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // CALL/RESPONSE phase 8: see GeneratedSynthAOriginCommon (tail padding).
+  // One byte: two separate bytes here hit a host GCC 13 ICE at -O1
+  // (gimple_add_tmp_var) on value-initialising this struct.
+  uint8_t idiomTemplate = 0xFF;
 
   bool valid() const {
     uint8_t onsetCount = 0;

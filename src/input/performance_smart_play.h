@@ -41,6 +41,11 @@ struct PerformanceContext {
     bool allowChromatic{true};
     bool hasHarmony{false};
     bool hasPreviousNote{false};
+    // CALL/RESPONSE phase 8: the key's tonic (pitch class 0..11) when the
+    // harmony source knows it; 0xFF = unknown. rootMidi is the root of the
+    // chord that sounds now (Smart Play is chord-relative), not the tonic.
+    // Sits in the struct's tail padding (size stays 24).
+    uint8_t tonicPc{0xFF};
 };
 static_assert(sizeof(PerformanceContext) <= 24,
               "performance harmony context must remain a bounded snapshot");

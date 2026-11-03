@@ -2,6 +2,7 @@
 #include "drum_automation_page.h"
 #include "../ui_common.h"
 #include "src/state/scene_revision.h"
+#include "src/state/drum_step_edit.h"
 
 #include <algorithm>
 #include <cctype>
@@ -85,6 +86,11 @@ class DrumSequencerMainPage : public Container {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   bool bankRowFocused() const;
+  // STEP SETTINGS (Alt+E on the grid): PROB, TIMING, VEL, FLAM/ROLL.
+  void openStepSettings();
+  bool handleStepSettingsKey(const UIEvent& ui_event);
+  void adjustStepSetting(int field, int direction);
+  void drawStepSettings(IGfx& gfx) const;
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -129,6 +135,8 @@ class DrumSequencerMainPage : public Container {
   int selection_start_step_ = 0;
   int selection_start_voice_ = 0;
   bool selection_locked_ = false;
+  bool step_settings_open_ = false;
+  uint8_t step_settings_field_ = 0;
 };
 
 class GlobalDrumFeelPage : public Container {
@@ -831,6 +839,106 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
       drawRetroClassicStyle(gfx);
       break;
   }
+  if (step_settings_open_) {
+    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ENT/ESC:CLOSE");
+  }
+  drawStepSettings(gfx);
+}
+
+void DrumSequencerMainPage::openStepSettings() {
+  focusGrid();
+  step_settings_open_ = true;
+  step_settings_field_ = 0;
+}
+
+void DrumSequencerMainPage::adjustStepSetting(int field, int direction) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  if (field < 0 || field >= Edit::kFieldCount) return;
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  // One press is one canonical drum mutation, so one Undo step. The first
+  // cell of the area decides the new value (same rule as synth Alt+E).
+  commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+    const DrumStep anchor = pattern.voices[min_voice].steps[min_step];
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        Edit::applyField(pattern.voices[v].steps[s], anchor, field, direction);
+      }
+    }
+  });
+}
+
+bool DrumSequencerMainPage::handleStepSettingsKey(const UIEvent& ui_event) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  const bool esc = ui_event.key == 0x1B ||
+                   ui_event.scancode == GROOVEPUTER_ESCAPE;
+  const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
+  if (esc || enter) {
+    step_settings_open_ = false;
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  if (nav == GROOVEPUTER_UP) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + Edit::kFieldCount - 1) % Edit::kFieldCount);
+  } else if (nav == GROOVEPUTER_DOWN) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + 1) % Edit::kFieldCount);
+  } else if (nav == GROOVEPUTER_LEFT || ui_event.key == '-') {
+    adjustStepSetting(step_settings_field_, -1);
+  } else if (nav == GROOVEPUTER_RIGHT || ui_event.key == '=' ||
+             ui_event.key == '+') {
+    adjustStepSetting(step_settings_field_, 1);
+  }
+  // Modal: every other key (Alt+E included) is swallowed so a stray press
+  // cannot edit the grid, switch the slot or regenerate.
+  return true;
+}
+
+void DrumSequencerMainPage::drawStepSettings(IGfx& gfx) const {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  if (!step_settings_open_) return;
+  const UI::ThemePalette p = UI::themePalette();
+  const Rect& b = getBoundaries();
+  const int lineH = gfx.fontHeight() + 3;
+  const int w = std::min(b.w - 8, 150);
+  const int h = lineH * (Edit::kFieldCount + 2) + 6;
+  const int x = b.x + (b.w - w) / 2;
+  const int y = b.y + std::max(0, (b.h - h) / 2);
+
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  const int count = (max_voice - min_voice + 1) * (max_step - min_step + 1);
+  const DrumStep& st = mini_acid_.sceneManager().getCurrentDrumPattern()
+                           .voices[min_voice].steps[min_step];
+
+  gfx.fillRect(x, y, w, h, p.panel);
+  gfx.drawRect(x, y, w, h, p.accent);
+  char line[32];
+  if (count > 1) std::snprintf(line, sizeof(line), "STEP SETTINGS  SEL %d", count);
+  else std::snprintf(line, sizeof(line), "STEP SETTINGS  STEP %d", min_step + 1);
+  gfx.setTextColor(p.accent);
+  gfx.drawText(x + 4, y + 3, line);
+
+  char values[Edit::kFieldCount][12];
+  std::snprintf(values[0], sizeof(values[0]), "%d%%", static_cast<int>(st.probability));
+  std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
+  std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
+  std::snprintf(values[3], sizeof(values[3]), "%s", Edit::ornamentName(st));
+  static const char* const kLabels[Edit::kFieldCount] = {"PROB", "TIMING", "VEL", "FLAM/ROLL"};
+  for (int i = 0; i < Edit::kFieldCount; ++i) {
+    const int ry = y + 3 + lineH * (i + 1);
+    const bool sel = i == step_settings_field_;
+    if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    gfx.setTextColor(sel ? p.invert : p.text);
+    gfx.drawText(x + 6, ry, kLabels[i]);
+    gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
+  }
+  gfx.setTextColor(p.dim);
+  gfx.drawText(x + 4, y + 3 + lineH * (Edit::kFieldCount + 1),
+               "L/R:SET  ENT/ESC:CLOSE");
 }
 
 void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {

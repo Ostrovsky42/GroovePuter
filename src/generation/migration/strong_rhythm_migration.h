@@ -276,6 +276,10 @@ struct StrongRhythmMigrationResult {
       GroovePuterHarmony::HarmonicAuthority::Unknown;
   GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
       GroovePuterHarmony::HarmonicStrategy::Legacy;
+  // CALL/RESPONSE phase 8: the template that wrote the bar and its level,
+  // GenreIdiom::packIdiomTemplate() (0xFF = none). Read only when
+  // harmonicAuthority is Idiom.
+  uint8_t idiomTemplate = 0xFF;
 };
 
 #ifdef GROOVEPUTER_M1_TEST_PROBE

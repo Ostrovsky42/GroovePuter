@@ -1121,7 +1121,7 @@ void PatternEditPage::draw(IGfx& gfx) {
             : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L:PLAY AltE:STEP");
   }
   if (step_settings_open_) {
-    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ESC/AltE:CLOSE");
+    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ENT/ESC:CLOSE");
   }
   drawStepSettings(gfx);
 }

@@ -176,6 +176,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move step cursor |
 | `N` | NOTE ENTRY ON/OFF |
+| `-` / `=` in NOTE ENTRY | NOTE rows octave: 1-2 .. 5-6 (default 3-4). Steps hold C1..C7; MIDI gets the note as written, the internal synth folds notes above B4 down by octaves |
 | `L` on STEPS | PAIR VIEW + PAIR PLAY (outside NOTE ENTRY, where `L` is a pitch): rows 1-2 are slot N as now, rows 3-4 are slot N+1 of the same synth, header `A 1+2`, footer `L:1 SLOT` (`L:PAIR` when off). The cursor and every edit (note, accent, slide, clear, paste) follow the row and act on that slot with their own Undo. Slot 8 has no N+1: rows 3-4 are empty and not editable. `G`, `Alt+G`, `Ctrl+Backspace` act on slot N only (refused on rows 3-4). Plain `L` also starts PAIR PLAY (below); `L` again stops it and turns the view off. The pair is per synth and sticky: leaving the page or switching to the other synth does not stop it, and re-entering shows its view |
 | PAIR PLAY on STEPS | Started by `L` with the view: this voice plays slot N, then N+1 at the next bar line, and back, as a loop. While the transport plays, the view starts at once but the sound starts at the next bar line (footer `PAIR PLAY: WAIT NEXT BAR`, then `PAIR PLAY 1+2`); stopped, it starts at once. Pattern mode only; refused with Song on (`SONG OFF FIRST`), a Melody slot (`STEPS ONLY`), unsaved edits (`SAVE FIRST`) or a queued GO; the view stays on after a refusal. Stops on `L`, Stop, changing slot, Song on (not on leaving the page). The other synth's page shows `A:PAIR` / `B:PAIR` in the footer. The selected slot does not move. `Ctrl+L` is not used on STEPS |
 | `D` | On MELODY: vary the focused bar in place (1 ANSWER, 2 PUSH, 3 MIRROR, 4 the ORIGINAL bar again); each press is one `Ctrl+Z` step. On STEPS NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
@@ -188,7 +189,7 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
-| `Alt+E` on STEPS | STEP SETTINGS window for the cursor step (all selected steps when an area is selected), works with NOTE ENTRY on. `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or GHOST (on/off); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Esc` or `Alt+E` closes; other keys are ignored while it is open. Not offered on a Melody |
+| `Alt+E` on STEPS | STEP SETTINGS window for the cursor step (all selected steps when an area is selected), works with NOTE ENTRY on. `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or GHOST (on/off); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Enter` or `Esc` closes; other keys are ignored while it is open. Not offered on a Melody |
 | `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
 | `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
@@ -289,6 +290,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Arrows` | Move grid cursor |
 | `Enter` | Toggle selected hit |
 | `A` | Toggle accent on the selected existing hit only |
+| `Alt+E` on the grid | DRUMS STEP SETTINGS window for the cursor cell (all selected cells when an area is selected; the first cell of the area gives the value). `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or FLAM/ROLL (OFF -> FLAM -> ROLL; FLAM is a second, softer hit 2 ticks later, ROLL is 4 rising hits in the step); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Enter` or `Esc` closes; other keys are ignored while it is open. A RETRIG/REVERSE/PITCH step FX shows by name and is replaced by FLAM or ROLL |
 | `G` | Drums-only strong generation at current P-level |
 | `Ctrl+G` | Randomize focused drum voice |
 | `Alt+G` | Full-pattern CHAOS |
