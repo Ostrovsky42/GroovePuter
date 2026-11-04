@@ -71,7 +71,7 @@ rsync -a --delete \
 # Appended to the product defaults (DUAL OSC is always on).
 # DUAL OSC is part of the product build: the Felucca analog engine is enabled by default.
 GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="-DGROOVEPUTER_FELUCCA_ANALOG=1 ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-}"
-ARDUINO_REPRODUCIBLE_PATH_FLAGS="-ffile-prefix-map=${TEMP_ROOT}/GroovePuter=."
+ARDUINO_REPRODUCIBLE_PATH_FLAGS="-ffile-prefix-map=${ARDUINO_BUILD_PATH}=. -ffile-prefix-map=${BUILD_PATH}=. -ffile-prefix-map=${TEMP_ROOT}/GroovePuter=."
 ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS} ${ARDUINO_REPRODUCIBLE_PATH_FLAGS}"
 ARDUINO_C_EXTRA_FLAGS="${GROOVEPUTER_BUILD_EXTRA_C_FLAGS:-} ${ARDUINO_REPRODUCIBLE_PATH_FLAGS}"
 

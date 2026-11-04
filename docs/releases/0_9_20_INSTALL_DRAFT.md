@@ -9,8 +9,8 @@ the current image is not accepted for the original Cardputer.
 - App image for M5Launcher: `GroovePuter.ino.bin`
 - Profile: Cardputer ADV, PSRAM disabled, `huge_app`, USB CDC on boot disabled,
   dynamic FatFs FS1B
-- SHA-256: `ef3b946544f3ffe2f977d83a2192b488a8bcf80ab2c3d4291467c5772b070c54`
-- Verify it against `SHA256SUMS.txt` before copying it to the device.
+- SHA-256: use the value for `GroovePuter.ino.bin` in the adjacent
+  `SHA256SUMS.txt`. This draft does not identify the earlier dirty-tree image.
 
 ## Install with M5Launcher, without Arduino IDE
 

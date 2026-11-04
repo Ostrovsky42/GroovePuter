@@ -7,17 +7,20 @@ readiness work. Do not tag or publish it. The latest published release remains v
 
 ## Candidate identity
 
-- Remote candidate branch: `genre/cell-source`
-- Production baseline SHA: `fec3237c95c0e19f61e3958cee7d4cd23cecb483`
+- Local readiness branch: `release/0.9.20-readiness`
+- Exact source SHA and tree state: recorded in the generated `provenance.txt`; a
+  release image is valid only when the provenance commit equals the reviewed
+  candidate SHA and `worktree_dirty=false`.
 - Product: M5Stack Cardputer ADV / ESP32-S3, PSRAM disabled
 - Release build: `bash scripts/build_cardputer_dynbuffers.sh --warnings all`
 - Release workflow FQBN: `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc`
 - Build script default FQBN differs (`CDCOnBoot=cdc`); the successful release-profile build explicitly overrode `FQBN` to match the workflow.
 - Filesystem: dynamic FatFs FS1B, verified by the build script's linker-map proof
-- Local BIN: `build/cardputer-adv-dynbuffers/.arduino-build/GroovePuter.ino.bin` (latest 1,725,200 bytes; Arduino reports 1,725,038 bytes sketch usage)
-- Local BIN SHA-256: `ef3b946544f3ffe2f977d83a2192b488a8bcf80ab2c3d4291467c5772b070c54`
-- Local checksums and provenance: `build/cardputer-adv-dynbuffers/SHA256SUMS.txt` and `provenance.txt`; these explicitly identify the dirty tree and are not release attestations. A review-only candidate bundle is staged at `build/grooveputer-0.9.20-package-draft-ef3b94.zip`; its local SHA-256 sidecar is next to the ZIP. It contains the unverified [M5Launcher install/recovery draft](0_9_20_INSTALL_DRAFT.md) and is explicitly marked NOT A RELEASE.
-- Build source: isolated working tree based on `fec3237c95c0e19f61e3958cee7d4cd23cecb483` with local uncommitted source/test changes; this is not an exact-SHA CI artifact and must not be represented as a published release image.
+- Candidate BIN: `build/cardputer-adv-dynbuffers/GroovePuter.ino.bin`; exact size and
+  SHA-256 are recorded in the generated `SHA256SUMS.txt` after the final candidate
+  commit is rebuilt.
+- The earlier `ef3b9465…` dirty-tree image and draft ZIPs are superseded. They are
+  not release artifacts and must not be installed or shared as the 0.9.20 candidate.
 - Memory report: 186,236 bytes globals against provisional 191,488-byte budget; only 5,252 bytes margin. Build script reports provisional exception, threshold-rule items 5–7 pending.
 
 The candidate branch has no exact-SHA Actions run, no PR, and no published v0.9.20
@@ -39,6 +42,13 @@ profile evidence by the explicit workflow-profile build (`CDCOnBoot=default`).
   were visually inspected. Dummy audio cannot verify sound, MIDI hardware, persistence,
   or physical Cardputer behavior. Exact captures and limitations are in the R0 audit.
 - Exact workflow-profile firmware build: PASS using `bash scripts/build_cardputer_dynbuffers.sh --warnings all` with the workflow FQBN override. FS1B link-map proof passed. Latest build emitted 1,001 warning occurrences: 978 are six Arduino core macro redefinitions repeated across 163 translation units; the remaining 23 application warnings are format-truncation diagnostics reviewed against bounded source values in the R0 audit. Two real UI truncation risks were fixed. All other application warnings from the preceding build were resolved, including dead locals, debug-only metric work, incomplete aggregate initializers, initializer ordering, a deprecated RGB API and volatile increment syntax. Log: `/tmp/grooveputer-0.9.20-warning-cleanup-final.log`.
+- Release-image rebuild check: two clean builds at the same fixed release `BUILD_PATH`
+  produced identical BINs. A separate-path experiment produced a different image:
+  Arduino linked library objects directly in one build and through archives in the
+  other. Therefore exact-byte reproducibility is established only for a repeated
+  build in the same environment and absolute build path; cross-path reproducibility
+  remains UNVERIFIED. The release workflow uses one fixed path for its check and
+  artifact build.
 - `bash scripts/ci/run_midi_targets.sh` — PASS; MIDI profile, route, pattern binding, performance binding, profile UI, convergence, and C9 repair targets passed.
 - `git diff --check` — PASS.
 - Full local `run_core.sh` after warning cleanup: PASS, exit 0. All 46 groups closed and the final S1 page-restore check recorded PASS. Log: `/tmp/grooveputer-0.9.20-run-core-after-warning-cleanup.log`. The focused release identity, Smart Play, and S1 engine-switch checks also passed after cleanup. This is local validation, not an exact-SHA remote CI run.

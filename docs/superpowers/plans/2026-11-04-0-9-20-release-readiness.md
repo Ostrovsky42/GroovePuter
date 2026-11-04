@@ -55,7 +55,7 @@
 - Modify: `.github/workflows/release.yml` or `docs/releases/0_9_20_RELEASE.md` only after profile intent is established from existing project contracts.
 
 - [x] Confirmed profile consistency: same FQBN and FS1B build; MIDI-only labels USB interface configuration.
-- [x] Built the workflow profile from readiness commit `fa47cf876b132658c4aa5d3ee0876f98b207afce`; the initial BIN SHA differed from an earlier build. Fixed timestamp/path inputs and added `tests/test_release_firmware_reproducibility.sh` to release CI; two clean builds now match (`c0fb4fa0115f5271da3e35fa0ebd203a6ac892241b3991b8f38cb44a4ceaa620`). Re-run against the final source SHA remains required.
+- [ ] Rebuild the final committed candidate and generate checksums/provenance. A same-path clean rebuild comparison is wired into release CI. Cross-path tests found Arduino CLI links cached library objects differently from direct objects; cross-path byte reproducibility remains unverified and must not be claimed.
 - [ ] Run the applicable core, MIDI, fixed-DRAM, firmware, and memory gates on that same SHA/profile.
 - [ ] Produce the firmware image, `SHA256SUMS.txt`, provenance, and build log; ensure provenance states profile and FS configuration.
 

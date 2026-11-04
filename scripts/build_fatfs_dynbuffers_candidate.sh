@@ -13,6 +13,7 @@ CC="${CC:-$TOOLBIN/xtensa-esp32s3-elf-gcc}"
 AR="${AR:-$TOOLBIN/xtensa-esp32s3-elf-ar}"
 NM="${NM:-$TOOLBIN/xtensa-esp32s3-elf-nm}"
 OUT="${OUT:-/tmp/fatfs-build}"
+OUT="$(realpath -m "$OUT")"
 STOCK="$AL/lib/libfatfs.a"
 SDKCONFIG="$AL/dio_qspi/include/sdkconfig.h"
 
@@ -92,6 +93,7 @@ mapfile -d '' -t INC_ARGS < <(read_flags "$AL/flags/includes")
 compile_common=(
   "${CFLAGS_ARGS[@]}"
   "${DEFS_ARGS[@]}"
+  "-ffile-prefix-map=${OUT}=."
   -iprefix "$AL/include/"
   "${INC_ARGS[@]}"
   -I"$OUT/inc"
