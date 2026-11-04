@@ -51,6 +51,8 @@ jobs:
           git init "$HOME/esp-idf"
           git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
           git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+      - name: Verify release firmware reproducibility
+        run: bash tests/test_release_firmware_reproducibility.sh
       - name: Build product release FS1B image
         run: |
           set -euo pipefail

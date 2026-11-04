@@ -55,7 +55,7 @@
 - Modify: `.github/workflows/release.yml` or `docs/releases/0_9_20_RELEASE.md` only after profile intent is established from existing project contracts.
 
 - [x] Confirmed profile consistency: same FQBN and FS1B build; MIDI-only labels USB interface configuration.
-- [ ] Build the chosen profile from the final candidate SHA with the repository release command.
+- [x] Built the workflow profile from readiness commit `fa47cf876b132658c4aa5d3ee0876f98b207afce`; the initial BIN SHA differed from an earlier build. Fixed timestamp/path inputs and added `tests/test_release_firmware_reproducibility.sh` to release CI; two clean builds now match (`c0fb4fa0115f5271da3e35fa0ebd203a6ac892241b3991b8f38cb44a4ceaa620`). Re-run against the final source SHA remains required.
 - [ ] Run the applicable core, MIDI, fixed-DRAM, firmware, and memory gates on that same SHA/profile.
 - [ ] Produce the firmware image, `SHA256SUMS.txt`, provenance, and build log; ensure provenance states profile and FS configuration.
 
