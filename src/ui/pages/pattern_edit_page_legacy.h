@@ -1068,11 +1068,11 @@ bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
 void PatternEditPage::draw(IGfx& gfx) {
   switch (UI::currentStyle) {
     case VisualStyle::RETRO_CLASSIC:
+      drawRetroClassicStyle(gfx);
+      break;
     case VisualStyle::MINIMAL:
     default:
-      // CLEAN shares the CYBER structure; its palette and state forms come from
-      // the shared draw (see `clean` in drawRetroClassicStyle).
-      drawRetroClassicStyle(gfx);
+      drawMinimalStyle(gfx);
       break;
     case VisualStyle::AMBER:
       drawAmberStyle(gfx);
@@ -1170,8 +1170,9 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  int body_y = y + 2;
-  int body_h = h - 2;
+  constexpr int headerHeight = 14;
+  int body_y = y + headerHeight;
+  int body_h = h - headerHeight;
   if (body_h <= 0) return;
 
   const SynthPattern& pattern = slotNPattern();
@@ -1185,7 +1186,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   // currentStep() reports 0 while stopped, so the playhead is shown only while
   // transport runs and only on the pattern that is actually playing (as CYBER does).
   const bool playingHere = mini_acid_.isPlaying() &&
-                           mini_acid_.current303PatternIndex(voice_index_) == activePatternCursor();
+                           mini_acid_.current303PatternIndex(voice_index_) == selectedPattern;
   int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
   int bankCursor = activeBankCursor();
 
@@ -1214,11 +1215,18 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bank_bar_->draw(gfx);
 
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
+  char titleBuf[32];
+  formatPatternTitle(titleBuf, sizeof(titleBuf), voice_index_, chaining_mode_,
+                     pair_view_,
+                     mini_acid_.current303PatternIndex(voice_index_) + 1,
+                     nextSlotAvailable());
   char pageBuf[24];
   formatPatternMode(pageBuf, sizeof(pageBuf),
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
-  gfx.setTextColor(p.text);
+  gfx.setTextColor(p.title);
+  gfx.drawText(x + 2, y + 2, titleBuf);
+  gfx.setTextColor(p.modeTag);
   gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
   const int column_spacing = 4;
