@@ -20,6 +20,7 @@
 | `v0.9.20` GitHub Release | Not published | GitHub API returned 404 for the tag |
 | Local candidate | PASS, local only | Branch `release/0.9.20-minimal-ui-fix`; local commit is captured in the generated bundle manifest. Not pushed. |
 | Local workflow-profile build | PASS, provisional | FQBN `...CDCOnBoot=default...`; fixed `BUILD_PATH` and `SOURCE_DATE_EPOCH`. BIN SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08` (1,726,816 bytes), ELF `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`, merged BIN `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`. Two builds at same path matched these hashes. Globals 186,236/191,488 B (5,252 B margin); DRAM exception remains provisional, items 5–7 open. 1,001 warning occurrences remain: 978 repeated upstream Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics reviewed against bounded source values below. Logs: `/tmp/gp-0.9.20-f5cd730a-finalpath-build1.log`, `/tmp/gp-0.9.20-f5cd730a-finalpath-build2.log`. |
+| Review bundle | PASS, explicitly not a release | `build/grooveputer-0.9.20-candidate-ab994565-NOT-A-RELEASE.zip`; `unzip -t` passes; includes provenance, checksums, install draft and status/known gaps. Hardware installation remains unverified. |
 
 ## Focused host checks
 

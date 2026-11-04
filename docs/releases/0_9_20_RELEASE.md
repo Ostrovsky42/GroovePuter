@@ -19,6 +19,9 @@ readiness work. Do not tag or publish it. The latest published release remains v
   bytes, SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08`.
   ELF SHA-256 `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`;
   merged BIN SHA-256 `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`.
+- Review-only bundle: `build/grooveputer-0.9.20-candidate-ab994565-NOT-A-RELEASE.zip`.
+  It contains the app and merged images, build proof, provenance, checksums and
+  first-user documentation; `STATUS.txt` marks the decision DEFER.
 - The earlier `ef3b9465…` and dirty-tree draft ZIPs are superseded. They are not
   release artifacts and must not be installed or shared as the 0.9.20 candidate.
 - Memory report: 186,236 bytes globals against provisional 191,488-byte budget; only 5,252 bytes margin. Build script reports provisional exception, threshold-rule items 5–7 pending.
