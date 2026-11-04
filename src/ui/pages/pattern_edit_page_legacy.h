@@ -377,45 +377,27 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
         g_pattern_step_clipboard.has_data = true;
         g_pattern_step_clipboard.steps.clear();
-        if (has_selection_) {
-          int min_row, max_row, min_col, max_col;
-          getSelectionBounds(min_row, max_row, min_col, max_col);
-          const bool single_cell = (min_row == max_row && min_col == max_col);
-          if (single_cell) {
-            int row = min_row;
-            g_pattern_step_clipboard.full_row = true;
-            g_pattern_step_clipboard.rows = 1;
-            g_pattern_step_clipboard.cols = kPatternStepColumns;
-            g_pattern_step_clipboard.steps.reserve(kPatternStepColumns);
-            for (int c = 0; c < kPatternStepColumns; ++c) {
-              int step = row * kPatternStepColumns + c;
-              g_pattern_step_clipboard.steps.push_back(source.steps[step]);
-            }
-          } else {
-            g_pattern_step_clipboard.full_row = false;
-            g_pattern_step_clipboard.rows = max_row - min_row + 1;
-            g_pattern_step_clipboard.cols = max_col - min_col + 1;
-            g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
-            for (int r = min_row; r <= max_row; ++r) {
-              for (int c = min_col; c <= max_col; ++c) {
-                int step = r * kPatternStepColumns + c;
-                g_pattern_step_clipboard.steps.push_back(source.steps[step]);
-              }
-            }
-          }
-        } else {
-          g_pattern_step_clipboard.full_row = false;
-          g_pattern_step_clipboard.rows = kPatternStepRows;
-          g_pattern_step_clipboard.cols = kPatternStepColumns;
-          g_pattern_step_clipboard.steps.reserve(SEQ_STEPS);
-          for (int i = 0; i < SEQ_STEPS; ++i) {
-            g_pattern_step_clipboard.steps.push_back(source.steps[i]);
+        // Copy follows the selection: no selection copies the cursor step,
+        // one cell copies that cell, an area copies the rectangle. A selection
+        // of every step (Ctrl+A) is the whole pattern, which Paste can place.
+        int min_row = activePatternStep() / kPatternStepColumns;
+        int max_row = min_row;
+        int min_col = activePatternStep() % kPatternStepColumns;
+        int max_col = min_col;
+        if (has_selection_) getSelectionBounds(min_row, max_row, min_col, max_col);
+        g_pattern_step_clipboard.full_row = false;
+        g_pattern_step_clipboard.rows = max_row - min_row + 1;
+        g_pattern_step_clipboard.cols = max_col - min_col + 1;
+        g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            g_pattern_step_clipboard.steps.push_back(source.steps[r * kPatternStepColumns + c]);
           }
         }
-        if (has_selection_) {
-          g_pattern_clipboard.has_pattern = false;
-        } else {
-          g_pattern_clipboard.has_pattern = true;
+        const bool wholePattern = g_pattern_step_clipboard.rows == kPatternStepRows &&
+                                  g_pattern_step_clipboard.cols == kPatternStepColumns;
+        g_pattern_clipboard.has_pattern = wholePattern;
+        if (wholePattern) {
           for (int i = 0; i < SEQ_STEPS; ++i) g_pattern_clipboard.pattern.steps[i] = source.steps[i];
         }
         if (has_selection_) selection_locked_ = true;
