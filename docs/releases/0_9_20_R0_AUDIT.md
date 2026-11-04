@@ -3,7 +3,7 @@
 - Audit date: 2026-11-04
 - Remote candidate branch: `genre/cell-source`
 - Local candidate branch: `release/0.9.20-minimal-ui-fix`
-- Candidate SHA: `be45c4eac81c33f24709123b69477505a9103ed8` (`fix(ui): restore minimal pattern view indicators`)
+- Exact source SHA and dirty-state evidence: generated package `provenance.txt` (must match the workflow-profile build source and report `worktree_dirty=false`).
 - Candidate tree: clean after commit in an isolated worktree; the user's active checkout remains untouched.
 
 ## Decision
@@ -18,8 +18,8 @@
 | Exact-SHA GitHub Actions checks | UNVERIFIED / absent | `check-runs` returned `total_count: 0`; commit status returned `pending`, zero statuses; workflow run query returned no runs |
 | PR from `genre/cell-source` | None found | GitHub API returned an empty list |
 | `v0.9.20` GitHub Release | Not published | GitHub API returned 404 for the tag |
-| Local candidate | PASS, local only | Clean branch `release/0.9.20-minimal-ui-fix`, SHA `be45c4eac81c33f24709123b69477505a9103ed8`; not pushed. |
-| Local workflow-profile build | PASS, provisional | Exact local SHA; FQBN `...CDCOnBoot=default...`; BIN SHA-256 `fa5cf3fa3fc191120ef00dd89d8c47ca449d82770d28b32cc96f2acb6bc72ce0` (1,726,816 bytes). ELF `1b9beaac1b1a20116769401c3e7541f63b824286ec63948632a35e61f0a902a0`; merged BIN `bfafac412a78874a406523013d9174365a9287439648b7018822dbfaca4960f0`. Globals 186,236/191,488 B (5,252 B margin); DRAM exception remains provisional, items 5–7 open. 1,001 warning occurrences remain: 978 repeated upstream Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics reviewed against bounded source values below. Build log: `/tmp/gp-0.9.20-be45c4ea-firmware-build.log`. |
+| Local candidate | PASS, local only | Branch `release/0.9.20-minimal-ui-fix`; local commit is captured in the generated bundle manifest. Not pushed. |
+| Local workflow-profile build | PASS, provisional | FQBN `...CDCOnBoot=default...`; fixed `BUILD_PATH` and `SOURCE_DATE_EPOCH`. BIN SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08` (1,726,816 bytes), ELF `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`, merged BIN `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`. Two builds at same path matched these hashes. Globals 186,236/191,488 B (5,252 B margin); DRAM exception remains provisional, items 5–7 open. 1,001 warning occurrences remain: 978 repeated upstream Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics reviewed against bounded source values below. Logs: `/tmp/gp-0.9.20-f5cd730a-finalpath-build1.log`, `/tmp/gp-0.9.20-f5cd730a-finalpath-build2.log`. |
 
 ## Focused host checks
 

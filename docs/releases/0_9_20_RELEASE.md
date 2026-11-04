@@ -8,18 +8,17 @@ readiness work. Do not tag or publish it. The latest published release remains v
 ## Candidate identity
 
 - Local readiness branch: `release/0.9.20-minimal-ui-fix`
-- Candidate source SHA: `be45c4eac81c33f24709123b69477505a9103ed8`
-- Candidate tree was clean at build start. The generated review bundle must carry
-  provenance matching this SHA and `worktree_dirty=false`.
+- Exact source SHA and tree state: carried in the generated review bundle's
+  `provenance.txt`; it must match the build source and report `worktree_dirty=false`.
 - Product: M5Stack Cardputer ADV / ESP32-S3, PSRAM disabled
 - Release build: `bash scripts/build_cardputer_dynbuffers.sh --warnings all`
 - Release workflow FQBN: `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc`
 - Build script default FQBN differs (`CDCOnBoot=cdc`); the successful release-profile build explicitly overrode `FQBN` to match the workflow.
 - Filesystem: dynamic FatFs FS1B, verified by the build script's linker-map proof
-- Candidate BIN: `build/cardputer-0.9.20-be45c4ea/GroovePuter.ino.bin`, 1,726,816
-  bytes, SHA-256 `fa5cf3fa3fc191120ef00dd89d8c47ca449d82770d28b32cc96f2acb6bc72ce0`.
-  ELF SHA-256 `1b9beaac1b1a20116769401c3e7541f63b824286ec63948632a35e61f0a902a0`;
-  merged BIN SHA-256 `bfafac412a78874a406523013d9174365a9287439648b7018822dbfaca4960f0`.
+- Candidate BIN: `build/cardputer-adv-dynbuffers/GroovePuter.ino.bin`, 1,726,816
+  bytes, SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08`.
+  ELF SHA-256 `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`;
+  merged BIN SHA-256 `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`.
 - The earlier `ef3b9465…` and dirty-tree draft ZIPs are superseded. They are not
   release artifacts and must not be installed or shared as the 0.9.20 candidate.
 - Memory report: 186,236 bytes globals against provisional 191,488-byte budget; only 5,252 bytes margin. Build script reports provisional exception, threshold-rule items 5–7 pending.
@@ -41,7 +40,7 @@ and no v0.9.20 release is published. The first local build used the script defau
   generation, workspace navigation, MATERIAL TAKE, Synth view, and Partner settings
   were visually inspected. Dummy audio cannot verify sound, MIDI hardware, persistence,
   or physical Cardputer behavior. Exact captures and limitations are in the R0 audit.
-- Exact workflow-profile firmware build for `be45c4eac81c33f24709123b69477505a9103ed8`: PASS using `bash scripts/build_cardputer_dynbuffers.sh --warnings all`, FQBN override `CDCOnBoot=default`. FS1B candidate-only linker-map proof passed. Image size: 1,726,816 bytes; globals: 186,236/191,488 bytes, with the DRAM policy still provisional and items 5–7 open. Build log: `/tmp/gp-0.9.20-be45c4ea-firmware-build.log`.
+- Exact workflow-profile firmware build: PASS using `bash scripts/build_cardputer_dynbuffers.sh --warnings all`, FQBN override `CDCOnBoot=default`, fixed release `BUILD_PATH`, and fixed `SOURCE_DATE_EPOCH` from the remote base commit. FS1B candidate-only linker-map proof passed. Two clean builds at the same path produced matching ELF/BIN/merged-BIN hashes above. Image size: 1,726,816 bytes; globals: 186,236/191,488 bytes, with DRAM policy provisional and items 5–7 open. Logs: `/tmp/gp-0.9.20-f5cd730a-finalpath-build1.log` and `build2.log`.
 - Release-image rebuild check: two clean builds at the same fixed release `BUILD_PATH`
   produced identical BINs. A separate-path experiment produced a different image:
   Arduino linked library objects directly in one build and through archives in the
