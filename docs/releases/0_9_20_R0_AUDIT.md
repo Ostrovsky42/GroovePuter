@@ -1,26 +1,27 @@
 # GroovePuter 0.9.20 — R0 Audit (working draft)
 
 - Audit date: 2026-11-04
-- Remote candidate branch: `genre/cell-source`
+- Baseline branch: `genre/cell-source` (`fec3237c95c0e19f61e3958cee7d4cd23cecb483`)
 - Local candidate branch: `release/0.9.20-minimal-ui-fix`
-- Exact source SHA and dirty-state evidence: generated package `provenance.txt` (must match the workflow-profile build source and report `worktree_dirty=false`).
+- Current candidate code commit: `fbbf0105a8105a2869f12af691da1522fb4d5338`; documentation/artifact refresh is pending, so this is not yet the final release candidate SHA.
+- Exact source SHA and dirty-state evidence must match the refreshed workflow-profile build and generated `provenance.txt` (`worktree_dirty=false`).
 - Candidate tree: clean after commit in an isolated worktree; the user's active checkout remains untouched.
 
 ## Decision
 
-**DEFER — release evidence is incomplete.** This is not a release approval. A workflow-profile image now builds successfully from the clean local candidate SHA, but it is not an exact-SHA remote CI artifact. Product export scope and physical-device acceptance remain unverified.
+**DEFER — release evidence is incomplete.** This is not a release approval. During repository-history review, the audit found that the candidate still contained the 808/909 kick phase conversion defect tracked by open PR #489. The PR's sanitizer regression reproduced the undefined float-to-uint32 conversion on the candidate; its narrow fix and test are now in `fbbf0105`. The firmware and review bundle must be rebuilt for the refreshed exact candidate. Product export scope and physical-device acceptance remain unverified.
 
 ## Repository and publication state
 
 | Check | Result | Evidence |
 |---|---|---|
 | Remote branch points at the candidate SHA | PASS | GitHub API `commits/genre/cell-source` returned `fec3237c95c0e19f61e3958cee7d4cd23cecb483` |
-| Exact-SHA GitHub Actions checks | UNVERIFIED / absent | `check-runs` returned `total_count: 0`; commit status returned `pending`, zero statuses; workflow run query returned no runs |
+| Exact-SHA GitHub Actions checks | IN PROGRESS for superseded SHA | Workflow run `41882445936` is pinned to `93541d89c1f733d661cbaf0bf12ad9d3e8201e0c`; it does not cover the current code commit `fbbf0105` or the eventual refreshed candidate. |
 | PR from `genre/cell-source` | None found | GitHub API returned an empty list |
 | `v0.9.20` GitHub Release | Not published | GitHub API returned 404 for the tag |
-| Local candidate | PASS, local only | Branch `release/0.9.20-minimal-ui-fix`; local commit is captured in the generated bundle manifest. Not pushed. |
-| Local workflow-profile build | PASS, provisional | FQBN `...CDCOnBoot=default...`; fixed `BUILD_PATH` and `SOURCE_DATE_EPOCH`. BIN SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08` (1,726,816 bytes), ELF `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`, merged BIN `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`. Two builds at same path matched these hashes. Globals 186,236/191,488 B (5,252 B margin); DRAM exception remains provisional, items 5–7 open. 1,001 warning occurrences remain: 978 repeated upstream Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics reviewed against bounded source values below. Logs: `/tmp/gp-0.9.20-f5cd730a-finalpath-build1.log`, `/tmp/gp-0.9.20-f5cd730a-finalpath-build2.log`. |
-| Review bundle | PASS, explicitly not a release | `build/grooveputer-0.9.20-candidate-NOT-A-RELEASE.zip`; includes provenance, checksums, install draft and status/known gaps. Hardware installation remains unverified. |
+| Local candidate | PASS, pushed code commit; docs refresh pending | Branch `release/0.9.20-minimal-ui-fix`; current local commit `fbbf0105a8105a2869f12af691da1522fb4d5338` is one commit ahead of `origin` while evidence/docs refresh is prepared. |
+| Prior workflow-profile build | SUPERSEDED | BIN/ELF/merged-BIN hashes above were built before the kick-phase fix and must not be installed or distributed as this candidate. Rebuild and provenance refresh are pending. |
+| Review bundle | SUPERSEDED | Existing `build/grooveputer-0.9.20-candidate-NOT-A-RELEASE.zip` predates the kick-phase fix; regenerate it from the final candidate and keep `STATUS.txt` as NOT A RELEASE. |
 
 ## Focused host checks
 
@@ -33,6 +34,8 @@
 | `bash tests/run_s1_synth_engine_switch_tests.sh` | PASS, exit 0. Switch/crossfade object consistency, 600 rapid switches, pre-render switch, and source regressions passed. |
 | `bash tests/run_s1_synth_page_restore_tests.sh` | PASS, exit 0. Synth page restores the MORE tab before component construction. |
 | `bash tests/test_release_identity_source.py` | PASS after the warning cleanup; artifact identity and portable install instructions remain aligned. |
+| `test_drum_phase_wrap` against the pre-fix candidate | FAIL as expected under `-fsanitize=undefined,float-cast-overflow`: 808 reports an out-of-range value at `src/dsp/mini_drumvoices.cpp:399`; 909 reports the same at line 974. |
+| `test_drum_phase_wrap` after `fbbf0105` | PASS for both 808 and 909 with `-fsanitize=undefined,float-cast-overflow`; the fix uses defined unsigned modular phase multiplication. |
 | `bash tests/run_smart_play_tests.sh` | PASS after the warning cleanup; all listed Partner phases through phase 10 and pattern-range wire/engine targets passed. Log: `/tmp/grooveputer-0.9.20-smart-play-after-warning-cleanup.log`. |
 | `bash tests/run_s1_synth_engine_switch_tests.sh` | PASS after warning cleanup; engine/object consistency and 600 rapid-switch scenarios passed. Log: `/tmp/grooveputer-0.9.20-s1-switch-after-warning-cleanup.log`. |
 | `bash scripts/ci/run_core.sh` | All 46 groups closed; final S1 page-restore test and `::endgroup::` recorded. Log: `/tmp/gp-0.9.20-540a-run-core-final.log`. The run tested the exact source contents now committed at `be45c4e`; local evidence only, not exact-SHA remote CI. |
@@ -94,5 +97,5 @@ The candidate release record lists Partner ANSWER/LOOP, `X` silence, drum step s
 1. Review whether the 23 source-bounded format-truncation diagnostics should be silenced with clearer local range contracts; 978 repeated Arduino core macro redefinitions remain in the Arduino toolchain. No application warnings from other categories remain in the latest build.
 2. Resolve the DRAM margin and provisional exception: current build has 5,252 B headroom against the provisional 191,488 B ceiling, while required hardware minima/reserves and threshold derivation remain open.
 3. Close the first-user distribution gap: physically verify the M5Launcher SD install/recovery draft in [0_9_20_INSTALL_DRAFT.md](0_9_20_INSTALL_DRAFT.md), and decide whether realtime MIDI-to-DAW handoff meets the user's export requirement or native WAV/MIDI file export is required. WAV writer implementations exist, but there is no user-facing start/stop/export path; Cardputer recorder setup is disabled in `GroovePuter.ino`. No Launcher catalog entry or M5Burner package is prepared.
-4. Obtain exact-SHA remote CI evidence and physical acceptance on the exact BIN, recording device, profile, hash, test results and logs. The local image hash above is evidence only for the modified working tree.
+4. Refresh the release-profile image, provenance, checksums and NOT A RELEASE bundle for the post-fix candidate; then obtain exact-SHA remote CI evidence and physical acceptance on that exact BIN, recording device, profile, hash, test results and logs.
 5. Prepare the final release decision packet. Keep the decision at DEFER; do not publish or tag without owner authorization.

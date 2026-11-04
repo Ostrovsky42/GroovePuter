@@ -15,10 +15,7 @@ readiness work. Do not tag or publish it. The latest published release remains v
 - Release workflow FQBN: `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc`
 - Build script default FQBN differs (`CDCOnBoot=cdc`); the successful release-profile build explicitly overrode `FQBN` to match the workflow.
 - Filesystem: dynamic FatFs FS1B, verified by the build script's linker-map proof
-- Candidate BIN: `build/cardputer-adv-dynbuffers/GroovePuter.ino.bin`, 1,726,816
-  bytes, SHA-256 `e5d8b4e927ad64a662a69facea021bb49b163c06bba07cf3c84971232c71fa08`.
-  ELF SHA-256 `46a5052b529efb7c663a16f2f4b36f9a996b8d78b6d1ec90d08c3d4e3fd3475a`;
-  merged BIN SHA-256 `a117fa567aee83f3f51344d39989610713661ef26bbf104f324b3cedc802341e`.
+- Candidate code commit: `fbbf0105a8105a2869f12af691da1522fb4d5338` includes a fix for undefined kick-phase conversion in the 808/909 voices. The firmware image, checksums, provenance and review-only bundle listed in the earlier record predate this fix and are superseded; regenerate them from the refreshed exact candidate before any installation or distribution.
 - Review-only bundle: `build/grooveputer-0.9.20-candidate-NOT-A-RELEASE.zip`.
   It contains the app and merged images, build proof, provenance, checksums and
   first-user documentation; `STATUS.txt` marks the decision DEFER.
@@ -26,8 +23,9 @@ readiness work. Do not tag or publish it. The latest published release remains v
   release artifacts and must not be installed or shared as the 0.9.20 candidate.
 - Memory report: 186,236 bytes globals against provisional 191,488-byte budget; only 5,252 bytes margin. Build script reports provisional exception, threshold-rule items 5–7 pending.
 
-This candidate branch exists locally only; it has no exact-SHA Actions run or PR,
-and no v0.9.20 release is published. The first local build used the script default
+The readiness branch is pushed, but its currently running exact-SHA workflow (`41882445936`)
+is pinned to the superseded pre-fix commit `93541d89c1f733d661cbaf0bf12ad9d3e8201e0c`.
+It does not provide CI evidence for the refreshed candidate. No v0.9.20 release is published. The first local build used the script default
 (`CDCOnBoot=cdc`) and is superseded by the exact workflow-profile build recorded above.
 
 ## Evidence collected
@@ -52,6 +50,7 @@ and no v0.9.20 release is published. The first local build used the script defau
   remains UNVERIFIED. The release workflow uses one fixed path for its check and
   artifact build.
 - `bash scripts/ci/run_midi_targets.sh` — PASS; MIDI profile, route, pattern binding, performance binding, profile UI, convergence, and C9 repair targets passed.
+- `test_drum_phase_wrap` — the sanitizer test reproduced out-of-range float-to-`uint32_t` conversion for both 808 and 909 on the pre-fix candidate; it passes both voices after commit `fbbf0105` with `undefined,float-cast-overflow` enabled. A refreshed full-suite and exact-SHA run is still required.
 - `git diff --check` — PASS.
 - Full local `bash scripts/ci/run_core.sh`: all 46 groups closed, including UI navigation (`Pattern pair view (L): PASS`, `PAIR PLAY PASS`) and final S1 page restore. Log: `/tmp/gp-0.9.20-540a-run-core-final.log`. It ran before the source commit against the same tested source contents. Local validation is not exact-SHA remote CI.
 - Exact-SHA remote checks and Cardputer hardware acceptance remain UNVERIFIED.
