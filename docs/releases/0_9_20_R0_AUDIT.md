@@ -2,13 +2,13 @@
 
 - Audit date: 2026-11-04
 - Remote candidate branch: `genre/cell-source`
-- Local readiness branch: `release/0.9.20-readiness`
-- Candidate SHA: `fec3237c95c0e19f61e3958cee7d4cd23cecb483` (`fix(pattern): copy follows the selection`)
-- Local audit checkout: isolated clone based on the candidate SHA with readiness fixes and tests. The user's other checkout remains untouched.
+- Local candidate branch: `release/0.9.20-minimal-ui-fix`
+- Candidate SHA: `be45c4eac81c33f24709123b69477505a9103ed8` (`fix(ui): restore minimal pattern view indicators`)
+- Candidate tree: clean after commit in an isolated worktree; the user's active checkout remains untouched.
 
 ## Decision
 
-**DEFER — release evidence is incomplete.** This is not a release approval. A local workflow-profile image now builds successfully from this modified working tree, but it is not an exact-SHA CI artifact. Remote checks and physical-device acceptance are still unverified.
+**DEFER — release evidence is incomplete.** This is not a release approval. A workflow-profile image now builds successfully from the clean local candidate SHA, but it is not an exact-SHA remote CI artifact. Product export scope and physical-device acceptance remain unverified.
 
 ## Repository and publication state
 
@@ -18,8 +18,8 @@
 | Exact-SHA GitHub Actions checks | UNVERIFIED / absent | `check-runs` returned `total_count: 0`; commit status returned `pending`, zero statuses; workflow run query returned no runs |
 | PR from `genre/cell-source` | None found | GitHub API returned an empty list |
 | `v0.9.20` GitHub Release | Not published | GitHub API returned 404 for the tag |
-| Working clone | Modified, isolated | Branch `release/0.9.20-readiness`, based on `fec3237c`; original dirty checkout untouched |
-| Local workflow-profile build | PASS, provisional | FQBN `...CDCOnBoot=default...`; latest BIN SHA-256 `ef3b946544f3ffe2f977d83a2192b488a8bcf80ab2c3d4291467c5772b070c54` (1,725,200 bytes). Globals 186,236/191,488 B (5,252 B margin). The budget script still labels its exception provisional, with items 5–7 open. This build emits 1,001 warning occurrences: 978 repeated Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics. Two confirmed UI truncation risks were fixed; the other format warnings are reviewed against source-enforced bounds in the section below. The remaining 35 application warning occurrences from the prior build were eliminated by removing dead state, guarding debug-only metrics, explicitly initializing configuration/timbre state, fixing member initialization order, updating the deprecated RGB API, and replacing deprecated volatile increment syntax. Latest build log: `/tmp/grooveputer-0.9.20-warning-cleanup-final.log`. |
+| Local candidate | PASS, local only | Clean branch `release/0.9.20-minimal-ui-fix`, SHA `be45c4eac81c33f24709123b69477505a9103ed8`; not pushed. |
+| Local workflow-profile build | PASS, provisional | Exact local SHA; FQBN `...CDCOnBoot=default...`; BIN SHA-256 `fa5cf3fa3fc191120ef00dd89d8c47ca449d82770d28b32cc96f2acb6bc72ce0` (1,726,816 bytes). ELF `1b9beaac1b1a20116769401c3e7541f63b824286ec63948632a35e61f0a902a0`; merged BIN `bfafac412a78874a406523013d9174365a9287439648b7018822dbfaca4960f0`. Globals 186,236/191,488 B (5,252 B margin); DRAM exception remains provisional, items 5–7 open. 1,001 warning occurrences remain: 978 repeated upstream Arduino core macro redefinitions and 23 application `-Wformat-truncation` diagnostics reviewed against bounded source values below. Build log: `/tmp/gp-0.9.20-be45c4ea-firmware-build.log`. |
 
 ## Focused host checks
 
@@ -28,13 +28,13 @@
 | `bash tests/run_smart_play_tests.sh` | PASS, exit 0. All listed Partner phases through phase 10, note-range wire/engine, and included related targets passed. Compiler warnings include `LOG_DEBUG` redefinition / format-security and several `snprintf` truncation warnings. |
 | `bash tests/run_step_settings_tests.sh` | PASS, exit 0. Drum settings and source checks passed. |
 | `bash tests/run_melody_slot_navigation_tests.sh` | PASS, exit 0. |
-| `bash tests/run_ui_navigation_tests.sh` | PASS, exit 0. SDL navigation, melody editing/playback, pattern pair, tempo controls and MIDI import audible-path targets completed. |
+| `bash tests/run_ui_navigation_tests.sh` | PASS in the final core gate. SDL navigation, melody editing/playback, Pattern Pair titles/playhead, tempo controls and MIDI import audible-path targets completed. |
 | `bash tests/run_s1_synth_engine_switch_tests.sh` | PASS, exit 0. Switch/crossfade object consistency, 600 rapid switches, pre-render switch, and source regressions passed. |
 | `bash tests/run_s1_synth_page_restore_tests.sh` | PASS, exit 0. Synth page restores the MORE tab before component construction. |
 | `bash tests/test_release_identity_source.py` | PASS after the warning cleanup; artifact identity and portable install instructions remain aligned. |
 | `bash tests/run_smart_play_tests.sh` | PASS after the warning cleanup; all listed Partner phases through phase 10 and pattern-range wire/engine targets passed. Log: `/tmp/grooveputer-0.9.20-smart-play-after-warning-cleanup.log`. |
 | `bash tests/run_s1_synth_engine_switch_tests.sh` | PASS after warning cleanup; engine/object consistency and 600 rapid-switch scenarios passed. Log: `/tmp/grooveputer-0.9.20-s1-switch-after-warning-cleanup.log`. |
-| `bash scripts/ci/run_core.sh` | PASS, exit 0 after warning cleanup. All 46 groups closed; the final S1 page-restore check recorded PASS. Log: `/tmp/grooveputer-0.9.20-run-core-after-warning-cleanup.log`. Local evidence only, not exact-SHA remote CI. |
+| `bash scripts/ci/run_core.sh` | All 46 groups closed; final S1 page-restore test and `::endgroup::` recorded. Log: `/tmp/gp-0.9.20-540a-run-core-final.log`. The run tested the exact source contents now committed at `be45c4e`; local evidence only, not exact-SHA remote CI. |
 
 ## Format-truncation warning review
 
