@@ -1,6 +1,6 @@
-# GroovePuter 0.9.19 — First Five Minutes
+# GroovePuter 0.9.20 candidate — First Five Minutes
 
-This page is for the first session on a M5Stack Cardputer ADV. The goal is simple:
+This page describes the 0.9.20 release candidate; it is not a published or hardware-accepted release. Use it for a first session on a M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to
 ask for help without learning GroovePuter's internal architecture first.
 
@@ -30,7 +30,8 @@ this first groove; the defaults are enough.
 1. Press `Space` to start playback.
 2. Press `Fn+M`, choose **GENRE**, and enter it.
 3. Use `Up/Down` to choose the field and `Left/Right` to change Genre, Variant or
-   Rhythm.
+   Rhythm. For the later MATERIAL `D` step, choose any genre except **Acid** and
+   **House**; those two do not support the current bounded development cycle.
 4. Press `G`.
 
 While playback is running, the generated material changes at a musical bar boundary
@@ -57,8 +58,9 @@ GroovePuter appends the currently supported related development cycle. Depending
 the admitted musical form, the result can be shown as `DEVELOP + BREAK` or
 `BREAK ONLY`. Listen through the boundary before judging it.
 
-If `D` refuses, do not troubleshoot internal states. For this first bounded workflow,
-make a new unedited `4B` `REWORK` TAKE with `G` and try `D` again.
+If `D` refuses, first confirm the selected genre is not Acid or House, the TAKE is
+new and unedited, and its source context has not changed. Making another TAKE in an
+unsupported genre will not make it developable.
 
 ## 4. If you do not like the result
 
@@ -73,8 +75,16 @@ those slots to be reused by a later `G` or `D`; `Esc` cancels.
 Open **PROJECT** and use the on-screen Save action. Project Save is different from
 `Alt+Enter`, which accepts working Synth material on Synth pages.
 
-After saving, stop and reload the project once during your first session if you want a
-quick confidence check that your material and arrangement return together.
+After saving, use PROJECT Load to reopen that project once. Confirm the material and
+arrangement return, then make and save one more edit to prove the session can continue.
+
+## Export and sharing
+
+The candidate does not expose a documented user-facing WAV or MIDI file export
+workflow for a GroovePuter composition. The MIDI Player imports and plays MIDI files;
+it does not export the current Song. To record external MIDI, route GroovePuter to a
+MIDI-capable DAW or instrument and use that device's recording workflow. This is a
+known productization gap, not a claim that project Save exports a shareable file.
 
 ## The one rule worth remembering
 

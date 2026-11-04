@@ -40,7 +40,7 @@ def test_desktop_links_phrase_evolution_dependencies() -> None:
 
 def test_scene_event_reader_has_no_dead_byte_counter() -> None:
     scenes = (ROOT / "scenes.h").read_text(encoding="utf-8")
-    start = scenes.index("bool SceneManager::loadSceneEvented(TReader&& reader)")
+    start = scenes.index("bool SceneManager::loadSceneEvented(TReader&& reader,")
     end = scenes.index("#endif // SCENES_H", start)
     block = scenes[start:end]
     require("bytesRead" not in block,

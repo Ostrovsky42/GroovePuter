@@ -1010,7 +1010,7 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 
 namespace {
 const char* getGMName(uint8_t program) {
-    if (program >= 0 && program <= 7) return "PIANO";
+    if (program <= 7) return "PIANO";
     if (program >= 8 && program <= 15) return "CHRMTIC";
     if (program >= 16 && program <= 23) return "ORGAN";
     if (program >= 24 && program <= 31) return "GUITAR";
@@ -1859,9 +1859,7 @@ void ProjectPage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
 
   const int x = Layout::COL_1;
-  const int y0 = LayoutManager::lineY(0);
   const int line_h = gfx.fontHeight();
-  const int listW = Layout::COL_WIDTH;
   int sectionIdx = static_cast<int>(section_);
   int firstFocus = 0;
   int lastFocus = 0;
@@ -2040,11 +2038,11 @@ void ProjectPage::draw(IGfx& gfx) {
     }
     char line[48];
     switch (focus) {
-      case MainFocus::Load: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::Load: line[0] = '\0'; break;
       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "A=SAVE AS"); break;
-      case MainFocus::New: std::snprintf(line, sizeof(line), ""); break;
-      case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), ""); break;
-      case MainFocus::ClearProject: std::snprintf(line, sizeof(line), ""); break;
+      case MainFocus::New: line[0] = '\0'; break;
+      case MainFocus::ImportMidi: line[0] = '\0'; break;
+      case MainFocus::ClearProject: line[0] = '\0'; break;
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
         break;

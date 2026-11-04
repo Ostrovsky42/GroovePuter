@@ -12,8 +12,6 @@ void HelpPage::draw(IGfx& gfx) {
   int h = bounds.h;
 
   int current_y = y;
-  int section_spacing = 10;
-
   // Add all help sections
   drawHelpPageTransport(gfx, x, current_y, w, 200);
   current_y += 100; // rough estimate for now

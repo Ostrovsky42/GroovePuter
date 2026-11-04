@@ -67,7 +67,7 @@ class SdFileSystem : public FileSystem {
     }
     File f = SD.open(path, FILE_WRITE);
     if (!f) {
-      LOG_DEBUG("[SdFileSystem::write] SD.open(%s, FILE_WRITE) FAILED\n", path);
+      LOG_PLATFORM_DEBUG("[SdFileSystem::write] SD.open(%s, FILE_WRITE) FAILED\n", path);
       return false;
     }
     const size_t written = f.write(data, length);
@@ -292,12 +292,12 @@ inline Error commitMelodyCandidate(
   if (!MelodyStore::encode(candidate, encoded, nextGen)) return Error::EncodeFailed;
 
   const std::string targetPath = slotPath(project, address, targetSlot);
-  LOG_DEBUG("[MELODY_CANDIDATE] address={v:%u, g:%u} activeSlot=%d currentGen=%u targetSlot=%d nextGen=%u path=%s\n",
+  LOG_PLATFORM_DEBUG("[MELODY_CANDIDATE] address={v:%u, g:%u} activeSlot=%d currentGen=%u targetSlot=%d nextGen=%u path=%s\n",
             address.voice, address.globalSlot, static_cast<int>(activeSlot), currentGen,
             static_cast<int>(targetSlot), nextGen, targetPath.c_str());
   fs.remove(targetPath.c_str());
   if (!fs.write(targetPath.c_str(), encoded.data(), encoded.size())) {
-    LOG_DEBUG("[MELODY_CANDIDATE] fs.write FAILED path=%s\n", targetPath.c_str());
+    LOG_PLATFORM_DEBUG("[MELODY_CANDIDATE] fs.write FAILED path=%s\n", targetPath.c_str());
     return Error::WriteFailed;
   }
 
@@ -309,7 +309,7 @@ inline Error commitMelodyCandidate(
       !MelodyStore::decode(verify.data(), verify.size(), restored, &restoredGen) ||
       restoredGen != nextGen ||
       !sameMelody(candidate, restored)) {
-    LOG_DEBUG("[MELODY_CANDIDATE] verify FAILED: read=%d restoredGen=%u expectedGen=%u same=%d\n",
+    LOG_PLATFORM_DEBUG("[MELODY_CANDIDATE] verify FAILED: read=%d restoredGen=%u expectedGen=%u same=%d\n",
               fs.exists(targetPath.c_str()) ? 1 : 0, restoredGen, nextGen,
               sameMelody(candidate, restored) ? 1 : 0);
     fs.remove(targetPath.c_str());

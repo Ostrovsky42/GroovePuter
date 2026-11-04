@@ -11,10 +11,6 @@ namespace GroovePuterMaterialAcceptUx {
 
 inline bool isAcceptEvent(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-  const char key = event.key
-      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
-      : 0;
-
   // Alt+Enter, Ctrl+Enter or Meta+Enter (Enter = Accept)
   if ((event.alt || event.ctrl || event.meta) &&
       (event.key == '\n' || event.key == '\r' || event.key == 0x0A || event.key == 0x0D)) {

@@ -56,7 +56,7 @@ The development workflow is built around a different question from ordinary rand
 
 ## Current status
 
-**v0.9.19** is the current tagged source baseline and packaged GitHub Release. It includes the 0.9.18 genre idioms, phrase ideas, DnB, GRAB, FORM and local GEN generation-control panel, plus fixes for SYNTH B, MIDI/SD watchdog and synth-engine reboots, cheaper audio rendering, and MIDI loop controls from HUB MIDI.
+**v0.9.19** remains the latest published and packaged release. **0.9.20 is under release-readiness review**; it has no published image or hardware acceptance yet. See [`docs/releases/0_9_20_RELEASE.md`](docs/releases/0_9_20_RELEASE.md) for candidate evidence and open gates. It includes the 0.9.18 genre idioms, phrase ideas, DnB, GRAB, FORM and local GEN generation-control panel, plus fixes for SYNTH B, MIDI/SD watchdog and synth-engine reboots, cheaper audio rendering, and MIDI loop controls from HUB MIDI.
 
 **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. For the exact v0.9.19 binary, build provenance and acceptance boundary, use its release notes.
 
@@ -70,7 +70,7 @@ GENRE -> FEEL
 
 Inside GENRE, `Tab` opens the `GEN 2/3` local panel; another `Tab` continues to FEEL. **GEN is the optional middle local panel** for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
 
-Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19).
+Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). The 0.9.20 candidate is not a download or installation target yet.
 Earlier hardware-accepted foundation: [`v0.9.16`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
 
 ## First musical win

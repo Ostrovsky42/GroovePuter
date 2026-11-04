@@ -566,12 +566,19 @@ void test_p9_scene_load_clears() {
     engine.init();
     engine.setSongMode(false);
     engine.sceneStorage_ = &storage;
+    if (entry == 0) {
+      assert(engine.saveSceneAs("d1b1-load-target"));
+      assert(storage.setCurrentSceneName("d1b1-live-source"));
+    }
     configureScene(engine, kAcid4.mode, kAcid4.recipe);
     assert(GeneratedPhraseSong::generate(engine, 2, 0, kGuard).status ==
            GeneratedPhraseSong::LifecycleStatus::CommittedNow);
     assert(engine.generatedSynthAOrigin() != nullptr);
-    if (entry == 0) (void)engine.loadSceneByName("d1b1-nonexistent-scene");
-    else engine.loadSceneFromStorage();
+    if (entry == 0) {
+      assert(engine.loadSceneByName("d1b1-load-target"));
+    } else {
+      engine.loadSceneFromStorage();
+    }
     assert(engine.generatedSynthAOrigin() == nullptr);
   }
   std::puts("D1-B1 P9: scene load (by name / from storage) clears sidecar: PASS");

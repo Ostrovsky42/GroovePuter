@@ -66,7 +66,10 @@ INTERNAL = re.compile(r'"[^"\n]*\b(CONTINUES|UNKNOWN|EXACT|VARIATION|PROVENANCE|
 # Recorded BASELINE (M0-A audit finding, not an endorsement): the legacy NEXT toast
 # already prints the old IdeaClassification word. New internal vocabulary must not
 # be added to the front panel; this one string is tracked for later redirection.
-BASELINE = set()  # "NEXT READY: VARIATION" retired: the toast names the operation now
+BASELINE = {
+    # Explicit user-facing Partner replacement choices, not verdict/debug metadata.
+    ("perform_page.cpp", '"0 EXACT  1 ENDING  2 DEVELOP  3 FREE"'),
+}
 for path in (SRC / "ui").rglob("*"):
     if path.is_file() and path.suffix in {".h", ".cpp"}:
         for match in INTERNAL.finditer(read(path)):

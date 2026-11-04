@@ -51,7 +51,7 @@ require("GroovePuterUndoUx::isUndoEvent(ui_event)" in synth,
         "Synth parent lost visible-owner Ctrl+Z routing")
 require("synth_tab_ == SynthTab::Notes" in synth,
         "Synth history is not constrained to visible NOTES")
-require("REDO: PATTERN" in synth and "UNDO: PATTERN" in synth,
+require("REDO: STEPS" in synth and "UNDO: STEPS" in synth,
         "Synth one-slot feedback is not bidirectional")
 require("togglePrepared<SynthPatternUndoPayload>" in pattern_legacy,
         "Pattern child still performs destructive one-way Undo")
@@ -85,7 +85,7 @@ require("toggleLastQuantizedGeneration" in generation,
         "Generation STOP-state Redo owner missing")
 require("matchingPending" in generation and "ContextUnavailable" in generation,
         "Generation Redo lacks PLAY/pending safety")
-require("REDO: GEN" in genre and "UNDO: GEN" in genre,
+require("REDO: TAKE" in genre and "UNDO: TAKE" in genre,
         "Genre history owner missing")
 
 # Ctrl+Z collision closure on TB303 remains part of the contract.

@@ -719,14 +719,14 @@ inline void formatProvenance(
   std::snprintf(
       buffer, bufferSize,
       "REQUEST: %s\n"
-      "SOURCE: V%u:S%u (id:%u rev:%u)\n"
+      "SOURCE: V%u:S%u (id:%lu rev:%lu)\n"
       "CHANGES: pitch=%s onset=%s artic=%s slides=%s densityDelta=%d theOne=%s contour=%s\n"
       "CLASSIFICATION: idea=%s genre=%s temporal=%s policy=%s%s%s",
       transformationName(prov.requestKind),
       prov.sourceBasis.reference.address.voice,
       prov.sourceBasis.reference.address.globalSlot,
-      prov.sourceBasis.reference.id.value,
-      prov.sourceBasis.version.low,
+      static_cast<unsigned long>(prov.sourceBasis.reference.id.value),
+      static_cast<unsigned long>(prov.sourceBasis.version.low),
       prov.evidence.harmony.pitchesChanged ? "CHANGED" : "UNCHANGED",
       prov.evidence.rhythm.onsetsChanged ? "CHANGED" : "UNCHANGED",
       prov.evidence.bass.articulationChanged ? "CHANGED" : "UNCHANGED",

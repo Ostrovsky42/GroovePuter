@@ -1041,7 +1041,8 @@ void MiniAcidDisplay::drawDebugOverlay() {
     (void)cpuIdeal;
     (void)cpuActual;
     gfx_.drawText(2, yy, buf); yy += 10;
-    snprintf(buf, sizeof(buf), "UNDR:%u", underruns);
+    snprintf(buf, sizeof(buf), "UNDR:%lu",
+             static_cast<unsigned long>(underruns));
     gfx_.drawText(2, yy, buf); yy += 10;
 }
 

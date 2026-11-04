@@ -17,6 +17,7 @@ def read(path: str) -> str:
 WORKING = read("src/state/working_material_storage.h")
 SLOT = read("src/state/material_slot.h")
 VERSION = read("src/state/material_version.h")
+VERSION_TOKEN = read("src/state/material_version_token.h")
 EXECUTION = read("src/generation/migration/phrase_execution.h")
 P1R = read("src/dsp/generated_phrase_p1r_materializer.h")
 PRODUCT = read("src/state/generated_phrase_product_state.h")
@@ -49,8 +50,8 @@ require("SemanticProvenance" not in SLOT and
         "D0-E ERROR: production provenance was added to MaterialSlot")
 
 # Exact byte/field version is a stale-binding guard, not lineage.
-require("struct MaterialVersionToken" in VERSION and
-        "static_assert(sizeof(MaterialVersionToken) == 8" in VERSION,
+require("struct MaterialVersionToken" in VERSION_TOKEN and
+        "static_assert(sizeof(MaterialVersionToken) == 8" in VERSION_TOKEN,
         "D0-E evidence: exact MaterialVersionToken contract changed")
 require("This is deliberately NOT MaterialId and NOT lineage" in VERSION,
         "D0-E evidence: MaterialVersionToken semantics drifted")

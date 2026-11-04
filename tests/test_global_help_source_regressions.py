@@ -93,7 +93,7 @@ assert "docs/README.md" in readme
 assert "docs/PRODUCT_POSITIONING.md" in readme
 assert "GENRE != FEEL != SOUND" in readme
 assert "Fn+M      workspace launcher" in readme
-assert "tagged source baseline" in readme
+assert "latest published and packaged release" in readme
 assert "latest packaged github release" in readme.lower()
 assert "GEN is the optional middle page" not in readme
 assert "GEN is the optional middle" in readme
@@ -101,7 +101,7 @@ assert "two workflow pages" in readme
 
 assert quickstart_path.exists(), "0.9.19 user quick start is missing"
 quickstart = quickstart_path.read_text()
-assert quickstart.startswith("# GroovePuter 0.9.19 — First Five Minutes")
+assert quickstart.startswith("# GroovePuter 0.9.20 candidate — First Five Minutes")
 for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
     assert action in quickstart, action
 for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "ReferenceRole"):

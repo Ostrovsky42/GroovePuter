@@ -329,9 +329,9 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "EventResult::FileActivated" in midi_manager and
             "midiFileManager().draw" in player_page,
             "MIDI Player page must expose the shared selectable SD library and path")
-    require("seekBars(event.shift ? -4 : -1)" in player_page and
-            "seekBars(event.shift ? 4 : 1)" in player_page,
-            "player seek must preserve +/-1 and Shift +/-4 bar UX")
+    require("seekBars(event.ctrl ? -4 : -1)" in player_page and
+            "seekBars(event.ctrl ? 4 : 1)" in player_page,
+            "player seek must preserve +/-1 and Ctrl +/-4 bar UX for Cardputer")
     require("MIDI PANIC / PAUSE" in player_page,
             "player page must expose scoped panic")
     require("event.key == 'r' || event.key == 'R'" in player_page and

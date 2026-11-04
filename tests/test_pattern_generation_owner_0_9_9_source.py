@@ -44,7 +44,7 @@ for token in ("getCompiledGenerativeParams()", "getBehavior()",
 # the shared bounded activation owner rather than replacing the Pattern mid-bar.
 c_comment = page.index("// C keeps B2's legacy/fallback musical generator")
 g_start = page.index("if (keyG)", c_comment)
-g_end = page.index("\n  if (keyF)", g_start)
+g_end = page.index("\n  if (keyF && !ui_event.ctrl)", g_start)
 g_block = page[g_start:g_end]
 
 require("captureCurrentSynthPatternUndo" in g_block,
