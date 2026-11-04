@@ -3,7 +3,7 @@
 - Audit date: 2026-11-04
 - Baseline branch: `genre/cell-source` (`fec3237c95c0e19f61e3958cee7d4cd23cecb483`)
 - Local candidate branch: `release/0.9.20-minimal-ui-fix`
-- Current candidate code commit: `fbbf0105a8105a2869f12af691da1522fb4d5338`; documentation/artifact refresh is pending, so this is not yet the final release candidate SHA.
+- Candidate code fix commit: `fbbf0105a8105a2869f12af691da1522fb4d5338`; the post-fix firmware evidence snapshot is `83ea592ed503221d78cbafc3bf4c8b3865bb250f`. The final full-tree SHA is recorded in the regenerated package provenance and exact-SHA CI run.
 - Exact source SHA and dirty-state evidence must match the refreshed workflow-profile build and generated `provenance.txt` (`worktree_dirty=false`).
 - Candidate tree: clean after commit in an isolated worktree; the user's active checkout remains untouched.
 
@@ -19,8 +19,8 @@
 | Exact-SHA GitHub Actions checks | IN PROGRESS for superseded SHA | Workflow run `41882445936` is pinned to `93541d89c1f733d661cbaf0bf12ad9d3e8201e0c`; it does not cover the current code commit `fbbf0105` or the eventual refreshed candidate. |
 | PR from `genre/cell-source` | None found | GitHub API returned an empty list |
 | `v0.9.20` GitHub Release | Not published | GitHub API returned 404 for the tag |
-| Local candidate | PASS, pushed code commit; docs refresh pending | Branch `release/0.9.20-minimal-ui-fix`; current local commit `fbbf0105a8105a2869f12af691da1522fb4d5338` is one commit ahead of `origin` while evidence/docs refresh is prepared. |
-| Prior workflow-profile build | SUPERSEDED | BIN/ELF/merged-BIN hashes above were built before the kick-phase fix and must not be installed or distributed as this candidate. Rebuild and provenance refresh are pending. |
+| Local candidate | PASS, code and evidence committed locally | Branch `release/0.9.20-minimal-ui-fix`; firmware evidence snapshot `83ea592ed503221d78cbafc3bf4c8b3865bb250f`; fix commit `fbbf0105a8105a2869f12af691da1522fb4d5338`. The exact full-tree release candidate must be taken from the regenerated provenance after the evidence refresh is committed. |
+| Refreshed workflow-profile build | PASS, local/provisional | Clean tree `83ea592e`; BIN SHA-256 `4ab1bfafad54d7601a0b68b1d7e2c2472b29614d1b9db3db02c8170f256ad6fe` (1,726,784 bytes), ELF `695ad678afc43f917f06320d04b6b0fb2993ea895bd9fcf61c3c099d128c6a66`, merged BIN `393e97e178be0c81cc4fc09c4330c501396d77529f3604622b32fae0745f7972`. Two clean builds with fixed release `BUILD_PATH` and `SOURCE_DATE_EPOCH` produced matching hashes. Globals remain 186,236/191,488 B (5,252 B margin), policy provisional; warning occurrences 1,001. Logs: build transcript from first post-fix compile in the active session; `/tmp/gp-0.9.20-83ea-second-build.log` records the repeated build. |
 | Review bundle | SUPERSEDED | Existing `build/grooveputer-0.9.20-candidate-NOT-A-RELEASE.zip` predates the kick-phase fix; regenerate it from the final candidate and keep `STATUS.txt` as NOT A RELEASE. |
 
 ## Focused host checks
