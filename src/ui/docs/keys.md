@@ -58,7 +58,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
-| `Alt+\` | `CLEAN <-> CYBER` |
+| `Alt+\` | Theme: `CLEAN` only (black; the key shows the name) |
 
 Hard-global Alt shortcuts are handled before page-local input. Outside those reserved chords, the active page gets first refusal before late global fallbacks.
 
@@ -110,6 +110,12 @@ scancode.
 
 Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
 ownership; internal Synth A/B remain sequencer/pattern instruments.
+
+The scrollable INPUT list on PERFORM includes PARTNER. Set it to ANSWER, DUET, or
+LOOP to enable generated MIDI replies to captured live input; OFF disables replies.
+PARTNER settings are session-only. LOOP additionally exposes BARS, CHANNEL, HOLD,
+EVOLVE, and REPLACE controls. Use the on-screen row hints; answer channels and USB/DIN
+route affect external MIDI output, so confirm the destination before enabling replies.
 
 ## GENRE 1/3
 

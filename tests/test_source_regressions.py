@@ -557,6 +557,12 @@ def test_ui_redraw_does_not_hold_audio_pause() -> None:
             "audio mutation scope must close before the full UI redraw")
 
 
+def test_cardputer_smf_source_has_no_embedded_nul() -> None:
+    source = ROOT / "src/platform/cardputer_smf_player.cpp"
+    require(b"\x00" not in source.read_bytes(),
+            "Cardputer SMF source must use textual escape sequences, not NUL bytes")
+
+
 def test_splash_closes_display_transaction() -> None:
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     splash_start = display.index("if (splash_active_)")
@@ -600,12 +606,15 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     import_block = project[import_start:import_end]
     require("Select at least one MIDI route" in import_block,
             "MIDI import must reject an empty routing matrix")
-    require("if (midi_mask_a_)" in import_block and
-            "if (midi_mask_b_)" in import_block and
-            "if (midi_mask_d_)" in import_block,
-            "song population must respect the A/B/Drums routing matrix")
-    require("firstRowEmpty" in import_block and
-            "if (firstRowEmpty) songPosition = 0;" in import_block,
+    require("settings.synthAMask = midi_mask_a_;" in import_block and
+            "settings.synthBMask = midi_mask_b_;" in import_block and
+            "settings.drumMask = midi_mask_d_;" in import_block,
+            "MIDI import settings must preserve the A/B/Drums routing matrix")
+    publish_start = engine.index("bool MiniAcid::publishMidiImport")
+    publish_end = engine.index("void MiniAcid::", publish_start + 1)
+    publish_block = engine[publish_start:publish_end]
+    require("firstRowEmpty" in publish_block and
+            "if (firstRowEmpty) songPosition = 0;" in publish_block,
             "APPEND must reuse row zero in a genuinely blank song")
     require("saveSceneAs(mini_acid_.currentSceneName())" in import_block,
             "successful MIDI import must persist patterns and song rows")
@@ -728,6 +737,7 @@ def main() -> None:
     test_performance_workflow_boundaries()
     test_performance_settings_are_runtime_only()
     test_ui_redraw_does_not_hold_audio_pause()
+    test_cardputer_smf_source_has_no_embedded_nul()
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
     test_scene_and_page_validation_share_one_scratch_buffer()

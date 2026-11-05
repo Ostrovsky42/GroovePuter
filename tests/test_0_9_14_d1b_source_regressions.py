@@ -52,7 +52,7 @@ require("projectLegacyPitchPattern(\n        synthA, bass.plan.onsets, bass.plan
 # 2. P1R one-bar seam forwards evidence only when actually Applied.
 require("struct MaterializedSynthABarEvidence" in P1R,
         "D1-B: P1R bar evidence type missing")
-seam = block(P1R, "MaterializedSynthABarEvidence& evidence) {", "inline PreparationDisposition prepare(")
+seam = block(P1R, "MaterializedSynthABarEvidence& evidence,", "inline PreparationDisposition prepare(")
 require("applied && result.bassRhythmPlanAvailable" in seam and
         "evidence.bassRhythm = result.bassRhythmPlan;" in seam,
         "D1-B: bar evidence must come from the migration result and only when Applied")

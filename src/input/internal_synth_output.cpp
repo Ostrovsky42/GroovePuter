@@ -26,11 +26,13 @@ bool isInternalMonoPerformanceSource(MusicalEventSource source) {
            source == MusicalEventSource::Arpeggiator;
 }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
 float samplerVelocity(uint8_t velocity) {
     if (velocity < 1) velocity = 1;
     if (velocity > 127) velocity = 127;
     return static_cast<float>(velocity) / 127.0f;
 }
+#endif
 }  // namespace
 
 int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
@@ -121,7 +123,9 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
 
         AudioMutationScope mutationScope(mutationGate_);
         const uint8_t lane = event.channel;
+#if GROOVEPUTER_ENABLE_SAMPLER
         const uint8_t mask = static_cast<uint8_t>(1u << lane);
+#endif
 
         switch (event.type) {
             case MusicalEventType::NoteOn: {

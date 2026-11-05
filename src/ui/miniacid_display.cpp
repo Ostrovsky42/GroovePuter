@@ -973,9 +973,11 @@ void MiniAcidDisplay::drawSplashScreen() {
       for (int j = 0; j < len; ++j) {
           if (text[j] != ' ') {
               float t = 0.5f + 0.5f * sinf(timeShift * 0.003f + j * 0.08f + y * 0.03f);
-              uint8_t r = (uint8_t)(0x00 + (0x9D - 0x00) * t);
-              uint8_t g = (uint8_t)(0xE5 + (0x00 - 0xE5) * t);
-              uint8_t b = (uint8_t)(0xFF + (0xFF - 0xFF) * t);
+              // CLEAN: the logo breathes between warm white and warm grey
+              // (no cyan/violet gradient on the black theme).
+              uint8_t r = (uint8_t)(0xE7 + (0x9C - 0xE7) * t);
+              uint8_t g = (uint8_t)(0xE3 + (0x9A - 0xE3) * t);
+              uint8_t b = (uint8_t)(0xDE + (0x94 - 0xDE) * t);
               gfx_.setTextColor(IGfxColor((r << 16) | (g << 8) | b));
               char tmp[2] = {text[j], 0};
               gfx_.drawText(sx + j * 6, y, tmp);
@@ -1041,7 +1043,8 @@ void MiniAcidDisplay::drawDebugOverlay() {
     (void)cpuIdeal;
     (void)cpuActual;
     gfx_.drawText(2, yy, buf); yy += 10;
-    snprintf(buf, sizeof(buf), "UNDR:%u", underruns);
+    snprintf(buf, sizeof(buf), "UNDR:%lu",
+             static_cast<unsigned long>(underruns));
     gfx_.drawText(2, yy, buf); yy += 10;
 }
 

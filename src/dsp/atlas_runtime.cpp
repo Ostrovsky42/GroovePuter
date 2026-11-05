@@ -21,7 +21,9 @@ bool validatePattern(const AtlasGenerated::Pattern& pattern) {
     if (event.velocity < 1 || event.velocity > 127) return false;
     if (event.timing < -23 || event.timing > 23) return false;
     if (event.probability > 100) return false;
-    if (event.target >= 8 && (event.note < 0 || event.note > 127)) return false;
+    // The generated note field is int8_t, so its representable positive range
+    // already ends at MIDI note 127. Keep the negative sentinel check here.
+    if (event.target >= 8 && event.note < 0) return false;
   }
   return true;
 }

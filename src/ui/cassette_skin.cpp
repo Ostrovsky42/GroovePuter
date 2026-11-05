@@ -274,7 +274,6 @@ void CassetteSkin::drawTapeProgress(int x, int y, int width, int progress, int t
     gfx_.fillRect(x, y, fill_w, 3, palette_->led);
     
     // Tick marks every 4 steps
-    int step_w = width / total;
     for (int i = 4; i < total; i += 4) {
         int tick_x = x + (width * i) / total;
         gfx_.drawPixel(tick_x, y - 1, palette_->ink);

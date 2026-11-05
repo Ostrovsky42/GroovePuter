@@ -18,7 +18,8 @@ namespace UI {
 
     // Global overlay state
     WaveformOverlayState waveformOverlay;
-    VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
+    // CLEAN is the only product theme (see sanitizeVisualStyle).
+    VisualStyle currentStyle = VisualStyle::MINIMAL;
     bool hintOverlayActive = false;
 
     // Internal state for the compact global audio waveform.

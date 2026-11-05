@@ -60,13 +60,13 @@ chamberlin_process = filter_source[chamberlin_start:chamberlin_end]
 
 require(
     filter_source,
-    "fastSinForChamberlin",
-    "Synth A TB303 low-pass path must keep the non-transcendental Chamberlin coefficient",
+    "fastTanForSvf",
+    "Synth A TB303 low-pass path must keep the non-transcendental SVF coefficient",
 )
 require(
     chamberlin_process,
-    "fastSinForChamberlin(phase)",
-    "Chamberlin process must use the fast coefficient approximation",
+    "fastTanForSvf(kPi * cutoff / _sampleRate)",
+    "Chamberlin process must use the bounded fast SVF coefficient approximation",
 )
 forbid(
     chamberlin_process,

@@ -27,7 +27,7 @@ The main navigation model is:
 - `Alt+P`: MIDI Player;
 - `Alt+X`: LiveMix;
 - `Alt+M`: Song mode;
-- `Alt+\`: `CLEAN <-> CYBER` theme cycle.
+- `Alt+\`: theme is `CLEAN` (black) only; the key just shows the name.
 
 `Alt+V` opens GENRE directly. `Fn+M -> GENRE` is the discoverable launcher path to the same page.
 
@@ -413,7 +413,7 @@ The goal is that a musician reaches a first useful result before needing levels 
 
 ## 13. Build / install boundary
 
-Developer builds still use the repository scripts and CI. A normal user should not need Arduino tooling as the primary install path; productization work should make accepted release artifacts installable through a user-oriented launcher/burner flow.
+This candidate has no published binary or user-oriented installer yet. Developer builds use the repository scripts and CI; the release remains blocked on a reproducible install path that a new owner can follow without setting up the development toolchain. Do not treat an arbitrary development build as a released image.
 
 The current tagged source baseline and latest packaged GitHub Release is `v0.9.19`. The earlier hardware-accepted foundation is `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the matching release notes and `docs/releases/` records.
 

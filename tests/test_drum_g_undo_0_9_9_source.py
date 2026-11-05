@@ -12,7 +12,7 @@ def require(ok: bool, message: str) -> None:
 
 start = DRUM.find("if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {")
 require(start >= 0, "plain Drum G handler missing")
-end = DRUM.find("// P owns the single P1/P2/P3 request selector", start)
+end = DRUM.find("// P cycles the shared internal realization selector", start)
 require(end > start, "plain Drum G handler end anchor missing")
 g = DRUM[start:end]
 

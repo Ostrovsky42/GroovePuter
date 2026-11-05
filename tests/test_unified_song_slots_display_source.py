@@ -39,8 +39,11 @@ require("currentPhrasePlayTick(voiceIndex)" in NOTES,
         "Melody playhead must use phrase phase rather than Pattern step clock")
 require("NO ACTIVE NOTE DATA" in NOTES,
         "Awaiting/load failure must not render stale Pattern note data")
-require(NOTES.index("activeMelodyForDisplay(voiceIndex)") <
-        NOTES.index("const SynthPattern& pattern = mini_acid_.synthPatternForDisplay(voice_index_)"),
+minimal_start = NOTES.index("void PatternEditPage::drawMinimalStyle")
+minimal_end = NOTES.index("void PatternEditPage::", minimal_start + 1)
+minimal_draw = NOTES[minimal_start:minimal_end]
+require(minimal_draw.index("drawActiveMaterialRollIfNeeded") <
+        minimal_draw.index("const SynthPattern& pattern = slotNPattern()"),
         "Melody/awaiting branch must resolve before Pattern note source access")
 
 require('"NEXT BUSY: SONG"' in UX,

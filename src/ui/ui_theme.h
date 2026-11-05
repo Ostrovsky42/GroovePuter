@@ -140,19 +140,14 @@ inline const char* themeName(VisualStyle style) {
     return "CLEAN";
 }
 
-// Public selection is intentionally binary after hardware review:
-// CYBER is the expressive/default instrument identity; CARBON is the darker,
-// calmer readability-first alternative. AMBER is retained only for legacy
-// page compatibility. MINIMAL_DARK/STAGE remains a reserved future slot.
+// CLEAN (black, VisualStyle::MINIMAL) is the only product theme, owner
+// decision 0.9.20. Alt+\ (backslash), the launcher theme key and the PROJECT Theme row
+// keep their bindings (no key changes meaning) but always resolve to CLEAN.
+// CYBER and AMBER draw paths stay compiled only as unreachable legacy;
+// MINIMAL_DARK/STAGE remains a reserved slot.
 inline VisualStyle nextThemeStyle(VisualStyle style) {
-    switch (style) {
-        case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
-        case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;
-        case VisualStyle::AMBER:
-        case VisualStyle::MINIMAL_DARK:
-        default:
-            return VisualStyle::MINIMAL;
-    }
+    (void)style;
+    return VisualStyle::MINIMAL;
 }
 
 inline VisualStyle previousThemeStyle(VisualStyle style) {

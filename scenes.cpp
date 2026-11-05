@@ -1695,24 +1695,6 @@ void SceneManager::loadDefaultScene() {
     }
   }
 
-  int8_t notes[SynthPattern::kSteps] = {64, 64, -1, 64, -1, 60, 64, -1,
-                                        67, -1, -1, -1, 55, -1, -1, -1};
-  bool accent[SynthPattern::kSteps] = {true, true, false, true, false, true,
-                                       true, false, true, false, false, false,
-                                       true, false, false, false};
-  bool slide[SynthPattern::kSteps] = {false, false, false, false, false, false,
-                                      false, false, false, false, false, false,
-                                      false, false, false, false};
-
-  int8_t notes2[SynthPattern::kSteps] = {52, 52, -1, 52, -1, 48, 52, -1,
-                                         55, -1, -1, -1, 43, -1, -1, -1};
-  bool accent2[SynthPattern::kSteps] = {true, true, false, true, false, true,
-                                        true, false, true, false, false, false,
-                                        true, false, false, false};
-  bool slide2[SynthPattern::kSteps] = {false, false, false, false, false, false,
-                                       false, false, false, false, false, false,
-                                       false, false, false, false};
-
   bool kick[DrumPattern::kSteps] = {true,  true,  false, true,  false, true,
                                     true,  false, true,  false, false, false,
                                     true,  false, false, false};
@@ -2750,7 +2732,6 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
             if (!posObj.isNull()) {
               auto a = posObj["a"];
               auto b = posObj["b"];
-              auto d = posObj["drums"];
               if (a.is<int>()) {
                 loadedSongs[0].positions[posIdx].patterns[0] = clampSongPatternIndex(a.as<int>());
               }
@@ -3245,11 +3226,12 @@ bool validateStoredProjectMaterial(const Scene& resident) {
               if (fs.read(fullPath.c_str(), payload) &&
                   MelodyStore::decode(payload.data(), payload.size(), verified,
                                       &generation)) {
-                Serial.printf("[SCENE-MATERIAL] same_project_candidate voice=%d slot=%d bars=%u events=%u gen=%u\n",
+                Serial.printf("[SCENE-MATERIAL] same_project_candidate voice=%d slot=%d bars=%u events=%u gen=%lu\n",
                               candidateVoice, candidateSlot,
                               static_cast<unsigned>(verified.lengthTicks /
                                   PhraseRuntime::kTicksPerBar),
-                              static_cast<unsigned>(verified.count), generation);
+                              static_cast<unsigned>(verified.count),
+                              static_cast<unsigned long>(generation));
               }
             }
           }

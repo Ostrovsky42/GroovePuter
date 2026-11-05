@@ -561,8 +561,8 @@ void SongPage::getSelectionBounds(int& min_row, int& max_row, int& min_track, in
 }
 
 void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
-  int before_row = cursor_row_;
-  int before_track = cursor_track_;
+  [[maybe_unused]] int before_row = cursor_row_;
+  [[maybe_unused]] int before_track = cursor_track_;
   int before_slot = mini_acid_.activeSongSlot();
   if (extend_selection) {
     updateSelection();
@@ -617,8 +617,8 @@ void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
 
 void SongPage::moveCursorVertical(int delta, bool extend_selection) {
   if (delta == 0) return;
-  int before_row = cursor_row_;
-  int before_track = cursor_track_;
+  [[maybe_unused]] int before_row = cursor_row_;
+  [[maybe_unused]] int before_track = cursor_track_;
   if (cursorOnModeButton()) {
     // If on sidebar, Up/Down does nothing or scrolls? 
     // Let's allow vertical movement within the grid but keep focus on sidebar if it was meant to be a vertical list.
@@ -1770,7 +1770,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         for (int r = min_row; r <= max_row; ++r) {
             for (int t = min_track; t <= max_track; ++t) {
                 bool valid = false;
-                SongTrack track = trackForColumn(t, valid);
+                [[maybe_unused]] SongTrack track = trackForColumn(t, valid);
                 if (!valid) continue;
                 // Each cell remains an independent copy-on-write mutation.
                 int savedRow = cursor_row_;
@@ -2397,8 +2397,6 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
   if (split_compare_) {
     int gap = 6; // Increased gap for border
     int paneW = (w - gap) / 2;
-    int otherSlot = slot == 0 ? 1 : 0;
-
     // Draw active pane first or second?
     // Left is always A, Right is always B.
     drawPane(x, paneW, 0, slot == 0);

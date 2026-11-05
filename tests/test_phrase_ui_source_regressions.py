@@ -188,10 +188,12 @@ require(INSERT, "finalLength > Song::kMaxPositions",
 require(DISPLAY, "page_index_ != WorkflowPages::kPhraseCore",
         "global Alt+W must exclude PHRASE CORE so REPLACE is reachable")
 waveform_start = DISPLAY.index("if (event.alt && (event.key == 'w' || event.key == 'W')")
-waveform_block = DISPLAY[waveform_start:waveform_start + 260]
+waveform_block = DISPLAY[waveform_start:waveform_start + 420]
 require(waveform_block, "page_index_ != WorkflowPages::kPhraseCore",
         "Phrase Core exclusion must belong to the global waveform Alt+W condition")
-require(waveform_block, "UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled",
+require(waveform_block, "GROOVEPUTER_ENABLE_WAVEFORM &&",
+        "global Alt+W must honor the compile-time waveform capability")
+require(waveform_block, "UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && !UI::waveformOverlay.enabled",
         "non-Phrase Alt+W must still toggle the waveform overlay")
 
 require(HELP, '"Ctrl+L/R    Move TO row +/-1"',

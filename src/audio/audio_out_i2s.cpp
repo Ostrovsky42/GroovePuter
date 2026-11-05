@@ -130,8 +130,8 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
 
   Serial.printf(
-      "[AudioOutI2S] ADV I2S1: %u Hz, %u frames, BCLK=%d, WS=%d, DOUT=%d, MCLK=%s\n",
-      sampleRate,
+      "[AudioOutI2S] ADV I2S1: %lu Hz, %u frames, BCLK=%d, WS=%d, DOUT=%d, MCLK=%s\n",
+      static_cast<unsigned long>(sampleRate),
       static_cast<unsigned>(bufferFrames),
       GroovePuterHardware::kI2sBitClockPin,
       GroovePuterHardware::kI2sWordSelectPin,

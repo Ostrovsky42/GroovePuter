@@ -148,8 +148,11 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
     require("const int directKnobStep = fine ? kKnobStepFine : kKnobStepCoarse;" in page,
             "direct knob keys must use the existing coarse/fine step policy")
     for expression in ("setValue(directKnobStep)", "setValue(-directKnobStep)"):
-        require(page.count(expression) == 4,
-                "all four knob key pairs must use the accelerated step")
+        require(page.count(expression) == 3,
+                "the three continuous controls must use the accelerated step")
+    require("isDualOsc() ? 1 : directKnobStep" in page and
+            "isDualOsc() ? -1 : -directKnobStep" in page,
+            "Dual OSC cutoff must retain one-step preset selection")
 
 
 def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
@@ -194,7 +197,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
         ("filter", "FLT", "Stepper"),
         ("distortion", "DST", "Toggle"),
         ("delay", "DLY", "Toggle"),
-        ("source", "SRC", "Stepper"),
+        ("preset", "PRESET", "Stepper"),
         ("make_phrase", "MAKE MELODY", "Stepper"),
     )
     for control, label, style in expected_rows:

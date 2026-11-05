@@ -54,8 +54,10 @@ inline constexpr IGfxColor kDimText = IGfxColor(0x808080);
 inline constexpr int kKnobStepCoarse = 5;
 inline constexpr int kKnobStepFine = 1;
 
+// Voice identity comes from the theme: CLEAN identifies A/B by label and
+// position, so focus is the inverted warm-white block, not a cyan/magenta fill.
 inline IGfxColor voiceColor(int voiceIndex) {
-  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+  return UI::themePalette().voice(voiceIndex);
 }
 
 inline std::string upperCopy(const std::string& s) {
@@ -371,11 +373,13 @@ void TB303ParamsPage::setBoundaries(const Rect& rect) {
 
 void TB303ParamsPage::initComponents() {
   const IGfxColor focusColor = voiceColor(voice_index_);
+  // CLEAN: knobs are told apart by label and position, not by four hues.
+  const IGfxColor knobColor = UI::themePalette().text;
 
-  cutoff_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 0, COLOR_KNOB_1, COLOR_KNOB_1, focusColor);
-  resonance_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 1, COLOR_KNOB_2, COLOR_KNOB_2, focusColor);
-  env_amount_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 2, COLOR_KNOB_3, COLOR_KNOB_3, focusColor);
-  env_decay_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 3, COLOR_KNOB_4, COLOR_KNOB_4, focusColor);
+  cutoff_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 0, knobColor, knobColor, focusColor);
+  resonance_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 1, knobColor, knobColor, focusColor);
+  env_amount_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 2, knobColor, knobColor, focusColor);
+  env_decay_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 3, knobColor, knobColor, focusColor);
 
   engine_type_control_ = std::make_shared<LabelValueComponent>("TYPE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   osc_control_ = std::make_shared<LabelValueComponent>("OSC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);

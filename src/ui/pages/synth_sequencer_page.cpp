@@ -744,7 +744,7 @@ void SynthSequencerPage::drawPhraseList(IGfx& gfx) {
     }
   }
 
-  char status[48];
+  char status[64];
   if (phrase_selection_.active) {
     const auto& event = phrase.events[phrase_selection_.eventIndex];
     char name[8];
@@ -1441,7 +1441,7 @@ bool SynthSequencerPage::addChordTone() {
   phrase_selection_ = PhraseSelectionState::at(now, static_cast<uint16_t>(added));
   char name[8];
   formatNoteName(now.events[added].note, name, sizeof(name));
-  char toast[40];
+  char toast[48];
   if (wasSingle) {
     char low[8], mid[8];
     formatNoteName(rootNote, low, sizeof(low));

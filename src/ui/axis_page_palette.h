@@ -36,10 +36,14 @@ inline Palette paletteFor(VisualStyle style) {
     case VisualStyle::MINIMAL_DARK:
     case VisualStyle::MINIMAL:
     default:
+      // CLEAN (ui_theme.h MINIMAL tokens): true black, no panel colour,
+      // warm white text, warm grey labels, rule-coloured borders. Axes are
+      // told apart by their tag text, not by hue; the one accent is warnings.
       return {
-          COLOR_BG, COLOR_PANEL, IGfxColor(0x101A23), COLOR_LIGHT_GRAY,
-          COLOR_TEXT, COLOR_MUTED, COLOR_INFO, COLOR_SYNTH_A, COLOR_WARN,
-          IGfxColor(0xC978E8), COLOR_DANGER};
+          IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x1C1B19),
+          IGfxColor(0x393734), IGfxColor(0xE7E3DE), IGfxColor(0x9C9A94),
+          IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE),
+          IGfxColor(0xE7E3DE), IGfxColor(0xFF7931)};
   }
 }
 

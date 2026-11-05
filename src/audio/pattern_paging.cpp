@@ -138,10 +138,12 @@ std::string songHarmonicPathFor(
     GroovePuterMaterial::MaterialVersionToken anchorVersion) {
     char fileName[64];
     std::snprintf(fileName, sizeof(fileName),
-                  "/hgs_s%02u_p%03u_m%08x_v%08x%08x.bin",
+                  "/hgs_s%02u_p%03u_m%08lx_v%08lx%08lx.bin",
                   static_cast<unsigned>(songSlot),
-                  static_cast<unsigned>(startPosition), anchorMaterialId.value,
-                  anchorVersion.high, anchorVersion.low);
+                  static_cast<unsigned>(startPosition),
+                  static_cast<unsigned long>(anchorMaterialId.value),
+                  static_cast<unsigned long>(anchorVersion.high),
+                  static_cast<unsigned long>(anchorVersion.low));
     return projectDirectoryFor(projectName) + fileName;
 }
 
@@ -1235,7 +1237,7 @@ bool PatternPagingService::commitPageCandidate(
     header.storageGeneration = nextGen;
 
     if (!ensureProjectDirectory(proj)) {
-        LOG_DEBUG("[commitPageCandidate] ensureProjectDirectory(%s) FAILED\n", proj.c_str());
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] ensureProjectDirectory(%s) FAILED\n", proj.c_str());
         return false;
     }
 
@@ -1243,7 +1245,7 @@ bool PatternPagingService::commitPageCandidate(
     removeIfExists(targetPath);
     File file = SD.open(targetPath.c_str(), FILE_WRITE);
     if (!file) {
-        LOG_DEBUG("[commitPageCandidate] SD.open(%s, FILE_WRITE) FAILED\n", targetPath.c_str());
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] SD.open(%s, FILE_WRITE) FAILED\n", targetPath.c_str());
         return false;
     }
 
@@ -1271,7 +1273,7 @@ bool PatternPagingService::commitPageCandidate(
     file.flush();
     file.close();
     if (!wrote) {
-        LOG_DEBUG("[commitPageCandidate] writeAll FAILED path=%s\n", targetPath.c_str());
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] writeAll FAILED path=%s\n", targetPath.c_str());
         removeIfExists(targetPath);
         return false;
     }
@@ -1281,7 +1283,7 @@ bool PatternPagingService::commitPageCandidate(
     uint32_t verifiedGen = 0;
     if (!readAndValidatePage(targetPath, staging, &verifiedGen) ||
         verifiedGen != nextGen) {
-        LOG_DEBUG("[commitPageCandidate] readAndValidatePage FAILED path=%s verifiedGen=%u expectedGen=%u\n",
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] readAndValidatePage FAILED path=%s verifiedGen=%u expectedGen=%u\n",
                   targetPath.c_str(), verifiedGen, nextGen);
         removeIfExists(targetPath);
         return false;
@@ -1291,14 +1293,14 @@ bool PatternPagingService::commitPageCandidate(
             ? staging.synthABanks[bank].patterns[pattern]
             : staging.synthBBanks[bank].patterns[pattern];
         if (std::memcmp(&stagedPat, candidatePattern, sizeof(SynthPattern)) != 0) {
-            LOG_DEBUG("[commitPageCandidate] candidatePattern compare FAILED path=%s\n", targetPath.c_str());
+            LOG_PLATFORM_DEBUG("[commitPageCandidate] candidatePattern compare FAILED path=%s\n", targetPath.c_str());
             removeIfExists(targetPath);
             return false;
         }
     }
     if (staging.materialSlots[voice][slotOffset].kind != candidateKind ||
         staging.materialSlots[voice][slotOffset].id != candidateId) {
-        LOG_DEBUG("[commitPageCandidate] descriptor compare FAILED path=%s\n", targetPath.c_str());
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] descriptor compare FAILED path=%s\n", targetPath.c_str());
         removeIfExists(targetPath);
         return false;
     }
@@ -1313,12 +1315,12 @@ bool PatternPagingService::commitPageCandidate(
     pubRecord.checksum = GroovePuterMaterial::checksumPublicationRecord(pubRecord);
 
     if (!GroovePuterPlatform::saveMaterialPublication(proj, pageIndex, pubRecord)) {
-        LOG_DEBUG("[commitPageCandidate] saveMaterialPublication FAILED proj=%s page=%d slot=%d gen=%u\n",
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] saveMaterialPublication FAILED proj=%s page=%d slot=%d gen=%u\n",
                   proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
         removeIfExists(targetPath);
         return false;
     }
-    LOG_DEBUG("[commitPageCandidate] OK proj=%s page=%d slot=%d gen=%u\n",
+    LOG_PLATFORM_DEBUG("[commitPageCandidate] OK proj=%s page=%d slot=%d gen=%u\n",
               proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
 
     if (publishResident) {

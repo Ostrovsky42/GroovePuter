@@ -66,7 +66,7 @@ require("plan.onsetSteps" in helper and "plan.midiNotes" in helper,
 # 4. P1R bar evidence requires BOTH owner results.
 require("bassPitchClasses" in block(P1R, "struct MaterializedSynthABarEvidence", "static_assert"),
         "D1-B1: bar evidence must carry the witness")
-seam = block(P1R, "MaterializedSynthABarEvidence& evidence) {", "inline PreparationDisposition prepare(")
+seam = block(P1R, "MaterializedSynthABarEvidence& evidence,", "inline PreparationDisposition prepare(")
 require("result.bassRhythmPlanAvailable &&" in seam and "result.bassPitchClassWitnessAvailable" in seam
         and "evidence.bassPitchClasses = result.bassPitchClassWitness;" in seam,
         "D1-B1: evidence valid only when rhythm plan AND witness are available")

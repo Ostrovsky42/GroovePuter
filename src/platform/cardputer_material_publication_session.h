@@ -29,7 +29,8 @@ inline uint32_t hashProjectName(const std::string& name) {
 
 inline std::string formatKey(const std::string& projectName, int pageIndex) {
     char key[16];
-    std::snprintf(key, sizeof(key), "%08x_p%d", hashProjectName(projectName), pageIndex);
+    std::snprintf(key, sizeof(key), "%08lx_p%d", static_cast<unsigned long>(hashProjectName(projectName)),
+                  pageIndex);
     return std::string(key);
 }
 

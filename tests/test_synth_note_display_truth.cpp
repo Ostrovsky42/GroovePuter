@@ -5,6 +5,7 @@
 #undef private
 #include "src/ui/pages/pattern_edit_page.h"
 #include "src/ui/ui_common.h"
+#include "src/ui/ui_theme.h"
 #include "src/ui/ui_utils.h"
 #include "src/generation/migration/quantized_generation_commit.h"
 
@@ -18,23 +19,24 @@ void expect(bool condition, const char* message) {
 class RecordingGfx final : public IGfx {
  public:
   std::vector<std::string> texts;
-  int playheadRects = 0;
+  int playheadMarkers = 0;
   bool contains(const std::string& s) const {
     for (const auto& text : texts) if (text.find(s) != std::string::npos) return true;
     return false;
   }
-  void reset() { texts.clear(); playheadRects = 0; }
+  void reset() { texts.clear(); playheadMarkers = 0; }
   void begin() override {}
   void clear(IGfxColor) override {}
   void drawPixel(int, int, IGfxColor) override {}
   void drawText(int, int, const char* text) override { if (text) texts.emplace_back(text); }
   void drawImage(int, int, const uint16_t*, int, int) override {}
-  void drawRect(int, int, int, int, IGfxColor color) override {
-    if (color.color24() == COLOR_STEP_HILIGHT.color24()) ++playheadRects;
-  }
+  void drawRect(int, int, int, int, IGfxColor) override {}
   void drawCircle(int, int, int, IGfxColor) override {}
   void drawKnobFace(int, int, int, IGfxColor, IGfxColor) override {}
-  void fillRect(int, int, int, int, IGfxColor) override {}
+  void fillRect(int, int, int, int h, IGfxColor color) override {
+    if (h == 2 && color.color24() == UI::themePalette().accent.color24())
+      ++playheadMarkers;
+  }
   void fillCircle(int, int, int, IGfxColor) override {}
   void drawLine(int32_t, int32_t, int32_t, int32_t, IGfxColor) override {}
   void setRotation(int) override {}
@@ -77,13 +79,13 @@ void patternTruth(int voice) {
     expect(gfx.contains("C3"), "all styles must show current slot, not selection cursor");
     expect(!gfx.contains("D5"), "browsed inactive slot leaked into note grid");
     if (style == VisualStyle::MINIMAL)
-      expect(gfx.playheadRects == 0, "STOP must not highlight step zero as playing");
+      expect(gfx.playheadMarkers == 0, "STOP must not show the playhead marker");
   }
   UI::currentStyle = VisualStyle::MINIMAL;
   engine.playing = true;
   engine.currentTick_ = 48;
   gfx.reset(); page.draw(gfx);
-  expect(gfx.playheadRects == 1, "running transport must retain its current-step marker");
+  expect(gfx.playheadMarkers == 1, "running transport must retain its current-step marker");
   engine.playing = false;
   GroovePuterMaterial::MaterialReference ref{};
   expect(engine.current303MaterialReference_(voice, ref), "current Pattern identity must resolve");

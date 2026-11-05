@@ -53,5 +53,5 @@ class DrumSequencerGridComponent : public Component {
 
   MiniAcid& mini_acid_;
   Callbacks callbacks_;
-  GrooveboxStyle style_ = GrooveboxStyle::MINIMAL_DARK;
+  GrooveboxStyle style_ = GrooveboxStyle::MINIMAL;
 };

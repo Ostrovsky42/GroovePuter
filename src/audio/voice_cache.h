@@ -229,7 +229,8 @@ private:
     std::string pathForPhrase(const char* text) const {
         uint32_t hash = hashString(text);
         char filename[32];
-        snprintf(filename, sizeof(filename), "/%08X.raw", hash);
+        snprintf(filename, sizeof(filename), "/%08lX.raw",
+                 static_cast<unsigned long>(hash));
         
         std::string path = kVoiceDir;
         path += filename;

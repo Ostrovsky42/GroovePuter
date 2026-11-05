@@ -28,7 +28,6 @@ uint8_t velocityToBrightness(uint8_t velocity) {
 }
 
 IGfxColor scaleColor(IGfxColor base, uint8_t brightness) {
-  if (brightness > 255) brightness = 255;
   const uint32_t rgb = base.color24();
   const uint8_t r = static_cast<uint8_t>((((rgb >> 16) & 0xFF) * brightness) / 255);
   const uint8_t g = static_cast<uint8_t>((((rgb >> 8) & 0xFF) * brightness) / 255);

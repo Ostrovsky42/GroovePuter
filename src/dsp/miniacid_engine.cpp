@@ -132,13 +132,13 @@ void TempoDelay::init(float maxSeconds) {
      return;
   }
 
-  LOG_DEBUG("TempoDelay::init: sr=%.1f maxSeconds=%.3f => samples=%d\n",
+  LOG_PLATFORM_DEBUG("TempoDelay::init: sr=%.1f maxSeconds=%.3f => samples=%d\n",
           sampleRate, maxSeconds, newMaxSamples);
   
   const size_t required = static_cast<size_t>(newMaxSamples);
   
   // Log allocation attempt
-  LOG_DEBUG("TempoDelay::init: Allocating %d samples (%.1f KB)...\n", 
+  LOG_PLATFORM_DEBUG("TempoDelay::init: Allocating %d samples (%.1f KB)...\n",
                 newMaxSamples, (newMaxSamples * sizeof(float)) / 1024.0f);
 
   try {
@@ -284,6 +284,7 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     delay3032Enabled(false),
     distortion303Enabled(false),
     distortion3032Enabled(false),
+    currentTimingOffset_(0),
     bpmValue(100.0f),
     projectBpmValue(100.0f),
     currentStepIndex(-1),
@@ -303,8 +304,7 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     delay303(sampleRate),
     delay3032(sampleRate),
     distortion303(),
-    distortion3032(),
-    currentTimingOffset_(0) {
+    distortion3032() {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
 
   // One bounded reservation, at construction, for the session-only NEXT and
@@ -344,7 +344,7 @@ void MiniAcid::init() {
   // psramFound() can return true even if init failed
   size_t freePsram = ESP.getFreePsram();
   hasPsram = (freePsram > 512 * 1024); // Require at least 512KB usable
-  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d", (unsigned)freePsram, hasPsram);
+  LOG_PLATFORM_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d", (unsigned)freePsram, hasPsram);
 #endif
 
   if (hasPsram) {
@@ -1626,7 +1626,7 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
 
   std::string name = engineName;
   for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  LOG_DEBUG("[Synth] %d -> %s\n", idx, name.c_str());
+  LOG_PLATFORM_DEBUG("[Synth] %d -> %s\n", idx, name.c_str());
 
   SynthEngineType target = SynthEngineType::TB303;
   const char* targetName = "TB303";
@@ -1737,7 +1737,7 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
   } else if (name.find("sp12") != std::string::npos) {
     targetEngine = "SP12";
   }
-  LOG_DEBUG("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
+  LOG_PLATFORM_DEBUG("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
   if (targetEngine.empty()) {
     LOG_PRINTLN("    - MiniAcid::setDrumEngine: Unknown engine!");
     return;
@@ -3426,7 +3426,7 @@ void MiniAcid::regeneratePatternsWithGenre() {
     // generation request that resolved it from the profile corridor, and
     // swing belongs to the musician's FEEL settings. Atlas BPM and swing stay
     // readable provenance for diagnostics and corpus review.
-    LOG_DEBUG("  - Atlas recipe applied: %s %s bpm=%u swing=%u\n",
+    LOG_PLATFORM_DEBUG("  - Atlas recipe applied: %s %s bpm=%u swing=%u\n",
               atlasMetadata.displayName, atlasMetadata.slotId,
               static_cast<unsigned>(atlasMetadata.bpm),
               static_cast<unsigned>(atlasMetadata.swingPercent));
@@ -3468,7 +3468,7 @@ void MiniAcid::syncGrooveModeToGenre() {
       GenreManager::grooveboxModeForRecipe(
           genreManager_.recipe(), genreManager_.generativeMode());
   if (sceneManager_.getMode() != linkedMode) {
-    LOG_DEBUG("  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (%d)\n",
+    LOG_PLATFORM_DEBUG("  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (%d)\n",
               static_cast<int>(linkedMode));
   }
   setGrooveboxMode(linkedMode);
@@ -3853,7 +3853,7 @@ void MiniAcid::applySceneStateFromManager() {
   setMasterOutputHighCutHz(kMasterHighCutHz);
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
   if (!drumEngineName.empty()) {
-    LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
+    LOG_PLATFORM_DEBUG("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
     setDrumEngine(drumEngineName);
   }
 
@@ -4418,14 +4418,12 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   int16_t buffer[kRenderBlockSize];
   
   // Approximate total samples
-  float sps = (sampleRateValue * 60.0f) / (bpmValue * 4.0f); 
   // samples per beat = (SR * 60) / BPM.
   // samples per step (1/16th) = samples per beat / 4.
   // So samplesPerStep = (SR * 60) / (BPM * 4).
   float samplesPerStepAvg = (sampleRateValue * 60.0f) / (bpmValue * 4.0f);
   int expectedTotalSamples = (int)(totalSteps * samplesPerStepAvg);
   
-  int stepsRendered = 0;
   int currentSampleCount = 0;
   
   // We need to simulate playback.
@@ -4436,16 +4434,7 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   currentTick_ = 0;
   
   uint32_t bytesWritten = 0;
-  int lastStepIndex = 0;
-  int stepsAdvanced = 0;
-  
-  // We loop until we advanced enough steps
-  // We monitor 'currentStepIndex' wrapping or handled by stepsAdvanced?
-  // generateAudioBuffer updates currentStepIndex.
-  // We need to track how many times we advanced.
-  // But generateAudioBuffer doesn't expose "steps advanced".
-  // We can track step index changes?
-  // Or simpler: just render the expected number of samples.
+  // Render the duration derived from the song's step count and current tempo.
   
   while (currentSampleCount < expectedTotalSamples) {
       // Render a block
@@ -4997,7 +4986,9 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   if (step.probability < 100 && (rand() % 100 >= step.probability)) return;
 
   bool accent = step.accent;
+#if GROOVEPUTER_ENABLE_SAMPLER
   bool rev = (step.fx == (uint8_t)StepFx::Reverse);
+#endif
   
   switch(voiceIdx) {
     case kDrumKickVoice: 
@@ -5071,7 +5062,7 @@ void MiniAcid::advanceSongBar_() {
   songBarIndex_ = boundary.barIndex;
 
   if (boundary.advanceRow) {
-    cyclePulseCounter_++;
+    cyclePulseCounter_ = cyclePulseCounter_ + 1;
     if (songMode_) {
       advanceSongPlayhead();
     }
@@ -6077,28 +6068,28 @@ bool MiniAcid::undoMaterialWorking(int voiceIndex) {
 }
 
 MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
-  LOG_DEBUG("[ACCEPT] voice=%d\n", voiceIndex);
+  LOG_PLATFORM_DEBUG("[ACCEPT] voice=%d\n", voiceIndex);
   if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) {
-    LOG_DEBUG("[ACCEPT] stage=preflight result=InvalidVoice\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=preflight result=InvalidVoice\n");
     return AcceptResult::InvalidVoice;
   }
   const int idx = clamp303Voice(voiceIndex);
 
   auto& working = workingMaterial_[idx];
   const char* workingType = working.holdsPattern() ? "pattern" : (working.holdsMelody() ? "melody" : "none");
-  LOG_DEBUG("[ACCEPT] working=%s\n", workingType);
+  LOG_PLATFORM_DEBUG("[ACCEPT] working=%s\n", workingType);
   const bool dirty = hasModifiedWorking303Pattern(idx) || working.holdsMelody();
-  LOG_DEBUG("[ACCEPT] dirty=%d\n", dirty ? 1 : 0);
+  LOG_PLATFORM_DEBUG("[ACCEPT] dirty=%d\n", dirty ? 1 : 0);
 
   if (working.empty()) {
-    LOG_DEBUG("[ACCEPT] stage=preflight result=AlreadyClean\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=preflight result=AlreadyClean\n");
     return AcceptResult::AlreadyClean;
   }
   // Song may retarget the selected address from the audio task during a slow
   // page write. Until Song has its own prepared publication path, fail closed
   // instead of persisting one row and publishing into another.
   if (playing && songMode_) return AcceptResult::UnsupportedCurrentState;
-  LOG_DEBUG("[ACCEPT] stage=preflight result=OK\n");
+  LOG_PLATFORM_DEBUG("[ACCEPT] stage=preflight result=OK\n");
 
   const int page = currentPageIndex();
   const int bank = current303BankIndex(idx);
@@ -6106,21 +6097,21 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
   if (patternRuntimeBank_.pageIdentity() != page || bank < 0 ||
       bank >= kBankCount || pattern < 0 ||
       pattern >= Bank<SynthPattern>::kPatterns) {
-    LOG_DEBUG("[ACCEPT] stage=resolve result=PageOrBankMismatch page=%d pageIdent=%d bank=%d pat=%d\n",
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=resolve result=PageOrBankMismatch page=%d pageIdent=%d bank=%d pat=%d\n",
               page, patternRuntimeBank_.pageIdentity(), bank, pattern);
     return AcceptResult::UnsupportedCurrentState;
   }
 
   const int globalSlot = songPatternFromPageBankIndex(page, bank, pattern);
   if (globalSlot < 0 || globalSlot >= kMaxGlobalPatterns || globalSlot > 0xff) {
-    LOG_DEBUG("[ACCEPT] stage=resolve result=InvalidGlobalSlot\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=resolve result=InvalidGlobalSlot\n");
     return AcceptResult::UnsupportedCurrentState;
   }
 
   const GroovePuterMaterial::MaterialAddress address{
       static_cast<uint8_t>(idx), static_cast<uint8_t>(globalSlot)};
   if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
-    LOG_DEBUG("[ACCEPT] stage=resolve result=NotResident\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=resolve result=NotResident\n");
     return AcceptResult::UnsupportedCurrentState;
   }
 
@@ -6128,10 +6119,10 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
   const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
   const auto existingId = GroovePuterMaterial::residentId(scene, idx, residentSlot);
   const GroovePuterMaterial::MaterialReference reference{address, existingId};
-  LOG_DEBUG("[ACCEPT] ref.address={voice:%u, globalSlot:%u}\n",
+  LOG_PLATFORM_DEBUG("[ACCEPT] ref.address={voice:%u, globalSlot:%u}\n",
             reference.address.voice, reference.address.globalSlot);
-  LOG_DEBUG("[ACCEPT] ref.id=%u\n", reference.id.value);
-  LOG_DEBUG("[ACCEPT] stage=resolve result=OK\n");
+  LOG_PLATFORM_DEBUG("[ACCEPT] ref.id=%u\n", reference.id.value);
+  LOG_PLATFORM_DEBUG("[ACCEPT] stage=resolve result=OK\n");
 
   const std::string proj = PatternPagingService::currentProjectName();
   const bool liveIoWindow = playing && acceptAudioMutationGate_ != nullptr;
@@ -6140,14 +6131,14 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
   if (working.holdsPattern()) {
     if (existingId.valid()) {
       if (!working.patternMatches(reference)) {
-        LOG_DEBUG("[ACCEPT] stage=validate result=RefMismatch\n");
+        LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=RefMismatch\n");
         return AcceptResult::UnsupportedCurrentState;
       }
     } else {
       const auto stored = working.patternReference();
       if (stored.id.valid() ||
           (stored.address != address && stored.address.voice != 0xFF)) {
-        LOG_DEBUG("[ACCEPT] stage=validate result=UnassignedRefMismatch\n");
+        LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=UnassignedRefMismatch\n");
         return AcceptResult::UnsupportedCurrentState;
       }
     }
@@ -6161,10 +6152,10 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
     if (GroovePuterMaterial::versionForPattern(candidate) ==
         GroovePuterMaterial::versionForPattern(accepted)) {
       working.clear();
-      LOG_DEBUG("[ACCEPT] stage=validate result=AlreadyClean\n");
+      LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=AlreadyClean\n");
       return AcceptResult::AlreadyClean;
     }
-    LOG_DEBUG("[ACCEPT] stage=validate result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=OK\n");
 
     if (liveIoWindow && !acceptAudioMutationGate_->openControlIoWindow()) {
       return AcceptResult::UnsupportedCurrentState;
@@ -6182,7 +6173,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       return AcceptResult::UnsupportedCurrentState;
     }
     if (!persisted) {
-      LOG_DEBUG("[ACCEPT] stage=page_candidate result=CommitFailed\n");
+      LOG_PLATFORM_DEBUG("[ACCEPT] stage=page_candidate result=CommitFailed\n");
       return AcceptResult::CommitFailed;
     }
     if (liveIoWindow) {
@@ -6203,8 +6194,8 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
           page, scene, idx, bank, pattern, &candidate,
           GroovePuterMaterial::MaterialKind::Pattern, candidateId);
     }
-    LOG_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
-    LOG_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
 
     const auto sourceBefore = currentSequencedSource(idx);
     working.clear();
@@ -6237,7 +6228,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       }
     }
 
-    LOG_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
     return AcceptResult::Accepted;
   }
 
@@ -6246,10 +6237,10 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
     const auto candidate = working.melody();
     const auto candidateVersion = GroovePuterMaterial::versionForMelody(candidate);
     if (!RuntimePhraseEdit::validate(candidate)) {
-      LOG_DEBUG("[ACCEPT] stage=validate result=InvalidCandidate\n");
+      LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=InvalidCandidate\n");
       return AcceptResult::InvalidCandidate;
     }
-    LOG_DEBUG("[ACCEPT] stage=validate result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=OK\n");
 
     const size_t slotOffset = static_cast<size_t>(bank * Bank<SynthPattern>::kPatterns + pattern);
     const auto existingKind = scene.materialSlots[idx][slotOffset].kind;
@@ -6261,7 +6252,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       candidateId = PatternPagingService::allocateMaterialId();
       if (!candidateId.valid()) {
         if (liveIoWindow) acceptAudioMutationGate_->closeControlIoWindow();
-        LOG_DEBUG("[ACCEPT] stage=melody_payload result=AllocIdFailed\n");
+        LOG_PLATFORM_DEBUG("[ACCEPT] stage=melody_payload result=AllocIdFailed\n");
         return AcceptResult::CommitFailed;
       }
     }
@@ -6272,11 +6263,11 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
         fs, proj, address, candidate, melodyGen);
     if (melodyErr != MelodyPromotion::Error::None) {
       if (liveIoWindow) acceptAudioMutationGate_->closeControlIoWindow();
-      LOG_DEBUG("[ACCEPT] stage=melody_payload result=CommitMelodyFailed err=%d gen=%u proj=%s\n",
+      LOG_PLATFORM_DEBUG("[ACCEPT] stage=melody_payload result=CommitMelodyFailed err=%d gen=%u proj=%s\n",
                 static_cast<int>(melodyErr), melodyGen, proj.c_str());
       return AcceptResult::CommitFailed;
     }
-    LOG_DEBUG("[ACCEPT] stage=melody_payload result=OK gen=%u\n", melodyGen);
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=melody_payload result=OK gen=%u\n", melodyGen);
 
     if (!PatternPagingService::commitPageCandidate(
             page, scene, idx, bank, pattern, nullptr,
@@ -6288,7 +6279,7 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
           : GroovePuterMaterial::PublicationSlot::SlotA;
       fs.remove(MelodyPromotion::slotPath(proj, address, targetSlot).c_str());
       if (liveIoWindow) acceptAudioMutationGate_->closeControlIoWindow();
-      LOG_DEBUG("[ACCEPT] stage=page_candidate result=CommitMelodyDescriptorFailed page=%d activeSlot=%d\n",
+      LOG_PLATFORM_DEBUG("[ACCEPT] stage=page_candidate result=CommitMelodyDescriptorFailed page=%d activeSlot=%d\n",
                 page, static_cast<int>(activeSlot));
       return AcceptResult::CommitFailed;
     }
@@ -6310,8 +6301,8 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
           page, scene, idx, bank, pattern, nullptr,
           GroovePuterMaterial::MaterialKind::Melody, candidateId);
     }
-    LOG_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
-    LOG_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=page_candidate result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=nvs_publish result=OK\n");
 
     const auto sourceBefore = currentSequencedSource(idx);
     setSequencedSource(idx, sourceBefore);
@@ -6329,11 +6320,11 @@ MiniAcid::AcceptResult MiniAcid::acceptMaterialWorking(int voiceIndex) {
       }
     }
 
-    LOG_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
+    LOG_PLATFORM_DEBUG("[ACCEPT] stage=ram_publish result=OK\n");
     return AcceptResult::Accepted;
   }
 
-  LOG_DEBUG("[ACCEPT] stage=validate result=UnsupportedCurrentState\n");
+  LOG_PLATFORM_DEBUG("[ACCEPT] stage=validate result=UnsupportedCurrentState\n");
   return AcceptResult::UnsupportedCurrentState;
 }
 
@@ -6916,7 +6907,7 @@ bool MiniAcid::loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSl
                       songPatternIndexInBank(globalSlot), *pending.melody) !=
       MelodySlotResult::Ready) {
     // Fail closed and do not retry every frame; START tries again.
-    LOG_DEBUG("[SONG] voice=%d slot=%d melody load FAILED\n", idx, globalSlot);
+    LOG_PLATFORM_DEBUG("[SONG] voice=%d slot=%d melody load FAILED\n", idx, globalSlot);
     songLoadFailedSlot_[idx] = globalSlot;
     return false;
   }

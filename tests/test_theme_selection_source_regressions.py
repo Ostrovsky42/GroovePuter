@@ -20,20 +20,36 @@ def test_theme_selection() -> None:
     cycle_end = theme.index("inline VisualStyle previousThemeStyle", cycle_start)
     cycle = theme[cycle_start:cycle_end]
 
-    require("case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;" in cycle,
-            "MINIMAL must switch directly to CYBER")
-    require("case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;" in cycle,
-            "CYBER must switch directly to MINIMAL")
-    require("return VisualStyle::AMBER" not in cycle,
-            "AMBER must not re-enter the public theme cycle")
-    require("return VisualStyle::MINIMAL_DARK" not in cycle,
-            "reserved STAGE must not enter the public theme cycle")
+    # 0.9.20 owner decision: CLEAN (black, VisualStyle::MINIMAL) is the only
+    # product theme. This replaces the earlier binary CLEAN <-> CYBER cycle.
+    require("return VisualStyle::MINIMAL;" in cycle,
+            "the theme selector must always resolve to CLEAN (MINIMAL)")
+    for retired in ("RETRO_CLASSIC", "AMBER", "MINIMAL_DARK"):
+        require(f"return VisualStyle::{retired}" not in cycle,
+                f"{retired} must not be reachable from the theme selector")
 
     require('#include "ui_theme.h"' in display and
             "return UI::nextThemeStyle(style);" in display,
-            "global Alt+\\ theme switching must use the shared binary selector")
+            "global Alt+\\ theme switching must use the shared single-theme selector")
     require("UI::nextThemeStyle(UI::currentStyle)" in launcher,
-            "launcher preview must use the same binary selector")
+            "launcher theme key must use the same single-theme selector")
+
+    common = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
+    require("VisualStyle currentStyle = VisualStyle::MINIMAL;" in common,
+            "the boot style before any session load must be CLEAN")
+    project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
+    style_start = project.index("VisualStyle nextStyle(VisualStyle style)")
+    style_end = project.index("VisualStyle prevStyle(VisualStyle style)", style_start)
+    require("return UI::nextThemeStyle(style);" in project[style_start:style_end] and
+            "return UI::previousThemeStyle(style);" in project,
+            "PROJECT Theme row must share the single-theme selector")
+    require("VisualStyle::AMBER" not in project and
+            "VisualStyle::RETRO_CLASSIC" not in project,
+            "PROJECT Theme row must not cycle into AMBER or CYBER")
+    session = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
+    require("uint8_t visualStyle{0};" in session and
+            "return kCleanVisualStyle;" in session,
+            "session default and restore must both be CLEAN")
 
     require("IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x000000)" in theme,
             "MINIMAL (CLEAN) surfaces must be true black with no panel fill")

@@ -311,9 +311,11 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         }
     }
 
+#if DEBUG_PATTERN_ENABLED && DEBUG_LEVEL >= 4
     const PatternMetrics m = GrooveProfile::analyzePattern(pattern);
     LOG_DEBUG_PATTERN("mode=%d flv=%d notes=%d rests=%d acc=%d sl=%d swing=%.2f",
                       (int)currentMode_, currentFlavor_, m.notes, m.rests, m.accents, m.slides, adaptedSwing);
+#endif
 }
 
 // ============================================================================
@@ -334,7 +336,8 @@ static inline int prob100(float p) {
 
 // Fallback: params-only delegates to behavior version
 void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm, const GenerativeParams& params) const {
-    GenreBehavior defaultBehavior = { 0xFFFF, 4, 0, true, true, false, false };
+    GenreBehavior defaultBehavior = {
+        0xFFFF, 4, 0, true, true, false, false, GenreTimbre{}};
     generatePattern(pattern, bpm, params, defaultBehavior);
 }
 
@@ -430,7 +433,6 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
     // 5. Place notes following stepMask (genre skeleton)
     int placed = 0;
     int lastStep = -10;
-    int lastNote = baseRoot;
 
     // === BASS ANCHOR: Force root notes on steps 0 and 8 FIRST ===
     if (isBass && targetNotes >= 2) {
@@ -487,7 +489,6 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
         if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
         pattern.steps[step].note = note;
-        lastNote = note;
 
         int velRange = std::max(1, params.velocityMax - params.velocityMin + 1);
         pattern.steps[step].velocity = params.velocityMin + (boundedRandom(rng, velRange));
@@ -553,14 +554,17 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         }
     }
 
+#if DEBUG_PATTERN_ENABLED && DEBUG_LEVEL >= 4
     const PatternMetrics m = GrooveProfile::analyzePattern(pattern);
     LOG_DEBUG_PATTERN("voice=%d notes=%d rests=%d acc=%d sl=%d swing=%.2f",
                       voiceIndex, m.notes, m.rests, m.accents, m.slides, params.swingAmount);
+#endif
 }
 
 // Drum pattern: params-only delegates to behavior version
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params) const {
-    GenreBehavior defaultBehavior = { 0xFFFF, 4, 0, true, true, false, false };
+    GenreBehavior defaultBehavior = {
+        0xFFFF, 4, 0, true, true, false, false, GenreTimbre{}};
     generateDrumPattern(patternSet, params, defaultBehavior);
 }
 
