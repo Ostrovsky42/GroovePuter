@@ -8,6 +8,10 @@ This file is the single source of truth for **why GroovePuter exists, what must 
 
 Implementation documents under `docs/stages/` are subordinate specifications, acceptance procedures, and historical records. They must map to an item in this file and must not silently reorder the roadmap.
 
+## Current 0.9.21 priority — Rhythm Browser
+
+The next approved product direction is manual-first rhythm discovery: **browse → audition → apply drums → play/edit/record**. A musician must be able to hear named drum candidates alone or with their existing parts and explicitly apply only drums without losing other work. The normative scope, invariants and milestone gates are in [the Rhythm Browser goal](docs/releases/0_9_21_RHYTHM_BROWSER_GOAL.md). Rhythm Browser is the current priority; further 0.9.21 features require a separate product decision and must not silently expand this work. UMG, Looper and Energy FORM are independent tracks and are excluded from this goal. Earlier roadmap text below remains historical direction, not authorization to widen this milestone.
+
 `README.md` describes the product and capabilities that are actually available on the branch. `MANUAL.md` describes current user-visible behavior. Neither file may redefine product priorities independently of this plan.
 
 ## Product thesis
