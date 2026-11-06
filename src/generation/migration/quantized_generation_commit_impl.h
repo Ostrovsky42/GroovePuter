@@ -72,6 +72,7 @@ enum class SlotState : uint8_t {
   Armed,
   Ready,
   Reading,
+  AuditionReserved,
 };
 
 struct WriteLease {
@@ -92,6 +93,35 @@ inline std::atomic<int8_t> g_publishedSlot{-1};
 inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
+
+// Control-side reservation only: no audition data or audio reader exists yet.
+// Both slots must remain reserved until explicitly released by that control
+// owner. Existing generation, Song and Phrase acquisitions then return Busy.
+inline bool reserveAuditionSlots() {
+  if (g_publishedSlot.load(std::memory_order_acquire) >= 0) return false;
+  uint8_t empty = static_cast<uint8_t>(SlotState::Empty);
+  if (!g_slotState[0].compare_exchange_strong(
+          empty, static_cast<uint8_t>(SlotState::AuditionReserved),
+          std::memory_order_acq_rel, std::memory_order_acquire)) return false;
+  empty = static_cast<uint8_t>(SlotState::Empty);
+  if (!g_slotState[1].compare_exchange_strong(
+          empty, static_cast<uint8_t>(SlotState::AuditionReserved),
+          std::memory_order_acq_rel, std::memory_order_acquire)) {
+    g_slotState[0].store(static_cast<uint8_t>(SlotState::Empty),
+                         std::memory_order_release);
+    return false;
+  }
+  return true;
+}
+
+inline void releaseAuditionSlots() {
+  for (auto& state : g_slotState) {
+    uint8_t reserved = static_cast<uint8_t>(SlotState::AuditionReserved);
+    state.compare_exchange_strong(reserved, static_cast<uint8_t>(SlotState::Empty),
+                                  std::memory_order_acq_rel,
+                                  std::memory_order_acquire);
+  }
+}
 
 inline PatternTarget captureTarget(const SceneManager& scenes) {
   PatternTarget target{};

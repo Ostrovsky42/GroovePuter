@@ -347,11 +347,37 @@ void testUncommittedAuditionIsNotGenerationActivation() {
   assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 100);
 }
 
+void testAuditionReservationExcludesGeneration() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  assert(reserveAuditionSlots());
+  assert(!reserveAuditionSlots());
+  assert(acquireWriteLease().slot < 0);
+  releaseAuditionSlots();
+  const WriteLease generation = acquireWriteLease();
+  assert(generation.slot >= 0);
+  assert(!reserveAuditionSlots());
+  releaseWriteSlot(generation.slot);
+  assert(reserveAuditionSlots());
+  releaseAuditionSlots();
+
+  // A busy second slot must not leave the first slot reserved on failure.
+  g_slotState[1].store(static_cast<uint8_t>(SlotState::Writing),
+                       std::memory_order_release);
+  assert(!reserveAuditionSlots());
+  assert(g_slotState[0].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Empty));
+  assert(g_slotState[1].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Writing));
+  releaseWriteSlot(1);
+}
+
 }  // namespace
 
 int main() {
   testBoundedActivationStorage();
   testUncommittedAuditionIsNotGenerationActivation();
+  testAuditionReservationExcludesGeneration();
 
   bool ok = true;
   ok &= expectResult(

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_BROWSER_CATALOG_H
+#define GROOVEPUTER_GENERATION_RHYTHM_BROWSER_CATALOG_H
 
 #include <cstdint>
 #include "../materialization/pattern_materializer.h"
@@ -50,3 +51,5 @@ bool matchesGroup(const Descriptor& descriptor, Group group);
 Status materialize(const Identity& identity, Workspace& scratch, Candidate& out);
 
 }  // namespace RhythmBrowser
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_BROWSER_CATALOG_H
