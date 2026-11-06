@@ -10,6 +10,7 @@
 #include "src/state/undo_owner.h"
 #include "src/input/musical_event_queue.h"
 #include "src/output/output_ownership.h"
+#include "src/generation/rhythm_browser/rhythm_browser_catalog.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -190,5 +191,48 @@ int main() {
   assert(!engine.rhythmAuditionCleanupDue());
   assert(!engine.endRhythmAudition(songSession));
   engine.stop();
+
+  // Exercise the actual named catalog material through the engine and MIDI
+  // producer, with an empty accepted drum pattern as the control.
+  engine.setSongMode(false);
+  auto& catalogDrums = engine.sceneManager().currentScene().drumBanks[
+      engine.sceneManager().getCurrentBankIndex(0)].patterns[
+      engine.sceneManager().getCurrentDrumPatternIndex()];
+  catalogDrums = DrumPatternSet{};
+  RhythmBrowser::Descriptor descriptor{};
+  assert(RhythmBrowser::lookup(RhythmBrowser::Source::Vocabulary, 401, descriptor));
+  assert(descriptor.name && descriptor.name[0]);
+  RhythmBrowser::Workspace workspace{};
+  RhythmBrowser::Candidate catalogCandidate{};
+  const RhythmBrowser::Identity identity{
+      descriptor.source, descriptor.stableId, 0, 42,
+      GroovePuterState::sceneRevisionSnapshot().currentRevision};
+  assert(RhythmBrowser::materialize(identity, workspace, catalogCandidate) ==
+         RhythmBrowser::Status::Ok);
+  assert(GroovePuterOutput::setMode(GroovePuterOutput::Track::Drums,
+                                   GroovePuterOutput::Mode::Midi));
+  engine.start();
+  std::vector<unsigned char> catalogScene(sizeof(Scene));
+  std::memcpy(catalogScene.data(), &engine.sceneManager().currentScene(), sizeof(Scene));
+  const uint32_t catalogSession = engine.beginRhythmAudition();
+  assert(catalogSession != 0);
+  assert(engine.stageRhythmAudition(catalogSession, catalogCandidate.drums));
+  int observedHits = 0;
+  for (uint32_t tick = 0; tick < 384; ++tick) {
+    queue.beginMidiRenderBlock(100 + tick, 512, 0.0f, 120.0f, 44100.0f, true);
+    engine.processSequencerEvents(tick);
+    queue.endMidiRenderBlock();
+    ScheduledMusicalEvent emitted{};
+    while (queue.tryPop(emitted)) {
+      if (emitted.event.type == MusicalEventType::NoteOn &&
+          emitted.event.target == MusicalEventTarget::Drums) ++observedHits;
+    }
+  }
+  assert(observedHits > 0);
+  assert(engine.endRhythmAudition(catalogSession));
+  assert(std::memcmp(catalogScene.data(), &engine.sceneManager().currentScene(),
+                     sizeof(Scene)) == 0);
+  engine.stop();
+  GroovePuterOutput::restoreLegacyCompatibility(GroovePuterOutput::Track::Drums);
   std::puts("Rhythm Browser engine audition: PASS");
 }
