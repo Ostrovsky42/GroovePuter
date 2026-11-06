@@ -72,6 +72,8 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 
 "${BUILD_DIR}/test_atlas_runtime"
 
+bash "${ROOT_DIR}/tests/run_rhythm_browser_catalog_tests.sh"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \

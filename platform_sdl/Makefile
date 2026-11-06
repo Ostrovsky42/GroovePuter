@@ -49,6 +49,7 @@ SOURCES := \
 	../src/dsp/advanced_pattern_generator.cpp \
 	../src/phrase/runtime_synth_events.cpp ../src/phrase/runtime_synth_playback.cpp \
 	../src/generation/generation_context.cpp \
+	../src/generation/rhythm_browser/rhythm_browser_catalog.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \
 	../src/generation/composition/phrase_length_request.cpp \
