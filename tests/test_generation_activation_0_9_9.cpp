@@ -3,6 +3,7 @@
 #include "../src/phrase/runtime_pattern_event_bank.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/state/generation_request_state.h"
+#include "../src/state/generated_pattern_harmony_origin.h"
 #include "../src/state/scene_revision.h"
 #include "../src/state/undo_owner.h"
 
@@ -93,6 +94,9 @@ class MiniAcid {
     return runtimeEvents_[synthIndex == 1 ? 1 : 0];
   }
   void barrierPatternRuntimeSourceTransition() {}
+  void publishGeneratedPatternHarmony(
+      const GroovePuterMaterial::GeneratedPatternHarmonyOrigin&) {}
+  void clearGeneratedPatternHarmony() {}
 
  private:
   TestSceneManager scenes_{};
@@ -311,10 +315,43 @@ void testBoundedActivationStorage() {
               sizeof(PendingGeneration));
 }
 
+// A non-committing audition cannot use the generation publication protocol:
+// the owner reserves both slots as a unit, and BAR_START retires a published
+// slot with no committed revision. Keep these facts visible while designing
+// an explicitly separate lifecycle within the existing owner.
+void testUncommittedAuditionIsNotGenerationActivation() {
+  using namespace GroovePuterRhythm;
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+
+  resetQuantizedState();
+  MiniAcid engine;
+  const WriteLease candidate = acquireWriteLease();
+  assert(candidate.slot >= 0);
+  assert(acquireWriteLease().slot < 0);
+
+  PendingGeneration& pending = g_slots[candidate.slot];
+  pending.owner = &engine;
+  pending.target = captureTarget(engine.sceneManager());
+  pending.scope = QuantizedGenerationScope::Full;
+  pending.committedRevision = 0;
+  publishWriteSlot(candidate.slot);
+  assert(pendingAudibleDrumPatternSet(engine) == &pending.drums);
+  assert(pendingAudibleSynthPattern(engine, 0) == &pending.synth[0]);
+  assert(!commitQuantizedGenerationAtBarStart(engine.sceneManager()));
+  assert(g_publishedSlot.load(std::memory_order_acquire) == -1);
+  assert(g_slotState[candidate.slot].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Empty));
+  assert(g_status.load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledRevisionChanged));
+  assert(pendingAudibleDrumPatternSet(engine) == nullptr);
+  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 100);
+}
+
 }  // namespace
 
 int main() {
   testBoundedActivationStorage();
+  testUncommittedAuditionIsNotGenerationActivation();
 
   bool ok = true;
   ok &= expectResult(
