@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <type_traits>
+#include <thread>
 
 class TestSceneManager {
  public:
@@ -372,12 +373,77 @@ void testAuditionReservationExcludesGeneration() {
   releaseWriteSlot(1);
 }
 
+void testAuditionCandidateBoundaryAndSession() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  const uint32_t session = beginAuditionSession();
+  assert(session != 0);
+  releaseAuditionSlots();  // legacy reservation release must not end a session
+  assert(acquireWriteLease().slot < 0);
+  DrumPatternSet first{};
+  first.voices[0].steps[0].hit = true;
+  first.voices[0].steps[0].velocity = 31;
+  DrumPatternSet second{};
+  second.voices[0].steps[0].hit = true;
+  second.voices[0].steps[0].velocity = 77;
+  assert(stageAuditionCandidate(session, first));
+  assert(audibleAuditionDrums(session) == nullptr);
+  assert(activateAuditionAtBar(session));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 31);
+  assert(stageAuditionCandidate(session, second));
+  assert(!stageAuditionCandidate(session, first));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 31);
+  assert(activateAuditionAtBar(session));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 77);
+  assert(!activateAuditionAtBar(session));
+  assert(!endAuditionSession(session + 1));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 77);
+  assert(endAuditionSession(session));  // audio reader is quiescent in this test
+  assert(audibleAuditionDrums(session) == nullptr);
+  const uint32_t next = beginAuditionSession();
+  assert(next != 0 && next != session);
+  assert(!stageAuditionCandidate(session, first));
+  assert(!endAuditionSession(session));
+  assert(endAuditionSession(next));
+}
+
+void testAuditionConcurrentPublication() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  const uint32_t session = beginAuditionSession();
+  assert(session != 0);
+  constexpr int rounds = 5000;
+  std::atomic<bool> finished{false};
+  std::thread producer([&] {
+    for (int n = 0; n < rounds; ++n) {
+      DrumPatternSet pattern{};
+      const uint8_t velocity = static_cast<uint8_t>(n % 127 + 1);
+      for (auto& voice : pattern.voices)
+        for (auto& step : voice.steps) step.velocity = velocity;
+      while (!stageAuditionCandidate(session, pattern)) std::this_thread::yield();
+    }
+    finished.store(true, std::memory_order_release);
+  });
+  while (!finished.load(std::memory_order_acquire)) {
+    (void)activateAuditionAtBar(session);
+    const DrumPatternSet* pattern = audibleAuditionDrums(session);
+    if (!pattern) continue;
+    const uint8_t velocity = pattern->voices[0].steps[0].velocity;
+    for (const auto& voice : pattern->voices)
+      for (const auto& step : voice.steps) assert(step.velocity == velocity);
+  }
+  producer.join();
+  assert(endAuditionSession(session));
+}
+
 }  // namespace
 
 int main() {
   testBoundedActivationStorage();
   testUncommittedAuditionIsNotGenerationActivation();
   testAuditionReservationExcludesGeneration();
+  testAuditionCandidateBoundaryAndSession();
+  testAuditionConcurrentPublication();
 
   bool ok = true;
   ok &= expectResult(

@@ -73,6 +73,8 @@ enum class SlotState : uint8_t {
   Ready,
   Reading,
   AuditionReserved,
+  AuditionReady,
+  AuditionActive,
 };
 
 struct WriteLease {
@@ -93,6 +95,7 @@ inline std::atomic<int8_t> g_publishedSlot{-1};
 inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
+inline std::atomic<uint32_t> g_auditionSession{0};
 
 // Control-side reservation only: no audition data or audio reader exists yet.
 // Both slots must remain reserved until explicitly released by that control
@@ -115,12 +118,86 @@ inline bool reserveAuditionSlots() {
 }
 
 inline void releaseAuditionSlots() {
+  if (g_auditionSession.load(std::memory_order_acquire) != 0) return;
   for (auto& state : g_slotState) {
     uint8_t reserved = static_cast<uint8_t>(SlotState::AuditionReserved);
     state.compare_exchange_strong(reserved, static_cast<uint8_t>(SlotState::Empty),
                                   std::memory_order_acq_rel,
                                   std::memory_order_acquire);
   }
+}
+
+// One control producer and one audio consumer. Session termination requires
+// audio quiescence (the existing AudioMutationGate); no pointer returned by
+// audibleAuditionDrums may survive an audio boundary or that termination.
+inline uint32_t g_nextAuditionSession = 0;  // control thread only
+
+inline uint32_t beginAuditionSession() {
+  if (g_auditionSession.load(std::memory_order_acquire) != 0 ||
+      !reserveAuditionSlots()) return 0;
+  if (++g_nextAuditionSession == 0) ++g_nextAuditionSession;
+  g_auditionSession.store(g_nextAuditionSession, std::memory_order_release);
+  return g_nextAuditionSession;
+}
+
+inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+    return false;
+  for (const auto& state : g_slotState) {
+    if (state.load(std::memory_order_acquire) ==
+        static_cast<uint8_t>(SlotState::AuditionReady)) return false;
+  }
+  for (int slot = 0; slot < 2; ++slot) {
+    if (g_slotState[slot].load(std::memory_order_acquire) !=
+        static_cast<uint8_t>(SlotState::AuditionReserved)) continue;
+    g_slots[slot].drums = drums;
+    g_slotState[slot].store(static_cast<uint8_t>(SlotState::AuditionReady),
+                            std::memory_order_release);
+    return true;
+  }
+  return false;
+}
+
+inline const DrumPatternSet* audibleAuditionDrums(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+    return nullptr;
+  for (int slot = 0; slot < 2; ++slot) {
+    if (g_slotState[slot].load(std::memory_order_acquire) ==
+        static_cast<uint8_t>(SlotState::AuditionActive)) return &g_slots[slot].drums;
+  }
+  return nullptr;
+}
+
+// Audio thread only, at the existing BAR_START after target validation.
+inline bool activateAuditionAtBar(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+    return false;
+  int ready = -1;
+  int active = -1;
+  for (int slot = 0; slot < 2; ++slot) {
+    const auto state = static_cast<SlotState>(g_slotState[slot].load(std::memory_order_acquire));
+    if (state == SlotState::AuditionReady) ready = slot;
+    if (state == SlotState::AuditionActive) active = slot;
+  }
+  if (ready < 0) return false;
+  g_slotState[ready].store(static_cast<uint8_t>(SlotState::AuditionActive),
+                           std::memory_order_release);
+  if (active >= 0) {
+    g_slotState[active].store(static_cast<uint8_t>(SlotState::AuditionReserved),
+                              std::memory_order_release);
+  }
+  return true;
+}
+
+// Control thread only, while audio is quiescent under AudioMutationGate.
+inline bool endAuditionSession(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+    return false;
+  g_auditionSession.store(0, std::memory_order_release);
+  for (auto& state : g_slotState) {
+    state.store(static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+  }
+  return true;
 }
 
 inline PatternTarget captureTarget(const SceneManager& scenes) {
