@@ -9,11 +9,13 @@
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 #include "src/output/output_mode_runtime.h"
+#include "src/midi/transport_clock_runtime.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -48,6 +50,7 @@ inline void drawDrumInputLockedFooter(IGfx& gfx,
                 std::strstr(right, "1..8:Edit"))) {
     safeRight = fixedRight;
   }
+  if (right && std::strstr(right, "DRUM Alt[]:PG")) safeRight = "Alt+R RHYTHMS";
   drawStandardFooter(gfx, safeLeft, safeRight);
 }
 }  // namespace UI
@@ -108,13 +111,211 @@ class PatternLockedDrumContainer : public Container {
 #undef Container
 #undef drawStandardFooter
 
+void DrumSequencerPage::stopBrowserPreview_() {
+  if (auto main = getPagePtr(0)) {
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    page->audio_guard_([&]() {
+      const bool valid = browserSession_ &&
+          page->mini_acid_.rhythmAuditionContextValid(browserSession_);
+      if (browserSession_) (void)page->mini_acid_.endRhythmAudition(browserSession_);
+      if (browserStartedTransport_ && valid && page->mini_acid_.isPlaying())
+        page->mini_acid_.stop();
+    });
+  }
+  browserSession_ = 0;
+  browserStartedTransport_ = browserPending_ = browserSolo_ = false;
+}
+
+void DrumSequencerPage::closeBrowser_() {
+  stopBrowserPreview_();
+  browserOpen_ = false;
+  browserBuffers_.reset();
+}
+
+bool DrumSequencerPage::stageBrowserCandidate_() {
+  auto main = getPagePtr(0);
+  if (!main || !browserBuffers_ || !browserSession_) return false;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  RhythmBrowser::Descriptor descriptor{};
+  if (!RhythmBrowser::descriptorAt(browserIndex_, descriptor)) return false;
+  const RhythmBrowser::Identity identity{
+      descriptor.source, descriptor.stableId, browserVariant_, 0x52485954u,
+      GroovePuterState::sceneRevisionSnapshot().currentRevision};
+  if (RhythmBrowser::materialize(identity, browserBuffers_->workspace,
+                                  browserBuffers_->candidate) != RhythmBrowser::Status::Ok) {
+    UI::showToast("RHYTHM UNAVAILABLE", 1000);
+    stopBrowserPreview_();
+    return false;
+  }
+  bool staged = false;
+  page->audio_guard_([&]() {
+    staged = page->mini_acid_.stageRhythmAudition(browserSession_,
+                                                  browserBuffers_->candidate.drums);
+  });
+  browserPending_ = !staged;
+  return staged;
+}
+
+void DrumSequencerPage::selectBrowserStep_(int direction) {
+  const int count = RhythmBrowser::count();
+  for (int n = 0; n < count; ++n) {
+    browserIndex_ = static_cast<uint8_t>((browserIndex_ + count + direction) % count);
+    RhythmBrowser::Descriptor descriptor{};
+    if (RhythmBrowser::descriptorAt(browserIndex_, descriptor) &&
+        RhythmBrowser::matchesGroup(descriptor, static_cast<RhythmBrowser::Group>(browserGroup_))) {
+      browserVariant_ = 0;
+      if (browserSession_) (void)stageBrowserCandidate_();
+      return;
+    }
+  }
+}
+
+void DrumSequencerPage::tick() {
+  if (!browserOpen_ || !browserSession_) return;
+  auto main = getPagePtr(0);
+  if (!main) return;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (!page->mini_acid_.rhythmAuditionSessionValid(browserSession_)) {
+    page->audio_guard_([&]() { (void)page->mini_acid_.endRhythmAudition(browserSession_); });
+    browserSession_ = 0;
+    browserStartedTransport_ = browserPending_ = false;
+    UI::showToast("RHYTHM STOPPED", 900);
+  } else if (browserPending_ && page->mini_acid_.rhythmAuditionCanStage(browserSession_)) {
+    bool staged = false;
+    page->audio_guard_([&]() {
+      staged = page->mini_acid_.stageRhythmAudition(browserSession_,
+                                                    browserBuffers_->candidate.drums);
+    });
+    browserPending_ = !staged;
+  }
+}
+
+bool DrumSequencerPage::handleBrowserEvent_(UIEvent& event) {
+  if (event.meta || event.alt || event.ctrl) return false;
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return true;
+  if (UIInput::isBack(event) || event.scancode == GROOVEPUTER_ESCAPE) {
+    closeBrowser_();
+    return true;
+  }
+  auto main = getPagePtr(0);
+  if (!main) return true;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (UIInput::isTab(event) || event.key == ' ') {
+    if (browserSession_) {
+      stopBrowserPreview_();
+    } else {
+      if (!page->mini_acid_.isPlaying() && GroovePuterMidi::externalClockOwnsTransport()) {
+        UI::showToast("START EXTERNAL CLOCK", 1000);
+        return true;
+      }
+      page->audio_guard_([&]() {
+        browserStartedTransport_ = !page->mini_acid_.isPlaying();
+        if (browserStartedTransport_) page->mini_acid_.start();
+        browserSession_ = page->mini_acid_.beginRhythmAudition();
+        if (!browserSession_ && browserStartedTransport_) page->mini_acid_.stop();
+      });
+      if (!browserSession_) {
+        browserStartedTransport_ = false;
+        UI::showToast("RHYTHM BUSY / NO TARGET", 1200);
+      } else {
+        (void)stageBrowserCandidate_();
+      }
+    }
+    return true;
+  }
+  if (UIInput::isUp(event) || UIInput::isDown(event)) {
+    selectBrowserStep_(UIInput::isUp(event) ? -1 : 1);
+    return true;
+  }
+  if (event.key == 'g' || event.key == 'G') {
+    browserGroup_ = static_cast<uint8_t>((browserGroup_ + 1) %
+        static_cast<uint8_t>(RhythmBrowser::Group::Count));
+    selectBrowserStep_(1);
+    return true;
+  }
+  if (UIInput::isLeft(event) || UIInput::isRight(event)) {
+    RhythmBrowser::Descriptor descriptor{};
+    if (RhythmBrowser::descriptorAt(browserIndex_, descriptor) && descriptor.variantCount > 1) {
+      const int delta = UIInput::isLeft(event) ? -1 : 1;
+      browserVariant_ = static_cast<uint8_t>((browserVariant_ + descriptor.variantCount + delta) % descriptor.variantCount);
+      if (browserSession_) (void)stageBrowserCandidate_();
+    }
+    return true;
+  }
+  if ((event.key == 'm' || event.key == 'M') && browserSession_) {
+    browserSolo_ = !browserSolo_;
+    page->audio_guard_([&]() { (void)page->mini_acid_.setRhythmAuditionSolo(browserSession_, browserSolo_); });
+    return true;
+  }
+  return true;
+}
+
+void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
+  static const char* groups[] = {"ALL", "HOUSE", "TECHNO", "UKG", "BREAKS", "HIP-HOP", "ACID", "DUB", "ELECTRO"};
+  const Rect& b = getBoundaries();
+  gfx.fillRect(b.x, b.y, b.w, b.h, COLOR_BG);
+  gfx.setTextColor(COLOR_ACCENT);
+  gfx.drawText(b.x + 3, b.y + 2, "RHYTHM BROWSER");
+  gfx.setTextColor(COLOR_TEXT);
+  gfx.drawText(b.x + 3, b.y + 12, groups[browserGroup_]);
+  const auto neighbor = [&](int direction) {
+    const int count = RhythmBrowser::count();
+    int index = browserIndex_;
+    for (int n = 0; n < count; ++n) {
+      index = (index + count + direction) % count;
+      RhythmBrowser::Descriptor item{};
+      if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(index), item) &&
+          RhythmBrowser::matchesGroup(item, static_cast<RhythmBrowser::Group>(browserGroup_))) return index;
+    }
+    return static_cast<int>(browserIndex_);
+  };
+  RhythmBrowser::Descriptor adjacent{};
+  gfx.setTextColor(COLOR_MUTED);
+  if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(-1)), adjacent))
+    gfx.drawText(b.x + 12, b.y + 23, adjacent.name);
+  RhythmBrowser::Descriptor descriptor{};
+  if (RhythmBrowser::descriptorAt(browserIndex_, descriptor)) {
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(b.x + 3, b.y + 34, ">");
+    gfx.drawText(b.x + 12, b.y + 34, descriptor.name);
+    gfx.setTextColor(COLOR_MUTED);
+    if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(1)), adjacent))
+      gfx.drawText(b.x + 12, b.y + 45, adjacent.name);
+    char info[40];
+    std::snprintf(info, sizeof(info), "%s  P%u/%u",
+                  descriptor.source == RhythmBrowser::Source::Atlas ? "ATLAS EXACT" : "VOCABULARY",
+                  unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount));
+    gfx.setTextColor(COLOR_TEXT);
+    gfx.drawText(b.x + 3, b.y + 56, info);
+  }
+  bool actualSolo = false;
+  if (auto main = getPagePtr(0)) {
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    actualSolo = page->mini_acid_.rhythmAuditionSolo(browserSession_);
+  }
+  const char* hear = !browserSession_ ? "BROWSING" :
+      (browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
+       (actualSolo ? "SOLO" : "WITH SONG"));
+  gfx.drawText(b.x + 3, b.y + 67, hear);
+  gfx.setTextColor(COLOR_MUTED);
+  gfx.drawText(b.x + 3, b.y + 78, "G GROUP  UP/DN RHYTHM");
+  gfx.drawText(b.x + 3, b.y + 89, "LEFT/RIGHT VARIANT");
+  gfx.drawText(b.x + 3, b.y + 100, "TAB HEAR M SOLO ESC CLOSE");
+  gfx.drawText(b.x + 3, b.y + 111, "APPLY: UNAVAILABLE");
+}
+
 void DrumSequencerPage::onExit() {
+  closeBrowser_();
   // STEP SETTINGS is an input mode of the grid; leaving DRUMS ends it.
   std::shared_ptr<Container> main = getPagePtr(0);
   if (main) static_cast<DrumSequencerMainPage*>(main.get())->step_settings_open_ = false;
 }
 
 void DrumSequencerPage::draw(IGfx& gfx) {
+  if (browserOpen_) {
+    drawBrowser_(gfx);
+    return;
+  }
   // The retained Minimal draw path renders grid_component_ explicitly and then
   // calls Container::draw(), which would render the same child a second time.
   // Suppress only that inherited child pass while the main grid tab is active.
@@ -125,6 +326,7 @@ void DrumSequencerPage::draw(IGfx& gfx) {
 }
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (browserOpen_) return handleBrowserEvent_(ui_event);
 #if GROOVEPUTER_ENABLE_SAMPLER
   // Product sampler controls belong to the DRUMS workflow. Keep the retained
   // three-tab legacy constructor untouched and attach SAMPLES lazily before the
@@ -148,6 +350,16 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
         main ? static_cast<DrumSequencerMainPage*>(main.get()) : nullptr;
     if (mainPage && mainPage->step_settings_open_) {
       return mainPage->handleStepSettingsKey(ui_event);
+    }
+    if (mainPage && ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+        (ui_event.key == 'r' || ui_event.key == 'R' ||
+         ui_event.scancode == GROOVEPUTER_R)) {
+      browserBuffers_.reset(new (std::nothrow) BrowserBuffers{});
+      if (!browserBuffers_) { UI::showToast("RHYTHM: NO MEMORY", 1200); return true; }
+      browserOpen_ = true;
+      browserIndex_ = browserVariant_ = browserGroup_ = 0;
+      browserPending_ = browserSolo_ = false;
+      return true;
     }
     if (mainPage && isDrumStepSettingsChord(ui_event)) {
       mainPage->openStepSettings();

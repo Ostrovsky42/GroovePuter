@@ -1138,6 +1138,36 @@ bool MiniAcid::endRhythmAudition(uint32_t session) {
   return true;
 }
 
+bool MiniAcid::rhythmAuditionSessionValid(uint32_t session) const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  return session != 0 && g_auditionSession.load(std::memory_order_acquire) == session &&
+      g_auditionContext.owner == this && !g_auditionInvalid.load(std::memory_order_acquire);
+}
+
+// Control side under AudioGuard: capture the current Scene/Song context safely.
+bool MiniAcid::rhythmAuditionContextValid(uint32_t session) const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionContext.owner != this) return false;
+  if (isPageLoading() || !isPlaying()) {
+    g_auditionInvalid.store(true, std::memory_order_release);
+    return false;
+  }
+  return validateAuditionContext(session, rhythmAuditionContext(*this));
+}
+
+bool MiniAcid::rhythmAuditionCanStage(uint32_t session) const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (!rhythmAuditionSessionValid(session)) return false;
+  bool reserved = false;
+  for (const auto& state : g_slotState) {
+    const auto value = static_cast<SlotState>(state.load(std::memory_order_acquire));
+    if (value == SlotState::AuditionReady) return false;
+    if (value == SlotState::AuditionReserved) reserved = true;
+  }
+  return reserved;
+}
+
 bool MiniAcid::setRhythmAuditionSolo(uint32_t session, bool solo) {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
   if (g_auditionContext.owner != this ||

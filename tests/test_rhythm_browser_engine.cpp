@@ -11,11 +11,39 @@
 #include "src/input/musical_event_queue.h"
 #include "src/output/output_ownership.h"
 #include "src/generation/rhythm_browser/rhythm_browser_catalog.h"
+#include "src/ui/pages/drum_sequencer_page.h"
 
 SerialMock Serial;
 SDMock SD;
 
 static float phase(void*) { return 0.0f; }
+
+class BrowserTestGfx final : public IGfx {
+ public:
+  std::string text;
+  void begin() override {}
+  void clear(IGfxColor) override {}
+  void drawPixel(int, int, IGfxColor) override {}
+  void drawText(int, int, const char* value) override { if (value) text += value; }
+  void drawImage(int, int, const uint16_t*, int, int) override {}
+  void drawRect(int, int, int, int, IGfxColor) override {}
+  void drawCircle(int, int, int, IGfxColor) override {}
+  void drawKnobFace(int, int, int, IGfxColor, IGfxColor) override {}
+  void fillRect(int, int, int, int, IGfxColor) override {}
+  void fillCircle(int, int, int, IGfxColor) override {}
+  void drawLine(int32_t, int32_t, int32_t, int32_t, IGfxColor) override {}
+  void setRotation(int) override {}
+  void setTextColor(IGfxColor) override {}
+  void setTextColor(uint16_t) override {}
+  void setFont(GfxFont) override {}
+  void startWrite() override {}
+  void endWrite() override {}
+  void flush() override {}
+  int textWidth(const char* value) const override { return value ? int(std::strlen(value)) * 6 : 0; }
+  int fontHeight() const override { return 8; }
+  int width() const override { return 240; }
+  int height() const override { return 135; }
+};
 
 int main() {
   MiniAcid engine(44100.0f, nullptr);
@@ -284,5 +312,59 @@ int main() {
                      sizeof(Scene)) == 0);
   engine.stop();
   GroovePuterOutput::restoreLegacyCompatibility(GroovePuterOutput::Track::Drums);
+
+  BrowserTestGfx gfx;
+  DrumSequencerPage drumPage(gfx, engine, AudioGuard{});
+  drumPage.setBoundaries(Rect{0, 0, 240, 135});
+  drumPage.onEnter(0);
+  std::vector<unsigned char> browserScene(sizeof(Scene));
+  std::memcpy(browserScene.data(), &engine.sceneManager().currentScene(), sizeof(Scene));
+  UIEvent open{};
+  open.event_type = GROOVEPUTER_KEY_DOWN;
+  open.key = 'r';
+  open.alt = true;
+  assert(drumPage.handleEvent(open));
+  drumPage.draw(gfx);
+  assert(gfx.text.find("RHYTHM") != std::string::npos);
+  UIEvent listen{};
+  listen.event_type = GROOVEPUTER_KEY_DOWN;
+  listen.key = '\t';
+  listen.scancode = GROOVEPUTER_TAB;
+  assert(drumPage.handleEvent(listen));
+  assert(engine.isPlaying());
+  engine.processSequencerEvents(0);
+  assert(engine.auditionDrums_() != nullptr);
+  const DrumPatternSet firstBrowserPattern = *engine.auditionDrums_();
+  UIEvent down{};
+  down.event_type = GROOVEPUTER_KEY_DOWN;
+  down.scancode = GROOVEPUTER_DOWN;
+  assert(drumPage.handleEvent(down));
+  engine.processSequencerEvents(24);
+  assert(std::memcmp(firstBrowserPattern.voices, engine.auditionDrums_()->voices,
+                     sizeof(firstBrowserPattern.voices)) == 0);
+  engine.processSequencerEvents(384);
+  bool different = false;
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice)
+    for (int step = 0; step < DrumPattern::kSteps; ++step)
+      different |= firstBrowserPattern.voices[voice].steps[step].hit !=
+                   engine.auditionDrums_()->voices[voice].steps[step].hit;
+  assert(different);
+  UIEvent cancel{};
+  cancel.event_type = GROOVEPUTER_KEY_DOWN;
+  cancel.key = 0x1b;
+  assert(drumPage.handleEvent(cancel));
+  assert(!engine.isPlaying());
+  assert(engine.auditionDrums_() == nullptr);
+  assert(std::memcmp(browserScene.data(), &engine.sceneManager().currentScene(),
+                     sizeof(Scene)) == 0);
+  engine.start();
+  assert(drumPage.handleEvent(open));
+  assert(drumPage.handleEvent(listen));
+  engine.processSequencerEvents(0);
+  assert(engine.auditionDrums_() != nullptr);
+  drumPage.onExit();
+  assert(engine.isPlaying());
+  assert(engine.auditionDrums_() == nullptr);
+  engine.stop();
   std::puts("Rhythm Browser engine audition: PASS");
 }
