@@ -80,5 +80,53 @@ int main() {
   assert(nextSession != 0);
   assert(engine.endRhythmAudition(nextSession));
   engine.stop();
+
+  // An accepted Phrase continues to play while preview drums are substituted.
+  engine.setSongMode(false);
+  engine.start();
+  auto& phrase = engine.currentPhraseBuffer(0);
+  phrase = PhraseRuntime::RuntimeSynthEventBuffer{};
+  phrase.lengthTicks = PhraseRuntime::kTicksPerBar;
+  phrase.count = 1;
+  phrase.events[0].startTick = 0;
+  phrase.events[0].durationSubticks = 12 * PhraseRuntime::kSubticksPerTick;
+  phrase.events[0].note = 60;
+  phrase.events[0].velocity = 100;
+  phrase.events[0].probability = 100;
+  engine.publishActiveMaterial(0, 0, GroovePuterMaterial::MaterialKind::Melody);
+  const uint32_t phraseSession = engine.beginRhythmAudition();
+  assert(phraseSession != 0);
+  assert(engine.stageRhythmAudition(phraseSession, candidate));
+  engine.processSequencerEvents(0);
+  assert(engine.auditionDrums_() != nullptr);
+  assert(engine.patternPlaybackState_[0].active());
+  assert(engine.patternPlaybackState_[0].activeNote() == 60);
+  assert(engine.currentPhraseBuffer(0).count == 1);
+  assert(engine.endRhythmAudition(phraseSession));
+  engine.stop();
+
+  // A Song row transition invalidates the old preview and releases its slots
+  // through the guarded control service; it never redirects to another row.
+  engine.setSongMode(false);
+  engine.setSongLength(2);
+  engine.setSongPattern(0, SongTrack::Drums, 0);
+  engine.setSongPattern(1, SongTrack::Drums, 1);
+  engine.sceneManager().currentScene().feel.patternBars = 1;
+  engine.setSongMode(true);
+  engine.setSongPosition(0);
+  engine.start();
+  const uint32_t songSession = engine.beginRhythmAudition();
+  assert(songSession != 0);
+  assert(engine.stageRhythmAudition(songSession, candidate));
+  engine.processSequencerEvents(0);
+  assert(engine.auditionDrums_() != nullptr);
+  engine.processSequencerEvents(384);
+  assert(engine.currentSongPosition() == 1);
+  assert(engine.auditionDrums_() == nullptr);
+  assert(engine.rhythmAuditionCleanupDue());
+  engine.serviceRhythmAuditionCleanup();
+  assert(!engine.rhythmAuditionCleanupDue());
+  assert(!engine.endRhythmAudition(songSession));
+  engine.stop();
   std::puts("Rhythm Browser engine audition: PASS");
 }
