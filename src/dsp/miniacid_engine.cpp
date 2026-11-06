@@ -1131,19 +1131,48 @@ bool MiniAcid::stageRhythmAudition(uint32_t session, const DrumPatternSet& drums
 bool MiniAcid::endRhythmAudition(uint32_t session) {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
   if (g_auditionContext.owner != this) return false;
-  return endAuditionSession(session);
+  if (!endAuditionSession(session)) return false;
+  if (!g_auditionInvalid.load(std::memory_order_acquire) ||
+      !g_auditionCleanupPublished.exchange(true, std::memory_order_acq_rel))
+    barrierRhythmAuditionDrums_();
+  return true;
 }
 
-const DrumPatternSet* MiniAcid::auditionDrums_() const {
+bool MiniAcid::rhythmAuditionCleanupDue() const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  return g_auditionSession.load(std::memory_order_acquire) != 0 &&
+      g_auditionContext.owner == this &&
+      g_auditionInvalid.load(std::memory_order_acquire);
+}
+
+void MiniAcid::serviceRhythmAuditionCleanup() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (!rhythmAuditionCleanupDue()) return;
+  (void)endRhythmAudition(g_auditionSession.load(std::memory_order_acquire));
+}
+
+void MiniAcid::barrierRhythmAuditionDrums_() {
+  for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+  if (patternEventQueue_) {
+    patternEventQueue_->tryPush(MusicalEvent{
+        MusicalEventType::AllNotesOff, MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::Drums, 0, 0, 0});
+  }
+}
+
+const DrumPatternSet* MiniAcid::auditionDrums_() {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
   const uint32_t session = g_auditionSession.load(std::memory_order_acquire);
   if (!session || g_auditionContext.owner != this) return nullptr;
   if (isPageLoading()) {
     g_auditionInvalid.store(true, std::memory_order_release);
+  }
+  if (!isPlaying() || !validateAuditionContext(session, rhythmAuditionContext(*this))) {
+    if (g_auditionInvalid.load(std::memory_order_acquire) &&
+        !g_auditionCleanupPublished.exchange(true, std::memory_order_acq_rel))
+      barrierRhythmAuditionDrums_();
     return nullptr;
   }
-  if (!isPlaying() ||
-      !validateAuditionContext(session, rhythmAuditionContext(*this))) return nullptr;
   return audibleAuditionDrums(session);
 }
 
@@ -2902,7 +2931,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       if (session && g_auditionContext.owner == this && !isPageLoading() &&
           validateAuditionContext(session, rhythmAuditionContext(*this))) {
         if (activateAuditionAtBar(session)) {
-          for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+          barrierRhythmAuditionDrums_();
         }
       }
     }

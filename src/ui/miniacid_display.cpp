@@ -272,6 +272,9 @@ void MiniAcidDisplay::syncProjectKey_() {
 }
 
 void MiniAcidDisplay::update(void (*frameOverlay)()) {
+    if (mini_acid_.rhythmAuditionCleanupDue()) {
+        withAudioGuard([&]() { mini_acid_.serviceRhythmAuditionCleanup(); });
+    }
     syncProjectKey_();
     servicePersistence_();
     syncVisualStyle_();

@@ -107,6 +107,7 @@ inline std::atomic<uint8_t> g_status{
 inline std::atomic<uint32_t> g_commitSerial{0};
 inline std::atomic<uint32_t> g_auditionSession{0};
 inline std::atomic<bool> g_auditionInvalid{false};
+inline std::atomic<bool> g_auditionCleanupPublished{false};
 // Immutable while a session is active; begin/end require audio quiescence.
 inline AuditionContext g_auditionContext{};
 
@@ -153,6 +154,7 @@ inline uint32_t beginAuditionSession(const AuditionContext& context) {
   if (++g_nextAuditionSession == 0) ++g_nextAuditionSession;
   g_auditionContext = context;
   g_auditionInvalid.store(false, std::memory_order_release);
+  g_auditionCleanupPublished.store(false, std::memory_order_release);
   g_auditionSession.store(g_nextAuditionSession, std::memory_order_release);
   return g_nextAuditionSession;
 }
