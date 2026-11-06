@@ -51,6 +51,16 @@ struct PatternTarget {
   int drumSlot = -1;
 };
 
+struct AuditionContext {
+  const MiniAcid* owner = nullptr;
+  PatternTarget target{};
+  uint32_t revision = 0;
+  int songSlot = -1;
+  int songRow = -1;
+  int drumAddress = -1;
+  bool songMode = false;
+};
+
 struct PendingGeneration {
   MiniAcid* owner = nullptr;
   PatternTarget target{};
@@ -96,6 +106,9 @@ inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
 inline std::atomic<uint32_t> g_auditionSession{0};
+inline std::atomic<bool> g_auditionInvalid{false};
+// Immutable while a session is active; begin/end require audio quiescence.
+inline AuditionContext g_auditionContext{};
 
 // Control-side reservation only: no audition data or audio reader exists yet.
 // Both slots must remain reserved until explicitly released by that control
@@ -132,16 +145,40 @@ inline void releaseAuditionSlots() {
 // audibleAuditionDrums may survive an audio boundary or that termination.
 inline uint32_t g_nextAuditionSession = 0;  // control thread only
 
-inline uint32_t beginAuditionSession() {
-  if (g_auditionSession.load(std::memory_order_acquire) != 0 ||
+inline uint32_t beginAuditionSession(const AuditionContext& context) {
+  if (context.owner == nullptr || context.drumAddress < 0 ||
+      (context.songMode && (context.songSlot < 0 || context.songRow < 0)) ||
+      g_auditionSession.load(std::memory_order_acquire) != 0 ||
       !reserveAuditionSlots()) return 0;
   if (++g_nextAuditionSession == 0) ++g_nextAuditionSession;
+  g_auditionContext = context;
+  g_auditionInvalid.store(false, std::memory_order_release);
   g_auditionSession.store(g_nextAuditionSession, std::memory_order_release);
   return g_nextAuditionSession;
 }
 
-inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums) {
-  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+// Audio consumer calls this after Song advancement and before using drums.
+// Invalidating is one-way: the control owner must terminate under the gate.
+inline bool validateAuditionContext(uint32_t session, const AuditionContext& now) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire)) return false;
+  const auto& expected = g_auditionContext;
+  const auto& a = expected.target;
+  const auto& b = now.target;
+  const bool same = expected.owner == now.owner && expected.revision == now.revision &&
+      expected.songMode == now.songMode && expected.songSlot == now.songSlot &&
+      expected.songRow == now.songRow && expected.drumAddress == now.drumAddress &&
+      a.page == b.page && a.drumBank == b.drumBank && a.drumSlot == b.drumSlot &&
+      a.synthBank[0] == b.synthBank[0] && a.synthBank[1] == b.synthBank[1] &&
+      a.synthSlot[0] == b.synthSlot[0] && a.synthSlot[1] == b.synthSlot[1];
+  if (!same) g_auditionInvalid.store(true, std::memory_order_release);
+  return same;
+}
+
+inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums,
+                                   const DrumPatternSet& accepted) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
     return false;
   for (const auto& state : g_slotState) {
     if (state.load(std::memory_order_acquire) ==
@@ -151,6 +188,9 @@ inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums
     if (g_slotState[slot].load(std::memory_order_acquire) !=
         static_cast<uint8_t>(SlotState::AuditionReserved)) continue;
     g_slots[slot].drums = drums;
+    for (int lane = 0; lane < DrumPatternSet::kMaxLanes; ++lane)
+      g_slots[slot].drums.lanes[lane] = accepted.lanes[lane];
+    g_slots[slot].drums.groove = accepted.groove;
     g_slotState[slot].store(static_cast<uint8_t>(SlotState::AuditionReady),
                             std::memory_order_release);
     return true;
@@ -159,7 +199,8 @@ inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums
 }
 
 inline const DrumPatternSet* audibleAuditionDrums(uint32_t session) {
-  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
     return nullptr;
   for (int slot = 0; slot < 2; ++slot) {
     if (g_slotState[slot].load(std::memory_order_acquire) ==
@@ -170,7 +211,8 @@ inline const DrumPatternSet* audibleAuditionDrums(uint32_t session) {
 
 // Audio thread only, at the existing BAR_START after target validation.
 inline bool activateAuditionAtBar(uint32_t session) {
-  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
     return false;
   int ready = -1;
   int active = -1;
