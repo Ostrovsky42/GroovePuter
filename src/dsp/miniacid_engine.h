@@ -585,6 +585,8 @@ public:
   uint32_t beginRhythmAudition();
   bool stageRhythmAudition(uint32_t session, const DrumPatternSet& drums);
   bool endRhythmAudition(uint32_t session);
+  bool setRhythmAuditionSolo(uint32_t session, bool solo);
+  bool rhythmAuditionSolo(uint32_t session) const;
   bool rhythmAuditionCleanupDue() const;
   void serviceRhythmAuditionCleanup();
   void setSongMode(bool enabled);

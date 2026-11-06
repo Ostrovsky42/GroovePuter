@@ -132,6 +132,9 @@ int main() {
 
   // An accepted Phrase continues to play while preview drums are substituted.
   engine.setSongMode(false);
+  GroovePuterOutput::restoreLegacyCompatibility(GroovePuterOutput::Track::SynthA);
+  assert(GroovePuterOutput::setMode(GroovePuterOutput::Track::SynthA,
+                                   GroovePuterOutput::Mode::Midi));
   engine.start();
   auto& phrase = engine.currentPhraseBuffer(0);
   phrase = PhraseRuntime::RuntimeSynthEventBuffer{};
@@ -146,13 +149,46 @@ int main() {
   const uint32_t phraseSession = engine.beginRhythmAudition();
   assert(phraseSession != 0);
   assert(engine.stageRhythmAudition(phraseSession, candidate));
+  queue.beginMidiRenderBlock(2000, 512, 0.0f, 120.0f, 44100.0f, true);
   engine.processSequencerEvents(0);
+  queue.endMidiRenderBlock();
+  bool heardPhraseMidi = false;
+  while (queue.tryPop(event)) {
+    if (event.event.target == MusicalEventTarget::SynthA &&
+        event.event.type == MusicalEventType::NoteOn && event.event.note == 60)
+      heardPhraseMidi = true;
+  }
+  assert(heardPhraseMidi);
   assert(engine.auditionDrums_() != nullptr);
   assert(engine.patternPlaybackState_[0].active());
   assert(engine.patternPlaybackState_[0].activeNote() == 60);
   assert(engine.currentPhraseBuffer(0).count == 1);
+  assert(engine.setRhythmAuditionSolo(phraseSession, true));
+  engine.liveNoteOn(1, 65, 100);
+  engine.processSequencerEvents(384);
+  assert(!engine.rhythmAuditionSolo(phraseSession));
+  assert(engine.liveNote(1) == 65);
+  engine.liveNoteOff(1, 65);
+  queue.beginMidiRenderBlock(2001, 512, 0.0f, 120.0f, 44100.0f, true);
+  engine.processSequencerEvents(768);
+  queue.endMidiRenderBlock();
+  assert(engine.rhythmAuditionSolo(phraseSession));
+  assert(!engine.patternPlaybackState_[0].active());
+  while (queue.tryPop(event)) {
+    assert(!(event.event.target == MusicalEventTarget::SynthA &&
+             event.event.type == MusicalEventType::NoteOn));
+  }
+  engine.liveNoteOn(1, 67, 100);
+  engine.processSequencerEvents(792);
+  assert(engine.liveNote(1) == 67);
+  engine.liveNoteOff(1, 67);
+  assert(engine.setRhythmAuditionSolo(phraseSession, false));
+  engine.processSequencerEvents(1152);
+  assert(!engine.rhythmAuditionSolo(phraseSession));
+  assert(engine.patternPlaybackState_[0].active());
   assert(engine.endRhythmAudition(phraseSession));
   engine.stop();
+  GroovePuterOutput::restoreLegacyCompatibility(GroovePuterOutput::Track::SynthA);
 
   // Preview follows Song while the original destination remains pinned; the
   // current row's automation applies, and a missing drum target ends preview.

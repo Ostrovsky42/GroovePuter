@@ -1138,6 +1138,22 @@ bool MiniAcid::endRhythmAudition(uint32_t session) {
   return true;
 }
 
+bool MiniAcid::setRhythmAuditionSolo(uint32_t session, bool solo) {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (g_auditionContext.owner != this ||
+      !validateAuditionContext(session, rhythmAuditionContext(*this))) return false;
+  g_auditionSoloRequested.store(solo, std::memory_order_release);
+  return true;
+}
+
+bool MiniAcid::rhythmAuditionSolo(uint32_t session) const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  return session != 0 && g_auditionContext.owner == this &&
+      g_auditionSession.load(std::memory_order_acquire) == session &&
+      !g_auditionInvalid.load(std::memory_order_acquire) &&
+      g_auditionSoloActive.load(std::memory_order_acquire);
+}
+
 bool MiniAcid::rhythmAuditionCleanupDue() const {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
   return g_auditionSession.load(std::memory_order_acquire) != 0 &&
@@ -2933,6 +2949,17 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
         if (activateAuditionAtBar(session)) {
           barrierRhythmAuditionDrums_();
         }
+        const bool requested = g_auditionSoloRequested.load(std::memory_order_acquire);
+        const bool active = g_auditionSoloActive.load(std::memory_order_acquire);
+        if (active != requested && (!requested ||
+            (audibleAuditionDrums(session) && liveNotes_[0] < 0 && liveNotes_[1] < 0))) {
+          if (requested) {
+            hardBarrierPatternPlayback_();
+            retrigA_ = {};
+            retrigB_ = {};
+          }
+          g_auditionSoloActive.store(requested, std::memory_order_release);
+        }
       }
     }
     if (songMode_ && songBarIndex_ == 0) {
@@ -2957,6 +2984,10 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       activePatternRuntimeEvents(0);
   const PhraseRuntime::RuntimePatternEventBuffer& synthBEvents =
       activePatternRuntimeEvents(1);
+  (void)auditionDrums_();  // validate context before suppressing synth onsets
+  const uint32_t auditionSession =
+      GroovePuterRhythm::QuantizedGenerationDetail::g_auditionSession.load(std::memory_order_acquire);
+  const bool auditionSolo = rhythmAuditionSolo(auditionSession);
 
   int swingPct = GroovePuterRhythm::QuantizedGenerationDetail::audibleGenerationSwingPct(
       *this, sceneManager_.currentScene().feel.swingPct);
@@ -2973,7 +3004,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     // PHRASE addresses onsets in phrase-relative time and resolves once per
     // tick, at the nominal step, so the per-step A -> B -> drums draw order is
     // untouched. PATTERN keeps its bar-local source-step scan verbatim.
-    if (songMode_ && songVoiceState_[0] == SongVoiceState::Awaiting) {
+    if (auditionSolo || (songMode_ && songVoiceState_[0] == SongVoiceState::Awaiting)) {
       // Deliberately silent while Song waits for the requested material.
     } else if (activeMaterial_[0].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
@@ -2985,7 +3016,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
                eventA != nullptr && eventA->startTick == barTick) {
       triggerSynthStep_(0, *eventA, absoluteStartSubtick);
     }
-    if (songMode_ && songVoiceState_[1] == SongVoiceState::Awaiting) {
+    if (auditionSolo || (songMode_ && songVoiceState_[1] == SongVoiceState::Awaiting)) {
       // Deliberately silent while Song waits for the requested material.
     } else if (activeMaterial_[1].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
