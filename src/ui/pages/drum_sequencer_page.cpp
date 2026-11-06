@@ -112,6 +112,10 @@ class PatternLockedDrumContainer : public Container {
 #undef drawStandardFooter
 
 void DrumSequencerPage::stopBrowserPreview_() {
+  if (!browserSession_) {
+    browserStartedTransport_ = browserPending_ = browserSolo_ = false;
+    return;
+  }
   if (auto main = getPagePtr(0)) {
     auto* page = static_cast<DrumSequencerMainPage*>(main.get());
     page->audio_guard_([&]() {
@@ -252,12 +256,12 @@ bool DrumSequencerPage::handleBrowserEvent_(UIEvent& event) {
 
 void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
   static const char* groups[] = {"ALL", "HOUSE", "TECHNO", "UKG", "BREAKS", "HIP-HOP", "ACID", "DUB", "ELECTRO"};
-  const Rect& b = getBoundaries();
+  const Rect b{Layout::CONTENT.x, Layout::CONTENT.y, Layout::CONTENT.w, Layout::CONTENT.h};
   gfx.fillRect(b.x, b.y, b.w, b.h, COLOR_BG);
   gfx.setTextColor(COLOR_ACCENT);
-  gfx.drawText(b.x + 3, b.y + 2, "RHYTHM BROWSER");
-  gfx.setTextColor(COLOR_TEXT);
-  gfx.drawText(b.x + 3, b.y + 12, groups[browserGroup_]);
+  char title[32];
+  std::snprintf(title, sizeof(title), "RHYTHMS [%s]", groups[browserGroup_]);
+  gfx.drawText(b.x + 3, b.y + 1, title);
   const auto neighbor = [&](int direction) {
     const int count = RhythmBrowser::count();
     int index = browserIndex_;
@@ -272,36 +276,39 @@ void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
   RhythmBrowser::Descriptor adjacent{};
   gfx.setTextColor(COLOR_MUTED);
   if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(-1)), adjacent))
-    gfx.drawText(b.x + 12, b.y + 23, adjacent.name);
+    gfx.drawText(b.x + 12, b.y + 11, adjacent.name);
   RhythmBrowser::Descriptor descriptor{};
   if (RhythmBrowser::descriptorAt(browserIndex_, descriptor)) {
     gfx.setTextColor(COLOR_ACCENT);
-    gfx.drawText(b.x + 3, b.y + 34, ">");
-    gfx.drawText(b.x + 12, b.y + 34, descriptor.name);
+    gfx.drawText(b.x + 3, b.y + 21, ">");
+    gfx.drawText(b.x + 12, b.y + 21, descriptor.name);
     gfx.setTextColor(COLOR_MUTED);
     if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(1)), adjacent))
-      gfx.drawText(b.x + 12, b.y + 45, adjacent.name);
+      gfx.drawText(b.x + 12, b.y + 31, adjacent.name);
     char info[40];
     std::snprintf(info, sizeof(info), "%s  P%u/%u",
                   descriptor.source == RhythmBrowser::Source::Atlas ? "ATLAS EXACT" : "VOCABULARY",
                   unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount));
     gfx.setTextColor(COLOR_TEXT);
-    gfx.drawText(b.x + 3, b.y + 56, info);
+    gfx.drawText(b.x + 3, b.y + 41, info);
   }
   bool actualSolo = false;
+  bool pending = browserPending_;
   if (auto main = getPagePtr(0)) {
     auto* page = static_cast<DrumSequencerMainPage*>(main.get());
     actualSolo = page->mini_acid_.rhythmAuditionSolo(browserSession_);
+    pending = pending || page->mini_acid_.rhythmAuditionPending(browserSession_);
   }
   const char* hear = !browserSession_ ? "BROWSING" :
-      (browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
+      (pending ? "PENDING NEXT BAR" : browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
        (actualSolo ? "SOLO" : "WITH SONG"));
-  gfx.drawText(b.x + 3, b.y + 67, hear);
+  gfx.drawText(b.x + 3, b.y + 51, hear);
   gfx.setTextColor(COLOR_MUTED);
-  gfx.drawText(b.x + 3, b.y + 78, "G GROUP  UP/DN RHYTHM");
-  gfx.drawText(b.x + 3, b.y + 89, "LEFT/RIGHT VARIANT");
-  gfx.drawText(b.x + 3, b.y + 100, "TAB HEAR M SOLO ESC CLOSE");
-  gfx.drawText(b.x + 3, b.y + 111, "APPLY: UNAVAILABLE");
+  gfx.drawText(b.x + 3, b.y + 61, "G GROUP  UP/DN RHYTHM");
+  gfx.drawText(b.x + 3, b.y + 71, "LEFT/RIGHT VARIANT");
+  gfx.drawText(b.x + 3, b.y + 81, "APPLY: UNAVAILABLE");
+  UI::publishShellInfo(GroovePuterState::sceneDirty() ? "* TAB HEAR M SOLO" : "TAB HEAR M SOLO", "ESC CLOSE");
+  UI::publishShellFooter("TAB HEAR  M SOLO", "ESC CLOSE");
 }
 
 void DrumSequencerPage::onExit() {
@@ -323,6 +330,10 @@ void DrumSequencerPage::draw(IGfx& gfx) {
   g_suppressPatternLockedChildDraw = (activePageIndex() == 0);
   DrumSequencerLegacyMultiPage::draw(gfx);
   g_suppressPatternLockedChildDraw = previous;
+  if (activePageIndex() == 0) {
+    UI::publishShellInfo(GroovePuterState::sceneDirty() ? "* Alt+R RHYTHMS" : "Alt+R RHYTHMS", "Alt+H HELP");
+    UI::publishShellFooter("Alt+R RHYTHMS", "Alt+H HELP");
+  }
 }
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {

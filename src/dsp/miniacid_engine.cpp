@@ -1168,6 +1168,15 @@ bool MiniAcid::rhythmAuditionCanStage(uint32_t session) const {
   return reserved;
 }
 
+bool MiniAcid::rhythmAuditionPending(uint32_t session) const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (!rhythmAuditionSessionValid(session)) return false;
+  for (const auto& state : g_slotState)
+    if (static_cast<SlotState>(state.load(std::memory_order_acquire)) ==
+        SlotState::AuditionReady) return true;
+  return false;
+}
+
 bool MiniAcid::setRhythmAuditionSolo(uint32_t session, bool solo) {
   using namespace GroovePuterRhythm::QuantizedGenerationDetail;
   if (g_auditionContext.owner != this ||

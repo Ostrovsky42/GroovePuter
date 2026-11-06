@@ -332,8 +332,17 @@ int main() {
   listen.scancode = GROOVEPUTER_TAB;
   assert(drumPage.handleEvent(listen));
   assert(engine.isPlaying());
+  gfx.text.clear();
+  drumPage.draw(gfx);
+  assert(gfx.text.find("PENDING NEXT BAR") != std::string::npos);
+  UIEvent globalTab = listen;
+  globalTab.meta = true;
+  assert(!drumPage.handleEvent(globalTab));
   engine.processSequencerEvents(0);
   assert(engine.auditionDrums_() != nullptr);
+  gfx.text.clear();
+  drumPage.draw(gfx);
+  assert(gfx.text.find("WITH SONG") != std::string::npos);
   const DrumPatternSet firstBrowserPattern = *engine.auditionDrums_();
   UIEvent down{};
   down.event_type = GROOVEPUTER_KEY_DOWN;
