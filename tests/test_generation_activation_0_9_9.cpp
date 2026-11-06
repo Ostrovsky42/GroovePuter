@@ -438,6 +438,9 @@ void testAuditionRejectsChangedContext() {
   assert(activateAuditionAtBar(session));
   auto changed = context;
   changed.songRow = 4;
+  changed.target.synthSlot[0] = 1;
+  assert(validateAuditionContext(session, changed));
+  changed.drumAddress = 3;
   assert(!validateAuditionContext(session, changed));
   assert(audibleAuditionDrums(session) == nullptr);
   assert(!stageAuditionCandidate(session, drums, drums));

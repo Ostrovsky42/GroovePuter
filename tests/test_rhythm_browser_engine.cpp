@@ -108,9 +108,10 @@ int main() {
   // A Song row transition invalidates the old preview and releases its slots
   // through the guarded control service; it never redirects to another row.
   engine.setSongMode(false);
-  engine.setSongLength(2);
+  engine.setSongLength(3);
   engine.setSongPattern(0, SongTrack::Drums, 0);
-  engine.setSongPattern(1, SongTrack::Drums, 1);
+  engine.setSongPattern(1, SongTrack::Drums, 0);
+  engine.setSongPattern(2, SongTrack::Drums, 1);
   engine.sceneManager().currentScene().feel.patternBars = 1;
   engine.setSongMode(true);
   engine.setSongPosition(0);
@@ -122,6 +123,9 @@ int main() {
   assert(engine.auditionDrums_() != nullptr);
   engine.processSequencerEvents(384);
   assert(engine.currentSongPosition() == 1);
+  assert(engine.auditionDrums_() != nullptr);
+  engine.processSequencerEvents(768);
+  assert(engine.currentSongPosition() == 2);
   assert(engine.auditionDrums_() == nullptr);
   assert(engine.rhythmAuditionCleanupDue());
   engine.serviceRhythmAuditionCleanup();

@@ -167,12 +167,18 @@ inline bool validateAuditionContext(uint32_t session, const AuditionContext& now
   const auto& expected = g_auditionContext;
   const auto& a = expected.target;
   const auto& b = now.target;
+  // Song may advance over multiple rows that reference the same drum
+  // destination. Synth selectors and row are playback context, not the
+  // pinned destination; a different drum address still invalidates preview.
+  const bool sameSelectors = expected.songMode ||
+      (expected.songRow == now.songRow &&
+       a.synthBank[0] == b.synthBank[0] && a.synthBank[1] == b.synthBank[1] &&
+       a.synthSlot[0] == b.synthSlot[0] && a.synthSlot[1] == b.synthSlot[1]);
   const bool same = expected.owner == now.owner && expected.revision == now.revision &&
       expected.songMode == now.songMode && expected.songSlot == now.songSlot &&
-      expected.songRow == now.songRow && expected.drumAddress == now.drumAddress &&
+      expected.drumAddress == now.drumAddress && sameSelectors &&
       a.page == b.page && a.drumBank == b.drumBank && a.drumSlot == b.drumSlot &&
-      a.synthBank[0] == b.synthBank[0] && a.synthBank[1] == b.synthBank[1] &&
-      a.synthSlot[0] == b.synthSlot[0] && a.synthSlot[1] == b.synthSlot[1];
+      (!expected.songMode || now.songRow >= 0);
   if (!same) g_auditionInvalid.store(true, std::memory_order_release);
   return same;
 }
