@@ -105,13 +105,19 @@ int main() {
   assert(engine.endRhythmAudition(phraseSession));
   engine.stop();
 
-  // A Song row transition invalidates the old preview and releases its slots
-  // through the guarded control service; it never redirects to another row.
+  // Preview follows Song while the original destination remains pinned; the
+  // current row's automation applies, and a missing drum target ends preview.
   engine.setSongMode(false);
-  engine.setSongLength(3);
+  engine.setSongLength(4);
   engine.setSongPattern(0, SongTrack::Drums, 0);
   engine.setSongPattern(1, SongTrack::Drums, 0);
   engine.setSongPattern(2, SongTrack::Drums, 1);
+  engine.clearSongPattern(3, SongTrack::Drums);
+  auto& lane = engine.sceneManager().currentScene().drumBanks[0].patterns[1].lanes[0];
+  lane.targetParam = DRUM_AUTOMATION_REVERB_MIX;
+  lane.nodeCount = 1;
+  lane.nodes[0].step = 0;
+  lane.nodes[0].value = 0.72f;
   engine.sceneManager().currentScene().feel.patternBars = 1;
   engine.setSongMode(true);
   engine.setSongPosition(0);
@@ -126,6 +132,10 @@ int main() {
   assert(engine.auditionDrums_() != nullptr);
   engine.processSequencerEvents(768);
   assert(engine.currentSongPosition() == 2);
+  assert(engine.auditionDrums_() != nullptr);
+  assert(engine.sceneManager().currentScene().drumFX.reverbMix == 0.72f);
+  engine.processSequencerEvents(1152);
+  assert(engine.currentSongPosition() == 3);
   assert(engine.auditionDrums_() == nullptr);
   assert(engine.rhythmAuditionCleanupDue());
   engine.serviceRhythmAuditionCleanup();

@@ -5061,14 +5061,16 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
   if (songPatternDrums < 0) return;
 
-  const DrumPatternSet* pendingDrums = auditionDrums_();
+  const DrumPatternSet* previewDrums = auditionDrums_();
+  const DrumPatternSet* pendingDrums = previewDrums;
   if (!pendingDrums) pendingDrums =
       GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
   const DrumPatternSet& currentDrumPatternSet = pendingDrums
       ? *pendingDrums
       : sceneManager_.getCurrentDrumPattern();
   if (stepIdx == currentStepIndex) {
-      applyDrumAutomationLanesForStep_(currentDrumPatternSet, stepIdx);
+      applyDrumAutomationLanesForStep_(previewDrums
+          ? sceneManager_.getCurrentDrumPattern() : currentDrumPatternSet, stepIdx);
   }
 
   const DrumPattern& pattern = currentDrumPatternSet.voices[voiceIdx];

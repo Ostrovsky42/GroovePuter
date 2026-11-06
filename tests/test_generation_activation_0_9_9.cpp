@@ -441,6 +441,9 @@ void testAuditionRejectsChangedContext() {
   changed.target.synthSlot[0] = 1;
   assert(validateAuditionContext(session, changed));
   changed.drumAddress = 3;
+  changed.target.drumSlot = 3;
+  assert(validateAuditionContext(session, changed));
+  changed.drumAddress = -1;
   assert(!validateAuditionContext(session, changed));
   assert(audibleAuditionDrums(session) == nullptr);
   assert(!stageAuditionCandidate(session, drums, drums));
@@ -456,7 +459,7 @@ void testAuditionRejectsChangedContext() {
       case 0: other.owner = &anotherEngine; break;
       case 1: ++other.revision; break;
       case 2: ++other.target.page; break;
-      case 3: ++other.target.drumSlot; break;
+      case 3: other.songRow = -1; break;
       case 4: ++other.songSlot; break;
       case 5: other.drumAddress = -1; break;
     }
