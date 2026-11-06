@@ -1,10 +1,13 @@
 #include <cassert>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 
 #define private public
 #include "src/dsp/miniacid_engine.h"
 #undef private
 #include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
 #include "src/input/musical_event_queue.h"
 #include "src/output/output_ownership.h"
 
@@ -24,7 +27,24 @@ int main() {
   assert(GroovePuterOutput::setMode(GroovePuterOutput::Track::Drums,
                                    GroovePuterOutput::Mode::Midi));
   engine.start();
+  auto& mutableDrums = engine.sceneManager().currentScene().drumBanks[
+      engine.sceneManager().getCurrentBankIndex(0)].patterns[
+      engine.sceneManager().getCurrentDrumPatternIndex()];
+  for (auto& lane : mutableDrums.lanes)
+    lane.nodeCount = 0;
+  auto& undo = GroovePuterUndo::undoOwner();
+  undo.clear();
+  const uint32_t receipt = 0x12345678u;
+  assert(undo.commitRuntimePrepared(GroovePuterUndo::UndoKind::RuntimePhrase,
+                                    receipt, [] {}));
   const auto revision = GroovePuterState::sceneRevisionSnapshot();
+  const auto undoKind = undo.kind();
+  const auto undoSize = undo.payloadSize();
+  const auto undoRevision = undo.committedRevision();
+  const bool undoRedo = undo.nextIsRedo();
+  const Scene& scene = engine.sceneManager().currentScene();
+  std::vector<unsigned char> beforeScene(sizeof(Scene));
+  std::memcpy(beforeScene.data(), &scene, sizeof(Scene));
   const DrumPatternSet accepted = engine.sceneManager().getCurrentDrumPattern();
   const int noteA = engine.activeSynthPattern(0).steps[0].note;
   const int noteB = engine.activeSynthPattern(1).steps[0].note;
@@ -59,6 +79,13 @@ int main() {
   assert(queue.takePendingAllNotesOffMask() == ScheduledMusicalEventQueue::kDrumsMask);
   assert(engine.activeDrumPattern(0).steps[0].velocity == accepted.voices[0].steps[0].velocity);
   assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == revision.currentRevision);
+  assert(GroovePuterState::sceneRevisionSnapshot().persistedRevision == revision.persistedRevision);
+  assert(std::memcmp(beforeScene.data(), &scene, sizeof(Scene)) == 0);
+  assert(undo.hasUndo() && undo.kind() == undoKind && undo.payloadSize() == undoSize);
+  assert(undo.committedRevision() == undoRevision && undo.nextIsRedo() == undoRedo);
+  uint32_t retainedReceipt = 0;
+  assert(undo.read(GroovePuterUndo::UndoKind::RuntimePhrase, retainedReceipt));
+  assert(retainedReceipt == receipt);
   assert(engine.sceneManager().getCurrentDrumPattern().voices[0].steps[0].velocity == accepted.voices[0].steps[0].velocity);
   assert(engine.activeSynthPattern(0).steps[0].note == noteA);
   assert(engine.activeSynthPattern(1).steps[0].note == noteB);
@@ -79,6 +106,27 @@ int main() {
   const uint32_t nextSession = engine.beginRhythmAudition();
   assert(nextSession != 0);
   assert(engine.endRhythmAudition(nextSession));
+
+  // A project reload or in-flight page change must not reuse the candidate.
+  const uint32_t projectSession = engine.beginRhythmAudition();
+  assert(projectSession != 0);
+  assert(engine.stageRhythmAudition(projectSession, candidate));
+  engine.processSequencerEvents(384);
+  GroovePuterState::markSceneLoadSucceeded();
+  engine.processSequencerEvents(408);
+  assert(engine.auditionDrums_() == nullptr);
+  assert(engine.rhythmAuditionCleanupDue());
+  engine.serviceRhythmAuditionCleanup();
+  const uint32_t pageSession = engine.beginRhythmAudition();
+  assert(pageSession != 0);
+  assert(engine.stageRhythmAudition(pageSession, candidate));
+  engine.processSequencerEvents(768);
+  engine.setPageLoading(true);
+  engine.processSequencerEvents(792);
+  assert(engine.auditionDrums_() == nullptr);
+  assert(engine.rhythmAuditionCleanupDue());
+  engine.serviceRhythmAuditionCleanup();
+  engine.setPageLoading(false);
   engine.stop();
 
   // An accepted Phrase continues to play while preview drums are substituted.
