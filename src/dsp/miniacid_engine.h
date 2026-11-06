@@ -580,6 +580,11 @@ public:
   const bool* patternRimAccentSteps() const;
   const bool* patternClapAccentSteps() const;
   bool songModeEnabled() const;
+  // Control-thread calls; caller holds the existing AudioGuard. The caller
+  // must end a session under that guard before destroying its owner.
+  uint32_t beginRhythmAudition();
+  bool stageRhythmAudition(uint32_t session, const DrumPatternSet& drums);
+  bool endRhythmAudition(uint32_t session);
   void setSongMode(bool enabled);
   void toggleSongMode();
   bool loopModeEnabled() const;
@@ -929,6 +934,7 @@ private:
   void refreshDrumCache(int drumVoiceIndex) const;
   const SynthPattern& activeSynthPattern(int synthIndex) const;
   const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
+  const DrumPatternSet* auditionDrums_() const;
   int songPatternIndexForTrack(SongTrack track) const;
   void applySongPositionSelection();
   void syncModeToVoices();

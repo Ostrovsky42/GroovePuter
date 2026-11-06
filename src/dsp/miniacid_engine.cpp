@@ -35,6 +35,27 @@
 #include "../input/musical_event_queue.h"
 #include "../generation/migration/quantized_generation_commit.h"
 
+namespace {
+GroovePuterRhythm::QuantizedGenerationDetail::AuditionContext
+rhythmAuditionContext(const MiniAcid& engine) {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  AuditionContext context{};
+  context.owner = &engine;
+  context.target = captureTarget(engine.sceneManager());
+  context.revision = GroovePuterState::sceneRevisionSnapshot().currentRevision;
+  context.songMode = engine.songModeEnabled();
+  if (context.songMode) {
+    context.songSlot = engine.songPlaybackSlot();
+    context.songRow = engine.currentSongPosition();
+    context.drumAddress = engine.songPatternAtSlot(
+        context.songSlot, context.songRow, SongTrack::Drums);
+  } else {
+    context.drumAddress = targetValid(context.target) ? patternAddressFor(context.target) : -1;
+  }
+  return context;
+}
+}  // namespace
+
 #if GROOVEPUTER_ENABLE_SAMPLER
 #include "../sampler/sample_index.h"
 #else
@@ -644,6 +665,15 @@ void MiniAcid::silenceAwaitingSongVoice_(int voiceIndex) {
 }
 
 void MiniAcid::stop() {
+  {
+    using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+    if (g_auditionSession.load(std::memory_order_acquire) != 0 &&
+        g_auditionContext.owner == this) {
+      // Invalidate immediately. The control owner releases the slots under
+      // AudioGuard; STOP itself is also used by paths without that guarantee.
+      g_auditionInvalid.store(true, std::memory_order_release);
+    }
+  }
   cancelAllPairPlay("stop");
   const uint8_t patternAuthorityAtEntry =
       patternOwnedMask_.load(std::memory_order_acquire);
@@ -1084,6 +1114,38 @@ const bool* MiniAcid::patternClapAccentSteps() const {
 }
 
 bool MiniAcid::songModeEnabled() const { return songMode_; }
+
+uint32_t MiniAcid::beginRhythmAudition() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (!isPlaying() || isPageLoading()) return 0;
+  return beginAuditionSession(rhythmAuditionContext(*this));
+}
+
+bool MiniAcid::stageRhythmAudition(uint32_t session, const DrumPatternSet& drums) {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (g_auditionContext.owner != this) return false;
+  if (!validateAuditionContext(session, rhythmAuditionContext(*this))) return false;
+  return stageAuditionCandidate(session, drums, sceneManager_.getCurrentDrumPattern());
+}
+
+bool MiniAcid::endRhythmAudition(uint32_t session) {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  if (g_auditionContext.owner != this) return false;
+  return endAuditionSession(session);
+}
+
+const DrumPatternSet* MiniAcid::auditionDrums_() const {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  const uint32_t session = g_auditionSession.load(std::memory_order_acquire);
+  if (!session || g_auditionContext.owner != this) return nullptr;
+  if (isPageLoading()) {
+    g_auditionInvalid.store(true, std::memory_order_release);
+    return nullptr;
+  }
+  if (!isPlaying() ||
+      !validateAuditionContext(session, rhythmAuditionContext(*this))) return nullptr;
+  return audibleAuditionDrums(session);
+}
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
@@ -2834,6 +2896,16 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       regeneratePatternsWithGenre();
     }
     advanceSongBar_();
+    {
+      using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+      const uint32_t session = g_auditionSession.load(std::memory_order_acquire);
+      if (session && g_auditionContext.owner == this && !isPageLoading() &&
+          validateAuditionContext(session, rhythmAuditionContext(*this))) {
+        if (activateAuditionAtBar(session)) {
+          for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+        }
+      }
+    }
     if (songMode_ && songBarIndex_ == 0) {
       // First bar of a Song row. A Melody the row just switched to starts here.
       songRowStartTick_ = absoluteTick;
@@ -2897,7 +2969,8 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       triggerSynthStep_(1, *eventB, absoluteStartSubtick);
     }
 
-    const DrumPatternSet* pendingDrums =
+    const DrumPatternSet* pendingDrums = auditionDrums_();
+    if (!pendingDrums) pendingDrums =
         GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
     const DrumPatternSet& dSet = pendingDrums
         ? *pendingDrums
@@ -3085,7 +3158,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         if (retrigDrums_[v].active) {
              if (--retrigDrums_[v].counter <= 0 && retrigDrums_[v].countRemaining > 0) {
-                 const DrumPattern& pattern = activeDrumPattern(v);
+                 const DrumPatternSet* preview = auditionDrums_();
+                 const DrumPattern& pattern = preview ? preview->voices[v] : activeDrumPattern(v);
                  const DrumStep& step = pattern.steps[currentStepIndex];
                  bool accent = step.accent;
                  uint8_t trigVelocity = step.velocity;
@@ -4958,7 +5032,8 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
   if (songPatternDrums < 0) return;
 
-  const DrumPatternSet* pendingDrums =
+  const DrumPatternSet* pendingDrums = auditionDrums_();
+  if (!pendingDrums) pendingDrums =
       GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
   const DrumPatternSet& currentDrumPatternSet = pendingDrums
       ? *pendingDrums
