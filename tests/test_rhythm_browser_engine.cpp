@@ -165,19 +165,33 @@ int main() {
   assert(engine.currentPhraseBuffer(0).count == 1);
   assert(engine.setRhythmAuditionSolo(phraseSession, true));
   engine.liveNoteOn(1, 65, 100);
+  queue.beginMidiRenderBlock(2001, 512, 0.0f, 120.0f, 44100.0f, true);
   engine.processSequencerEvents(384);
+  queue.endMidiRenderBlock();
   assert(!engine.rhythmAuditionSolo(phraseSession));
   assert(engine.liveNote(1) == 65);
+  bool phraseStillMidi = false;
+  while (queue.tryPop(event)) {
+    if (event.event.target == MusicalEventTarget::SynthA &&
+        event.event.type == MusicalEventType::NoteOn && event.event.note == 60)
+      phraseStillMidi = true;
+  }
+  assert(phraseStillMidi);
   engine.liveNoteOff(1, 65);
-  queue.beginMidiRenderBlock(2001, 512, 0.0f, 120.0f, 44100.0f, true);
+  queue.beginMidiRenderBlock(2002, 512, 0.0f, 120.0f, 44100.0f, true);
   engine.processSequencerEvents(768);
   queue.endMidiRenderBlock();
   assert(engine.rhythmAuditionSolo(phraseSession));
   assert(!engine.patternPlaybackState_[0].active());
+  bool phraseNoteOff = false;
   while (queue.tryPop(event)) {
     assert(!(event.event.target == MusicalEventTarget::SynthA &&
              event.event.type == MusicalEventType::NoteOn));
+    if (event.event.target == MusicalEventTarget::SynthA &&
+        event.event.type == MusicalEventType::NoteOff && event.event.note == 60)
+      phraseNoteOff = true;
   }
+  assert(phraseNoteOff);
   engine.liveNoteOn(1, 67, 100);
   engine.processSequencerEvents(792);
   assert(engine.liveNote(1) == 67);
