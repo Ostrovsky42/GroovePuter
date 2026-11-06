@@ -51,6 +51,28 @@ void clearDrums(DrumPatternSet& pattern) {
   }
 }
 
+void writeDrumEvent(const AtlasGenerated::Event& event, DrumPatternSet& drums) {
+  DrumStep& step = drums.voices[event.target].steps[event.step];
+  step.hit = true;
+  step.accent = (event.flags & AtlasGenerated::kAccent) != 0;
+  step.velocity = event.velocity;
+  step.timing = event.timing;
+  step.probability = event.probability;
+}
+
+void writeMetadata(const AtlasGenerated::Recipe& recipe,
+                   const AtlasGenerated::Pattern& pattern,
+                   AtlasRuntimeMetadata* metadata) {
+  if (!metadata) return;
+  metadata->atlasRecipeId = recipe.atlasRecipeId;
+  metadata->displayName = recipe.displayName;
+  metadata->atlasPatternId = pattern.atlasPatternId;
+  metadata->slotId = pattern.slotId;
+  metadata->slotFunction = pattern.slotFunction;
+  metadata->bpm = recipe.bpm;
+  metadata->swingPercent = recipe.swingPercent;
+}
+
 }  // namespace
 
 namespace AtlasRuntime {
@@ -62,6 +84,24 @@ bool hasRecipe(uint8_t runtimeRecipeId) {
 uint8_t variationCount(uint8_t runtimeRecipeId) {
   const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
   return recipe ? recipe->patternCount : 0;
+}
+
+bool materializeDrums(uint8_t runtimeRecipeId,
+                      uint8_t variationIndex,
+                      DrumPatternSet& drums,
+                      AtlasRuntimeMetadata* metadata) {
+  const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
+  if (!recipe || variationIndex >= recipe->patternCount) return false;
+  const AtlasGenerated::Pattern& pattern = recipe->patterns[variationIndex];
+  if (!validatePattern(pattern)) return false;
+
+  clearDrums(drums);
+  for (uint16_t i = 0; i < pattern.eventCount; ++i) {
+    const AtlasGenerated::Event& event = pattern.events[i];
+    if (event.target < DrumPatternSet::kVoices) writeDrumEvent(event, drums);
+  }
+  writeMetadata(*recipe, pattern, metadata);
+  return true;
 }
 
 bool applyRecipe(uint8_t runtimeRecipeId,
@@ -86,12 +126,7 @@ bool applyRecipe(uint8_t runtimeRecipeId,
     const bool slide = (event.flags & AtlasGenerated::kSlide) != 0;
 
     if (event.target < DrumPatternSet::kVoices) {
-      DrumStep& step = drums.voices[event.target].steps[event.step];
-      step.hit = true;
-      step.accent = accent;
-      step.velocity = event.velocity;
-      step.timing = event.timing;
-      step.probability = event.probability;
+      writeDrumEvent(event, drums);
       continue;
     }
 
@@ -105,15 +140,7 @@ bool applyRecipe(uint8_t runtimeRecipeId,
     step.probability = event.probability;
   }
 
-  if (metadata) {
-    metadata->atlasRecipeId = recipe->atlasRecipeId;
-    metadata->displayName = recipe->displayName;
-    metadata->atlasPatternId = pattern.atlasPatternId;
-    metadata->slotId = pattern.slotId;
-    metadata->slotFunction = pattern.slotFunction;
-    metadata->bpm = recipe->bpm;
-    metadata->swingPercent = recipe->swingPercent;
-  }
+  writeMetadata(*recipe, pattern, metadata);
   return true;
 }
 
