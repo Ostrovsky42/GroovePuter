@@ -16,6 +16,8 @@ The baseline `src/ui/docs/keys.md` assigns DRUMS Tab to sequencer/automation, En
 
 The DRUMS page entry point wraps legacy multipage handling in `src/ui/pages/drum_sequencer_page.cpp` (`DrumSequencerPage::handleEvent`); `drum_sequencer_page_legacy.h` dispatches through child controls and `MultiPage`. A modal implementation needs a complete focus and modifier audit before intercepting these handlers.
 
+`MiniAcidDisplay::handleEvent` handles meta/Fn+Tab as global workflow navigation around line 654, before dispatching to `currentPage->handleEvent` around line 789. The browser must preserve that global route while owning its unmodified local navigation. This is an initial source audit, not confirmation of all keyboard normalizations or modifier collisions.
+
 The sandboxed `arduino-cli board list --format json` returned an empty list with serial-discovery `operation not permitted`; this does not establish whether a device is physically attached. No Cardputer interaction or listening acceptance was performed.
 
 ## Host and core checks
