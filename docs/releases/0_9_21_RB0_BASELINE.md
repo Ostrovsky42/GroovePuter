@@ -26,4 +26,6 @@ The sandboxed `arduino-cli board list --format json` returned an empty list with
 
 ## Host and core checks
 
-The first `bash scripts/ci/run_core.sh` in the sandbox exited 1 at Rhythm Stage 2 because LeakSanitizer could not inspect threads in that environment. A rerun outside the sandbox and a separate baseline host suite were started; their final outcomes must be recorded from the completed logs before RB-0 can be closed. The independent core checkout is `/tmp/rb0-core-baseline` at the same SHA; temporary checkout and running processes are not durable evidence.
+The first `bash scripts/ci/run_core.sh` in the sandbox exited 1 at Rhythm Stage 2 because LeakSanitizer could not inspect threads in that environment (log SHA-256 `0326c998973aa75fdbfc1ad90948d5128d2c583cff2d4f49c92da5d7c03d4c73`). The separate sandboxed `bash tests/run_host_tests.sh` reached its final S1 synth-switch gate but likewise exited 1 with a LeakSanitizer fatal error (log SHA-256 `943711f70bfacc72f7b7f78d2226150f7e3f58be37d0e9b6b8b1c0d24428cb25`). The already-built S1 binary was run outside the sandbox and exited 0, including 600 rapid switches; this diagnoses that focused environmental failure but does not make the full suite pass.
+
+Full core and host reruns outside the sandbox were started; their final outcomes must be recorded from completed logs before RB-0 can be closed. The independent core checkout is `/tmp/rb0-core-baseline` at the same SHA; temporary checkout and running processes are not durable evidence.
