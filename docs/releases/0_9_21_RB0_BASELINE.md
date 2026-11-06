@@ -8,7 +8,11 @@ The feature worktree was created from that SHA clean, before these documentation
 
 On 2026-11-06, `bash scripts/build.sh` completed exit 0 on this source tree (only PLAN and goal documentation differed from the clean commit). FQBN: `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`; loop stack 32768 bytes. Sketch 1,651,378 / 3,145,728 bytes; globals 185,788 / 327,680 bytes. App BIN SHA-256 `11d123bf4541578cbda88909c081eff2dfdde092547e843c32edf0d8434e327e`; ELF `c3b5eb97bf2c0ff2af33e27513dfccc1d7d1fde38ded2e2d8900abdc85ad257f`. Build log is in the local preservation package `rb0-cardputer-build.log`. This is a build witness, not a reproducibility, flash or hardware acceptance claim.
 
+Toolchain inventory: Arduino CLI 1.4.0, installed `m5stack:esp32` 3.2.2, host GCC 13.3.0 (Ubuntu 24.04). This inventory is not a lockfile or proof of a bit-for-bit reproducible build.
+
 `bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf` exited 0: 185,788 / 191,488 bytes, `.dram0.data` 43,340 and `.dram0.bss` 142,448; arithmetic margin 5,700 bytes. The checker explicitly calls the exception provisional with policy items 5–7 pending. No target runtime stack, heap, CPU or timing measurements were obtained. Build-log SHA-256 `ddba87933f2922cccffaaaca70c72e2f66dc6d4a5daaf99a46117fce15cb9ba3`; DRAM-log SHA-256 `0bf71e46ca5c492687d9fec993ab3334435c151754e0cd44a47b7e85e7e6bae6`.
+
+`bash scripts/report_cardputer_memory_baseline.sh build/cardputer-adv-current/GroovePuter.ino.elf` exited 0. It reports active Scene and load scratch at 26,376 bytes each; detailed symbol data is in `rb0-memory-report.log`, SHA-256 `d6bc89c4407537434255ca476dc386308147b1cb5b3f2c9e72af047f874a2c58`. The report explicitly says the provisional gate is not safety-derived; it also shows the historical 122,880-byte reference is exceeded by 62,908 bytes.
 
 ## Initial input and ownership observations
 
