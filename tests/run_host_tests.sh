@@ -470,6 +470,17 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_din_enable_request.cpp" \
+  -o "${BUILD_DIR}/test_din_enable_request"
+
+"${BUILD_DIR}/test_din_enable_request"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_pattern_midi_articulation.cpp" \
   "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
   "${ROOT_DIR}/src/midi/midi_companion_settings.cpp" \

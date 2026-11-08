@@ -24,6 +24,7 @@
 #include "src/midi/midi_input_parser.h"
 #include "src/midi/midi_input_queue.h"
 #include "src/midi/midi_io_state.h"
+#include "src/midi/din_enable_request.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
@@ -985,6 +986,8 @@ enum class PendingKind : uint8_t {
     Smf,
 };
 
+void applyCardputerDinEnableRequest();
+
 void midiDispatchTask(void*) {
     // Enabled at start-up for the first hardware slice: there is no UI toggle
     // yet, so this is the only way the DIN wire can be heard. Note that with
@@ -1039,6 +1042,7 @@ void midiDispatchTask(void*) {
         // D5: retry NoteOffs the wire refused, without waiting for another event
         // on the same lane. Bounded to a 5 ms cadence inside the output object.
         (void)g_output.servicePendingReleases(static_cast<uint32_t>(micros()));
+        applyCardputerDinEnableRequest();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
         // transport queues and this drains what the UART driver will take.
@@ -1446,6 +1450,26 @@ void midiDispatchTask(void*) {
     }
 }
 
+// D1: the DIN enable toggle is requested from UI/control code and applied only by
+// midiDispatchTask. That task is the single writer of the DIN ring and of the
+// tee's secondary flag; see din_enable_request.h.
+GroovePuterMidi::DinEnableRequest g_dinEnable;
+
+void applyCardputerDinEnableRequest() {
+    bool enabled = false;
+    if (!g_dinEnable.takeChange(enabled)) return;
+    if (!enabled && g_wire.secondaryEnabled()) {
+        // Turning the wire off must not leave notes sounding on it. Only channels
+        // that hold a wire note are cut, so other owners' notes on the same
+        // physical receiver keep sounding. The request is queued on the UART owner
+        // and retried by its service(), so a full ring cannot drop it.
+        GroovePuterMidi::cardputerUartMidiTransport().requestChannelPanics(
+            g_output.wireOwnedChannelMask());
+    }
+    g_wire.setSecondaryEnabled(enabled);
+    g_dinEnable.markApplied(enabled);
+}
+
 }  // namespace
 
 CardputerUsbMidiTransport::CardputerUsbMidiTransport() {
@@ -1814,24 +1838,12 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
 }
 
 void setCardputerDinMidiEnabled(bool enabled) {
-    // Turning the wire off must not leave notes sounding on it. The owner
-    // cannot see the two wires separately, so the DIN queue is cleared through
-    // the channel-mode recovery the SMF path already uses.
-    if (!enabled && g_wire.secondaryEnabled()) {
-        auto& din = GroovePuterMidi::cardputerUartMidiTransport();
-        for (uint8_t channel = 0; channel < 16; ++channel) {
-            (void)din.sendControlChange(channel, 123, 0);
-        }
-        // Deliberately not drained here. service() is called only from
-        // midiDispatchTask, and the queue's producer/consumer split assumes
-        // exactly one drainer; draining from whatever task flips this toggle
-        // would race the dispatcher. The dispatcher picks these up on its next
-        // iteration, well before a human notices.
-    }
-    g_wire.setSecondaryEnabled(enabled);
+    g_dinEnable.request(enabled);
 }
 
-bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+bool cardputerDinMidiEnabled() {
+    return g_dinEnable.appliedOr(g_wire.secondaryEnabled());
+}
 
 GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
     return g_externalNotes;

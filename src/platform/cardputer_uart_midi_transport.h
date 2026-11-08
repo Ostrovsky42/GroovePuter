@@ -77,6 +77,9 @@ public:
     // Deferred NoteOff bookkeeping, exposed for diagnostics and tests.
     std::size_t deferredNoteOffs() const { return deferredCount_; }
     uint16_t channelsAwaitingPanic() const { return panicChannels_; }
+    // Channel-wide all-notes-off for every channel in `mask`. Queued and retried by
+    // service() until the ring takes it, so a full ring cannot drop it.
+    void requestChannelPanics(uint16_t mask) { panicChannels_ |= mask; }
 
 private:
     bool queueChannelMessage(uint8_t status,
