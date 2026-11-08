@@ -1395,6 +1395,58 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     releasePendingChannelPanics();
 }
 
+bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
+    if (!begun_ || !mounted_) return true;
+    // Signed difference keeps the cadence correct across micros() wrap.
+    if (static_cast<int32_t>(nowUs - nextPendingReleaseUs_) < 0) return true;
+    nextPendingReleaseUs_ = nowUs + kPendingReleaseRetryIntervalUs;
+
+    bool allReleased = true;
+    for (std::size_t i = 0; i < kLaneCount; ++i) {
+        if (!lanes_[i].pendingRelease) continue;
+        const bool released = lanes_[i].target == MusicalEventTarget::Drums
+            ? releasePercussiveLane(lanes_[i])
+            : releaseActiveNote(lanes_[i]);
+        if (!released) allReleased = false;
+    }
+    if (answerLane_.pendingRelease && !releaseAnswerLane()) allReleased = false;
+
+    const MusicalEventTarget generated[kGeneratedTargetCount] = {
+        MusicalEventTarget::SynthA,
+        MusicalEventTarget::SynthB,
+        MusicalEventTarget::Dx,
+    };
+    for (const MusicalEventTarget target : generated) {
+        if (!retryGeneratedPendingReleases(target)) allReleased = false;
+    }
+
+    // Melody chord NoteOffs are released on the chord's own Pattern lane.
+    for (int index = 0; index < 2; ++index) {
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            const uint8_t midiNote = static_cast<uint8_t>(note);
+            if (!patternChordNoteActive(index, midiNote)) continue;
+            if ((patternChordPending_[index][midiNote >> 3u] &
+                 static_cast<uint8_t>(1u << (midiNote & 7u))) == 0u) {
+                continue;
+            }
+            MidiVoiceLane* owner = nullptr;
+            for (std::size_t i = 0; i < kLaneCount && owner == nullptr; ++i) {
+                if (lanes_[i].source == MusicalEventSource::PatternPlayer &&
+                    patternChordIndex(lanes_[i].target) == index) {
+                    owner = &lanes_[i];
+                }
+            }
+            if (owner == nullptr ||
+                !releasePatternChordNote(*owner, index, midiNote)) {
+                allReleased = false;
+            }
+        }
+    }
+
+    if (!releasePendingChannelPanics()) allReleased = false;
+    return allReleased;
+}
+
 void UsbMidiOutput::servicePitchBendRetries() {
     if (!begun_ || !enabled_ || !mounted_) return;
     for (uint8_t channel = 0; channel < 16u; ++channel) {

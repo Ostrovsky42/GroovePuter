@@ -81,6 +81,13 @@ public:
 
     void handleMusicalEvent(const MusicalEvent& event) override;
     void servicePitchBendRetries();
+    // D5: a NoteOff the wire refused stays owned here and used to be retried
+    // only by the next event on the same lane or target. A lane's last NoteOff
+    // could therefore sound until something else happened. The dispatcher calls
+    // this on a bounded cadence with its monotonic clock; it never creates a
+    // NoteOn and never clears ownership before the wire accepts the release.
+    static constexpr uint32_t kPendingReleaseRetryIntervalUs = 5000u;
+    bool servicePendingReleases(uint32_t nowUs);
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -227,6 +234,8 @@ private:
     uint8_t patternChordActive_[2][kGeneratedBitsetBytes]{};
     uint8_t patternChordPending_[2][kGeneratedBitsetBytes]{};
     uint16_t pendingPitchBendMask_{0};
+    // Earliest monotonic time of the next servicePendingReleases() attempt.
+    uint32_t nextPendingReleaseUs_{0};
     uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;

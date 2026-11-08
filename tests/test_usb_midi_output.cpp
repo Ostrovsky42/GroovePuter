@@ -299,7 +299,61 @@ void testMidiInputReachesWire() {
     std::puts("MIDI input source reaches the external output as live synth notes (Host only): PASS");
 }
 
+// D5: a NoteOff the wire refused is retried by the cadence, not by the next
+// event on the lane. No new musical event is sent after the failure.
+void testPendingNoteOffRetriedWithoutNewEvent() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport, UsbMidiRouteConfig{7, 7, 8, true, true});
+    assert(output.begin());
+    output.pollConnection();
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+
+    transport.noteOffFailuresRemaining = 1;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+
+    // Within the cadence window: a call is a no-op and sends nothing new.
+    // The first call after the window is the retry that must reach the wire.
+    assert(output.servicePendingReleases(1000u));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 60, 0);
+
+    // Idle afterwards: nothing pending, nothing sent, even past the window.
+    transport.clear();
+    assert(output.servicePendingReleases(1000u + 100000u));
+    assert(transport.packets.empty());
+
+    // Cadence is bounded: a refused retry is not repeated before the interval.
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 62, 90,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    transport.clear();
+    transport.noteOffFailuresRemaining = 3;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 62, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.empty());
+    const uint32_t t0 = 200000u;
+    assert(!output.servicePendingReleases(t0));          // attempt 1 refused
+    assert(output.servicePendingReleases(t0 + 1000u));   // inside window: skipped
+    assert(transport.noteOffFailuresRemaining == 1);     // no attempt was made
+    assert(!output.servicePendingReleases(t0 + 5000u));  // attempt 2 refused
+    assert(transport.noteOffFailuresRemaining == 0);
+    assert(output.servicePendingReleases(t0 + 10000u));  // attempt 3 succeeds
+    assert(transport.packets.size() == 1);
+    expectPacket(transport.packets[0], PacketType::NoteOff, 7, 62, 0);
+}
+
 int main() {
+    testPendingNoteOffRetriedWithoutNewEvent();
     testMidiInputReachesWire();
     FakeUsbMidiTransport transport;
     UsbMidiOutput output(transport);

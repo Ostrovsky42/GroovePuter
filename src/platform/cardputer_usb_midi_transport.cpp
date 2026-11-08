@@ -1036,6 +1036,9 @@ void midiDispatchTask(void*) {
             }
         }
         g_output.pollConnection();
+        // D5: retry NoteOffs the wire refused, without waiting for another event
+        // on the same lane. Bounded to a 5 ms cadence inside the output object.
+        (void)g_output.servicePendingReleases(static_cast<uint32_t>(micros()));
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
         // transport queues and this drains what the UART driver will take.
