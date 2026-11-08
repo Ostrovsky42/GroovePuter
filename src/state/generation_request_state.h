@@ -58,12 +58,12 @@ inline const char* generationStyleName(
         GroovePuterRhythm::RealizationLevel level) {
     using GroovePuterRhythm::RealizationLevel;
     switch (sanitizeGenerationLevel(static_cast<uint8_t>(level))) {
-        case RealizationLevel::P1Canonical: return "FAITHFUL";
-        case RealizationLevel::P2Variation: return "VARIANT";
-        case RealizationLevel::P3Transformation: return "REWORK";
+        case RealizationLevel::P1Canonical: return "P1";
+        case RealizationLevel::P2Variation: return "P2";
+        case RealizationLevel::P3Transformation: return "P3";
         case RealizationLevel::Count: break;
     }
-    return "VARIANT";
+    return "P2";
 }
 
 inline GroovePuterRhythm::RealizationLevel nextGenerationLevel(

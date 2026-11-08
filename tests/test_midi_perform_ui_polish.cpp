@@ -127,10 +127,14 @@ int main() {
   assert(gfx.has("PERFORM"));
   gfx.bodyFits();
 
-  send(scan(GROOVEPUTER_DOWN));  // INPUT: ROUTE -> ROLE
+  send(scan(GROOVEPUTER_DOWN));  // INPUT: SEND TO -> PLAY AS
   send(scan(GROOVEPUTER_RIGHT));
   assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
-  send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN));  // ROLE -> TARGET
+  // INPUT has no TARGET row (variant A): the target lives in KEY (row 4).
+  send(key('\t'));  // INPUT -> KEY
+  gfx.texts.clear(); perform.drawContent(gfx);
+  assert(gfx.has("[KEY]"));
+  for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));  // ROOT -> TARGET
   assert(keyboard.externalNoteOn(60, 100));
   events.notes.clear();
   send(scan(GROOVEPUTER_RIGHT));  // TARGET A -> B, clears old held notes
@@ -156,13 +160,14 @@ int main() {
   for (const auto& e : events.notes)
     if (e.target == MusicalEventTarget::Dx && e.type == MusicalEventType::NoteOn) startedDx = true;
   assert(startedDx);
-  // Direct routes stay independent: TARGET cannot silently retarget their notes.
-  send(scan(GROOVEPUTER_UP)); send(scan(GROOVEPUTER_UP)); send(scan(GROOVEPUTER_UP)); // TARGET -> ROUTE
+  // Direct routes stay independent: SEND TO a synth never moves the KEY target.
+  for (int i = 0; i < 4; ++i) send(key('\t'));  // KEY -> INPUT (still on PLAY AS)
+  send(scan(GROOVEPUTER_UP));  // PLAY AS -> SEND TO
   send(scan(GROOVEPUTER_RIGHT)); // PERFORM -> direct SYN A
   assert(GroovePuterPlatform::cardputerMidiInputRoutingConfig().target ==
          GroovePuterMidi::MidiInputTarget::SynthA);
-  send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN));
-  send(scan(GROOVEPUTER_RIGHT));
+  send(scan(GROOVEPUTER_DOWN)); send(scan(GROOVEPUTER_DOWN));  // SEND TO -> LEAD STYLE
+  send(scan(GROOVEPUTER_RIGHT));  // N/A without PLAY AS LEAD: nothing changes
   assert(keyboard.target() == MusicalEventTarget::Dx);
   gfx.texts.clear(); perform.drawContent(gfx);
   assert(gfx.has("N/A"));

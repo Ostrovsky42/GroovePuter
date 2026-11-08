@@ -20,6 +20,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  public:
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
+  // STEP SETTINGS is modal: the owner page ignores Opt while it is open.
+  bool stepSettingsOpen() const { return step_settings_open_; }
   // Leaving the STEPS page ends its input modes; they are not remembered.
   void resetInputModes() {
     note_entry_mode_ = false;
@@ -131,6 +133,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void openStepSettings();
   bool handleStepSettingsKey(const UIEvent& ui_event);
   void adjustStepSetting(int field, int direction);
+  // Backspace in the window: field to its default; field -1 = all fields.
+  void resetStepSetting(int field);
   void drawStepSettings(IGfx& gfx) const;
 
   template <typename PrepareFn>

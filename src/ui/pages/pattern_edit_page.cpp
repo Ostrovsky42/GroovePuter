@@ -24,6 +24,7 @@
 #include "../../debug_log.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../state/scene_revision.h"
+#include "../../state/step_setting_marks.h"
 #include "../../state/undo_owner.h"
 #include "../../state/undo_receipts.h"
 #include "../material_accept_ux.h"
@@ -64,7 +65,7 @@ constexpr int kEntryNoteMax = 96;
 
 // STEP SETTINGS (Alt+E) limits and steps. Timing matches the validated atlas
 // range of +-23 ticks; velocity 0 would be a silent step, so it starts at 1.
-constexpr int kStepSettingsFields = 4;  // PROB, TIMING, VEL, GHOST
+constexpr int kStepSettingsFields = 4;  // PROB, TIMING, VEL, CHANCE
 constexpr int kStepProbMin = 0;
 constexpr int kStepProbMax = 100;
 constexpr int kStepProbStep = 5;
@@ -677,7 +678,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
       }
     });
     clearSelection();
-    UI::showToast("Selection Cleared");
+    UI::showToast("SELECTION CLEARED");
     return true;
   }
 
@@ -851,9 +852,10 @@ void PatternEditPage::adjustStepSetting(int field, int direction) {
             SynthStep& st = pattern.steps[r * kPatternStepColumns + c];
             switch (field) {
               case 0:
-                st.probability = static_cast<uint8_t>(clampInt(
-                    anchor.probability + direction * kStepProbStep,
-                    kStepProbMin, kStepProbMax));
+                st.probability = static_cast<uint8_t>(
+                    GroovePuterUndo::StepSettingMarks::stepOnGrid(
+                        anchor.probability, direction, kStepProbStep,
+                        kStepProbMin, kStepProbMax));
                 break;
               case 1:
                 st.timing = static_cast<int8_t>(clampInt(
@@ -861,14 +863,41 @@ void PatternEditPage::adjustStepSetting(int field, int direction) {
                     kStepTimingMax));
                 break;
               case 2:
-                st.velocity = static_cast<uint8_t>(clampInt(
-                    anchor.velocity + direction * kStepVelocityStep,
-                    kStepVelocityMin, kStepVelocityMax));
+                st.velocity = static_cast<uint8_t>(
+                    GroovePuterUndo::StepSettingMarks::stepOnGrid(
+                        anchor.velocity, direction, kStepVelocityStep,
+                        kStepVelocityMin, kStepVelocityMax));
                 break;
               default:
                 st.ghost = !anchor.ghost;
                 break;
             }
+          }
+        }
+      });
+  if (result == PatternMutationResult::Invalid) {
+    UI::showToast("STEP EDIT FAILED", 800);
+  }
+}
+
+void PatternEditPage::resetStepSetting(int field) {
+  if (field < -1 || field >= kStepSettingsFields) return;
+  int first = activePatternStep();
+  int min_row = first / kPatternStepColumns, max_row = min_row;
+  int min_col = first % kPatternStepColumns, max_col = min_col;
+  if (has_selection_) getSelectionBounds(min_row, max_row, min_col, max_col);
+  const PatternMutationResult result = commitPatternMutation(
+      [&](SynthPattern& pattern) {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            SynthStep& st = pattern.steps[r * kPatternStepColumns + c];
+            if (field == 0 || field < 0)
+              st.probability = GroovePuterUndo::StepSettingMarks::kDefaultProbability;
+            if (field == 1 || field < 0)
+              st.timing = GroovePuterUndo::StepSettingMarks::kDefaultTiming;
+            if (field == 2 || field < 0)
+              st.velocity = GroovePuterUndo::StepSettingMarks::kDefaultVelocity;
+            if (field == 3 || field < 0) st.ghost = false;
           }
         }
       });
@@ -883,6 +912,11 @@ bool PatternEditPage::handleStepSettingsKey(const UIEvent& ui_event) {
   const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
   if (esc || enter) {
     step_settings_open_ = false;
+    return true;
+  }
+  if (ui_event.key == '\b' || ui_event.key == 0x7F) {
+    // Backspace resets the field to its default, Ctrl+Backspace all fields.
+    resetStepSetting(ui_event.ctrl ? -1 : step_settings_field_);
     return true;
   }
   const int nav = UIInput::navCode(ui_event);
@@ -1009,7 +1043,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         }
       });
       clearSelection();
-      UI::showToast("Selection Cleared");
+      UI::showToast("SELECTION CLEARED");
       resetNoteHoldTracking();
       return true;
     }

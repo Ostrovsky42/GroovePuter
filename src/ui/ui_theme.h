@@ -140,14 +140,14 @@ inline const char* themeName(VisualStyle style) {
     return "CLEAN";
 }
 
-// CLEAN (black, VisualStyle::MINIMAL) is the only product theme, owner
-// decision 0.9.20. Alt+\ (backslash), the launcher theme key and the PROJECT Theme row
-// keep their bindings (no key changes meaning) but always resolve to CLEAN.
-// CYBER and AMBER draw paths stay compiled only as unreachable legacy;
-// MINIMAL_DARK/STAGE remains a reserved slot.
+// Product themes: CLEAN (black, VisualStyle::MINIMAL) and CYBER
+// (VisualStyle::RETRO_CLASSIC). Alt+\ (backslash), the launcher theme key and
+// the PROJECT Theme row toggle between the two. AMBER draw paths stay compiled
+// only as unreachable legacy; MINIMAL_DARK/STAGE remains a reserved slot.
+// Any other style resolves to CLEAN.
 inline VisualStyle nextThemeStyle(VisualStyle style) {
-    (void)style;
-    return VisualStyle::MINIMAL;
+    return style == VisualStyle::MINIMAL ? VisualStyle::RETRO_CLASSIC
+                                         : VisualStyle::MINIMAL;
 }
 
 inline VisualStyle previousThemeStyle(VisualStyle style) {

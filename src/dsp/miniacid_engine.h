@@ -704,6 +704,10 @@ public:
   void toggleMuteClap();
 
   bool isTrackActive(int index) const;
+  // Same index as isTrackActive (0 SYN-A, 1 SYN-B, 2..9 drum voices); goes
+  // through the existing toggles, so LED and synth barrier behave as 1..0 do.
+  // Control side, under AudioGuard.
+  void setTrackMuted(int index, bool muted);
   void setTrackVolume(VoiceId id, float volume);
   float getTrackVolume(VoiceId id) const;
 

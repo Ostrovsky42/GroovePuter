@@ -1,6 +1,6 @@
-# GroovePuter 0.9.19 Key Map — Cardputer ADV
+# GroovePuter 0.9.21 (unreleased) Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current tagged and packaged v0.9.19 source baseline. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical external key reference for the 0.9.21 (unreleased) development source; the last tagged release is v0.9.20. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 
@@ -42,7 +42,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | Key | Action |
 |---|---|
 | `Alt+H` | Toggle page-aware help |
-| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |
+| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit. Single level: it takes back only the last key press (one STEP SETTINGS change), not the whole series |
 | `Fn+M` | Workspace launcher |
 | `Fn+Tab` | Next workflow |
 | `[` / `]` | Previous / next page inside workflow |
@@ -58,7 +58,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | `Alt+W` | Waveform overlay except Phrase REPLACE |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
-| `Alt+\` | Theme: `CLEAN` only (black; the key shows the name) |
+| `Alt+\` | Theme: `CLEAN` <-> `CYBER` (the key shows the name) |
 
 Hard-global Alt shortcuts are handled before page-local input. Outside those reserved chords, the active page gets first refusal before late global fallbacks.
 
@@ -88,17 +88,82 @@ PLAYER, `Fn+1..9` mute tracks, so use `Alt+digit` to leave it.
 | `,` / `.` | Previous / next scale on SDL/external keyboard; Cardputer uses PERFORMANCE TOOLS -> KEY -> SCALE with Left/Right |
 | `-` / `=` | Octave down / up |
 | `Tab` | Open PERFORMANCE TOOLS (or cycle context when open) |
+| `Z` / `C` / `V` / `B` / `Del` | LOOPER: REC-DUB / PLAY-STOP / UNDO / HOLD / CLEAR (see LOOPER below) |
+| `M` | LOOPER: active layer 1 / 2 (REC-DUB, HOLD, CLEAR, MUTE act on it) |
+| `X` | Panic: live notes off, HELPER silenced, the LOOPER stops (its notes are kept) |
+| `Ctrl+Z` | LOOPER undo while it has something to undo (it takes the key first); otherwise the usual `UNDO: EMPTY / NOT HERE` |
+
+### LOOPER
+
+A MIDI looper on the live PERFORM surface: what you play (the pressed note,
+before Smart Play) is recorded on a 1/16 grid into one loop of up to 64 notes
+and played back on `LOOP CH`: `DX ROUTE` (the channel and target of PERFORM DX, the default) or `CH1..CH16`. The loop sounds over MIDI only, there is no internal sound; the first `Z` on the internal output shows a one-time toast `LOOP: DX ROUTE, NO INTERNAL SOUND` (hint `DX ROUTE: SAME CH AS PERFORM DX`). When the keyboard target is DRUMS, `Z` refuses with `LOOP: N/A FOR DRUMS`. Line 2 of the live surface shows the state, the active layer (`L1` /
+`L2`, filled = muted), the pass with its notes (layer 1 ticks on top, layer 2
+below, the active layer brighter), the playhead and `N/64` (brighter when `V` has something to undo, `FULL` at 64; `Z REC` on an empty loop in IDLE); at 8 bars only the bar marks are drawn, bar 5 taller.
+Settings in PERFORMANCE TOOLS -> INPUT, group `--- LOOPER ---` (between
+MIDI IN and HELPER): `LOOPER` (Enter = `Z`), `LOOP BARS` 1/2/4/8, `LOOP CH`,
+`NOTE LENGTH` 100/75/50/25 %, `HOLD LAYER` (= `B`), `LAYER` (Enter = `M`),
+`MUTE LAYER`, `TO MELODY`. Session only, never saved (neither the LOOPER nor the HELPER settings).
+
+`TO MELODY` (last row of the LOOPER group): `Left/Right` picks the target synth A or B (shown
+as `SYN A`/`SYN B`; session only; until picked it follows GEN TARGET, which
+the pick never changes). The first `Enter` asks `REPLACE MELODY A WITH LOOP? ENTER`;
+a second `Enter` within 4 s replaces the Working Melody of that synth with the unmuted layers as played (pitch and length as
+recorded, cut at the pass end, no Smart Play; held and hidden (undone) notes
+are skipped). Changing the synth, the number of bars or the MUTE mask resets the confirmation.
+If that synth holds an unsaved Working Melody the toast is `SAVE OR DISCARD A FIRST` and nothing is exported.
+A third `Enter` does not open the synth page. On success the toast is `MELODY A <- LOOP  CTRL+Z ON SYNTH A`: one Undo step, taken back with `Ctrl+Z` on the synth page (NOTES tab; back to STEPS or the
+previous Melody). Nothing is saved automatically: `Alt+Enter` on the synth page saves.
+
+The LOOPER and the HELPER (the partner) share one MIDI reply player, so
+they never play together: while `HELPER` is not OFF the LOOPER does not work, the `LOOPER` row shows `HELPER ON`, and `Z` and `C` show
+`LOOP: HELPER OFF FIRST`. Turn it off at INPUT > HELPER > OFF. Turning HELPER on stops a sounding loop (`LOOP: STOPPED, HELPER ON`; its notes are
+kept, `C` plays it again once HELPER is OFF).
+
+Two layers share the 64 notes and one length. `M` picks the active layer (not
+during the first REC pass; it ends a DUB first). `Z` records and dubs into the
+active layer only: a note never replaces or hides a note of the other layer.
+`B` (or the `HOLD LAYER` row) holds the active layer, `Del` clears it (the other layer plays on),
+`MUTE LAYER` silences it at once. `V` undoes the last unit, whatever layer it was in,
+unless that layer is held.
+
+`LOOP BARS` keeps the notes: longer repeats the loop to fill the new length
+(1 -> 2 -> 4 -> 8), shorter cuts the notes past the new end; the pass goes on
+from where it is and `V` takes the change back (bars too). Not during the first
+REC pass, not while a layer is held, and not when the repeat would pass 64
+notes (`LOOP: NO ROOM TO REPEAT`).
+
+| State | `Z` | `C` | `V` | `B` | `Del` |
+|---|---|---|---|---|---|
+| IDLE | ARM | - | undo CLEAR | - | - |
+| ARMED (waits for the next bar under PLAY, or for the first note) | cancel | cancel | - | - | - |
+| RECORD | then DUB / then PLAY | stop, keep notes | cancel recording | HOLD after the pass | cancel recording |
+| PLAY | DUB now | STOP (notes off now) | undo last pass | HOLD | CLEAR |
+| OVERDUB | back to PLAY now | STOP | undo last pass | PLAY + HOLD | CLEAR |
+| STOPPED | PLAY + DUB now | PLAY | undo last pass | HOLD | CLEAR |
+
+- One undo level: the last RECORD pass, the last OVERDUB pass that had notes, or
+  CLEAR (`V` after `Del` brings the loop back).
+- `HOLD` keeps the active layer as it is (no REC, UNDO or CLEAR): `Z`, `Del`, `V`/`Ctrl+Z` of that layer's
+  last unit and `BARS` show `LOOP: HOLD, B TO RELEASE`; `C`, `X` and `M` still work,
+  and the other layer records and clears freely. `B` again releases it. The chip `HOLD` is shown on the live surface, the toast is `LOOP: L1 HOLD ON/OFF`, the footer `[B]HOLD OFF`. Not the same as ARP HOLD or CHORD HOLD.
+- `Space` stop silences the loop at once; the next `Space` start resumes it on
+  the project bar grid (the same place in the loop). Without PLAY the loop runs
+  on the PERFORM tempo from the first recorded note.
+- Leaving PERFORM ends a recording. Under PLAY the loop keeps playing on any
+  page; without PLAY it stops.
+- `X` stops the loop and keeps it; only `Del` clears it.
 
 ### PERFORMANCE TOOLS
 
-Contextual layer: a fixed tab bar `[KEY] CHORD ARP RHYTHM`, one parameter per
+Contextual layer: a fixed tab bar `[KEY] CHORD ARP RHYTHM INPUT` (five tabs), one parameter per
 row, and a hint line at the bottom that says what `Left/Right` and `Enter` do
 for the selected row. Each context remembers its own selected row. Output
 target and MONO/POLY receiver mode are rows in KEY.
 
 | Key | Action |
 |---|---|
-| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM) |
+| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM -> INPUT) |
 | `Up` / `Down` | Select parameter row |
 | `Left` / `Right` | Decrease / increase selected value |
 | `Enter` | Toggle or secondary action for the row; `CHORD MODE` opens a list |
@@ -111,11 +176,32 @@ scancode.
 Performance velocity is bounded to `10..120`. Receiver MONO/POLY is external-MIDI
 ownership; internal Synth A/B remain sequencer/pattern instruments.
 
-The scrollable INPUT list on PERFORM includes PARTNER. Set it to ANSWER, DUET, or
-LOOP to enable generated MIDI replies to captured live input; OFF disables replies.
-PARTNER settings are session-only. LOOP additionally exposes BARS, CHANNEL, HOLD,
-EVOLVE, and REPLACE controls. Use the on-screen row hints; answer channels and USB/DIN
-route affect external MIDI output, so confirm the destination before enabling replies.
+The scrollable INPUT list on PERFORM has three groups, top to bottom: `--- MIDI IN ---`,
+`--- LOOPER ---`, `--- HELPER ---`. The heading lines are skipped by
+`Up/Down` (the cursor never rests on them). A scroll bar on the right edge shows when the list is longer than the screen.
+
+- MIDI IN: `MIDI IN` (external MIDI input ON/OFF), `LISTEN CH` (OMNI or
+  CH1..16), `SEND TO` (PERFORM = the KEY tab target and tools, or SYN A/SYN B/
+  DRUMS), `PLAY AS` (live-note role, new notes only), `LEAD STYLE` (with
+  `PLAY AS` LEAD). Target and output live in KEY; the USB role is set on
+  PROJECT > MIDI.
+- LOOPER: `LOOPER`, `LOOP BARS`, `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER`, `LAYER`, `MUTE LAYER`, `TO MELODY`; see LOOPER above.
+- HELPER (`HELPER`, `REPLY BARS`, `REPLY CH`, `FREEZE RIFF`, `VARIATION`, `NEW RIFF IF`): `HELPER` OFF/ANSWER/DUET/RIFF replies over MIDI to what you play
+  (RIFF repeats a short riff built from your playing). `REPLY BARS` 1/2/4,
+  `REPLY CH` (`DX ROUTE` = the PERFORM DX route, or CH1..16). With RIFF only:
+  `FREEZE RIFF` (ON keeps the riff, OFF lets a new one in at the next bar),
+  `VARIATION` EXACT/ENDING/DEVELOP/FREE, `NEW RIFF IF` 1 NOTE/3 NOTES/HALF
+  (how much you play to start a new riff). Session only; replies go to
+  external MIDI, so confirm the destination before turning HELPER on. While HELPER is not OFF the LOOPER is blocked (`LOOP: HELPER OFF FIRST`).
+
+## Words on the screen
+
+- `FEEL`: timing and strength of the hit (the FEEL page 3/3, and part G on DRUMS).
+- `SOUND`: the timbre (the DRUMS tab "DRUM SOUND", SOUND on the synths).
+- `HOLD`: holding a looper layer (`B`); not the same as ARP HOLD or CHORD HOLD.
+- `HELPER`: the partner (reply, duet, RIFF; the old LOOP mode is now called RIFF).
+- `DX ROUTE`: the loop plays on the channel and target of PERFORM DX.
+- `P1`/`P2`/`P3`: the levels of the generation style.
 
 ## GENRE 1/3
 
@@ -125,7 +211,7 @@ route affect external MIDI output, so confirm the destination before enabling re
 | `Left/Right` | Adjust selected field |
 | `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy |
 | `G` | Explicit full Stage 15 generation |
-| `P` | Cycle `STYLE`: FAITHFUL -> VARIANT -> REWORK |
+| `P` | Cycle the request level `P1` -> `P2` -> `P3` (P1 faithful to the classic, canon and recipe; P2 variation, a recognisable pattern with limited changes; P3 rework, freer transformation, default since 0.9.17; only on P3 can MATERIAL `D` develop a phrase, on P2 it shows `P: SET P3, THEN G`) |
 | `Left/Right` on KEY | Choose the project tonic; affects the next generation |
 | `M` on KEY | Cycle the project scale; affects the next generation |
 | `H` on KEY | Open the `GENRE/AUTO/GRAPH` harmony strategy list |
@@ -195,11 +281,12 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
 | `Alt+Up/Down` | Retrig count 1..8 when Retrig is active |
-| `Alt+E` on STEPS | STEP SETTINGS window for the cursor step (all selected steps when an area is selected), works with NOTE ENTRY on. `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or GHOST (on/off); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Enter` or `Esc` closes; other keys are ignored while it is open. Not offered on a Melody |
+| `Alt+E` on STEPS | STEP SETTINGS window for the cursor step (all selected steps when an area is selected), works with NOTE ENTRY on. `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or CHANCE (100% / 80%: at 80% the note sounds with 80% probability, multiplied by PROB; with PROB below 100 a line like `80% =64%` shows the result, PROB 80 and CHANCE 80% give `80% =64%`; not a quiet note, formerly GHOST); `Left/Right` or `-`/`=` changes it; `Backspace` resets the selected field, `Ctrl+Backspace` all fields of the step (or of the selection); the window hint is `UP/DN FIELD  L/R VALUE  ENT/ESC CLOSE`, the footer `UP/DN:FIELD L/R:VALUE` and `ENT/ESC:CLOSE`; each key press is one Undo step (`Ctrl+Z` takes back only the last press). `Enter` or `Esc` closes; `Opt` and other keys are ignored while it is open. Not offered on a Melody. A field that differs from a plain step (PROB 100, TIMING 0, VEL 100, CHANCE 100%) shows a small square left of its name and an accent-coloured value; the default shows neither. A note cell with a 2x2 dot is a step whose PROB, VEL or CHANCE differs from the default. Values move to the next multiple of 5, so 100 is always reachable |
 | `G` on STEPS | Genre/recipe/rhythm/STYLE/harmony generation of the selected synth, NOTE ENTRY OFF |
-| `P` on STEPS | Cycle shared STYLE: FAITHFUL -> VARIANT -> REWORK; affects the next G, NOTE ENTRY OFF |
+| `P` on STEPS | Cycle shared request level P1 -> P2 -> P3 (P1 faithful, P2 variation, P3 rework); affects the next G, NOTE ENTRY OFF |
 | `Alt+G` on STEPS | Legacy genre-based generator of the selected synth; does not use shared STYLE |
-| `Ctrl+Backspace` on STEPS | Clear the whole pattern of the selected synth, one Undo; ignores the selection |
+| `Ctrl+Backspace` on STEPS | Clear the whole pattern of the selected synth, one Undo (toast `PATTERN CLEARED  CTRL+Z UNDO`); ignores the selection (an area is erased by `Backspace`, toast `SELECTION CLEARED`) |
+| `Alt+O` | Cycle the synth output mode (toast `SYNTH A OUT:`) |
 | `Alt+Enter` / `Ctrl+Enter` | Accept working material |
 | `Alt+Backspace` | Discard working edits to accepted material |
 | `Enter` with NEXT ready | Request GO; while playing, activate at the next bar |
@@ -289,19 +376,23 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 
 | Key | Action |
 |---|---|
-| `Tab` | Sequencer / automation subpage |
+| `Tab` | Cycle DRUMS sub-pages: GRID / SOUND / AUTO (SOUND = the timbre; the former GLOBAL SETTINGS, now titled DRUM SOUND: drum engine and drum effects; SAMPLES exists only in the SDL emulator) |
 | `Q..I` | Pattern 1..8 |
 | `B` | Toggle bank A/B |
 | `Alt+[` / `Alt+]` | Previous / next pattern page |
 | `Arrows` | Move grid cursor |
 | `Enter` | Toggle selected hit |
+| `Backspace` | Erase the cell, or the selection |
+| `Ctrl+Backspace` | Clear the WHOLE pattern of the slot as one Undo step and drop the selection (also when something is selected). Toasts `DRUMS CLEARED  CTRL+Z UNDO`, `DRUMS ALREADY CLEAR`, `DRUMS CLEAR FAILED` |
+| `Alt+Backspace` | Does not touch the pattern; shows the hint `CTRL+BKSP CLEARS PATTERN` |
 | `A` | Toggle accent on the selected existing hit only |
-| `Alt+E` on the grid | DRUMS STEP SETTINGS window for the cursor cell (all selected cells when an area is selected; the first cell of the area gives the value). `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or FLAM/ROLL (OFF -> FLAM -> ROLL; FLAM is a second, softer hit 2 ticks later, ROLL is 4 rising hits in the step); `Left/Right` or `-`/`=` changes it; each change is one Undo step. `Enter` or `Esc` closes; other keys are ignored while it is open. A RETRIG/REVERSE/PITCH step FX shows by name and is replaced by FLAM or ROLL |
-| `G` | Drums-only strong generation at current P-level |
+| `Alt+E` on the grid | DRUMS STEP SETTINGS window for the cursor cell (all selected cells when an area is selected; the first cell of the area gives the value, `MIXED` when the values in the area differ). `Up/Down` picks PROB (0..100, step 5), TIMING (-23..23 ticks, step 1), VEL (1..127, step 5) or FLAM/ROLL (OFF -> FLAM -> ROLL; FLAM is a second, softer hit 2 ticks later, ROLL is 4 rising hits in the step); `Left/Right` or `-`/`=` changes it; `Backspace` resets the selected field, `Ctrl+Backspace` all fields of the step (or of the selection); each key press is one Undo step (`Ctrl+Z` takes back only the last press). The window hint `L/R:SET  ENT/ESC:CLOSE` is unchanged. `Enter` or `Esc` closes; `Opt` and other keys are ignored while it is open. A RETRIG/REVERSE/PITCH step FX shows by name and is replaced by FLAM or ROLL. A field that differs from a plain step (PROB 100, TIMING 0, VEL 100, FLAM/ROLL OFF) shows a small square left of its name and an accent-coloured value; the default shows neither. Values move to the next multiple of 5, so 100 is always reachable. On the grid a cell with TIMING other than 0 shows a small square in its top corner (left = earlier, right = later), only on a step that sounds. A note cell with a 2x2 dot is a step whose PROB, VEL or FLAM/ROLL differs from the default |
+| `Opt` alone, or `Alt+R`, on the grid | RHYTHM BROWSER: `Up/Down` picks a rhythm, `G` next group, `Alt+G` previous group (both wrap), `Left/Right` variant, `Tab` hear with the song (a change waits for the next bar), `M` solo, `1..0` mute while hearing (`1`/`2` SYN-A/SYN-B, `3..0` the rhythm's drum voices, same map as the lane labels; the browser does not draw mute state, the track screens do), `Enter` APPLY, `Esc` or `Opt` closes. The bottom hint is `UP/DN RHYTHM L/R VAR G/Alt+G GRP`; the info line shows `VAR n/m  N BPM`, then `TAB HEAR  G GROUP` before the audition and `1-0 MUTE  M SOLO` during it; the footer is `ENTER APPLY` / `ESC CLOSE`; an empty group shows `EMPTY`; there is no ATLAS/PRESET/VOCAB label. The position (rhythm, group, variant) is remembered between openings. A miniature at the right shows the selected rhythm as 16 steps x 8 drum voices (solid = hit, dim = soft hit); it is rebuilt only when the selection, variant or scene revision changes. Mutes are for listening only: they end with the audition (`Tab` again, `Enter`, `Esc`, leaving DRUMS, transport stop) and return to the mutes set before; APPLY writes all 8 voices, muted or not. APPLY writes the selected rhythm into the 8 drum voices of the current drum pattern (the slot shown as `ENTER: ALL 8 VOICES -> DRUMS A1`; toast `ALL 8 VOICES -> A1 CTRL+Z`); automation lanes and groove stay. One Undo step (`Ctrl+Z` on the grid restores the previous pattern). APPLY ends the audition, keeps the transport running and returns to the grid. Opens from the grid tab only |
+| `G` | Generation on DRUMS: strong regeneration of RHYTHM + FEEL as one Undo step, at the current P-level |
 | `Ctrl+G` | Randomize focused drum voice |
-| `Alt+G` | Full-pattern CHAOS |
-| `Ctrl+Alt+G` | Stage 12 phrase audition/probe |
-| `P` | Cycle shared P1/P2/P3 request level |
+| `Alt+G` | Full-pattern CHAOS (in the RHYTHM BROWSER: previous group) |
+| `P` | Cycle shared P1/P2/P3 request level (P1 faithful, P2 variation, P3 rework) |
+| `Alt+O` | Cycle DRUMS output mode (toast `DRUMS OUT:`) |
 | `Ctrl+C/V` | Copy / Paste |
 
 ## SONG
@@ -317,6 +408,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Alt+G` | Generate selected area |
 | `Ctrl+G` | Cycle Song generator mode |
 | `Backspace` | Clear current cell / selected Song cells |
+| `Ctrl+Backspace` | Clear the whole Song (`Alt+Backspace` only shows the hint `CTRL+BKSP CLEARS SONG`) |
 | `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Alt+B` | Flip stored-reference/selection bank |
 | `Opt` | (Cardputer) Synth A/B column: that voice's source STEPS <-> MELODY, as `Opt` on the synth page |
@@ -375,10 +467,10 @@ MATERIAL from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
 generated material is no longer structurally present in the Song.
 
 For the bounded musical-play cycle, press `G` for a new TAKE on the defaults
-(`LENGTH 4B`, `STYLE REWORK`), then `D` while its source remains unedited and
+(`LENGTH 4B`, `STYLE P3`), then `D` while its source remains unedited and
 unchanged. The result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback
 changes at the next bar boundary. `Ctrl+Z` removes the added cycle in one step.
-Non-4-bar, edited, VARIANT/FAITHFUL Takes are refused; changing STYLE after making
+Non-4-bar, edited, P1/P2 Takes are refused (`P: SET P3, THEN G`); changing STYLE after making
 the TAKE does not convert it. Acid and House do not grow at all: `D` says
 `<GENRE> CAN'T GROW: FN+M GENRE`, since another TAKE in the same genre cannot
 help. On `MATERIAL BANK`, `D` still means derive.

@@ -117,13 +117,13 @@ inline bool pageBelongsToWorkflow(int page, SessionWorkflow workflow) {
     return validUiPage(page) && sessionWorkflowForPage(page) == workflow;
 }
 
-// CLEAN (black) is the only product theme. Sessions saved with CYBER (2),
-// AMBER (3), the reserved STAGE (1) or any unknown byte restore as CLEAN.
+// Product themes are CLEAN (0) and CYBER (2). Sessions saved with AMBER (3),
+// the reserved STAGE (1) or any unknown byte restore as CLEAN.
 inline constexpr uint8_t kCleanVisualStyle = 0;
+inline constexpr uint8_t kCyberVisualStyle = 2;
 
 inline uint8_t sanitizeVisualStyle(uint8_t value) {
-    (void)value;
-    return kCleanVisualStyle;
+    return value == kCyberVisualStyle ? kCyberVisualStyle : kCleanVisualStyle;
 }
 
 inline uint16_t clampMasterVolumePermille(uint16_t value) {

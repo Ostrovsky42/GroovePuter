@@ -6,6 +6,7 @@
 #include "../../dsp/atlas_runtime.h"
 #include "../../dsp/genre_manager.h"
 #include "../../generated/atlas_runtime.generated.h"
+#include "rhythm_browser_presets.h"
 
 namespace RhythmBrowser {
 namespace {
@@ -22,7 +23,8 @@ constexpr const char* kNames[] = {
 static_assert(sizeof(kNames) / sizeof(kNames[0]) ==
                   static_cast<unsigned>(ReferenceVocabulary::Archetype::Count),
               "Browser names must follow reference vocabulary ordering");
-static_assert(sizeof(kNames) / sizeof(kNames[0]) + AtlasGenerated::kRecipeCount <= 255,
+static_assert(sizeof(kNames) / sizeof(kNames[0]) + AtlasGenerated::kRecipeCount +
+                      Presets::kEntryCount <= 255,
               "Browser catalog must fit uint8_t indices");
 
 Group atlasGroup(uint16_t id) {
@@ -32,6 +34,36 @@ Group atlasGroup(uint16_t id) {
     case 10: case 11: return Group::Dub;
     default: return Group::Count;
   }
+}
+
+const Presets::Entry* findPreset(uint16_t id) {
+  for (const auto& entry : Presets::kEntries)
+    if (entry.recipe.runtimeRecipeId == id) return &entry;
+  return nullptr;
+}
+
+bool materializePresetDrums(const AtlasGenerated::Recipe& recipe, uint8_t variant,
+                            DrumPatternSet& drums) {
+  if (variant >= recipe.patternCount) return false;
+  const auto& pattern = recipe.patterns[variant];
+  // Clear in place (no ~1 KiB DrumPatternSet temporary on the UI stack).
+  drums.groove = PatternGroove{};
+  for (auto& lane : drums.lanes) lane = AutomationLane{};
+  for (auto& voice : drums.voices)
+    for (auto& step : voice.steps) step = DrumStep{};
+  for (uint16_t i = 0; i < pattern.eventCount; ++i) {
+    const auto& event = pattern.events[i];
+    if (event.target >= DrumPatternSet::kVoices || event.step >= DrumPattern::kSteps ||
+        event.velocity < 1 || event.velocity > 127 || event.probability > 100)
+      return false;
+    DrumStep& step = drums.voices[event.target].steps[event.step];
+    step.hit = true;
+    step.accent = (event.flags & AtlasGenerated::kAccent) != 0;
+    step.velocity = event.velocity;
+    step.timing = event.timing;
+    step.probability = event.probability;
+  }
+  return true;
 }
 
 bool hasDrumHits(const DrumPatternSet& drums) {
@@ -58,7 +90,7 @@ bool groupMode(Group group, GenerativeMode& mode) {
 
 uint8_t count() {
   return static_cast<uint8_t>(ReferenceVocabulary::definitionCount() +
-                              AtlasGenerated::kRecipeCount);
+                              AtlasGenerated::kRecipeCount + Presets::kEntryCount);
 }
 
 bool descriptorAt(uint8_t index, Descriptor& out) {
@@ -73,7 +105,15 @@ bool descriptorAt(uint8_t index, Descriptor& out) {
     return true;
   }
   const unsigned atlasIndex = static_cast<unsigned>(index - vocabularyCount);
-  if (atlasIndex >= AtlasGenerated::kRecipeCount) return false;
+  if (atlasIndex >= AtlasGenerated::kRecipeCount) {
+    const unsigned presetIndex = atlasIndex - AtlasGenerated::kRecipeCount;
+    if (presetIndex >= Presets::kEntryCount) return false;
+    const auto& preset = Presets::kEntries[presetIndex].recipe;
+    out = {Source::Preset, preset.runtimeRecipeId, preset.displayName, preset.patternCount,
+           preset.bpm, preset.bpm, Provenance::HandAuthoredPreset, true,
+           Renderability::RequiresMaterialization};
+    return true;
+  }
   const auto& item = AtlasGenerated::kRecipes[atlasIndex];
   if (!item.displayName || !item.patterns || item.patternCount == 0) return false;
   out = {Source::Atlas, item.runtimeRecipeId, item.displayName, item.patternCount, item.bpm, item.bpm,
@@ -98,6 +138,10 @@ bool matchesGroup(const Descriptor& descriptor, Group group) {
   if (group == Group::All) return true;
   if (group >= Group::Count) return false;
   if (item.source == Source::Atlas) return atlasGroup(item.stableId) == group;
+  if (item.source == Source::Preset) {
+    const auto* preset = findPreset(item.stableId);
+    return preset && preset->group == group;
+  }
   GenerativeMode mode{};
   if (!groupMode(group, mode)) return false;
   GenreSettings settings{};
@@ -107,13 +151,19 @@ bool matchesGroup(const Descriptor& descriptor, Group group) {
 }
 
 Status materialize(const Identity& identity, Workspace& scratch, Candidate& out) {
-  if (identity.source != Source::Vocabulary && identity.source != Source::Atlas)
+  if (identity.source != Source::Vocabulary && identity.source != Source::Atlas &&
+      identity.source != Source::Preset)
     return Status::InvalidSource;
   Descriptor entry{};
   if (!lookup(identity.source, identity.stableId, entry)) return Status::UnknownId;
   if (identity.variant >= entry.variantCount) return Status::InvalidVariant;
 
-  if (identity.source == Source::Atlas) {
+  if (identity.source == Source::Preset) {
+    const auto* preset = findPreset(identity.stableId);
+    if (!preset || !materializePresetDrums(preset->recipe, identity.variant,
+                                           scratch.material.drums))
+      return Status::Unrealizable;
+  } else if (identity.source == Source::Atlas) {
     if (!AtlasRuntime::materializeDrums(static_cast<uint8_t>(identity.stableId),
                                         identity.variant, scratch.material.drums))
       return Status::Unrealizable;

@@ -6,9 +6,9 @@
 
 namespace RhythmBrowser {
 
-enum class Source : uint8_t { Vocabulary, Atlas };
+enum class Source : uint8_t { Vocabulary, Atlas, Preset };
 enum class Group : uint8_t { All, House, Techno, UkGarage, Breaks, HipHop, Acid, Dub, Electro, Count };
-enum class Provenance : uint8_t { VocabularyGrammar, CompiledAtlasRightsReview };
+enum class Provenance : uint8_t { VocabularyGrammar, CompiledAtlasRightsReview, HandAuthoredPreset };
 enum class Renderability : uint8_t { RequiresMaterialization };
 enum class Status : uint8_t { Ok, InvalidSource, UnknownId, InvalidVariant, Unrealizable, EmptyDrums };
 

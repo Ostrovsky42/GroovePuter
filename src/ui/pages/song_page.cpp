@@ -1736,8 +1736,12 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return assignPattern(patternIdx);
   }
 
-  // Alt + Backspace = Reset Song
+  // Alt + Backspace only hints; Ctrl + Backspace = Reset Song
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {
+      UI::showToast("CTRL+BKSP CLEARS SONG", 1000);
+      return true;
+  }
+  if (ui_event.ctrl && (key == '\b' || key == 0x7F)) {
       withAudioGuard([&]() {
           for (int r = 0; r < Song::kMaxPositions; ++r) {
               mini_acid_.clearSongPattern(r, SongTrack::SynthA);

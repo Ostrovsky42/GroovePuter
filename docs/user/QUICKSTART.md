@@ -1,6 +1,6 @@
-# GroovePuter 0.9.20 candidate — First Five Minutes
+# GroovePuter 0.9.21 (unreleased) — First Five Minutes
 
-This page describes the 0.9.20 release candidate; it is not a published or hardware-accepted release. Use it for a first session on a M5Stack Cardputer ADV. The goal is simple:
+This page describes the 0.9.21 (unreleased) release candidate; it is not a published or hardware-accepted release. Use it for a first session on a M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to
 ask for help without learning GroovePuter's internal architecture first.
 
@@ -43,7 +43,7 @@ of the same selected musical direction.
 1. Press `Fn+M` to open the workspace launcher.
 2. Open **MATERIAL**.
 3. Set `LENGTH` to `4B`.
-4. Set `STYLE` to `REWORK`.
+4. Set `STYLE` to `P3` (Rework).
 5. Leave `TO` on `APPEND` for the simplest first session.
 6. Press `G`.
 
@@ -67,8 +67,7 @@ unsupported genre will not make it developable.
 Press `Ctrl+Z` to undo the last retained edit supported by the current page.
 
 If **MATERIAL** reports `NO ROOM`, press plain `R`. It offers only unused generated
-takes that are not currently referenced and that you have not edited. `Enter` allows
-those slots to be reused by a later `G` or `D`; `Esc` cancels.
+takes that are not currently referenced and that you have not edited. `Enter` lets the next `G` reuse those slots; `Esc` cancels.
 
 ## 5. Save
 

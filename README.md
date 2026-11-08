@@ -102,14 +102,20 @@ For the complete current key map, see [`src/ui/docs/keys.md`](src/ui/docs/keys.m
 
 ## Screenshots
 
-| Firmware screen | Preview |
-|:---|:---|
-| **GENRE** | ![GENRE screen](docs/screenshots/genre.png) |
-| **OVERVIEW / SEQUENCER HUB** | ![OVERVIEW screen](docs/screenshots/sequencer_hub.png) |
-| **DRUMS** | ![DRUMS screen](docs/screenshots/drum_page_cyber.png) |
-| **SYNTH** | ![SYNTH screen](docs/screenshots/synth_params.png) |
-| **PATTERN / NOTES** | ![PATTERN screen](docs/screenshots/pattern_edit.png) |
-| **SONG** | ![SONG screen](docs/screenshots/song_page.png) |
+The current 0.9.21 development interface has two themes: **CLEAN** on the left
+and **CYBER** on the right. Each diagonal combines two SDL captures of the same
+screen. Use `Alt+\` to switch themes, or choose **Theme** in PROJECT → DEVICE.
+These are development screenshots, not images of a published release.
+
+| Screen | CLEAN / CYBER | Full screenshots |
+|:---|:---|:---|
+| **GENRE** | ![GENRE: CLEAN and CYBER themes](docs/screenshots/themes/genre-themes.svg) | [CLEAN](docs/screenshots/themes/genre-clean.png) · [CYBER](docs/screenshots/themes/genre-cyber.png) |
+| **OVERVIEW** | ![OVERVIEW: CLEAN and CYBER themes](docs/screenshots/themes/overview-themes.svg) | [CLEAN](docs/screenshots/themes/overview-clean.png) · [CYBER](docs/screenshots/themes/overview-cyber.png) |
+| **SYNTH** | ![SYNTH: CLEAN and CYBER themes](docs/screenshots/themes/synth-themes.svg) | [CLEAN](docs/screenshots/themes/synth-clean.png) · [CYBER](docs/screenshots/themes/synth-cyber.png) |
+| **DRUMS** | ![DRUMS: CLEAN and CYBER themes](docs/screenshots/themes/drums-themes.svg) | [CLEAN](docs/screenshots/themes/drums-clean.png) · [CYBER](docs/screenshots/themes/drums-cyber.png) |
+| **SONG** | ![SONG: CLEAN and CYBER themes](docs/screenshots/themes/song-themes.svg) | [CLEAN](docs/screenshots/themes/song-clean.png) · [CYBER](docs/screenshots/themes/song-cyber.png) |
+| **PERFORM** | ![PERFORM: CLEAN and CYBER themes](docs/screenshots/themes/perform-themes.svg) | [CLEAN](docs/screenshots/themes/perform-clean.png) · [CYBER](docs/screenshots/themes/perform-cyber.png) |
+| **PROJECT** | ![PROJECT: CLEAN and CYBER themes](docs/screenshots/themes/project-themes.svg) | [CLEAN](docs/screenshots/themes/project-clean.png) · [CYBER](docs/screenshots/themes/project-cyber.png) |
 
 ## Standalone + MIDI
 

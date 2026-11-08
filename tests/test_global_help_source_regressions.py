@@ -101,10 +101,10 @@ assert "two workflow pages" in readme
 
 assert quickstart_path.exists(), "0.9.19 user quick start is missing"
 quickstart = quickstart_path.read_text()
-assert quickstart.startswith("# GroovePuter 0.9.20 candidate — First Five Minutes")
+assert quickstart.startswith("# GroovePuter 0.9.21 (unreleased) — First Five Minutes")
 for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
     assert action in quickstart, action
-for internal_term in ("P3", "provenance", "lineage", "MaterialVersion", "ReferenceRole"):
+for internal_term in ("provenance", "lineage", "MaterialVersion", "ReferenceRole"):
     assert internal_term not in quickstart, internal_term
 assert "legacy FEEL page" not in quickstart
 assert "`Alt+V` opens GENRE" in quickstart
@@ -118,7 +118,7 @@ assert "tagged source baseline" in docs_index
 assert "latest packaged GitHub Release" in docs_index
 assert "older 0.9.1-era manual" not in docs_index
 
-assert manual.startswith("# GroovePuter 0.9.19 Manual")
+assert manual.startswith("# GroovePuter 0.9.21 (unreleased) Manual")
 assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "GEN is the optional local generation-target panel inside GENRE" in manual
@@ -161,7 +161,7 @@ assert "| `Alt+Backspace` | Discard working edits to accepted material |" in key
 assert "`Alt+X` is reserved globally for LiveMix" in keys
 
 # Canonical key map: current version plus beginner constitution and full expert reference.
-assert keys.startswith("# GroovePuter 0.9.19 Key Map")
+assert keys.startswith("# GroovePuter 0.9.21 (unreleased) Key Map")
 assert "## First Five Minutes" in keys
 for expected in (
     "`Space`",
@@ -219,21 +219,18 @@ for expected in (
 ):
     assert expected in integration
 
-screenshots = (
-    "genre.png",
-    "sequencer_hub.png",
-    "drum_page_cyber.png",
-    "synth_params.png",
-    "pattern_edit.png",
-    "song_page.png",
-)
-for name in screenshots:
-    path = ROOT / "docs/screenshots" / name
-    data = path.read_bytes()
-    assert data[:8] == b"\x89PNG\r\n\x1a\n"
-    width, height = struct.unpack(">II", data[16:24])
-    assert (width, height) == (488, 275), (name, width, height)
-    assert f"docs/screenshots/{name}" in readme
+screens = ("genre", "overview", "synth", "drums", "song", "perform", "project")
+for screen in screens:
+    comparison = f"docs/screenshots/themes/{screen}-themes.svg"
+    assert (ROOT / comparison).is_file()
+    assert comparison in readme
+    for theme in ("clean", "cyber"):
+        name = f"docs/screenshots/themes/{screen}-{theme}.png"
+        data = (ROOT / name).read_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+        width, height = struct.unpack(">II", data[16:24])
+        assert (width, height) == (480, 270), (name, width, height)
+        assert name in readme
 
 assert "docs/screenshots/groove_lab.png" not in readme
 

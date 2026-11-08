@@ -8,7 +8,7 @@ EXTRA_CXXFLAGS="${SMART_PLAY_CXXFLAGS:-}"
 mkdir -p "${BUILD_DIR}"
 
 usage() {
-  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings] [cr_development] [cr_four_bars] [cr_loop_grid] [cr_phase6] [cr_loop_gaps] [cr_phase8] [cr_phase9] [cr_phase10] [pattern_range_wire] [pattern_range_engine]" >&2
+  echo "usage: $0 [model] [quality] [snapshot] [registry] [legacy_context] [bridge] [config] [ownership] [dispatch] [midi_input] [midi_queue] [external_queue] [arp] [trace] [keyboard] [external] [cr_capture] [cr_motif] [cr_tap] [cr_planner] [cr_cancel] [cr_timing] [cr_lookahead] [cr_genre] [cr_single_note] [cr_channel] [cr_settings] [cr_development] [cr_four_bars] [cr_loop_grid] [cr_phase6] [cr_loop_gaps] [cr_phase8] [cr_phase9] [cr_phase10] [looper_layer] [looper_engine] [pattern_range_wire] [pattern_range_engine]" >&2
 }
 
 compile_run() {
@@ -240,6 +240,19 @@ run_cr_phase10() {
   "${build}/test"
 }
 
+# LOOPER phase 0: the layer core (bits, quantize, undo, overflow, plan) +
+# source contracts (no allocation/FS/locks, partner files untouched, Ctrl+Z).
+run_looper_layer() {
+  compile_run looper_layer "${ROOT_DIR}/tests/test_looper_layer.cpp"
+  python3 "${ROOT_DIR}/tests/test_looper_source_regressions.py"
+}
+
+# LOOPER phase 1: state machine, clock, NoteOn/NoteOff balance, no gaps,
+# overdub/undo, HOLD, Space stop. -O1: 10080 + 10000 passes.
+run_looper_engine() {
+  compile_run looper_engine -O1 "${ROOT_DIR}/tests/test_looper_engine.cpp"
+}
+
 # PATTERN_RANGE_MIDI: steps hold C1..C7; MIDI gets the note as written.
 # Wire + editor clamp: pure, -Werror. Old 0.9.8-R3 mutation contract and the
 # NOTE ENTRY source contract follow the new ceiling.
@@ -285,7 +298,7 @@ run_pattern_range_engine() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps cr_phase8 cr_phase9 cr_phase10 pattern_range_wire pattern_range_engine)
+  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps cr_phase8 cr_phase9 cr_phase10 looper_layer looper_engine pattern_range_wire pattern_range_engine)
 fi
 
 for target in "${targets[@]}"; do
@@ -325,6 +338,8 @@ for target in "${targets[@]}"; do
     cr_phase8) run_cr_phase8 ;;
     cr_phase9) run_cr_phase9 ;;
     cr_phase10) run_cr_phase10 ;;
+    looper_layer) run_looper_layer ;;
+    looper_engine) run_looper_engine ;;
     pattern_range_wire) run_pattern_range_wire ;;
     pattern_range_engine) run_pattern_range_engine ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;

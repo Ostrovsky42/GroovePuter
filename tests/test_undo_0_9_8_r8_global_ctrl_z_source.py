@@ -41,8 +41,10 @@ require("lowerKey == 'x'" in reset_block and "lowerKey == 'c'" in reset_block an
 
 require('"Ctrl+Z      Undo last edit"' in help_content, "on-device global help is stale")
 require('"Ctrl+A/X/C/V Reset parameter"' in help_content, "on-device Synth reset help is stale")
-require("| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |" in keys,
+require("| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit. Single level: it takes back only the last key press" in keys,
         "external key map is stale")
+require("| `Ctrl+Z` | LOOPER undo while it has something to undo (it takes the key first); otherwise the usual `UNDO: EMPTY / NOT HERE` |" in keys,
+        "external key map lost the PERFORM LOOPER Ctrl+Z precedence")
 require("| `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |" in keys,
         "external Synth reset key map is stale")
 

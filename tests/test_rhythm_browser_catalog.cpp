@@ -18,7 +18,7 @@ static bool sameSteps(const DrumPatternSet& a, const DrumPatternSet& b) {
 }
 
 int main() {
-  assert(count() == 30);
+  assert(count() == 35);
   Workspace workspace{};
   Candidate candidate{};
   for (uint8_t i = 0; i < count(); ++i) {
@@ -35,9 +35,13 @@ int main() {
       assert(descriptorAt(j, previous));
       assert(previous.source != entry.source || previous.stableId != entry.stableId);
     }
-    assert(entry.variantCount == (entry.source == Source::Atlas ? 3 : 1));
+    if (entry.source == Source::Atlas) assert(entry.variantCount == 3);
+    else if (entry.source == Source::Vocabulary) assert(entry.variantCount == 1);
+    else assert(entry.source == Source::Preset && entry.variantCount >= 1);
     assert(entry.provenance == (entry.source == Source::Atlas
                                     ? Provenance::CompiledAtlasRightsReview
+                                : entry.source == Source::Preset
+                                    ? Provenance::HandAuthoredPreset
                                     : Provenance::VocabularyGrammar));
     for (uint8_t variant = 0; variant < entry.variantCount; ++variant) {
       Identity id{entry.source, entry.stableId, variant, 12345u, 17u};

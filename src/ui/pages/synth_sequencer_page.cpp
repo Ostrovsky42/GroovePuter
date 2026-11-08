@@ -1899,6 +1899,81 @@ bool SynthSequencerPage::replaceMelodyFor(
                                          melody);
 }
 
+// One Undo step for "put this Melody into the voice", from either source. The
+// voice's Working Melody is made ready WITHOUT a receipt of its own (MAKE PHRASE
+// engine call, or the slot's saved Melody), then ONE receipt is published whose
+// "before" is the state the user came from: from STEPS with no Melody, the
+// clean empty buffer + source STEPS (as PhraseSourceToggle::makePhrase writes
+// it), so Ctrl+Z returns to STEPS. replaceMelodyFor() cannot do this from STEPS:
+// its toggle() publishes the MAKE PHRASE receipt and the commit then replaces it
+// with "before = a copy of the steps".
+SynthSequencerPage::ReplaceOneUndoResult SynthSequencerPage::replaceMelodyOneUndo(
+    MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+    const PhraseRuntime::RuntimeSynthEventBuffer& melody) {
+  using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
+  if (voice < 0 || voice > 1 || !RuntimePhraseEdit::validate(melody)) {
+    return ReplaceOneUndoResult::Rejected;
+  }
+  const auto source = mini_acid.currentSequencedSource(voice);
+  const bool onPhrase = source == MiniAcid::SequencedSource::Phrase;
+
+  GroovePuterUndo::RuntimePhraseUndoPayload receipt{};
+  receipt.voiceIndex = static_cast<uint8_t>(voice);
+  receipt.source = static_cast<uint8_t>(source);
+
+  std::unique_ptr<Buffer> saved;  // the slot's saved Melody, when STEPS shows a Melody slot
+  const bool retained = mini_acid.retainedWorkingMelody(voice) != nullptr;
+  const int bank = mini_acid.current303BankIndex(voice);
+  const int pattern = mini_acid.display303LocalPatternIndex(voice);
+  const bool melodySlot = !onPhrase && !retained &&
+                          mini_acid.isMelodySlot(voice, bank, pattern);
+  if (onPhrase || retained) {
+    receipt.before = mini_acid.currentPhraseBuffer(voice);
+  } else if (melodySlot) {
+    saved.reset(new (std::nothrow) Buffer());
+    if (!saved) return ReplaceOneUndoResult::NoMemory;
+    if (!mini_acid.loadCurrentSlotMelody(voice, *saved)) {
+      return ReplaceOneUndoResult::Rejected;
+    }
+    receipt.before = *saved;
+  } else {
+    receipt.before = Buffer{};  // no Melody held: the clean empty "before"
+  }
+
+  ReplaceOneUndoResult result = ReplaceOneUndoResult::Rejected;
+  const auto apply = [&]() {
+    if (!onPhrase) {
+      bool ready = false;
+      if (retained) {
+        mini_acid.setSequencedSource(voice, MiniAcid::SequencedSource::Phrase);
+        ready = true;
+      } else if (melodySlot) {
+        ready = mini_acid.activateMelodySlot(voice, bank, pattern, *saved);
+      } else {
+        ready = mini_acid.makePhrase(voice, false);
+      }
+      if (!ready || mini_acid.currentSequencedSource(voice) !=
+                        MiniAcid::SequencedSource::Phrase) {
+        if (ready) mini_acid.setSequencedSource(voice, source);
+        return;
+      }
+    }
+    auto& live = mini_acid.currentPhraseBuffer(voice);
+    const bool committed = GroovePuterUndo::undoOwner().commitRuntimePrepared(
+        GroovePuterUndo::UndoKind::RuntimePhrase, receipt, [&]() {
+          (void)RuntimePhraseEdit::commit(live, melody);
+        });
+    if (committed) {
+      result = ReplaceOneUndoResult::Done;
+    } else if (!onPhrase) {
+      mini_acid.setSequencedSource(voice, source);  // no receipt: back to STEPS
+    }
+  };
+  if (audio_guard) audio_guard(apply);
+  else apply();
+  return result;
+}
+
 bool SynthSequencerPage::voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice) {
   if (voice < 0 || voice > 1) return true;
   return mini_acid.hasUnsavedWorkingMelody(voice) ||
@@ -2113,6 +2188,8 @@ bool SynthSequencerPage::toggleSource() {
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+    // STEP SETTINGS is modal: Opt is ignored while it is open.
+    if (pattern_page_ && pattern_page_->stepSettingsOpen()) return true;
     return toggleSource();
   }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&

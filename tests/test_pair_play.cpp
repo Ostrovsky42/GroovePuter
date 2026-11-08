@@ -105,14 +105,14 @@ int main() {
     expect(!engine.pairPlayActive(0), "L again stops the pair");
     expect(patA(engine) == 2, "stopped pair returns to the selected slot");
 
-    // Cancel on Stop.
+    // Stop retains the selected pair for the next transport start.
     plainL(page);
     expect(engine.pairPlayActive(0), "restart");
     engine.stop();
-    expect(!engine.pairPlayActive(0), "transport Stop cancels");
+    expect(engine.pairPlayActive(0), "transport Stop retains the pair");
 
     // Cancel on slot change and on leaving the page.
-    plainL(page);  // Stop left the view on: this turns it off
+    plainL(page);  // Stop left the view and pair on: turn both off
     plainL(page);  // view on and play on
     engine.set303PatternIndex(0, 4);
     expect(engine.pairPlayActive(0) && engine.pairPlayBaseSlot(0) == 4,
@@ -137,7 +137,7 @@ int main() {
     engine.setSongMode(false);
   }
 
-  // 1d. Sticky per synth, armed start at the bar line, Stop cancels both.
+  // 1d. Sticky per synth, armed start at the bar line, Stop retains both.
   {
     MiniAcid engine(44100.0f, nullptr);
     engine.init();
@@ -177,7 +177,7 @@ int main() {
     plainL(pageA);
     expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "both pairs run");
     engine.stop();
-    expect(!engine.pairPlayActive(0) && !engine.pairPlayActive(1), "Stop cancels both");
+    expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "Stop retains both");
   }
 
   // 1c. Plain L is view + play in one key; Ctrl+L does nothing.
@@ -390,14 +390,14 @@ int main() {
            "5c pair off stays off, no notice");
     expect(engine.current303PatternIndex(0) == 3, "5c slot switched");
 
-    // 5d. Stop cancels all.
+    // 5d. Stop retains all active pairs.
     engine.togglePairPlay(0);
     engine.togglePairPlay(1);
     engine.start();
     engine.set303PatternIndex(0, 1);
     expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "5d both on");
     engine.stop();
-    expect(!engine.pairPlayActive(0) && !engine.pairPlayActive(1), "5d Stop cancels all");
+    expect(engine.pairPlayActive(0) && engine.pairPlayActive(1), "5d Stop retains all");
   }
 
   if (!g_ok) return 1;

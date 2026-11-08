@@ -90,6 +90,7 @@ class DrumSequencerMainPage : public Container {
   void openStepSettings();
   bool handleStepSettingsKey(const UIEvent& ui_event);
   void adjustStepSetting(int field, int direction);
+  void resetStepSetting(int field);  // field < 0 = all fields
   void drawStepSettings(IGfx& gfx) const;
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -783,16 +784,31 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   if (key == '\b' || key == 0x7F) {
     if (ui_event.alt) {
-        // Alt+Backspace = Clear Pattern (one undoable mutation)
-        commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+        // Alt+Backspace no longer clears; Ctrl+Backspace does (as on SYNTH).
+        UI::showToast("CTRL+BKSP CLEARS PATTERN", 1000);
+        return true;
+    } else if (ui_event.ctrl) {
+        // Ctrl+Backspace = Clear Pattern (one undoable mutation), as on SYNTH:
+        // the whole pattern, with or without a selection. The toast reports
+        // the actual result.
+        bool prepared = false;
+        bool anySet = false;
+        const bool changed = commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+            prepared = true;
             for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
                 for (int i = 0; i < SEQ_STEPS; ++i) {
+                    anySet = anySet || pattern.voices[v].steps[i].hit ||
+                             pattern.voices[v].steps[i].accent;
                     pattern.voices[v].steps[i].hit = false;
                     pattern.voices[v].steps[i].accent = false;
                 }
             }
         });
-        UI::showToast("Drums Cleared", 800);
+        if (has_selection_) clearSelection();
+        UI::showToast(changed                 ? "DRUMS CLEARED  CTRL+Z UNDO"
+                      : (prepared && !anySet) ? "DRUMS ALREADY CLEAR"
+                                              : "DRUMS CLEAR FAILED",
+                      1000);
         return true;
     } else if (has_selection_) {
         int min_v, max_v, min_s, max_s;
@@ -869,6 +885,32 @@ void DrumSequencerMainPage::adjustStepSetting(int field, int direction) {
   });
 }
 
+// Backspace in STEP SETTINGS: the field under the cursor (or, with field < 0,
+// every field) of the whole area back to a plain step. One press is one Undo.
+void DrumSequencerMainPage::resetStepSetting(int field) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  namespace Marks = GroovePuterUndo::StepSettingMarks;
+  if (field >= Edit::kFieldCount) return;
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        DrumStep& st = pattern.voices[v].steps[s];
+        if (field < 0 || field == Edit::kFieldProb)
+          st.probability = static_cast<uint8_t>(Marks::kDefaultProbability);
+        if (field < 0 || field == Edit::kFieldTiming)
+          st.timing = static_cast<int8_t>(Marks::kDefaultTiming);
+        if (field < 0 || field == Edit::kFieldVelocity)
+          st.velocity = static_cast<uint8_t>(Marks::kDefaultVelocity);
+        if (field < 0 || field == Edit::kFieldOrnament)
+          Edit::setOrnament(st, Edit::Ornament::None);
+      }
+    }
+  });
+}
+
 bool DrumSequencerMainPage::handleStepSettingsKey(const UIEvent& ui_event) {
   namespace Edit = GroovePuterUndo::DrumStepEdit;
   const bool esc = ui_event.key == 0x1B ||
@@ -876,6 +918,11 @@ bool DrumSequencerMainPage::handleStepSettingsKey(const UIEvent& ui_event) {
   const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
   if (esc || enter) {
     step_settings_open_ = false;
+    return true;
+  }
+  if (ui_event.key == '\b' || ui_event.key == 0x7F) {
+    // Backspace = this field to its default; Ctrl+Backspace = all fields.
+    resetStepSetting(ui_event.ctrl ? -1 : static_cast<int>(step_settings_field_));
     return true;
   }
   const int nav = UIInput::navCode(ui_event);
@@ -902,7 +949,8 @@ void DrumSequencerMainPage::drawStepSettings(IGfx& gfx) const {
   const UI::ThemePalette p = UI::themePalette();
   const Rect& b = getBoundaries();
   const int lineH = gfx.fontHeight() + 3;
-  const int w = std::min(b.w - 8, 150);
+  const int w = std::min(
+      b.w - 8, std::max(150, textWidth(gfx, GroovePuterUndo::StepSettingMarks::kStepSettingsHint) + 8));
   const int h = lineH * (Edit::kFieldCount + 2) + 6;
   const int x = b.x + (b.w - w) / 2;
   const int y = b.y + std::max(0, (b.h - h) / 2);
@@ -913,6 +961,19 @@ void DrumSequencerMainPage::drawStepSettings(IGfx& gfx) const {
   const int count = (max_voice - min_voice + 1) * (max_step - min_step + 1);
   const DrumStep& st = mini_acid_.sceneManager().getCurrentDrumPattern()
                            .voices[min_voice].steps[min_step];
+  bool mixed[Edit::kFieldCount] = {false, false, false, false};
+  if (count > 1) {
+    const auto& pat = mini_acid_.sceneManager().getCurrentDrumPattern();
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        for (int f = 0; f < Edit::kFieldCount; ++f) {
+          if (GroovePuterUndo::StepSettingMarks::drumFieldDiffers(
+                  st, pat.voices[v].steps[s], f))
+            mixed[f] = true;
+        }
+      }
+    }
+  }
 
   gfx.fillRect(x, y, w, h, p.panel);
   gfx.drawRect(x, y, w, h, p.accent);
@@ -927,18 +988,29 @@ void DrumSequencerMainPage::drawStepSettings(IGfx& gfx) const {
   std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
   std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
   std::snprintf(values[3], sizeof(values[3]), "%s", Edit::ornamentName(st));
+  for (int i = 0; i < Edit::kFieldCount; ++i) {
+    if (mixed[i]) std::snprintf(values[i], sizeof(values[i]), "MIXED");
+  }
   static const char* const kLabels[Edit::kFieldCount] = {"PROB", "TIMING", "VEL", "FLAM/ROLL"};
   for (int i = 0; i < Edit::kFieldCount; ++i) {
     const int ry = y + 3 + lineH * (i + 1);
     const bool sel = i == step_settings_field_;
     if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    // A value that differs from a plain step gets a 2x2 square left of the
+    // label and an accent-coloured value; the default shows neither.
+    const bool custom = GroovePuterUndo::StepSettingMarks::drumFieldCustom(st, i) || mixed[i];
+    if (custom) {
+      gfx.fillRect(x + 3, ry + gfx.fontHeight() / 2 - 1, 2, 2,
+                   sel ? p.invert : p.accent);
+    }
     gfx.setTextColor(sel ? p.invert : p.text);
     gfx.drawText(x + 6, ry, kLabels[i]);
+    if (custom && !sel) gfx.setTextColor(p.accent);
     gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
   }
   gfx.setTextColor(p.dim);
   gfx.drawText(x + 4, y + 3 + lineH * (Edit::kFieldCount + 1),
-               "L/R:SET  ENT/ESC:CLOSE");
+               GroovePuterUndo::StepSettingMarks::kStepSettingsHint);
 }
 
 void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
@@ -1178,7 +1250,7 @@ void GlobalDrumFeelPage::draw(IGfx& gfx) {
   int w = bounds.w;
 
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, y, "GLOBAL SETTINGS");
+  gfx.drawText(x, y, "DRUM SOUND");
   gfx.setTextColor(COLOR_WHITE);
 
   int row_y = y + gfx.fontHeight() + 4;

@@ -835,7 +835,7 @@ bool PhrasePage::growKeptPhrase() {
       message = genreMessage;
       break;
     case S::NoTrajectory: message = "TRY ANOTHER TAKE: G"; break;
-    case S::DepthNotP3: message = "P: REWORK, THEN G"; break;
+    case S::DepthNotP3: message = "P: SET P3, THEN G"; break;
     case S::ContextChanged: message = "SOUND CHANGED: PRESS G"; break;
     case S::EditedSinceGeneration: message = "EDITED TAKE: PRESS G"; break;
     case S::NoSafeSlots: message = "NO ROOM: R MAKES ROOM"; break;

@@ -112,7 +112,9 @@ forbid(
     "FEEL",
 )
 
-length_owner_tokens = ("capture_length_", "cycleLength(")
+# PERFORM's looper has its own unrelated NOTE LENGTH row (loop.cycleLength), so
+# only the PhrasePage-specific spellings count as a second phrase-length owner.
+length_owner_tokens = ("capture_length_", "PhrasePage::cycleLength")
 unexpected_length_owners = []
 for candidate in PAGE_DIR.glob("*_page.*"):
     source = candidate.read_text(encoding="utf-8")

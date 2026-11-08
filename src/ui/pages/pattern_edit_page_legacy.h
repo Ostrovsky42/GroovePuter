@@ -1,4 +1,5 @@
 #include "pattern_edit_page.h"
+#include "../components/step_timing_mark.h"
 
 #include <cctype>
 #include <string>
@@ -866,7 +867,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           if (audio_guard_) audio_guard_(clear_pattern);
           else clear_pattern();
         });
-    UI::showToast(committed ? "Pattern Cleared" : "PATTERN CLEAR FAILED", 900);
+    UI::showToast(committed ? "PATTERN CLEARED  CTRL+Z UNDO" : "PATTERN CLEAR FAILED", 900);
     return true;
   }
 
@@ -882,7 +883,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           }
       });
       clearSelection();
-      UI::showToast("Selection Cleared");
+      UI::showToast("SELECTION CLEARED");
       return true;
   }
 
@@ -1113,7 +1114,8 @@ void PatternEditPage::drawStepSettings(IGfx& gfx) const {
   const UI::ThemePalette p = UI::themePalette();
   const Rect& b = getBoundaries();
   const int lineH = gfx.fontHeight() + 3;
-  const int w = std::min(b.w - 8, 150);
+  const int w = std::min(
+      b.w - 8, std::max(150, textWidth(gfx, GroovePuterUndo::StepSettingMarks::kStepSettingsHint) + 8));
   const int h = lineH * (kStepSettingsFields + 2) + 6;
   const int x = b.x + (b.w - w) / 2;
   const int y = b.y + std::max(0, (b.h - h) / 2);
@@ -1132,6 +1134,21 @@ void PatternEditPage::drawStepSettings(IGfx& gfx) const {
                                                       editPatternIndex())
           : slotNPattern();
   const SynthStep& st = pattern.steps[first < 0 ? 0 : first % SEQ_STEPS];
+  bool mixed[kStepSettingsFields] = {false, false, false, false};
+  if (count > 1) {
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    for (int r = min_row; r <= max_row; ++r) {
+      for (int c = min_col; c <= max_col; ++c) {
+        const SynthStep& other =
+            pattern.steps[(r * kPatternStepColumns + c) % SEQ_STEPS];
+        for (int f = 0; f < kStepSettingsFields; ++f) {
+          if (GroovePuterUndo::StepSettingMarks::synthFieldDiffers(st, other, f))
+            mixed[f] = true;
+        }
+      }
+    }
+  }
 
   gfx.fillRect(x, y, w, h, p.panel);
   gfx.drawRect(x, y, w, h, p.accent);
@@ -1145,19 +1162,37 @@ void PatternEditPage::drawStepSettings(IGfx& gfx) const {
   std::snprintf(values[0], sizeof(values[0]), "%d%%", static_cast<int>(st.probability));
   std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
   std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
-  std::snprintf(values[3], sizeof(values[3]), "%s", st.ghost ? "ON" : "OFF");
-  static const char* const kLabels[kStepSettingsFields] = {"PROB", "TIMING", "VEL", "GHOST"};
+  // The engine multiplies CHANCE (80%) with PROB: show the product next to it.
+  if (st.ghost && st.probability < GroovePuterUndo::StepSettingMarks::kDefaultProbability) {
+    std::snprintf(values[3], sizeof(values[3]), "80%% =%d%%",
+                  GroovePuterUndo::StepSettingMarks::effectiveChancePercent(
+                      st.probability, true));
+  } else {
+    std::snprintf(values[3], sizeof(values[3]), "%s", st.ghost ? "80%" : "100%");
+  }
+  for (int i = 0; i < kStepSettingsFields; ++i) {
+    if (mixed[i]) std::snprintf(values[i], sizeof(values[i]), "MIXED");
+  }
+  static const char* const kLabels[kStepSettingsFields] = {"PROB", "TIMING", "VEL", "CHANCE"};
   for (int i = 0; i < kStepSettingsFields; ++i) {
     const int ry = y + 3 + lineH * (i + 1);
     const bool sel = i == step_settings_field_;
     if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    // A value that differs from a plain step gets a 2x2 square left of the
+    // label and an accent-coloured value; the default shows neither.
+    const bool custom = GroovePuterUndo::StepSettingMarks::synthFieldCustom(st, i) || mixed[i];
+    if (custom) {
+      gfx.fillRect(x + 3, ry + gfx.fontHeight() / 2 - 1, 2, 2,
+                   sel ? p.invert : p.accent);
+    }
     gfx.setTextColor(sel ? p.invert : p.text);
     gfx.drawText(x + 6, ry, kLabels[i]);
+    if (custom && !sel) gfx.setTextColor(p.accent);
     gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
   }
   gfx.setTextColor(p.dim);
   gfx.drawText(x + 4, y + 3 + lineH * (kStepSettingsFields + 1),
-               "UP/DN  L/R  ESC:CLOSE");
+               GroovePuterUndo::StepSettingMarks::kStepSettingsHint);
 }
 
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
@@ -1278,6 +1313,18 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     // Selected (not focused): 1 px rule in the gap below the cell.
     if (isSelectedStep) {
       gfx.fillRect(cell_x, note_box_y + note_box_h, cell_w, 1, p.text);
+    }
+
+    // Micro-timing: 2x2 in the top corner of the note box (the flag rules own the cell top).
+    if (note >= 0) {
+      StepTimingMark::draw(gfx, cell_x, note_box_y, cell_w, 2, pattern.steps[i].timing,
+                           isCursor ? p.invert : p.accent);
+      // PROB / VEL / CHANCE set: one dot in the bottom-right corner.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(pattern.steps[i]) &&
+          cell_w >= 8) {
+        gfx.fillRect(cell_x + cell_w - 4, note_box_y + note_box_h - 4, 2, 2,
+                     isCursor ? p.invert : p.accent);
+      }
     }
 
     char note_label[8];
@@ -1499,6 +1546,18 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
     }
 
+    // Micro-timing: 2x2 in the top corner, left = early, right = late.
+    if (hasNote) {
+      StepTimingMark::draw(gfx, cellX, cellRowY, cellW, 2, shown->steps[i].timing,
+                           (clean && isCursor) ? p.invert : p.accent);
+      // PROB / VEL / CHANCE set: one dot at the bottom centre, between the LEDs.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(shown->steps[i]) &&
+          cellW >= 10) {
+        gfx.fillRect(cellX + cellW / 2 - 1, cellRowY + cellH - 3, 2, 2,
+                     (clean && isCursor) ? p.invert : p.accent);
+      }
+    }
+
     // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.
     const int dotY = pair_view_ ? cellRowY + cellH / 2 : cellRowY + cellH - 4;
     const int ledInset = pair_view_ ? 2 : 4;
@@ -1711,6 +1770,18 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     } else {
       gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
       gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
+    }
+
+    // Micro-timing: 2x2 in the top corner, left = early, right = late.
+    if (hasNote) {
+      StepTimingMark::draw(gfx, cellX, cellRowY, cellW, 2, shown->steps[i].timing,
+                           IGfxColor(AmberTheme::NEON_CYAN));
+      // PROB / VEL / CHANCE set: one dot at the bottom centre, between the LEDs.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(shown->steps[i]) &&
+          cellW >= 10) {
+        gfx.fillRect(cellX + cellW / 2 - 1, cellRowY + cellH - 3, 2, 2,
+                     IGfxColor(AmberTheme::NEON_CYAN));
+      }
     }
 
     // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.

@@ -469,6 +469,10 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   const bool backspace = ui_event.key == '\b' || ui_event.key == 0x7F;
   if (ui_event.alt && backspace) {
+    showToast("CTRL+BKSP CLEARS SONG", 1000);
+    return true;
+  }
+  if (ui_event.ctrl && !ui_event.alt && backspace) {
     const Song& current = mini_acid_.sceneManager().currentScene().songs[
         mini_acid_.sceneManager().activeSongSlot()];
     Song cleared = current;

@@ -94,8 +94,18 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
             "restoreHeldPerformanceKeys" not in page and
             "keyboard_.keyDown(" not in page,
             "UI changes must never synthetically recreate physical held-key ownership")
-    require("new " not in page and "std::vector" not in page,
-            "Performance Instrument UI must remain fixed-allocation")
+    # TO MELODY is a separate, explicit control-side export. It uses one
+    # temporary nothrow buffer and refuses on allocation failure; exclude only
+    # that method from the no-allocation rule for the performance UI.
+    export_start = page.index("void PerformPage::exportLooperToMelody()")
+    export_end = page.index("bool PerformPage::looperKey(", export_start)
+    export = page[export_start:export_end]
+    performance_page = page[:export_start] + page[export_end:]
+    require("new " not in performance_page and "std::vector" not in page,
+            "Performance Instrument UI must remain fixed-allocation outside TO MELODY")
+    require("new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer()" in export and
+            "TO MELODY: NO MEMORY" in export,
+            "TO MELODY must bound allocation and refuse cleanly on failure")
     handle_block = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
     tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     require("event.meta" in handle_block and "return false" in handle_block,

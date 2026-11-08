@@ -55,3 +55,7 @@ class DrumSequencerGridComponent : public Component {
   Callbacks callbacks_;
   GrooveboxStyle style_ = GrooveboxStyle::MINIMAL;
 };
+
+// Lane label with its direct mute key ("3KIK" ... "0CLP"; SP12 and 606 follow
+// their key/voice mapping). Shared by the grid and the rhythm browser.
+const char* drumVoiceKeyLabel(const std::string& engine, int voice);

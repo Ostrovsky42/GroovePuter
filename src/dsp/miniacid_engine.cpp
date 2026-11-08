@@ -674,7 +674,14 @@ void MiniAcid::stop() {
       g_auditionInvalid.store(true, std::memory_order_release);
     }
   }
-  cancelAllPairPlay("stop");
+  // STOP resets the transport to the start, but the user's pair selection is
+  // a playback mode and must survive the next START and screen changes.
+  for (auto& pair : pairPlay_) {
+    if (!pair.active) continue;
+    pair.phase = 0;
+    pair.armed = false;
+    pair.skipFlip = true;
+  }
   const uint8_t patternAuthorityAtEntry =
       patternOwnedMask_.load(std::memory_order_acquire);
   // Phrase D2 has already committed persistent Song/Pattern truth. STOP must
@@ -1999,6 +2006,22 @@ bool MiniAcid::isTrackActive(int index) const {
     case 8: return !muteRim;
     case 9: return !muteClap;
     default: return false;
+  }
+}
+
+void MiniAcid::setTrackMuted(int index, bool muted) {
+  if (index < 0 || index > 9 || isTrackActive(index) != muted) return;
+  switch (index) {
+    case 0: toggleMute303(0); break;
+    case 1: toggleMute303(1); break;
+    case 2: toggleMuteKick(); break;
+    case 3: toggleMuteSnare(); break;
+    case 4: toggleMuteHat(); break;
+    case 5: toggleMuteOpenHat(); break;
+    case 6: toggleMuteMidTom(); break;
+    case 7: toggleMuteHighTom(); break;
+    case 8: toggleMuteRim(); break;
+    case 9: toggleMuteClap(); break;
   }
 }
 

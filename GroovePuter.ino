@@ -54,6 +54,8 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include "src/input/performance_harmony_lookahead.h"
 #include "src/input/call_response_motif.h"
 #include "src/input/call_response_planner.h"
+#include "src/input/looper.h"
+#include "src/input/performance_input_fanout.h"
 #include "src/audio/pattern_paging.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
@@ -100,6 +102,8 @@ static GroovePuterPerformance::PerformanceHarmonyBridge g_performanceHarmonyBrid
 static GroovePuterPerformance::PerformanceHarmonyRouteCache g_performanceHarmonyRouteCache;
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
+// PERFORM input -> PARTNER + LOOPER (set in setup()).
+static PerformanceInputFanout g_performanceInputFanout;
 MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
@@ -652,7 +656,14 @@ void setup() {
       g_performanceKeyboard);
   GroovePuterCallResponse::callResponseListener().setNowFunction(callResponseNowMicros);
   GroovePuterCallResponse::callResponseListener().setOutputRouter(&g_musicalEventRouter);
-  g_performanceKeyboard.setInputObserver(&GroovePuterCallResponse::callResponseListener());
+  // LOOPER: borrows the PARTNER's ResponsePlayer (one player, never both
+  // playing: Z/C refuse while the PARTNER is on, PARTNER ON stops the loop).
+  // PERFORM input goes to both through a fixed two-way fan-out.
+  GroovePuterLooper::looper().setNowFunction(callResponseNowMicros);
+  GroovePuterLooper::looper().setPlayer(&GroovePuterCallResponse::callResponseListener().responder());
+  g_performanceInputFanout.set(&GroovePuterCallResponse::callResponseListener(),
+                               &GroovePuterLooper::looper());
+  g_performanceKeyboard.setInputObserver(&g_performanceInputFanout);
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
@@ -1102,6 +1113,44 @@ static void serviceCallResponseLog() {
   Serial.println(answer);
 }
 
+// LOOPER (phase 1): clock + passes, after serviceCallResponseLog() so the two
+// loop-stack frames never add up. [LP] one line per state change and per pass:
+// late=us how long after the pass downbeat the pass was started (its first
+// NoteOn waits for that), stale= notes the shared player dropped as too late
+// since boot. Main loop only.
+static void serviceLooper() {
+  auto& lp = GroovePuterLooper::looper();
+  GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
+  GroovePuterCallResponse::TransportView transport{};
+  const GroovePuterCallResponse::TransportView* view = &transport;
+  if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+    view = nullptr;  // writer mid-update: not "PLAY stopped", the clock extrapolates
+  } else if (snapshot.valid && snapshot.playing && snapshot.bpmQ16 != 0) {
+    transport.playing = true;
+    transport.epoch = snapshot.transportEpoch;
+    transport.blockSequence = snapshot.blockSequence;
+    transport.steps = snapshot.absoluteSteps();
+    transport.bpm = snapshot.bpm();
+  }
+  const uint32_t now = micros();
+  const bool passStarted = lp.service(now, view, g_performanceKeyboard.tempoBpm());
+  static uint8_t s_lastState = 0;
+  const uint8_t state = static_cast<uint8_t>(lp.state()) | (lp.hold() ? 0x80u : 0u);
+  if (!passStarted && state == s_lastState) return;
+  s_lastState = state;
+  Serial.printf("[LP] state=%s%s pass=%u notes=%u new=%u drop=%u bars=%u ch=%u late=%ld stale=%lu\n",
+                lp.stateName(), lp.hold() ? "+HOLD" : "",
+                static_cast<unsigned>(lp.passCount()),
+                static_cast<unsigned>(lp.noteCount()),
+                static_cast<unsigned>(lp.layer().newCount()),
+                static_cast<unsigned>(lp.layer().dropped()),
+                static_cast<unsigned>(lp.bars()),
+                static_cast<unsigned>(lp.channel()),
+                passStarted ? static_cast<long>(static_cast<int32_t>(now - lp.passDownbeatMicros())) : 0L,
+                static_cast<unsigned long>(
+                    GroovePuterCallResponse::callResponseListener().responder().staleDrops()));
+}
+
 void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
@@ -1247,6 +1296,7 @@ void loop() {
       g_lastLiveInputEpoch = epoch;
     }
     serviceCallResponseLog();
+    serviceLooper();
   }
 
   if (g_encoder8) g_encoder8->update();

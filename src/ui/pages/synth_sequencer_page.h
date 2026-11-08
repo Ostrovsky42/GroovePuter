@@ -39,6 +39,13 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
       MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
       const PhraseRuntime::RuntimeSynthEventBuffer& melody,
       int& bankOut, int& patternOut);
+  // LOOPER > MELODY and other whole-Melody sources that must undo in ONE step:
+  // replaces the voice's Working Melody (switching it to MELODY if on STEPS)
+  // with a single Undo receipt, so Ctrl+Z returns to where the user came from.
+  enum class ReplaceOneUndoResult : uint8_t { Done = 0, Rejected, NoMemory };
+  static ReplaceOneUndoResult replaceMelodyOneUndo(
+      MiniAcid& mini_acid, const AudioGuard& audio_guard, int voice,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody);
   static bool voiceHasUnsavedEdits(const MiniAcid& mini_acid, int voice);
   static bool generateMelodyFor(MiniAcid& mini_acid, const AudioGuard& audio_guard,
                                 int voice);

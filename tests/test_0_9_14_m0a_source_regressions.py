@@ -67,8 +67,10 @@ INTERNAL = re.compile(r'"[^"\n]*\b(CONTINUES|UNKNOWN|EXACT|VARIATION|PROVENANCE|
 # already prints the old IdeaClassification word. New internal vocabulary must not
 # be added to the front panel; this one string is tracked for later redirection.
 BASELINE = {
-    # Explicit user-facing Partner replacement choices, not verdict/debug metadata.
-    ("perform_page.cpp", '"0 EXACT  1 ENDING  2 DEVELOP  3 FREE"'),
+    # Explicit user-facing Partner RIFF choices (PERFORM > INPUT: the VARIATION
+    # row, value EXACT/ENDING/DEVELOP/FREE), not verdict/debug metadata.
+    ("perform_page.cpp", '"EXACT"'),
+    ("perform_page.cpp", '"VARIATION"'),
 }
 for path in (SRC / "ui").rglob("*"):
     if path.is_file() and path.suffix in {".h", ".cpp"}:

@@ -51,6 +51,41 @@ require("kStepProbMax = 100" in CPP and "kStepTimingMax = 23" in CPP and
         "kStepVelocityMax = 127" in CPP and "kStepVelocityMin = 1" in CPP,
         "field limits must be explicit")
 
+# Custom-value mark: a square + accent value, driven by the pure rules header.
+require("synthFieldCustom" in LEGACY and "fillRect(x + 3" in LEGACY,
+        "synth window must mark custom fields")
+require("stepOnGrid" in adjust, "synth PROB/VEL must step on the 5 grid")
+
+# CHANCE (was GHOST): the note plays with 80% probability.
+require('"CHANCE"' in LEGACY and '"GHOST"' not in LEGACY,
+        "the ghost flag is shown as CHANCE")
+require('"80%"' in LEGACY, "CHANCE ON shows 80%")
+
+# MIXED for a selection whose steps differ.
+require('"MIXED"' in LEGACY and "synthFieldDiffers" in LEGACY,
+        "synth window must show MIXED for differing values")
+
+# One hint for both windows, within 38 characters; PROB x CHANCE shown; reset keys.
+MARKS = (ROOT / "src/state/step_setting_marks.h").read_text(encoding="utf-8")
+DRUMLEG = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
+hint = re.search(r'kStepSettingsHint = "([^"]*)"', MARKS).group(1)
+require(hint == "UP/DN FIELD  L/R VALUE  ENT/ESC CLOSE" and len(hint) <= 38, "shared hint text")
+require("kStepSettingsHint" in LEGACY and "kStepSettingsHint" in DRUMLEG,
+        "both windows use the shared hint")
+require("effectiveChancePercent" in LEGACY, "CHANCE row shows the PROB x CHANCE product")
+require("resetStepSetting(ui_event.ctrl ? -1 : step_settings_field_)" in handler,
+        "Backspace resets a field, Ctrl+Backspace all")
+require("synthStepHasNonTimingSettings" in LEGACY, "grid dot for PROB/VEL/CHANCE")
+require("PATTERN CLEARED  CTRL+Z UNDO" in LEGACY and "Pattern Cleared" not in LEGACY,
+        "pattern clear toast is upper case")
+
+# Opt (TOGGLE_SOURCE) is ignored while the window is open.
+SYNTH = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
+opt = SYNTH.index("GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {\n    // STEP SETTINGS")
+require("stepSettingsOpen()) return true" in SYNTH[opt:opt + 300] and
+        SYNTH[opt:opt + 400].index("stepSettingsOpen()") < SYNTH[opt:opt + 400].index("toggleSource()"),
+        "Opt must be ignored while STEP SETTINGS is open")
+
 # Footer hint and overlay.
 require("AltE:STEP" in LEGACY, "footer must name the combination")
 require("drawStepSettings(gfx)" in LEGACY, "draw() must paint the window")

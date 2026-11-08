@@ -3,6 +3,7 @@
 #include <cstdlib>
 
 #include "src/state/drum_step_edit.h"
+#include "src/state/step_setting_marks.h"
 
 namespace {
 int g_failures = 0;
@@ -52,7 +53,12 @@ void testVelocity() {
   pressTimes(step, Edit::kFieldVelocity, -1, 40);
   expect(step.velocity == 1, "velocity never reaches 0 (silent hit)");
   pressTimes(step, Edit::kFieldVelocity, 1, 1);
-  expect(step.velocity == 6, "velocity moves by 5");
+  expect(step.velocity == 5, "velocity from 1 lands on the 5 grid");
+  pressTimes(step, Edit::kFieldVelocity, 1, 19);
+  expect(step.velocity == 100, "the default 100 is reachable from 1");
+  pressTimes(step, Edit::kFieldVelocity, 1, 10);
+  pressTimes(step, Edit::kFieldVelocity, -1, 6);
+  expect(step.velocity == 100, "the default 100 is reachable from 127");
 }
 
 void testOrnamentCycle() {
@@ -105,9 +111,84 @@ void testAreaAnchor() {
   Edit::applyField(other, anchor, Edit::kFieldCount, 1);
   expect(other.velocity == 65, "an unknown field changes nothing");
 }
+
+namespace Marks = GroovePuterUndo::StepSettingMarks;
+
+void testMarks() {
+  DrumStep d{};
+  SynthStep y{};
+  for (int f = 0; f < 4; ++f) {
+    expect(!Marks::drumFieldCustom(d, f), "default drum step has no mark");
+    expect(!Marks::synthFieldCustom(y, f), "default synth step has no mark");
+  }
+  pressTimes(d, Edit::kFieldProb, -1, 1);
+  expect(Marks::drumFieldCustom(d, 0) && !Marks::drumFieldCustom(d, 1),
+         "only PROB is marked");
+  pressTimes(d, Edit::kFieldProb, 1, 1);
+  expect(!Marks::drumFieldCustom(d, 0), "back to 100 clears the mark");
+  pressTimes(d, Edit::kFieldTiming, 1, 1);
+  expect(Marks::drumFieldCustom(d, 1), "TIMING +1 is marked");
+  pressTimes(d, Edit::kFieldTiming, -1, 1);
+  expect(!Marks::drumFieldCustom(d, 1), "TIMING 0 clears the mark");
+  pressTimes(d, Edit::kFieldOrnament, 1, 1);
+  expect(Marks::drumFieldCustom(d, 3), "FLAM is marked");
+  pressTimes(d, Edit::kFieldOrnament, 1, 2);
+  expect(!Marks::drumFieldCustom(d, 3), "FLAM -> ROLL -> OFF clears the mark");
+  d.fx = DRUM_FX_RETRIG;
+  expect(Marks::drumFieldCustom(d, 3), "another step FX is marked");
+
+  y.velocity = 90;
+  y.ghost = 1;
+  y.timing = -3;
+  y.probability = 50;
+  for (int f = 0; f < 4; ++f) {
+    expect(Marks::synthFieldCustom(y, f), "every changed synth field is marked");
+  }
+  y = SynthStep{};
+  expect(!Marks::synthFieldCustom(y, 2), "velocity 100 is not marked");
+  expect(!Marks::synthFieldCustom(y, 9), "an unknown field is never marked");
+}
+
+void testTimingMarkSide() {
+  expect(Marks::timingMarkSide(0) == 0, "TIMING 0 has no grid mark");
+  expect(Marks::timingMarkSide(1) == 1 && Marks::timingMarkSide(23) == 1, "late TIMING marks the right");
+  expect(Marks::timingMarkSide(-1) == -1 && Marks::timingMarkSide(-23) == -1, "early TIMING marks the left");
+  DrumStep d{};
+  SynthStep y{};
+  expect(Marks::timingMarkSide(d.timing) == 0 && Marks::timingMarkSide(y.timing) == 0,
+         "a plain step has no grid mark");
+}
+
+void testStepOnGrid() {
+  expect(Marks::stepOnGrid(97, 1, 5, 0, 100) == 100, "97 up -> 100");
+  expect(Marks::stepOnGrid(97, -1, 5, 0, 100) == 95, "97 down -> 95");
+  expect(Marks::stepOnGrid(100, 1, 5, 0, 100) == 100, "clamped at max");
+  expect(Marks::stepOnGrid(0, -1, 5, 0, 100) == 0, "clamped at min");
+  expect(Marks::stepOnGrid(127, -1, 5, 1, 127) == 125, "127 down -> 125");
+  expect(Marks::stepOnGrid(127, 1, 5, 1, 127) == 127, "127 up stays");
+  expect(Marks::stepOnGrid(1, -1, 5, 1, 127) == 1, "1 down stays");
+  expect(Marks::stepOnGrid(1, 1, 5, 1, 127) == 5, "1 up -> 5");
+}
+
+void testMixedDiffers() {
+  DrumStep a{}, b{};
+  for (int f = 0; f < 4; ++f) expect(!Marks::drumFieldDiffers(a, b, f), "equal drum steps are not MIXED");
+  b.probability = 50; b.timing = 3; b.velocity = 90; b.fx = DRUM_FX_FLAM;
+  for (int f = 0; f < 4; ++f) expect(Marks::drumFieldDiffers(a, b, f), "differing drum field is MIXED");
+  SynthStep x{}, y{};
+  for (int f = 0; f < 4; ++f) expect(!Marks::synthFieldDiffers(x, y, f), "equal synth steps are not MIXED");
+  y.probability = 50; y.timing = -2; y.velocity = 90; y.ghost = 1;
+  for (int f = 0; f < 4; ++f) expect(Marks::synthFieldDiffers(x, y, f), "differing synth field is MIXED");
+  y.probability = 100; y.timing = 0; y.velocity = 100;
+  expect(!Marks::synthFieldDiffers(x, y, 0) && Marks::synthFieldDiffers(x, y, 3), "only CHANCE differs");
+}
 }  // namespace
 
 int main() {
+  testMixedDiffers();
+  testMarks();
+  testTimingMarkSide();
+  testStepOnGrid();
   testProbability();
   testTiming();
   testVelocity();

@@ -74,6 +74,7 @@ python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
 
 bash "${ROOT_DIR}/tests/run_rhythm_browser_catalog_tests.sh"
 bash "${ROOT_DIR}/tests/run_rhythm_browser_engine_tests.sh"
+bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
 
 "${CXX}" \
   -std=c++17 \
@@ -630,6 +631,17 @@ echo "Tee MIDI transport: OK"
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_ui_session_state.cpp" \
   -o "${BUILD_DIR}/test_ui_session_state"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_theme_cyber_palette.cpp" \
+  -o "${BUILD_DIR}/test_theme_cyber_palette"
+
+"${BUILD_DIR}/test_theme_cyber_palette"
 
 "${BUILD_DIR}/test_ui_session_state"
 

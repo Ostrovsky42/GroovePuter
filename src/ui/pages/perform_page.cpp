@@ -1,7 +1,10 @@
 #include "perform_page.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include "../components/music_visuals.h"
 #include "../ui_input.h"
@@ -13,6 +16,11 @@
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "../midi_input_ui.h"
 #include "src/input/call_response_listener.h"
+#include "src/input/looper.h"
+#include "src/input/looper_melody_export.h"
+#include "src/state/generation_shape_state.h"
+#include "synth_sequencer_page.h"
+#include "../undo_ux.h"
 
 namespace {
 constexpr const char* kToolContextNames[] = {
@@ -108,6 +116,60 @@ const char* arpOrderLabel(PerformanceArpDirection direction) {
     return "UP";
 }
 
+using GroovePuterLooper::Looper;
+using InRow = PerformInputRow;
+constexpr uint8_t ir(InRow row) { return performInputRow(row); }
+
+// INPUT screen line of a focusable row: one heading line above each group.
+constexpr uint8_t inputLine(uint8_t row) {
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kLooperRowFirst ? 1u : 0u) +
+                                (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+}
+constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
+
+using PartnerMode = GroovePuterCallResponse::CallResponseListener::Mode;
+using PartnerReplace = GroovePuterCallResponse::CallResponseListener::LoopReplace;
+
+// The PARTNER's repeating mode is Mode::Loop inside; the musician sees RIFF
+// (LOOP is the separate LOOPER below it).
+const char* helperModeName(const GroovePuterCallResponse::CallResponseListener& partner) {
+    return partner.mode() == PartnerMode::Loop ? "RIFF" : partner.modeName();
+}
+
+const char* riffVariationName(uint8_t evolve) {
+    switch (evolve) {
+        case 0: return "EXACT";
+        case 1: return "ENDING";
+        case 2: return "DEVELOP";
+        default: return "FREE";
+    }
+}
+
+const char* newRiffIfName(PartnerReplace rule) {
+    switch (rule) {
+        case PartnerReplace::Any: return "1 NOTE";
+        case PartnerReplace::Half: return "HALF";
+        default: return "3 NOTES";
+    }
+}
+
+// Toast for a refused or finished LOOPER action; done = text for Result::Done.
+void showLooperToast(Looper::Result result, const char* done) {
+    const char* text = done;
+    switch (result) {
+        case Looper::Result::Done: break;
+        case Looper::Result::HoldLocked: text = "LOOP: HOLD, B TO RELEASE"; break;
+        case Looper::Result::PartnerActive: text = "LOOP: HELPER OFF FIRST"; break;
+        case Looper::Result::Empty: text = "LOOP: EMPTY, Z TO REC"; break;
+        case Looper::Result::NothingToUndo: text = "LOOP: NOTHING TO UNDO"; break;
+        case Looper::Result::NothingToHold: text = "LOOP: NOTHING TO HOLD"; break;
+        case Looper::Result::Recording: text = "LOOP: AFTER THE REC PASS"; break;
+        case Looper::Result::NoRoom: text = "LOOP: NO ROOM TO REPEAT"; break;
+        case Looper::Result::Ignored: text = nullptr; break;
+    }
+    if (text) UI::showToast(text, 1000);
+}
+
 const char* strumDirectionLabel(PerformanceStrumDirection direction) {
     switch (direction) {
         case PerformanceStrumDirection::LowToHigh: return "UP";
@@ -136,8 +198,9 @@ void PerformPage::applyChordModePopup() {
 
 PerformPage::PerformPage(IGfx& gfx,
                          MiniAcid& miniAcid,
-                         PerformanceKeyboard& keyboard)
-    : miniAcid_(miniAcid), keyboard_(keyboard) {
+                         PerformanceKeyboard& keyboard,
+                         AudioGuard audioGuard)
+    : miniAcid_(miniAcid), keyboard_(keyboard), audioGuard_(audioGuard) {
     (void)gfx;
 }
 
@@ -155,10 +218,13 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Chord: return 6;
         case PerformanceToolContext::Arp: return 6;
         case PerformanceToolContext::Rhythm: return 6;
-        // 9..13: PARTNER settings (BARS, CHANNEL, HOLD, EVOLVE, REPLACE) under
-        // PARTNER. Phase 10: GENRE and LENGTH are hidden (they stay AUTO and
-        // 100 %); see docs/design/CALL_RESPONSE_PHASE10_MENU.md.
-        case PerformanceToolContext::Input: return 14;
+        // PerformInputRow: MIDI IN, LOOPER and its settings, PARTNER (HELPER and
+        // its settings; phase 10: GENRE and LENGTH stay hidden at AUTO and
+        // 100 %, see docs/design/CALL_RESPONSE_PHASE10_MENU.md).
+        // The LOOPER is a separate object next to the PARTNER; the two share
+        // one ResponsePlayer and never play together. The group headings are
+        // drawn only and are not rows.
+        case PerformanceToolContext::Input: return kInputRowCount;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -228,17 +294,9 @@ void PerformPage::adjustInput(int direction) {
     const auto current = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
     auto next = current;
     switch (currentRow()) {
-        case 0: next = InputUi::stepEnabled(current); break;
-        case 1: next = InputUi::stepChannel(current, direction); break;
-        case 2: next = InputUi::stepTarget(current, direction); break;
-        case 5:
-            if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
-                keyboard_.cycleTarget(direction);
-            return;
-        case 6:
-            if (current.target == GroovePuterMidi::MidiInputTarget::Perform)
-                cycleOutput(direction);
-            return;
+        case ir(InRow::MidiIn): next = InputUi::stepEnabled(current); break;
+        case ir(InRow::ListenChannel): next = InputUi::stepChannel(current, direction); break;
+        case ir(InRow::SendTo): next = InputUi::stepTarget(current, direction); break;
         default: return;
     }
     if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
@@ -332,27 +390,36 @@ void PerformPage::adjustSelectedValue(int direction) {
 
         case PerformanceToolContext::Input:
             switch (row) {
-                case 0: case 1: case 2: case 5: case 6:
+                case ir(InRow::MidiIn): case ir(InRow::ListenChannel): case ir(InRow::SendTo):
                     adjustInput(direction);
                     break;
-                case 3:
+                case ir(InRow::PlayAs):
                     keyboard_.setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(
                         (static_cast<uint8_t>(keyboard_.performanceRole()) +
                          (direction > 0 ? 1u : 4u)) % 5u));
                     break;
-                case 4:
+                case ir(InRow::LeadStyle):
                     if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead)
                         keyboard_.setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(
                             (static_cast<uint8_t>(keyboard_.leadMode()) +
                              (direction > 0 ? 1u : 3u)) % 4u));
                     break;
-                case 8:
-                    GroovePuterCallResponse::callResponseListener().cycleMode(direction);
+                case ir(InRow::Helper):
+                    cyclePartnerMode(direction);
                     break;
-                case 9: case 10: case 11: case 12: case 13:
+                case ir(InRow::ReplyBars): case ir(InRow::ReplyChannel): case ir(InRow::FreezeRiff):
+                case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
-                default: break;
+                case ir(InRow::ToMelody):
+                    exportTarget_ = static_cast<int8_t>(exportVoiceNow() == 1 ? 0 : 1);  // A <-> B
+                    break;
+                case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
+                case ir(InRow::HoldLayer): case ir(InRow::Layer): case ir(InRow::MuteLayer):
+                    cycleLooperSetting(row, direction);
+                    break;
+                default:
+                    break;
             }
             return;
         case PerformanceToolContext::Count:
@@ -430,17 +497,23 @@ void PerformPage::toggleSelectedValue() {
             return;
 
         case PerformanceToolContext::Input:
-            if (row == 3) {
+            if (row == ir(InRow::PlayAs)) {
                 keyboard_.setPerformanceRole(static_cast<GroovePuterPerformance::PerformanceRole>(
                     (static_cast<uint8_t>(keyboard_.performanceRole()) + 1u) % 5u));
-            } else if (row == 4) {
+            } else if (row == ir(InRow::LeadStyle)) {
                 if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead)
                     keyboard_.setLeadMode(static_cast<GroovePuterPerformance::LeadMode>(
                         (static_cast<uint8_t>(keyboard_.leadMode()) + 1u) % 4u));
-            } else if (row == 8) {
-                GroovePuterCallResponse::callResponseListener().cycleMode(1);
-            } else if (row >= 9 && row <= 13) {
+            } else if (row == ir(InRow::Helper)) {
+                cyclePartnerMode(1);
+            } else if (row > kPartnerRowFirst && row <= kPartnerRowLast) {
                 cyclePartnerSetting(row, 1);
+            } else if (row == kLooperRowFirst) {
+                looperKey('z');  // ENTER on LOOPER = Z
+            } else if (row == kLooperExportRow) {
+                exportLooperToMelody();
+            } else if (row > kLooperRowFirst && row < kLooperExportRow) {  // LOOP BARS .. MUTE LAYER
+                cycleLooperSetting(row, 1);
             } else {
                 adjustInput(1);
             }
@@ -455,22 +528,223 @@ void PerformPage::toggleSelectedValue() {
 void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
     auto& partner = GroovePuterCallResponse::callResponseListener();
     switch (row) {
-        case 9: partner.cycleAnswerBars(direction); break;
-        case 10: partner.cycleAnswerChannel(direction); break;
-        case 11:
-            if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
+        case ir(InRow::ReplyBars): partner.cycleAnswerBars(direction); break;
+        case ir(InRow::ReplyChannel): partner.cycleAnswerChannel(direction); break;
+        case ir(InRow::FreezeRiff):
+            if (partner.mode() == PartnerMode::Loop)
                 partner.setLoopHold(!partner.loopHold());
             break;
-        case 12:
-            if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
+        case ir(InRow::Variation):
+            if (partner.mode() == PartnerMode::Loop)
                 partner.cycleLoopEvolve(direction);
             break;
-        case 13:
-            if (partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop)
+        case ir(InRow::NewRiffIf):
+            if (partner.mode() == PartnerMode::Loop)
                 partner.cycleLoopReplace(direction);
             break;
         default: break;
     }
+}
+
+// PARTNER mode row. The PARTNER and the LOOPER share one ResponsePlayer:
+// the LOOPER refuses Z/C while the PARTNER is on, and turning the PARTNER on
+// stops a sounding LOOPER first (its notes are kept, C plays it again once
+// the PARTNER is OFF).
+void PerformPage::cyclePartnerMode(int direction) {
+    auto& partner = GroovePuterCallResponse::callResponseListener();
+    const bool wasEnabled = partner.enabled();
+    auto& loop = GroovePuterLooper::looper();
+    if (!wasEnabled && loop.state() != Looper::State::Idle &&
+        loop.state() != Looper::State::Stopped) {
+        (void)loop.panicStop();
+        UI::showToast("LOOP: STOPPED, HELPER ON", 1000);
+    }
+    partner.cycleMode(direction);
+}
+
+// LOOPER settings rows (session only, not saved). </> and ENTER both cycle;
+// HOLD is B, LAYER is M. BARS keeps the notes (longer repeats, shorter cuts, V).
+void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
+    auto& loop = GroovePuterLooper::looper();
+    switch (row) {
+        case ir(InRow::LoopBars): {
+            const bool notes = !loop.empty();
+            const Looper::Result result = loop.cycleBars(direction);
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "LOOP: %u BAR%s%s", static_cast<unsigned>(loop.bars()),
+                          loop.bars() == 1 ? "" : "S", notes ? " (V UNDO)" : "");
+            if (notes || result != Looper::Result::Done) showLooperToast(result, toast);
+            break;
+        }
+        case ir(InRow::LoopChannel): loop.cycleChannel(direction); break;
+        case ir(InRow::NoteLength): loop.cycleLength(direction); break;
+        case ir(InRow::HoldLayer): looperKey('b'); break;
+        case ir(InRow::Layer): looperKey('m'); break;
+        case ir(InRow::MuteLayer): {
+            const Looper::Result result = loop.toggleMute();
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "LOOP: LAYER %u %s",
+                          static_cast<unsigned>(loop.activeLayer() + 1u),
+                          loop.layerMuted(loop.activeLayer()) ? "MUTED" : "ON");
+            showLooperToast(result, toast);
+            break;
+        }
+        default: break;
+    }
+}
+
+// Target synth of TO MELODY: the A/B picked on the row (LEFT/RIGHT), or the
+// GEN TARGET until one is picked. Picking never changes GEN TARGET.
+int PerformPage::exportVoiceNow() const {
+    if (exportTarget_ == 0 || exportTarget_ == 1) return exportTarget_;
+    return GroovePuterState::melodyTargetVoice() == 1 ? 1 : 0;
+}
+
+// TO MELODY: the unmuted layers of the loop become the Working Melody of the
+// synth picked on the row (default GEN TARGET), as played (no Smart Play). ENTER shows what would be taken,
+// ENTER again within kExportConfirmMs takes it: one Undo step, nothing is saved
+// (ALT+ENTER on the synth page saves). Main loop only; the converter and the
+// 1284-byte buffer live only for the press (new, nothrow: no memory = a toast).
+void PerformPage::exportLooperToMelody() {
+    auto& loop = GroovePuterLooper::looper();
+    const int voice = exportVoiceNow();
+    const char synth = static_cast<char>('A' + voice);
+    exportArmed_ = exportArmed_ && (millis() - exportArmedMs_ <= kExportConfirmMs);
+    if (loop.empty()) {
+        exportArmed_ = false;
+        UI::showToast("LOOP: EMPTY, Z TO REC", 1000);
+        return;
+    }
+    // As GRAB: an unsaved Working Melody in the target is never overwritten.
+    if (SynthSequencerPage::voiceHasUnsavedEdits(miniAcid_, voice)) {
+        exportArmed_ = false;
+        char unsaved[40];
+        std::snprintf(unsaved, sizeof(unsaved), "SAVE OR DISCARD %c FIRST", synth);
+        UI::showToast(unsaved, 1400);
+        return;
+    }
+    std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> melody(
+        new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer());
+    if (!melody) {
+        exportArmed_ = false;
+        UI::showToast("TO MELODY: NO MEMORY", 1200);
+        return;
+    }
+    const auto result = GroovePuterLooper::loopToMelody(
+        loop.layer(), loop.passSteps(), loop.bars(), loop.muteMask(), *melody);
+    if (result != GroovePuterLooper::MelodyExportResult::Ok) {
+        exportArmed_ = false;
+        const char* text = "TO MELODY FAILED";
+        if (result == GroovePuterLooper::MelodyExportResult::Empty) text = "TO MELODY: ALL LAYERS MUTED";
+        else if (result == GroovePuterLooper::MelodyExportResult::Overflow) text = "TO MELODY: TOO MANY NOTES";
+        UI::showToast(text, 1200);
+        return;
+    }
+    const uint8_t bars = loop.bars();
+    const bool confirm = exportArmed_ && exportVoice_ == voice && exportBars_ == bars &&
+                         exportMuteMask_ == loop.muteMask() && exportNotes_ == melody->count;
+    char toast[40];
+    if (!confirm) {
+        exportArmed_ = true;
+        exportArmedMs_ = millis();
+        exportVoice_ = static_cast<int8_t>(voice);
+        exportBars_ = bars;
+        exportMuteMask_ = loop.muteMask();
+        exportNotes_ = static_cast<uint8_t>(melody->count);
+        std::snprintf(toast, sizeof(toast), "REPLACE MELODY %c WITH LOOP? ENTER", synth);
+        UI::showToast(toast, kExportConfirmMs);
+        return;
+    }
+    exportArmed_ = false;
+    using Done = SynthSequencerPage::ReplaceOneUndoResult;
+    const Done done = SynthSequencerPage::replaceMelodyOneUndo(miniAcid_, audioGuard_, voice, *melody);
+    if (done == Done::Done) {
+        std::snprintf(toast, sizeof(toast), "MELODY %c <- LOOP  CTRL+Z ON SYNTH %c", synth, synth);
+    } else if (done == Done::NoMemory) {
+        std::snprintf(toast, sizeof(toast), "TO MELODY: NO MEMORY");
+    } else {
+        std::snprintf(toast, sizeof(toast), "TO MELODY %c FAILED", synth);
+    }
+    UI::showToast(toast, 1800);
+}
+
+// The live LOOPER keys (also from the tools layer and the LOOPER row).
+bool PerformPage::looperKey(char key) {
+    auto& loop = GroovePuterLooper::looper();
+    using State = Looper::State;
+    switch (key) {
+        case 'z': {
+            const State before = loop.state();
+            const bool starts = before == State::Idle || before == State::Play ||
+                                before == State::Stopped;
+            if (starts && !loop.hold() && keyboard_.target() == MusicalEventTarget::Drums) {
+                UI::showToast("LOOP: N/A FOR DRUMS", 1000);
+                return true;
+            }
+            const Looper::Result result = loop.recDub();
+            const char* done = "LOOP: DUB";
+            switch (loop.state()) {
+                case State::Armed:
+                    done = loop.clockSource() == GroovePuterLooper::LoopClock::Source::Transport
+                        ? "LOOP: REC AT NEXT BAR" : "LOOP: PLAY A NOTE TO REC";
+                    break;
+                case State::Idle: done = "LOOP: REC CANCELLED"; break;
+                case State::Record: done = loop.dubArmed() ? "LOOP: THEN DUB" : "LOOP: THEN PLAY"; break;
+                case State::Play: done = "LOOP: DUB END"; break;
+                default: break;
+            }
+            showLooperToast(result, done);
+            // The first Z that starts a pass on a non-external target: the loop
+            // sounds on the DX route only (no internal sound). Once per page.
+            if (starts && result == Looper::Result::Done && !dxRouteNoted_ &&
+                loop.channel() == 0 && keyboard_.target() != MusicalEventTarget::Dx) {
+                dxRouteNoted_ = true;
+                UI::showToast("LOOP: DX ROUTE, NO INTERNAL SOUND", 1600);
+            }
+            return true;
+        }
+        case 'c': {
+            const Looper::Result result = loop.playStop();
+            showLooperToast(result, loop.state() == State::Play ? "LOOP: PLAY" : "LOOP: STOP");
+            return true;
+        }
+        case 'v': {
+            const bool recording = loop.state() == State::Record;
+            const Looper::Result result = loop.undo();
+            showLooperToast(result, recording ? "LOOP: REC CANCELLED" : "LOOP: UNDO PASS");
+            return true;
+        }
+        case 'b': {
+            const Looper::Result result = loop.toggleHold();
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "LOOP: L%u HOLD %s",
+                          static_cast<unsigned>(loop.activeLayer() + 1u), loop.hold() ? "ON" : "OFF");
+            showLooperToast(result, loop.holdArmed() && !loop.hold() ? "LOOP: HOLD AFTER REC" : toast);
+            return true;
+        }
+        case 'm': {
+            // M: the other layer becomes active (REC/DUB, HOLD, CLEAR, MUTE go there).
+            const Looper::Result result = loop.nextLayer();
+            const uint8_t layer = loop.activeLayer();
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "LOOP: LAYER %u%s%s", static_cast<unsigned>(layer + 1u),
+                          loop.layerHold(layer) ? " HOLD" : "", loop.layerMuted(layer) ? " MUTED" : "");
+            showLooperToast(result, toast);
+            return true;
+        }
+        case '\b': {
+            const Looper::Result result = loop.clear();
+            showLooperToast(result, loop.empty() && loop.canUndo() ? "LOOP: CLEARED (V UNDO)"
+                                                                     : "LOOP: REC CANCELLED");
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+void PerformPage::onExit() {
+    GroovePuterLooper::looper().onPageExit();
 }
 
 const char* PerformPage::selectedRowHint() const {
@@ -548,27 +822,39 @@ const char* PerformPage::selectedRowHint() const {
             }
 
         case PerformanceToolContext::Input: {
+            // One hint line (<= 38 characters at 6 px): what the setting gives;
+            // only the non-standard keys (Z, C, V, B, M, ENTER twice) are named.
+            const bool riff = GroovePuterCallResponse::callResponseListener().mode() == PartnerMode::Loop;
             switch (row) {
-                case 0: return "ENTER: EXTERNAL MIDI INPUT ON/OFF";
-                case 1: return "</> INPUT FILTER: OMNI OR CH1..16";
-                case 2: return "</> ROUTE EXTERNAL MIDI";
-                case 3: return "ROLE AFFECTS NEW LIVE NOTES ONLY";
-                case 4:
+                case ir(InRow::MidiIn): return "MIDI KEYBOARD IN  USB: PROJECT>MIDI";
+                case ir(InRow::ListenChannel): return "HEAR ONE MIDI CHANNEL OR ALL (OMNI)";
+                case ir(InRow::SendTo): return "WHERE MIDI NOTES GO; PERFORM=KEY TAB";
+                case ir(InRow::PlayAs): return "SHAPES NEW LIVE NOTES ONLY";
+                case ir(InRow::LeadStyle):
                     if (keyboard_.performanceRole() != GroovePuterPerformance::PerformanceRole::Lead)
-                        return "N/A: SELECT LEAD ROLE";
+                        return "N/A: SET PLAY AS TO LEAD";
                     if (keyboard_.leadMode() != GroovePuterPerformance::LeadMode::Raw &&
                         !keyboard_.performanceHarmonyAvailable())
                         return "NO HARMONY: SCALE FALLBACK";
-                    return "</> LEAD INTERPRETATION";
-                case 5: return "LIVE NOTES PLAY TO TARGET BELOW";
-                case 6: return "</> INTERNAL / MIDI / LAYER";
-                case 7: return "USB ROLE: CHANGE IN PROJECT > MIDI";
-                case 8: return "OFF/ANSWER/DUET/LOOP: MIDI REPLY";
-                case 9: return "</> CALL AND REPLY LENGTH: 1/2/4 BARS";
-                case 10: return "</> DX=PERFORM DX ROUTE OR CH1..16";
-                case 11: return "LOOP: HOLD MOTIF / RELEASE NEXT BAR";
-                case 12: return "0 EXACT  1 ENDING  2 DEVELOP  3 FREE";
-                case 13: return "</> NEW LOOP NEEDS: ANY/3+ NOTES/HALF";
+                    return "HOW LEAD NOTES FIT THE HARMONY";
+                case ir(InRow::Helper): return "MIDI REPLIES TO WHAT YOU PLAY";
+                case ir(InRow::ReplyBars): return "LENGTH OF CALL AND REPLY";
+                case ir(InRow::ReplyChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
+                case ir(InRow::FreezeRiff):
+                    return riff ? "ON: KEEP RIFF  OFF: NEW AT NEXT BAR" : "N/A: SET HELPER TO RIFF";
+                case ir(InRow::Variation):
+                    return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
+                case ir(InRow::NewRiffIf):
+                    return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
+                case ir(InRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
+                case ir(InRow::LoopBars): return GroovePuterLooper::looper().empty()
+                    ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
+                case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
+                case ir(InRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
+                case ir(InRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
+                case ir(InRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
+                case ir(InRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
+                case ir(InRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
                 default: return "";
             }
         }
@@ -667,8 +953,13 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int valueW = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X - valueX;
     const uint8_t selected = currentRow();
     constexpr uint8_t kVisibleRows = 6;
-    const uint8_t firstVisibleRow = selected >= kVisibleRows
-        ? static_cast<uint8_t>(selected - kVisibleRows + 1u) : 0u;
+    // INPUT draws a group heading line above MIDI IN, HELPER and LOOPER; the
+    // window scrolls by screen lines so the selected row is always visible.
+    const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
+    auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
+    const uint8_t selectedLine = lineOf(selected);
+    const uint8_t firstVisibleRow = selectedLine >= kVisibleRows
+        ? static_cast<uint8_t>(selectedLine - kVisibleRows + 1u) : 0u;
     const bool drums = keyboard_.target() == MusicalEventTarget::Drums;
     const bool chordActive = keyboard_.chordMode() != PerformanceChordMode::Off;
     const bool arpEnabled = keyboard_.arpeggiatorEnabled();
@@ -676,10 +967,19 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
 
     drawToolTabs(gfx, LayoutManager::lineY(0));
 
+    // A group heading ("--- HELPER ---"): drawn, never selected.
+    auto drawHeading = [&](uint8_t line, const char* heading) {
+        if (line < firstVisibleRow || line >= firstVisibleRow + kVisibleRows) return;
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(1 + static_cast<int>(line - firstVisibleRow)),
+                     heading);
+    };
+
     auto drawRow = [&](uint8_t row, const char* label, const char* rowValue,
                        bool available) {
-        if (row < firstVisibleRow || row >= firstVisibleRow + kVisibleRows) return;
-        const int visibleRow = static_cast<int>(row - firstVisibleRow);
+        const uint8_t line = lineOf(row);
+        if (line < firstVisibleRow || line >= firstVisibleRow + kVisibleRows) return;
+        const int visibleRow = static_cast<int>(line - firstVisibleRow);
         const int y = LayoutManager::lineY(1 + visibleRow);
         const bool isSelected = row == selected;
         if (isSelected) {
@@ -827,30 +1127,24 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         case PerformanceToolContext::Input: {
             namespace InputUi = GroovePuterUi::MidiInputUi;
             const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-            const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
-            drawRow(0, "LIVE MIDI", InputUi::enabledName(input.enabled), true);
+            drawHeading(0, "--- MIDI IN ---");
+            drawRow(ir(InRow::MidiIn), "MIDI IN", InputUi::enabledName(input.enabled), true);
             InputUi::formatChannel(input, value, sizeof(value));
-            drawRow(1, "CHANNEL", value, true);
-            drawRow(2, "ROUTE", InputUi::targetName(input.target), true);
-            drawRow(3, "ROLE", roleName(keyboard_.performanceRole()), true);
+            drawRow(ir(InRow::ListenChannel), "LISTEN CH", value, true);
+            drawRow(ir(InRow::SendTo), "SEND TO", InputUi::targetName(input.target), true);
+            drawRow(ir(InRow::PlayAs), "PLAY AS", roleName(keyboard_.performanceRole()), true);
             const bool lead = keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
-            drawRow(4, "LEAD MODE", lead ? leadModeName(keyboard_.leadMode()) : "N/A", lead);
-            drawRow(5, "TARGET", follows ? keyboard_.targetName() : "N/A", follows);
-            GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
-            const bool hasTrack = GroovePuterOutput::trackForTarget(keyboard_.target(), track);
-            drawRow(6, "OUT", !follows ? "N/A" : (hasTrack
-                ? GroovePuterOutput::modeName(GroovePuterOutput::mode(track)) : "MIDI"),
-                follows && hasTrack);
-            const auto role = CardputerUsbRoleRuntime::activeRole();
-            drawRow(7, "USB", role == UsbBootRole::Host ? "HOST INPUT"
-                : (role == UsbBootRole::Device ? "COMPUTER" : "OFF"), false);
+            drawRow(ir(InRow::LeadStyle), "LEAD STYLE", lead ? leadModeName(keyboard_.leadMode()) : "N/A", lead);
+
+            // PARTNER: HELPER is the listener mode (RIFF = Mode::Loop).
             const auto& partner = GroovePuterCallResponse::callResponseListener();
-            drawRow(8, "PARTNER", partner.modeName(), true);
+            drawHeading(inputLine(kPartnerRowFirst) - 1u, "--- HELPER ---");
+            drawRow(ir(InRow::Helper), "HELPER", helperModeName(partner), true);
             const bool partnerOn = partner.enabled();
             std::snprintf(value, sizeof(value), "%u BAR%s",
                           static_cast<unsigned>(partner.answerBars()),
                           partner.answerBars() == 1 ? "" : "S");
-            drawRow(9, " BARS", value, partnerOn);
+            drawRow(ir(InRow::ReplyBars), "REPLY BARS", value, partnerOn);
             // Phase 10: no GENRE row (AUTO = project genre) and no LENGTH row
             // (100 %); the listener setters stay for tests and a later return.
             if (partner.answerChannel() == 0) {
@@ -859,17 +1153,59 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                 std::snprintf(value, sizeof(value), "CH%u",
                               static_cast<unsigned>(partner.answerChannel()));
             }
-            drawRow(10, " CHANNEL", value, partnerOn);
-            const bool loop = partner.mode() == GroovePuterCallResponse::CallResponseListener::Mode::Loop;
-            drawRow(11, " HOLD", !loop ? "N/A" : (!partner.hasLoopPhrase() ? "WAIT" : (partner.loopHold() ? "ON" : "OFF")), loop && partner.hasLoopPhrase());
-            std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(partner.loopEvolve()));
-            drawRow(12, " EVOLVE", loop ? value : "N/A", loop);
-            drawRow(13, " REPLACE", loop ? partner.loopReplaceName() : "N/A", loop);
+            drawRow(ir(InRow::ReplyChannel), "REPLY CH", value, partnerOn);
+            const bool riff = partner.mode() == PartnerMode::Loop;
+            drawRow(ir(InRow::FreezeRiff), "FREEZE RIFF",
+                    !riff ? "N/A" : (!partner.hasLoopPhrase() ? "WAIT" : (partner.loopHold() ? "ON" : "OFF")),
+                    riff && partner.hasLoopPhrase());
+            drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
+            drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
+
+            // LOOPER (Z/C/V/B/Del/M on the live surface).
+            const auto& loop = GroovePuterLooper::looper();
+            drawHeading(inputLine(kLooperRowFirst) - 1u, "--- LOOPER ---");
+            formatLooperState(value, sizeof(value));
+            drawRow(ir(InRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            std::snprintf(value, sizeof(value), "%u BAR%s",
+                          static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
+            drawRow(ir(InRow::LoopBars), "LOOP BARS", value,
+                    loop.holdMask() == 0 && loop.state() != Looper::State::Record);
+            if (loop.channel() == 0) {
+                std::snprintf(value, sizeof(value), "DX ROUTE");
+            } else {
+                std::snprintf(value, sizeof(value), "CH%u", static_cast<unsigned>(loop.channel()));
+            }
+            drawRow(ir(InRow::LoopChannel), "LOOP CH", value, true);
+            std::snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(loop.lengthPercent()));
+            drawRow(ir(InRow::NoteLength), "NOTE LENGTH", value, true);
+            const bool layerEmpty = loop.layerNoteCount(loop.activeLayer()) == 0;
+            drawRow(ir(InRow::HoldLayer), "HOLD LAYER",
+                    layerEmpty && !loop.hold() ? "N/A" : (loop.hold() ? "ON" : "OFF"), !layerEmpty);
+            std::snprintf(value, sizeof(value), "%u  (%u NOTES)", static_cast<unsigned>(loop.activeLayer() + 1u),
+                          static_cast<unsigned>(loop.layerNoteCount(loop.activeLayer())));
+            drawRow(ir(InRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
+            drawRow(ir(InRow::MuteLayer), "MUTE LAYER", loop.layerMuted(loop.activeLayer()) ? "ON" : "OFF", true);
+            std::snprintf(value, sizeof(value), "SYN %c",
+                          static_cast<char>('A' + exportVoiceNow()));
+            drawRow(ir(InRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
             break;
         }
 
         case PerformanceToolContext::Count:
             break;
+    }
+
+    // INPUT is longer than the window: a 2 px scroll bar on the right edge
+    // (outside the row highlight and the clipped value text).
+    if (inputContext && kInputLineCount > kVisibleRows) {
+        const int trackY = LayoutManager::lineY(1) - 1;
+        const int trackH = kVisibleRows * Layout::LINE_HEIGHT - 2;
+        const int barX = rowX + rowW;
+        const int thumbH = std::max(4, trackH * kVisibleRows / kInputLineCount);
+        const int span = kInputLineCount - kVisibleRows;
+        const int thumbY = trackY + (trackH - thumbH) * firstVisibleRow / span;
+        gfx.fillRect(barX, trackY, 2, trackH, palette.dim);
+        gfx.fillRect(barX, thumbY, 2, thumbH, palette.secondary);
     }
 
     // The global performance HUD strip is composited over the bottom of the
@@ -882,6 +1218,12 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
+    // Ctrl+Z: the LOOPER's undo when it has one, otherwise passed on (the
+    // global "UNDO: EMPTY / NOT HERE" toast stays as before).
+    if (GroovePuterUndoUx::isUndoEvent(event)) {
+        if (!GroovePuterLooper::looper().canUndo()) return false;
+        return looperKey('v');
+    }
     if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
     if (chordModePopup_.isOpen()) {
         const UI::SelectionPopupResult result = chordModePopup_.handleEvent(event);
@@ -994,12 +1336,25 @@ bool PerformPage::handleEvent(UIEvent& event) {
         case 'x':
         case 'X': {
             GroovePuterCallResponse::callResponseListener().silence();
+            (void)GroovePuterLooper::looper().panicStop();  // the layer is kept
             keyboard_.panic();
             char toast[40];
-            std::snprintf(toast, sizeof(toast), "PANIC: LIVE + PARTNER SILENT");
+            std::snprintf(toast, sizeof(toast), "PANIC: PARTNER SILENT, LOOP STOPPED");
             UI::showToast(toast, 1000);
             return true;
         }
+        // LOOPER (live surface and tools layer): Z REC/DUB, C PLAY/STOP,
+        // V UNDO, B HOLD. Del = CLEAR on the live surface only (in the tools
+        // layer Backspace is "previous context").
+        case 'z': case 'Z': return looperKey('z');
+        case 'c': case 'C': return looperKey('c');
+        case 'v': case 'V': return looperKey('v');
+        case 'b': case 'B': return looperKey('b');
+        case 'm': case 'M': return looperKey('m');
+        case '\b':
+        case 0x7F:
+            if (toolsLayerVisible_) return false;
+            return looperKey('\b');
         default:
             return false;
     }
@@ -1095,7 +1450,12 @@ void PerformPage::drawContent(IGfx& gfx) {
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
                              Layout::CONTENT.w - 8, line);
 
-    const int visualY = LayoutManager::lineY(2);
+    if (GroovePuterLooper::looper().takeFullNotice())
+        UI::showToast("LOOP: FULL, NOTES DROPPED", 1000);
+    drawLooperStrip(gfx, LayoutManager::lineY(2));
+
+    // Line 2 is the LOOPER strip; the keyboard starts on line 3.
+    const int visualY = LayoutManager::lineY(3);
     const int visualH = LayoutManager::lineY(7) - visualY - 2;
     const int visualW = Layout::CONTENT.w - 8;
     if (drums) {
@@ -1167,7 +1527,11 @@ void PerformPage::drawContent(IGfx& gfx) {
     }
     if (!usbBlocked && !usbReady && active < 0 && keyboard_.heldCount() == 0) {
         const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
-        if (input.enabled) {
+        const auto& loop = GroovePuterLooper::looper();
+        if (noteMode && loop.state() == Looper::State::Idle && loop.channel() == 0 && !drums) {
+            gfx.setTextColor(COLOR_LABEL);
+            std::snprintf(line, sizeof(line), "LOOP PLAYS TO MIDI ONLY | TAB TOOLS");
+        } else if (input.enabled) {
             const bool follows = input.target == GroovePuterMidi::MidiInputTarget::Perform;
             std::snprintf(line, sizeof(line), "IN: %s%s%s | TAB TOOLS",
                 GroovePuterUi::MidiInputUi::targetName(input.target),
@@ -1185,7 +1549,163 @@ void PerformPage::drawFooter(IGfx& gfx) {
                                "[ENT]ACTION [ESC]LIVE");
         return;
     }
+    // Live surface: the footer follows the LOOPER state (LOOPER_DESIGN §1.4).
+    const auto& loop = GroovePuterLooper::looper();
+    const bool undo = loop.canUndo();
+    if (loop.hold()) {
+        UI::drawStandardFooter(gfx, "[B]HOLD OFF [M]LAYER", "[C]PLAY/STOP [X]PANIC");
+        return;
+    }
+    switch (loop.state()) {
+        case Looper::State::Armed:
+            UI::drawStandardFooter(gfx,
+                loop.clockSource() == GroovePuterLooper::LoopClock::Source::Transport
+                    ? "[Z]CANCEL  WAIT FOR BAR" : "[Z]CANCEL  PLAY A NOTE",
+                "[X]PANIC");
+            return;
+        case Looper::State::Record:
+            UI::drawStandardFooter(gfx, loop.dubArmed() ? "[Z]THEN PLAY [V]CANCEL"
+                                                        : "[Z]THEN DUB [V]CANCEL",
+                                   "[C]STOP [X]PANIC");
+            return;
+        case Looper::State::Play:
+            UI::drawStandardFooter(gfx, "[Z]DUB [C]STOP [B]HOLD",
+                                   undo ? "[V]UNDO [DEL]CLR [M]LYR" : "[DEL]CLEAR [M]LAYER");
+            return;
+        case Looper::State::Overdub:
+            UI::drawStandardFooter(gfx, undo ? "[Z]END DUB [V]UNDO" : "[Z]END DUB",
+                                   "[B]HOLD [C]STOP");
+            return;
+        case Looper::State::Stopped:
+            UI::drawStandardFooter(gfx, "[C]PLAY [Z]DUB [M]LAYER",
+                                   undo ? "[V]UNDO [DEL]CLEAR" : "[DEL]CLEAR");
+            return;
+        case Looper::State::Idle:
+            break;
+    }
     UI::drawStandardFooter(gfx,
-                           "Tab Tools [\\]TARGET [,]SCALE",
+                           undo ? "[Z]REC [V]UNDO Tab Tools" : "[Z]REC Tab Tools [\\]TGT",
                            "[-/+]OCT [N]NOTE [X]PANIC");
+}
+
+void PerformPage::formatLooperState(char* out, std::size_t size) const {
+    const auto& loop = GroovePuterLooper::looper();
+    const double position = loop.passPositionNow();
+    const unsigned bar = position >= 0.0
+        ? static_cast<unsigned>(position / GroovePuterLooper::kStepsPerBar) + 1u : 1u;
+    const unsigned bars = loop.bars();
+    switch (loop.state()) {
+        case Looper::State::Record:
+            std::snprintf(out, size, "REC %u/%u%s", bar > bars ? bars : bar, bars,
+                          loop.holdArmed() ? ">HOLD" : (loop.dubArmed() ? ">DUB" : ""));
+            return;
+        case Looper::State::Play:
+            std::snprintf(out, size, "PLAY %u/%u%s", bar > bars ? bars : bar, bars,
+                          loop.hold() ? " HOLD" : "");
+            return;
+        default:
+            std::snprintf(out, size, "%s%s", loop.stateName(), loop.hold() ? " HOLD" : "");
+            return;
+    }
+}
+
+// Line 2 of the live surface: state chip (+ HOLD chip), the pass with its bar
+// and beat marks, one tick per loop note (notes of the undoable pass
+// brighter), the playhead, and the note counter.
+void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
+    const auto& loop = GroovePuterLooper::looper();
+    const UI::ThemePalette palette = UI::themePalette();
+    const bool blinkOn = ((millis() / 250u) & 1u) == 0u;
+    const char* label = "LOOP";
+    bool active = false;
+    IGfxColor color = MusicVisuals::accentForStyle();
+    switch (loop.state()) {
+        case Looper::State::Idle: break;
+        case Looper::State::Armed: label = "ARM"; active = blinkOn; color = COLOR_WARN; break;
+        case Looper::State::Record:
+            label = loop.holdArmed() ? "REC>H" : "REC"; active = true; color = COLOR_DANGER; break;
+        case Looper::State::Overdub: label = "DUB"; active = true; color = COLOR_WARN; break;
+        case Looper::State::Play: label = "PLAY"; active = true; break;
+        case Looper::State::Stopped: label = "STOP"; break;
+    }
+    int x = Layout::COL_1;
+    x += MusicVisuals::drawChip(gfx, x, y, label, active, color) + 2;
+    if (loop.hold()) x += MusicVisuals::drawChip(gfx, x, y, "HOLD", true, palette.secondary) + 2;
+    // Phase 3: the active layer (L1/L2, filled while it is muted).
+    const uint8_t activeLayer = loop.activeLayer();
+    x += MusicVisuals::drawChip(gfx, x, y, activeLayer == 0 ? "L1" : "L2",
+                                loop.layerMuted(activeLayer), palette.dim) + 2;
+
+    char counter[12];
+    IGfxColor counterColor = COLOR_LABEL;
+    const double toRecord = loop.stepsToRecord();
+    if (loop.state() == Looper::State::Armed) {
+        if (toRecord >= 0.0) {
+            std::snprintf(counter, sizeof(counter), "WAIT %u",
+                          static_cast<unsigned>(toRecord / GroovePuterLooper::kStepsPerBar) + 1u);
+        } else {
+            std::snprintf(counter, sizeof(counter), "WAIT");
+        }
+        counterColor = COLOR_WARN;
+    } else if (loop.full()) {
+        std::snprintf(counter, sizeof(counter), "FULL");
+        counterColor = COLOR_DANGER;
+    } else {
+        if (loop.state() == Looper::State::Idle && loop.empty()) {
+            // Nothing recorded yet: the first hint instead of 0/64.
+            std::snprintf(counter, sizeof(counter), "Z REC");
+        } else {
+            std::snprintf(counter, sizeof(counter), "%u/%u",
+                          static_cast<unsigned>(loop.noteCount()),
+                          static_cast<unsigned>(GroovePuterLooper::kLoopCapacity));
+            // Something to undo (V): the counter is brighter, no letter.
+            if (loop.canUndo()) counterColor = COLOR_TEXT;
+        }
+        if (loop.layer().slotCount() + 4u >= GroovePuterLooper::kLoopCapacity) counterColor = COLOR_WARN;
+    }
+    const int right = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X;
+    const int counterW = 6 * 6;
+    gfx.setTextColor(counterColor);
+    gfx.drawText(right - counterW, y + 1, counter);
+
+    const int barX = x;
+    const int barW = right - counterW - 3 - barX;
+    const int barH = 10;
+    if (barW < 16) return;
+    gfx.drawRect(barX, y, barW, barH, palette.dim);
+    const int steps = loop.passSteps();
+    const int innerW = barW - 2;
+    auto stepX = [&](double step) { return barX + 1 + static_cast<int>(step * innerW / steps); };
+    // Beat marks only while a beat is at least 6 px wide. BARS 8 on the
+    // ~150 px strip (~1.2 px per step): bar marks only, the middle one (bar 5)
+    // full height.
+    const bool beatMarks = innerW * 4 >= steps * 6;
+    for (int beat = 4; beat < steps; beat += 4) {
+        const bool bar = beat % GroovePuterLooper::kStepsPerBar == 0;
+        if (!bar && !beatMarks) continue;
+        const bool half = steps > 64 && beat == steps / 2;
+        gfx.fillRect(stepX(beat), bar ? (half ? y : y + 1) : y + barH - 3, 1,
+                     bar ? (half ? barH : barH - 2) : 2, palette.dim);
+    }
+    const double position = loop.passPositionNow();
+    if (position >= 0.0 && !loop.hold()) {
+        const int fillW = stepX(position) - (barX + 1);
+        if (fillW > 0) gfx.fillRect(barX + 1, y + barH - 3, fillW, 2, active ? color : palette.dim);
+    }
+    // Two lanes of note ticks: layer 1 on top, layer 2 below. The active
+    // layer is bright (the undoable pass brightest), the other one label
+    // grey, a muted layer dim.
+    const auto& layer = loop.layer();
+    for (uint8_t i = 0; i < layer.slotCount(); ++i) {
+        const auto& note = layer.note(i);
+        if (note.shadow()) continue;
+        const uint8_t lane = note.layer() & 1u;
+        IGfxColor tick = palette.dim;
+        if (!loop.layerMuted(lane)) {
+            tick = lane != activeLayer ? COLOR_LABEL
+                                       : (note.isNew() ? palette.text : palette.secondary);
+        }
+        gfx.fillRect(stepX(note.onset()), y + 2 + lane * 3, 1, 2, tick);
+    }
+    if (position >= 0.0) gfx.fillRect(stepX(position), y + 1, 1, barH - 2, color);
 }

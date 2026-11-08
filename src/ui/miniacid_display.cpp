@@ -159,7 +159,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
-        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
+        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_, audio_guard_); break;
         case WorkflowPages::kPhrase:
             page = std::make_unique<PhrasePage>(
                 gfx_, mini_acid_, audio_guard_, /*coreMode=*/false);

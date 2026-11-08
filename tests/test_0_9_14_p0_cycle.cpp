@@ -511,7 +511,7 @@ void testPhrasePageCycleGesture() {
     CHECK(page.handleEvent(key));
     CHECK(f.scene().songs[0].length == 4);
     UI::drawToast(gfx);
-    CHECK(gfx.shows("REWORK"));
+    CHECK(gfx.shows("P3"));
   }
   {
     Fixture f("p0-ui-p3", R::RealizationLevel::P3Transformation);

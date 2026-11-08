@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "../../scenes.h"
+#include "step_setting_marks.h"
 
 // DRUMS STEP SETTINGS (Alt+E on the drum grid): pure field rules, no engine,
 // no allocation. The page applies them inside commitDrumPatternMutation, so
@@ -93,16 +94,16 @@ inline void applyField(DrumStep& step, const DrumStep& anchor, int field,
   const int dir = direction < 0 ? -1 : 1;
   switch (field) {
     case kFieldProb:
-      step.probability = static_cast<uint8_t>(clampValue(
-          anchor.probability + dir * kProbStep, kProbMin, kProbMax));
+      step.probability = static_cast<uint8_t>(StepSettingMarks::stepOnGrid(
+          anchor.probability, dir, kProbStep, kProbMin, kProbMax));
       break;
     case kFieldTiming:
       step.timing = static_cast<int8_t>(
           clampValue(anchor.timing + dir, kTimingMin, kTimingMax));
       break;
     case kFieldVelocity:
-      step.velocity = static_cast<uint8_t>(clampValue(
-          anchor.velocity + dir * kVelocityStep, kVelocityMin, kVelocityMax));
+      step.velocity = static_cast<uint8_t>(StepSettingMarks::stepOnGrid(
+          anchor.velocity, dir, kVelocityStep, kVelocityMin, kVelocityMax));
       break;
     case kFieldOrnament:
       setOrnament(step, nextOrnament(ornamentOf(anchor), dir));

@@ -4,6 +4,23 @@
 #include "../retro_ui_theme.h"
 #include "../amber_ui_theme.h"
 #include "drum_grid_geometry.h"
+#include "step_timing_mark.h"
+
+namespace {
+// One "has settings" dot on a hit cell when PROB, VEL or FLAM/ROLL differ from
+// a plain step (TIMING has its own corner mark). It sits in the top row at the
+// cell middle, between the two timing corners, so the two never overlap.
+void drawStepSettingsDot(IGfx& gfx, int cellX, int cellY, int cellW, int inset,
+                         const DrumStep& step, IGfxColor color) {
+  namespace Marks = GroovePuterUndo::StepSettingMarks;
+  if (!(Marks::drumFieldCustom(step, 0) || Marks::drumFieldCustom(step, 2) ||
+        Marks::drumFieldCustom(step, 3))) return;
+  constexpr int kDot = StepTimingMark::kSize;
+  // Needs a free column between both timing corners.
+  if (cellW < 2 * (inset + kDot) + kDot + 2) return;
+  gfx.fillRect(cellX + (cellW - kDot) / 2, cellY + inset, kDot, kDot, color);
+}
+}  // namespace
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -170,6 +187,10 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
       if (hit && stepData.accent) {
         drawAccentFrame(gfx, cx, cy, cw - 1, ch - 1, COLOR_ACCENT);
       }
+      if (hit) {
+        StepTimingMark::draw(gfx, cx, cy, cw - 1, 2, stepData.timing, COLOR_WHITE);
+        drawStepSettingsDot(gfx, cx, cy, cw - 1, 2, stepData, COLOR_WHITE);
+      }
       if (highlight == i) {
         gfx.drawRect(cx - 1, cy - 1, cw + 1, ch + 1, COLOR_STEP_HILIGHT);
       }
@@ -238,6 +259,11 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
                         ? p.invert
                         : scaleColor(stepData.accent ? p.danger : p.text, brightness);
                     gfx.fillRect(mx, my, m, m, mark);
+                    // Micro-timing beside the glyph: left = early, right = late.
+                    StepTimingMark::draw(gfx, cx, cy, cellW, 1, stepData.timing,
+                                         isCursorCell ? p.invert : p.accent);
+                    drawStepSettingsDot(gfx, cx, cy, cellW, 1, stepData,
+                                        isCursorCell ? p.invert : p.accent);
                 }
                 if (isSelected(i, v)) gfx.drawRect(cx, cy, cellW, cellH, p.text);
                 // Playhead: accent bar in the gap above the column, once per column.
@@ -257,6 +283,11 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
             gfx.drawRect(cx, cy, cellW, cellH, p.gridDim);
             if (hit && stepData.accent) {
                 drawAccentFrame(gfx, cx, cy, cellW, cellH, p.danger);
+            }
+            // Micro-timing: the hit fill is accent-coloured, so the mark is text-coloured.
+            if (hit) {
+                StepTimingMark::draw(gfx, cx, cy, cellW, 2, stepData.timing, p.text);
+                drawStepSettingsDot(gfx, cx, cy, cellW, 2, stepData, p.text);
             }
 
             if (highlight == i) {
@@ -315,6 +346,13 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
                                 layout.stripe_h - 1,
                                 IGfxColor(AmberTheme::BG_DEEP_BLACK));
             }
+            // Micro-timing: the hit fill is cyan, so the mark is the light amber text colour.
+            if (hit) {
+                StepTimingMark::draw(gfx, cx, cy, layout.cell_w - 1, 2, stepData.timing,
+                                     IGfxColor(AmberTheme::TEXT_PRIMARY));
+                drawStepSettingsDot(gfx, cx, cy, layout.cell_w - 1, 2, stepData,
+                                    IGfxColor(AmberTheme::TEXT_PRIMARY));
+            }
 
             if (highlight == i) {
                 amber::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
@@ -361,4 +399,8 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
 
 
   return true;
+}
+
+const char* drumVoiceKeyLabel(const std::string& engine, int voice) {
+  return drumVoiceLabel(engine, voice);
 }

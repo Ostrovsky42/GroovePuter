@@ -25,7 +25,8 @@ def main() -> None:
     # P1/P2/P3 remain internal realization levels, but the musician sees STYLE.
     require('generationStyleName' in generation,
             "generation realization needs a musician-facing STYLE projection")
-    for name in ("FAITHFUL", "VARIANT", "REWORK"):
+    # User decision 0.9.21: the screen shows P1/P2/P3.
+    for name in ("P1", "P2", "P3"):
         require(f'return "{name}"' in generation,
                 f"missing musician-facing style name: {name}")
     require('drawStandardHeader(gfx, mini_acid_, "MATERIAL")' in phrase,

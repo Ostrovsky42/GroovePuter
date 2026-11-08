@@ -20,12 +20,13 @@ def test_theme_selection() -> None:
     cycle_end = theme.index("inline VisualStyle previousThemeStyle", cycle_start)
     cycle = theme[cycle_start:cycle_end]
 
-    # 0.9.20 owner decision: CLEAN (black, VisualStyle::MINIMAL) is the only
-    # product theme. This replaces the earlier binary CLEAN <-> CYBER cycle.
-    require("return VisualStyle::MINIMAL;" in cycle,
-            "the theme selector must always resolve to CLEAN (MINIMAL)")
-    for retired in ("RETRO_CLASSIC", "AMBER", "MINIMAL_DARK"):
-        require(f"return VisualStyle::{retired}" not in cycle,
+    # Owner decision (option B): CLEAN <-> CYBER only; AMBER and STAGE are
+    # not reachable from the selector.
+    require("VisualStyle::MINIMAL ? VisualStyle::RETRO_CLASSIC" in cycle and
+            ": VisualStyle::MINIMAL;" in cycle,
+            "the theme selector must toggle CLEAN <-> CYBER")
+    for retired in ("AMBER", "MINIMAL_DARK"):
+        require(f"VisualStyle::{retired}" not in cycle,
                 f"{retired} must not be reachable from the theme selector")
 
     require('#include "ui_theme.h"' in display and
@@ -43,14 +44,16 @@ def test_theme_selection() -> None:
     require("return UI::nextThemeStyle(style);" in project[style_start:style_end] and
             "return UI::previousThemeStyle(style);" in project,
             "PROJECT Theme row must share the single-theme selector")
-    require("VisualStyle::AMBER" not in project and
-            "VisualStyle::RETRO_CLASSIC" not in project,
-            "PROJECT Theme row must not cycle into AMBER or CYBER")
+    require("VisualStyle::AMBER" not in project,
+            "PROJECT Theme row must not cycle into AMBER")
     session = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
     require("uint8_t visualStyle{0};" in session and
-            "return kCleanVisualStyle;" in session,
-            "session default and restore must both be CLEAN")
+            "value == kCyberVisualStyle ? kCyberVisualStyle : kCleanVisualStyle" in session,
+            "session default is CLEAN and restore keeps CYBER")
 
+    cyber = theme.index("case VisualStyle::RETRO_CLASSIC:")
+    require("RetroTheme::BG_DEEP_BLACK" in theme[cyber:cyber + 400],
+            "themePalette must map RETRO_CLASSIC to the CYBER palette")
     require("IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x000000)" in theme,
             "MINIMAL (CLEAN) surfaces must be true black with no panel fill")
     require("IGfxColor(0xE7E3DE)" in theme and "IGfxColor(0x9C9A94)" in theme,

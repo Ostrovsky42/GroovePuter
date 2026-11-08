@@ -39,16 +39,28 @@ require("!event.alt || event.ctrl || event.meta" in chord and
 public = body(CPP, "bool DrumSequencerPage::handleEvent(UIEvent& ui_event)")
 require("activePageIndex() == 0" in public[:public.index("isDrumStepSettingsChord")],
         "Alt+E opens only on the grid tab")
-first_modal = public.index("step_settings_open_")
+first_modal = public.index("return mainPage->handleStepSettingsKey")
 for later in ("isDrumOutputCycleKey(ui_event)", "GROOVEPUTER_APP_EVENT_UNDO",
               "singleCellBackspace", "gridArrow", "keyG &&",
               "patternIndexFromKey"):
     require(first_modal < public.index(later),
             "an open window must own keys before %s" % later)
-require(public.index("step_settings_open_") < public.index("isDrumStepSettingsChord"),
+require(first_modal < public.index("isDrumStepSettingsChord"),
         "a second Alt+E goes to the open window (it does not toggle it)")
 require("GROOVEPUTER_KEY_DOWN" in public[:first_modal],
         "only keys are modal; Undo/Paste application events still pass")
+
+# Opt (TOGGLE_SOURCE) is ignored while the window is open: no browser.
+opt = public.index("GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE")
+require("step_settings_open_) return true" in public[opt:opt + 400],
+        "Opt must be ignored while STEP SETTINGS is open")
+require(opt < public.index("openRhythmBrowser_()"),
+        "the Opt guard must come before the browser opens")
+
+# MIXED: an area with different values shows MIXED, not the first cell.
+draw = body(LEGACY, "void DrumSequencerMainPage::drawStepSettings")
+require('"MIXED"' in draw and "drumFieldDiffers" in draw,
+        "drum window must show MIXED for differing values")
 
 # Closing: Enter (\n or \r) and Esc close; every other key is swallowed.
 handler = body(LEGACY, "bool DrumSequencerMainPage::handleStepSettingsKey")
@@ -72,6 +84,11 @@ require("applyField" in adjust and "anchor" in adjust,
 require("withAudioGuard" not in adjust and "currentScene()" not in adjust,
         "fields must not bypass the Undo owner")
 
+# Custom-value mark: a square + accent value, driven by the pure rules header.
+draw = body(LEGACY, "void DrumSequencerMainPage::drawStepSettings")
+require("drumFieldCustom" in draw and "fillRect(x + 3" in draw,
+        "drum window must mark custom fields")
+
 # Limits and engine-backed ornaments only.
 for needle in ("kProbMin = 0", "kProbMax = 100", "kProbStep = 5",
                "kTimingMin = -23", "kTimingMax = 23",
@@ -86,8 +103,8 @@ require("DRUM_FX_PITCH_UP;" not in EDIT and "DRUM_FX_REVERSE;" not in EDIT,
 draw = body(LEGACY, "void DrumSequencerMainPage::draw(IGfx& gfx)")
 require('"ENT/ESC:CLOSE"' in draw and "drawStepSettings(gfx)" in draw,
         "draw() must show the footer hint and paint the window")
-require("ENT/ESC:CLOSE" in body(LEGACY, "void DrumSequencerMainPage::drawStepSettings"),
-        "the window footer must say ENT/ESC:CLOSE")
+require("kStepSettingsHint" in body(LEGACY, "void DrumSequencerMainPage::drawStepSettings"),
+        "the window hint is the shared kStepSettingsHint")
 for label in ('"PROB"', '"TIMING"', '"VEL"', '"FLAM/ROLL"'):
     require(label in LEGACY, "window must label %s" % label)
 
@@ -99,5 +116,33 @@ require(len(lines) == 1, "DRUMS help needs exactly one Alt+E line")
 require(len(lines[0]) <= 38, "help line too long: %r" % lines[0])
 require("`Alt+E` on the grid" in KEYS[KEYS.index("## DRUMS"):KEYS.index("## SONG")],
         "keys.md DRUMS must document Alt+E")
+
+# Backspace in the window: field reset; Ctrl+Backspace resets all fields.
+keys = body(LEGACY, "bool DrumSequencerMainPage::handleStepSettingsKey")
+require("resetStepSetting(ui_event.ctrl ? -1" in keys and "0x7F" in keys,
+        "Backspace resets the field, Ctrl+Backspace all fields")
+reset = body(LEGACY, "void DrumSequencerMainPage::resetStepSetting")
+require("commitDrumPatternMutation" in reset, "a reset is one Undo step")
+
+# Ctrl+Backspace on the grid clears the whole pattern, toast by result.
+clear = LEGACY[LEGACY.index("} else if (ui_event.ctrl) {"):]
+clear = clear[:clear.index("} else if (has_selection_)")]
+for text in ('"DRUMS CLEARED  CTRL+Z UNDO"', '"DRUMS ALREADY CLEAR"',
+             '"DRUMS CLEAR FAILED"'):
+    require(text in clear, "Ctrl+Backspace toast %s" % text)
+require("Drums Cleared" not in LEGACY, "old mixed-case toast must be gone")
+
+# Rhythm browser: one caption per meaning, Alt+G = previous group, no source label.
+browser = body(CPP, "void DrumSequencerPage::drawBrowser_")
+require('publishShellFooter("ENTER APPLY", "ESC CLOSE")' in browser,
+        "browser footer: ENTER APPLY / ESC CLOSE")
+require('"Alt+H HELP"' in browser and 'publishShellInfo(infoText, "ESC CLOSE")' not in browser,
+        "browser info line must not repeat ESC CLOSE")
+require('"TAB HEAR  G GROUP"' in browser and '"1-0 MUTE  M SOLO"' in browser,
+        "browser info line hints")
+for label in ('"ATLAS"', '"PRESET"', '"VOCAB"'):
+    require(label not in browser, "browser must not show the source %s" % label)
+require("altGroupBack" in body(CPP, "bool DrumSequencerPage::handleBrowserEvent_"),
+        "Alt+G must step to the previous group")
 
 print("drum step settings source regressions: OK")

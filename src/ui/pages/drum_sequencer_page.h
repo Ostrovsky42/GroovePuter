@@ -36,6 +36,17 @@ class DrumSequencerPage : public DrumSequencerLegacyMultiPage,
   struct BrowserBuffers {
     RhythmBrowser::Workspace workspace{};
     RhythmBrowser::Candidate candidate{};
+    // Miniature of the selected rhythm: per drum voice, a bit per step. soft
+    // marks hits below the ghost velocity. Keyed by what was materialized, so
+    // it is rebuilt only when the selection, variant or scene revision changes.
+    struct Miniature {
+      uint16_t hit[8] = {};
+      uint16_t soft[8] = {};
+      uint8_t index = 0;
+      uint8_t variant = 0;
+      uint32_t revision = 0;
+      bool valid = false;
+    } miniature;
   };
   std::unique_ptr<BrowserBuffers> browserBuffers_;
   bool browserOpen_ = false;
@@ -46,11 +57,24 @@ class DrumSequencerPage : public DrumSequencerLegacyMultiPage,
   uint8_t browserVariant_ = 0;
   uint8_t browserGroup_ = 0;
   uint32_t browserSession_ = 0;
+  // Audition-only mutes reuse the engine track mutes (1..0, isTrackActive
+  // index). The state before HEAR is kept here and restored when the audition
+  // ends (Tab, Enter, Esc, leaving DRUMS, transport stop).
+  bool browserMuteSnapshotValid_ = false;
+  bool browserMuteSnapshot_[10] = {};
+  void snapshotBrowserMutes_();
+  void restoreBrowserMutes_();
+  bool toggleBrowserMute_(char key);
   void stopBrowserPreview_();
   void closeBrowser_();
   void drawBrowser_(IGfx& gfx);
   bool handleBrowserEvent_(UIEvent& event);
+  void openRhythmBrowser_();
+  bool materializeBrowserCandidate_();
+  void refreshBrowserMiniature_();
   bool stageBrowserCandidate_();
-  void selectBrowserStep_(int direction);
+  bool applyBrowserCandidate_();
+  void selectBrowserStep_(int direction, bool keepCurrent = false);
+  bool browserSelectionInGroup_() const;
   bool handleEventLegacy(UIEvent& ui_event);
 };

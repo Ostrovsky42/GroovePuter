@@ -95,9 +95,10 @@ def main() -> None:
     require("rotationIsAudible" in page and "strumIsAudible" in page,
             "N/A dependency predicates must remain explicit and deterministic")
     require("performanceRole()" in tools and "leadMode()" in tools and
-            'drawRow(3, "ROLE"' in tools and 'drawRow(4, "LEAD MODE"' in tools,
+            'drawRow(ir(InRow::PlayAs), "PLAY AS"' in tools and
+            'drawRow(ir(InRow::LeadStyle), "LEAD STYLE"' in tools,
             "INPUT must expose live-note role and current LEAD interpretation")
-    require("ROLE AFFECTS NEW LIVE NOTES ONLY" in page,
+    require("SHAPES NEW LIVE NOTES ONLY" in page,
             "INPUT must explain that role changes do not rewrite playing Song material")
     require('drawRow(1, "SOURCE"' in tools and
             'drawRow(5, "HARMONY"' in tools and

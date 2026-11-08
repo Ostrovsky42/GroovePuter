@@ -103,7 +103,7 @@ def main() -> None:
             "Paste must be prepared as one complete Pattern mutation")
     require("return handleEventLegacy(appEvent);" in wrapper,
             "Ctrl+V must re-enter the owned Paste path instead of unowned recursion")
-    require("Selection Cleared" in wrapper,
+    require("SELECTION CLEARED" in wrapper,
             "selection clear UX must stay reachable through the owned mutation path")
 
     # R2 Reset remains in the retained legacy body. Bind the proof to executable
