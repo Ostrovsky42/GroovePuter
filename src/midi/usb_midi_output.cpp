@@ -1395,21 +1395,15 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     releasePendingChannelPanics();
 }
 
-bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
-    if (!begun_ || !mounted_) return true;
-    // Signed difference keeps the cadence correct across micros() wrap.
-    if (static_cast<int32_t>(nowUs - nextPendingReleaseUs_) < 0) return true;
-    nextPendingReleaseUs_ = nowUs + kPendingReleaseRetryIntervalUs;
-
-    bool allReleased = true;
+bool UsbMidiOutput::retryPendingReleasesOnce() {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         if (!lanes_[i].pendingRelease) continue;
         const bool released = lanes_[i].target == MusicalEventTarget::Drums
             ? releasePercussiveLane(lanes_[i])
             : releaseActiveNote(lanes_[i]);
-        if (!released) allReleased = false;
+        if (!released) return false;
     }
-    if (answerLane_.pendingRelease && !releaseAnswerLane()) allReleased = false;
+    if (answerLane_.pendingRelease && !releaseAnswerLane()) return false;
 
     const MusicalEventTarget generated[kGeneratedTargetCount] = {
         MusicalEventTarget::SynthA,
@@ -1417,14 +1411,15 @@ bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
         MusicalEventTarget::Dx,
     };
     for (const MusicalEventTarget target : generated) {
-        if (!retryGeneratedPendingReleases(target)) allReleased = false;
+        if (!retryGeneratedPendingReleases(target)) return false;
     }
 
-    // Melody chord NoteOffs are released on the chord's own Pattern lane.
+    // Melody chord NoteOffs are released on the chord's own Pattern lane. A
+    // pending bit with no lane to release it on cannot be retried, so it is
+    // skipped rather than blocking every other release.
     for (int index = 0; index < 2; ++index) {
         for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
             const uint8_t midiNote = static_cast<uint8_t>(note);
-            if (!patternChordNoteActive(index, midiNote)) continue;
             if ((patternChordPending_[index][midiNote >> 3u] &
                  static_cast<uint8_t>(1u << (midiNote & 7u))) == 0u) {
                 continue;
@@ -1436,15 +1431,40 @@ bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
                     owner = &lanes_[i];
                 }
             }
-            if (owner == nullptr ||
+            if (owner != nullptr &&
                 !releasePatternChordNote(*owner, index, midiNote)) {
-                allReleased = false;
+                return false;
             }
         }
     }
 
-    if (!releasePendingChannelPanics()) allReleased = false;
-    return allReleased;
+    return releasePendingChannelPanics();
+}
+
+bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
+    if (!begun_ || !mounted_) {
+        // Keep the cadence anchored to now. Otherwise a long unmounted spell
+        // leaves the next attempt far in the future, and after a remount the
+        // signed comparison below would hold retries back for the whole gap.
+        nextPendingReleaseUs_ = nowUs;
+        return true;
+    }
+    // Signed difference keeps the cadence correct across micros() wrap.
+    if (static_cast<int32_t>(nowUs - nextPendingReleaseUs_) < 0) return true;
+
+    if (retryPendingReleasesOnce()) {
+        pendingReleaseIntervalUs_ = kPendingReleaseMinIntervalUs;
+        nextPendingReleaseUs_ = nowUs + pendingReleaseIntervalUs_;
+        return true;
+    }
+    // The wire refused. Stop at once (the rest would be refused too) and back
+    // off so a full FIFO is not paced against every five milliseconds.
+    pendingReleaseIntervalUs_ = pendingReleaseIntervalUs_ * 2u;
+    if (pendingReleaseIntervalUs_ > kPendingReleaseMaxIntervalUs) {
+        pendingReleaseIntervalUs_ = kPendingReleaseMaxIntervalUs;
+    }
+    nextPendingReleaseUs_ = nowUs + pendingReleaseIntervalUs_;
+    return false;
 }
 
 void UsbMidiOutput::servicePitchBendRetries() {

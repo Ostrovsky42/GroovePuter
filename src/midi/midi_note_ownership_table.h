@@ -102,6 +102,17 @@ public:
         }
     }
 
+    // One bit per channel that has at least one wire owner.
+    uint16_t channelMask() const {
+        uint16_t mask = 0;
+        for (std::size_t i = 0; i < size_; ++i) {
+            if (cells_[i].wire != 0) {
+                mask |= static_cast<uint16_t>(1u << (cells_[i].channel & 0x0fu));
+            }
+        }
+        return mask;
+    }
+
     bool channelHasWireOwner(uint8_t channel) const {
         for (std::size_t i = 0; i < size_; ++i) {
             if (cells_[i].channel == channel && cells_[i].wire != 0) return true;

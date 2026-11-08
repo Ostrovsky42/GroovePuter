@@ -330,7 +330,8 @@ void testPendingNoteOffRetriedWithoutNewEvent() {
     assert(output.servicePendingReleases(1000u + 100000u));
     assert(transport.packets.empty());
 
-    // Cadence is bounded: a refused retry is not repeated before the interval.
+    // Cadence is bounded: a refused retry is not repeated before the interval,
+    // and the interval doubles while the wire refuses (5 ms, then 10 ms).
     transport.clear();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 62, 90,
                                     MusicalEventSource::PatternPlayer,
@@ -342,12 +343,12 @@ void testPendingNoteOffRetriedWithoutNewEvent() {
                                     MusicalEventTarget::SynthA));
     assert(transport.packets.empty());
     const uint32_t t0 = 200000u;
-    assert(!output.servicePendingReleases(t0));          // attempt 1 refused
-    assert(output.servicePendingReleases(t0 + 1000u));   // inside window: skipped
-    assert(transport.noteOffFailuresRemaining == 1);     // no attempt was made
-    assert(!output.servicePendingReleases(t0 + 5000u));  // attempt 2 refused
+    assert(!output.servicePendingReleases(t0));           // attempt 1 refused, next +10 ms
+    assert(output.servicePendingReleases(t0 + 5000u));    // inside window: no attempt
+    assert(transport.noteOffFailuresRemaining == 1);
+    assert(!output.servicePendingReleases(t0 + 10000u));  // attempt 2 refused, next +20 ms
     assert(transport.noteOffFailuresRemaining == 0);
-    assert(output.servicePendingReleases(t0 + 10000u));  // attempt 3 succeeds
+    assert(output.servicePendingReleases(t0 + 30000u));   // attempt 3 succeeds
     assert(transport.packets.size() == 1);
     expectPacket(transport.packets[0], PacketType::NoteOff, 7, 62, 0);
 }

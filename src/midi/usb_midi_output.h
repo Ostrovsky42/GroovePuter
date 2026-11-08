@@ -86,8 +86,15 @@ public:
     // could therefore sound until something else happened. The dispatcher calls
     // this on a bounded cadence with its monotonic clock; it never creates a
     // NoteOn and never clears ownership before the wire accepts the release.
-    static constexpr uint32_t kPendingReleaseRetryIntervalUs = 5000u;
+    // Cadence: 5 ms while the wire accepts, doubling to 20 ms while it refuses.
+    // A refused write costs a paced wait, so a saturated FIFO must not be
+    // re-tried at full rate. 64 refusals (the tee's stall threshold) therefore
+    // take at most about 1.3 s; the wire is never retried faster than this.
+    static constexpr uint32_t kPendingReleaseMinIntervalUs = 5000u;
+    static constexpr uint32_t kPendingReleaseMaxIntervalUs = 20000u;
     bool servicePendingReleases(uint32_t nowUs);
+    // Channels on which this output currently holds a wire-sounding note.
+    uint16_t wireOwnedChannelMask() const { return owners_.channelMask(); }
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -206,6 +213,8 @@ private:
     // lanes, so it shares a channel/note with PERFORM or Pattern safely.
     void handleAnswerLaneEvent(const MusicalEvent& event);
     bool releaseAnswerLane();
+    // One pass over every pending release; false at the first refusal.
+    bool retryPendingReleasesOnce();
 
     IUsbMidiTransport& transport_;
     UsbMidiRouteConfig config_;
@@ -236,6 +245,7 @@ private:
     uint16_t pendingPitchBendMask_{0};
     // Earliest monotonic time of the next servicePendingReleases() attempt.
     uint32_t nextPendingReleaseUs_{0};
+    uint32_t pendingReleaseIntervalUs_{kPendingReleaseMinIntervalUs};
     uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
